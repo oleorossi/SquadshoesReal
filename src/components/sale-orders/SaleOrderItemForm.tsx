@@ -516,6 +516,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return uniqueSortedColors(Array.from(colorSet));
   }, [item.material_variant_id, activeMaterialVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
 
+  // Controle da resolução de preço da tabela (com price-break por quantidade):
+  // lastPricedColor evita reaplicar à toa; lastAppliedTablePrice guarda o último
+  // preço de tabela aplicado p/ distinguir "preço da tabela" de "preço manual".
+  const lastPricedColor = useRef<string | null>(null);
+  const lastAppliedTablePrice = useRef<number | null>(null);
+
   useEffect(() => {
     const currentStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const { index: idx, onUpdate: update } = latestRef.current;
@@ -525,9 +531,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // pra ref+cor, cai no sale_price da ficha (comportamento legado). priceLookup
     // entra nas deps deste effect p/ reaplicar quando o pricing do cliente carrega.
     if (selectedRef && item.unit_price === 0) {
-      const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, item.color || '') : 0;
+      const qty = Number(item.quantity) || 0;
+      const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, item.color || '', qty) : 0;
       const autoPrice = tablePrice > 0 ? tablePrice : selectedRef.sale_price;
       if (autoPrice != null) update(idx, 'unit_price', autoPrice);
+      if (tablePrice > 0) lastAppliedTablePrice.current = tablePrice;
     }
 
     // Strap sync: only run once per reference change. If the same reference's
@@ -580,23 +588,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
   }, [item.reference_id, selectedRef?.id, selectedRef?.strap_colors, priceLookup]);
 
-  // Reaplica o preço da TABELA do cliente quando a COR muda (mesma ref).
-  // O effect acima só preenche quando unit_price===0, então não cobria a troca
-  // de cor — e cores podem ter preço diferente na tabela (price_list_items por
-  // ref+cor). Só sobrescreve quando a tabela TEM preço específico pra essa cor
-  // (tablePrice>0); sem tabela, mantém o preço atual (não clobra preço manual).
-  const lastPricedColor = useRef<string | null>(null);
+  // Reaplica o preço da TABELA quando muda a COR ou a QUANTIDADE (price-break por
+  // volume). Sobrescreve quando: a cor mudou, OU a faixa por quantidade mudou E o
+  // preço atual ainda é o da tabela (não foi editado à mão) — assim sobe/desce de
+  // faixa por volume sem clobrar um preço manual.
   useEffect(() => {
     if (!selectedRef || !priceLookup) return;
     const color = item.color || '';
-    if (lastPricedColor.current === color) return;
-    lastPricedColor.current = color;
-    const tablePrice = resolvePrice(priceLookup, selectedRef.id, color);
-    if (tablePrice > 0) {
+    const qty = Number(item.quantity) || 0;
+    const tablePrice = resolvePrice(priceLookup, selectedRef.id, color, qty);
+    if (tablePrice <= 0) { lastPricedColor.current = color; return; }
+    const colorChanged = lastPricedColor.current !== color;
+    const priceIsTableDriven = lastAppliedTablePrice.current !== null
+      && Math.abs((item.unit_price || 0) - lastAppliedTablePrice.current) < 0.005;
+    if ((colorChanged || priceIsTableDriven) && Math.abs((item.unit_price || 0) - tablePrice) >= 0.005) {
       const { index: idx, onUpdate: update } = latestRef.current;
       update(idx, 'unit_price', tablePrice);
     }
-  }, [item.color, selectedRef?.id, priceLookup]);
+    if (colorChanged || priceIsTableDriven) lastAppliedTablePrice.current = tablePrice;
+    lastPricedColor.current = color;
+  }, [item.color, item.quantity, selectedRef?.id, priceLookup, item.unit_price]);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -610,7 +621,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (selectedRef && (item.unit_price === 0 || !isAdmin)) {
         // Mesma prioridade: tabela do cliente > sale_price da ficha. Na troca de
         // ref a cor é resetada logo abaixo, então resolve pelo preço base da ref.
-        const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, '') : 0;
+        const tablePrice = priceLookup ? resolvePrice(priceLookup, selectedRef.id, '', Number(item.quantity) || 0) : 0;
         const autoPrice = tablePrice > 0 ? tablePrice : selectedRef.sale_price;
         if (autoPrice != null) update(idx, 'unit_price', autoPrice);
       }
@@ -947,7 +958,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 // Teto de desconto (c): avisa (não bloqueia) quando o preço cai mais
                 // que max_discount_pct abaixo do preço de tabela do cliente.
                 if (!priceLookup || !selectedRef || maxDiscountPct <= 0) return null;
-                const tablePrice = resolvePrice(priceLookup, selectedRef.id, item.color || '');
+                const tablePrice = resolvePrice(priceLookup, selectedRef.id, item.color || '', Number(item.quantity) || 0);
                 if (tablePrice <= 0 || !(item.unit_price > 0)) return null;
                 const floor = tablePrice * (1 - maxDiscountPct / 100);
                 if (item.unit_price >= floor - 0.005) return null;
