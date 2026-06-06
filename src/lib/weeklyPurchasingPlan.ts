@@ -198,10 +198,15 @@ export function generateWeeklyPurchasingPlan(
       unitPrice: prod!.unit_price || 0,
       currentStock: prod!.quantity || 0,
       minStock: prod!.min_stock || 0,
-      // Estoque virtual inicial = bruto − mínimo − reservado − segurança (ATP).
-      // Antes só descontava o mínimo (e min_stock nem era buscado da query),
-      // inflando o disponível e fazendo o plano sub-comprar.
-      virtualStock: Math.max(0, (prod!.quantity || 0) - (prod!.min_stock || 0) - (prod!.reserved_stock || 0) - (prod!.safety_stock || 0)),
+      // Estoque virtual inicial = bruto − mínimo − segurança (estoque LIVRE real).
+      // NÃO subtrai reserved_stock de propósito: o plano é orientado por DEMANDA das
+      // OPs ativas (Reservado + Em Produção), e reserved_stock representa justamente o
+      // material já reservado por ESSAS MESMAS OPs. Subtrair os dois = dupla-contagem
+      // (descontava o material da disponibilidade E recontava como demanda da OP),
+      // inflando a compra. A depleção pela demanda das OPs é o único redutor.
+      // (Auditoria 2026-06-06: overlap real era 1 produto, mas vira dupla-compra real
+      // assim que as reservas voltam a sincronizar com as OPs ativas.)
+      virtualStock: Math.max(0, (prod!.quantity || 0) - (prod!.min_stock || 0) - (prod!.safety_stock || 0)),
       weeklyPurchases: {},
       totalToBuy: 0,
       estimatedCost: 0,
