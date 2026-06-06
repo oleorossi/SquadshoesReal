@@ -8,11 +8,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO, differenceInDays, startOfDay } from "date-fns";
 import { Warning as AlertTriangle, CircleNotch as Loader2, ShoppingCart } from '@phosphor-icons/react';
+import ProductReservationDetailsDialog from "@/components/inventory/ProductReservationDetailsDialog";
 
 export function MrpNeedsTable() {
   const { data = [], isLoading } = useMrpNeeds();
   const genPO = useGeneratePOFromMrp();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Detalhamento de reserva por OP (reusa o dialog do estoque) — abre ao clicar
+  // no valor "Reservado", pra ver qual OP está segurando o material.
+  const [resvDialog, setResvDialog] = useState<{ id: string; name: string; unit: string } | null>(null);
 
   const toggleAll = () =>
     setSelected((prev) =>
@@ -106,7 +110,18 @@ export function MrpNeedsTable() {
                   {n.on_hand} {n.unit}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {n.reserved}
+                  {Number(n.reserved) > 0 ? (
+                    <button
+                      type="button"
+                      className="underline decoration-dotted underline-offset-2 hover:text-primary"
+                      onClick={() => setResvDialog({ id: n.product_id, name: n.product_name, unit: n.unit })}
+                      title="Ver quais OPs estão segurando este material"
+                    >
+                      {n.reserved}
+                    </button>
+                  ) : (
+                    n.reserved
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {n.qty_in_po}
@@ -158,6 +173,14 @@ export function MrpNeedsTable() {
           )}
         </TableBody>
       </Table>
+
+      <ProductReservationDetailsDialog
+        productId={resvDialog?.id ?? null}
+        productName={resvDialog?.name}
+        unit={resvDialog?.unit}
+        open={!!resvDialog}
+        onOpenChange={(o) => { if (!o) setResvDialog(null); }}
+      />
     </div>
   );
 }

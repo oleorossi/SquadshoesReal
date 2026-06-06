@@ -27,6 +27,7 @@ interface ProjectedItem {
   groupName: string;
   supplierName: string;
   currentStock: number;
+  inbound: number;
   minStock: number;
   dailyConsumption: number;
   projectedStock: number;
@@ -61,6 +62,30 @@ export default function MrpProjectionsTab() {
     return m;
   }, [projRows]);
 
+  // Material EM TRÂNSITO (OCs pending/approved) — entra na projeção pra não
+  // marcar como crítico um produto que já tem compra a caminho.
+  const { data: inboundRows } = useQuery({
+    queryKey: ['mrp_inbound_pos'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchase_order_items')
+        .select('product_id, quantity, purchase_orders(status)');
+      if (error) throw error;
+      return (data || []) as Array<{ product_id: string | null; quantity: number; purchase_orders: { status: string } | { status: string }[] | null }>;
+    },
+    staleTime: 60 * 1000,
+  });
+  const inboundByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of (inboundRows || [])) {
+      const po = Array.isArray(r.purchase_orders) ? r.purchase_orders[0] : r.purchase_orders;
+      if (r.product_id && po && (po.status === 'pending' || po.status === 'approved')) {
+        m.set(r.product_id, (m.get(r.product_id) || 0) + (Number(r.quantity) || 0));
+      }
+    }
+    return m;
+  }, [inboundRows]);
+
   const days = HORIZONS.find(h => h.key === horizon)?.days ?? 7;
 
   // Build supplier map by group
@@ -94,10 +119,13 @@ export default function MrpProjectionsTab() {
       const availableStock = proj
         ? Math.max(0, proj.available)
         : Math.max(0, (p.quantity || 0) - ((p as any).reserved_stock || 0));
-      const projectedStock = Math.max(0, availableStock - (dailyConsumption * days));
+      // + material em trânsito (OCs pending/approved) na projeção/ruptura.
+      const inbound = inboundByProduct.get(p.id) || 0;
+      const effectiveStock = availableStock + inbound;
+      const projectedStock = Math.max(0, effectiveStock - (dailyConsumption * days));
       const shortage = Math.max(0, p.min_stock - projectedStock);
       const daysUntilStockout = dailyConsumption > 0
-        ? Math.floor(availableStock / dailyConsumption)
+        ? Math.floor(effectiveStock / dailyConsumption)
         : 999;
 
       let status: 'ok' | 'warning' | 'critical' = 'ok';
@@ -113,6 +141,7 @@ export default function MrpProjectionsTab() {
         groupName,
         supplierName: (p as any).supplier_name || groupName,
         currentStock: availableStock,
+        inbound,
         minStock: p.min_stock || 0,
         dailyConsumption,
         projectedStock,
@@ -123,7 +152,7 @@ export default function MrpProjectionsTab() {
     }
 
     return result.sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
-  }, [products, groupMap, days, projByProduct]);
+  }, [products, groupMap, days, projByProduct, inboundByProduct]);
 
   // Group projections by purchase group
   const groupedProjections = useMemo(() => {
@@ -273,6 +302,7 @@ export default function MrpProjectionsTab() {
                       <TableHead>Material</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead className="text-right">Estoque Atual</TableHead>
+                      <TableHead className="text-right">Em Trânsito</TableHead>
                       <TableHead className="text-right">Consumo/Dia</TableHead>
                       <TableHead className="text-right">Projeção {days}d</TableHead>
                       <TableHead className="text-right">Falta</TableHead>
@@ -291,6 +321,11 @@ export default function MrpProjectionsTab() {
                           <TableCell className="font-medium">{item.productName}</TableCell>
                           <TableCell className="text-muted-foreground text-xs">{item.sku}</TableCell>
                           <TableCell className="text-right">{item.currentStock.toFixed(1)} {item.unit}</TableCell>
+                          <TableCell className="text-right">
+                            {item.inbound > 0
+                              ? <span className="text-primary font-medium">+{item.inbound.toFixed(1)}</span>
+                              : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
                           <TableCell className="text-right">{item.dailyConsumption.toFixed(2)}</TableCell>
                           <TableCell className="text-right font-medium">
                             {item.projectedStock.toFixed(1)} {item.unit}
