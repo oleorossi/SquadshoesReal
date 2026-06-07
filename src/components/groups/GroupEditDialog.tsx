@@ -603,6 +603,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [description, setDescription] = useState(group.description || '');
   const [isBomColorSource, setIsBomColorSource] = useState(group.is_bom_color_source);
   const [consumptionUnit, setConsumptionUnit] = useState<string>(group.consumption_unit || '__none__');
+  // "Especificações compartilhadas": todos os itens do grupo têm a MESMA unidade de
+  // consumo/valor/dimensões. Persiste em product_groups.shared_specs. (O state havia sido
+  // removido por engano no cleanup a089022, deixando o JSX órfão → crash "sharedSpecs is not defined".)
+  const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -632,6 +636,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setDescription(group.description || '');
     setIsBomColorSource(group.is_bom_color_source);
     setConsumptionUnit(group.consumption_unit || '__none__');
+    setSharedSpecs(group.shared_specs ?? false);
 
     // If all products in group share the same price/location, set them as defaults
     if (products.length > 0) {
@@ -688,6 +693,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           description,
           is_bom_color_source: isBomColorSource,
           consumption_unit: finalUnit,
+          shared_specs: sharedSpecs,
         } as any,
       });
 
@@ -697,7 +703,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
       if (products.length > 0) {
         const updateData: any = {};
-        if (unitChanged) updateData.consumption_unit = finalUnit;
+        // sharedSpecs força a propagação da unidade de CONSUMO a todos os itens (mesmo sem
+        // troca). NÃO sobrescrevemos products.unit (estoque): em material de área a unidade
+        // de consumo é dm² mas a de estoque é m/placa — sobrescrever corromperia o estoque.
+        if (unitChanged || sharedSpecs) updateData.consumption_unit = finalUnit;
 
         // Mass update price and location if provided
         if (unitPrice > 0) updateData.unit_price = unitPrice;
@@ -854,7 +863,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
                     {sharedSpecs
-                      ? 'Esta unidade será aplicada a TODOS os itens deste grupo ao salvar (inclusive estoque).'
+                      ? 'Esta unidade de consumo será aplicada a TODOS os itens deste grupo ao salvar. A unidade de estoque de cada item é preservada.'
                       : 'Ao alterar esta unidade, ela será aplicada a todos os itens do grupo para padronização.'}
                   </p>
                 </div>
