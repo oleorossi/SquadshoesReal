@@ -122,11 +122,19 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
 
   const upsertMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // client_id / economic_group_id são colunas uuid: '' (escopo "padrão", sem
+      // cliente nem grupo) estoura "invalid input syntax for type uuid". Converte
+      // p/ null antes de gravar — cobre update E insert.
+      const payload = {
+        ...data,
+        client_id: data.client_id || null,
+        economic_group_id: data.economic_group_id || null,
+      };
       if (editingId) {
-        const { error } = await supabase.from('sole_silk_registrations').update(data).eq('id', editingId);
+        const { error } = await supabase.from('sole_silk_registrations').update(payload).eq('id', editingId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('sole_silk_registrations').insert(data);
+        const { error } = await supabase.from('sole_silk_registrations').insert(payload);
         if (error) throw error;
       }
     },
