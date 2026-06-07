@@ -2795,10 +2795,61 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                     || ((grp as any)?.dimensions_unit || '').toString().trim()
                                     || (resolvedProd?.unit || '').trim()
                                     || undefined;
-                                  arr[rawIdx] = { ...arr[rawIdx], material: v, mandatory: true, ...(material_unit ? { material_unit } : {}) };
+                                  // Trocar o grupo invalida o item fixado de outro grupo.
+                                  const prevGrpName = (arr[rawIdx]?.material || '').trim();
+                                  const clearPin = prevGrpName !== v.trim();
+                                  arr[rawIdx] = {
+                                    ...arr[rawIdx], material: v, mandatory: true,
+                                    ...(material_unit ? { material_unit } : {}),
+                                    ...(clearPin ? { product_id: null, product_name: null } : {}),
+                                  };
                                   updateField('components_accessories', arr);
                                 }}
                               />
+
+                              {/* Linha 2b: Item específico (opcional). Fixa o produto exato
+                                  pro débito; em branco = resolve pela cor do PV (padrão). */}
+                              {extra.material && (() => {
+                                const grp = (groups || []).find((x: any) => (x.name || '').trim() === (extra.material || '').trim());
+                                const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id && p.active) : [];
+                                return (
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      Item específico <span className="text-muted-foreground/60">(opcional — débito exato)</span>
+                                    </Label>
+                                    <Select
+                                      value={extra.product_id || '__none__'}
+                                      onValueChange={(v) => {
+                                        const arr = [...(form.components_accessories || [])];
+                                        if (v === '__none__') {
+                                          arr[rawIdx] = { ...arr[rawIdx], product_id: null, product_name: null };
+                                        } else {
+                                          const prod = itemsOfGroup.find((p: any) => p.id === v);
+                                          arr[rawIdx] = { ...arr[rawIdx], product_id: v, product_name: prod?.name || '' };
+                                        }
+                                        updateField('components_accessories', arr);
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs mt-1">
+                                        <SelectValue placeholder="Resolver pela cor (padrão)" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                        {itemsOfGroup.map((p: any) => (
+                                          <SelectItem key={p.id} value={p.id} className="text-xs">
+                                            {p.name}{p.color ? ` (${p.color})` : ''} [{p.unit || 'un'}]
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {extra.product_id && (
+                                      <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                                        Débito fixo neste item (ignora a cor do PV).
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               {/* Linha 3: Grade de consumo por numeração (unidade do material) */}
                               {extra.material && renderSizeGrid(

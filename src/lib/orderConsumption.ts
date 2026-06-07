@@ -484,10 +484,15 @@ export function computeConsumptionForItems(
         ? mandMat.consumption_per_size
         : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
+      // Item fixado (product_id) → exibe o nome do produto exato (o débito SQL
+      // debita esse item; ver debit_stock_for_order). Sem pino, mantém o rótulo.
+      const pinnedProd = mandMat.product_id
+        ? (allProducts || []).find((p: any) => p.id === mandMat.product_id)
+        : null;
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: mandMat.material,
-        materialName: 'Material Fixo',
+        materialName: pinnedProd?.name || mandMat.label || 'Material Fixo',
         productUnit: 'metro',
         color: orderColor,
         totalQuantity: mandTotal,
