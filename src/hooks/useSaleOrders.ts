@@ -2056,6 +2056,11 @@ export function useUpdateSaleOrder() {
         fichas: i.fichas ?? 1,
         observation: i.observation ?? null,
         material_variant_id: (i as any).material_variant_id ?? null,
+        // Sem isto, EDITAR um PV descartava as cores de tira (o create persiste via
+        // spread, mas o update montava payload explícito e esquecia strap_colors) →
+        // banco ficava com '[]' → StrapShortageDialog acusava "sem cor" falsamente.
+        // O RPC update_sale_order_atomic também grava esta coluna (migration de jun/26).
+        strap_colors: (i as any).strap_colors ?? [],
       }));
       // Strip status from p_header: status transitions must go through
       // useUpdateSaleOrderStatus which enforces the state machine. Including
