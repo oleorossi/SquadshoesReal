@@ -221,6 +221,26 @@ describe('orderConsumption — motor canônico', () => {
     expect(cabedalGroups).toContain('NAPA EXTRA');          // cor PRETO == pedido
   });
 
+  it('oculta tira do BOM cadastrada em cor que não é a do pedido (mantém a sem cor)', () => {
+    // Repro PV-00141 (NUDE): o BOM trazia "Tira chata 8mm: COBRE", "Tira chata
+    // 25mm: Caramelo/Off White" e "Tira chata 8mm: Ouro Light" — sobras de outra
+    // colorway. Devem sumir; uma tira na cor do pedido e uma SEM cor continuam.
+    const ctx = buildContext();
+    ctx.materials.push(
+      { sheet_id: 'sheet-1', product_id: 'p-tira-cobre', group_id: 'g-tira8', quantity_per_unit: 1, color: 'COBRE',
+        products: { name: 'Tira chata 8mm: COBRE', unit: 'm', category: 'Componente', color: 'COBRE' }, product_groups: { name: 'Tira chata 8mm' } } as any,
+      { sheet_id: 'sheet-1', product_id: 'p-tira-preto', group_id: 'g-tira25', quantity_per_unit: 1, color: 'PRETO',
+        products: { name: 'Tira chata 25mm: Preto', unit: 'm', category: 'Componente', color: 'PRETO' }, product_groups: { name: 'Tira chata 25mm' } } as any,
+      { sheet_id: 'sheet-1', product_id: 'p-tira-gen', group_id: 'g-tira10', quantity_per_unit: 1, color: '',
+        products: { name: 'Tira chata 10mm', unit: 'm', category: 'Componente', color: '' }, product_groups: { name: 'Tira chata 10mm' } } as any,
+    );
+    const rows = computeConsumptionForItems([buildItem({ color: 'PRETO' })], ctx);
+    const tiraGroups = rows.filter(r => r.componentType === 'Tiras').map(r => r.groupName);
+    expect(tiraGroups).not.toContain('Tira chata 8mm');  // cor COBRE ≠ PRETO
+    expect(tiraGroups).toContain('Tira chata 25mm');      // cor PRETO == pedido
+    expect(tiraGroups).toContain('Tira chata 10mm');      // sem cor → sempre entra
+  });
+
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
     // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
     // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em

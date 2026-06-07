@@ -724,14 +724,18 @@ export function computeConsumptionForItems(
         || (Number(sheet?.sole_consumption) || 0) > 0;
       if (isSoleBom && sheetHasSole) continue;
 
-      // Materiais de ÁREA (cabedal/forração) do BOM cadastrados numa COR fixa
-      // que não é a do pedido são sobras de outra colorway — ex.: PV-00141 (NUDE)
-      // tinha NAPA SANTORINE/ABACATE e NAPA SOFT/ADOCICADO no sheet_materials da
-      // ref, cores que não estão no pedido. Pula quando a cor explícita do
+      // Materiais coloridos do BOM (cabedal/forração/tiras) cadastrados numa COR
+      // fixa que não é a do pedido são sobras de outra colorway — ex.: PV-00141
+      // (NUDE) tinha NAPA SANTORINE/ABACATE e NAPA SOFT/ADOCICADO (cabedal) e
+      // ainda "Tira chata 8mm: COBRE", "Tira chata 25mm: Caramelo/Off White" e
+      // "Tira chata 8mm: Ouro Light" (tiras) no sheet_materials da ref, todas em
+      // cores que não estão no pedido NUDE. Pula quando a cor explícita do
       // material não casa com a do pedido nem com a do forro mapeado. Materiais
-      // sem cor (cola, aviamentos, embalagem) não entram nessa regra.
-      // (Decisão user 2026-06-07.)
-      if ((bomComponentType === 'Cabedal' || bomComponentType === 'Forração') && orderColor && orderColor !== '—') {
+      // sem cor (cola, aviamentos, embalagem, tira genérica) não entram na regra.
+      // O caminho CANÔNICO de tiras (strap_colors JSONB da ficha, onde se declara
+      // cor de contraste proposital) é tratado acima e NÃO passa por aqui — só o
+      // BOM legado é filtrado. (Decisão user 2026-06-07; tiras add 2026-06-07.)
+      if ((bomComponentType === 'Cabedal' || bomComponentType === 'Forração' || bomComponentType === 'Tiras') && orderColor && orderColor !== '—') {
         const matColor = normalizeText(material.color || product.color);
         if (matColor) {
           const itemLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`)
