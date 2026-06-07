@@ -39,6 +39,7 @@ export default function SolesCadastroTab({ sole }: Props) {
     color: sole.color || '',
     size_from: (sole.stock_grade as any)?._size_from ?? 33,
     size_to: (sole.stock_grade as any)?._size_to ?? 40,
+    unit_price: Number((sole as any).unit_price) || 0,
     notes: '',
   };
   const [form, setForm] = useState(initialForm);
@@ -53,7 +54,8 @@ export default function SolesCadastroTab({ sole }: Props) {
     form.sku !== initialForm.sku ||
     form.color !== initialForm.color ||
     Number(form.size_from) !== initialForm.size_from ||
-    Number(form.size_to) !== initialForm.size_to;
+    Number(form.size_to) !== initialForm.size_to ||
+    Number(form.unit_price) !== Number(initialForm.unit_price);
 
   // Pré-visualização dos tamanhos que vão sair na grade — aplica conjugações
   // se houver (33/34 etc). Mostrado num bloco destacado pro user enxergar o
@@ -127,13 +129,16 @@ export default function SolesCadastroTab({ sole }: Props) {
   };
 
   const update = useMutation({
-    mutationFn: async (patch: { name: string; sku: string | null; color: string | null; gradeRange?: { from: number; to: number } }) => {
+    mutationFn: async (patch: { name: string; sku: string | null; color: string | null; unit_price?: number; gradeRange?: { from: number; to: number } }) => {
       // 1. Atualiza o produto selecionado (todos os campos)
       const updates: any = {
         name: patch.name,
         sku: patch.sku,
         color: patch.color,
       };
+      // Valor do solado (R$/par) — por variante. Entra no estoque (valor) e no
+      // custeio do calçado (linha Solado lê products.unit_price).
+      if (patch.unit_price !== undefined) updates.unit_price = patch.unit_price;
       if (patch.gradeRange) {
         const grade = { ...(sole.stock_grade as any || {}), _size_from: patch.gradeRange.from, _size_to: patch.gradeRange.to };
         updates.stock_grade = grade;
@@ -402,6 +407,7 @@ export default function SolesCadastroTab({ sole }: Props) {
       name: form.name,
       sku: form.sku || null,
       color: form.color || null,
+      unit_price: Number(form.unit_price) || 0,
       gradeRange: rangeChanged ? { from: Number(form.size_from), to: Number(form.size_to) } : undefined,
     });
   };
@@ -519,6 +525,23 @@ export default function SolesCadastroTab({ sole }: Props) {
               <datalist id="sole-colors-suggestions">
                 {soleColorSuggestions.map(c => <option key={c} value={c} />)}
               </datalist>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                Valor do solado
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">· R$/par · por variante</span>
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.unit_price}
+                onChange={e => setForm(f => ({ ...f, unit_price: Number(e.target.value) }))}
+                placeholder="0,00"
+              />
+              <p className="text-xs text-muted-foreground leading-tight">
+                Custo de compra por par. Entra no <strong>valor de estoque</strong> e no <strong>custeio do calçado</strong>.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
