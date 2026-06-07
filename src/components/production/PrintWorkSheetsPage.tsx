@@ -11,6 +11,7 @@ import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type Gro
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
+import { collectiveTypeForMode, pairsPerVolumeForMode } from '@/lib/packagingPairsPerBox';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
@@ -625,7 +626,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // do Supabase quebrava o print de toda OP em produção.
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total');
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode');
       if (error) throw error;
       return data;
     },
@@ -766,7 +767,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // pra ficha de Silk (último nível antes do logo Squad).
       const { data, error } = await (supabase as any)
         .from('product_groups')
-        .select('id, pairs_per_box_individual, silk_url')
+        .select('id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho, silk_url')
         .in('id', soleGroupIds);
       if (error) throw error;
       return data || [];
@@ -1578,13 +1579,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
 
-    const groupPackagingById = new Map<string, number | null>();
+    const groupPackagingById = new Map<string, any>();
     for (const g of soleGroupPackaging as any[]) {
-      groupPackagingById.set((g as any).id, (g as any).pairs_per_box_individual);
+      groupPackagingById.set((g as any).id, g);
     }
 
-    // Resolve sole info por order (nome + pairs_per_box)
-    const resolveSoleInfo = (order: any): { soleName: string | null; pairsPerBox: number | null } => {
+    // Resolve sole info por order. pairs_per_box usa o TIPO de caixa do MODO do
+    // PV (colmeia/master = caixa COLETIVA, 12 padrão), não a individual — antes
+    // a expedição usava sempre pairs_per_box_individual, divergindo da NF.
+    const resolveSoleInfo = (order: any, mode: string | null | undefined): { soleName: string | null; pairsPerBox: number | null } => {
       const sheetId = order.reference_id;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const mapping = (soleMappings as any[]).find(
@@ -1592,7 +1595,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       );
       const soleName = (mapping as any)?.products?.name ? getBaseName((mapping as any).products.name) : null;
       const groupId = (mapping as any)?.products?.group_id;
-      const pairsPerBox = groupId ? (groupPackagingById.get(groupId) ?? null) : null;
+      const grp = groupId ? groupPackagingById.get(groupId) : null;
+      const collType = collectiveTypeForMode(mode);
+      const field = collType === 'master' ? 'pairs_per_box_master'
+        : collType === 'colmeia' ? 'pairs_per_box_colmeia'
+        : collType === 'fitilho' ? 'pairs_per_box_fitilho'
+        : 'pairs_per_box_individual';
+      const cadastrado = grp ? Number(grp[field]) || 0 : 0;
+      // pairsPerVolumeForMode aplica o default 12 (coletiva) / 1 (fitilho-amarrado)
+      // quando não há valor cadastrado — espelha a NF.
+      const pairsPerBox = pairsPerVolumeForMode(mode, cadastrado);
       return { soleName, pairsPerBox };
     };
 
@@ -1615,7 +1627,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const nfe = order.sale_order_id ? nfeByOrder.get(order.sale_order_id) : null;
       const transport = order.sale_order_id ? transportByOrder.get(order.sale_order_id) : null;
 
-      const { soleName, pairsPerBox } = resolveSoleInfo(order);
+      const { soleName, pairsPerBox } = resolveSoleInfo(order, (so as any)?.packaging_mode);
 
       if (!map.has(clientId)) {
         map.set(clientId, {

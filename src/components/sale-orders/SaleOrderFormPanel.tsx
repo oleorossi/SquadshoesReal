@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode, ORDER_TYPES } from '@/hooks/useSaleOrders';
+import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -690,11 +691,14 @@ export default function SaleOrderFormPanel({
     return indices;
   }, [items]);
 
-  // Auto-calculate packaging quantity based on pairs_per_package
+  // Auto-calculate packaging quantity based on pairs_per_package.
+  // Default por MODO (12 p/ colmeia/master) quando a caixa não tem capacidade
+  // cadastrada — antes caía em 1 par/caixa, divergindo da NF.
   const calcPackagingQty = (productId: string, pairs: number) => {
     const pkg = boxTypes.find(p => p.id === productId);
-    const ppp = (pkg as any)?.pairs_per_box || 1;
-    return Math.ceil(pairs / ppp);
+    const cadastrado = Number((pkg as any)?.pairs_per_box ?? (pkg as any)?.pairs_per_box_default) || 0;
+    const ppp = pairsPerVolumeForMode(form.packaging_mode, cadastrado);
+    return Math.ceil(pairs / Math.max(ppp, 1));
   };
 
   useEffect(() => {
@@ -1257,6 +1261,46 @@ export default function SaleOrderFormPanel({
                       ));
                     })()}
                   </RadioGroup>
+
+                  {/* Resumo de volumes — espelha a NF (compute_sale_order_nfe_volumes):
+                      total de pares ÷ pares-por-caixa do modo (12 padrão p/ colmeia/master).
+                      Aparece SEMPRE, mesmo sem caixa cadastrada nas fichas — antes a tela
+                      só mostrava "nenhuma embalagem", divergindo da NF. */}
+                  {(() => {
+                    const mode = form.packaging_mode;
+                    const byRef = new Map<string, number>();
+                    items.forEach(it => {
+                      if (it.reference_id && it.quantity > 0) {
+                        byRef.set(it.reference_id, (byRef.get(it.reference_id) || 0) + it.quantity);
+                      }
+                    });
+                    const totalP = Array.from(byRef.values()).reduce((s, n) => s + n, 0);
+                    if (totalP <= 0) return null;
+                    // pares/caixa cadastrado por ficha (config do tipo do modo); senão default 12
+                    const collType = collectiveTypeForMode(mode);
+                    const cfgByRef = new Map<string, number>();
+                    sheetPackagingConfigs.forEach((c: any) => {
+                      if (c.packaging_type === collType && Number(c.pairs_per_box) > 0) {
+                        cfgByRef.set(c.sheet_id, Number(c.pairs_per_box));
+                      }
+                    });
+                    let volumes = 0;
+                    for (const [refId, p] of byRef) volumes += volumesForPairs(mode, p, cfgByRef.get(refId));
+                    const pairMode = isPairAsVolumeMode(mode);
+                    const ppb = pairsPerVolumeForMode(mode);
+                    return (
+                      <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                        <span className="text-muted-foreground">
+                          {pairMode
+                            ? `Cada par = 1 volume · ${totalP} pares`
+                            : `${ppb} pares/caixa (padrão) · ${totalP} pares ÷ ${ppb}`}
+                        </span>
+                        <span className="font-mono font-semibold text-foreground whitespace-nowrap">
+                          {volumes} {volumes === 1 ? 'volume' : 'volumes'}
+                        </span>
+                      </div>
+                    );
+                  })()}
 
                   {/* Show packaging configs from technical sheets */}
                   {sheetPackagingConfigs.length > 0 && (
