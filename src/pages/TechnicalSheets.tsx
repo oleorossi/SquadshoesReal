@@ -2471,14 +2471,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 const getUnitForGroupName = (groupName: string, storedUnit?: string): string => {
                   if (!groupName?.trim()) return storedUnit?.trim() || 'un';
                   const g: any = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
+                  // Unidade do ITEM selecionado (produto ativo do grupo) — é a fonte da verdade.
+                  const prod = g ? ((products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
+                    || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim())) : null;
+                  const prodUnit = (prod?.unit || '').toString().trim();
+                  const width = Number(g?.dimensions_width) || 0;
+                  // Material de ÁREA cortado de bobina (napa/couro/forro): produto LINEAR (m/cm)
+                  // COM largura cadastrada → o consumo é gravado em dm²/par (a conversão p/ metro
+                  // usa a largura da ficha). Rótulo correto = dm²/par.
+                  if (width > 0 && ['m', 'cm', 'metro', 'metros', 'mt'].includes(prodUnit.toLowerCase())) return 'dm²';
+                  // Senão, a unidade vem do ITEM SELECIONADO (produto) — NÃO do consumption_unit do
+                  // grupo, que pode divergir (ex.: grupo ELÁSTICO SARJA tinha consumption_unit='m'
+                  // mas o produto é 'un', fazendo o operador digitar valor errado).
+                  if (prodUnit) return prodUnit;
                   const consumption = ((g?.consumption_unit) || '').toString().trim();
                   if (consumption) return consumption;
-                  if (g) {
-                    const prod = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
-                      || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
-                    const prodUnit = (prod?.unit || '').toString().trim();
-                    if (prodUnit) return prodUnit;
-                  }
                   if (storedUnit?.trim()) return storedUnit.trim();
                   const dimsFallback = ((g?.dimensions_unit) || '').toString().trim();
                   if (dimsFallback) return dimsFallback;
