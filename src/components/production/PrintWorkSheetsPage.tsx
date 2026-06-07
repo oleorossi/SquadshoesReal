@@ -1806,7 +1806,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleMapping = (soleMappings as any[]).find(
         (m: any) => m.sheet_id === order.reference_id && (m.product_color || '').toLowerCase() === orderColorLower,
       );
-      const soleGroupId = (soleMapping as any)?.products?.product_group_id ?? null;
+      const soleGroupId = (soleMapping as any)?.products?.group_id ?? null;
       const pairsPerBox = soleGroupId
         ? ((soleGroupPackaging as any[]).find((g: any) => g.id === soleGroupId)?.pairs_per_box_individual ?? null)
         : null;

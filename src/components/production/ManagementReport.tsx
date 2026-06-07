@@ -771,6 +771,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                     </td>
                   </tr>
                 );
+                // Guard (auditoria 2026-06-07): custo absurdo (dado de ficha errado —
+                // consumo/largura/unidade) gera margem catastrófica FALSA. Não exibir
+                // como real: marca a linha e troca a margem por "⚠ revisar".
+                const suspect = c.quantity > 0
+                  && (c.material_cost / c.quantity > 200 || (c.revenue > 0 && c.total_cost > 3 * c.revenue));
                 return (
                   <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
                     <td className="py-1.5 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
@@ -778,16 +783,16 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                       <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
                       {o.color && <span> · {o.color}</span>}
                     </td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.material_cost)}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt]" style={{ color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.material_cost)}{suspect ? ' *' : ''}</td>
                     <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.labor_cost)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.overhead_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black font-bold">{fmtBRL(c.total_cost)}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] font-bold" style={{ color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.total_cost)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.revenue)}</td>
                     <td
                       className="py-1.5 text-right font-mono text-[9pt] font-bold"
-                      style={{ color: c.margin < 0 ? '#E11D2E' : '#000' }}
+                      style={{ color: suspect ? '#B45309' : (c.margin < 0 ? '#E11D2E' : '#000') }}
                     >
-                      {fmtBRL(c.margin)}
+                      {suspect ? '⚠ revisar' : fmtBRL(c.margin)}
                     </td>
                   </tr>
                 );
@@ -808,6 +813,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               </tr>
             </tbody>
           </table>
+          {orders.some(o => o.cost && o.cost.quantity > 0
+            && (o.cost.material_cost / o.cost.quantity > 200 || (o.cost.revenue > 0 && o.cost.total_cost > 3 * o.cost.revenue))) && (
+            <p className="mt-1.5 text-[8pt]" style={{ color: '#B45309' }}>
+              ⚠ Linhas com <strong>*</strong> têm custo suspeito (provável dado de ficha errado — consumo/largura/unidade do material).
+              A margem dessas OPs e o Total <strong>não são confiáveis</strong>: revise a ficha e recalcule os custos antes de usar.
+            </p>
+          )}
         </section>
       ) : (
         <section className="keep-together mb-6 border-l-2 border-amber-600 pl-3">
