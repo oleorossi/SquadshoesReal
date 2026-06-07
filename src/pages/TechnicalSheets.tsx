@@ -3696,7 +3696,7 @@ function SheetImageUpload({ images, onChange }: { images: any[]; onChange: (imgs
       <div className="flex items-start gap-4">
         {currentUrl ? (
           <div className="relative group">
-            <div className="w-56 h-56 rounded-xl border-2 border-border overflow-hidden bg-muted cursor-zoom-in shadow-sm hover:shadow-md transition-shadow"
+            <div className="w-80 h-80 rounded-xl border-2 border-border overflow-hidden bg-muted cursor-zoom-in shadow-sm hover:shadow-md transition-shadow"
               onClick={() => setLightboxOpen(true)}>
               <img src={currentUrl} alt="Produto" className="w-full h-full object-cover" />
             </div>
@@ -3714,7 +3714,7 @@ function SheetImageUpload({ images, onChange }: { images: any[]; onChange: (imgs
             </div>
           </div>
         ) : (
-          <label className="cursor-pointer flex flex-col items-center justify-center w-56 h-56 rounded-xl border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 transition-all bg-muted/20 hover:bg-muted/40">
+          <label className="cursor-pointer flex flex-col items-center justify-center w-80 h-80 rounded-xl border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 transition-all bg-muted/20 hover:bg-muted/40">
             <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
             {uploading ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /> : (
               <>
