@@ -122,7 +122,10 @@ export default function PickingListPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, status, planned_start, created_at, sale_order_id, sale_orders!inner(id, order_number, status, picking_individually_done_at, delivery_deadline)')
+        // FK explícita: orders tem 2 FKs p/ sale_orders (sale_order_id e
+        // cross_dock_sale_order_id) — sem o nome da constraint o embed fica
+        // ambíguo ("more than one relationship was found").
+        .select('id, order_number, status, planned_start, created_at, sale_order_id, sale_orders!orders_sale_order_id_fkey!inner(id, order_number, status, picking_individually_done_at, delivery_deadline)')
         .in('status', ACTIVE_OP_STATUSES)
         .order('planned_start', { ascending: false, nullsFirst: false })
         .limit(1000);
