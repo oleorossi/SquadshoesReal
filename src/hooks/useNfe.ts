@@ -370,6 +370,8 @@ export interface NfePreviewProduto {
   unidade: string;
   valor_unitario: number;
   valor_total: number;
+  /** Marca (xMarca) deste item = silk do solado, ou 'Squad Shoes' (fallback). */
+  marca?: string;
   gc_status: 'cached' | 'found_by_name' | 'pending_create';
   gc_id: string | null;
 }

@@ -64,6 +64,10 @@ export interface BoxIdentificationData {
   clientOrderNumber?: string;
   shoeCategory?: string;
   mainMaterial?: string;
+  /** Marca impressa na linha MARCA da grade = silk do solado (cascata
+   *  cliente→grupo→padrão), ou 'Squad Shoes' quando o solado não tem silk.
+   *  Resolvido pelo caller via RPC resolve_item_brand. (User 2026-06-07.) */
+  marca?: string;
   grade: { size: string; qty: number }[];
   barcode?: string;
   imageUrl?: string;
@@ -314,7 +318,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
         <div class="grade-table" style="grid-template-columns:110px repeat(${gradeCols}, 1fr);">
           <div class="glabel first">MARCA:</div>
-          <div class="row-marca"><span class="brand-mark">Squad Shoes</span></div>
+          <div class="row-marca"><span class="brand-mark">${escapeHtml(item.marca || 'Squad Shoes')}</span></div>
           <div class="glabel">REFERENCIA</div>
           <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
           <div class="glabel">TAMANHO</div>

@@ -88,6 +88,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-2 py-1.5 font-medium">#</th>
                   <th className="px-2 py-1.5 font-medium">Descrição</th>
+                  <th className="px-2 py-1.5 font-medium">Marca</th>
                   <th className="px-2 py-1.5 font-medium font-mono">NCM</th>
                   <th className="px-2 py-1.5 font-medium font-mono">CFOP</th>
                   <th className="px-2 py-1.5 font-medium text-right">Qtd</th>
@@ -106,6 +107,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                         <span className="ml-1 text-amber-600 text-xs" title="Será cadastrado no GestaoClick na emissão">(novo)</span>
                       )}
                     </td>
+                    <td className="px-2 py-1.5">{p.marca || '—'}</td>
                     <td className="px-2 py-1.5 font-mono">{p.ncm}</td>
                     <td className="px-2 py-1.5 font-mono">{p.cfop}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</td>
@@ -117,12 +119,12 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border font-medium">
-                  <td className="px-2 py-2 text-right" colSpan={7}>Total da NF</td>
+                  <td className="px-2 py-2 text-right" colSpan={8}>Total da NF</td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmtMoney(totais.soma_itens)}</td>
                 </tr>
                 {Math.abs(totais.soma_itens - totais.total_pedido) > 0.01 && (
                   <tr>
-                    <td colSpan={8} className="px-2 py-1.5 text-xs text-red-600">
+                    <td colSpan={9} className="px-2 py-1.5 text-xs text-red-600">
                       ⚠ Soma dos itens ({fmtMoney(totais.soma_itens)}) diverge do total do PV ({fmtMoney(totais.total_pedido)})
                     </td>
                   </tr>

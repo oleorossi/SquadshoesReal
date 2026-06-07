@@ -956,6 +956,36 @@ export function LabelProductionTab() {
         imageFallbackMap.set(k, isFallback);
       });
 
+      // ── MARCA por item = silk do solado (cascata cliente→grupo→padrão) ──
+      // Pré-resolve a marca de cada combo ref+cor+cliente via RPC
+      // resolve_item_brand (mesma fonte da NF-e). Fallback 'Squad Shoes'.
+      // (User 2026-06-07: silk ligado ao solado vira a MARCA da etiqueta.)
+      const brandKeyFor = (sheetId: string, color: string, clientId: string | null) =>
+        `${sheetId}|${(color || '').toUpperCase().trim()}|${clientId || ''}`;
+      const clientIdForOrder = (order: any): string | null => {
+        const so = saleOrdersMap.get(order.sale_order_id);
+        let c = so?.clients;
+        if (!c && so?.client_cnpj) c = clientsByCnpj.get(String(so.client_cnpj).replace(/\D/g, '')) || null;
+        return c?.id || null;
+      };
+      const brandCombos = new Map<string, { sheetId: string; color: string; clientId: string | null }>();
+      for (const group of boxGroups) {
+        for (const order of group.orders) {
+          const cid = clientIdForOrder(order);
+          const k = brandKeyFor(group.referenceId, order.color || '', cid);
+          if (!brandCombos.has(k)) brandCombos.set(k, { sheetId: group.referenceId, color: order.color || '', clientId: cid });
+        }
+      }
+      const brandMap = new Map<string, string>();
+      await Promise.all(Array.from(brandCombos.entries()).map(async ([k, c]) => {
+        try {
+          const { data } = await (supabase as any).rpc('resolve_item_brand', {
+            p_sheet_id: c.sheetId, p_color: c.color, p_client_id: c.clientId,
+          });
+          brandMap.set(k, (data && String(data).trim()) ? String(data).trim() : 'Squad Shoes');
+        } catch { brandMap.set(k, 'Squad Shoes'); }
+      }));
+
       const boxItems: BoxIdentificationData[] = [];
       for (const group of boxGroups) {
         const refData = refDataMap.get(group.referenceId);
@@ -1060,6 +1090,7 @@ export function LabelProductionTab() {
               clientOrderNumber: so?.client_order_number || '',
               shoeCategory: refData?.shoe_category || '',
               mainMaterial,
+              marca: brandMap.get(brandKeyFor(group.referenceId, order.color || '', client?.id || null)) || 'Squad Shoes',
               grade: gradePerFicha,
               barcode: order.order_number,
               imageUrl: finalImageUrl,
