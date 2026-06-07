@@ -204,6 +204,23 @@ describe('orderConsumption — motor canônico', () => {
     expect(soles[0].groupName).toBe('SOLADO TR 01');
   });
 
+  it('oculta napa de área do BOM cadastrada em cor que não é a do pedido', () => {
+    // Repro PV-00141 (NUDE): o BOM trazia NAPA SANTORINE/ABACATE e NAPA SOFT/
+    // ADOCICADO, cores estranhas ao pedido. Devem ser ocultadas; uma napa na
+    // cor do pedido continua aparecendo.
+    const ctx = buildContext();
+    ctx.materials.push(
+      { sheet_id: 'sheet-1', product_id: 'p-sant', group_id: 'g-sant', quantity_per_unit: 5.7, color: 'ABACATE',
+        products: { name: 'NAPA SANTORINE', unit: 'm', category: 'Cabedal' }, product_groups: { name: 'NAPA SANTORINE' } } as any,
+      { sheet_id: 'sheet-1', product_id: 'p-preto', group_id: 'g-napa2', quantity_per_unit: 5.7, color: 'PRETO',
+        products: { name: 'NAPA EXTRA', unit: 'm', category: 'Cabedal' }, product_groups: { name: 'NAPA EXTRA' } } as any,
+    );
+    const rows = computeConsumptionForItems([buildItem({ color: 'PRETO' })], ctx);
+    const cabedalGroups = rows.filter(r => r.componentType === 'Cabedal').map(r => r.groupName);
+    expect(cabedalGroups).not.toContain('NAPA SANTORINE'); // cor ABACATE ≠ PRETO
+    expect(cabedalGroups).toContain('NAPA EXTRA');          // cor PRETO == pedido
+  });
+
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
     // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
     // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em
