@@ -183,6 +183,27 @@ describe('orderConsumption — motor canônico', () => {
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();
   });
 
+  it('solado listado no BOM não duplica o solado da ficha (sem bloco fantasma)', () => {
+    // Repro PV-00141: o produto-solado ("01", categoria Solado) também aparece
+    // no sheet_materials da ref. Antes virava um bloco de Solado fantasma somado
+    // ao solado real da ficha. Com a ficha definindo sole_material/consumption,
+    // o BOM-solado deve ser ignorado.
+    const ctx = buildContext();
+    ctx.materials.push({
+      sheet_id: 'sheet-1', product_id: 'p-sole-bom', group_id: null,
+      quantity_per_unit: 1, color: '',
+      products: { name: '01', unit: 'par', category: 'Solado' },
+      product_groups: null,
+    } as any);
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const soles = rows.filter(r => r.componentType === 'Solado');
+    // Apenas a linha vinda da ficha (1 par/par × 24), nada de bloco extra.
+    expect(soles).toHaveLength(1);
+    expect(soles[0].totalQuantity).toBe(24);
+    expect(soles[0].groupName).toBe('SOLADO TR 01');
+  });
+
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
     // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
     // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em

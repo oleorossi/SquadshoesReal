@@ -709,6 +709,20 @@ export function computeConsumptionForItems(
       // tem prioridade — BOM é fallback pra materiais não declarados direto.
       if (directProductIds.has(material.product_id)) continue;
 
+      // Solado NUNCA vem do BOM por área: o caminho da ficha (sole_consumption
+      // por par, com numeração/conjugação/estoque) é a fonte única do solado.
+      // Quando um produto-solado (categoria "Solado") é listado também no BOM —
+      // ex.: PV-00141 tinha o produto "01" no sheet_materials da ref —, ele cai
+      // em classifyBomMaterial='Solado' mas o dedup por nome de grupo não casava
+      // ("solado" ≠ "01"), criando um bloco de Solado fantasma (1248 "pares"
+      // além dos 1668 reais da matriz por numeração). Pula sempre que a ficha
+      // define um solado; sem solado na ficha, o BOM segue como fallback.
+      const isSoleBom = normalizeText(product.category) === 'solado'
+        || classifyBomMaterial(groupName, product.name || '', product.category || '') === 'Solado';
+      const sheetHasSole = String(sheet?.sole_material || '').trim().length > 0
+        || (Number(sheet?.sole_consumption) || 0) > 0;
+      if (isSoleBom && sheetHasSole) continue;
+
       if (specHasGroup) {
         const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
