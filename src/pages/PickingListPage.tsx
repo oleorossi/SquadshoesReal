@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
-import { ClipboardText as ClipboardList, Package, Printer, Calendar, MagnifyingGlass as Search, CheckSquare, Square, ArrowCounterClockwise as RotateCcw, TrendUp as TrendingUp, CheckCircle as CheckCircle2, CircleNotch as Loader2, FileText, Hash } from '@phosphor-icons/react';
+import { ClipboardText as ClipboardList, Package, Printer, Calendar, MagnifyingGlass as Search, CheckSquare, Square, ArrowCounterClockwise as RotateCcw, TrendUp as TrendingUp, CheckCircle as CheckCircle2, CircleNotch as Loader2, FileText, Hash, Warning as WarningIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -8,10 +8,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -26,55 +25,67 @@ import {
 } from '@/lib/bomConsumption';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { todayISO, todayPlusDaysISO, safeParseISO, safeFormatBR } from '@/lib/date';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, differenceInDays } from 'date-fns';
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
+// ─── Tipos & helpers ──────────────────────────────────────────────────────────
 
-function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
-
-function getISOWeek(d: Date): { year: number; week: number; monday: Date; sunday: Date } {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  const original = new Date(d);
-  const dow = original.getDay() || 7;
-  const monday = new Date(original);
-  monday.setDate(original.getDate() - dow + 1);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  return { year: date.getUTCFullYear(), week, monday, sunday };
+interface EligibleOp {
+  id: string;
+  order_number: string | null;
+  status: string;
+  planned_start: string | null;
+  created_at: string;
+  sale_order_id: string;
+  sale_orders: {
+    id: string;
+    order_number: string | null;
+    status: string;
+    picking_individually_done_at: string | null;
+    delivery_deadline: string | null;
+  };
 }
 
-function fmtBR(d: Date) { return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; }
+interface DateRange { from: string; to: string }
 
-function currentISOWeekCode(): string {
-  const { year, week } = getISOWeek(new Date());
-  return `W${year}-${pad(week)}`;
+interface PvGroup {
+  soId: string;
+  pvNumber: string;
+  ops: EligibleOp[];
+  opCount: number;
+  effStart: string | null;
+  deadline: string | null;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Data efetiva de "início de produção" da OP. planned_start é a base canônica;
+// quando ausente (coluna nullable) cai em created_at pra a OP não sumir do filtro.
+const effDateOf = (o: EligibleOp): string => o.planned_start || (o.created_at || '').slice(0, 10);
 
-type FilterMode = 'week' | 'pv' | 'op';
+// Status reais no banco (acento + capital): OP ativa em produção e PV "pickável".
+// Picking parte do INÍCIO da produção — por isso a OP tem que estar viva (não
+// Finalizado/Cancelada) e o PV não pode estar Faturado/Cancelado/Finalizado s/ NF.
+const ACTIVE_OP_STATUSES = ['Em Produção', 'Reservado'];
+const PICKABLE_PV_STATUSES = ['Aprovado', 'Em Produção'];
 
-interface WeekGroup {
-  code: string;
-  monday: Date;
-  sunday: Date;
-  saleOrderNumbers: string[];
-  orderIds: string[];
-}
+// Intervalo "sem filtro" (mostra todas as elegíveis).
+const SEM_FILTRO: DateRange = { from: '0000-01-01', to: '9999-12-31' };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PickingListPage() {
-  const [filterMode, setFilterMode] = useState<FilterMode>('week');
-  const [selectedWeek, setSelectedWeek] = useState<string>(currentISOWeekCode());
+  // Janela temporal por INÍCIO DE PRODUÇÃO (orders.planned_start). Persistida.
+  const [range, setRange] = usePersistedState<DateRange>('picking_date_range_v1', {
+    from: todayPlusDaysISO(-90),
+    to: todayISO(),
+  });
+  const [pvSearch, setPvSearch] = useState('');
+  // Seleção "item a item": PVs escolhidos na checklist.
+  const [selectedPvIds, setSelectedPvIds] = useState<Set<string>>(new Set());
   const [pvInput, setPvInput] = useState('');
   const [opInput, setOpInput] = useState('');
-  // Seleção "pedido a pedido": PVs escolhidos na checklist.
-  const [selectedPvIds, setSelectedPvIds] = useState<Set<string>>(new Set());
-  const [pvSearch, setPvSearch] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Origem do relatório atual (só p/ rótulo no header/print).
+  const [reportKind, setReportKind] = useState<'pv' | 'op'>('pv');
 
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [soleBreakdown, setSoleBreakdown] = useState<SoleBreakdownResult>({ rows: [], allSizes: [], grandTotal: 0 });
@@ -98,49 +109,96 @@ export default function PickingListPage() {
 
   const clearPicked = useCallback(() => setPickedKeys([]), [setPickedKeys]);
 
-  // ── Data: all active sale orders (for week grouping) ─────────────────────
-
-  const { data: activeSaleOrders = [] } = useQuery({
+  // ── Data: OPs ELEGÍVEIS para picking ──────────────────────────────────────
+  // Fonte = orders (OP), não sale_orders: é o nível onde vivem o status de
+  // produção e a base temporal (planned_start), e é o que calculateBomForOrders
+  // recebe. Filtra: OP ativa + PV pickável + não debitado em massa
+  // (picking_individually_done_at IS NULL — evita duplo débito). O filtro do PV
+  // é feito em JS sobre o embed (SELECT-only é robusto no PostgREST).
+  // queryKey mantido ('picking_active_sale_orders') porque useSaleOrders o
+  // invalida após commit_picking_for_sale_order — renomear quebraria isso.
+  const { data: eligibleOps = [], isLoading: opsLoading } = useQuery({
     queryKey: ['picking_active_sale_orders'],
     queryFn: async () => {
-      // PVs que tiveram "Picking Realizado" individual (botão no drawer) já
-      // tiveram material debitado em massa via commit_picking_for_sale_order
-      // — precisam SAIR daqui pra evitar débito em duplicidade. Filtro
-      // picking_individually_done_at IS NULL coberto pelo .is() abaixo.
       const { data, error } = await supabase
-        .from('sale_orders')
-        .select('id, order_number, delivery_deadline, status, picking_individually_done_at')
-        .in('status', ['Em Produção', 'Aprovado'])
-        .is('picking_individually_done_at', null)
-        .order('delivery_deadline', { ascending: true })
-        .limit(500);
+        .from('orders')
+        .select('id, order_number, status, planned_start, created_at, sale_order_id, sale_orders!inner(id, order_number, status, picking_individually_done_at, delivery_deadline)')
+        .in('status', ACTIVE_OP_STATUSES)
+        .order('planned_start', { ascending: false, nullsFirst: false })
+        .limit(1000);
       if (error) throw error;
-      return data || [];
+      return (data || []).filter((o: any) => {
+        const so = o.sale_orders;
+        return so
+          && PICKABLE_PV_STATUSES.includes(so.status)
+          && so.picking_individually_done_at == null;
+      }) as EligibleOp[];
     },
     staleTime: 60_000,
   });
 
-  // ── Week groups derived from active sale orders ───────────────────────────
+  // ── Janela temporal + fallback ────────────────────────────────────────────
+  // Se a janela vier vazia (cenário real hoje: todos os planned_start estão no
+  // passado), NÃO abrir vazio — mostra todas as elegíveis com aviso âmbar.
+  const opsInWindow = useMemo(() => {
+    const lo = range.from <= range.to ? range.from : range.to;
+    const hi = range.from <= range.to ? range.to : range.from;
+    return eligibleOps.filter(o => {
+      const d = effDateOf(o);
+      return d >= lo && d <= hi;
+    });
+  }, [eligibleOps, range]);
 
-  const weekGroups = useMemo((): WeekGroup[] => {
-    const map = new Map<string, WeekGroup>();
-    for (const so of activeSaleOrders) {
-      if (!so.delivery_deadline) continue;
-      // `delivery_deadline` é DATE (yyyy-MM-dd). `new Date(str)` parseia como UTC,
-      // que em fuso BR (-3) cai no dia anterior — agrupa na semana errada.
-      const dl = new Date(`${so.delivery_deadline}T00:00:00`);
-      if (isNaN(dl.getTime())) continue;
-      const iso = getISOWeek(dl);
-      const code = `W${iso.year}-${pad(iso.week)}`;
-      if (!map.has(code)) {
-        map.set(code, { code, monday: iso.monday, sunday: iso.sunday, saleOrderNumbers: [], orderIds: [] });
+  const usedFallback = opsInWindow.length === 0 && eligibleOps.length > 0;
+  const visibleOps = usedFallback ? eligibleOps : opsInWindow;
+
+  // ── Agrupa OPs visíveis por PV (cada linha da checklist = 1 PV) ────────────
+  const pvGroups = useMemo((): PvGroup[] => {
+    const map = new Map<string, PvGroup>();
+    for (const o of visibleOps) {
+      const so = o.sale_orders;
+      if (!so) continue;
+      if (!map.has(so.id)) {
+        map.set(so.id, {
+          soId: so.id,
+          pvNumber: so.order_number || so.id.slice(0, 8),
+          ops: [],
+          opCount: 0,
+          effStart: null,
+          deadline: so.delivery_deadline,
+        });
       }
-      map.get(code)!.saleOrderNumbers.push(so.order_number || so.id);
+      map.get(so.id)!.ops.push(o);
     }
-    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
-  }, [activeSaleOrders]);
+    return Array.from(map.values()).map(g => {
+      const dates = g.ops.map(effDateOf).filter(Boolean).sort();
+      return { ...g, opCount: g.ops.length, effStart: dates[0] || null };
+    }).sort((a, b) => (a.effStart || '9999').localeCompare(b.effStart || '9999'));
+  }, [visibleOps]);
 
-  // ── Calculation trigger ──────────────────────────────────────────────────
+  const filteredPvGroups = useMemo(() => {
+    const q = pvSearch.trim().toLowerCase();
+    if (!q) return pvGroups;
+    return pvGroups.filter(g => g.pvNumber.toLowerCase().includes(q));
+  }, [pvGroups, pvSearch]);
+
+  // ── Presets de período (base = início de produção) ────────────────────────
+  const presets = useMemo(() => {
+    const t = todayISO();
+    const d = safeParseISO(t)!;
+    const iso = (x: Date) => format(x, 'yyyy-MM-dd');
+    return [
+      { label: 'Esta semana', from: iso(startOfWeek(d, { weekStartsOn: 1 })), to: iso(endOfWeek(d, { weekStartsOn: 1 })) },
+      { label: 'Próximos 30 dias', from: t, to: todayPlusDaysISO(30) },
+      { label: 'Este mês', from: iso(startOfMonth(d)), to: iso(endOfMonth(d)) },
+      { label: 'Últimos 30 dias', from: todayPlusDaysISO(-30), to: t },
+      { label: 'Últimos 90 dias', from: todayPlusDaysISO(-90), to: t },
+    ];
+  }, []);
+
+  const isSemFiltro = range.from === SEM_FILTRO.from && range.to === SEM_FILTRO.to;
+
+  // ── Calculation trigger ────────────────────────────────────────────────────
 
   const runCalculation = useCallback(async (orderIds: string[], title: string, orderNumbers: string[] = []) => {
     if (orderIds.length === 0) {
@@ -171,61 +229,29 @@ export default function PickingListPage() {
     }
   }, []);
 
-  // ── Auto-select first available week when current week has no orders ───────
+  // ── Gerar separação a partir dos PVs marcados na checklist ────────────────
+  // Junta os IDs de TODAS as OPs (já elegíveis e carregadas) dos PVs marcados —
+  // sem novo fetch e sem re-filtrar status (elegibilidade já resolvida na query).
+  const handleGenerateSelectedPvs = useCallback(async () => {
+    const selected = pvGroups.filter(g => selectedPvIds.has(g.soId));
+    if (selected.length === 0) return;
+    const opIds = selected.flatMap(g => g.ops.map(o => o.id));
+    const pvNumbers = selected.map(g => g.pvNumber);
+    setReportKind('pv');
+    await runCalculation(opIds, `Separação · ${pvNumbers.length} PV(s)`, pvNumbers);
+  }, [pvGroups, selectedPvIds, runCalculation]);
 
-  useEffect(() => {
-    if (filterMode !== 'week') return;
-    if (weekGroups.length === 0) return;
-    const hasCurrentWeek = weekGroups.some(g => g.code === selectedWeek);
-    if (!hasCurrentWeek) setSelectedWeek(weekGroups[0].code);
-  }, [filterMode, weekGroups]); // intentionally omitting selectedWeek — only runs when weekGroups changes
+  const togglePv = useCallback((id: string) => {
+    setSelectedPvIds(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  }, []);
 
-  // ── Week mode: fetch OPs and calculate BOM when week selection changes ────
-
-  useEffect(() => {
-    if (filterMode !== 'week') return;
-    const group = weekGroups.find(g => g.code === selectedWeek);
-    if (!group) { setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); return; }
-
-    const soNumbers = group.saleOrderNumbers;
-    if (soNumbers.length === 0) { setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); return; }
-
-    const soIds = activeSaleOrders
-      .filter(so => soNumbers.includes(so.order_number || so.id))
-      .map(so => so.id);
-
-    if (soIds.length === 0) { setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); return; }
-
-    let cancelled = false;
-
-    (async () => {
-      setIsCalculating(true);
-      try {
-        const { data: ops } = await supabase
-          .from('orders')
-          .select('id')
-          .in('sale_order_id', soIds)
-          // Include lower-case + alternate spellings — picking list must skip
-          // cancelled / finalized OPs regardless of casing.
-          .not('status', 'in', '("Cancelada","cancelada","Finalizado","finalizado","Cancelado","cancelado")');
-        if (cancelled) return;
-        const opIds = (ops || []).map((o: any) => o.id);
-        const title = `Onda ${group.code} · ${fmtBR(group.monday)}–${fmtBR(group.sunday)} (${soNumbers.length} PVs)`;
-        await runCalculation(opIds, title, soNumbers);
-      } catch (err: any) {
-        if (!cancelled) {
-          toast.error('Erro ao buscar OPs da semana', { description: err?.message });
-          setIsCalculating(false);
-        }
-      }
-    })();
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMode, selectedWeek, weekGroups]);
-
-  // ── PV search ────────────────────────────────────────────────────────────
-
+  // ── Busca avançada: colar números de PV ───────────────────────────────────
+  // Resolve OPs ativas dos PVs colados, independente da janela/elegibilidade —
+  // útil pra PVs já faturados/fora da lista. Mantém o filtro de exclusão.
   const handleSearchByPV = useCallback(async () => {
     const numbers = pvInput.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
     if (numbers.length === 0) return;
@@ -243,6 +269,7 @@ export default function PickingListPage() {
         .not('status', 'in', '("Cancelada","cancelada","Finalizado","finalizado","Cancelado","cancelado")');
       const opIds = (ops || []).map((o: any) => o.id);
       const pvNumbers = (sos || []).map((so: any) => so.order_number).filter(Boolean);
+      setReportKind('pv');
       await runCalculation(opIds, `PVs: ${pvNumbers.join(', ')}`, pvNumbers);
     } catch (err: any) {
       toast.error('Erro ao buscar PVs', { description: err?.message });
@@ -250,8 +277,7 @@ export default function PickingListPage() {
     }
   }, [pvInput, runCalculation]);
 
-  // ── OP search ────────────────────────────────────────────────────────────
-
+  // ── Busca avançada: colar números de OP ───────────────────────────────────
   const handleSearchByOP = useCallback(async () => {
     const numbers = opInput.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
     if (numbers.length === 0) return;
@@ -263,49 +289,13 @@ export default function PickingListPage() {
         .in('order_number', numbers);
       const opIds = (ops || []).map((o: any) => o.id);
       const opNumbers = (ops || []).map((o: any) => o.order_number).filter(Boolean);
+      setReportKind('op');
       await runCalculation(opIds, `OPs: ${opNumbers.join(', ')}`, opNumbers);
     } catch (err: any) {
       toast.error('Erro ao buscar OPs', { description: err?.message });
       setIsCalculating(false);
     }
   }, [opInput, runCalculation]);
-
-  // ── Pedido a pedido: checklist de PVs ativos ──────────────────────────────
-
-  const filteredActivePvs = useMemo(() => {
-    const q = pvSearch.trim().toLowerCase();
-    if (!q) return activeSaleOrders;
-    return activeSaleOrders.filter(so => (so.order_number || '').toLowerCase().includes(q));
-  }, [activeSaleOrders, pvSearch]);
-
-  const togglePv = useCallback((id: string) => {
-    setSelectedPvIds(prev => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id); else s.add(id);
-      return s;
-    });
-  }, []);
-
-  const handleGenerateSelectedPvs = useCallback(async () => {
-    const soIds = Array.from(selectedPvIds);
-    if (soIds.length === 0) return;
-    setIsCalculating(true);
-    try {
-      const { data: ops } = await supabase
-        .from('orders')
-        .select('id')
-        .in('sale_order_id', soIds)
-        .not('status', 'in', '("Cancelada","cancelada","Finalizado","finalizado","Cancelado","cancelado")');
-      const opIds = (ops || []).map((o: any) => o.id);
-      const soNumbers = activeSaleOrders
-        .filter(so => selectedPvIds.has(so.id))
-        .map(so => so.order_number || so.id);
-      await runCalculation(opIds, `Pedido a pedido (${soNumbers.length} PVs)`, soNumbers);
-    } catch (err: any) {
-      toast.error('Erro ao gerar separação', { description: err?.message });
-      setIsCalculating(false);
-    }
-  }, [selectedPvIds, activeSaleOrders, runCalculation]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -417,7 +407,7 @@ export default function PickingListPage() {
       </head><body>
       <h1>📦 Lista de Separação — ${reportTitle}</h1>
       <p class="sub">${totalItems} item(ns) · ${reportOrderCount} OP(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</p>
-      ${reportOrderNumbers.length > 0 ? `<p class="sub" style="margin-top:-6px"><strong>${filterMode === 'op' ? 'OPs' : 'Pedidos'} (${reportOrderNumbers.length}):</strong> ${reportOrderNumbers.map(escapeHtml).join(', ')}</p>` : ''}
+      ${reportOrderNumbers.length > 0 ? `<p class="sub" style="margin-top:-6px"><strong>${reportKind === 'op' ? 'OPs' : 'Pedidos'} (${reportOrderNumbers.length}):</strong> ${reportOrderNumbers.map(escapeHtml).join(', ')}</p>` : ''}
       <div style="margin-bottom:12px">${totalsHtml}</div>
       ${soleMatrixHtml}
       <h2 style="font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px">📋 Demais materiais</h2>
@@ -435,11 +425,12 @@ export default function PickingListPage() {
 
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300); }
-  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, filterMode, soleBreakdown]);
+  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, reportKind, soleBreakdown]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const currentWeekGroup = weekGroups.find(g => g.code === selectedWeek);
+  const today = todayISO();
+  const allSelected = filteredPvGroups.length > 0 && filteredPvGroups.every(g => selectedPvIds.has(g.soId));
 
   return (
     <div className="w-full space-y-4">
@@ -468,128 +459,173 @@ export default function PickingListPage() {
         }
       />
 
-      {/* Filter modes */}
+      {/* Seletor de janela temporal + checklist de OPs */}
       <Panel bodyClassName="space-y-3">
-          <Tabs value={filterMode} onValueChange={v => { setFilterMode(v as FilterMode); setRows([]); setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 }); }}>
-            <TabsList className="h-8">
-              <TabsTrigger value="week" className="gap-1.5 text-xs h-7">
-                <Calendar className="h-3.5 w-3.5" /> Onda Semanal
-              </TabsTrigger>
-              <TabsTrigger value="pv" className="gap-1.5 text-xs h-7">
-                <FileText className="h-3.5 w-3.5" /> Pedido a Pedido
-              </TabsTrigger>
-              <TabsTrigger value="op" className="gap-1.5 text-xs h-7">
-                <Hash className="h-3.5 w-3.5" /> Por OP
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          {filterMode === 'week' && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Select value={selectedWeek} onValueChange={setSelectedWeek}>
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="Selecionar semana" />
-                </SelectTrigger>
-                <SelectContent>
-                  {weekGroups.map(g => (
-                    <SelectItem key={g.code} value={g.code}>
-                      {g.code} · {fmtBR(g.monday)}–{fmtBR(g.sunday)} ({g.saleOrderNumbers.length} PVs)
-                    </SelectItem>
-                  ))}
-                  {weekGroups.length === 0 && (
-                    <SelectItem value="__empty" disabled>Nenhuma onda ativa</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              {currentWeekGroup && (
-                <span className="text-xs text-muted-foreground">
-                  PVs: {currentWeekGroup.saleOrderNumbers.slice(0, 5).join(', ')}
-                  {currentWeekGroup.saleOrderNumbers.length > 5 && ` +${currentWeekGroup.saleOrderNumbers.length - 5}`}
-                </span>
-              )}
+        {/* Intervalo de datas (início de produção) */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <Calendar className="h-3.5 w-3.5" />
+            Janela de produção · por início (planned_start)
+          </div>
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">De</Label>
+              <Input
+                type="date"
+                value={isSemFiltro ? '' : range.from}
+                onChange={e => setRange(r => ({ ...r, from: e.target.value || SEM_FILTRO.from }))}
+                className="h-8 w-40 text-sm"
+              />
             </div>
-          )}
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Até</Label>
+              <Input
+                type="date"
+                value={isSemFiltro ? '' : range.to}
+                onChange={e => setRange(r => ({ ...r, to: e.target.value || SEM_FILTRO.to }))}
+                className="h-8 w-40 text-sm"
+              />
+            </div>
+          </div>
+          {/* Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {presets.map(p => {
+              const active = range.from === p.from && range.to === p.to;
+              return (
+                <Button
+                  key={p.label}
+                  size="sm"
+                  variant={active ? 'default' : 'outline'}
+                  className="h-7 text-xs"
+                  onClick={() => setRange({ from: p.from, to: p.to })}
+                >
+                  {p.label}
+                </Button>
+              );
+            })}
+            <Button
+              size="sm"
+              variant={isSemFiltro ? 'default' : 'outline'}
+              className="h-7 text-xs"
+              onClick={() => setRange(SEM_FILTRO)}
+            >
+              Sem filtro de data
+            </Button>
+          </div>
+        </div>
 
-          {filterMode === 'pv' && (
-            <div className="space-y-2">
-              {/* Seleção pedido a pedido: marque os PVs e gere a separação */}
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar PV pelo número..."
-                    value={pvSearch}
-                    onChange={e => setPvSearch(e.target.value)}
-                    className="h-8 pl-8 text-sm"
-                  />
-                </div>
-                <Button size="sm" variant="ghost" className="h-8 text-xs"
-                  onClick={() => setSelectedPvIds(new Set(filteredActivePvs.map(s => s.id)))}
-                  disabled={filteredActivePvs.length === 0}>
-                  Selecionar todos
-                </Button>
-                <Button size="sm" variant="ghost" className="h-8 text-xs"
-                  onClick={() => setSelectedPvIds(new Set())} disabled={selectedPvIds.size === 0}>
-                  Limpar
-                </Button>
-                <Button size="sm" className="h-8 gap-1.5"
-                  onClick={handleGenerateSelectedPvs} disabled={selectedPvIds.size === 0 || isCalculating}>
-                  <CheckCircle2 className="h-4 w-4" />
-                  Gerar separação ({selectedPvIds.size})
-                </Button>
-              </div>
-              <div className="max-h-56 overflow-y-auto rounded-md border divide-y">
-                {filteredActivePvs.length === 0 ? (
-                  <p className="text-xs text-muted-foreground p-3 text-center">Nenhum PV ativo encontrado</p>
-                ) : filteredActivePvs.map(so => {
-                  const checked = selectedPvIds.has(so.id);
-                  return (
-                    <button key={so.id} type="button" onClick={() => togglePv(so.id)}
-                      className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}>
-                      {checked
-                        ? <CheckSquare className="h-4 w-4 text-primary shrink-0" weight="fill" />
-                        : <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
-                      <span className="font-medium font-mono">{so.order_number || so.id.slice(0, 8)}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        {so.delivery_deadline ? fmtBR(new Date(`${so.delivery_deadline}T00:00:00`)) : '—'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Alternativa: colar números (útil pra PVs já faturados/fora da lista) */}
-              <details className="text-xs">
-                <summary className="cursor-pointer text-muted-foreground select-none">ou cole os números dos PVs</summary>
-                <div className="flex items-start gap-2 mt-2">
+        {/* Aviso de fallback */}
+        {usedFallback && !isSemFiltro && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <WarningIcon className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              Nenhuma OP inicia produção entre {safeFormatBR(range.from)} e {safeFormatBR(range.to)}.
+              Mostrando <strong>todas as {eligibleOps.length} OPs ativas</strong> (algumas atrasadas) — ajuste a janela acima ou selecione abaixo.
+            </span>
+          </div>
+        )}
+
+        {/* Checklist de PVs/OPs elegíveis */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar PV pelo número..."
+                value={pvSearch}
+                onChange={e => setPvSearch(e.target.value)}
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+            <Button size="sm" variant="ghost" className="h-8 text-xs"
+              onClick={() => setSelectedPvIds(new Set(filteredPvGroups.map(g => g.soId)))}
+              disabled={filteredPvGroups.length === 0 || allSelected}>
+              Selecionar todos
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs"
+              onClick={() => setSelectedPvIds(new Set())} disabled={selectedPvIds.size === 0}>
+              Limpar
+            </Button>
+            <Button size="sm" className="h-8 gap-1.5"
+              onClick={handleGenerateSelectedPvs} disabled={selectedPvIds.size === 0 || isCalculating}>
+              <CheckCircle2 className="h-4 w-4" />
+              Gerar separação ({selectedPvIds.size})
+            </Button>
+          </div>
+          <div className="max-h-64 overflow-y-auto rounded-md border divide-y">
+            {opsLoading ? (
+              <p className="text-xs text-muted-foreground p-3 text-center flex items-center justify-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando OPs em produção...
+              </p>
+            ) : filteredPvGroups.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-3 text-center">
+                {eligibleOps.length === 0
+                  ? 'Nenhuma OP ativa em produção (sem picking pendente).'
+                  : 'Nenhum PV corresponde à busca.'}
+              </p>
+            ) : filteredPvGroups.map(g => {
+              const checked = selectedPvIds.has(g.soId);
+              const days = g.effStart ? differenceInDays(safeParseISO(today)!, safeParseISO(g.effStart)!) : null;
+              const stale = days != null && days > 30;
+              return (
+                <button key={g.soId} type="button" onClick={() => togglePv(g.soId)}
+                  className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}>
+                  {checked
+                    ? <CheckSquare className="h-4 w-4 text-primary shrink-0" weight="fill" />
+                    : <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
+                  <span className="font-medium font-mono">{g.pvNumber}</span>
+                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">{g.opCount} OP{g.opCount !== 1 ? 's' : ''}</Badge>
+                  <span className="text-xs text-muted-foreground ml-auto flex items-center gap-2">
+                    <span title="início de produção">{safeFormatBR(g.effStart)}</span>
+                    {days != null && (
+                      <Badge
+                        variant="outline"
+                        className={cn('text-[10px] h-4 px-1.5', stale && 'border-amber-300 bg-amber-500/10 text-amber-600')}
+                      >
+                        {days < 0 ? `em ${-days}d` : `há ${days}d`}
+                      </Badge>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Busca avançada: colar números (PVs já faturados / OPs avulsas) */}
+          <details className="text-xs" open={advancedOpen} onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}>
+            <summary className="cursor-pointer text-muted-foreground select-none">Busca avançada · colar números de PV ou OP (fora da janela)</summary>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-1"><FileText className="h-3 w-3" /> Por PV</Label>
                   <Textarea
                     placeholder="PV-2026-001, PV-2026-002"
                     value={pvInput}
                     onChange={e => setPvInput(e.target.value)}
                     className="min-h-16 text-sm font-mono resize-none"
                   />
-                  <Button onClick={handleSearchByPV} disabled={!pvInput.trim() || isCalculating} className="shrink-0" size="sm">
-                    <Search className="h-4 w-4 mr-1" />
-                    Buscar
-                  </Button>
                 </div>
-              </details>
+                <Button onClick={handleSearchByPV} disabled={!pvInput.trim() || isCalculating} className="shrink-0 mt-6" size="sm">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-1"><Hash className="h-3 w-3" /> Por OP</Label>
+                  <Textarea
+                    placeholder="OP-2026-001, OP-2026-002"
+                    value={opInput}
+                    onChange={e => setOpInput(e.target.value)}
+                    className="min-h-16 text-sm font-mono resize-none"
+                  />
+                </div>
+                <Button onClick={handleSearchByOP} disabled={!opInput.trim() || isCalculating} className="shrink-0 mt-6" size="sm">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-          )}
-
-          {filterMode === 'op' && (
-            <div className="flex items-start gap-2">
-              <Textarea
-                placeholder="Cole os números das OPs (um por linha ou separados por vírgula)&#10;Ex: OP-2026-001, OP-2026-002"
-                value={opInput}
-                onChange={e => setOpInput(e.target.value)}
-                className="min-h-20 text-sm font-mono resize-none"
-              />
-              <Button onClick={handleSearchByOP} disabled={!opInput.trim() || isCalculating} className="shrink-0">
-                <Search className="h-4 w-4 mr-1" />
-                Buscar
-              </Button>
-            </div>
-          )}
+          </details>
+        </div>
       </Panel>
 
       {/* Loading */}
@@ -605,7 +641,7 @@ export default function PickingListPage() {
         <Panel bodyClassName="py-2.5">
           <div className="flex items-start gap-2 flex-wrap">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0 mt-1">
-              {filterMode === 'op' ? 'OPs' : 'Pedidos'} neste relatório ({reportOrderNumbers.length}):
+              {reportKind === 'op' ? 'OPs' : 'Pedidos'} neste relatório ({reportOrderNumbers.length}):
             </span>
             <div className="flex flex-wrap gap-1">
               {reportOrderNumbers.map(n => (
@@ -667,6 +703,17 @@ export default function PickingListPage() {
             icon={Package}
             title="Nenhum consumo de material calculado para esta seleção"
             description="Verifique se os pedidos possuem fichas técnicas cadastradas."
+          />
+        </Panel>
+      )}
+
+      {/* Estado inicial: sem relatório ainda */}
+      {!isCalculating && rows.length === 0 && !reportTitle && (
+        <Panel flush>
+          <EmptyState
+            icon={ClipboardList}
+            title="Selecione os PVs e gere a separação"
+            description="Ajuste a janela de produção acima, marque os PVs/OPs desejados e clique em “Gerar separação”."
           />
         </Panel>
       )}
