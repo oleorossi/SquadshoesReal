@@ -777,7 +777,7 @@ export function LabelProductionTab() {
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
             for (let i = 0; i < Math.min(qty as number, 2000); i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: effRefCode || group.groupKey, imageUrl: productImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         } else {
@@ -786,7 +786,7 @@ export function LabelProductionTab() {
             const orderImageUrl = imageMap.get(`${group.referenceId}|${orderColor}`) || productImageUrl;
             const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
             for (let i = 0; i < numFichas; i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: effRefCode || order.order_number || group.groupKey, imageUrl: orderImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`, imageUrl: orderImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         }
@@ -847,7 +847,7 @@ export function LabelProductionTab() {
             for (let i = 0; i < Math.min(qty as number, 2000); i++) {
               labels.push({
                 refCode: effRefCode, refName: effRefName, mainMaterial,
-                color: getEffectiveColor(group, colorName), size, barcode: effRefCode || group.groupKey,
+                color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`,
                 shoeCategory: refData?.shoe_category || '',
                 clientOrderNumber: group.clientOrderNumber || '',
                 strapsLabel: getEffectiveStrapsLabel(group),
@@ -863,7 +863,7 @@ export function LabelProductionTab() {
               labels.push({
                 refCode: effRefCode, refName: effRefName, mainMaterial,
                 color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`,
-                barcode: effRefCode || order.order_number || group.groupKey,
+                barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`,
                 shoeCategory: refData?.shoe_category || '',
                 clientOrderNumber: group.clientOrderNumber || '',
                 qty: pairsInOneFicha,
