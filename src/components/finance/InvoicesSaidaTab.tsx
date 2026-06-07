@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { FileText, ArrowsClockwise as RefreshCw, Download, CircleNotch as Loader2, CheckCircle, XCircle, Clock, WarningCircle as AlertCircle } from '@phosphor-icons/react';
+import { FileText, ArrowsClockwise as RefreshCw, Download, CircleNotch as Loader2, CheckCircle, XCircle, Clock, WarningCircle as AlertCircle, Eye } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useNfeEmitidas, useCheckNfeStatus } from '@/hooks/useNfe';
+import { useNfeEmitidas, useCheckNfeStatus, type NfeEmitida } from '@/hooks/useNfe';
+import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
 import { format, parseISO } from 'date-fns';
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
@@ -20,6 +21,7 @@ export default function InvoicesSaidaTab() {
   const { data: nfes = [], isLoading } = useNfeEmitidas();
   const checkStatus = useCheckNfeStatus();
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [viewerNfe, setViewerNfe] = useState<NfeEmitida | null>(null);
 
   const handleCheckStatus = async (id: string) => {
     setCheckingId(id);
@@ -97,6 +99,11 @@ export default function InvoicesSaidaTab() {
                             )}
                           </Button>
                         )}
+                        {nfe.chave_acesso && (
+                          <Button size="sm" variant="outline" onClick={() => setViewerNfe(nfe as NfeEmitida)}>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Visualizar
+                          </Button>
+                        )}
                         {nfe.xml_url && (
                           <Button size="sm" variant="outline" asChild>
                             <a href={nfe.xml_url} target="_blank" rel="noopener noreferrer">
@@ -120,6 +127,11 @@ export default function InvoicesSaidaTab() {
           </Table>
         )}
       </CardContent>
+      <NfeViewerDialog
+        nfe={viewerNfe}
+        open={!!viewerNfe}
+        onOpenChange={(v) => { if (!v) setViewerNfe(null); }}
+      />
     </Card>
   );
 }

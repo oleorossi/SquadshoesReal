@@ -32,6 +32,10 @@ export interface NfeEmitida {
   cnpj_destinatario: string | null;
   justificativa_cancelamento: string | null;
   data_cancelamento: string | null;
+  /** Resposta completa do detalhe GestaoClick (/notas_fiscais_produtos/{id}).
+   *  Fonte de dados pro DANFE renderizado no app (produtos, impostos, endereços).
+   *  Não vem na listagem por padrão — carregado sob demanda via useNfeDetail. */
+  gc_detail_response?: any;
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +110,28 @@ export function useAllNfeEmitidas(filters?: { status?: string; search?: string; 
       }
       console.info(`[useAllNfeEmitidas] ${data?.length ?? 0} NF-es carregadas`);
       return data || [];
+    },
+  });
+}
+
+/**
+ * Carrega o detalhe completo (gc_detail_response) de uma NF sob demanda — usado
+ * pelo visualizador de DANFE. A listagem não traz esse JSON pra ficar leve; aqui
+ * buscamos a linha única quando o viewer abre.
+ */
+export function useNfeDetail(nfeId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['nfe_detail', nfeId],
+    enabled: !!nfeId && enabled,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('nfe_emitidas')
+        .select('id, gc_detail_response')
+        .eq('id', nfeId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; gc_detail_response: any } | null;
     },
   });
 }
