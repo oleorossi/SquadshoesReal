@@ -17,6 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -580,6 +582,85 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const { data: allGroups = [] } = useGroups();
   const products = allProducts.filter(p => p.group_id === group.id);
 
+  // ── Hierarquia de grupos (product_groups.parent_group_id) ─────────────────
+  // Derivados perdidos no merge bec3ed0 (a UI de Pai/Subgrupos entrou sem eles).
+  // Anti-ciclo: PAI não pode ser o próprio grupo nem um descendente; FILHO não
+  // pode ser o próprio grupo nem um ancestral.
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string | null, ProductGroup[]>();
+    for (const g of allGroups) {
+      const k = g.parent_group_id || null;
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(g);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    return m;
+  }, [allGroups]);
+
+  const descendantIds = useMemo(() => {
+    const out = new Set<string>();
+    const stack = [group.id];
+    while (stack.length) {
+      const id = stack.pop()!;
+      for (const c of childrenByParent.get(id) || []) {
+        if (!out.has(c.id)) { out.add(c.id); stack.push(c.id); }
+      }
+    }
+    return out;
+  }, [childrenByParent, group.id]);
+
+  const ancestorIds = useMemo(() => {
+    const byId = new Map(allGroups.map(g => [g.id, g] as const));
+    const out = new Set<string>();
+    let cur = byId.get(group.id)?.parent_group_id || null;
+    let guard = 0;
+    while (cur && !out.has(cur) && guard++ < 1000) {
+      out.add(cur);
+      cur = byId.get(cur)?.parent_group_id || null;
+    }
+    return out;
+  }, [allGroups, group.id]);
+
+  // Todos os grupos em ordem hierárquica, com profundidade (indentação dos selects).
+  const groupsWithDepth = useMemo(() => {
+    const out: Array<ProductGroup & { depth: number }> = [];
+    const walk = (parentId: string | null, depth: number) => {
+      for (const g of childrenByParent.get(parentId) || []) {
+        out.push({ ...g, depth });
+        walk(g.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  }, [childrenByParent]);
+
+  // Opções de PAI: exclui o próprio grupo e seus descendentes (evita ciclo).
+  const validParentOptions = useMemo(
+    () => groupsWithDepth.filter(g => g.id !== group.id && !descendantIds.has(g.id)),
+    [groupsWithDepth, group.id, descendantIds],
+  );
+
+  // Filhos diretos desta família.
+  const childrenGroups = useMemo(
+    () => (childrenByParent.get(group.id) || []),
+    [childrenByParent, group.id],
+  );
+
+  // Grupos que podem virar FILHO: nem o próprio, nem um ancestral, nem já-filho.
+  const availableToLinkAsChild = useMemo(
+    () => groupsWithDepth.filter(g => g.id !== group.id && !ancestorIds.has(g.id) && g.parent_group_id !== group.id),
+    [groupsWithDepth, group.id, ancestorIds],
+  );
+
+  // Contagem de itens (produtos) por grupo — chip nos subgrupos.
+  const itemCountByGroup = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of allProducts) {
+      if (p.group_id) m.set(p.group_id, (m.get(p.group_id) || 0) + 1);
+    }
+    return m;
+  }, [allProducts]);
+
   const groupType = useMemo(() => getGroupType(group.name), [group.name]);
   const show = useMemo(() => getVisibleFields(groupType), [groupType]);
   const showYieldTab = show.yieldTab;
@@ -623,6 +704,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [existingRecipeId, setExistingRecipeId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
+  // Hierarquia (product_groups.parent_group_id) + peso unitário. State perdido no
+  // merge bec3ed0 (JSX entrou sem as declarações) → crash 'parentGroupId is not
+  // defined' ao abrir a edição. Restaurado 2026-06-07. [[group-edit-dropped-state]]
+  const [parentGroupId, setParentGroupId] = useState<string>(group.parent_group_id || '');
+  const [linkChildOpen, setLinkChildOpen] = useState(false);
+  const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
   const queryClient = useQueryClient();
   const forceDeleteFlow = useForceDeleteProductFlow();
 
@@ -637,6 +724,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setIsBomColorSource(group.is_bom_color_source);
     setConsumptionUnit(group.consumption_unit || '__none__');
     setSharedSpecs(group.shared_specs ?? false);
+    setParentGroupId(group.parent_group_id || '');
+    setUnitWeightKg(group.unit_weight_kg || 0);
 
     // If all products in group share the same price/location, set them as defaults
     if (products.length > 0) {
@@ -694,6 +783,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           is_bom_color_source: isBomColorSource,
           consumption_unit: finalUnit,
           shared_specs: sharedSpecs,
+          parent_group_id: parentGroupId || null,
+          unit_weight_kg: unitWeightKg,
         } as any,
       });
 
