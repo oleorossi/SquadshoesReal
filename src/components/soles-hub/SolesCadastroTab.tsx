@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -283,9 +283,18 @@ export default function SolesCadastroTab({ sole }: Props) {
     material_group_id: string | null;
     bySize: Record<number, number>;
   }>({ material_group_id: ((sole as any).fachete_material_group_id as string | null) || null, bySize: {} });
-  // Sync facheteForm.bySize quando soleSpecs carrega
-  useMemo(() => {
-    setFacheteForm(prev => ({ ...prev, bySize: { ...facheteDm2BySize } }));
+  // Sync facheteForm.bySize quando soleSpecs carrega.
+  // useEffect (não useMemo!) — setState em useMemo roda no render e causa loop
+  // infinito (React #301). A guarda retorna `prev` quando nada mudou, pra evitar
+  // re-render desnecessário (a referência de facheteDm2BySize é instável enquanto
+  // a query não carregou, por causa do default `= []`).
+  useEffect(() => {
+    setFacheteForm(prev => {
+      const sizes = Object.keys(facheteDm2BySize);
+      const same = sizes.length === Object.keys(prev.bySize).length
+        && sizes.every(k => prev.bySize[Number(k)] === facheteDm2BySize[Number(k)]);
+      return same ? prev : { ...prev, bySize: { ...facheteDm2BySize } };
+    });
   }, [facheteDm2BySize]);
 
   const updateFacheteMaterial = useMutation({
