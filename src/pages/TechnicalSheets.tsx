@@ -4851,49 +4851,108 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
       }));
     },
   });
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
+  // Fluxo grupo → item: primeiro escolhe o GRUPO, depois o ITEM daquele grupo.
+  // Assim o débito usa o product_id exato (direct_components debita por product_id).
+  const groups = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of products as any[]) {
+      if (p.group_id && p.groupName && !m.has(p.group_id)) m.set(p.group_id, p.groupName);
+    }
+    return Array.from(m, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+  }, [products]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return products;
-    const q = search.toLowerCase();
-    return products.filter((p: any) =>
+  const selected = (products as any[]).find((p: any) => p.id === value);
+  // Sem override, o grupo segue o produto já selecionado (edição de ficha existente).
+  const [groupOverride, setGroupOverride] = useState<string | null>(null);
+  const effectiveGroupId = groupOverride !== null ? groupOverride : (selected?.group_id || '');
+  const effectiveGroupName = groups.find(g => g.id === effectiveGroupId)?.name || '';
+
+  const itemsOfGroup = useMemo(
+    () => (products as any[]).filter((p: any) => p.group_id === effectiveGroupId),
+    [products, effectiveGroupId],
+  );
+
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [itemOpen, setItemOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
+
+  const filteredGroups = useMemo(() => {
+    if (!groupSearch.trim()) return groups;
+    const q = groupSearch.toLowerCase();
+    return groups.filter(g => normalizeForSearch(g.name).includes(q));
+  }, [groups, groupSearch]);
+
+  const filteredItems = useMemo(() => {
+    if (!itemSearch.trim()) return itemsOfGroup;
+    const q = itemSearch.toLowerCase();
+    return itemsOfGroup.filter((p: any) =>
       normalizeForSearch(p.name).includes(q)
       || normalizeForSearch(p.sku).includes(q)
       || normalizeForSearch(p.color).includes(q)
-      || normalizeForSearch(p.groupName).includes(q)
     );
-  }, [products, search]);
-
-  const selected = products.find((p: any) => p.id === value);
+  }, [itemsOfGroup, itemSearch]);
 
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Popover open={open} onOpenChange={setOpen}>
+      {/* Passo 1 — Grupo */}
+      <Popover open={groupOpen} onOpenChange={setGroupOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={open} className="mt-1 h-9 w-full justify-between text-sm font-normal">
-            {selected ? `${selected.name}${selected.color ? ` (${selected.color})` : ''}` : 'Selecionar componente...'}
+          <Button variant="outline" role="combobox" aria-expanded={groupOpen} className="mt-1 h-9 w-full justify-between text-sm font-normal">
+            <span className="truncate">{effectiveGroupName || '1) Selecionar grupo...'}</span>
             <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Buscar por nome, SKU, cor ou grupo..." value={search} onValueChange={setSearch} />
+            <CommandInput placeholder="Buscar grupo..." value={groupSearch} onValueChange={setGroupSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum item encontrado no estoque ativo.</CommandEmpty>
-              <CommandGroup heading={`Itens em estoque (${filtered.length})`}>
-                {filtered.map((p: any) => (
-                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setOpen(false); setSearch(''); }}>
+              <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
+              <CommandGroup heading={`Grupos (${filteredGroups.length})`}>
+                {filteredGroups.map(g => (
+                  <CommandItem key={g.id} value={g.id} onSelect={() => {
+                    setGroupOverride(g.id);
+                    // trocar de grupo invalida um item selecionado de outro grupo
+                    if (selected && selected.group_id !== g.id) onChange('', '', 0, 'un');
+                    setGroupOpen(false); setGroupSearch('');
+                  }}>
+                    <Check className={cn("mr-2 h-4 w-4", effectiveGroupId === g.id ? "opacity-100" : "opacity-0")} />
+                    <span className="text-sm">{g.name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {/* Passo 2 — Item do grupo (habilita só após escolher o grupo) */}
+      <Popover open={itemOpen} onOpenChange={(o) => { if (o && !effectiveGroupId) return; setItemOpen(o); }}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" role="combobox" aria-expanded={itemOpen} disabled={!effectiveGroupId}
+            className="mt-1 h-9 w-full justify-between text-sm font-normal">
+            <span className="truncate">
+              {selected ? `${selected.name}${selected.color ? ` (${selected.color})` : ''}` : (effectiveGroupId ? '2) Selecionar item...' : '2) Escolha o grupo primeiro')}
+            </span>
+            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[350px] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput placeholder="Buscar item por nome, SKU ou cor..." value={itemSearch} onValueChange={setItemSearch} />
+            <CommandList>
+              <CommandEmpty>Nenhum item ativo nesse grupo.</CommandEmpty>
+              <CommandGroup heading={`Itens do grupo (${filteredItems.length})`}>
+                {filteredItems.map((p: any) => (
+                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setItemOpen(false); setItemSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
                       <span className="text-sm">
                         {p.name} {p.color ? `(${p.color})` : ''}
                         <span className="text-xs text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
                       </span>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {p.groupName ? `${p.groupName}` : ''}{p.groupName && p.sku ? ' · ' : ''}{p.sku || ''}
-                      </span>
+                      {p.sku && <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>}
                     </div>
                   </CommandItem>
                 ))}
