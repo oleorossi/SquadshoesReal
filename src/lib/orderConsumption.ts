@@ -53,6 +53,11 @@ export type MaterialConsumptionRow = {
   /** Breakdown agregado por numeração (somado entre items que casam em
    *  grupo+cor+unidade). Usado pelo Solado pra mostrar totais reais por Nº. */
   sizeBreakdown?: Record<string, number>;
+  /** Solado: id do produto-solado (por cor) resolvido. Permite ao modal puxar
+   *  o `stock_grade` exato dessa variante, mesmo agrupando por MODELO (grupo)
+   *  cujo nome difere do nome do produto (ex.: grupo "SOLADO 204" × produto
+   *  "204 - CARAMELO"). Mesma cor sempre cai no mesmo produto dentro do grupo. */
+  soleProductId?: string | null;
 };
 
 /**
@@ -163,6 +168,8 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
         existing.sizeBreakdown[size] = (existing.sizeBreakdown[size] || 0) + qty;
       }
     }
+    // Mesma cor → mesma variante de produto; preserva o id já gravado.
+    if (row.soleProductId && !existing.soleProductId) existing.soleProductId = row.soleProductId;
     return;
   }
 
@@ -175,6 +182,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     totalQuantity,
     widthMissing: row.widthMissing,
     sizeBreakdown: row.sizeBreakdown,
+    soleProductId: row.soleProductId,
   });
 };
 
@@ -592,6 +600,18 @@ export function computeConsumptionForItems(
       : null;
     const soleColor = soleProduct?.color || orderColor || sheet?.sole_color || '—';
 
+    // Agrupa o solado pelo MODELO (product_group), não pelo nome do produto.
+    // Vários produtos do mesmo modelo embutem a cor no nome (ex.: grupo
+    // "SOLADO 204" → "204 - CARAMELO" / "204 - Preto"); usar o nome do produto
+    // quebraria o mesmo solado em blocos separados. Com o nome do grupo, todas
+    // as cores do modelo caem no MESMO solado, somadas por cor. Fallback pro
+    // nome do produto e depois pro texto sheet.sole_material quando não há
+    // produto/grupo resolvido. (Pedido user 2026-06-07.)
+    const soleGroup = soleProduct?.group_id
+      ? (productGroups || []).find((g: any) => g.id === soleProduct.group_id)
+      : null;
+    const soleGroupName = soleGroup?.name || soleProduct?.name || sheet?.sole_material || '';
+
     // Breakdown de numerações escalado pro TOTAL real do item.
     const grade = (item as any).grade as Record<string, number> | null | undefined;
     const scaledBreakdown: Record<string, number> = {};
@@ -609,13 +629,14 @@ export function computeConsumptionForItems(
 
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado',
-      groupName: soleProduct?.name || sheet?.sole_material || '',
+      groupName: soleGroupName,
       // materialName usado só como fallback se sizeBreakdown vier vazio.
       materialName: 'Solado',
       productUnit: 'par',
       color: soleColor,
       totalQuantity: (Number(sheet?.sole_consumption) || 0) * itemQuantity,
       sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
+      soleProductId: soleProductIdResolved,
     });
 
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];

@@ -104,6 +104,8 @@ function buildContext(): ConsumptionContext {
     liningColorMap: new Map(),
     liningDefaultMap: new Map(),
     sheetStrapsMap: new Map(),
+    sheetSoleGroupMap: new Map(),
+    soleConjugationsByGroup: new Map(),
   };
 }
 
@@ -179,6 +181,42 @@ describe('orderConsumption — motor canônico', () => {
     // mas mantém cabedal/forração/solado normalmente
     expect(rows.find(r => r.componentType === 'Cabedal')).toBeDefined();
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();
+  });
+
+  it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
+    // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
+    // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em
+    // 2 blocos; o motor deve agrupar pelo nome do GRUPO e somar por cor.
+    const ctx = buildContext();
+    ctx.productGroups.push({ id: 'g-sole-204', name: 'SOLADO 204', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+    ctx.allProducts.push(
+      { id: 'sole-204-caramelo', name: '204 - CARAMELO', color: 'CARAMELO', group_id: 'g-sole-204', quantity: 0, reserved_stock: 0, stock_grade: { '34': 10, '35': 10 }, sole_classification: 'conjugado' } as any,
+      { id: 'sole-204-preto', name: '204 - Preto', color: 'PRETO', group_id: 'g-sole-204', quantity: 0, reserved_stock: 0, stock_grade: { '34': 5 }, sole_classification: 'conjugado' } as any,
+    );
+    // Mapeia (sheet, cor) → produto-solado específico, pras duas cores.
+    ctx.soleColorMap.set('sheet-1::CARAMELO', 'sole-204-caramelo');
+    ctx.soleColorMap.set('sheet-1::PRETO', 'sole-204-preto');
+
+    const sheet = buildSheet({ sole_material: 'SOLADO 204', sole_consumption: 1 });
+    const rows = computeConsumptionForItems(
+      [
+        buildItem({ color: 'CARAMELO', technical_sheets: sheet }),
+        buildItem({ color: 'PRETO', technical_sheets: sheet }),
+      ],
+      ctx,
+    );
+
+    const soles = rows.filter(r => r.componentType === 'Solado');
+    // Um único MODELO (mesmo groupName) apesar de 2 produtos/cores distintos.
+    expect(new Set(soles.map(r => r.groupName))).toEqual(new Set(['SOLADO 204']));
+    // Duas linhas (uma por cor), cada uma com seu produto resolvido pro estoque.
+    expect(soles).toHaveLength(2);
+    const caramelo = soles.find(r => r.color === 'CARAMELO')!;
+    const preto = soles.find(r => r.color === 'PRETO')!;
+    expect(caramelo.soleProductId).toBe('sole-204-caramelo');
+    expect(preto.soleProductId).toBe('sole-204-preto');
+    expect(caramelo.totalQuantity).toBe(24);
+    expect(preto.totalQuantity).toBe(24);
   });
 
   it('agregação multi-OP soma quantidades (2 OPs idênticas = 2×)', () => {

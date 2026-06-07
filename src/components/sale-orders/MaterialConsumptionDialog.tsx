@@ -159,7 +159,7 @@ function SoleSection({ rows }: { rows: ConsumptionRow[] }) {
       {bySole.map(([sole, soleRows]) => (
         <div key={sole} className="space-y-1 keep-together">
           <div className="text-xs font-semibold flex items-center gap-2">
-            <span className="inline-block rounded bg-muted px-2 py-0.5 text-foreground">Solado {sole}</span>
+            <span className="inline-block rounded bg-muted px-2 py-0.5 text-foreground">{sole}</span>
             <span className="text-muted-foreground font-normal">{soleRows.length} cor(es)</span>
           </div>
           <SoleMatrix rows={soleRows} />
@@ -262,9 +262,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           return s + Math.max(0, avail);
         }, 0);
       };
-      const soleStockGrade = (groupName: string, color: string): Record<string, number> => {
-        const prod = (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName) && colorMatchesProduct(p, color))
-          || (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName));
+      const extractStockGrade = (prod: any): Record<string, number> => {
         const out: Record<string, number> = {};
         const g = prod?.stock_grade;
         if (g && typeof g === 'object') {
@@ -276,9 +274,28 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         }
         return out;
       };
+      // Estoque por numeração do solado. Como agora agrupamos o solado pelo MODELO
+      // (nome do grupo, que difere do nome do produto), o id resolvido pelo motor
+      // (`soleProductId`) é a forma confiável de achar a variante de cor certa.
+      // Fallback pro casamento por nome quando o motor não resolveu o produto
+      // (solado só via texto sheet.sole_material).
+      const soleStockById = (productId: string): Record<string, number> => {
+        const prod = (ctx.allProducts || []).find((p: any) => p.id === productId);
+        return extractStockGrade(prod);
+      };
+      const soleStockGrade = (groupName: string, color: string): Record<string, number> => {
+        const prod = (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName) && colorMatchesProduct(p, color))
+          || (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName));
+        return extractStockGrade(prod);
+      };
       for (const row of rows) {
-        if (row.componentType === 'Solado') row.soleSizeStock = soleStockGrade(row.groupName, row.color);
-        else row.available = groupAvailable(row.groupName, row.color);
+        if (row.componentType === 'Solado') {
+          row.soleSizeStock = row.soleProductId
+            ? soleStockById(row.soleProductId)
+            : soleStockGrade(row.groupName, row.color);
+        } else {
+          row.available = groupAvailable(row.groupName, row.color);
+        }
       }
 
       const sortedRows = [...rows].sort((a, b) => {
