@@ -152,7 +152,10 @@ export async function detectStrapShortagesForSaleOrder(
     const key = `${c.group_id}::${c.strap_color.toUpperCase().trim()}`;
     const prod = productByKey.get(key);
     const available = prod ? Math.max(0, Number(prod.quantity || 0) - Number(prod.reserved_stock || 0)) : 0;
-    const required = c.consumption_per_pair * c.pairs;
+    // consumption_per_pair está em CM/par (igual a ficha/backend); o estoque do
+    // produto-tira está em METROS. Sem o ÷100, required saía ~100× inflado e o
+    // StrapShortageDialog disparava com falta falsa + OS/OC 100× maiores.
+    const required = (c.consumption_per_pair * c.pairs) / 100;
     const shortage = Math.max(0, required - available);
 
     if (shortage > 0 || !prod) {
