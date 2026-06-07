@@ -594,6 +594,28 @@ Deno.serve(async (req) => {
     // do DB). Vai pro xMarca do XML SEFAZ — pedido pode override quando emite
     // pra cliente OEM/private label.
     const orderBrand = (order.brand && String(order.brand).trim()) || DEFAULT_BRAND;
+    // Marca POR ITEM = silk do solado (cascata cliente→grupo econômico→padrão),
+    // fallback 'Squad Shoes'. Pedido user 2026-06-07: o nome do silk ligado ao
+    // solado vira a MARCA no <prod><xMarca>. Resolvido via RPC resolve_item_brand
+    // (mesma cascata do app). Cache por ref+cor pra não repetir RPC por item.
+    const brandCache = new Map<string, string>();
+    const resolveItemBrand = async (sheetId: string | null | undefined, color: string | null | undefined): Promise<string> => {
+      if (!sheetId) return DEFAULT_BRAND; // NF avulsa / sem ficha → sem solado
+      const key = `${sheetId}|${(color || "").toUpperCase().trim()}`;
+      const cached = brandCache.get(key);
+      if (cached !== undefined) return cached;
+      let brand = DEFAULT_BRAND;
+      try {
+        const { data } = await adminClient.rpc("resolve_item_brand", {
+          p_sheet_id: sheetId,
+          p_color: color ?? "",
+          p_client_id: client?.id ?? null,
+        });
+        if (data && String(data).trim()) brand = String(data).trim();
+      } catch (_e) { /* mantém DEFAULT_BRAND */ }
+      brandCache.set(key, brand);
+      return brand;
+    };
     const produtosGC: any[] = [];
     // Companion array só pra preview: dados legíveis (descrição, cor, status no GC).
     // Não vai pro payload do GC — usado apenas no dry_run pra montar a tabela
@@ -606,6 +628,7 @@ Deno.serve(async (req) => {
       unidade: string;
       valor_unitario: number;
       valor_total: number;
+      marca: string;
       gc_status: 'cached' | 'found_by_name' | 'pending_create';
       gc_id: string | null;
     }> = [];
@@ -623,6 +646,9 @@ Deno.serve(async (req) => {
       // "UN", não "PAR"): forçar "UN". Vale também p/ NF avulsa de standalone
       // (antes puxava products.unit que podia vir "kg"/etc).
       const unidade = "UN";
+
+      // Marca deste item: silk do solado (cascata) ou 'Squad Shoes'.
+      const itemBrand = await resolveItemBrand(it.reference_id, it.color);
 
       // Resolução do produto no GestaoClick — POR NOME.
       // BUG CRÍTICO da cor (e do duplicado) corrigido aqui:
@@ -682,7 +708,7 @@ Deno.serve(async (req) => {
             unidade: "UN",
             ncm,
             tipo: "P",
-            marca: orderBrand, // marca aparece no XML SEFAZ <prod><xMarca>
+            marca: itemBrand, // marca aparece no XML SEFAZ <prod><xMarca> — silk do solado
           };
           if (fullDesc) productPayload.descricao = fullDesc;
           if (skuVariante) productPayload.codigo = skuVariante;
@@ -721,7 +747,7 @@ Deno.serve(async (req) => {
         unidade: "UN",
         NCM: ncm,
         tipo: "P",
-        marca: orderBrand, // pedido em 15/05/2026 — sempre Squad Shoes na NF
+        marca: itemBrand, // marca por item = silk do solado (fallback Squad Shoes)
       });
       produtosPreview.push({
         descricao: nomeProduto,
@@ -731,6 +757,7 @@ Deno.serve(async (req) => {
         unidade: "UN",
         valor_unitario: price,
         valor_total: Number((qty * price).toFixed(2)),
+        marca: itemBrand,
         gc_status: gcStatus,
         gc_id: gcProductId,
       });
