@@ -76,6 +76,15 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [missingDialogOpen, setMissingDialogOpen] = useState(false);
   const [missingWarnings, setMissingWarnings] = useState<string[]>([]);
   const [specs, setSpecs] = useState<Record<number, SoleSpec>>({});
+  // Buffer de texto cru por célula EM EDIÇÃO. Sem isto o input controlado
+  // re-renderizava o NÚMERO armazenado (`toString()`) a cada tecla: digitar
+  // "4," reparsa pra 4 → exibe "4" e a vírgula some na hora, impossibilitando
+  // casas decimais. Mantendo o texto cru enquanto a célula está focada, o user
+  // digita "4,68" livremente; o número é parseado em paralelo pro `specs` e o
+  // buffer é descartado no blur (volta a exibir o canônico). Preserva null pra
+  // vazio (a SQL cai na média escalar quando o tamanho não tem valor).
+  // (Bug 2026-06-07: não aceitava numeração após a vírgula.)
+  const [rawCellEdits, setRawCellEdits] = useState<Record<string, string>>({});
   const [sizes, setSizes] = useState<number[]>([]);
   const [newSize, setNewSize] = useState("");
   const [groups, setGroups] = useState<any[]>([]);
@@ -170,8 +179,23 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
    * Setter de valor pra uma linha — escreve em TODOS os sizes da linha
    * (mantendo conjugação sincronizada).
    */
+  const cellEditKey = (row: DisplayRow, field: keyof SoleSpec) => `${row.key}::${String(field)}`;
+
+  /** Valor exibido no input: o texto cru se a célula está em edição; senão o
+   *  número canônico armazenado (string vazia quando null). */
+  const getRowInputValue = (row: DisplayRow, field: keyof SoleSpec): string => {
+    const k = cellEditKey(row, field);
+    if (k in rawCellEdits) return rawCellEdits[k];
+    const v = getRowValue(row, field);
+    return v != null ? String(v) : "";
+  };
+
   const handleRowInputChange = (row: DisplayRow, field: keyof SoleSpec, value: string) => {
-    const numValue = value === "" ? null : parseFloat(value.replace(",", "."));
+    // Guarda o texto cru enquanto edita (deixa o user digitar "4," → "4,6" →
+    // "4,68" sem a vírgula sumir no round-trip número→string).
+    setRawCellEdits(prev => ({ ...prev, [cellEditKey(row, field)]: value }));
+    const parsed = parseFloat(value.replace(",", "."));
+    const numValue = value.trim() === "" ? null : (Number.isFinite(parsed) ? parsed : null);
     setSpecs(prev => {
       const next = { ...prev };
       for (const s of row.sizes) {
@@ -180,6 +204,17 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
           [field]: numValue,
         };
       }
+      return next;
+    });
+  };
+
+  /** Ao sair da célula, descarta o buffer cru → volta a exibir o canônico. */
+  const handleRowInputBlur = (row: DisplayRow, field: keyof SoleSpec) => {
+    const k = cellEditKey(row, field);
+    setRawCellEdits(prev => {
+      if (!(k in prev)) return prev;
+      const next = { ...prev };
+      delete next[k];
       return next;
     });
   };
@@ -1086,8 +1121,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                           type="text"
                           inputMode="decimal"
                           className="h-8 text-right font-mono"
-                          value={getRowValue(row, "lining_consumption_dm2")?.toString() ?? ""}
+                          value={getRowInputValue(row, "lining_consumption_dm2")}
                           onChange={(e) => handleRowInputChange(row, "lining_consumption_dm2", e.target.value)}
+                          onBlur={() => handleRowInputBlur(row, "lining_consumption_dm2")}
                           placeholder="0.00"
                         />
                       </TableCell>
@@ -1097,8 +1133,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             type="text"
                             inputMode="decimal"
                             className="h-8 text-right font-mono"
-                            value={getRowValue(row, "insole_consumption_dm2")?.toString() ?? ""}
+                            value={getRowInputValue(row, "insole_consumption_dm2")}
                             onChange={(e) => handleRowInputChange(row, "insole_consumption_dm2", e.target.value)}
+                            onBlur={() => handleRowInputBlur(row, "insole_consumption_dm2")}
                             placeholder="0.00"
                           />
                         </TableCell>
@@ -1109,8 +1146,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             type="text"
                             inputMode="decimal"
                             className="h-8 text-right font-mono"
-                            value={getRowValue(row, "insole_lining_consumption_dm2")?.toString() ?? ""}
+                            value={getRowInputValue(row, "insole_lining_consumption_dm2")}
                             onChange={(e) => handleRowInputChange(row, "insole_lining_consumption_dm2", e.target.value)}
+                            onBlur={() => handleRowInputBlur(row, "insole_lining_consumption_dm2")}
                             placeholder="0.00"
                           />
                         </TableCell>
@@ -1121,8 +1159,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             type="text"
                             inputMode="decimal"
                             className="h-8 text-right font-mono border-amber-500/30 focus-visible:ring-amber-500/30"
-                            value={getRowValue(row, "fachete_lining_consumption_dm2")?.toString() ?? ""}
+                            value={getRowInputValue(row, "fachete_lining_consumption_dm2")}
                             onChange={(e) => handleRowInputChange(row, "fachete_lining_consumption_dm2", e.target.value)}
+                            onBlur={() => handleRowInputBlur(row, "fachete_lining_consumption_dm2")}
                             placeholder="0.00"
                           />
                         </TableCell>
