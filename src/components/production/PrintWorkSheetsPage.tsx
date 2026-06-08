@@ -1477,7 +1477,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
-  const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
+  const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number; expectedTotal: number } | null>(() => {
     if (!includesSector('Solagem') && !includesSector('Colagem')) return null;
     const soleColorMap = new Map<string, {
       grade: Record<string, number>; totalPairs: number;
@@ -1554,8 +1554,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         });
       }
       // Scaling + baseGrade pra worksheet exibir "Por Ficha (Np)".
-      const baseGrid = order.grid || {};
-      const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
+      const baseGrid = (order.grid || {}) as Record<string, number>;
+      const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       band.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
@@ -1563,11 +1563,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         if (band.baseGradeSum === 0) band.baseGradeSum = baseSum;
         else if (band.baseGradeSum !== baseSum) band.mixedGrades = true;
       }
-      for (const [size, qty] of Object.entries(baseGrid)) {
-        const scaled = Math.round((Number(qty) || 0) * multiplier);
-        if (scaled > 0) {
-          band.grade[size] = (band.grade[size] ?? 0) + scaled;
-          sizeSet.add(size);
+      // Largest-remainder (Hamilton) por OP: cada OP escala EXATAMENTE pro seu
+      // total — antes o Math.round por número podia driftar ±N na soma da banda
+      // (as demais fichas já usavam largest-remainder; só esta ficava no round).
+      // Guard baseSum>0: com grade vazia/zerada o largest-remainder distribuiria
+      // o orderTotal em números errados (pares fantasma).
+      if (baseSum > 0 && orderTotal > 0) {
+        const scaledGrid = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
+        for (const [size, qty] of Object.entries(scaledGrid)) {
+          const q = Number(qty) || 0;
+          if (q > 0) {
+            band.grade[size] = (band.grade[size] ?? 0) + q;
+            sizeSet.add(size);
+          }
         }
       }
       band.totalPairs = Object.values(band.grade).reduce((s, v) => s + v, 0);
@@ -1598,8 +1606,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         return aLot - bLot;
       });
     const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
+    // Guarda de reconciliação: toda OP entra numa banda, então a soma das bandas
+    // DEVE igualar a soma dos pares das OPs. Se divergir → OP perdida numa chave
+    // ou duplicada (lote): a ficha mostra aviso vermelho (pega regressão futura).
+    const expectedTotal = expandedOrders.reduce((s, o) => s + Number((o as any).total_pairs ?? 0), 0);
 
-    return { bands, allSizes, grandTotal };
+    return { bands, allSizes, grandTotal, expectedTotal };
   }, [expandedOrders, activeSectors, soleColorLookup, soleNameLookup]);
 
   // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
@@ -2202,6 +2214,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               ));
           });
         })()}
+
+        {/* ── Guarda de reconciliação: bandas de solado vs pares do pedido ── */}
+        {(includesSector('Solagem') || includesSector('Colagem')) && solagemData
+          && solagemData.grandTotal !== solagemData.expectedTotal && (
+          <div
+            className="keep-together"
+            style={{ border: '2px solid #C00000', background: '#fff', padding: '8px 12px', margin: '8px 0',
+              color: '#C00000', fontFamily: "'Fira Sans', sans-serif", fontSize: '13px', fontWeight: 700,
+              WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          >
+            ⚠ RECONCILIAÇÃO: as bandas de solado somam {solagemData.grandTotal} pares, mas as OPs do
+            pedido somam {solagemData.expectedTotal} (diferença de {Math.abs(solagemData.grandTotal - solagemData.expectedTotal)}).
+            Verifique se alguma OP ficou fora de banda ou foi duplicada (lote).
+          </div>
+        )}
 
         {/* ── Solagem ── */}
         {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
