@@ -52,7 +52,12 @@ supabase db push → DB live
 1. **Always commit before stopping** — the stop hook will block if uncommitted changes exist.
 2. **Never force-push main** — Vercel depende de um histórico limpo pra deploy correto.
 3. **Migrations go in `supabase/migrations/`** — aplicar via Supabase MCP (preferido) ou SQL Editor.
-4. **TypeScript must stay clean** — run `bunx tsc --noEmit` before committing.
+4. **TypeScript must stay clean** — run `bunx tsc -p tsconfig.app.json --noEmit` before committing.
+   ⚠ **NÃO** use `bunx tsc --noEmit` (raiz): o `tsconfig.json` é um *solution file*
+   (`files: []`, só `references`) e **não checa NADA** — retorna limpo sempre. O build
+   Vite/esbuild também **não** type-checa. Logo, símbolo não-definido (ex.: `sharedSpecs`)
+   ou import de export inexistente (ex.: ícone lucide importado do phosphor) passa direto
+   e vira **ReferenceError em produção**. O typecheck de verdade é só com `-p tsconfig.app.json`.
 5. **Após edits visuais** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
 
 ## Regra de cálculo de consumo de materiais (CANÔNICA)

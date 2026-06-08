@@ -45,6 +45,7 @@ export function useAddGroup() {
       name: string;
       description: string;
       auto_component_sheet?: boolean;
+      parent_group_id?: string | null;
       pairs_per_box_individual?: number | null;
       pairs_per_box_master?: number | null;
       pairs_per_box_colmeia?: number | null;

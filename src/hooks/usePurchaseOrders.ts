@@ -356,7 +356,7 @@ export function useCapacityDrivenLeadTimes() {
          .from('v_capacity_driven_lead_times' as any)
          .select('*');
        if (error) throw error;
-       return (data || []) as unknown as DynamicLeadTime[];
+       return (data || []) as any[];
      },
    });
  }

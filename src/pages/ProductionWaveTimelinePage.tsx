@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle as CheckCircle2, Clock, Factory, CircleDashed, Ban } from '@phosphor-icons/react';
+import { ArrowLeft, CheckCircle as CheckCircle2, Clock, Factory, CircleDashed, Prohibit as Ban } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
