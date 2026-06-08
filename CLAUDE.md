@@ -191,10 +191,16 @@ térmica**, independente do que acontece nas telas do app.
   de papel = bordas quase invisíveis quando impresso
 - ✅ `style={{ border: '1.5px solid #000' }}` — preto puro garantido
 
-**Fontes em print** (já carregadas via @import no index.css):
-- Display: `'Anton', Impact, sans-serif` (uppercase decisive)
-- Body: `'Inter Tight', sans-serif`
-- Mono: `'JetBrains Mono', ui-monospace, monospace`
+**Fontes em print — DUAS famílias, NÃO confundir** (auditoria 2026-06-08):
+- **Fichas de operador** (SolagemWorkSheet, PalmilhaWorkSheet, SilkMontageWorkSheet,
+  OperatorWorkSheet, ExpedicaoWorkSheet, ManagementReport): renderizam INLINE no app,
+  então usam as fontes do **`index.css`** = **`'Fira Sans'`** (body), **`'Fira Code'`**
+  (mono), **`'Anton'`** (display). ⚠ NÃO trocar pra Inter Tight/JetBrains Mono — NÃO
+  estão no index.css → fallback feio no print.
+- **Etiquetas térmicas** (`src/lib/printLabels.ts`): abrem em `window.open` próprio com
+  `<link>` que carrega **`'Inter Tight'`** (body) + **`'JetBrains Mono'`** (mono) +
+  **`'Anton'`** (display). Essas fontes valem SÓ no contexto da etiqueta.
+- Display em ambos: `'Anton', Impact, sans-serif` (uppercase decisive).
 
 Auditoria de 22/05/2026 confirmou que TODOS os worksheets seguem esse padrão
 (inline styles + cores hardcoded), por isso sobreviveram intactos às 6 fases
