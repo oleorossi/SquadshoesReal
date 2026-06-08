@@ -920,19 +920,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [soleMappings]);
 
-  // Tipo/nome do solado (ex.: "Solado Tratorado") por sheetId::cor-do-cabedal.
-  // Usado pra segmentar a ficha de solado (Solagem/Colagem) por TIPO + cor do
-  // SOLADO — duas cores de cabedal com o mesmo solado+cor consolidam numa banda.
-  const soleNameLookup = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const mapping of soleMappings as any[]) {
-      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
-      const nm = mapping.products?.name ? getBaseName(mapping.products.name) : '';
-      if (nm) m.set(key, nm);
-    }
-    return m;
-  }, [soleMappings]);
-
   const palmilhaLookup = useMemo(() => {
     const m = new Map<string, string>();
     for (const mapping of palmilhaMappings) {
@@ -1038,6 +1025,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   const getBaseName = (name: string) =>
     name.replace(/\s*-\s*(Preto|Caramelo|Branco|Nude|Vermelho|Azul|Rosa|Verde|Cinza|Ouro|Prata)$/i, '').trim();
+
+  // Tipo/nome do solado (ex.: "Solado Tratorado") por sheetId::cor-do-cabedal.
+  // Usado p/ segmentar a ficha de solado (Solagem/Colagem) por TIPO + cor do
+  // SOLADO. DEFINIDO APÓS getBaseName de propósito: o useMemo avalia no render,
+  // então referenciar getBaseName antes da declaração dá TDZ ("Cannot access
+  // before initialization") — crash que o tsc NÃO pega (closure).
+  const soleNameLookup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const mapping of soleMappings as any[]) {
+      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
+      const nm = mapping.products?.name ? getBaseName(mapping.products.name) : '';
+      if (nm) m.set(key, nm);
+    }
+    return m;
+  }, [soleMappings]);
 
   const resolveInsoleColor = (sheetId: string, cabedelColorLower: string, cabedelColorName: string, isReadyMade: boolean) => {
     if (isReadyMade) {
