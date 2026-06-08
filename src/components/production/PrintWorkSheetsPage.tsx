@@ -920,6 +920,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [soleMappings]);
 
+  // Tipo/nome do solado (ex.: "Solado Tratorado") por sheetId::cor-do-cabedal.
+  // Usado pra segmentar a ficha de solado (Solagem/Colagem) por TIPO + cor do
+  // SOLADO — duas cores de cabedal com o mesmo solado+cor consolidam numa banda.
+  const soleNameLookup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const mapping of soleMappings as any[]) {
+      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
+      const nm = mapping.products?.name ? getBaseName(mapping.products.name) : '';
+      if (nm) m.set(key, nm);
+    }
+    return m;
+  }, [soleMappings]);
+
   const palmilhaLookup = useMemo(() => {
     const m = new Map<string, string>();
     for (const mapping of palmilhaMappings) {
@@ -1463,7 +1476,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // ── Solagem: consolidated by sole color ──────────────────────────────────────
   const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number } | null>(() => {
-    if (!includesSector('Solagem')) return null;
+    if (!includesSector('Solagem') && !includesSector('Colagem')) return null;
     const soleColorMap = new Map<string, {
       grade: Record<string, number>; totalPairs: number;
       baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
@@ -1471,6 +1484,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
       opNumbers: string[]; pvNumbers: string[];
       soleColor: string;
+      soleType: string;
       lotInfo?: { number: number; total: number };
     }>();
     const sizeSet = new Set<string>();
@@ -1479,11 +1493,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const sheetId = order.reference_id;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const soleColor = soleColorLookup.get(`${sheetId}::${cabedelColorLower}`) || 'Sem Cor';
+      // Tipo do solado entra na chave: solados DIFERENTES da mesma cor NÃO se
+      // fundem. Mas cores de CABEDAL diferentes com o MESMO solado+cor de solado
+      // CONSOLIDAM numa banda só (antes a Colagem dividia por ref+cor do cabedal
+      // → 480 + 480; agora soma → 960).
+      const soleType = soleNameLookup.get(`${sheetId}::${cabedelColorLower}`) || '';
       // Lot sizing (PR 2026-05-23): lote vira parte da chave da banda de
       // cor. Lotes diferentes da mesma cor viram bandas separadas.
       const lotNum = order._lot_number ?? 0;
       const lotTotal = order._total_lots ?? 0;
-      const bandKey = lotTotal > 1 ? `${soleColor}::lot${lotNum}` : soleColor;
+      const bandKey = `${soleType}::${soleColor}${lotTotal > 1 ? `::lot${lotNum}` : ''}`;
 
       if (!soleColorMap.has(bandKey)) {
         soleColorMap.set(bandKey, {
@@ -1492,7 +1511,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           refs: [],
           opNumbers: [], pvNumbers: [],
-          soleColor,
+          soleColor, soleType,
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
       }
@@ -1569,7 +1588,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
 
     return { bands, allSizes, grandTotal };
-  }, [expandedOrders, activeSectors, soleColorLookup]);
+  }, [expandedOrders, activeSectors, soleColorLookup, soleNameLookup]);
 
   // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
   // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
@@ -1879,7 +1898,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         total += silkMontageGroups.length;
       }
     }
-    if (activeSectors.has('Colagem') && groupedWorksheets) total += groupedWorksheets.length;
+    // Colagem agora consolida por solado (1 ficha, igual à Solagem), não mais
+    // 1 por ref+cor do cabedal.
+    if (activeSectors.has('Colagem') && solagemData && solagemData.bands.length > 0) total += 1;
     if (activeSectors.has('Acabamento')) total += orders.length;
     if (activeSectors.has('Expedição') && expedicaoGroups) total += expedicaoGroups.length;
     if (activeSectors.has('Relatório Gerencial') && reportGroups) total += reportGroups.length;
@@ -2205,12 +2226,51 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           )
         )}
 
-        {/* ── Setores agrupados por Ref + Cor: Colagem, Silk, Montagem ──
-            20/05/2026: Silk e Montagem migraram pra cá (antes em silkMontageGroups
-            por solado+cor). Pedido user: refs distintas nunca devem fundir,
-            mesmo com solado compartilhado. Cada (ref+cor) vira 1 ficha de
-            operador. Ordem de fluxo: Silk → Colagem → Montagem. */}
-        {groupedWorksheets && (['Silk', 'Colagem', 'Montagem'] as const).flatMap((sectorName) => {
+        {/* ── Colagem: consolidada por TIPO + COR do solado (igual à Solagem) ──
+            Pedido user 2026-06-08: a ficha de operador de solado da Colagem deve
+            SOMAR as cores de cabedal que compartilham o mesmo solado+cor do solado
+            — antes dividia por ref+cor do cabedal (480 + 480), agora consolida
+            (960). Reusa solagemData (que agora ativa p/ Solagem OU Colagem). */}
+        {includesSector('Colagem') && solagemData && solagemData.bands.length > 0 && (
+          reduced ? (
+            solagemData.bands.map((b, i) => (
+              <div key={`col-red-${b.soleColor}-${i}`} className="reduced-card">
+                <ReducedWorkSheet
+                  sectorLabel="Colagem"
+                  title={b.soleColor || 'Colagem'}
+                  imageUrl={b.refs?.[0]?.image_url}
+                  grade={b.grade}
+                  allSizes={solagemData.allSizes}
+                  totalPairs={b.totalPairs}
+                  totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
+                  consumption={consumptionForOpNumbers(b.opNumbers)}
+                  consumptionSector="Colagem"
+                />
+              </div>
+            ))
+          ) : (
+            <div className="page-break">
+              <SectorRegion sectorLabel="Colagem">
+                <SolagemWorkSheet
+                  sector="Colagem"
+                  bands={solagemData.bands.map(b => ({
+                    ...b,
+                    consumption: consumptionForOpNumbers(b.opNumbers),
+                  }))}
+                  allSizes={solagemData.allSizes}
+                  date={today}
+                  grandTotal={solagemData.grandTotal}
+                />
+              </SectorRegion>
+            </div>
+          )
+        )}
+
+        {/* ── Setores agrupados por Ref + Cor: Silk, Montagem ──
+            20/05/2026: Silk e Montagem por ref+cor (refs distintas nunca fundem).
+            Colagem SAIU daqui em 2026-06-08 → consolida por solado (bloco acima).
+            Ordem de fluxo: Silk → Montagem. */}
+        {groupedWorksheets && (['Silk', 'Montagem'] as const).flatMap((sectorName) => {
           if (!includesSector(sectorName)) return [];
           return groupedWorksheets.map((group) => {
           const { representative } = group;

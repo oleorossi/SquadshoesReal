@@ -40,6 +40,8 @@ interface Props {
   date?: string;
   grandTotal: number;
   pairsPerCard?: number;
+  /** Setor que usa esta ficha de solado (Solagem ou Colagem). Default Solagem. */
+  sector?: string;
 }
 
 const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
@@ -61,10 +63,10 @@ const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   </div>
 );
 
-export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12 }: Props) => {
+export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12, sector = 'Solagem' }: Props) => {
   // Batch ID determinístico (genealogia da consolidação).
   const allOpNumbers = bands.flatMap(b => b.opNumbers || []);
-  const batchId = generateBatchId('Solagem', allOpNumbers, date);
+  const batchId = generateBatchId(sector, allOpNumbers, date);
   // Solado preto deve ficar fisicamente separado das demais cores na ficha de
   // operador de Solagem — pedido em 2026-05 pra evitar mistura de banda preta
   // com bandas coloridas no fluxo da equipe.
@@ -250,7 +252,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
 
         {/* Consumo Previsto — solado + cola/adesivos pra essa banda de cor */}
         {band.consumption && band.consumption.length > 0 && (() => {
-          const filtered = filterConsumptionForSector(band.consumption, 'Solagem');
+          const filtered = filterConsumptionForSector(band.consumption, sector);
           if (filtered.length === 0) return null;
           return (
             <div className="mx-2 mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
@@ -293,7 +295,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
-        sector="Solagem"
+        sector={sector}
         icon={Footprints}
         identification={(() => {
           const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
@@ -335,10 +337,10 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             </div>
           );
         })()}
-        qrLabel="SOLAGEM"
+        qrLabel={sector.toUpperCase()}
         date={date}
         batchId={batchId}
-        index={`OP ${formatOpNumber('Solagem')} / SOLAGEM`}
+        index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
 
       {/* Fix 20/05/2026: era `flex-1` que combinado com flex-col do container
