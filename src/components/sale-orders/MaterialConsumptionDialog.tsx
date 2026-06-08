@@ -385,6 +385,32 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   }, [rows, sortKey, sortDir]);
 
   const grouped = useMemo(() => {
+    // Visão SEGMENTADA POR COR: ao ordenar pela coluna Cor, em vez de uma tabela
+    // plana, monta seções por cor — "Sem cor" (cola, embalagem etc.) sempre no
+    // topo e, depois, cada cor com TODOS os seus materiais (tira, forração,
+    // cabedal, solado…) em sequência. (Pedido user.)
+    if (sortKey === 'color') {
+      const sortWithin = (arr: ConsumptionRow[]) => [...arr].sort((a, b) => {
+        const t = COMPONENT_ORDER.indexOf(a.componentType as (typeof COMPONENT_ORDER)[number])
+          - COMPONENT_ORDER.indexOf(b.componentType as (typeof COMPONENT_ORDER)[number]);
+        if (t !== 0) return t;
+        return a.groupName.localeCompare(b.groupName, 'pt-BR') || a.materialName.localeCompare(b.materialName, 'pt-BR');
+      });
+      const noColor: ConsumptionRow[] = [];
+      const byColor = new Map<string, ConsumptionRow[]>();
+      for (const row of rows) {
+        const c = (row.color || '').trim();
+        if (!c || c === '—') { noColor.push(row); continue; }
+        if (!byColor.has(c)) byColor.set(c, []);
+        byColor.get(c)!.push(row);
+      }
+      const dir = sortDir === 'asc' ? 1 : -1;
+      const colorKeys = Array.from(byColor.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR') * dir);
+      const out = new Map<string, ConsumptionRow[]>();
+      if (noColor.length) out.set('Sem cor', sortWithin(noColor)); // sempre no topo
+      for (const c of colorKeys) out.set(c, sortWithin(byColor.get(c)!));
+      return out;
+    }
     if (sortKey && sortKey !== 'componentType') {
       return new Map([['Todos', sortedRows]]);
     }
@@ -394,7 +420,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       map.get(row.componentType)!.push(row);
     }
     return map;
-  }, [sortedRows, sortKey]);
+  }, [rows, sortedRows, sortKey, sortDir]);
 
   const totalsByUnit = useMemo(() => {
     const map = new Map<string, number>();
@@ -601,7 +627,13 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                         // widthMissing infla o consumo ~100× — comparar com estoque seria
                         // enganoso, então a linha fica neutra (o aviso âmbar permanece).
                         const known = !row.widthMissing;
-                        const ok = (row.available ?? 0) >= row.totalQuantity;
+                        // Na visão por COR o solado também cai nesta tabela genérica
+                        // (a seção é uma cor, não "Solado"); usa o total do stock_grade
+                        // como disponível em vez de `available` (que é undefined p/ solado).
+                        const avail = row.componentType === 'Solado'
+                          ? Object.values(row.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0)
+                          : (row.available ?? 0);
+                        const ok = avail >= row.totalQuantity;
                         const rowBg = !known ? '' : ok ? 'bg-green-500/10' : 'bg-red-500/10';
                         return (
                         <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`} className={rowBg}>
@@ -637,7 +669,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                             )}
                           </TableCell>
                           <TableCell className={`text-right font-mono font-semibold ${!known ? 'text-muted-foreground' : ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                            {!known ? '—' : (row.available ?? 0).toFixed(2)}
+                            {!known ? '—' : avail.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge variant="outline" className="text-xs">{formatUnit(row.productUnit)}</Badge>
