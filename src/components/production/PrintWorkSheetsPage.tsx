@@ -1494,17 +1494,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     for (const order of expandedOrders) {
       const sheetId = order.reference_id;
       const cabedelColorLower = (order.color || '').toLowerCase();
-      const soleColor = soleColorLookup.get(`${sheetId}::${cabedelColorLower}`) || 'Sem Cor';
-      // Tipo do solado entra na chave: solados DIFERENTES da mesma cor NÃO se
-      // fundem. Mas cores de CABEDAL diferentes com o MESMO solado+cor de solado
-      // CONSOLIDAM numa banda só (antes a Colagem dividia por ref+cor do cabedal
-      // → 480 + 480; agora soma → 960).
+      const soleColor = soleColorLookup.get(`${sheetId}::${cabedelColorLower}`) || '';
       const soleType = soleNameLookup.get(`${sheetId}::${cabedelColorLower}`) || '';
+      // Tipo + cor do solado entram na chave: cores de CABEDAL diferentes com o
+      // MESMO solado+cor de solado CONSOLIDAM (480 + 480 → 960); solados/cores de
+      // solado diferentes NÃO se fundem.
+      // ⚠ CRÍTICO (auditoria 2026-06-08): quando a ref NÃO tem mapeamento em
+      // technical_sheet_sole_colors (soleType='' E soleColor=''), consolidar por
+      // "::" fundiria cores de cabedal DISTINTAS numa banda só (ex.: STash STX
+      // CARAMELO+OFF WHITE+PRETO = 1 banda de 36 em vez de 3 de 12). Sem mapeamento,
+      // cada (ref, cor do cabedal) vira sua própria banda, rotulada pela cor do
+      // cabedal (fallback — o certo é cadastrar a cor do solado da ref).
+      const hasSoleMapping = soleType !== '' || soleColor !== '';
+      const bandColorLabel = soleColor || (order.color || 'Sem Cor');
       // Lot sizing (PR 2026-05-23): lote vira parte da chave da banda de
       // cor. Lotes diferentes da mesma cor viram bandas separadas.
       const lotNum = order._lot_number ?? 0;
       const lotTotal = order._total_lots ?? 0;
-      const bandKey = `${soleType}::${soleColor}${lotTotal > 1 ? `::lot${lotNum}` : ''}`;
+      const bandKey = (hasSoleMapping
+        ? `${soleType}::${soleColor}`
+        : `nomap::${sheetId}::${cabedelColorLower}`)
+        + (lotTotal > 1 ? `::lot${lotNum}` : '');
 
       if (!soleColorMap.has(bandKey)) {
         soleColorMap.set(bandKey, {
@@ -1513,7 +1523,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           refs: [],
           opNumbers: [], pvNumbers: [],
-          soleColor, soleType,
+          soleColor: bandColorLabel, soleType,
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
       }
