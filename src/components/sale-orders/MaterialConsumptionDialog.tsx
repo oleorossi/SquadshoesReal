@@ -461,6 +461,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           </td>
           <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">
             ${row.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8.5pt">${formatUnit(row.productUnit)}</span>
+            ${row.artisanal ? `<div style="color:#6b7280;font-weight:400;font-size:7.5pt;white-space:nowrap">≈ ${row.artisanal.baseQty.toFixed(2)} m ${row.artisanal.baseName} · artesanal (1 m → ${row.artisanal.yieldPerMeter} m)</div>` : ''}
           </td>
         </tr>
       `;
