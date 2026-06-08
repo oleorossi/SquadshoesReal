@@ -402,6 +402,19 @@ interface PrintWorkSheetsPageProps {
 const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // ── Group orders by reference_id + color ────────────────────────────────────
+// Faixa por numeração da OP: < 33 = infantil, ≥ 33 = adulto (mesma regra do
+// OrderMatrixForm). Grade mista (tem dos dois) entra em ambos os filtros.
+function orderSizeBands(order: any): { inf: boolean; ad: boolean } {
+  const grid = (order?.grid || {}) as Record<string, number>;
+  let inf = false, ad = false;
+  for (const [size, qty] of Object.entries(grid)) {
+    if (!(Number(qty) > 0)) continue;
+    const first = parseInt(String(size).split('/')[0], 10);
+    if (!Number.isNaN(first)) { if (first < 33) inf = true; else ad = true; }
+  }
+  return { inf, ad };
+}
+
 function groupOrdersByRefColor(orders: any[]): Array<{
   representative: any;
   combinedGrid: Record<string, number>;
@@ -523,6 +536,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // Layout da ficha: false = completa (padrão), true = reduzida (só foto + grade + qty).
   const [reduced, setReduced] = useState(false);
+  // Filtros de impressão: faixa (infantil/adulto, por numeração) e solado(s).
+  const [sizeFilter, setSizeFilter] = useState<'all' | 'infantil' | 'adulto'>('all');
+  const [soleFilter, setSoleFilter] = useState<Set<string>>(new Set()); // vazio = todos
   const includesSector = (s: typeof SECTORS[number]): boolean => activeSectors.has(s);
   const renderAllSectors = activeSectors.size === SECTORS.length;
 
@@ -640,10 +656,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // e incluem `_lot_number` na key — assim cada lote vira ficha separada em
   // cada setor (mantendo ergonomia de agregar OPs por solado dentro do lote).
   const { data: lotsMap } = useOrderLotsBatch(orderIds);
-  const expandedOrders = useMemo(
-    () => expandOrdersByLots(orders as any[], lotsMap),
-    [orders, lotsMap],
-  ) as (typeof orders[number] & LotMetadata)[];
+  // expandedOrders movido p/ DEPOIS de soleNameLookup — expande `printOrders`
+  // (orders já filtradas por faixa/solado), e o filtro de solado usa o lookup.
 
   const { data: orderCosts = [] } = useQuery({
     queryKey: ['order_costs_for_report', orderIds],
@@ -1040,6 +1054,40 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
     return m;
   }, [soleMappings]);
+
+  // ── Filtros de impressão: opções de solado + orders filtradas ──────────────
+  // soleOptions vem de TODAS as orders (lista todos os solados, mesmo os filtrados
+  // fora). printOrders aplica faixa (infantil/adulto, por numeração) + solado(s).
+  // expandedOrders e as fichas abaixo passam a usar printOrders; as QUERIES acima
+  // (referenceIds/soleMappings…) seguem em `orders` completo p/ carregar tudo.
+  const soleOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of orders as any[]) {
+      const sole = soleNameLookup.get(`${o.reference_id}::${(o.color || '').toLowerCase()}`) || '';
+      if (sole) set.add(sole);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [orders, soleNameLookup]);
+
+  const printOrders = useMemo(() => {
+    return (orders as any[]).filter(o => {
+      if (sizeFilter !== 'all') {
+        const { inf, ad } = orderSizeBands(o);
+        if (sizeFilter === 'infantil' && !inf) return false;
+        if (sizeFilter === 'adulto' && !ad) return false;
+      }
+      if (soleFilter.size > 0) {
+        const sole = soleNameLookup.get(`${o.reference_id}::${(o.color || '').toLowerCase()}`) || '';
+        if (!soleFilter.has(sole)) return false;
+      }
+      return true;
+    });
+  }, [orders, sizeFilter, soleFilter, soleNameLookup]);
+
+  const expandedOrders = useMemo(
+    () => expandOrdersByLots(printOrders as any[], lotsMap),
+    [printOrders, lotsMap],
+  ) as (typeof orders[number] & LotMetadata)[];
 
   const resolveInsoleColor = (sheetId: string, cabedelColorLower: string, cabedelColorName: string, isReadyMade: boolean) => {
     if (isReadyMade) {
@@ -1663,7 +1711,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
     // Agrupa por client_id (fallback: sale_order_id pra avulsos)
     const map = new Map<string, ExpedicaoCustomerGroup>();
-    for (const order of orders) {
+    for (const order of printOrders) {
       const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
       const clientId = so?.client_id || `__order_${order.sale_order_id ?? order.id}`;
       const client = so?.client_id ? clientById.get(so.client_id) : null;
@@ -1726,14 +1774,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef]);
+  }, [printOrders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef]);
 
   // ── Ref+Cor groups: Colagem, Silk, Montagem (todos por Ref+Cor) ────────────
   // Silk e Montagem mudaram de solado+cor pra ref+cor em 20/05/2026 (pedido user).
   const groupedWorksheets = useMemo(() => {
     if (!includesSector('Colagem') && !includesSector('Silk') && !includesSector('Montagem')) return null;
-    return groupOrdersByRefColor(orders);
-  }, [orders, activeSectors]);
+    return groupOrdersByRefColor(printOrders);
+  }, [printOrders, activeSectors]);
 
   // ── Relatório Gerencial: agrupa por sale_order_id, junta costs + stages ────
   const reportGroups = useMemo<Array<{ saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }> | null>(() => {
@@ -1783,7 +1831,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
     // Agrupa orders por sale_order_id
     const map = new Map<string, { saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }>();
-    for (const order of orders) {
+    for (const order of printOrders) {
       const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
       if (!so) continue; // pula avulsos
       const client = clientById.get(so.client_id);
@@ -1903,7 +1951,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
+  }, [printOrders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
 
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
@@ -1925,11 +1973,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // Colagem agora consolida por solado (1 ficha, igual à Solagem), não mais
     // 1 por ref+cor do cabedal.
     if (activeSectors.has('Colagem') && solagemData && solagemData.bands.length > 0) total += 1;
-    if (activeSectors.has('Acabamento')) total += orders.length;
+    if (activeSectors.has('Acabamento')) total += printOrders.length;
     if (activeSectors.has('Expedição') && expedicaoGroups) total += expedicaoGroups.length;
     if (activeSectors.has('Relatório Gerencial') && reportGroups) total += reportGroups.length;
     return total;
-  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, groupedWorksheets, orders.length, expedicaoGroups, reportGroups]);
+  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, groupedWorksheets, printOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
 
@@ -1945,7 +1993,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             <div className="h-8 w-[1px] bg-border" />
             <h2 className="font-bold text-lg">Imprimir Fichas</h2>
             <span className="text-sm text-muted-foreground">
-              {orders.length} OP(s) · {activeSectors.size} setor{activeSectors.size === 1 ? '' : 'es'} · {sheetCount} ficha{sheetCount === 1 ? '' : 's'}
+              {printOrders.length} OP(s) · {activeSectors.size} setor{activeSectors.size === 1 ? '' : 'es'} · {sheetCount} ficha{sheetCount === 1 ? '' : 's'}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1993,6 +2041,66 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               </button>
             );
           })}
+        </div>
+        {/* Filtros de impressão: faixa (infantil/adulto, por numeração) + solado(s) */}
+        <div className="flex items-start gap-x-4 gap-y-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-muted-foreground mr-1">Faixa:</span>
+            {(['all', 'infantil', 'adulto'] as const).map(f => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setSizeFilter(f)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  sizeFilter === f
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+                }`}
+                aria-pressed={sizeFilter === f}
+              >
+                {f === 'all' ? 'Todas' : f === 'infantil' ? 'Infantil' : 'Adulto'}
+              </button>
+            ))}
+          </div>
+          {soleOptions.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground mr-1">Solado:</span>
+              <button
+                type="button"
+                onClick={() => setSoleFilter(new Set())}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  soleFilter.size === 0
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+                }`}
+                aria-pressed={soleFilter.size === 0}
+              >
+                Todos
+              </button>
+              {soleOptions.map(sole => {
+                const active = soleFilter.has(sole);
+                return (
+                  <button
+                    key={sole}
+                    type="button"
+                    onClick={() => setSoleFilter(prev => {
+                      const n = new Set(prev);
+                      if (n.has(sole)) n.delete(sole); else n.add(sole);
+                      return n;
+                    })}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      active
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {sole}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
