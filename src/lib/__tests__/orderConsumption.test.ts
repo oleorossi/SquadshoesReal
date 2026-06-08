@@ -241,6 +241,33 @@ describe('orderConsumption — motor canônico', () => {
     expect(tiraGroups).toContain('Tira chata 10mm');      // sem cor → sempre entra
   });
 
+  it('mesma peça via direct_components (S-039) e via BOM sem cor (DS12) consolida numa linha', () => {
+    // Repro PV-00141: BINÓCULO 6MM aparecia 2× — uma linha cor "DOURADO" (vinda
+    // de direct_components, que usa a cor do produto) e outra cor "—" (vinda do
+    // BOM, cuja linha não tinha cor). Com o fallback pra cor do produto no BOM,
+    // a mesma peça consolida numa única linha somada.
+    const ctx = buildContext();
+    ctx.productGroups.push({ id: 'g-comp', name: 'COMPONENTES', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+    ctx.allProducts.push({ id: 'p-bino', name: 'BINÓCULO 6MM - DOURADO', color: 'DOURADO', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+
+    const itemA = buildItem({
+      reference_id: 'sheet-A',
+      technical_sheets: buildSheet({ id: 'sheet-A', direct_components: [{ product_id: 'p-bino', quantity: 8, unit: 'un', product_name: 'BINÓCULO 6MM - DOURADO' }] }),
+    });
+    ctx.materials.push({
+      sheet_id: 'sheet-B', product_id: 'p-bino', group_id: 'g-comp', quantity_per_unit: 1, color: '',
+      products: { name: 'BINÓCULO 6MM - DOURADO', unit: 'un', category: 'Componente', color: 'DOURADO' },
+      product_groups: { name: 'COMPONENTES' },
+    } as any);
+    const itemB = buildItem({ reference_id: 'sheet-B', technical_sheets: buildSheet({ id: 'sheet-B' }) });
+
+    const rows = computeConsumptionForItems([itemA, itemB], ctx);
+    const binos = rows.filter(r => (r.materialName || '').includes('BINÓCULO'));
+    expect(binos).toHaveLength(1);
+    expect(binos[0].color).toBe('DOURADO');
+    expect(binos[0].totalQuantity).toBe(8 * 24 + 1 * 24); // 192 (direct) + 24 (BOM) = 216
+  });
+
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
     // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
     // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em

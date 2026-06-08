@@ -217,7 +217,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }] = await Promise.all([
     supabase
       .from('sheet_materials')
-      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups!sheet_materials_group_id_fkey(name)')
+      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category, color), product_groups!sheet_materials_group_id_fkey(name)')
       .in('sheet_id', unique),
     supabase
       .from('products')
@@ -814,7 +814,12 @@ export function computeConsumptionForItems(
         groupName,
         materialName: product.name || groupName,
         productUnit,
-        color: material.color || '—',
+        // Cor da LINHA do BOM quando houver; senão a cor própria do produto.
+        // Sem o fallback, um componente sem cor na linha (ex.: BINÓCULO 6MM no
+        // BOM da DS12) virava cor "—" e NÃO consolidava com a mesma peça vinda
+        // de direct_components (cor "DOURADO" do produto, ex.: S-039) — o mesmo
+        // binóculo aparecia em 2 linhas. (PV-00141.)
+        color: material.color || product.color || '—',
         totalQuantity: totalQty,
         widthMissing,
       });
