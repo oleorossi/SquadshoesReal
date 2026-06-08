@@ -2762,32 +2762,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
                           return (
                             <div key={rawIdx} className="space-y-2 border-l-2 border-emerald-400/60 pl-3 mb-4">
-                              {/* Linha 1: Label livre + delete */}
+                              {/* Material (grupo) + remover. Campo de nome livre removido —
+                                  o material selecionado já identifica (Material 1, 2, 3…). */}
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-                                <div>
-                                  <Label className="text-xs text-muted-foreground">Apelido (opcional)</Label>
-                                  <Input
-                                    value={extra.label || ''}
-                                    onChange={e => {
-                                      const arr = [...(form.components_accessories || [])];
-                                      arr[rawIdx] = { ...arr[rawIdx], label: e.target.value };
-                                      updateField('components_accessories', arr);
-                                    }}
-                                    placeholder={`Ex: Napa, Elástico, Reforço… · Material ${displayIdx + 2}`}
-                                    className="h-9 mt-1"
-                                  />
-                                </div>
-                                <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
-                                  const arr = [...(form.components_accessories || [])];
-                                  arr.splice(rawIdx, 1);
-                                  updateField('components_accessories', arr);
-                                }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-
-                              {/* Linha 2: Material (grupo) */}
-                              <GroupMaterialSelect
+                                <GroupMaterialSelect
                                 label={`Material ${displayIdx + 2}`}
                                 value={extra.material || ''}
                                 onChange={v => {
@@ -2806,13 +2784,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   const prevGrpName = (arr[rawIdx]?.material || '').trim();
                                   const clearPin = prevGrpName !== v.trim();
                                   arr[rawIdx] = {
-                                    ...arr[rawIdx], material: v, mandatory: true,
+                                    ...arr[rawIdx], material: v, mandatory: true, label: v,
                                     ...(material_unit ? { material_unit } : {}),
                                     ...(clearPin ? { product_id: null, product_name: null } : {}),
                                   };
                                   updateField('components_accessories', arr);
                                 }}
-                              />
+                                />
+                                <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
+                                  const arr = [...(form.components_accessories || [])];
+                                  arr.splice(rawIdx, 1);
+                                  updateField('components_accessories', arr);
+                                }}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
 
                               {/* Linha 2b: Item específico (opcional). Fixa o produto exato
                                   pro débito; em branco = resolve pela cor do PV (padrão). */}
