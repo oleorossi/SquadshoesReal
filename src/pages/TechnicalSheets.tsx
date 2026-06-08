@@ -2858,18 +2858,31 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                 );
                               })()}
 
-                              {/* Linha 3: Grade de consumo por numeração (unidade do material) */}
-                              {extra.material && renderSizeGrid(
-                                extra.consumption_per_size || {},
-                                unit,
-                                (next) => {
-                                  const arr = [...(form.components_accessories || [])];
-                                  const vals = Object.values(next).filter((v: any) => Number(v) > 0).map(Number);
-                                  const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-                                  arr[rawIdx] = { ...arr[rawIdx], consumption_per_size: next, consumption: Number(avg.toFixed(4)), mandatory: true };
-                                  updateField('components_accessories', arr);
-                                },
-                                'emerald',
+                              {/* Linha 3: Grade de consumo por numeração — MESMA lógica da
+                                  Opção 1 (cabedal principal): cabeçalho + grade compartilhada
+                                  (Puxar Grade do Solado / Replicar 1º / Média) + a média
+                                  alimenta o custo do PV. */}
+                              {extra.material && (
+                                <div>
+                                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Consumo do Componente por Numeração ({unit}/par)
+                                  </Label>
+                                  <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
+                                    Preencha o consumo número a número. A média alimenta o custo do PV automaticamente.
+                                  </p>
+                                  {renderSizeGrid(
+                                    extra.consumption_per_size || {},
+                                    unit,
+                                    (next) => {
+                                      const arr = [...(form.components_accessories || [])];
+                                      const vals = Object.values(next).filter((v: any) => Number(v) > 0).map(Number);
+                                      const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                                      arr[rawIdx] = { ...arr[rawIdx], consumption_per_size: next, consumption: Number(avg.toFixed(4)), mandatory: true };
+                                      updateField('components_accessories', arr);
+                                    },
+                                    'emerald',
+                                  )}
+                                </div>
                               )}
                             </div>
                           );
