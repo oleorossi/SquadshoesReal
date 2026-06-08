@@ -2597,7 +2597,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <div className="space-y-2">
                       <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
                         <GroupMaterialSelect
-                          label="Opção 1 (Principal)"
+                          label="Material 1 (Principal)"
                           value={form.upper_material}
                           onChange={v => {
                             updateField('upper_material', v);
@@ -2728,10 +2728,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <div className="flex items-center gap-2">
                           <Plus className="h-3.5 w-3.5 text-emerald-600" />
                           <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                            Componentes Extras do Cabedal
+                            Materiais do Cabedal
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            · somam ao consumo principal e debitam estoque
+                            · o cabedal pode ter vários materiais; cada um tem seu consumo e debita estoque
                           </span>
                         </div>
                         <Button
@@ -2744,7 +2744,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             updateField('components_accessories', arr);
                           }}
                         >
-                          <Plus className="h-3 w-3" /> Adicionar Componente
+                          <Plus className="h-3 w-3" /> Adicionar Material
                         </Button>
                       </div>
 
@@ -2753,8 +2753,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         if (mandatoryItems.length === 0) {
                           return (
                             <p className="text-xs text-muted-foreground italic px-2 py-3">
-                              Nenhum componente extra. Use o botão acima pra adicionar elásticos, reforços, tiras
-                              ou qualquer material que vai além do cabedal principal.
+                              Só o Material 1. Use o botão acima pra adicionar Material 2, 3… quando o cabedal
+                              for composto por vários materiais (cada um com seu próprio consumo).
                             </p>
                           );
                         }
@@ -2765,7 +2765,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               {/* Linha 1: Label livre + delete */}
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
                                 <div>
-                                  <Label className="text-xs text-muted-foreground">Nome do componente</Label>
+                                  <Label className="text-xs text-muted-foreground">Apelido (opcional)</Label>
                                   <Input
                                     value={extra.label || ''}
                                     onChange={e => {
@@ -2773,7 +2773,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       arr[rawIdx] = { ...arr[rawIdx], label: e.target.value };
                                       updateField('components_accessories', arr);
                                     }}
-                                    placeholder={`Ex: Elástico Traseiro 6mm · Componente ${displayIdx + 1}`}
+                                    placeholder={`Ex: Napa, Elástico, Reforço… · Material ${displayIdx + 2}`}
                                     className="h-9 mt-1"
                                   />
                                 </div>
@@ -2788,7 +2788,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
                               {/* Linha 2: Material (grupo) */}
                               <GroupMaterialSelect
-                                label="Material"
+                                label={`Material ${displayIdx + 2}`}
                                 value={extra.material || ''}
                                 onChange={v => {
                                   const arr = [...(form.components_accessories || [])];
@@ -2865,7 +2865,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               {extra.material && (
                                 <div>
                                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Consumo do Componente por Numeração ({unit}/par)
+                                    Consumo do Material {displayIdx + 2} por Numeração ({unit}/par)
                                   </Label>
                                   <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
                                     Preencha o consumo número a número. A média alimenta o custo do PV automaticamente.
