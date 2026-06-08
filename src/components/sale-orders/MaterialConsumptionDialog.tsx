@@ -29,6 +29,10 @@ type ConsumptionRow = MaterialConsumptionRow & {
   /** Solado: estoque por numeração (stock_grade do produto-solado resolvido).
    *  Permite marcar verde/vermelho número a número. */
   soleSizeStock?: Record<string, number>;
+  /** Equivalente em material-base SE produzido artesanalmente (Materiais
+   *  Artesanais → artisanal_recipes). Ex.: tira overlock que rende 88 m por 1 m
+   *  de NAPA SOFT → base = metros_de_tira / yield_per_meter, na mesma cor. */
+  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number };
 };
 
 const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
@@ -226,6 +230,15 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
 
       const ctx = await fetchConsumptionContext(refIds);
 
+      // Receitas artesanais (Materiais Artesanais): cada uma liga um produto
+      // artesanal (ex.: tira) a um material-base (napa) com yield_per_meter
+      // (metros de saída por 1 m de base). Usado pra mostrar, ao lado do consumo
+      // da tira, quanto de napa-base sairia se feita artesanalmente.
+      const { data: recipesData } = await supabase
+        .from('artisanal_recipes')
+        .select('artisanal_product_name, base_product_name, yield_per_meter')
+        .eq('active', true);
+
       // Motor CANÔNICO (mesmo de @/lib/orderConsumption usado pela ficha do
       // operador, por OP). Aqui calculamos por PEDIDO: agrega todos os itens do
       // PV. Só o consumo previsto — a disponibilidade é anotada logo abaixo.
@@ -288,6 +301,18 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           || (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName));
         return extractStockGrade(prod);
       };
+      // Mapa nome-do-produto-artesanal (normalizado) → { base, yield }. O nome
+      // da receita usa grafia variada (ex.: "Tira Overlock 5mm") e o grupo da
+      // tira vem em CAIXA ALTA ("TIRA OVERLOCK 5MM") — normTxt resolve isso.
+      const recipeMap = new Map<string, { base: string; yieldPerMeter: number }>();
+      for (const r of (recipesData || []) as any[]) {
+        const y = Number(r.yield_per_meter) || 0;
+        if (y > 0 && r.artisanal_product_name) {
+          recipeMap.set(normTxt(r.artisanal_product_name), { base: r.base_product_name, yieldPerMeter: y });
+        }
+      }
+      const LINEAR = new Set(['m', 'metro', 'metros', 'mt']);
+
       for (const row of rows) {
         if (row.componentType === 'Solado') {
           row.soleSizeStock = row.soleProductId
@@ -295,6 +320,16 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             : soleStockGrade(row.groupName, row.color);
         } else {
           row.available = groupAvailable(row.groupName, row.color);
+        }
+        // Equivalente em material-base se feita artesanalmente. Só faz sentido
+        // pra linhas lineares (metros) — yield_per_meter é m-saída por m-base.
+        const recipe = recipeMap.get(normTxt(row.groupName)) || recipeMap.get(normTxt(row.materialName));
+        if (recipe && LINEAR.has((row.productUnit || '').toLowerCase()) && row.totalQuantity > 0) {
+          row.artisanal = {
+            baseName: recipe.base,
+            baseQty: row.totalQuantity / recipe.yieldPerMeter,
+            yieldPerMeter: recipe.yieldPerMeter,
+          };
         }
       }
 
@@ -591,7 +626,15 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                           </TableCell>
                           <TableCell>{row.materialName}</TableCell>
                           <TableCell>{row.color}</TableCell>
-                          <TableCell className="text-right font-mono font-bold">{row.totalQuantity.toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-mono font-bold">
+                            {row.totalQuantity.toFixed(2)}
+                            {row.artisanal && (
+                              <div className="text-[10px] font-normal text-muted-foreground mt-0.5 whitespace-nowrap">
+                                ≈ {row.artisanal.baseQty.toFixed(2)} m {row.artisanal.baseName}
+                                <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className={`text-right font-mono font-semibold ${!known ? 'text-muted-foreground' : ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
                             {!known ? '—' : (row.available ?? 0).toFixed(2)}
                           </TableCell>
