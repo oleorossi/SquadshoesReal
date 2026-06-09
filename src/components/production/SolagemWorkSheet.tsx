@@ -42,6 +42,8 @@ interface Props {
   pairsPerCard?: number;
   /** Setor que usa esta ficha de solado (Solagem ou Colagem). Default Solagem. */
   sector?: string;
+  /** Selo INFANTIL no header quando alguma banda tem OP de ref. infantil. */
+  isInfantil?: boolean;
 }
 
 const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
@@ -63,7 +65,7 @@ const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   </div>
 );
 
-export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12, sector = 'Solagem' }: Props) => {
+export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12, sector = 'Solagem', isInfantil }: Props) => {
   // Batch ID determinístico (genealogia da consolidação).
   const allOpNumbers = bands.flatMap(b => b.opNumbers || []);
   const batchId = generateBatchId(sector, allOpNumbers, date);
@@ -297,6 +299,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       <WorksheetHeader
         sector={sector}
         icon={Footprints}
+        isInfantil={isInfantil}
         identification={(() => {
           const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
           const pvDisplay = pvs.length === 0 ? null

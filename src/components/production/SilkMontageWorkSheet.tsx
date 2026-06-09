@@ -111,6 +111,8 @@ interface Props {
   date?: string;
   /** Pares por ficha. Default 12. */
   pairsPerCard?: number;
+  /** Selo INFANTIL no header quando o grupo tem OP de ref. infantil. */
+  isInfantil?: boolean;
 }
 
 const SECTOR_THEME: Record<GroupedSector, {
@@ -240,7 +242,7 @@ const KitHandoffChecklist = ({ sector }: { sector: GroupedSector }) => {
  *   - Checklist quando aplicável (Aviamento: frente/traseira; Acabamento: 4-step)
  *   - Alertas (modelo fachetado, conjugado, etc)
  */
-export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }: Props) => {
+export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, isInfantil }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
   // Silks únicos deste solado (deduplica por silk_url). Pra setores que
@@ -272,6 +274,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12 }:
       <WorksheetHeader
         sector={sector}
         icon={Icon}
+        isInfantil={isInfantil}
         imageSlot={
           // Em Silk, mostra a imagem da MARCA no header (1ª silk única).
           // O bloco "02 / Silks" abaixo continua mostrando todas as silks dessa
