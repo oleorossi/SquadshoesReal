@@ -918,26 +918,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [sheetLiningFlags]);
 
-  // Referências INFANTIS — mesma lógica das listas de PV/OP (shoe_category com
-  // infantil/kids/criança/bebê). Usado pra marcar as fichas de operador com o
-  // selo INFANTIL. (Auditoria/feature 2026-06-09.)
-  const infantilRefs = useMemo(() => {
-    const s = new Set<string>();
-    for (const sh of sheetLiningFlags as any[]) {
-      const cat = (sh.shoe_category || '').toLowerCase();
-      if (cat.includes('infantil') || cat.includes('kids') || cat.includes('crian') || cat.includes('bebe') || cat.includes('bebê')) {
-        s.add(sh.id);
-      }
+  // Faixa etária por NUMERAÇÃO (< 33 = infantil), regra única do orderSizeBands
+  // (mesma do filtro de faixa e do OrderMatrixForm). ANTES marcava infantil só
+  // por shoe_category textual, que quase nunca vinha "Infantil" (vinha o ESTILO:
+  // Rasteirinha, Sandália…) → fichas infantis não eram designadas. Agora deriva
+  // do grid de cada OP. (fix 2026-06-09: designar INFANTIL e ADULTO.)
+  type WorksheetSizeBand = 'infantil' | 'adulto' | 'misto';
+  const bandFromFlags = (inf: boolean, ad: boolean): WorksheetSizeBand | undefined =>
+    inf && ad ? 'misto' : inf ? 'infantil' : ad ? 'adulto' : undefined;
+  // Faixa agregada de uma lista de OPs (por número).
+  const bandForOps = (opNumbers?: (string | null | undefined)[] | null): WorksheetSizeBand | undefined => {
+    let inf = false, ad = false;
+    for (const op of (opNumbers || [])) {
+      const o = op ? ordersByOpNumber.get(String(op)) : null;
+      if (!o) continue;
+      const b = orderSizeBands(o);
+      inf = inf || b.inf; ad = ad || b.ad;
     }
-    return s;
-  }, [sheetLiningFlags]);
-
-  // True quando alguma das OPs (por número) é de referência infantil.
-  const anyOpInfantil = (opNumbers?: string[] | null): boolean =>
-    (opNumbers || []).some(op => {
-      const o = ordersByOpNumber.get(String(op));
-      return !!(o && infantilRefs.has(o.reference_id));
-    });
+    return bandFromFlags(inf, ad);
+  };
+  // Faixa de um grid de grade (ficha de OP única).
+  const bandForGrid = (grid?: Record<string, number> | null): WorksheetSizeBand | undefined => {
+    const { inf, ad } = orderSizeBands({ grid: grid || {} });
+    return bandFromFlags(inf, ad);
+  };
 
   // Materiais principais (cabedal/forro/palmilha) por referência — usados
   // pelo Relatório Gerencial pra mostrar detalhamento técnico de cada OP.
@@ -2205,7 +2209,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   }))}
                   allSizes={palmilhaAllSizes}
                   date={today}
-                  isInfantil={anyOpInfantil(palmilhaGroups.flatMap(g => g.opNumbers || []))}
+                  sizeBand={bandForOps(palmilhaGroups.flatMap(g => g.opNumbers || []))}
                 />
               </SectorRegion>
             </div>
@@ -2309,29 +2313,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             };
           };
 
-          // Corte Forração (pedido user 09/06/2026): agrupar por COR DA
-          // PALMILHA (forração) dentro de cada solado. Itens com cabedais
-          // diferentes que compartilham a MESMA cor de forração viram UMA
-          // linha só (a ref é indiferente pro cortador da forração); apenas o
-          // solado separa as fichas. Cores de forração não cadastradas (null)
-          // ficam num bucket "∅" que a worksheet renderiza como NÃO CADASTRADA.
+          // Corte Forração (pedido user 09/06/2026): agrupar pela COR BASE DO
+          // CALÇADO (= cor do produto = cor em que a forração é cortada) dentro
+          // de cada solado. Itens de refs/tiras diferentes com a MESMA cor base
+          // viram UMA linha (a ref é indiferente pro cortador); só o solado
+          // separa as fichas. ANTES agrupava pela liningColor mapeada, que
+          // ficava em branco ("NÃO CADASTRADA") — a cor da forração É a cor base.
           const mergeForracaoWithinSole = (group: SoleSilkGroup): SoleSilkGroup | null => {
             const filtered = group.colorGroups.filter(cg => cg.requiresLiningCut === true);
             if (filtered.length === 0) return null;
-            const byLining = new Map<string, SilkColorGroup & { _cabedais: Set<string> }>();
+            const byColor = new Map<string, SilkColorGroup>();
             for (const cg of filtered) {
-              const liningKey = (cg.liningColor || '').trim().toUpperCase() || '∅';
-              const existing = byLining.get(liningKey);
+              const colorKey = (cg.color || '').trim().toUpperCase() || '∅';
+              const existing = byColor.get(colorKey);
               if (!existing) {
-                byLining.set(liningKey, {
+                byColor.set(colorKey, {
                   ...cg,
                   combinedGrid: { ...cg.combinedGrid },
                   knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                   opNumbers: [...cg.opNumbers],
                   pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
                   refs: [],
-                  hasStraps: cg.hasStraps === true,
-                  _cabedais: new Set(cg.color ? [cg.color] : []),
                 });
               } else {
                 existing.totalPairs += cg.totalPairs;
@@ -2347,22 +2349,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 if (cg.pvNumbers && existing.pvNumbers) {
                   for (const pv of cg.pvNumbers) if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
                 }
-                // Ao fundir cabedais distintos numa mesma cor de forração, a
-                // grade "por ficha" deixa de ter sentido único → marca mixed
-                // (a worksheet omite a linha "Por Ficha × N", mantém o total).
+                // Ao fundir refs/tiras distintas numa mesma cor base, a grade
+                // "por ficha" deixa de ter sentido único → marca mixed (a
+                // worksheet omite a linha "Por Ficha × N", mantém o total).
                 existing.mixedGrades = true;
-                if (cg.color) existing._cabedais.add(cg.color);
-                if (cg.hasStraps) existing.hasStraps = true;
               }
             }
-            const colorGroups = Array.from(byLining.values())
-              .map(({ _cabedais, ...cg }) => ({
-                ...cg,
-                // Quando o modelo NÃO tem tiras, a worksheet ainda mostra
-                // "(cabedal: …)" — usa a lista de cabedais distintos do bucket.
-                color: Array.from(_cabedais).join(' · ') || cg.color,
-              }))
-              .sort((a, b) => compareColors(a.liningColor || a.color, b.liningColor || b.color));
+            const colorGroups = Array.from(byColor.values())
+              .sort((a, b) => compareColors(a.color, b.color));
             return {
               soleName: group.soleName,
               colorGroups,
@@ -2420,7 +2414,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               return [
                 <div key={`${sectorName}-todos-solados`} className="page-break">
                   <SectorRegion sectorLabel={sectorName}>
-                    <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} isInfantil={anyOpInfantil(enriched.colorGroups.flatMap(cg => cg.opNumbers || []))} />
+                    <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} sizeBand={bandForOps(enriched.colorGroups.flatMap(cg => cg.opNumbers || []))} />
                   </SectorRegion>
                 </div>,
               ];
@@ -2437,7 +2431,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     : (
                       <div key={`${sectorName}-${merged.soleName}`} className="page-break">
                         <SectorRegion sectorLabel={`${sectorName} · ${merged.soleName}`}>
-                          <SilkMontageWorkSheet group={withConsumption(merged)} sector={sectorName} date={today} isInfantil={anyOpInfantil(merged.colorGroups.flatMap(cg => cg.opNumbers || []))} />
+                          <SilkMontageWorkSheet group={withConsumption(merged)} sector={sectorName} date={today} sizeBand={bandForOps(merged.colorGroups.flatMap(cg => cg.opNumbers || []))} />
                         </SectorRegion>
                       </div>
                     )
@@ -2457,7 +2451,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                           group={withConsumption(filtered!)}
                           sector={sectorName}
                           date={today}
-                          isInfantil={anyOpInfantil(filtered!.colorGroups.flatMap(cg => cg.opNumbers || []))}
+                          sizeBand={bandForOps(filtered!.colorGroups.flatMap(cg => cg.opNumbers || []))}
                         />
                       </SectorRegion>
                     </div>
@@ -2510,7 +2504,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={solagemData.allSizes}
                   date={today}
                   grandTotal={solagemData.grandTotal}
-                  isInfantil={anyOpInfantil(solagemData.bands.flatMap(b => b.opNumbers || []))}
+                  sizeBand={bandForOps(solagemData.bands.flatMap(b => b.opNumbers || []))}
                   clientNames={clientNamesForPvs(solagemData.bands.flatMap(b => b.pvNumbers || []))}
                 />
               </SectorRegion>
@@ -2552,7 +2546,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={solagemData.allSizes}
                   date={today}
                   grandTotal={solagemData.grandTotal}
-                  isInfantil={anyOpInfantil(solagemData.bands.flatMap(b => b.opNumbers || []))}
+                  sizeBand={bandForOps(solagemData.bands.flatMap(b => b.opNumbers || []))}
                   clientNames={clientNamesForPvs(solagemData.bands.flatMap(b => b.pvNumbers || []))}
                 />
               </SectorRegion>
@@ -2645,7 +2639,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   mesaCapacity={mesaCapacity}
                   sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
                   opNumbers={group.opNumbers}
-                  isInfantil={infantilRefs.has(representative.reference_id)}
+                  sizeBand={bandForOps(group.opNumbers)}
                   clientName={clientNamesForPvs(group.pvNumbers).join(' · ') || undefined}
                 />
               </SectorRegion>
@@ -2733,7 +2727,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     ? { number: (order as any)._lot_number, total: (order as any)._total_lots }
                     : undefined
                 }
-                isInfantil={infantilRefs.has(order.reference_id)}
+                sizeBand={bandForGrid((order as any).grid)}
               />
             </div>
           );
@@ -2743,7 +2737,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
             <SectorRegion sectorLabel={`Expedição · ${group.client_name}`}>
-              <ExpedicaoWorkSheet group={group} date={today} isInfantil={group.orders.some(o => infantilRefs.has((o as any).reference_id))} />
+              <ExpedicaoWorkSheet group={group} date={today} sizeBand={bandForOps(group.orders.map((o: any) => o.op_number).filter(Boolean))} />
             </SectorRegion>
           </div>
         ))}

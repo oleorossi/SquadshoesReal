@@ -46,8 +46,8 @@ export interface ExpedicaoCustomerGroup {
 interface Props {
   group: ExpedicaoCustomerGroup;
   date?: string;
-  /** Selo INFANTIL no header quando algum item do cliente é de ref. infantil. */
-  isInfantil?: boolean;
+  /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
+  sizeBand?: 'infantil' | 'adulto' | 'misto';
 }
 
 /**
@@ -59,7 +59,7 @@ interface Props {
  *   - Lista de OPs com checkbox de conferência por linha
  *   - Checklist final (NF impressa / etiqueta / romaneio)
  */
-export const ExpedicaoWorkSheet = ({ group, date, isInfantil }: Props) => {
+export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
   const totalPairs = group.orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
   // Batch ID determinístico por cliente — cada ficha de cliente vira um batch
   // independente. Genealogia: lista de op_numbers fica na seção "Itens · Conferência".
@@ -109,7 +109,7 @@ export const ExpedicaoWorkSheet = ({ group, date, isInfantil }: Props) => {
       <WorksheetHeader
         sector="Expedição"
         icon={Truck}
-        isInfantil={isInfantil}
+        sizeBand={sizeBand}
         identification={
           <div className="flex items-start gap-4 min-w-0">
             {/* PV destacado — pedido user 19/05/2026 */}

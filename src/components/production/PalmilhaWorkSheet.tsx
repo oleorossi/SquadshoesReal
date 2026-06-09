@@ -48,8 +48,8 @@ interface Props {
   date?: string;
   /** Pares por ficha — vem do tipo_caixa do solado. Default 12. */
   pairsPerCard?: number;
-  /** Selo INFANTIL no header quando alguma OP do lote é de ref. infantil. */
-  isInfantil?: boolean;
+  /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
+  sizeBand?: 'infantil' | 'adulto' | 'misto';
 }
 
 /**
@@ -59,7 +59,7 @@ interface Props {
  * quando 100% das OPs daquele solado vêm prontas (suprime tally e mostra
  * alerta); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
  */
-export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, isInfantil }: Props) => {
+export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, sizeBand }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
   // Batch ID determinístico (genealogia da consolidação).
   const allOpNumbers = groups.flatMap(g => g.opNumbers || []);
@@ -80,7 +80,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, i
       <WorksheetHeader
         sector="Corte de Placa de Fibra"
         icon={Scissors}
-        isInfantil={isInfantil}
+        sizeBand={sizeBand}
         identification={(() => {
           const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
           const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));

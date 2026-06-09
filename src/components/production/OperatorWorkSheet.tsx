@@ -8,7 +8,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { SignedImage } from '@/components/ui/signed-image';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
-import { InfantilTag } from './worksheet/InfantilTag';
+import { SizeBandTags } from './worksheet/InfantilTag';
 
 interface Props {
   order: ProductionOrder;
@@ -38,8 +38,8 @@ interface Props {
   /** Lot sizing (PR 2026-05-23): badge "LOTE X/N" quando a OP é parte de
    *  um split de lote. Renderizado no header proeminente em Anton. */
   lotInfo?: { number: number; total: number };
-  /** Selo INFANTIL no header quando a OP é de referência infantil. */
-  isInfantil?: boolean;
+  /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
+  sizeBand?: 'infantil' | 'adulto' | 'misto';
 }
 
 const SECTOR_META: Record<string, { icon: React.ReactNode; color: string; bg: string; border: string }> = {
@@ -74,7 +74,7 @@ const OperatorWorkSheet = ({
   clientName,
   clientInfo,
   lotInfo,
-  isInfantil,
+  sizeBand,
 }: Props) => {
   const displayImage = getProductImage(order.variant, order.master);
   const meta = SECTOR_META[sector] || SECTOR_META['Montagem'];
@@ -155,7 +155,7 @@ const OperatorWorkSheet = ({
         >
           {sector}
         </span>
-        {isInfantil && <span className="shrink-0"><InfantilTag /></span>}
+        {sizeBand && <span className="shrink-0"><SizeBandTags band={sizeBand} /></span>}
         {lotInfo && lotInfo.total > 1 ? (
           <span
             className="text-black uppercase leading-none shrink-0 pl-3"

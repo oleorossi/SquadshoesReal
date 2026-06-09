@@ -120,8 +120,8 @@ interface Props {
   date?: string;
   /** Pares por ficha. Default 12. */
   pairsPerCard?: number;
-  /** Selo INFANTIL no header quando o grupo tem OP de ref. infantil. */
-  isInfantil?: boolean;
+  /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
+  sizeBand?: 'infantil' | 'adulto' | 'misto';
 }
 
 const SECTOR_THEME: Record<GroupedSector, {
@@ -249,7 +249,7 @@ const KitHandoffChecklist = ({ sector }: { sector: GroupedSector }) => {
  *   - Checklist quando aplicável (Aviamento: frente/traseira; Acabamento: 4-step)
  *   - Alertas (modelo fachetado, conjugado, etc)
  */
-export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, isInfantil }: Props) => {
+export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, sizeBand }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
   // Silks únicos deste solado (deduplica por silk_url). Pra setores que
@@ -281,7 +281,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
       <WorksheetHeader
         sector={sector}
         icon={Icon}
-        isInfantil={isInfantil}
+        sizeBand={sizeBand}
         imageSlot={
           // Em Silk, mostra a imagem da MARCA no header (1ª silk única).
           // O bloco "02 / Silks" abaixo continua mostrando todas as silks dessa
@@ -456,59 +456,20 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                   )}
                   <div className="min-w-0">
-                    {/* Em Corte Forração, a cor exibida é a da FORRAÇÃO (cor da
-                        napa a ser cortada), NÃO a do cabedal. Caso a ficha
-                        técnica não tenha o mapping, fallback pra cor do cabedal
-                        com aviso pra cadastrar. */}
-                    {sector === 'Corte Forração' && cg.liningColor ? (
-                      <>
-                        <span className="section-label block" style={{ color: '#000' }}>Cor da Palmilha</span>
-                        <span
-                          className="uppercase leading-none block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
-                        >
-                          {cg.liningColor}
-                        </span>
-                        {/* Modelo COM tiras não tem cabedal — não mostrar nada de
-                            cabedal no Corte Forração (pedido user 09/06/2026). */}
-                        {!cg.hasStraps && (
-                          <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-0.5 block">
-                            (cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span>)
-                          </span>
-                        )}
-                      </>
-                    ) : sector === 'Corte Forração' ? (
-                      // 2026-05-26: SEM mapping de forração cadastrado.
-                      // Antes mostrava cor do cabedal como placeholder + aviso âmbar
-                      // — confundia o cortador (usuário cortou napa errada porque
-                      // viu "OFF WHITE" e assumiu que era a cor da forração).
-                      // Agora bloqueio visual vermelho explícito: NÃO exibe nenhuma
-                      // cor sugerida, força o supervisor a cadastrar antes de cortar.
-                      <>
-                        <span className="section-label block" style={{ color: '#000' }}>Cor da Palmilha</span>
-                        <div
-                          className="inline-flex items-center gap-2 mt-1 px-2 py-1"
-                          style={{ background: '#000', color: '#FFFFFF' }}
-                        >
-                          <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}>
-                            NÃO CADASTRADA
-                          </span>
-                        </div>
-                        <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-1 block">
-                          {!cg.hasStraps && <>Cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span> · </>}não cortar antes do cadastro
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="section-label block" style={{ color: '#000' }}>Cor</span>
-                        <span
-                          className="uppercase leading-none block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
-                        >
-                          {cg.color}
-                        </span>
-                      </>
-                    )}
+                    {/* "Cor" = cor base do calçado (= cor do produto). No Corte
+                        Forração é a cor em que a forração é cortada. Regra do
+                        user (09/06/2026): a cor da forração É a cor base do
+                        calçado — NÃO um mapeamento separado (antes usava
+                        liningColor e saía "NÃO CADASTRADA" em branco). */}
+                    <span className="section-label block" style={{ color: '#000' }}>
+                      {sector === 'Corte Forração' ? 'Cor da Forração' : 'Cor'}
+                    </span>
+                    <span
+                      className="uppercase leading-none block"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
+                    >
+                      {cg.color}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0">
