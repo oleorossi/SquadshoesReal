@@ -28,8 +28,8 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
-import type { SectorKey } from '@/lib/leadTime';
 import { computeParallelWindows } from '@/lib/sectorCapacity';
+import { DISPLAY_SECTORS, normalizeSector, type SectorKey } from '@/lib/sectors';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -44,17 +44,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const DAY_MS = 86_400_000;
 
-const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
-  { key: 'corte_palmilha', label: 'Corte Palmilha' },
-  { key: 'corte_forracao', label: 'Corte Forração' },
-  { key: 'mesa',           label: 'Aviamento' },
-  { key: 'costura',        label: 'Costura' },   // FIX D3
-  { key: 'silk',           label: 'Silk' },
-  { key: 'colagem',        label: 'Colagem' },
-  { key: 'montagem',       label: 'Montagem' },
-  { key: 'solagem',        label: 'Solagem' },
-  { key: 'acabamento',     label: 'Acabamento' },
-];
+// DISPLAY_SECTORS vem de '@/lib/sectors' (fonte única).
 
 // Campanha = solado × material. Paleta indexada por campanha.
 const CAMPAIGN_PALETTES = [
@@ -220,20 +210,13 @@ function isoDate(d: Date): string { return d.toISOString().slice(0, 10); }
 
 // ── Sector helpers ────────────────────────────────────────────────────────────
 
-const SECTOR_NORM: Record<string, SectorKey> = {
-  'corte palmilha': 'corte_palmilha', 'corte forração': 'corte_forracao',
-  'corte forracao': 'corte_forracao', mesa: 'mesa', silk: 'silk',
-  serigrafia: 'silk', colagem: 'colagem', montagem: 'montagem',
-  solagem: 'solagem', acabamento: 'acabamento', expedição: 'expedicao',
-  expedicao: 'expedicao', corte: 'corte_palmilha', palmilha: 'corte_palmilha',
-  costura: 'corte_forracao', forração: 'corte_forracao', forracao: 'corte_forracao',
-  aviamento: 'mesa',
-};
-
+// Normalização display→enum vem de '@/lib/sectors' (fonte única). Antes esta
+// tela mapeava "costura"→corte_forracao (legado pré-PR2), divergindo do motor
+// que mapeia "costura"→costura; o mapa único corrige isso.
 function hasSector(sheet: any, key: SectorKey): boolean {
   const sectors: string[] = Array.isArray(sheet?.production_sectors) ? sheet.production_sectors : [];
   if (sectors.length === 0) return true;
-  return sectors.some((s: string) => (SECTOR_NORM[s.toLowerCase().trim()] ?? '') === key);
+  return sectors.some((s: string) => normalizeSector(s) === key);
 }
 
 // ── Window computation ────────────────────────────────────────────────────────

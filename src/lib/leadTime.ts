@@ -28,11 +28,10 @@
  * funcionando mapeadas para as colunas originais.
  */
 
-export type SectorKey =
-  | 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk'
-  | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
-  // legacy — pre-rename, kept for backward compat with sectorCapacity.ts callers
-  | 'corte';
+// SectorKey vive em ./sectors (fonte única). Re-exportado aqui pra não quebrar
+// os imports existentes `import type { SectorKey } from '@/lib/leadTime'`.
+import type { SectorKey } from './sectors';
+export type { SectorKey };
 
 interface SheetCapacityRow {
   cutting_capacity_per_day?: number | null;

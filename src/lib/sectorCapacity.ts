@@ -1,5 +1,11 @@
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from './leadTime';
+import { sheetHasSector, SECTOR_LABELS, type SectorKey } from './sectors';
+
+// Re-exporta a taxonomia da fonte única (./sectors) pra não quebrar imports
+// existentes `from '@/lib/sectorCapacity'`.
+export type { SectorKey };
+export { SECTOR_LABELS };
 
 /**
  * Motor de capacidade setorial.
@@ -9,11 +15,6 @@ import { computeSectorLeadTimeDays } from './leadTime';
  * irá operar, soma com a carga já comprometida pelos demais pedidos ativos,
  * e detecta sobrecarga vs. capacidade diária da ficha técnica.
  */
-
-export type SectorKey =
-  | 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa'
-  | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
-  | 'corte'; // legacy alias only — 'costura' is now canonical (PR 2)
 
 export interface SectorOverloadItem {
   reference_id: string;
@@ -159,42 +160,8 @@ export async function checkSectorCapacity(
     }
   }
 
-  // Legacy display names → canonical sector enum keys. Keep this in sync with
-  // SQL `sector_display_to_enum` (migration 20260506120000). Without it,
-  // hasSector('Corte Palmilha') never matches sheets that still have
-  // production_sectors=["Corte","Forração","Aviamento",…] from before the
-  // rename — cutting/forração windows would collapse to 0 days.
-  const SECTOR_NORMALIZE: Record<string, string> = {
-    // canonical pós PR1-PR3
-    'corte palmilha': 'corte_palmilha',
-    'corte forração': 'corte_forracao',
-    'corte forracao': 'corte_forracao',
-    'aviamento':      'mesa',
-    'mesa':           'mesa',
-    'costura':        'costura',
-    'silk':           'silk',
-    'colagem':        'colagem',
-    'montagem':       'montagem',
-    'solagem':        'solagem',
-    'acabamento':     'acabamento',
-    'expedição':      'expedicao',
-    'expedicao':      'expedicao',
-    // legacy aliases pre-PR1
-    'corte':          'corte_palmilha',
-    'palmilha':       'corte_palmilha',
-    'forração':       'corte_forracao',
-    'forracao':       'corte_forracao',
-    'serigrafia':     'silk',
-  };
-  const normalizeSector = (s: string) =>
-    SECTOR_NORMALIZE[s.toLowerCase().trim()] ?? s.toLowerCase().trim();
-
-  function hasSector(sheet: any, canonical: string): boolean {
-    const sectors: string[] = Array.isArray(sheet?.production_sectors) ? sheet.production_sectors : [];
-    if (sectors.length === 0) return true; // no restriction = all sectors active
-    const target = normalizeSector(canonical);
-    return sectors.some((s: string) => normalizeSector(s) === target);
-  }
+  // Normalização display→enum e hasSector vivem na fonte única (./sectors).
+  const hasSector = (sheet: any, canonical: string) => sheetHasSector(sheet, canonical);
 
   function computeWindows(sheet: any, qty: number, deadline: Date) {
     const defaults = getDefaults(sheet);
@@ -330,21 +297,6 @@ export async function checkSectorCapacity(
   };
 }
 
-export const SECTOR_LABELS: Record<SectorKey, string> = {
-  corte_palmilha: 'Corte Palmilha',
-  corte_forracao: 'Corte Forração',
-  costura:        'Costura',          // novo setor (PR 2)
-  mesa:           'Aviamento',         // enum interno é "mesa", label do usuário é Aviamento
-  silk:           'Silk',
-  colagem:        'Colagem',
-  montagem:       'Montagem',
-  solagem:        'Solagem',
-  acabamento:     'Acabamento',
-  expedicao:      'Expedição',
-  // legacy alias — pré rename de 2026-05-06
-  corte:          'Corte',
-};
-
 // =============================================================================
 // computeParallelWindows — single source of truth pras janelas por setor
 // =============================================================================
@@ -359,37 +311,8 @@ export const SECTOR_LABELS: Record<SectorKey, string> = {
 //   - Pós-prep: Costura → Silk → Colagem → Montagem → Solagem → Acabamento
 // =============================================================================
 
-const SECTOR_NORMALIZE_PUB: Record<string, string> = {
-  'corte palmilha': 'corte_palmilha',
-  'corte forração': 'corte_forracao',
-  'corte forracao': 'corte_forracao',
-  'aviamento':      'mesa',
-  'mesa':           'mesa',
-  'costura':        'costura',
-  'silk':           'silk',
-  'colagem':        'colagem',
-  'montagem':       'montagem',
-  'solagem':        'solagem',
-  'acabamento':     'acabamento',
-  'expedição':      'expedicao',
-  'expedicao':      'expedicao',
-  'corte':          'corte_palmilha',
-  'palmilha':       'corte_palmilha',
-  'forração':       'corte_forracao',
-  'forracao':       'corte_forracao',
-  'serigrafia':     'silk',
-};
-
-function normSec(s: string): string {
-  return SECTOR_NORMALIZE_PUB[s.toLowerCase().trim()] ?? s.toLowerCase().trim();
-}
-
-function hasSectorPub(sheet: any, canonical: string): boolean {
-  const sectors: string[] = Array.isArray(sheet?.production_sectors) ? sheet.production_sectors : [];
-  if (sectors.length === 0) return true;
-  const target = normSec(canonical);
-  return sectors.some((s: string) => normSec(s) === target);
-}
+// normalização e hasSector vêm da fonte única (./sectors).
+const hasSectorPub = (sheet: any, canonical: string) => sheetHasSector(sheet, canonical);
 
 export interface ParallelWindow {
   start: Date;
