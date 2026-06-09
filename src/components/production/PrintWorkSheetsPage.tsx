@@ -863,7 +863,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material, knife_size_ranges')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material, knife_size_ranges, shoe_category')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -909,6 +909,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
     return m;
   }, [sheetLiningFlags]);
+
+  // Referências INFANTIS — mesma lógica das listas de PV/OP (shoe_category com
+  // infantil/kids/criança/bebê). Usado pra marcar as fichas de operador com o
+  // selo INFANTIL. (Auditoria/feature 2026-06-09.)
+  const infantilRefs = useMemo(() => {
+    const s = new Set<string>();
+    for (const sh of sheetLiningFlags as any[]) {
+      const cat = (sh.shoe_category || '').toLowerCase();
+      if (cat.includes('infantil') || cat.includes('kids') || cat.includes('crian') || cat.includes('bebe') || cat.includes('bebê')) {
+        s.add(sh.id);
+      }
+    }
+    return s;
+  }, [sheetLiningFlags]);
+
+  // True quando alguma das OPs (por número) é de referência infantil.
+  const anyOpInfantil = (opNumbers?: string[] | null): boolean =>
+    (opNumbers || []).some(op => {
+      const o = ordersByOpNumber.get(String(op));
+      return !!(o && infantilRefs.has(o.reference_id));
+    });
 
   // Materiais principais (cabedal/forro/palmilha) por referência — usados
   // pelo Relatório Gerencial pra mostrar detalhamento técnico de cada OP.
@@ -2144,6 +2165,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   }))}
                   allSizes={palmilhaAllSizes}
                   date={today}
+                  isInfantil={anyOpInfantil(palmilhaGroups.flatMap(g => g.opNumbers || []))}
                 />
               </SectorRegion>
             </div>
@@ -2296,7 +2318,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               return [
                 <div key={`${sectorName}-todos-solados`} className="page-break">
                   <SectorRegion sectorLabel={sectorName}>
-                    <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} />
+                    <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} isInfantil={anyOpInfantil(enriched.colorGroups.flatMap(cg => cg.opNumbers || []))} />
                   </SectorRegion>
                 </div>,
               ];
@@ -2315,6 +2337,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                           group={withConsumption(filtered!)}
                           sector={sectorName}
                           date={today}
+                          isInfantil={anyOpInfantil(filtered!.colorGroups.flatMap(cg => cg.opNumbers || []))}
                         />
                       </SectorRegion>
                     </div>
@@ -2367,6 +2390,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={solagemData.allSizes}
                   date={today}
                   grandTotal={solagemData.grandTotal}
+                  isInfantil={anyOpInfantil(solagemData.bands.flatMap(b => b.opNumbers || []))}
                 />
               </SectorRegion>
             </div>
@@ -2407,6 +2431,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={solagemData.allSizes}
                   date={today}
                   grandTotal={solagemData.grandTotal}
+                  isInfantil={anyOpInfantil(solagemData.bands.flatMap(b => b.opNumbers || []))}
                 />
               </SectorRegion>
             </div>
@@ -2498,6 +2523,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   mesaCapacity={mesaCapacity}
                   sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
                   opNumbers={group.opNumbers}
+                  isInfantil={infantilRefs.has(representative.reference_id)}
                 />
               </SectorRegion>
             </div>
@@ -2583,6 +2609,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     ? { number: (order as any)._lot_number, total: (order as any)._total_lots }
                     : undefined
                 }
+                isInfantil={infantilRefs.has(order.reference_id)}
               />
             </div>
           );
@@ -2592,7 +2619,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
             <SectorRegion sectorLabel={`Expedição · ${group.client_name}`}>
-              <ExpedicaoWorkSheet group={group} date={today} />
+              <ExpedicaoWorkSheet group={group} date={today} isInfantil={group.orders.some(o => infantilRefs.has((o as any).reference_id))} />
             </SectorRegion>
           </div>
         ))}

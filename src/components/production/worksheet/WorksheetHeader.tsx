@@ -2,6 +2,7 @@ import React from 'react';
 import { QrCode } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
+import { InfantilTag } from './InfantilTag';
 
 interface Props {
   /** Nome do setor pra título principal. */
@@ -34,6 +35,9 @@ interface Props {
    *  lotInfo, deixando os 2 usos JSX órfãos → ReferenceError em prod
    *  (tsconfig permissivo não captou). Restaurado 29/05/2026. */
   batchId?: string;
+  /** Marca a ficha com selo "INFANTIL" (rosa) quando o grupo tem alguma OP de
+   *  referência infantil — mesma lógica das listas de PV/OP. */
+  isInfantil?: boolean;
 }
 
 /**
@@ -50,7 +54,7 @@ interface Props {
  */
 export const WorksheetHeader = ({
   sector, icon: Icon,
-  imageSlot, identification, qrLabel, alerts, date, index, lotInfo, batchId,
+  imageSlot, identification, qrLabel, alerts, date, index, lotInfo, batchId, isInfantil,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
@@ -68,6 +72,7 @@ export const WorksheetHeader = ({
         >
           {sector}
         </span>
+        {isInfantil && <span className="shrink-0"><InfantilTag /></span>}
         {lotInfo && lotInfo.total > 1 ? (
           <span
             className="text-black uppercase leading-none shrink-0 pl-3"
