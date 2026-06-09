@@ -106,6 +106,7 @@ function buildContext(): ConsumptionContext {
     sheetStrapsMap: new Map(),
     sheetSoleGroupMap: new Map(),
     soleConjugationsByGroup: new Map(),
+    facheteSpecBySole: new Map(),
   };
 }
 
@@ -181,6 +182,41 @@ describe('orderConsumption — motor canônico', () => {
     // mas mantém cabedal/forração/solado normalmente
     expect(rows.find(r => r.componentType === 'Cabedal')).toBeDefined();
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();
+  });
+
+  it('solado fachetado gera linha Fachete (forração extra) convertida dm²→metro', () => {
+    // Espelha o ramo de calculate_order_consumption (SQL). Solado is_fachetado
+    // com fachete_lining_consumption_dm2 = 2 dm²/par em todas as numerações.
+    // grade soma 6 → 4 fichas; 6 nº × 4 pares × 2 dm² = 48 dm². Material de
+    // forração = NAPA FORRO (largura 0,5 m → 50 dm²/m): 48 ÷ 50 = 0,96 m.
+    const ctx = buildContext();
+    ctx.allProducts.push({
+      id: 'p-sole-fach', name: 'SOLADO FACH', color: 'PRETO', group_id: 'g-sole',
+      quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null,
+      is_fachetado: true, fachete_material_group_id: null,
+    } as any);
+    ctx.soleColorMap.set('sheet-1::PRETO', 'p-sole-fach');
+    ctx.facheteSpecBySole.set('p-sole-fach', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 });
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const fachete = rows.find(r => r.componentType === 'Fachete');
+    expect(fachete).toBeDefined();
+    expect(fachete!.groupName).toBe('NAPA FORRO');
+    expect(fachete!.productUnit).toBe('metro');
+    expect(fachete!.totalQuantity).toBeCloseTo(0.96, 6);
+    expect(fachete!.widthMissing).toBeFalsy();
+
+    // Solado normal sem is_fachetado NÃO gera Fachete.
+    const ctx2 = buildContext();
+    ctx2.allProducts.push({
+      id: 'p-sole-plain', name: 'SOLADO PLAIN', color: 'PRETO', group_id: 'g-sole',
+      quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null,
+      is_fachetado: false, fachete_material_group_id: null,
+    } as any);
+    ctx2.soleColorMap.set('sheet-1::PRETO', 'p-sole-plain');
+    ctx2.facheteSpecBySole.set('p-sole-plain', { '37': 2 });
+    const rows2 = computeConsumptionForItems([buildItem()], ctx2);
+    expect(rows2.find(r => r.componentType === 'Fachete')).toBeUndefined();
   });
 
   it('solado listado no BOM não duplica o solado da ficha (sem bloco fantasma)', () => {

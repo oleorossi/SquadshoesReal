@@ -92,6 +92,9 @@ export type ConsumptionContext = {
   sheetSoleGroupMap: Map<string, string>;
   /** sole_group_id → conjugações ativas (regras cabedal→cor-do-solado). */
   soleConjugationsByGroup: Map<string, Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>>;
+  /** sole_product_id → consumo de FACHETE por numeração (dm²/par), de
+   *  `sole_technical_specs.fachete_lining_consumption_dm2`. Só solados fachetados. */
+  facheteSpecBySole: Map<string, Record<string, number>>;
 };
 
 /**
@@ -221,7 +224,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
       .in('sheet_id', unique),
     supabase
       .from('products')
-      .select('id, name, color, group_id, quantity, reserved_stock, stock_grade, sole_classification')
+      .select('id, name, color, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
       .eq('active', true),
     supabase
       .from('product_groups')
@@ -296,6 +299,27 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     }
   }
 
+  // Consumo de FACHETE por numeração (dm²/par) dos solados fachetados. Espelha
+  // o caminho SQL de calculate_order_consumption (que adiciona o componente
+  // "Fachete"): só carregamos as specs dos solados marcados is_fachetado.
+  const facheteSpecBySole = new Map<string, Record<string, number>>();
+  const fachetadoSoleIds = (allProducts || [])
+    .filter((p: any) => p.is_fachetado)
+    .map((p: any) => p.id);
+  if (fachetadoSoleIds.length > 0) {
+    const { data: facheteSpecs } = await (supabase as any)
+      .from('sole_technical_specs')
+      .select('sole_id, size, fachete_lining_consumption_dm2')
+      .in('sole_id', fachetadoSoleIds);
+    for (const r of (facheteSpecs || []) as any[]) {
+      const v = Number(r.fachete_lining_consumption_dm2) || 0;
+      if (v <= 0 || r.size == null) continue;
+      const m = facheteSpecBySole.get(r.sole_id) || {};
+      m[String(r.size)] = v;
+      facheteSpecBySole.set(r.sole_id, m);
+    }
+  }
+
   return {
     materials: materials || [],
     allProducts: allProducts || [],
@@ -309,6 +333,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     sheetStrapsMap,
     sheetSoleGroupMap,
     soleConjugationsByGroup,
+    facheteSpecBySole,
   };
 }
 
@@ -336,6 +361,7 @@ export function computeConsumptionForItems(
     sheetStrapsMap,
     sheetSoleGroupMap,
     soleConjugationsByGroup,
+    facheteSpecBySole,
   } = ctx;
 
   // Resolve produto-solado por (sheet_id, cor cabedal) usando primeiro o
@@ -643,6 +669,43 @@ export function computeConsumptionForItems(
       sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
       soleProductId: soleProductIdResolved,
     });
+
+    // FACHETE — forração EXTRA do salto fachetado. Espelha o ramo de
+    // calculate_order_consumption (SQL): só pra solado `is_fachetado`, com consumo
+    // em dm²/par POR NUMERAÇÃO vindo de sole_technical_specs.fachete_lining_consumption_dm2.
+    // Material = grupo do fachete (sole.fachete_material_group_id) ou, na falta,
+    // o lining_material da ficha. Converte dm²→metro pela largura da ficha de
+    // componente do material de forração (mesma regra dos outros itens de área).
+    // ⚠ Antes o motor de UI NÃO calculava fachete → modal/ficha subcontavam a
+    // forração desses solados vs. o custeio/MRP (SQL). (Auditoria 2026-06-09.)
+    if ((soleProduct as any)?.is_fachetado && soleProductIdResolved) {
+      const facheteGroupId = (soleProduct as any).fachete_material_group_id;
+      const facheteGroupName = facheteGroupId
+        ? ((productGroups || []).find((g: any) => g.id === facheteGroupId)?.name || '')
+        : '';
+      const facheteMaterialName = facheteGroupName || (sheet?.lining_material || '');
+      const fachetePerSize = facheteSpecBySole.get(soleProductIdResolved) || {};
+      const facheteVals = Object.values(fachetePerSize).filter((v) => Number(v) > 0) as number[];
+      if (facheteMaterialName && facheteVals.length > 0) {
+        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+        const facheteSheet = getPreferredGroupSheet(facheteMaterialName, { color: mappedLiningColor, mode: 'linear', preferYield: true });
+        const avgFachete = facheteVals.reduce((a, b) => a + b, 0) / facheteVals.length;
+        // sheet null força o uso PURO do override (valores em dm²/par); não usa o
+        // yield linear da napa — senão trataria dm² como metros (~100× errado).
+        const facheteDm2 = calculateGradeBasedDm2(item, avgFachete, null, fachetePerSize, soleProductIdResolved, sheet?.sole_drives_consumption);
+        const widthMissing = isLinearWidthMissing(facheteSheet, 'm');
+        const facheteTotal = widthMissing ? facheteDm2 : convertDm2ToLinearMeters(facheteDm2, facheteSheet);
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Fachete',
+          groupName: facheteMaterialName,
+          materialName: 'Fachete',
+          productUnit: widthMissing ? 'dm2' : 'metro',
+          color: mappedLiningColor,
+          totalQuantity: facheteTotal,
+          widthMissing,
+        });
+      }
+    }
 
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const sheetStraps: any[] = sheetStrapsMap.get(item.reference_id) || [];

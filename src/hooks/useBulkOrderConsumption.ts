@@ -54,6 +54,7 @@ export interface BulkOrderConsumptionInput {
 const COMPONENT_TYPE_TO_BULK: Record<string, ConsumptionComponent> = {
   Cabedal: 'Cabedal',
   Forração: 'Forração',
+  Fachete: 'Fachete',
   Palmilha: 'Palmilha',
   Solado: 'Solado',
   Tiras: 'Tiras',
