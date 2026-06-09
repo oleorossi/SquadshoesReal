@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks } from '@phosphor-icons/react';
+import { Baby, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -1779,6 +1779,10 @@ export default function SaleOrders() {
                     && !TERMINAL_BILLED_STATUSES.includes(order.status)
                     && order.status !== 'Cancelado'
                   );
+                  // Pedido com alguma referência infantil (shoe_category infantil/kids/
+                  // criança/bebê). Marca com badge rosa-claro + ícone pra identificar
+                  // de relance no meio dos pedidos adultos.
+                  const isInfantil = !!segmentsBySaleOrder[order.id]?.has('Infantil');
                   return (
                     <TableRow
                       key={order.id}
@@ -1792,7 +1796,11 @@ export default function SaleOrders() {
                         // PV com NF emitida: fundo verde claro (semântico) — destaca visualmente
                         // pedidos que já saíram da etapa fiscal. Não conflita com isInformal pois
                         // são mutuamente exclusivos (informal nunca chega em Faturado/Expedido).
-                        hasEmittedNfe && !isSelected && "bg-emerald-500/[0.07] hover:bg-emerald-500/[0.12]"
+                        hasEmittedNfe && !isSelected && "bg-emerald-500/[0.07] hover:bg-emerald-500/[0.12]",
+                        // Pedido infantil: fundo rosa-claro. Guardado p/ não brigar com
+                        // os tints amber (sem NF) / emerald (NF emitida) — o badge rosa
+                        // identifica mesmo quando a linha já tem outro fundo.
+                        isInfantil && !isSelected && !isInformal && !hasEmittedNfe && "bg-pink-500/[0.06] hover:bg-pink-500/[0.11]"
                       )}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
@@ -1824,6 +1832,11 @@ export default function SaleOrders() {
                             {isInformal && (
                               <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
                                 Sem NF
+                              </Badge>
+                            )}
+                            {isInfantil && (
+                              <Badge variant="outline" className="h-4 pl-1 pr-1.5 text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/40 gap-0.5">
+                                <Baby className="h-3 w-3" weight="fill" /> Infantil
                               </Badge>
                             )}
                             {(order as any).order_type && (order as any).order_type !== 'carteira' && ORDER_TYPE_LABELS[(order as any).order_type] && (

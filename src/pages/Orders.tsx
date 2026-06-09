@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight } from '@phosphor-icons/react';
+import { Baby, ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight } from '@phosphor-icons/react';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
@@ -1470,6 +1470,11 @@ function getWeekOptions() {
                                     onClick={(e) => e.stopPropagation()}
                                   />
                                   <span className="font-mono text-xs font-semibold">{(order as any).order_number}</span>
+                                  {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
+                                    <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
+                                      <Baby className="h-3 w-3" weight="fill" /> Infantil
+                                    </span>
+                                  )}
                                   <span className="text-xs text-muted-foreground font-mono">{order.quantity} pares</span>
                                   {so && <span className="text-xs text-muted-foreground">• {so.client_name} — Ped. {so.order_number}</span>}
                                   <StatusPill status={canonicalStatusToKey(order.status)} />
@@ -1533,6 +1538,11 @@ function getWeekOptions() {
                               onClick={(e) => e.stopPropagation()}
                             />
                             <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number}</span>
+                            {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
+                              <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
+                                <Baby className="h-3 w-3" weight="fill" /> Infantil
+                              </span>
+                            )}
                             <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
                             {(order as any).color && (
                               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1615,6 +1625,11 @@ function getWeekOptions() {
                                 {selectedOrderIds.has(order.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                               </span>
                               <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number || '—'}</span>
+                              {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
+                                <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
+                                  <Baby className="h-3 w-3" weight="fill" /> Infantil
+                                </span>
+                              )}
                               <span className="font-medium">{(order as any).technical_sheets?.name ?? '—'}</span>
                               <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
                               {(order as any).color && (
