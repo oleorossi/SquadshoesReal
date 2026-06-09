@@ -30,6 +30,8 @@ export interface SoleColorBand {
   /** Números de OP / PV pra rastreabilidade. */
   opNumbers?: string[];
   pvNumbers?: string[];
+  /** Consumo previsto (manufacturing traveler) — enriquecido no PrintWorkSheetsPage. */
+  consumption?: ConsumptionRow[];
   /** Lot sizing (PR 2026-05-23): badge "LOTE X/N" quando OPs splitadas. */
   lotInfo?: { number: number; total: number };
 }
@@ -44,6 +46,8 @@ interface Props {
   sector?: string;
   /** Selo INFANTIL no header quando alguma banda tem OP de ref. infantil. */
   isInfantil?: boolean;
+  /** Razão social do(s) cliente(s) dos PVs desta ficha. */
+  clientNames?: string[];
 }
 
 const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
@@ -65,7 +69,7 @@ const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   </div>
 );
 
-export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12, sector = 'Solagem', isInfantil }: Props) => {
+export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12, sector = 'Solagem', isInfantil, clientNames }: Props) => {
   // Batch ID determinístico (genealogia da consolidação).
   const allOpNumbers = bands.flatMap(b => b.opNumbers || []);
   const batchId = generateBatchId(sector, allOpNumbers, date);
@@ -178,7 +182,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
         <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
-              <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
+              {/* Largura precisa caber "Total × N fichas" (≈96px); sob
+                  table-layout:fixed o width do TH manda (antes 54, cortava). */}
+              <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
               {bandSizes.map((s) => (
                 <th
                   key={s}
@@ -326,6 +332,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 >
                   {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
                 </p>
+                {clientNames && clientNames.length > 0 && (
+                  <p className="font-mono text-[11px] text-black tracking-wider uppercase mt-1 leading-tight">
+                    <span className="text-black/60">Cliente · </span>
+                    <span className="font-bold">{clientNames.join(' · ')}</span>
+                  </p>
+                )}
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
                   <span className="font-mono text-[11px] text-black tracking-widest uppercase">
                     {bands.length} cor{bands.length !== 1 ? 'es' : ''} de solado

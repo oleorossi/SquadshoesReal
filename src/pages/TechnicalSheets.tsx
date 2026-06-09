@@ -3215,10 +3215,24 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   size="sm"
                   className="gap-1"
                   onClick={() => {
-                    const next = (form.strap_colors || []).length + 1;
+                    const current = form.strap_colors || [];
+                    const next = current.length + 1;
+                    // Pré-seleciona o MESMO tipo (material) da última tira
+                    // adicionada — a chance de ser a mesma tira é alta, então
+                    // o operador só ajusta quando for diferente (pedido user
+                    // 09/06/2026). A cor continua vazia (definida no pedido).
+                    const last = current[current.length - 1];
                     updateField('strap_colors', [
-                      ...(form.strap_colors || []),
-                      { id: String(next), label: `TIRA ${next}`, color: '', consumption_per_size: {} },
+                      ...current,
+                      {
+                        id: String(next),
+                        label: `TIRA ${next}`,
+                        color: '',
+                        group_id: last?.group_id,
+                        group_name: last?.group_name,
+                        consumption: last?.consumption,
+                        consumption_per_size: { ...(last?.consumption_per_size || {}) },
+                      },
                     ]);
                   }}
                 >

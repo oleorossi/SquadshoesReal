@@ -32,6 +32,10 @@ export interface PalmilhaGroup {
   /** Números de OP / PV pra rastreabilidade no chão de fábrica. */
   opNumbers?: string[];
   pvNumbers?: string[];
+  /** Razão social do(s) cliente(s) dos PVs desta ficha. */
+  clientNames?: string[];
+  /** Consumo previsto (manufacturing traveler) — enriquecido no PrintWorkSheetsPage. */
+  consumption?: ConsumptionRow[];
   /** Lot sizing (PR 2026-05-23): quando o grupo representa o N-ésimo lote
    *  de OPs splitadas, mostra badge "LOTE X / N" no header. Undefined em
    *  grupos consolidados de OPs não-splitadas. */
@@ -74,11 +78,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, i
       style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
     >
       <WorksheetHeader
-        sector="Corte Palmilha"
+        sector="Corte de Placa de Fibra"
         icon={Scissors}
         isInfantil={isInfantil}
         identification={(() => {
           const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
+          const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));
           const pvDisplay = pvs.length === 0 ? null
             : pvs.length === 1 ? pvs[0]
             : `${pvs[0]} +${pvs.length - 1}`;
@@ -103,6 +108,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, i
                 >
                   {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
                 </p>
+                {clientNames.length > 0 && (
+                  <p className="font-mono text-[11px] text-black tracking-wider uppercase mt-1 leading-tight">
+                    <span className="text-black/60">Cliente · </span>
+                    <span className="font-bold">{clientNames.join(' · ')}</span>
+                  </p>
+                )}
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
                   <span className="font-mono text-[11px] text-black tracking-widest uppercase">
                     {groups.length} grupo{groups.length !== 1 ? 's' : ''}
@@ -115,10 +126,10 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, i
             </div>
           );
         })()}
-        qrLabel="PALMILHA"
+        qrLabel="PLACA FIBRA"
         date={date}
         batchId={batchId}
-        index={`OP ${formatOpNumber('Corte Palmilha')} / CORTE PALMILHA`}
+        index={`OP ${formatOpNumber('Corte Palmilha')} / CORTE DE PLACA DE FIBRA`}
       />
 
       {groups.length === 0 ? (
@@ -259,7 +270,10 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, i
                 <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <thead>
                     <tr style={{ borderBottom: '1.5px solid #000' }}>
-                      <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
+                      {/* Largura precisa caber "Total × N fichas" (≈96px). Sob
+                          table-layout:fixed quem manda é o width do TH — antes
+                          era 54 e cortava o rótulo (reportado 09/06/2026). */}
+                      <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
                       {groupSizes.map((s) => (
                         <th
                           key={s}

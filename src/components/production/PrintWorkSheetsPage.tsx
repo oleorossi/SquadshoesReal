@@ -401,6 +401,14 @@ interface PrintWorkSheetsPageProps {
 // para sole+color sectors (vide SOLE_COLOR_GROUPED_SECTORS abaixo).
 const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
+// Rótulos de exibição (chip do seletor + título da região na tela). A CHAVE
+// interna 'Corte Palmilha' é mantida (capacidade/roteamento/batch dependem
+// dela); só o texto pro usuário muda (pedido user 09/06/2026).
+const SECTOR_DISPLAY_LABELS: Partial<Record<typeof SECTORS[number], string>> = {
+  'Corte Palmilha': 'Corte de Placa de Fibra',
+};
+const sectorLabel = (s: typeof SECTORS[number]): string => SECTOR_DISPLAY_LABELS[s] || s;
+
 // ── Group orders by reference_id + color ────────────────────────────────────
 // Faixa por numeração da OP: < 33 = infantil, ≥ 33 = adulto (mesma regra do
 // OrderMatrixForm). Grade mista (tem dos dois) entra em ambos os filtros.
@@ -1110,6 +1118,34 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     [printOrders, lotsMap],
   ) as (typeof orders[number] & LotMetadata)[];
 
+  // ── Razão social por PV ──────────────────────────────────────────────────
+  // Todas as fichas de operador mostram o cliente além do número do PV
+  // (pedido user 09/06/2026). Mapa número-do-PV → razão social, resolvido via
+  // sale_orders.client_id → clients.razao_social (fallback client_name).
+  const clientNameByPv = useMemo(() => {
+    const clientById = new Map<string, any>();
+    for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
+    const m = new Map<string, string>();
+    for (const so of saleOrders as any[]) {
+      if (!so.order_number) continue;
+      const client = so.client_id ? clientById.get(so.client_id) : null;
+      const name = client?.razao_social || so.client_name || null;
+      if (name) m.set(so.order_number, name);
+    }
+    return m;
+  }, [clientsInfo, saleOrders]);
+
+  // Razão social(es) distintas pros PVs de uma ficha (lista todos os clientes
+  // quando a ficha agrega vários pedidos — confirmado com o user 09/06/2026).
+  const clientNamesForPvs = (pvs: (string | null | undefined)[] = []): string[] => {
+    const set = new Set<string>();
+    for (const pv of pvs) {
+      const n = pv ? clientNameByPv.get(pv) : undefined;
+      if (n) set.add(n);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  };
+
   const resolveInsoleColor = (sheetId: string, cabedelColorLower: string, cabedelColorName: string, isReadyMade: boolean) => {
     if (isReadyMade) {
       return cabedelColorName?.toLowerCase().includes('preto') ? 'Preto' : 'Caramelo';
@@ -1442,6 +1478,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           color: colorName,
           // Cor da forração pra essa cor de cabedal (usado em Corte Forração).
           liningColor: liningColorLookup.get(`${sheetId}::${cabedelColorLower}`) || null,
+          // Modelo com tiras não tem cabedal — no Corte Forração esconde a
+          // referência ao cabedal (pedido user 09/06/2026).
+          hasStraps: hasStrapsLookup.get(sheetId) === true,
           colorHex,
           combinedGrid: {},
           baseGrid: { ...((order.grid as Record<string, number>) || {}) },
@@ -2058,7 +2097,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 }`}
                 aria-pressed={active}
               >
-                {s}
+                {sectorLabel(s)}
               </button>
             );
           })}
@@ -2138,8 +2177,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             palmilhaGroups.map((g, i) => (
               <div key={`palmilha-red-${g.soleName}-${i}`} className="reduced-card">
                 <ReducedWorkSheet
-                  sectorLabel="Corte Palmilha"
-                  title={g.soleName || 'Placa de Palmilha'}
+                  sectorLabel="Corte de Placa de Fibra"
+                  title={g.soleName || 'Placa de Fibra'}
                   meta={[
                     ...(g.lotInfo ? [{ label: 'Lote', value: `${g.lotInfo.number}/${g.lotInfo.total}` }] : []),
                     ...(g.fichas ? [{ label: 'Fichas', value: String(g.fichas) }] : []),
@@ -2157,11 +2196,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             ))
           ) : (
             <div className="page-break">
-              <SectorRegion sectorLabel="Corte Palmilha">
+              <SectorRegion sectorLabel="Corte de Placa de Fibra">
                 <PalmilhaWorkSheet
                   groups={palmilhaGroups.map(g => ({
                     ...g,
                     consumption: consumptionForOpNumbers(g.opNumbers),
+                    clientNames: clientNamesForPvs(g.pvNumbers),
                   }))}
                   allSizes={palmilhaAllSizes}
                   date={today}
@@ -2269,11 +2309,73 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             };
           };
 
+          // Corte Forração (pedido user 09/06/2026): agrupar por COR DA
+          // PALMILHA (forração) dentro de cada solado. Itens com cabedais
+          // diferentes que compartilham a MESMA cor de forração viram UMA
+          // linha só (a ref é indiferente pro cortador da forração); apenas o
+          // solado separa as fichas. Cores de forração não cadastradas (null)
+          // ficam num bucket "∅" que a worksheet renderiza como NÃO CADASTRADA.
+          const mergeForracaoWithinSole = (group: SoleSilkGroup): SoleSilkGroup | null => {
+            const filtered = group.colorGroups.filter(cg => cg.requiresLiningCut === true);
+            if (filtered.length === 0) return null;
+            const byLining = new Map<string, SilkColorGroup & { _cabedais: Set<string> }>();
+            for (const cg of filtered) {
+              const liningKey = (cg.liningColor || '').trim().toUpperCase() || '∅';
+              const existing = byLining.get(liningKey);
+              if (!existing) {
+                byLining.set(liningKey, {
+                  ...cg,
+                  combinedGrid: { ...cg.combinedGrid },
+                  knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
+                  opNumbers: [...cg.opNumbers],
+                  pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
+                  refs: [],
+                  hasStraps: cg.hasStraps === true,
+                  _cabedais: new Set(cg.color ? [cg.color] : []),
+                });
+              } else {
+                existing.totalPairs += cg.totalPairs;
+                for (const [size, qty] of Object.entries(cg.combinedGrid)) {
+                  existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
+                }
+                if (cg.knifeGrid) {
+                  existing.knifeGrid = existing.knifeGrid || {};
+                  for (const [k, v] of Object.entries(cg.knifeGrid)) existing.knifeGrid[k] = (existing.knifeGrid[k] || 0) + v;
+                }
+                existing.fichas = (existing.fichas || 0) + (cg.fichas || 0);
+                for (const op of cg.opNumbers) if (!existing.opNumbers.includes(op)) existing.opNumbers.push(op);
+                if (cg.pvNumbers && existing.pvNumbers) {
+                  for (const pv of cg.pvNumbers) if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
+                }
+                // Ao fundir cabedais distintos numa mesma cor de forração, a
+                // grade "por ficha" deixa de ter sentido único → marca mixed
+                // (a worksheet omite a linha "Por Ficha × N", mantém o total).
+                existing.mixedGrades = true;
+                if (cg.color) existing._cabedais.add(cg.color);
+                if (cg.hasStraps) existing.hasStraps = true;
+              }
+            }
+            const colorGroups = Array.from(byLining.values())
+              .map(({ _cabedais, ...cg }) => ({
+                ...cg,
+                // Quando o modelo NÃO tem tiras, a worksheet ainda mostra
+                // "(cabedal: …)" — usa a lista de cabedais distintos do bucket.
+                color: Array.from(_cabedais).join(' · ') || cg.color,
+              }))
+              .sort((a, b) => compareColors(a.liningColor || a.color, b.liningColor || b.color));
+            return {
+              soleName: group.soleName,
+              colorGroups,
+              totalPairs: colorGroups.reduce((s, g) => s + g.totalPairs, 0),
+            };
+          };
+
           // Enriquece um SoleSilkGroup adicionando `consumption` em cada
           // colorGroup. Padrão de manufacturing traveler — operadora vê
           // "vai consumir X dm² de couro / Y un de fivela" por cor.
           const withConsumption = (group: SoleSilkGroup): SoleSilkGroup => ({
             ...group,
+            clientNames: clientNamesForPvs(group.colorGroups.flatMap(cg => cg.pvNumbers || [])),
             colorGroups: group.colorGroups.map(cg => ({
               ...cg,
               consumption: consumptionForOpNumbers(cg.opNumbers),
@@ -2322,6 +2424,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   </SectorRegion>
                 </div>,
               ];
+            }
+            // Corte Forração: 1 ficha por solado, cores agrupadas por COR DA
+            // PALMILHA (forração) — não pela cor do cabedal nem por ref.
+            if (sectorName === 'Corte Forração') {
+              return silkMontageGroups
+                .map(group => mergeForracaoWithinSole(group))
+                .filter((g): g is SoleSilkGroup => g !== null)
+                .map(merged => (
+                  reduced
+                    ? reducedSilkNode(withConsumption(merged), sectorName, `${sectorName}-red-${merged.soleName}`)
+                    : (
+                      <div key={`${sectorName}-${merged.soleName}`} className="page-break">
+                        <SectorRegion sectorLabel={`${sectorName} · ${merged.soleName}`}>
+                          <SilkMontageWorkSheet group={withConsumption(merged)} sector={sectorName} date={today} isInfantil={anyOpInfantil(merged.colorGroups.flatMap(cg => cg.opNumbers || []))} />
+                        </SectorRegion>
+                      </div>
+                    )
+                ));
             }
             // Costura/Aviamento: 1 ficha por solado (comportamento atual).
             return silkMontageGroups
@@ -2391,6 +2511,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   date={today}
                   grandTotal={solagemData.grandTotal}
                   isInfantil={anyOpInfantil(solagemData.bands.flatMap(b => b.opNumbers || []))}
+                  clientNames={clientNamesForPvs(solagemData.bands.flatMap(b => b.pvNumbers || []))}
                 />
               </SectorRegion>
             </div>
@@ -2432,6 +2553,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   date={today}
                   grandTotal={solagemData.grandTotal}
                   isInfantil={anyOpInfantil(solagemData.bands.flatMap(b => b.opNumbers || []))}
+                  clientNames={clientNamesForPvs(solagemData.bands.flatMap(b => b.pvNumbers || []))}
                 />
               </SectorRegion>
             </div>
@@ -2524,6 +2646,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
                   opNumbers={group.opNumbers}
                   isInfantil={infantilRefs.has(representative.reference_id)}
+                  clientName={clientNamesForPvs(group.pvNumbers).join(' · ') || undefined}
                 />
               </SectorRegion>
             </div>
@@ -2604,6 +2727,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 mesaCapacity={mesaCapacity}
                 sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, 'Acabamento')}
                 opNumbers={[order.op_number].filter(Boolean)}
+                clientName={clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined}
                 lotInfo={
                   (order as any)._total_lots && (order as any)._total_lots > 1
                     ? { number: (order as any)._lot_number, total: (order as any)._total_lots }

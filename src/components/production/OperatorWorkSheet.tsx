@@ -31,6 +31,8 @@ interface Props {
   sectorCapacityPerDay?: number;
   /** OP numbers grouped into this worksheet (non-Acabamento multi-OP groups) */
   opNumbers?: string[];
+  /** Razão social do(s) cliente(s) do(s) PV(s) — exibida no header ao lado do Pedido. */
+  clientName?: string;
   /** Client/store info shown prominently on Acabamento worksheets */
   clientInfo?: { name: string; orderNumber: string };
   /** Lot sizing (PR 2026-05-23): badge "LOTE X/N" quando a OP é parte de
@@ -69,6 +71,7 @@ const OperatorWorkSheet = ({
   mesaCapacity,
   sectorCapacityPerDay = 0,
   opNumbers,
+  clientName,
   clientInfo,
   lotInfo,
   isInfantil,
@@ -206,6 +209,15 @@ const OperatorWorkSheet = ({
                 style={{ fontFamily: "'Fira Code', monospace", fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em' }}
               >
                 {order.sale_order_number || order.pv_number}
+              </span>
+            </div>
+          )}
+          {/* Razão social do cliente (pedido user 09/06/2026) */}
+          {clientName && (
+            <div className="border-l border-black pl-4 flex flex-col justify-center min-w-0">
+              <span className="section-label" style={{ color: '#000' }}>Cliente</span>
+              <span className="text-black font-mono text-[13px] leading-tight mt-1 tracking-wider uppercase font-bold truncate">
+                {clientName}
               </span>
             </div>
           )}

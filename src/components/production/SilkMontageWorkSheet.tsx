@@ -65,6 +65,10 @@ export interface SilkColorGroup {
   threadColor?: string;
   /** Tipo de ponto de costura. */
   stitchType?: string;
+  /** TRUE quando o modelo tem tiras (has_straps). Usado no Corte Forração pra
+   *  esconder QUALQUER referência ao cabedal — modelo de tira não tem cabedal,
+   *  o cortador só corta a forração na cor da palmilha. */
+  hasStraps?: boolean;
   /** Componentes auxiliares (capa, tira, presilha, etc) — pra setor Aviamento/Mesa. */
   components?: Array<{ name: string; material?: string; qty?: string; color?: string }>;
   /** Cor da caixa individual (pra Acabamento). */
@@ -88,12 +92,17 @@ export interface SilkColorGroup {
   /** Lot sizing (PR 2026-05-23): quando o grupo representa o N-ésimo lote
    *  de OPs splitadas, mostra badge "LOTE X / N" no header. */
   lotInfo?: { number: number; total: number };
+  /** Consumo previsto por cor (manufacturing traveler). Enriquecido no
+   *  PrintWorkSheetsPage via consumptionForOpNumbers. */
+  consumption?: ConsumptionRow[];
 }
 
 export interface SoleSilkGroup {
   soleName: string;
   colorGroups: SilkColorGroup[];
   totalPairs: number;
+  /** Razão social do(s) cliente(s) dos PVs desta ficha. */
+  clientNames?: string[];
 }
 
 export type GroupedSector =
@@ -144,12 +153,10 @@ const SECTOR_THEME: Record<GroupedSector, {
 }> = {
   'Silk':           { border: 'border-pink-700',    bg: 'bg-pink-600',    bgLight: 'bg-pink-50',    border1: 'border-pink-500',   textColor: 'text-pink-900',    icon: Paintbrush, accentColor: 'pink',    showFrenteTraseiro: false, showSilkImage: true,  showProductImage: false, showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   'Montagem':       { border: 'border-blue-700',    bg: 'bg-blue-600',    bgLight: 'bg-blue-50',    border1: 'border-blue-500',   textColor: 'text-blue-900',    icon: Hammer,     accentColor: 'blue',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
-  // Corte Forração: silk do cliente no header (19/05/2026) pra operador
-  // conferir se a logo/arte da forração bate com a cadastrada do cliente
-  // (cascata cliente > grupo econômico > solado > Squad).
-  // showProductImage=false (decisão remota): cortador da forração corta só
-  // o forro, não vê o calçado todo — sem foto da sandália.
-  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: true,  showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  // Corte Forração: SEM silk/marca (pedido user 09/06/2026 — o cortador da
+  // forração só corta o forro na cor da palmilha, não precisa conferir
+  // logomarca). showProductImage=false: corta só o forro, não vê o calçado.
+  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
   // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
   // distinguir visualmente dos outros 2 cortes.
@@ -333,6 +340,12 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                 >
                   {group.soleName}
                 </p>
+                {group.clientNames && group.clientNames.length > 0 && (
+                  <p className="font-mono text-[11px] text-black tracking-wider uppercase mt-1 leading-tight">
+                    <span className="text-black/60">Cliente · </span>
+                    <span className="font-bold">{group.clientNames.join(' · ')}</span>
+                  </p>
+                )}
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
                   <span className="font-mono text-[11px] text-black tracking-widest uppercase">
                     {group.colorGroups.length} cor{group.colorGroups.length !== 1 ? 'es' : ''}
@@ -449,16 +462,20 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                         com aviso pra cadastrar. */}
                     {sector === 'Corte Forração' && cg.liningColor ? (
                       <>
-                        <span className="section-label block" style={{ color: '#000' }}>Cor da Forração</span>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor da Palmilha</span>
                         <span
                           className="uppercase leading-none block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
                         >
                           {cg.liningColor}
                         </span>
-                        <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-0.5 block">
-                          (cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span>)
-                        </span>
+                        {/* Modelo COM tiras não tem cabedal — não mostrar nada de
+                            cabedal no Corte Forração (pedido user 09/06/2026). */}
+                        {!cg.hasStraps && (
+                          <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-0.5 block">
+                            (cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span>)
+                          </span>
+                        )}
                       </>
                     ) : sector === 'Corte Forração' ? (
                       // 2026-05-26: SEM mapping de forração cadastrado.
@@ -468,7 +485,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                       // Agora bloqueio visual vermelho explícito: NÃO exibe nenhuma
                       // cor sugerida, força o supervisor a cadastrar antes de cortar.
                       <>
-                        <span className="section-label block" style={{ color: '#000' }}>Cor da Forração</span>
+                        <span className="section-label block" style={{ color: '#000' }}>Cor da Palmilha</span>
                         <div
                           className="inline-flex items-center gap-2 mt-1 px-2 py-1"
                           style={{ background: '#000', color: '#FFFFFF' }}
@@ -478,7 +495,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                           </span>
                         </div>
                         <span className="font-mono text-[10px] text-black tracking-widest uppercase mt-1 block">
-                          Cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span> · não cortar antes do cadastro
+                          {!cg.hasStraps && <>Cabedal: <span style={{ color: '#C00000', fontWeight: 800 }}>{cg.color}</span> · </>}não cortar antes do cadastro
                         </span>
                       </>
                     ) : (
@@ -486,7 +503,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                         <span className="section-label block" style={{ color: '#000' }}>Cor</span>
                         <span
                           className="uppercase leading-none block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
                         >
                           {cg.color}
                         </span>
@@ -712,7 +729,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, i
                   <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
                     <thead>
                       <tr style={{ borderBottom: '1.5px solid #000' }}>
-                        <th className="section-label py-1.5" style={{ color: '#000', width: 54, borderRight: '1px solid #000' }}>Nº</th>
+                        {/* Coluna do rótulo: largura precisa caber "Total × N
+                            fichas" (≈96px). Sob table-layout:fixed quem manda é
+                            o width do TH — antes era 54 e cortava o texto. */}
+                        <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
                         {activeSizes.map((s, i) => (
                           <th
                             key={s}
