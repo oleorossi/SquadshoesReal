@@ -129,7 +129,7 @@ export function MinBillingDateSuggestionDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <SubmitFlowStepper current="min_billing" />
           <DialogTitle className="flex items-center gap-2">

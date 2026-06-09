@@ -525,13 +525,20 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais — ${orderNumber}</title>
       <style>
-        @page { size: A4 portrait; margin: 6mm 6mm; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        body { font-family: system-ui, -apple-system, sans-serif; color: #111; margin: 0; padding: 0; font-size: 10pt; line-height: 1.3; }
+        /* Margem 8mm (não 6mm) + box-sizing global p/ as bordas não serem
+           cortadas: com 6mm o conteúdo encostava na zona não-imprimível da
+           impressora e a borda direita dos cards saía cortada. Mesma correção
+           já aplicada em printLabels.ts/PrintWorkSheetsPage. */
+        @page { size: A4 portrait; margin: 8mm; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; color: #111; font-size: 10pt; line-height: 1.3; max-width: 100%; overflow-x: hidden; }
         h1 { font-size: 14pt; margin: 0 0 2px; }
         .sub { color: #6b7280; font-size: 9pt; margin: 0 0 8px; }
         .totals-strip { margin-bottom: 10px; padding: 6px 0; border-top: 2px solid #1f2937; border-bottom: 2px solid #1f2937; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+        .card { max-width: 100%; }
+        table { max-width: 100%; }
         @media print {
           .card { break-inside: avoid; }
         }
