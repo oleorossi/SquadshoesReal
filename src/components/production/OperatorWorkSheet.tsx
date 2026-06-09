@@ -124,11 +124,12 @@ const OperatorWorkSheet = ({
 
   const resolvedColorName = order.variant?.color_name || order.color || '—';
   const resolvedColorHex = order.variant?.color_hex || '#fff';
-  const resolvedInsoleColor = insoleReadyMade
-    ? (resolvedColorName.toLowerCase().includes('preto') ? 'Preto' : 'Caramelo')
-    : insoleHasLining !== false
-      ? resolvedColorName
-      : (insoleColor || resolvedColorName);
+  // Regra canônica do user (09/06/2026): a cor da FORRAÇÃO/PALMILHA é SEMPRE a
+  // cor predominante do calçado (= cor do produto/cabedal). Vale pra todas as
+  // fichas — inclusive palmilha pronta ("pronta NA COR" = na cor do calçado).
+  // ANTES: ready-made forçava Preto/Caramelo e o fallback usava um insoleColor
+  // mapeado → divergia da cor predominante.
+  const resolvedInsoleColor = resolvedColorName;
   const resolvedSoleColor = soleColor || resolvedColorName;
 
   const boxes = isAcabamento ? Math.ceil(totalPairs / 12) : 0;
