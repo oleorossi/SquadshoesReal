@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Baby, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks } from '@phosphor-icons/react';
+import { Baby, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -2301,7 +2301,21 @@ export default function SaleOrders() {
                           <div className="flex items-center gap-3">
                             {refImage ? <img src={refImage} alt={refName} className="h-12 w-12 rounded object-cover border shrink-0" /> : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs shrink-0">Sem foto</div>}
                             <div className="space-y-0.5">
-                              <p className="text-sm font-semibold">{refCode && refCode !== refName ? `${refCode} · ${refName}` : (refCode || refName)}</p>
+                              {/* Nome da referência → abre a ficha técnica (deep-link ?ref=).
+                                  Pedido user 09/06/2026. */}
+                              {item.reference_id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { setDetailDialogOpen(false); navigate(`/fichas-tecnicas?ref=${item.reference_id}`); }}
+                                  title="Abrir ficha técnica desta referência"
+                                  className="group inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline text-left"
+                                >
+                                  {refCode && refCode !== refName ? `${refCode} · ${refName}` : (refCode || refName)}
+                                  <ExternalLink className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                </button>
+                              ) : (
+                                <p className="text-sm font-semibold">{refCode && refCode !== refName ? `${refCode} · ${refName}` : (refCode || refName)}</p>
+                              )}
                               <p className="text-sm">{item.color || '—'}</p>
                               {(item.strap_colors as any[])?.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
