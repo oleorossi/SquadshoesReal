@@ -1,6 +1,7 @@
 import React from 'react';
 import { Scissors } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
+import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
@@ -236,8 +237,10 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                       <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
                         <div className="bg-white overflow-hidden" style={{ width: 55, height: 55, border: '1.5px solid #000' }}>
                           <img
-                            src={r.image_url || '/placeholder.svg'}
+                            src={thumbUrl(r.image_url, 55) || r.image_url || '/placeholder.svg'}
                             alt={r.code}
+                            width={55}
+                            height={55}
                             className="w-full h-full object-contain mix-blend-multiply"
                             loading="eager"
                             style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}

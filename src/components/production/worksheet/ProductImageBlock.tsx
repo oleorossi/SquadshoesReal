@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { thumbUrl } from '@/lib/imageThumb';
 
 interface Props {
   /** URL da variante específica (cor exata). Prioridade 1. */
@@ -80,6 +81,11 @@ export const ProductImageBlock = ({
 }: Props) => {
   const { url, isExactMatch } = resolveImage(variantImageUrl, alternateVariants, technicalSheetImageUrl);
   const showBadge = showRefBadge && !isExactMatch && url !== '/placeholder.svg';
+  // Otimização (2026-06-09): serve a miniatura redimensionada no servidor em vez
+  // de baixar o original de ~1,3 MB e reduzir no browser. ~3× o tamanho de
+  // exibição garante nitidez em tela e impressão. Placeholder/externas passam
+  // intactas (thumbUrl é no-op fora do bucket público).
+  const displaySrc = thumbUrl(url, size) || url;
 
   return (
     <div
@@ -87,8 +93,10 @@ export const ProductImageBlock = ({
       style={{ width: size, height: size, border: '1.5px solid #000' }}
     >
       <img
-        src={url}
+        src={displaySrc}
         alt={alt}
+        width={size}
+        height={size}
         className={cn('w-full h-full object-contain', multiplyBlend && 'mix-blend-multiply')}
         loading="eager"
         decoding="sync"

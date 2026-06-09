@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { QrCode, Scissors, Hammer, Footprints, Package, Stack as Layers, Wind, PaintBrush as Paintbrush, GridFour as LayoutGrid, Pen, Truck, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { getProductImage } from '@/utils/productUtils';
+import { thumbUrl } from '@/lib/imageThumb';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { adaptiveFontSize, adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
@@ -377,7 +378,7 @@ const OperatorWorkSheet = ({
               Ref.
             </span>
           )}
-          <img src={displayImage} alt="Referência" className="w-full h-full object-contain mix-blend-multiply" />
+          <img src={thumbUrl(displayImage, 192) || displayImage} alt="Referência" width={192} height={192} className="w-full h-full object-contain mix-blend-multiply" loading="eager" decoding="sync" />
         </div>
 
         {/* Product details — Anton hero for ref */}

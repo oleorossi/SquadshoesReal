@@ -1,6 +1,7 @@
 import React from 'react';
 import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
+import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
@@ -269,7 +270,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
               <tr key={o.id} style={{ borderBottom: '1px solid #000' }}>
                 <td className="p-1 text-center" style={{ borderRight: '1px solid #000' }}>
                   {o.image_url ? (
-                    <img src={o.image_url} alt={o.reference_code || ''} className="w-9 h-9 object-contain mix-blend-multiply bg-white inline-block" />
+                    <img src={thumbUrl(o.image_url, 36) || o.image_url} alt={o.reference_code || ''} width={36} height={36} loading="eager" className="w-9 h-9 object-contain mix-blend-multiply bg-white inline-block" />
                   ) : (
                     <div className="w-9 h-9 bg-white inline-block" style={{ border: '1px solid #000' }} />
                   )}

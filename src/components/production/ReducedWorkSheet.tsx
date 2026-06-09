@@ -1,4 +1,5 @@
 import { SignedImage } from '@/components/ui/signed-image';
+import { thumbUrl } from '@/lib/imageThumb';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { filterConsumptionForSector, formatConsumptionLine, type ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
@@ -108,7 +109,7 @@ export function ReducedWorkSheet({
             Ref.
           </span>
           {imageUrl ? (
-            <SignedImage src={imageUrl} alt={title} className="w-full h-full object-contain mix-blend-multiply" />
+            <SignedImage src={thumbUrl(imageUrl, 130) || imageUrl} alt={title} className="w-full h-full object-contain mix-blend-multiply" />
           ) : (
             <span className="font-mono uppercase text-center" style={{ fontSize: 9, color: '#000', padding: '0 10px', letterSpacing: '0.1em' }}>
               Sem foto cadastrada
