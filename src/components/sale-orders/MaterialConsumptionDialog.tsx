@@ -385,33 +385,43 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   }, [rows, sortKey, sortDir]);
 
   const grouped = useMemo(() => {
-    // Visão SEGMENTADA POR COR: ao ordenar pela coluna Cor, em vez de uma tabela
-    // plana, monta seções por cor — "Sem cor" (cola, embalagem etc.) sempre no
-    // topo e, depois, cada cor com TODOS os seus materiais (tira, forração,
-    // cabedal, solado…) em sequência. (Pedido user.)
-    if (sortKey === 'color') {
+    // Visão SEGMENTADA: ao ordenar por qualquer coluna de TEXTO (Grupo, Aplicação,
+    // Cor, Unidade), monta seções por valor daquela coluna — o valor vazio/sem
+    // ("Sem cor", "Sem grupo"…) sempre no topo e, depois, cada valor com TODOS os
+    // seus materiais (tira, forração, cabedal, solado…) em sequência. A ordem dos
+    // valores respeita asc/desc; dentro de cada seção ordena por tipo de
+    // componente → grupo → aplicação → cor. (Pedido user.)
+    const SEGMENT_KEYS: SortKey[] = ['groupName', 'materialName', 'color', 'productUnit'];
+    if (sortKey && SEGMENT_KEYS.includes(sortKey)) {
+      const key = sortKey as 'groupName' | 'materialName' | 'color' | 'productUnit';
+      const emptyLabel = key === 'color' ? 'Sem cor'
+        : key === 'groupName' ? 'Sem grupo'
+        : key === 'materialName' ? 'Sem aplicação'
+        : 'Sem unidade';
       const sortWithin = (arr: ConsumptionRow[]) => [...arr].sort((a, b) => {
         const t = COMPONENT_ORDER.indexOf(a.componentType as (typeof COMPONENT_ORDER)[number])
           - COMPONENT_ORDER.indexOf(b.componentType as (typeof COMPONENT_ORDER)[number]);
         if (t !== 0) return t;
-        return a.groupName.localeCompare(b.groupName, 'pt-BR') || a.materialName.localeCompare(b.materialName, 'pt-BR');
+        return a.groupName.localeCompare(b.groupName, 'pt-BR')
+          || a.materialName.localeCompare(b.materialName, 'pt-BR')
+          || a.color.localeCompare(b.color, 'pt-BR');
       });
-      const noColor: ConsumptionRow[] = [];
-      const byColor = new Map<string, ConsumptionRow[]>();
+      const empties: ConsumptionRow[] = [];
+      const byVal = new Map<string, ConsumptionRow[]>();
       for (const row of rows) {
-        const c = (row.color || '').trim();
-        if (!c || c === '—') { noColor.push(row); continue; }
-        if (!byColor.has(c)) byColor.set(c, []);
-        byColor.get(c)!.push(row);
+        const v = (row[key] || '').trim();
+        if (!v || v === '—') { empties.push(row); continue; }
+        if (!byVal.has(v)) byVal.set(v, []);
+        byVal.get(v)!.push(row);
       }
       const dir = sortDir === 'asc' ? 1 : -1;
-      const colorKeys = Array.from(byColor.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR') * dir);
+      const keys = Array.from(byVal.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR') * dir);
       const out = new Map<string, ConsumptionRow[]>();
-      if (noColor.length) out.set('Sem cor', sortWithin(noColor)); // sempre no topo
-      for (const c of colorKeys) out.set(c, sortWithin(byColor.get(c)!));
+      if (empties.length) out.set(emptyLabel, sortWithin(empties)); // sempre no topo
+      for (const k of keys) out.set(k, sortWithin(byVal.get(k)!));
       return out;
     }
-    if (sortKey && sortKey !== 'componentType') {
+    if (sortKey === 'totalQuantity') {
       return new Map([['Todos', sortedRows]]);
     }
     const map = new Map<string, ConsumptionRow[]>();
