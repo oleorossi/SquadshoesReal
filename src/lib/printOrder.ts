@@ -1,5 +1,6 @@
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { escapeHtml } from './htmlUtils';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 function buildPrintHtmlContent(title: string, bodyHtml: string, options?: { landscape?: boolean }): string {
   const pageSize = options?.landscape ? 'A4 landscape' : 'A4';
@@ -347,9 +348,12 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   const allSizes = new Set<string>();
   items.forEach(item => {
     const grade = item.grade as Record<string, number> | null;
-    if (grade) Object.keys(grade).forEach(s => allSizes.add(s));
+    if (grade) Object.keys(grade).filter(s => !s.startsWith('_')).forEach(s => allSizes.add(s));
   });
-  const sizes = Array.from(allSizes).sort((a, b) => Number(a) - Number(b));
+  // Ordena numérico; numerações conjugadas ("33/34") ordenam pela 1ª parte.
+  // ANTES usava Number("33/34") = NaN → colunas conjugadas saíam fora de ordem.
+  const sizeOrder = (s: string) => parseInt(String(s).split('/')[0], 10) || 0;
+  const sizes = Array.from(allSizes).sort((a, b) => sizeOrder(a) - sizeOrder(b));
 
   let bodyRows = '';
   const grandTotals: Record<string, { pedida: number; valor: number }> = {};
@@ -359,7 +363,21 @@ export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVar
   const unitPrice = items.length > 0 ? Number(items[0].unit_price) : 0;
 
   items.forEach(item => {
-    const grade = item.grade as Record<string, number> | null;
+    // `item.grade` no banco é a grade BASE (1 ficha, soma ~12/15). A
+    // quantidade REALMENTE pedida está em `item.quantity`. O PDF precisa
+    // escalar a base pela qtd real (multiplier = quantity / soma da base),
+    // com largest-remainder pra a soma por numeração bater EXATAMENTE com
+    // quantity — igual à tela do PV e à geração de OP.
+    // BUG (corrigido 2026-06-09): antes usava a grade base CRUA → mostrava
+    // ~12 pares por item e valores ~37× menores que o total real do pedido.
+    const baseGrade = item.grade as Record<string, number> | null;
+    const baseSum = baseGrade
+      ? Object.entries(baseGrade).reduce((s, [k, v]) => k.startsWith('_') ? s : s + (Number(v) || 0), 0)
+      : 0;
+    const realQty = Number(item.quantity) || 0;
+    const grade = (baseSum > 0 && realQty > 0)
+      ? scaleGradeWithLargestRemainder(baseGrade, realQty / baseSum, realQty)
+      : (baseGrade || {});
     const refCode = item.technical_sheets?.code || '';
     const refName = item.technical_sheets?.name || '';
     const color = item.color || '—';
