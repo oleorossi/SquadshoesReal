@@ -7,6 +7,7 @@ import { CircleNotch as Loader2, TrendUp as TrendingUp, TrendDown as TrendingDow
 import { supabase } from '@/integrations/supabase/client';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { cn } from '@/lib/utils';
+import { ReferenceLink } from '@/components/ui/reference-link';
 
 type Props = {
   open: boolean;
@@ -18,6 +19,7 @@ type Props = {
 
 type ItemMargin = {
   itemId: string;
+  referenceId: string | null;
   refName: string;
   refCode: string;
   color: string;
@@ -99,7 +101,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                   }
                 }
                 return {
-                  itemId: it.id, refName, refCode, color: it.color || '—',
+                  itemId: it.id, referenceId: it.reference_id ?? null, refName, refCode, color: it.color || '—',
                   quantity: qty, unitPrice, revenue,
                   materialCost: Number(cost.material_cost) || 0,
                   laborCost: Number(cost.labor_cost) || 0,
@@ -112,7 +114,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                 // B4: receita também zerada em itens com erro pra não inflar margem agregada.
                 // A coluna "Margem" da linha mostra "—" (erro) e o tfoot soma só itens válidos.
                 return {
-                  itemId: it.id, refName, refCode, color: it.color || '—',
+                  itemId: it.id, referenceId: it.reference_id ?? null, refName, refCode, color: it.color || '—',
                   quantity: qty, unitPrice, revenue: 0,
                   materialCost: 0, laborCost: 0, overheadCost: 0, packagingCost: 0,
                   totalCost: 0, margin: 0, marginPct: 0,
@@ -244,7 +246,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                   {items.map(it => (
                     <TableRow key={it.itemId}>
                       <TableCell>
-                        <div className="font-medium text-sm">{it.refName}</div>
+                        <ReferenceLink referenceId={it.referenceId} newTab className="font-medium text-sm" title="Abrir ficha técnica (nova aba)">{it.refName}</ReferenceLink>
                         {it.refCode && <div className="text-xs text-muted-foreground font-mono">{it.refCode}</div>}
                       </TableCell>
                       <TableCell>{it.color}</TableCell>

@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
+import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
 import { resolvePrice, type PriceLookup } from '@/lib/mobile/clientContext';
 import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
@@ -726,7 +727,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
-                <span className="font-mono font-bold text-sm">{selectedRef?.code || '—'}</span>
+                {/* Código da ref → abre a ficha técnica em NOVA ABA (não perde
+                    o que está sendo editado no pedido). Pedido user 09/06/2026. */}
+                <ReferenceLink referenceId={selectedRef?.id} newTab title="Abrir ficha técnica (nova aba)">
+                  <span className="font-mono font-bold text-sm">{selectedRef?.code || '—'}</span>
+                </ReferenceLink>
                 {/* Badge NCM da ficha — fica amber quando inválido (faltando ou
                     fora do formato 8 dígitos). NF-e exige NCM válido pra emissão;
                     mostrando aqui o usuário enxerga problema antes mesmo de
