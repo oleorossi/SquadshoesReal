@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
@@ -11,7 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CircleNotch as Loader2, Package, MagnifyingGlass as Search, Gear as Settings2, Stack as Boxes, ClockCounterClockwise as History, Warning as AlertTriangle, CaretRight as ChevronRight, ListPlus, Plus } from '@phosphor-icons/react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { CircleNotch as Loader2, Package, MagnifyingGlass as Search, Gear as Settings2, Stack as Boxes, ClockCounterClockwise as History, Warning as AlertTriangle, CaretRight as ChevronRight, ListPlus, Plus, Trash } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { cn } from '@/lib/utils';
 import SolesCadastroTab from '@/components/soles-hub/SolesCadastroTab';
@@ -19,6 +24,7 @@ import SolesEstoqueTab from '@/components/soles-hub/SolesEstoqueTab';
 import SolesConsumosTab from '@/components/soles-hub/SolesConsumosTab';
 import SolesHistoricoTab from '@/components/soles-hub/SolesHistoricoTab';
 import SoleCreateDialog from '@/components/soles-hub/SoleCreateDialog';
+import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
@@ -59,11 +65,25 @@ function useSoleProducts() {
 
 // ── Página principal ──────────────────────────────────────────────────────
 export default function SolesHub() {
+  const qc = useQueryClient();
   const { data: soles = [], isLoading } = useSoleProducts();
   const [tab, setTab] = usePersistedState<string>('soles-hub-tab', 'cadastro');
   const [selectedId, setSelectedId] = usePersistedState<string | null>('soles-hub-selected', null);
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Exclusão de solado — reaproveita o fluxo padrão de exclusão de produto
+  // (solado É um row de `products`). Faz delete direto se não há vínculos;
+  // se houver (movimentações de estoque, fichas, reservas), abre o dialog de
+  // exclusão forçada com confirmação dupla via RPC force_delete_product.
+  // O hook só invalida ['products'], então o onSuccess aqui também invalida a
+  // query do hub e desseleciona o solado apagado.
+  const deleteFlow = useForceDeleteProductFlow({
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
+      setSelectedId(null);
+    },
+  });
 
   const filtered = useMemo(() => {
     const q = normalizeForSearch(search);
@@ -144,6 +164,9 @@ export default function SolesHub() {
             setTab('cadastro');
           }}
         />
+
+        {/* Dialog de exclusão forçada (aparece quando o solado tem vínculos) */}
+        {deleteFlow.dialog}
 
         {/* Layout: lista esquerda + detalhe direita */}
         <div className="grid grid-cols-12 gap-4 min-h-[600px]">
@@ -246,6 +269,42 @@ export default function SolesHub() {
                     {selected.sku && <>SKU: <span className="font-mono">{selected.sku}</span> · </>}
                     Total em estoque: <span className="font-mono font-medium">{gradeTotal(selected.stock_grade)}</span> pares
                   </>
+                }
+                actions={
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash className="h-3.5 w-3.5" />
+                        Excluir
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Excluir solado “{selected.name}”{selected.color ? ` · ${selected.color}` : ''}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Remove esta variante do cadastro de solados. Se houver histórico
+                          (movimentações de estoque, fichas técnicas ou reservas), o sistema
+                          pedirá uma confirmação extra antes de apagar tudo. Para apenas tirar
+                          de uso preservando o histórico, prefira <strong>desativar</strong>.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => deleteFlow.tryDelete(selected.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Excluir
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 }
               >
                   <Tabs value={tab} onValueChange={setTab} className="w-full">
