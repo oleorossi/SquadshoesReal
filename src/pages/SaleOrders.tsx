@@ -1481,11 +1481,13 @@ export default function SaleOrders() {
                       const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity').eq('sale_order_id', order.id);
                       if (!linkedOps || linkedOps.length === 0) continue;
                       for (const op of linkedOps) {
-                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name, barcode').eq('id', op.reference_id).single();
+                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
                         const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
                         const refImageUrl = await getSignedUrl(rawRefImageUrl);
                         const color = op.color || '';
-                        const { data: variant } = await supabase.from('reference_color_variants').select('image_url').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
+                        // barcode mora em reference_color_variants (por cor) — technical_sheets não tem a coluna
+                        const { data: variant } = await supabase.from('reference_color_variants').select('image_url, barcode').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
+                        const labelBarcode = variant?.barcode || op.order_number || '';
                         const imgUrl = variant?.image_url ? await getSignedUrl(variant.image_url) : refImageUrl;
                         const { data: matData } = await supabase.from('sheet_materials').select('products(name)').eq('sheet_id', op.reference_id).limit(1).maybeSingle();
                         const mainMaterial = (matData?.products as any)?.name || '';
@@ -1500,7 +1502,7 @@ export default function SaleOrders() {
                                 mainMaterial, 
                                 color, 
                                 size, 
-                                barcode: refData?.barcode || op.order_number || '', 
+                                barcode: labelBarcode, 
                                 imageUrl: imgUrl, 
                                 shoeCategory: refData?.shoe_category || '', 
                                 clientOrderNumber: displayOrderNumber 
@@ -1516,7 +1518,7 @@ export default function SaleOrders() {
                               mainMaterial, 
                               color, 
                               size: '—', 
-                              barcode: refData?.barcode || op.order_number || '', 
+                              barcode: labelBarcode, 
                               imageUrl: imgUrl, 
                               shoeCategory: refData?.shoe_category || '', 
                               clientOrderNumber: displayOrderNumber 
