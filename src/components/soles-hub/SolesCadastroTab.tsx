@@ -162,6 +162,13 @@ export default function SolesCadastroTab({ sole }: Props) {
     onSuccess: ({ siblingCount }) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      // O range de numeração do solado alimenta a grade do PV e da ficha
+      // técnica (SaleOrderItemForm: queries 'sole_size_range_specific' /
+      // 'sole_size_conjugations', staleTime 5min, keyed por grupo+material).
+      // Sem invalidar, o PV continua mostrando o range ANTIGO após editar
+      // (bug 2026-06-10: solado 23–36, mas PV só aparecia até 32).
+      qc.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
+      qc.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
       if (siblingCount > 0) {
         toast.success(`Cadastro atualizado · propagado para ${siblingCount} ${siblingCount === 1 ? 'cor' : 'cores'} adicionais.`);
       } else {
@@ -180,6 +187,9 @@ export default function SolesCadastroTab({ sole }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      // Idem update(): reflete o novo range na grade do PV / ficha técnica.
+      qc.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
+      qc.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
       toast.success('Range de numeração atualizado!');
     },
     onError: (e: Error) => toast.error(e.message),
