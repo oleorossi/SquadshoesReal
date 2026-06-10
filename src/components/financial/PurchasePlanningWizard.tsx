@@ -597,6 +597,9 @@ export default function PurchasePlanningWizard() {
             notes: `Plano de compras baseado em pedidos`,
             auto_generated: true,
             status: 'pending',
+            // trigger tg_purchase_order_idempotency (20260523130000) rejeita
+            // key repetida em 30s — protege contra double-click/retry
+            idempotency_key: crypto.randomUUID(),
           })
           .select('id')
           .single();
