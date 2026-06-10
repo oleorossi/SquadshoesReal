@@ -24,7 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -951,7 +951,9 @@ export default function SaleOrders() {
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === form.representative);
     const commission_value = rep ? total * rep.commission_pct / 100 : 0;
-    createOrder.mutate({ order: { ...form, representative: rep?.name || form.representative }, items: validItems, client_id: selectedClientId || null, representative_id: form.representative || null, commission_value });
+    // Idempotência: UUID por submit — se o insert for retentado/duplicado,
+    // o UNIQUE de sale_orders.client_request_id bloqueia o PV em dobro.
+    createOrder.mutate({ order: { ...form, representative: rep?.name || form.representative }, items: validItems, client_id: selectedClientId || null, representative_id: form.representative || null, commission_value, client_request_id: crypto.randomUUID() });
     setDialogOpen(false);
     setForm(emptyForm);
     setSelectedClientId('');
@@ -1019,12 +1021,16 @@ export default function SaleOrders() {
           material_variant_id: (vid && activeVariantIds.has(vid)) ? vid : null,
         };
       });
+      // Idempotência: 1 UUID por cliente/submit, gerado ANTES do mutate —
+      // se houver retry do mesmo submit, reusa o id e o UNIQUE do banco
+      // (sale_orders.client_request_id) impede duplicar o PV copiado.
+      const dupRequestId = crypto.randomUUID();
       try {
         // parent_order_id liga a cópia ao PV origem — permite filtrar
         // "lojas já copiadas" no próximo dialog de duplicação (pedido user
         // 20/05/2026: "tudo que duplicar deve desconsiderar lojas do grupo
         // que já foi copiado daquele pedido").
-        await createOrder.mutateAsync({ order: newOrder, items: newItems, client_id: client.id, parent_order_id: dupOrderId });
+        await createOrder.mutateAsync({ order: newOrder, items: newItems, client_id: client.id, parent_order_id: dupOrderId, client_request_id: dupRequestId });
         successCount++;
       } catch (err: any) {
         const msg = err?.message || 'erro desconhecido';
@@ -1157,10 +1163,24 @@ export default function SaleOrders() {
         }
         const { data: pvItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', order.id);
         if (pvItems && pvItems.length > 0) {
+          // O1 fix (audit PV 2026-06): o claim acima (status → 'Aprovado') dispara
+          // o trigger do banco que JÁ cria 1 OP por item + reserva soft. Refetch
+          // das OPs do PV e dedupe por sale_order_item_id (mesmo padrão de
+          // useUpdateSaleOrderStatus em useSaleOrders.ts) — sem isso o handler
+          // inseria uma SEGUNDA OP por item e debitava o estoque de novo.
+          const { data: existingBulkOps } = await supabase
+            .from('orders')
+            .select('id, sale_order_item_id')
+            .eq('sale_order_id', order.id)
+            .neq('status', 'Cancelada');
+          const existingItemOpIds = new Set(
+            (existingBulkOps || []).map((op: any) => op.sale_order_item_id).filter(Boolean)
+          );
           const createdBulkOps: Array<{ id: string; reference_id: string; quantity: number }> = [];
           let pvHadFailures = false;
           const pkgMode = (order as any).packaging_mode || 'individual_amarrado';
           for (const item of pvItems) {
+            if (!item.reference_id || existingItemOpIds.has(item.id)) continue;
             const grade = item.grade as Record<string, number> | null;
             const fichas = (item as any).fichas || 1;
             const scaledGrade: Record<string, number> = {};
@@ -1174,7 +1194,7 @@ export default function SaleOrders() {
             if (opError) { errors.push(`${order.order_number}: OP - ${opError.message}`); pvHadFailures = true; continue; }
 
             let opHadCriticalFailure = false;
-            const { error: debitError } = await supabase.rpc('hybrid_debit_stock_for_order', { p_reference_id: item.reference_id, p_order_quantity: item.quantity, p_color: item.color || '', p_order_id: createdOp?.id || null, p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || null) } as any);
+            const { error: debitError } = await supabase.rpc('hybrid_debit_stock_for_order', { p_reference_id: item.reference_id, p_order_quantity: item.quantity, p_color: item.color || '', p_order_id: createdOp?.id || null, p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || null), p_force_soft: true } as any);
             if (debitError) { errors.push(`${order.order_number}: Estoque - ${debitError.message}`); opHadCriticalFailure = true; }
 
             if (!opHadCriticalFailure) {
@@ -1187,6 +1207,7 @@ export default function SaleOrders() {
                   p_order_id: createdOp.id,
                   p_color: item.color || '',
                   p_order_grade: scaledGrade,
+                  p_force_soft: true,
                 } as any);
                 if (soleError) {
                   errors.push(`${order.order_number}: Solado - ${soleError.message}`);
@@ -1205,7 +1226,7 @@ export default function SaleOrders() {
               // Debit strap materials
               const strapColors = item.strap_colors as any[];
               if (strapColors && strapColors.length > 0) {
-                const { error: strapError } = await supabase.rpc('debit_strap_stock', { p_strap_colors: strapColors, p_order_quantity: item.quantity, p_order_id: createdOp?.id || null, p_order_grade: item.grade || null } as any);
+                const { error: strapError } = await supabase.rpc('debit_strap_stock', { p_strap_colors: strapColors, p_order_quantity: item.quantity, p_order_id: createdOp?.id || null, p_order_grade: item.grade || null, p_force_soft: true } as any);
                 if (strapError) errors.push(`${order.order_number}: Tiras - ${strapError.message}`);
               }
               // Debit packaging stock — use the per-mode RPC (has internal SELECT FOR UPDATE
@@ -1217,6 +1238,7 @@ export default function SaleOrders() {
                 p_reference_id: item.reference_id,
                 p_order_quantity: item.quantity,
                 p_packaging_mode: pkgMode,
+                p_force_soft: true,
               } as any);
               if (pkgError) errors.push(`${order.order_number}: Embalagem - ${pkgError.message}`);
 
@@ -1248,25 +1270,19 @@ export default function SaleOrders() {
               .in('id', refIds);
             const sectorsMap = new Map<string, string[]>();
             sheetsData?.forEach((s: any) => {
+              // O4 fix: fallback canônico vem de DEFAULT_OP_STAGES (useSaleOrders.ts,
+              // ordem do stageOrder.ts) — a lista legada local tinha 'Mesa' e omitia 'Costura'.
               const sectors = Array.isArray(s.production_sectors) && s.production_sectors.length > 0
                 ? s.production_sectors.map((x: any) => String(x))
-                : ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+                : DEFAULT_OP_STAGES.map(d => d.name);
               sectorsMap.set(s.id, sectors);
             });
-            const DEFAULT_STAGES = [
-              { name: 'Corte Palmilha', order: 1 }, { name: 'Corte Forração', order: 2 },
-              { name: 'Mesa', order: 3 }, { name: 'Silk', order: 4 },
-              { name: 'Colagem', order: 5 }, { name: 'Montagem', order: 6 },
-              { name: 'Solagem', order: 7 }, { name: 'Acabamento', order: 8 },
-              { name: 'Expedição', order: 9 },
-            ];
             for (const op of createdBulkOps) {
-              const sectorNames = sectorsMap.get(op.reference_id) || DEFAULT_STAGES.map(s => s.name);
+              const sectorNames = sectorsMap.get(op.reference_id) || DEFAULT_OP_STAGES.map(d => d.name);
               const rows = sectorNames.map((name: string, idx: number) => {
-                const ds = DEFAULT_STAGES.find(s => s.name === name);
                 return {
                   order_id: op.id, stage_name: name,
-                  stage_order: ds?.order || idx + 1, status: 'pendente',
+                  stage_order: opStageOrder(name, idx), status: 'pendente',
                   quantity_total: op.quantity, quantity_processed: 0,
                 };
               });

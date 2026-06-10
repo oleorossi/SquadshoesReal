@@ -8,19 +8,32 @@ import { calculateFactoringDiscount } from '@/lib/factoringCalc';
 import { computeARSchedule, type InstallmentSchedule } from '@/lib/saleOrderAR';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
+import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 
-const DEFAULT_OP_STAGES = [
-  { name: 'Corte Palmilha', order: 1 },
-  { name: 'Corte Forração', order: 2 },
-  { name: 'Costura', order: 3 },
-  { name: 'Mesa', order: 4 },
-  { name: 'Silk', order: 5 },
-  { name: 'Colagem', order: 6 },
-  { name: 'Montagem', order: 7 },
-  { name: 'Solagem', order: 8 },
-  { name: 'Acabamento', order: 9 },
-  { name: 'Expedição', order: 10 },
-];
+// Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
+// inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
+// (stageOrder.ts), fonte única que espelha a SQL function canonical_stage_order.
+export const DEFAULT_OP_STAGES = [
+  'Corte Palmilha',
+  'Corte Forração',
+  'Costura',
+  'Aviamento',
+  'Silk',
+  'Colagem',
+  'Montagem',
+  'Solagem',
+  'Acabamento',
+  'Expedição',
+].map((name) => ({ name, order: canonicalStageOrder(name) }));
+
+/**
+ * stage_order canônico pro setor; nomes legados ('Mesa', 'Expedicao') resolvem
+ * pelo alias do mapa canônico. Desconhecido → fallback posicional (idx + 1).
+ */
+export const opStageOrder = (name: string, idx: number): number => {
+  const n = canonicalStageOrder(name);
+  return n === 99 ? idx + 1 : n;
+};
 
 /**
  * Parse ISO billing-week string ('2026-W16') to the Monday date of that week.
@@ -807,7 +820,7 @@ export function useSaleOrderAllItems() {
 export function useCreateSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, parent_order_id }: { order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; parent_order_id?: string | null }) => {
+    mutationFn: async ({ order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, parent_order_id, client_request_id }: { order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; parent_order_id?: string | null; client_request_id?: string }) => {
       const total = items.reduce((s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0), 0);
       // Bug fix 20/05/2026 (PV-00122): valor_frete não era gravado quando o
       // usuário definia shipping_rate_per_pair (R$ por par). UI somava
@@ -835,6 +848,12 @@ export function useCreateSaleOrder() {
       // outro pra distribuir entre lojas do grupo, grava parent_order_id pra
       // permitir filtrar lojas já copiadas no próximo dialog de duplicação.
       if (parent_order_id) insertData.parent_order_id = parent_order_id;
+
+      // Idempotência (audit PV 2026-06): sale_orders.client_request_id tem
+      // UNIQUE parcial no banco — retry/double-submit com o mesmo id não cria
+      // PV duplicado. Callers com retry devem gerar o UUID ANTES do loop e
+      // reusar; quando não vier, geramos aqui (cobre cada mutate isolado).
+      insertData.client_request_id = client_request_id ?? crypto.randomUUID();
 
       // Sanitize: replace empty strings with null for all UUID-type fields
       const uuidFields = ['client_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
@@ -1448,10 +1467,9 @@ export function useUpdateSaleOrderStatus() {
                     ? sheetData.production_sectors.map((x: any) => String(x))
                     : DEFAULT_STAGES.map(s => s.name);
                   const rows = sectors.map((name: string, idx: number) => {
-                    const ds = DEFAULT_STAGES.find(s => s.name === name);
                     return {
                       order_id: createdOp.id, stage_name: name,
-                      stage_order: ds?.order || idx + 1, status: 'pendente',
+                      stage_order: opStageOrder(name, idx), status: 'pendente',
                       quantity_total: item.quantity, quantity_processed: 0,
                     };
                   });
@@ -1499,10 +1517,9 @@ export function useUpdateSaleOrderStatus() {
             for (const op of opsNeedingStages) {
               const sectorNames = sectorsMap.get(op.reference_id) || DEFAULT_STAGES.map(s => s.name);
               const rows = sectorNames.map((name: string, idx: number) => {
-                const ds = DEFAULT_STAGES.find(s => s.name === name);
                 return {
                   order_id: op.id, stage_name: name,
-                  stage_order: ds?.order || idx + 1, status: 'pendente',
+                  stage_order: opStageOrder(name, idx), status: 'pendente',
                   quantity_total: op.quantity, quantity_processed: 0,
                 };
               });
@@ -1723,10 +1740,9 @@ export function useUpdateSaleOrderStatus() {
                 ? sheetData.production_sectors.map((x: any) => String(x))
                 : DEFAULT_STAGES.map(s => s.name);
               const rows = sectors.map((name: string, idx: number) => {
-                const ds = DEFAULT_STAGES.find(s => s.name === name);
                 return {
                   order_id: createdOp.id, stage_name: name,
-                  stage_order: ds?.order || idx + 1, status: 'pendente',
+                  stage_order: opStageOrder(name, idx), status: 'pendente',
                   quantity_total: item.quantity, quantity_processed: 0,
                 };
               });
@@ -2274,11 +2290,10 @@ export function useUpdateSaleOrder() {
               ? sheetData.production_sectors.map((x: any) => String(x))
               : DEFAULT_STAGES.map(s => s.name);
             const stages = sectorNames.map((name: string, idx: number) => {
-              const ds = DEFAULT_STAGES.find(s => s.name === name);
               return {
                 order_id: newOp.id,
                 stage_name: name,
-                stage_order: ds?.order || idx + 1,
+                stage_order: opStageOrder(name, idx),
                 status: 'pendente',
                 quantity_total: item.quantity,
                 quantity_processed: 0,
@@ -2490,11 +2505,10 @@ export function useResyncOPsFromSheets() {
                 ? sheetData.production_sectors.map((x: any) => String(x))
                 : DEFAULT_STAGES.map(s => s.name);
               const rows = sectorNames.map((name: string, idx: number) => {
-                const ds = DEFAULT_STAGES.find(s => s.name === name);
                 return {
                   order_id: op.id,
                   stage_name: name,
-                  stage_order: ds?.order || idx + 1,
+                  stage_order: opStageOrder(name, idx),
                   status: opStatus === 'Em Produção' ? 'pendente' : 'pendente',
                   quantity_total: op.quantity,
                   quantity_processed: 0,
@@ -2861,10 +2875,9 @@ export function useResyncOPsFromPV() {
           ? sheetData.production_sectors.map((x: any) => String(x))
           : DEFAULT_STAGES.map(s => s.name);
         const rows = sectorNames.map((name: string, idx: number) => {
-          const ds = DEFAULT_STAGES.find(s => s.name === name);
           return {
             order_id: newOp.id, stage_name: name,
-            stage_order: ds?.order || idx + 1, status: 'pendente',
+            stage_order: opStageOrder(name, idx), status: 'pendente',
             quantity_total: item.quantity, quantity_processed: 0,
           };
         });
