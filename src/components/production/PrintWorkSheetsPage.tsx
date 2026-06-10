@@ -1294,7 +1294,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       }
       // Scaling: grade base × multiplier = pares reais. Acumula também baseGrade
       // + fichas pra worksheet exibir "Por Ficha (Np)".
-      const baseGrid = order.grid || {};
+      const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
@@ -1520,7 +1520,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       }
       // Mantém combinedGrid (escalado) pra exibir "Pares" total e baseGrid+fichas
       // pra exibir "Por Ficha (Np)" — ambas precisam aparecer na ficha.
-      const baseGrid = order.grid || {};
+      const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
@@ -1815,7 +1815,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // Scaling: o grid da OP vem em base (soma=12); a Expedição precisa
       // exibir os pares REAIS por numeração. Sem scale, as colunas mostram
       // 1,2,2,3,2,1,1 mas o total mostra 420 — inconsistente pro conferente.
-      const baseGridForExp = order.grid || {};
+      const baseGridForExp = (order.grid || {}) as Record<string, number>;
       const baseSumExp = Object.values(baseGridForExp).reduce((s: number, v) => s + (Number(v) || 0), 0);
       const orderTotalExp = Number(order.total_pairs ?? 0);
       const multExp = baseSumExp > 0 ? orderTotalExp / baseSumExp : 0;

@@ -168,11 +168,12 @@ export async function syncFinancialRecords(saleOrderId: string) {
   must('Buscar contas a receber existentes', arErr);
 
   const total = Number(so.total) || 0;
+  const nfeRequired: boolean = so.nfe_required;
 
   // PVs informais (nfe_required=false) e PVs finalizados sem NF não geram AR
   // nem lançamentos financeiros. Cancelamos qualquer AR pré-existente (caso
   // a flag tenha sido virada depois de Faturar) e saímos.
-  if (so.nfe_required === false || so.status === 'Finalizado s/ NF') {
+  if (nfeRequired === false || so.status === 'Finalizado s/ NF') {
     if (existingAR && existingAR.length > 0) {
       const idsToCancel = existingAR.filter(ar => ar.status !== 'cancelled' && ar.status !== 'received').map(ar => ar.id);
       if (idsToCancel.length > 0) {
@@ -236,7 +237,9 @@ export async function syncFinancialRecords(saleOrderId: string) {
     // pela UI criava receita 'confirmed' sem documento fiscal (R$ 255k de ghost
     // revenue medidos na auditoria). Quando a NF autoriza, useEmitNfe re-roda
     // este sync — aí o gate passa e a receita é criada normalmente.
-    if (so.nfe_required !== false) {
+    // Cast: o early-return informal acima já garante nfeRequired=true aqui (TS narrowing
+    // prova), mas o guard defensivo é mantido — `as boolean` reseta o narrowing.
+    if ((nfeRequired as boolean) !== false) {
       const { data: authNfe, error: authErr } = await supabase
         .from('nfe_emitidas')
         .select('id')
@@ -651,6 +654,9 @@ export const PACKAGING_MODE_CANONICAL: PackagingMode[] = [
 ];
 
 export type SaleOrderFormData = {
+  /** Número do PV (PV-2026-XXXXX), gerado pelo servidor. Somente leitura na
+   *  UI (badge do header / dialog de tiras) — nunca enviado no save. */
+  order_number?: string | null;
   /** FK pra clients.id — antes só guardávamos o nome/CNPJ como texto, o
    *  que quebrava JOINs (endereço/cidade/UF na etiqueta de caixa externa
    *  ficava vazio porque a FK era null). Agora salva o FK pra resolver

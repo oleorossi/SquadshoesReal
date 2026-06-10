@@ -85,7 +85,10 @@ export function useAddBoxType() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (boxType: Omit<BoxType, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase.from('box_types').insert(boxType).select().single();
+      // min_stock/quantity/unit_price são NOT NULL sem default no banco — a UI
+      // não envia; sem estes defaults o insert falhava com 23502.
+      const payload = { min_stock: 0, quantity: 0, unit_price: 0, ...(boxType as Record<string, unknown>) };
+      const { data, error } = await supabase.from('box_types').insert(payload as never).select().single();
       if (error) throw error;
       return data;
     },

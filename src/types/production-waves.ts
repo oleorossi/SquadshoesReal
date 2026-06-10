@@ -199,6 +199,10 @@ export type SectorBoardRow = {
     progress_pct: number;
     total_pairs: number;
     started_at: string | null;
+    /** 'auto' | 'manual' — no JSONB de v_sector_board desde 20260429110000. */
+    start_mode?: string | null;
+    /** Capacidade diária do setor — no JSONB de v_sector_board desde 20260429140000. */
+    capacity_per_day?: number | null;
   } | null;
   next_wave: {
     wave_id: string;

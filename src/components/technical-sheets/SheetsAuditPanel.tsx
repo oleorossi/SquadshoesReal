@@ -116,7 +116,7 @@ function useSheetsAuditSummary() {
         .select('*')
         .single();
       if (error) throw error;
-      return data as AuditSummary;
+      return data as unknown as AuditSummary;
     },
   });
 }

@@ -323,8 +323,10 @@ export function useDeleteSheet() {
     mutationFn: async (id: string) => {
       const [{ count: matCount, error: matErr }, { count: ordCount, error: ordErr }, { count: soiCount, error: soiErr }] = await Promise.all([
         supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('sheet_id', id),
-        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('technical_sheet_id', id),
-        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('technical_sheet_id', id),
+        // FK real é reference_id → technical_sheets (a coluna technical_sheet_id
+        // nunca existiu — o guard quebrava com 400 e a exclusão nunca validava OPs/itens).
+        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('reference_id', id),
+        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('reference_id', id),
       ]);
       if (matErr) throw matErr;
       if (ordErr) throw ordErr;

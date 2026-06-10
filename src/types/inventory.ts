@@ -138,5 +138,11 @@ export interface ProductionOrder {
   due_date: string;
   status: 'FILA_CORTE' | 'CORTE' | 'AVIAMENTO' | 'MONTAGEM' | 'FINALIZADO';
   materials_reserved: boolean;
+  // Campos opcionais hidratados pelo fluxo de impressão (PrintWorkSheets /
+  // PrintWorkSheetsPage) e lidos por OperatorWorkSheet no header/observações.
+  color?: string | null;
+  sale_order_number?: string | null;
+  pv_number?: string | null;
+  notes?: string | null;
 }
 

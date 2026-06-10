@@ -32,7 +32,7 @@ const REF_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const COLOR = 'Preto';
 const GRADE = { '34': 2, '35': 3, '36': 4, '37': 3, '38': 2 };
 
-async function debitSole(orderId = ORDER_ID, grade = GRADE) {
+async function debitSole(orderId = ORDER_ID, grade: Record<string, number> = GRADE) {
   const { error } = await (supabase as any).rpc('debit_sole_stock_by_grade', {
     p_reference_id: REF_ID,
     p_order_id: orderId,

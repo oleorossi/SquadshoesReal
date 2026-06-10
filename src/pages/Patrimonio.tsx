@@ -37,7 +37,7 @@ function useNamedList(table: string) {
     queryFn: async (): Promise<{ id: string; name: string }[]> => {
       const { data, error } = await supabase.from(table as any).select('id, name').order('name');
       if (error) throw error;
-      return (data ?? []) as { id: string; name: string }[];
+      return (data ?? []) as unknown as { id: string; name: string }[];
     },
   });
 }

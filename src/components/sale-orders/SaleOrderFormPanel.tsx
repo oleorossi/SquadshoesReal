@@ -1889,7 +1889,7 @@ export default function SaleOrderFormPanel({
                }
              });
              const merged = Array.from(mergedMap.values());
-             setItems(merged);
+             setItems(() => merged);
              setShowDuplicateDialog(false);
              setConfirmedDuplicate(true);
              toast.success(`${items.length - merged.length} item(s) mesclado(s). Total agora: ${merged.length} item(s) únicos.`);

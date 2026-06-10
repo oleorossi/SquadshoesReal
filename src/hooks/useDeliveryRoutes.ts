@@ -221,7 +221,7 @@ export function useOwnDeliveryOrders() {
           clients(razao_social, endereco, bairro, cidade, estado, cep, branch_code, branch_name, cnpj),
           sale_order_items(quantity)
         `)
-        .eq('own_delivery' as any, true)
+        .eq('own_delivery', true)
         .order('delivery_deadline', { ascending: true, nullsFirst: false });
       if (error) throw error;
 
