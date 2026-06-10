@@ -3,7 +3,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, Funnel as Filter, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,8 @@ import {
 } from '@/hooks/useArtisanalRecipes';
 import { Switch } from '@/components/ui/switch';
 import { useProducts, getBaseName } from '@/hooks/useProducts';
+import { ContractorHistoryDialog } from '@/components/contractors/ContractorHistoryDialog';
+import { OutsourcingPlanningTab } from '@/components/contractors/OutsourcingPlanningTab';
 const emptyRecipe: Partial<ArtisanalRecipe> = { name: '', artisanal_product_name: '', base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0, active: true };
 
 import { useSaleOrders } from '@/hooks/useSaleOrders';
@@ -67,6 +69,41 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   artisanal_base_color: '',
   artisanal_stock_entry_done: false,
 };
+
+// ── Vocabulário canônico de status de OS ─────────────────────────────────────
+// O DB mistura grafias ('Concluído' do form, 'received' do fluxo de gargalos,
+// 'cancelled' legacy). Centralizar aqui evita filtro/ação divergente por grafia.
+const OS_DONE_STATUSES = ['Concluído', 'Concluido', 'concluido', 'received', 'finalizado', 'Finalizado'];
+const OS_CANCELLED_STATUSES = ['Cancelado', 'cancelled', 'cancelado'];
+// pending_quote/quoted_unconfirmed/quoted = fluxo de gargalos pré-execução →
+// contam como "Pendente" nos chips (e como ativas).
+const OS_PENDING_STATUSES = ['Pendente', 'pending_quote', 'quoted_unconfirmed', 'quoted'];
+const isOsDone = (s: string) => OS_DONE_STATUSES.includes(s);
+const isOsCancelled = (s: string) => OS_CANCELLED_STATUSES.includes(s);
+const isOsActive = (s: string) => !isOsDone(s) && !isOsCancelled(s);
+
+// Chips de filtro da lista de OSs. Labels seguem a linguagem do dono:
+// 'Em Andamento' (DB) → "Em Processamento", 'Concluído' (DB) → "Entregue".
+// Default 'active' = só Pendente + Em Processamento (o que precisa de ação).
+const STATUS_CHIPS: { value: string; label: string }[] = [
+  { value: 'active', label: 'Ativas' },
+  { value: 'all', label: 'Todas' },
+  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Em Andamento', label: 'Em Processamento' },
+  { value: 'Concluído', label: 'Entregue' },
+  { value: 'Cancelado', label: 'Cancelada' },
+];
+function matchesStatusChip(status: string, chip: string): boolean {
+  switch (chip) {
+    case 'all': return true;
+    case 'active': return isOsActive(status);
+    case 'Pendente': return OS_PENDING_STATUSES.includes(status);
+    case 'Em Andamento': return status === 'Em Andamento';
+    case 'Concluído': return isOsDone(status);
+    case 'Cancelado': return isOsCancelled(status);
+    default: return status === chip;
+  }
+}
 
 function getMaterials(order: ServiceOrder): MaterialSent[] {
   if (order.materials_sent && Array.isArray(order.materials_sent) && order.materials_sent.length > 0) return order.materials_sent;
@@ -191,7 +228,10 @@ export default function Contractors() {
   const queryClient = useQueryClient();
 
   const [search, setSearch] = usePersistedState('contractors-search', '');
-  const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status', 'all');
+  // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
+  // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
+  const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status-v2', 'active');
+  const [historyContractor, setHistoryContractor] = useState<Contractor | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [recipeDialog, setRecipeDialog] = useState(false);
@@ -301,12 +341,21 @@ export default function Contractors() {
     });
   };
 
-  const filteredOrders = useMemo(() => {
+  const searchedOrders = useMemo(() => {
     const q = normalizeForSearch(search);
-    let result = orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
-    if (statusFilter !== 'all') result = result.filter(o => o.status === statusFilter);
-    return result;
-  }, [orders, search, statusFilter]);
+    return orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
+  }, [orders, search]);
+
+  const statusChipCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const chip of STATUS_CHIPS) counts[chip.value] = searchedOrders.filter(o => matchesStatusChip(o.status, chip.value)).length;
+    return counts;
+  }, [searchedOrders]);
+
+  const filteredOrders = useMemo(
+    () => searchedOrders.filter(o => matchesStatusChip(o.status, statusFilter)),
+    [searchedOrders, statusFilter],
+  );
 
   // ── Artisanal helpers ──────────────────────────────────────────────────────
   const findProductByNameColor = useCallback((name: string, color: string) => {
@@ -773,6 +822,52 @@ export default function Contractors() {
     queryClient.invalidateQueries({ queryKey: ['service_orders'] });
   };
 
+  // ── Ações rápidas de status (1 clique na linha, sem abrir o form) ──────────
+  // "Marcar como Entregue": status → 'Concluído' + delivered_at (data real).
+  // Reusa o mesmo claim atômico do checkbox de materiais pra evitar dupla conta
+  // a pagar / duplo lançamento artesanal em duplo-clique ou abas concorrentes.
+  const markDelivered = useCallback(async (o: ServiceOrder) => {
+    try {
+      // delivered_at é coluna nova (migration 20260722180000_service-orders-
+      // delivered-at) — `(supabase as any)` até o types.ts ser regenerado.
+      const { data: claimed, error } = await (supabase as any)
+        .from('service_orders')
+        .update({ status: 'Concluído', delivered_at: new Date().toISOString() })
+        .eq('id', o.id)
+        .not('status', 'in', '("Concluído","Concluido","received","Cancelado","cancelled")')
+        .select('id, order_number, artisanal_stock_entry_done');
+      if (error) throw error;
+      if (!claimed || claimed.length === 0) {
+        // Já finalizada por outro clique/aba — só sincroniza a lista.
+        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+        toast.info('OS já estava finalizada — lista atualizada.');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+      queryClient.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
+      toast.success(`OS ${o.order_number} marcada como Entregue.`);
+      // Mesmos efeitos da conclusão via form: conta a pagar + saída artesanal.
+      await createPayableForOrder(o, o.contractors?.name || '');
+      const freshOs = claimed[0] as any;
+      if (o.artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
+        await produceArtisanalOutput(
+          { ...o, artisanal_stock_entry_done: freshOs.artisanal_stock_entry_done } as any,
+          freshOs.order_number || '',
+          o.id,
+        );
+      }
+    } catch (e: any) {
+      toast.error(`Falha ao marcar entrega: ${e?.message || 'erro desconhecido'}`);
+    }
+  }, [queryClient, createPayableForOrder, produceArtisanalOutput]);
+
+  // "Em Processamento" (DB: 'Em Andamento') — passa pelo hook canônico, que já
+  // bloqueia downgrade de OS Concluída e invalida o cache.
+  const markInProgress = useCallback((o: ServiceOrder) => {
+    updateOrder.mutate({ id: o.id, status: 'Em Andamento' } as any);
+  }, [updateOrder]);
+
   const handleSaveOrder = () => {
     if (!editingOrder.contractor_id) return;
     const recipe = isArtisanal ? recipes.find(r => r.id === artRecipeId) : null;
@@ -995,11 +1090,15 @@ export default function Contractors() {
     return 'outline';
   };
 
-  // Labels amigáveis pros status do fluxo de gargalos (DB usa underscore)
+  // Labels amigáveis: fluxo de gargalos (underscore) + vocabulário do dono
+  // ('Em Andamento'→Em Processamento, 'Concluído'/'received'→Entregue).
   const statusLabel = (s: string) => {
     if (s === 'pending_quote') return 'Aguardando prazo';
     if (s === 'quoted_unconfirmed') return 'Aguardando prazo';
     if (s === 'quoted') return 'Prazo confirmado';
+    if (s === 'Em Andamento') return 'Em Processamento';
+    if (isOsDone(s)) return 'Entregue';
+    if (isOsCancelled(s)) return 'Cancelada';
     return s;
   };
 
@@ -1046,6 +1145,7 @@ export default function Contractors() {
         <Tabs defaultValue="orders">
           <TabsList>
             <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
+            <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
             <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
             <TabsTrigger value="recipes" className="gap-1.5"><FlaskConical className="h-3.5 w-3.5" /> Receitas Artesanais</TabsTrigger>
           </TabsList>
@@ -1057,21 +1157,24 @@ export default function Contractors() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Buscar OS, prestador..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-9 w-[160px]">
-                  <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="pending_quote">Aguardando prazo</SelectItem>
-                  <SelectItem value="quoted">Prazo confirmado</SelectItem>
-                  <SelectItem value="Pendente">Pendente</SelectItem>
-                  <SelectItem value="Em Andamento">Em Andamento</SelectItem>
-                  <SelectItem value="Concluído">Concluído</SelectItem>
-                  <SelectItem value="Cancelado">Cancelado</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Chips de status — default "Ativas" (Pendente + Em Processamento).
+                  Labels: 'Em Andamento'→Em Processamento, 'Concluído'→Entregue. */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {STATUS_CHIPS.map(chip => (
+                  <Button
+                    key={chip.value}
+                    size="sm"
+                    variant={statusFilter === chip.value ? 'default' : 'outline'}
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() => setStatusFilter(chip.value)}
+                  >
+                    {chip.label}
+                    <span className={cn('text-[10px] font-mono tabular-nums', statusFilter === chip.value ? 'opacity-80' : 'text-muted-foreground')}>
+                      {statusChipCounts[chip.value] ?? 0}
+                    </span>
+                  </Button>
+                ))}
+              </div>
               <div className="ml-auto">
                 <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>
               </div>
@@ -1221,9 +1324,7 @@ export default function Contractors() {
                               <div className="flex flex-col gap-1">
                                 <Badge variant={statusColor(o.status)} className="text-xs w-fit">{statusLabel(o.status)}</Badge>
                                 {/* Botão "Marcar recebido" só aparece em OS de gargalo ainda não recebidas */}
-                                {!!o.target_sector &&
-                                 o.status !== 'received' && o.status !== 'Concluído' &&
-                                 o.status !== 'Cancelado' && o.status !== 'cancelled' && (
+                                {!!o.target_sector && isOsActive(o.status) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1233,6 +1334,33 @@ export default function Contractors() {
                                     <CheckCircle2 className="h-3 w-3" />
                                     Receber
                                   </Button>
+                                )}
+                                {/* Ações rápidas (1 clique, sem abrir o form) em OS ativa */}
+                                {isOsActive(o.status) && (
+                                  <div className="flex items-center gap-1">
+                                    {o.status !== 'Em Andamento' && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 px-1.5 text-xs gap-1"
+                                        title="Mover para Em Processamento"
+                                        onClick={e => { e.stopPropagation(); markInProgress(o); }}
+                                      >
+                                        <Play className="h-3 w-3" />
+                                        Processar
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-1.5 text-xs gap-1 text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10"
+                                      title="Marcar como Entregue (grava a data de entrega)"
+                                      onClick={e => { e.stopPropagation(); markDelivered(o); }}
+                                    >
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      Entregue
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             </TableCell>
@@ -1262,6 +1390,11 @@ export default function Contractors() {
                   </Table>
                 </div>
             </Panel>
+          </TabsContent>
+
+          {/* ── PLANNING TAB ── */}
+          <TabsContent value="planning" className="mt-3">
+            <OutsourcingPlanningTab />
           </TabsContent>
 
           {/* ── RECIPES TAB ── */}
@@ -1386,7 +1519,7 @@ export default function Contractors() {
                         <TableHead>Cidade/UF</TableHead>
                         <TableHead className="w-[80px]">Prazo Pgto</TableHead>
                         <TableHead className="w-[70px]">Status</TableHead>
-                        <TableHead className="text-right w-[80px]">Ações</TableHead>
+                        <TableHead className="text-right w-[170px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1414,6 +1547,10 @@ export default function Contractors() {
                           <TableCell><Badge variant={c.active ? 'default' : 'secondary'} className="text-xs">{c.active ? 'Ativo' : 'Inativo'}</Badge></TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-0.5">
+                              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" title="Histórico de OSs da terceirizada" onClick={() => setHistoryContractor(c)}>
+                                <ClockCounterClockwise className="h-3.5 w-3.5" />
+                                Histórico
+                              </Button>
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /></Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
@@ -2270,6 +2407,13 @@ export default function Contractors() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ContractorHistoryDialog
+        contractorId={historyContractor?.id || null}
+        contractorName={historyContractor ? (historyContractor.trade_name || historyContractor.name) : null}
+        open={!!historyContractor}
+        onOpenChange={(open) => { if (!open) setHistoryContractor(null); }}
+      />
 
       <ReceivePiecesDialog
         open={receiveDialogOpen}

@@ -68,6 +68,10 @@ export interface ServiceOrder {
   order_id?: string | null;
   quoted_at?: string | null;
   quoted_deadline?: string | null;
+  // Data real de entrega (ação rápida "Marcar como Entregue") — coluna criada
+  // pela migration 20260722180000_service-orders-delivered-at. Até regenerar o
+  // types.ts, updates desta coluna usam `(supabase as any)`.
+  delivered_at?: string | null;
   created_at: string;
   updated_at: string;
   contractors?: Contractor;
