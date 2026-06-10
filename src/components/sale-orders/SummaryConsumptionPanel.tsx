@@ -13,6 +13,7 @@ import {
    convertDm2ToLinearMeters,
    convertDm2ToPlates,
    getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
+   isLinearWidthMissing,
    normalizeText,
    calcRequiredForGrade,
  } from '@/lib/materialConsumption';
@@ -25,6 +26,9 @@ type ConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
+  /** Material de área (dm²/par) cuja ficha de componente não tem largura →
+   *  não dá pra converter pra metros; valor fica em dm² e a UI avisa. */
+  widthMissing?: boolean;
 };
 
 type SoleByType = Record<string, Record<string, number>>; // soleColor -> size -> total pairs
@@ -72,10 +76,11 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
 
   if (existing) {
     existing.totalQuantity += totalQuantity;
+    if (row.widthMissing) existing.widthMissing = true;
     return;
   }
 
-  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity });
+  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing });
 };
 
 const formatUnit = (unit: string) => {
@@ -395,9 +400,34 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             if (shouldSkip) continue;
           }
           let productUnit = product.unit || 'un';
-          let totalQty = (Number(material.quantity_per_unit) || 0) * qty;
-          if (productUnit === 'cm') { totalQty /= 100; productUnit = 'metro'; }
-          addConsumptionRow(consumptionMap, { componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''), groupName, materialName: product.name || groupName, productUnit, color: material.color || '—', totalQuantity: totalQty });
+          const unitLc = (productUnit || '').toString().toLowerCase().trim();
+          const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+          const rawBomQty = (Number(material.quantity_per_unit) || 0) * qty;
+          let totalQty = rawBomQty;
+          let widthMissing = false;
+
+          // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
+          // componente e quantity_per_unit está em dm²/par. Converter para
+          // metros lineares pela largura — senão aparece ~100× inflado.
+          // Tiras/itens lineares sem ficha passam direto. (Espelha o motor
+          // canônico — orderConsumption.ts, caminho BOM.)
+          const bomCs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
+          if (isLinearUnit && bomCs) {
+            if (!isLinearWidthMissing(bomCs as any, productUnit)) {
+              totalQty = convertDm2ToLinearMeters(rawBomQty, bomCs as any);
+              productUnit = 'metro';
+            } else {
+              // Ficha de área SEM largura → não dá pra converter dm²→metro.
+              // Mantém o valor em dm² (regra canônica) e marca o aviso.
+              widthMissing = true;
+              totalQty = rawBomQty;
+              productUnit = 'dm2';
+            }
+          } else if (unitLc === 'cm') {
+            totalQty = rawBomQty / 100;
+            productUnit = 'metro';
+          }
+          addConsumptionRow(consumptionMap, { componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''), groupName, materialName: product.name || groupName, productUnit, color: material.color || '—', totalQuantity: totalQty, widthMissing });
         }
       }
 
@@ -614,6 +644,11 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                          <TableCell className="text-right font-mono font-bold">{row.totalQuantity.toFixed(2)}</TableCell>
                          <TableCell className="text-center">
                            <Badge variant="outline" className="text-xs">{formatUnit(row.productUnit)}</Badge>
+                           {row.widthMissing && (
+                             <div className="text-[10px] text-amber-600 mt-0.5" title="Ficha de componente sem largura cadastrada — valor em dm² (não convertido para metros)">
+                               ⚠ sem largura
+                             </div>
+                           )}
                          </TableCell>
                        </TableRow>
                      ))}
@@ -782,6 +817,11 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                                  </TableCell>
                                  <TableCell className="text-center py-2">
                                    <span className="text-xs font-medium text-muted-foreground">{formatUnit(row.productUnit)}</span>
+                                   {row.widthMissing && (
+                                     <div className="text-[10px] text-amber-600 mt-0.5" title="Ficha de componente sem largura cadastrada — valor em dm² (não convertido para metros)">
+                                       ⚠ sem largura
+                                     </div>
+                                   )}
                                  </TableCell>
                                </TableRow>
                              ))}
