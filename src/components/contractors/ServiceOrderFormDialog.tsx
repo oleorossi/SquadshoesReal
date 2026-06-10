@@ -56,6 +56,7 @@ const SECTORS = [
   { value: 'mesa',           label: 'Aviamento' },
   { value: 'corte_palmilha', label: 'Corte Palmilha' },
   { value: 'corte_forracao', label: 'Corte Forração' },
+  { value: 'corte_cabedal',  label: 'Corte Cabedal' },
   { value: 'silk',           label: 'Silk' },
   { value: 'colagem',        label: 'Colagem' },
   { value: 'montagem',       label: 'Montagem' },
