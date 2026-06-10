@@ -45,14 +45,52 @@ const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Solado
 // Ordena numerações (dígito ou conjugada "33/34") pelo primeiro número.
 const sizeSortKey = (s: string) => { const n = parseInt(s, 10); return Number.isFinite(n) ? n : 9999; };
 
-// Estoque da COLUNA (numeração da grade, possivelmente conjugada "33/34"):
-// direto se a chave existe no stock_grade; senão soma os números-membro.
-const haveForCol = (stock: Record<string, number> | undefined, col: string): number => {
-  if (!stock) return 0;
-  if (stock[col] != null) return Number(stock[col]) || 0;
-  const members = col.split(/[/-]/).map((x) => x.trim());
-  if (members.length > 1) return members.reduce((s, m) => s + (Number(stock[m]) || 0), 0);
-  return 0;
+// Disponibilidade efetiva por COLUNA da grade, cobrindo os dois sentidos de
+// conjugação (regra do CLAUDE.md — distribuir balde sem contar 2×):
+//  - coluna conjugada "33/34" com estoque individual → soma os membros;
+//  - coluna individual "33" com estoque bucketado "33/34" → o balde é
+//    DISTRIBUÍDO entre as colunas individuais que cobre, proporcional à
+//    necessidade de cada uma (não conta o mesmo balde duas vezes).
+const buildColAvailability = (
+  stock: Record<string, number> | undefined,
+  cols: string[],
+  needs: Record<string, number>,
+): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (!stock) { for (const c of cols) out[c] = 0; return out; }
+  const remaining: Record<string, number> = {};
+  for (const [k, v] of Object.entries(stock)) remaining[k] = Number(v) || 0;
+
+  // 1ª passada: chave exata + coluna conjugada somando membros individuais
+  for (const c of cols) {
+    let have = 0;
+    if (remaining[c] != null) { have += remaining[c]; remaining[c] = 0; }
+    const members = c.split(/[/-]/).map((x) => x.trim()).filter(Boolean);
+    if (members.length > 1) {
+      for (const m of members) {
+        if (remaining[m]) { have += remaining[m]; remaining[m] = 0; }
+      }
+    }
+    out[c] = have;
+  }
+
+  // 2ª passada: baldes conjugados restantes no estoque distribuídos entre as
+  // colunas individuais que cobrem, proporcional à necessidade.
+  for (const [key, qty] of Object.entries(remaining)) {
+    if (!qty || qty <= 0) continue;
+    const members = key.split(/[/-]/).map((x) => x.trim()).filter(Boolean);
+    if (members.length < 2) continue;
+    const covered = cols.filter((c) => members.includes(c));
+    if (covered.length === 0) continue;
+    const totalNeed = covered.reduce((s, c) => s + Math.max(0, (needs[c] || 0) - (out[c] || 0)), 0);
+    for (const c of covered) {
+      const gap = Math.max(0, (needs[c] || 0) - (out[c] || 0));
+      const share = totalNeed > 0 ? (qty * gap) / totalNeed : qty / covered.length;
+      out[c] = (out[c] || 0) + share;
+    }
+    remaining[key] = 0;
+  }
+  return out;
 };
 
 function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
@@ -117,9 +155,11 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
             return (
               <TableRow key={i}>
                 <TableCell><Badge variant="outline" className="text-xs">{r.color}</Badge></TableCell>
-                {sizes.map((s) => {
+                {(() => {
+                  const avail = buildColAvailability(r.soleSizeStock, sizes, r.sizeBreakdown || {});
+                  return sizes.map((s) => {
                   const need = r.sizeBreakdown?.[s] || 0;
-                  const have = haveForCol(r.soleSizeStock, s);
+                  const have = avail[s] || 0;
                   if (need <= 0) return <TableCell key={s} className="text-center text-muted-foreground">·</TableCell>;
                   const ok = have >= need;
                   return (
@@ -131,7 +171,8 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
                       {need}
                     </TableCell>
                   );
-                })}
+                  });
+                })()}
                 <TableCell className="text-right font-mono font-bold whitespace-nowrap">{total} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
               </TableRow>
             );
