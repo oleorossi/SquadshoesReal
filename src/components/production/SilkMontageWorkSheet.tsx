@@ -847,27 +847,20 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             </div>
           );
 
-          // Último colorBlock + SignatureFooter ficam num wrapper que:
-          //   1. .keep-together (não quebram entre si — soft constraint)
-          //   2. .force-page-before (page-break-before: always — HARD)
-          //
-          // O page-break-before garante matematicamente que o footer não
-          // vire órfão: o wrapper SEMPRE começa em nova pg, então cor +
-          // footer aparecem juntos. Trade-off: sobra pequena na pg
-          // anterior. Aceitável vs footer numa pg dedicada com gap gigante.
-          //
-          // Só força break se houver mais de 1 cor (com 1 só, a ficha já
-          // cabe inteira em 1-2 pgs sem precisar de pg dedicada).
+          // Último colorBlock + checklist + SignatureFooter: o bloco final
+          // (checklist+footer) é atômico (.keep-together) e ancorado ao
+          // conteúdo anterior (.keep-with-previous) — só pula de página
+          // quando realmente não cabe. (Antes usava .force-page-before, que
+          // SEMPRE abria página nova e deixava branco desnecessário na
+          // página anterior.)
           if (isLast) {
-            const forceBreak = group.colorGroups.length > 1;
             return (
-              <div
-                key={idx}
-                className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
-              >
+              <div key={idx}>
                 {colorBlock}
-                <KitHandoffChecklist sector={sector} />
-                <SignatureFooter />
+                <div className="keep-together keep-with-previous">
+                  <KitHandoffChecklist sector={sector} />
+                  <SignatureFooter />
+                </div>
               </div>
             );
           }
