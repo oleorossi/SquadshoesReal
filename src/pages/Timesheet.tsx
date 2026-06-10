@@ -429,6 +429,8 @@ function TimesheetRecordsTab() {
     exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
     overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 2.0,
     tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, created_at: '', updated_at: '',
+    works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true,
+    works_thursday: true, works_friday: true, works_saturday: false,
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -623,6 +625,9 @@ function TimesheetRecordsTab() {
     );
     const admissionDateStr = (emp as any)?.admission_date as string | null | undefined;
     const terminationDateStr = (emp as any)?.termination_date as string | null | undefined;
+    // Escala INDIVIDUAL do funcionário (fallback default) — antes usava sempre
+    // a default, ignorando work_schedule_id.
+    const empSchedule = ((emp as any)?.work_schedule_id && schedules.find(s => s.id === (emp as any).work_schedule_id)) || defaultSchedule;
 
     // Generate all days in the date range
     if (!batchDateRange) {
@@ -631,7 +636,7 @@ function TimesheetRecordsTab() {
         const date = new Date(rec.record_date + 'T12:00:00');
         const dayOfWeek = date.getDay();
         const isHol = isHolidayDate(rec.record_date);
-        const summary = calculateDaySummary(rec.punches as string[], dayOfWeek, defaultSchedule, isHol);
+        const summary = calculateDaySummary(rec.punches as string[], dayOfWeek, empSchedule, isHol);
         return { ...summary, date: rec.record_date, punches: rec.punches as string[] } as DaySummary;
       });
     }
@@ -659,7 +664,7 @@ function TimesheetRecordsTab() {
       const dayOfWeek = cursor.getDay();
       const isHol = isHolidayDate(dateStr);
       const punches = recordMap.get(dateStr) || [];
-      const summary = calculateDaySummary(punches, dayOfWeek, defaultSchedule, isHol);
+      const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol);
       allDays.push({ ...summary, date: dateStr, punches } as DaySummary);
       cursor.setDate(cursor.getDate() + 1);
     }

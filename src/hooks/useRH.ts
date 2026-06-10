@@ -52,9 +52,10 @@ export interface BankHoursMovement {
    * - 'pay' — RH marca HE pra pagamento na folha do mês (decisão 2026-05-21).
    *   Quando 'pay', payrollCalc lê esses minutos via overtime_pct (50/100).
    */
-  movement_type: 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payout' | 'pay';
+  movement_type: 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payment';
   minutes: number;
-  reason: string;
+  /** Coluna real no banco é `description` (a antiga `reason` não existe — insert falhava). */
+  description: string;
   reference_id: string | null;
   /** Adicional HE (50 ou 100) — apenas quando movement_type='pay'. */
   overtime_pct: number | null;
@@ -103,6 +104,27 @@ export function useBankHoursBalances() {
   });
 }
 
+
+/** Guard compartilhado: lança erro se existir folha NÃO-rascunho cujo período
+ *  ('YYYY-MM' ou intervalo 'YYYY-MM-DD_YYYY-MM-DD') cubra a data informada. */
+async function assertNoClosedPayroll(employeeId: string, dateISO: string, acao: string) {
+  const { data: runs, error } = await (supabase as any)
+    .from('payroll_runs')
+    .select('id, status, period')
+    .eq('employee_id', employeeId)
+    .neq('status', 'rascunho');
+  if (error) throw new Error(`Falha ao verificar folha de pagamento: ${error.message}`);
+  const d = dateISO.slice(0, 10);
+  const run = (runs || []).find((r: any) => {
+    const p = String(r.period || '');
+    if (/^\d{4}-\d{2}$/.test(p)) return d.slice(0, 7) === p;
+    const mInt = p.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
+    if (mInt) return d >= mInt[1] && d <= mInt[2];
+    return false;
+  });
+  if (run) throw new Error(`Folha do período ${run.period} já ${run.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de ${acao}.`);
+}
+
 export function useAddBankHoursMovement() {
   const qc = useQueryClient();
   return useMutation({
@@ -114,10 +136,7 @@ export function useAddBankHoursMovement() {
       if ((m.movement_type === 'credit' || m.movement_type === 'compensation') && minutes < 0) {
         throw new Error('Crédito/compensação não pode ter minutos negativos.');
       }
-      const period = m.movement_date.slice(0, 7);
-      const { data: pr, error: prErr } = await (supabase as any).from('payroll_runs').select('id, status').eq('employee_id', m.employee_id).eq('period', period).maybeSingle();
-      if (prErr) throw new Error(`Falha ao verificar folha de pagamento: ${prErr.message}`);
-      if (pr && pr.status !== 'rascunho') throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de adicionar lançamento.`);
+      await assertNoClosedPayroll(m.employee_id, m.movement_date, 'adicionar lançamento');
       const { error } = await (supabase as any).from('bank_hours_movements').insert(m);
       if (error) throw error;
     },
@@ -136,10 +155,7 @@ export function useDeleteBankHoursMovement() {
     mutationFn: async (id: string) => {
       const { data: mov, error: movErr } = await (supabase as any).from('bank_hours_movements').select('employee_id, movement_date').eq('id', id).single();
       if (movErr) throw new Error(`Falha ao carregar lançamento: ${movErr.message}`);
-      const period = (mov.movement_date as string).slice(0, 7);
-      const { data: pr, error: prErr } = await (supabase as any).from('payroll_runs').select('id, status').eq('employee_id', mov.employee_id).eq('period', period).maybeSingle();
-      if (prErr) throw new Error(`Falha ao verificar folha de pagamento: ${prErr.message}`);
-      if (pr && pr.status !== 'rascunho') throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de remover o lançamento de banco de horas.`);
+      await assertNoClosedPayroll(mov.employee_id, mov.movement_date as string, 'remover o lançamento de banco de horas');
       const { error } = await (supabase as any).from('bank_hours_movements').delete().eq('id', id);
       if (error) throw error;
     },
@@ -262,14 +278,7 @@ export function useUpsertAbsence() {
   return useMutation({
     mutationFn: async (a: Partial<Absence> & { id?: string; employee_id: string; start_date: string; end_date: string; absence_type: AbsenceType }) => {
       const { id, ...rest } = a;
-      const period = a.start_date.slice(0, 7);
-      const { data: pr, error: prErr } = await (supabase as any)
-        .from('payroll_runs').select('id, status')
-        .eq('employee_id', a.employee_id).eq('period', period).maybeSingle();
-      if (prErr) throw new Error(`Falha ao verificar folha do período: ${prErr.message}`);
-      if (pr && pr.status !== 'rascunho') {
-        throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de alterar ausências.`);
-      }
+      await assertNoClosedPayroll(a.employee_id, a.start_date, 'alterar ausências');
       if (id) {
         const { error } = await (supabase as any).from('employee_absences').update(rest).eq('id', id);
         if (error) throw error;
@@ -295,17 +304,7 @@ export function useDeleteAbsence() {
       const { data: abs, error: absErr } = await (supabase as any)
         .from('employee_absences').select('employee_id, start_date').eq('id', id).single();
       if (absErr) throw absErr;
-      const period = (abs.start_date as string).slice(0, 7);
-      // CRITICAL: capture the error. A silent SELECT failure (RLS / network) yielded
-      // pr===null, bypassing the closed-payroll guard and allowing retroactive edits
-      // to a paid/approved payroll period.
-      const { data: pr, error: prErr } = await (supabase as any)
-        .from('payroll_runs').select('id, status')
-        .eq('employee_id', abs.employee_id).eq('period', period).maybeSingle();
-      if (prErr) throw new Error(`Falha ao verificar folha do período: ${prErr.message}`);
-      if (pr && pr.status !== 'rascunho') {
-        throw new Error(`Folha do período ${period} já ${pr.status === 'pago' ? 'paga' : 'aprovada'} — desfaça antes de remover ausência.`);
-      }
+      await assertNoClosedPayroll(abs.employee_id, abs.start_date as string, 'remover ausência');
       const { error } = await (supabase as any).from('employee_absences').delete().eq('id', id);
       if (error) throw error;
     },
@@ -339,6 +338,11 @@ export interface PayrollRun {
   absent_days: number;
   overtime_50_minutes: number;
   overtime_100_minutes: number;
+  /** R$ de HE (colunas de 20260705120000 — existem no banco). */
+  overtime_amount: number;
+  /** R$ de descontos por atraso/falta (20260705120000). */
+  deductions_amount: number;
+  net_salary: number;
   night_minutes: number;
   overtime_50_value: number;
   overtime_100_value: number;

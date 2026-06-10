@@ -432,7 +432,7 @@ function ResolveDialog({ row, from, to, onClose }: {
         movement_date: movementDate,
         minutes: signedMinutes,
         movement_type: bankKind,
-        reason: reason || `Fechamento ${from}–${to}`,
+        description: reason || `Fechamento ${from}–${to}`,
         overtime_pct: null,
       });
       onClose();

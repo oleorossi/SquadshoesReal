@@ -88,6 +88,8 @@ export function OvertimeResolutionPanel() {
             // Antes a função recebia NULL → retornava 0 HE pra todos.
             p_from: month,
             p_to: lastDayISO,
+            // Mesmo saldo que BankHours/Espelho exibem (skip dias sem batida)
+            p_skip_missing: true,
           });
           if (error) return { employee_id: id, overtime_minutes: 0 };
           // RPC retorna balance_min, days_worked, etc. Procuramos o overtime do período.

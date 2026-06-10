@@ -111,7 +111,7 @@ export function calculateWeeklyPeriod(
     weekMap.get(wk)!.push(day);
   }
 
-  const tolerance = schedule.tolerance_minutes || 10;
+  const tolerance = schedule.tolerance_minutes ?? 10;
   const minimumOT = schedule.minimum_overtime_minutes || 0;
   const weeks: WeekSummary[] = [];
 
