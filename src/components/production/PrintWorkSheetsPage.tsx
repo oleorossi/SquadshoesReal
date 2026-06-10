@@ -25,6 +25,7 @@ import logoSquad from '@/assets/logo-squad-shoes.jpg';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+import { sheetHasSector } from '@/lib/sectors';
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -533,6 +534,36 @@ function groupOrdersByRefColor(orders: any[]): Array<{
   });
 }
 
+// ── Helpers de ficha técnica / conjugação ───────────────────────────────────
+
+/** Consumo médio por par (dm²): usa o escalar da ficha quando > 0; senão a
+ *  média dos valores > 0 do JSONB `*_consumption_per_size`. (E1) */
+function avgConsumptionPerPair(scalar: unknown, perSize: unknown): number | undefined {
+  const s = Number(scalar);
+  if (Number.isFinite(s) && s > 0) return s;
+  if (perSize && typeof perSize === 'object' && !Array.isArray(perSize)) {
+    const vals = Object.values(perSize as Record<string, unknown>)
+      .map(Number)
+      .filter(v => Number.isFinite(v) && v > 0);
+    if (vals.length > 0) return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+  return undefined;
+}
+
+/** Re-bucketiza uma chave de numeração pelo balde conjugado do solado
+ *  (sole_size_conjugations). "34" cai em "33/34" quando o grupo do solado
+ *  conjuga; chaves já conjugadas ("33/34") e não-numéricas passam intactas.
+ *  Garante que a coluna da ficha de Solagem/Colagem bate com o balde FÍSICO
+ *  do estoque (stock_grade). (C1) */
+function bucketSizeKey(size: string, conjugations: Array<{ size_key: string; sizes: number[] }> | undefined): string {
+  if (!conjugations || conjugations.length === 0) return size;
+  if (size.includes('/')) return size; // já é chave de balde conjugado
+  const n = Number(size);
+  if (!Number.isFinite(n)) return size;
+  const conj = conjugations.find(c => Array.isArray(c.sizes) && c.sizes.includes(n));
+  return conj ? conj.size_key : size;
+}
+
 const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheetsPageProps) => {
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
   // substitui o antigo dropdown single + bool printAll + prop selectedSectors.
@@ -664,7 +695,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // e incluem `_lot_number` na key — assim cada lote vira ficha separada em
   // cada setor (mantendo ergonomia de agregar OPs por solado dentro do lote).
   const { data: lotsMap } = useOrderLotsBatch(orderIds);
-  // expandedOrders movido p/ DEPOIS de soleNameLookup — expande `printOrders`
+  // expandedOrders movido p/ DEPOIS de resolveSoleForOrder — expande `printOrders`
   // (orders já filtradas por faixa/solado), e o filtro de solado usa o lookup.
 
   const { data: orderCosts = [] } = useQuery({
@@ -757,44 +788,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   });
 
   const { data: soleMappings = [] } = useQuery({
-    queryKey: ['sole_ref_mappings_v3', referenceIds],
+    queryKey: ['sole_ref_mappings_v4', referenceIds],
     enabled: referenceIds.length > 0,
     queryFn: async () => {
       // is_fachetado vive no products do solado — necessário pra disparar
       // alerta "Modelo com fachete" SOMENTE quando o solado é fachetado.
+      // sole_group_id + campos extras do produto (active, quantity,
+      // sole_classification) alimentam o resolveSoleForOrder (A1), que
+      // espelha as prioridades P1/P2 do resolve_sole_color do banco.
       const { data, error } = await (supabase as any)
         .from('technical_sheet_sole_colors')
-        .select('sheet_id, product_color, sole_product_id, products:sole_product_id(name, color, group_id, is_fachetado)')
+        .select('sheet_id, product_color, sole_product_id, sole_group_id, products:sole_product_id(id, name, color, group_id, quantity, active, sole_classification, is_fachetado)')
         .in('sheet_id', referenceIds);
       if (error) throw error;
       return data;
     },
   });
 
-  // Pacote de embalagem por grupo de solado (pra Expedição)
-  const soleGroupIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const m of soleMappings as any[]) {
-      const gid = (m as any)?.products?.group_id;
-      if (gid) ids.add(gid);
-    }
-    return Array.from(ids);
-  }, [soleMappings]);
-
-  const { data: soleGroupPackaging = [] } = useQuery({
-    queryKey: ['sole_group_packaging_v2', soleGroupIds],
-    enabled: soleGroupIds.length > 0,
-    queryFn: async () => {
-      // silk_url do grupo do solado entra na cascata de fallback de marca
-      // pra ficha de Silk (último nível antes do logo Squad).
-      const { data, error } = await (supabase as any)
-        .from('product_groups')
-        .select('id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho, silk_url')
-        .in('id', soleGroupIds);
-      if (error) throw error;
-      return data || [];
-    },
-  });
+  // Pacote de embalagem por grupo de solado (pra Expedição) — movido pra
+  // DEPOIS de allSoleGroupIds (A1): precisa cobrir também os grupos que só
+  // aparecem via sole_group_id da ficha (P0) ou do mapping legado (P2), não
+  // apenas os grupos dos produtos já vinculados em technical_sheet_sole_colors.
 
   // Variantes de cor por referência (pra exibir foto na ficha + fallback cor preta)
   const { data: refColorVariants = [] } = useQuery({
@@ -866,13 +880,138 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   }, [liningColorMappings]);
 
   const { data: sheetLiningFlags = [] } = useQuery({
-    queryKey: ['sheet_insole_lining', referenceIds],
+    queryKey: ['sheet_insole_lining_v2', referenceIds],
     enabled: referenceIds.length > 0,
     queryFn: async () => {
+      // sole_group_id + primary_sole_id: prioridades P0/P3 do resolveSoleForOrder
+      // (A1). production_sectors: roteiro da ficha pro filtro por setor (B1).
+      // upper/lining_consumption(_per_size): consumo médio por par nas fichas
+      // de operador (E1).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material, knife_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material, upper_consumption, upper_consumption_per_size, lining_consumption, lining_consumption_per_size, knife_size_ranges, shoe_category')
         .in('id', referenceIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Ficha técnica indexada por id — base do resolveSoleForOrder (A1), do
+  // filtro de roteiro por production_sectors (B1) e dos materiais (E1).
+  const sheetById = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const s of sheetLiningFlags as any[]) m.set((s as any).id, s);
+    return m;
+  }, [sheetLiningFlags]);
+
+  // Universo de grupos de solado relevantes pro print: sole_group_id da ficha
+  // (P0), sole_group_id dos mappings sem produto explícito (P2) e group_id dos
+  // produtos já vinculados.
+  const allSoleGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of soleMappings as any[]) {
+      if ((m as any).sole_group_id) ids.add((m as any).sole_group_id);
+      const gid = (m as any)?.products?.group_id;
+      if (gid) ids.add(gid);
+    }
+    for (const s of sheetLiningFlags as any[]) {
+      if ((s as any).sole_group_id) ids.add((s as any).sole_group_id);
+    }
+    return Array.from(ids).sort();
+  }, [soleMappings, sheetLiningFlags]);
+
+  const primarySoleIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of sheetLiningFlags as any[]) {
+      if ((s as any).primary_sole_id) ids.add((s as any).primary_sole_id);
+    }
+    return Array.from(ids).sort();
+  }, [sheetLiningFlags]);
+
+  // Regras cabedal → cor do solado (PRIORIDADE 0 do resolve_sole_color do
+  // banco). Campo histórico chama palmilha_color, mas é a COR-ALVO do solado.
+  const { data: soleColorConjugations = [] } = useQuery({
+    queryKey: ['sole_color_conjugations_for_print', allSoleGroupIds],
+    enabled: allSoleGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('sole_color_conjugations')
+        .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+        .in('sole_group_id', allSoleGroupIds)
+        .eq('active', true);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Baldes de numeração conjugada (ex.: 23/24 = 1 par físico) por grupo de
+  // solado — re-bucketiza as colunas de grade da Solagem/Colagem (C1).
+  const { data: soleSizeConjugations = [] } = useQuery({
+    queryKey: ['sole_size_conjugations_for_print', allSoleGroupIds],
+    enabled: allSoleGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('sole_size_conjugations')
+        .select('sole_group_id, size_key, sizes, display_order')
+        .in('sole_group_id', allSoleGroupIds)
+        .order('display_order');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const sizeConjByGroup = useMemo(() => {
+    const m = new Map<string, Array<{ size_key: string; sizes: number[] }>>();
+    for (const c of soleSizeConjugations as any[]) {
+      const arr = m.get(c.sole_group_id) ?? [];
+      arr.push({ size_key: c.size_key, sizes: (Array.isArray(c.sizes) ? c.sizes : []).map(Number) });
+      m.set(c.sole_group_id, arr);
+    }
+    return m;
+  }, [soleSizeConjugations]);
+
+  // Produtos dos grupos de solado (+ primary_sole_id avulsos) — candidatos das
+  // prioridades P0/P2/P3 do resolveSoleForOrder (A1) e fonte do
+  // sole_classification='palmilha_pronta' (B2).
+  const { data: soleGroupProducts = [] } = useQuery({
+    queryKey: ['sole_group_products_for_print', allSoleGroupIds, primarySoleIds],
+    enabled: allSoleGroupIds.length > 0 || primarySoleIds.length > 0,
+    queryFn: async () => {
+      const cols = 'id, name, color, group_id, quantity, active, sole_classification, is_fachetado';
+      const out: any[] = [];
+      if (allSoleGroupIds.length > 0) {
+        const { data, error } = await (supabase as any)
+          .from('products')
+          .select(cols)
+          .in('group_id', allSoleGroupIds)
+          .eq('active', true);
+        if (error) throw error;
+        out.push(...(data || []));
+      }
+      if (primarySoleIds.length > 0) {
+        const { data, error } = await (supabase as any)
+          .from('products')
+          .select(cols)
+          .in('id', primarySoleIds);
+        if (error) throw error;
+        for (const p of data || []) {
+          if (!out.some(x => x.id === p.id)) out.push(p);
+        }
+      }
+      return out;
+    },
+  });
+
+  const { data: soleGroupPackaging = [] } = useQuery({
+    queryKey: ['sole_group_packaging_v3', allSoleGroupIds],
+    enabled: allSoleGroupIds.length > 0,
+    queryFn: async () => {
+      // silk_url do grupo do solado entra na cascata de fallback de marca
+      // pra ficha de Silk (último nível antes do logo Squad).
+      const { data, error } = await (supabase as any)
+        .from('product_groups')
+        .select('id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho, silk_url')
+        .in('id', allSoleGroupIds);
       if (error) throw error;
       return data || [];
     },
@@ -958,14 +1097,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   }, [sheetLiningFlags]);
 
   // ── Lookup maps ──────────────────────────────────────────────────────────────
-  const soleColorLookup = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const mapping of soleMappings) {
-      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
-      m.set(key, (mapping as any).products?.color || null);
-    }
-    return m;
-  }, [soleMappings]);
+  // (soleColorLookup/soleNameLookup/soleFachetadoLookup removidos em 2026-06-10 —
+  //  resolviam solado SÓ por technical_sheet_sole_colors + texto. Substituídos
+  //  pelo resolveSoleForOrder (A1), que espelha o resolve_sole_color do banco.)
 
   const palmilhaLookup = useMemo(() => {
     const m = new Map<string, string>();
@@ -984,18 +1118,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [sheetLiningFlags]);
 
-  // Solado fachetado: chave sheetId::cor (cabedal). True só quando o products
-  // do solado vinculado a esse cabedal+cor tem is_fachetado=true. Sem isso,
-  // o alerta "Modelo com fachete" seguia o flag de forração da palmilha
-  // (insole_has_lining), disparando falso-positivo em quase toda OP.
-  const soleFachetadoLookup = useMemo(() => {
-    const m = new Map<string, boolean>();
-    for (const mapping of soleMappings as any[]) {
-      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
-      m.set(key, !!mapping?.products?.is_fachetado);
-    }
-    return m;
-  }, [soleMappings]);
+  // Solado fachetado: agora derivado do SOLADO RESOLVIDO (resolveSoleForOrder
+  // — A1) via products.is_fachetado, no ponto de uso em silkMontageGroups.
+  // O lookup textual por mapping foi removido junto com soleColorLookup.
 
   const readyMadeLookup = useMemo(() => {
     const m = new Map<string, boolean>();
@@ -1073,20 +1198,153 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const getBaseName = (name: string) =>
     name.replace(/\s*-\s*(Preto|Caramelo|Branco|Nude|Vermelho|Azul|Rosa|Verde|Cinza|Ouro|Prata)$/i, '').trim();
 
-  // Tipo/nome do solado (ex.: "Solado Tratorado") por sheetId::cor-do-cabedal.
-  // Usado p/ segmentar a ficha de solado (Solagem/Colagem) por TIPO + cor do
-  // SOLADO. DEFINIDO APÓS getBaseName de propósito: o useMemo avalia no render,
-  // então referenciar getBaseName antes da declaração dá TDZ ("Cannot access
-  // before initialization") — crash que o tsc NÃO pega (closure).
-  const soleNameLookup = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const mapping of soleMappings as any[]) {
-      const key = `${mapping.sheet_id}::${(mapping.product_color || '').toLowerCase()}`;
-      const nm = mapping.products?.name ? getBaseName(mapping.products.name) : '';
-      if (nm) m.set(key, nm);
+  // ── Resolução CANÔNICA de solado (A1) ──────────────────────────────────────
+  // Espelha a função SQL resolve_sole_color(sheet_id, cor) nas 4 prioridades:
+  //   P0 sole_color_conjugations por technical_sheets.sole_group_id
+  //      (match exato lower(cabedal_color) → senão regra default `*`)
+  //   P1 mapping explícito technical_sheet_sole_colors c/ sole_product_id (lower)
+  //   P2 mapping legado sem sole_product_id → produto do grupo c/ MAIOR estoque
+  //   P3 technical_sheets.primary_sole_id
+  // Antes, 8 pontos deste arquivo resolviam SÓ por technical_sheet_sole_colors
+  // + texto — 6 OPs imprimiam "Sem Solado" e 1 saía com a cor errada.
+  // DEFINIDO APÓS getBaseName de propósito: o useMemo avalia no render, então
+  // referenciar getBaseName antes da declaração dá TDZ ("Cannot access before
+  // initialization") — crash que o tsc NÃO pega (closure).
+  type ResolvedSole = {
+    productId: string | null;
+    productName: string | null;
+    /** getBaseName(productName) — nome sem sufixo de cor. */
+    baseName: string | null;
+    soleColor: string | null;
+    groupId: string | null;
+    soleClassification: string | null;
+    isFachetado: boolean;
+  };
+  const resolveSoleForOrder = useMemo(() => {
+    // Índices construídos uma vez por snapshot de dados.
+    const productsById = new Map<string, any>();
+    const productsByGroup = new Map<string, any[]>();
+    for (const p of soleGroupProducts as any[]) {
+      productsById.set(p.id, p);
+      if (p.group_id && p.active !== false) {
+        const arr = productsByGroup.get(p.group_id) ?? [];
+        arr.push(p);
+        productsByGroup.set(p.group_id, arr);
+      }
     }
-    return m;
-  }, [soleMappings]);
+    // ORDER BY quantity DESC NULLS LAST, id — igual ao SQL.
+    for (const arr of productsByGroup.values()) {
+      arr.sort((a, b) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0) || String(a.id).localeCompare(String(b.id)));
+    }
+    const conjByGroup = new Map<string, any[]>();
+    for (const c of soleColorConjugations as any[]) {
+      const arr = conjByGroup.get(c.sole_group_id) ?? [];
+      arr.push(c);
+      conjByGroup.set(c.sole_group_id, arr);
+    }
+    const mappingsBySheet = new Map<string, any[]>();
+    for (const m of soleMappings as any[]) {
+      const arr = mappingsBySheet.get(m.sheet_id) ?? [];
+      arr.push(m);
+      mappingsBySheet.set(m.sheet_id, arr);
+    }
+    const norm = (s: unknown) => String(s ?? '').trim().toLowerCase();
+    const fromProduct = (p: any): ResolvedSole => ({
+      productId: p?.id ?? null,
+      productName: p?.name ?? null,
+      baseName: p?.name ? getBaseName(p.name) : null,
+      soleColor: p?.color ?? null,
+      groupId: p?.group_id ?? null,
+      soleClassification: p?.sole_classification ?? null,
+      isFachetado: p?.is_fachetado === true,
+    });
+
+    const cache = new Map<string, ResolvedSole | null>();
+    return (referenceId: string | null | undefined, cabedalColor: string | null | undefined): ResolvedSole | null => {
+      if (!referenceId) return null;
+      const colorLower = norm(cabedalColor);
+      const cacheKey = `${referenceId}::${colorLower}`;
+      if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+
+      const resolve = (): ResolvedSole | null => {
+        const sheet = sheetById.get(referenceId);
+
+        // P0 — regra ativa em sole_color_conjugations pro grupo da ficha.
+        const sheetGroupId = sheet?.sole_group_id || null;
+        if (sheetGroupId && colorLower !== '') {
+          const rules = conjByGroup.get(sheetGroupId) || [];
+          const rule = rules.find(r => norm(r.cabedal_color) === colorLower)
+            ?? rules.find(r => r.is_default === true);
+          const targetColor = rule?.palmilha_color; // nome histórico — é a cor-alvo do SOLADO
+          if (targetColor) {
+            const candidate = (productsByGroup.get(sheetGroupId) || [])
+              .find(p => norm(p.color) === norm(targetColor));
+            if (candidate) return fromProduct(candidate);
+          }
+        }
+
+        const sheetMappings = (mappingsBySheet.get(referenceId) || [])
+          .filter(m => norm(m.product_color) === colorLower);
+
+        // P1 — mapping explícito com sole_product_id (produto ativo).
+        const explicit = sheetMappings.find(m => m.sole_product_id && m.products && m.products.active !== false);
+        if (explicit) return fromProduct(explicit.products);
+
+        // P2 — mapping legado sem sole_product_id → produto do grupo com
+        // maior estoque.
+        const legacy = sheetMappings.find(m => !m.sole_product_id && m.sole_group_id);
+        if (legacy) {
+          const candidate = (productsByGroup.get(legacy.sole_group_id) || [])[0];
+          if (candidate) return fromProduct(candidate);
+        }
+
+        // P3 — primary_sole_id da ficha técnica.
+        const primaryId = sheet?.primary_sole_id || null;
+        if (primaryId) {
+          const p = productsById.get(primaryId);
+          if (p && p.active !== false) return fromProduct(p);
+        }
+
+        return null;
+      };
+
+      const result = resolve();
+      cache.set(cacheKey, result);
+      return result;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soleMappings, sheetById, soleGroupProducts, soleColorConjugations]);
+
+  // Nome-base do solado resolvido (ex.: "Solado Tratorado"); '' sem resolução.
+  // Substitui o antigo soleNameLookup (que só via technical_sheet_sole_colors).
+  const soleNameFor = (referenceId: string | null | undefined, cabedalColor: string | null | undefined): string =>
+    resolveSoleForOrder(referenceId, cabedalColor)?.baseName || '';
+
+  // B2 — "palmilha pronta" EFETIVA: flag da ficha OR produto do solado
+  // resolvido com sole_classification='palmilha_pronta' (zera corte de
+  // palmilha/forração independente da flag da ficha — mesma regra do banco).
+  const isEffectiveReadyMade = (sheetId: string | null | undefined, cabedalColor: string | null | undefined): boolean => {
+    if (!sheetId) return false;
+    if (readyMadeLookup.get(sheetId) === true) return true;
+    return resolveSoleForOrder(sheetId, cabedalColor)?.soleClassification === 'palmilha_pronta';
+  };
+
+  // B1 — roteiro da ficha (technical_sheets.production_sectors): a OP só entra
+  // na ficha de um setor que está no roteiro dela. production_sectors null/[]
+  // (fichas antigas) = sem restrição (sheetHasSector trata como "tem todos").
+  const orderInRoteiro = (referenceId: string | null | undefined, sector: string): boolean => {
+    if (!referenceId) return true;
+    return sheetHasSector(sheetById.get(referenceId), sector);
+  };
+  // Grupo agregado (lista de OPs): mantém o grupo se AO MENOS uma OP tem o
+  // setor no roteiro — não some com quantidades em grupos mistos.
+  const opsInRoteiro = (opNumbers: (string | null | undefined)[] | undefined, sector: string): boolean => {
+    if (!opNumbers || opNumbers.length === 0) return true;
+    return opNumbers.some(op => {
+      const o = op ? ordersByOpNumber.get(String(op)) : null;
+      return !o || orderInRoteiro(o.reference_id, sector);
+    });
+  };
 
   // ── Filtros de impressão: opções de solado + orders filtradas ──────────────
   // soleOptions vem de TODAS as orders (lista todos os solados, mesmo os filtrados
@@ -1096,11 +1354,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const soleOptions = useMemo(() => {
     const set = new Set<string>();
     for (const o of orders as any[]) {
-      const sole = soleNameLookup.get(`${o.reference_id}::${(o.color || '').toLowerCase()}`) || '';
+      const sole = soleNameFor(o.reference_id, o.color);
       if (sole) set.add(sole);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [orders, soleNameLookup]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, resolveSoleForOrder]);
 
   const printOrders = useMemo(() => {
     return (orders as any[]).filter(o => {
@@ -1110,12 +1369,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         if (sizeFilter === 'adulto' && !ad) return false;
       }
       if (soleFilter.size > 0) {
-        const sole = soleNameLookup.get(`${o.reference_id}::${(o.color || '').toLowerCase()}`) || '';
+        const sole = soleNameFor(o.reference_id, o.color);
         if (!soleFilter.has(sole)) return false;
       }
       return true;
     });
-  }, [orders, sizeFilter, soleFilter, soleNameLookup]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, sizeFilter, soleFilter, resolveSoleForOrder]);
 
   const expandedOrders = useMemo(
     () => expandOrdersByLots(printOrders as any[], lotsMap),
@@ -1168,10 +1428,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   //   6. product_groups.silk_url (silk default do solado)
   //   7. logo Squad Shoes (último fallback)
   const getOrderSilk = (order: any): { silk_name: string; silk_url: string | null } | undefined => {
-    const soleMapping = soleMappings.find((m: any) => m.sheet_id === order.reference_id && m.product_color === order.color);
-    const soleProductId = soleMapping?.sole_product_id;
-    const soleProductName = (soleMapping as any)?.products?.name;
-    const soleGroupId = (soleMapping as any)?.products?.group_id;
+    // A1/F1: solado pela resolução CANÔNICA (P0→P3 do resolve_sole_color),
+    // com match de cor case-insensitive — antes era find por
+    // technical_sheet_sole_colors com `===` case-sensitive na cor.
+    const resolvedSole = resolveSoleForOrder(order.reference_id, order.color);
+    const soleProductId = resolvedSole?.productId || null;
+    const soleGroupId = resolvedSole?.groupId || null;
     // BUG fix 20/05/2026: early return aqui quebrava a cascata quando a ficha
     // não tinha mapping em technical_sheet_sole_colors (caía no fallback
     // textual sole_material). Resultado: silk do cliente NUNCA aparecia
@@ -1182,29 +1444,50 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const clientId = saleOrder?.client_id;
     const clientRecord = clientId ? (clientsInfo as any[]).find((c: any) => c.id === clientId) : null;
     const economicGroupId = clientRecord?.economic_group_id;
-    const baseSoleName = soleProductName ? getBaseName(soleProductName) : null;
+    const baseSoleName = resolvedSole?.baseName || null;
 
-    // Nível 1: sole_silk_registrations — busca específica → grupo → default
-    const findSilkRegistration = (cId?: string | null, gId?: string | null) =>
-      silkRegistrations.find((s: any) => {
-        const matchesCtx = cId ? s.client_id === cId : (gId ? s.economic_group_id === gId : !s.client_id && !s.economic_group_id);
-        const matchesProd = (soleProductId && s.sole_product_id === soleProductId) || (baseSoleName && s.sole_type && getBaseName(s.sole_type) === baseSoleName);
-        return matchesProd && matchesCtx;
+    // Nível 1: sole_silk_registrations — busca específica → grupo → default.
+    // F2: espelha o RPC resolve_item_brand — match por sole_product_id tem
+    // prioridade; fallback por sole_type (nome) só vale em registros legados
+    // SEM sole_product_id, comparado case-insensitive.
+    const matchesSole = (s: any): boolean =>
+      (!!soleProductId && s.sole_product_id === soleProductId) ||
+      (!s.sole_product_id && !!baseSoleName && !!s.sole_type
+        && getBaseName(s.sole_type).toLowerCase() === baseSoleName.toLowerCase());
+    const findSilkRegistration = (cId?: string | null, gId?: string | null) => {
+      const candidates = silkRegistrations.filter((s: any) => {
+        const matchesCtx = cId
+          ? s.client_id === cId
+          : gId
+            ? (s.economic_group_id === gId && !s.client_id)
+            : (!s.client_id && !s.economic_group_id);
+        return matchesCtx && matchesSole(s);
       });
-    let silk = findSilkRegistration(clientId);
-    if (!silk && economicGroupId) silk = findSilkRegistration(null, economicGroupId);
-    if (!silk) silk = findSilkRegistration(null, null);
-    if (silk?.silk_url) return { silk_name: silk.silk_name, silk_url: silk.silk_url };
+      return candidates.find((s: any) => !!soleProductId && s.sole_product_id === soleProductId) || candidates[0];
+    };
+    const regClient = clientId ? findSilkRegistration(clientId) : undefined;
+    const regGroup = economicGroupId ? findSilkRegistration(null, economicGroupId) : undefined;
+    const regDefault = findSilkRegistration(null, null);
+    const silk = regClient || regGroup || regDefault;
+    // F2: o NOME da marca segue a cascata canônica do resolve_item_brand
+    // (cliente → grupo econômico → default do solado → 'Squad Shoes'),
+    // independente de onde a URL da imagem vier (cascata visual abaixo).
+    const brandName =
+      (regClient?.silk_name || '').trim() ||
+      (regGroup?.silk_name || '').trim() ||
+      (regDefault?.silk_name || '').trim() ||
+      'Squad Shoes';
+    if (silk?.silk_url) return { silk_name: brandName, silk_url: silk.silk_url };
 
-    // Nível 2-3: cliente direto (silk_url > logo_url)
-    if (clientRecord?.silk_url) return { silk_name: clientRecord.razao_social || 'Marca do cliente', silk_url: clientRecord.silk_url };
-    if (clientRecord?.logo_url) return { silk_name: clientRecord.razao_social || 'Marca do cliente', silk_url: clientRecord.logo_url };
+    // Nível 2-3: cliente direto (silk_url > logo_url) — fallback visual.
+    if (clientRecord?.silk_url) return { silk_name: brandName, silk_url: clientRecord.silk_url };
+    if (clientRecord?.logo_url) return { silk_name: brandName, silk_url: clientRecord.logo_url };
 
     // Nível 4-5: grupo econômico
     if (economicGroupId) {
       const groupRecord = (economicGroupsInfo as any[]).find((g: any) => g.id === economicGroupId);
-      if (groupRecord?.silk_url) return { silk_name: silk?.silk_name || 'Marca do grupo', silk_url: groupRecord.silk_url };
-      if (groupRecord?.logo_url) return { silk_name: silk?.silk_name || 'Marca do grupo', silk_url: groupRecord.logo_url };
+      if (groupRecord?.silk_url) return { silk_name: brandName, silk_url: groupRecord.silk_url };
+      if (groupRecord?.logo_url) return { silk_name: brandName, silk_url: groupRecord.logo_url };
     }
 
     // Nível 6: silk default do grupo do solado (pedido user 20/05/2026:
@@ -1212,20 +1495,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // irá utilizar no Solado"). Cascata explícita: cliente → grupo → solado.
     if (soleGroupId) {
       const soleGroup = (soleGroupPackaging as any[]).find((p: any) => p.id === soleGroupId);
-      if (soleGroup?.silk_url) return { silk_name: silk?.silk_name || baseSoleName || 'Silk do solado', silk_url: soleGroup.silk_url };
+      if (soleGroup?.silk_url) return { silk_name: brandName, silk_url: soleGroup.silk_url };
     }
 
     // Nível 7: logo Squad — fallback absoluto pra ficha não sair em branco.
-    return { silk_name: silk?.silk_name || 'Squad Shoes', silk_url: logoSquad };
+    return { silk_name: brandName, silk_url: logoSquad };
   };
 
   const getOrderColors = (order: any) => {
     const sheetId = order.reference_id;
     const cabedelColor = (order.color || '').toLowerCase();
-    const soleKey = `${sheetId}::${cabedelColor}`;
-    const soleColor = soleColorLookup.get(soleKey) || null;
+    // A1: cor do solado pela resolução canônica (P0→P3), não mais só pelo
+    // mapping textual de technical_sheet_sole_colors.
+    const soleColor = resolveSoleForOrder(sheetId, order.color)?.soleColor || null;
     const insoleHasLining = liningFlagLookup.get(sheetId) !== false;
-    const insoleReadyMade = readyMadeLookup.get(sheetId) === true;
+    // B2: pronta na cor EFETIVA (flag da ficha OR solado palmilha_pronta).
+    const insoleReadyMade = isEffectiveReadyMade(sheetId, order.color);
     const hasStraps = hasStrapsLookup.get(sheetId) === true;
     const mesaCapacity = mesaCapacityLookup.get(sheetId) ?? 0;
     let insoleColor: string | null = null;
@@ -1243,16 +1528,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     for (const order of expandedOrders) {
       const sheetId = order.reference_id;
       if (!sheetId) continue;
-      const isReadyMade = readyMadeLookup.get(sheetId) === true;
+      // B1: OP fora do roteiro de Corte Palmilha não entra na ficha do setor
+      // (production_sectors da ficha; null/[] = sem restrição).
+      if (!orderInRoteiro(sheetId, 'Corte Palmilha')) continue;
+      // B2: pronta na cor efetiva (flag OR solado palmilha_pronta).
+      const isReadyMade = isEffectiveReadyMade(sheetId, order.color);
       const cabedelColorLower = (order.color || '').toLowerCase();
       const cabedelColorName = order.variant?.color_name || order.color || '';
       const insoleColor = resolveInsoleColor(sheetId, cabedelColorLower, cabedelColorName, isReadyMade);
-      const soleMapping = (soleMappings as any[]).find(
-        m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
-      );
-      const rawSoleName = (soleMapping as any)?.products?.name || '';
-      // Fallback: se não houver mapeamento em technical_sheet_sole_colors,
-      // usa o sole_material textual da ficha técnica. Antes caía em "Sem
+      // A1: solado pela resolução canônica (P0→P3).
+      const rawSoleName = resolveSoleForOrder(sheetId, order.color)?.productName || '';
+      // Fallback: se a resolução canônica não achar produto, usa o
+      // sole_material textual da ficha técnica. Antes caía em "Sem
       // Solado" mesmo com a ficha tendo solado definido.
       const fallbackSole = soleMaterialByRef.get(sheetId) || '';
       const soleName = rawSoleName
@@ -1333,7 +1620,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     });
     return { palmilhaGroups: groups, allSizes: sortedSizes };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, readyMadeLookup, palmilhaLookup, soleMappings]);
+  }, [expandedOrders, readyMadeLookup, palmilhaLookup, resolveSoleForOrder, sheetById]);
 
   // ── Setores agrupados por estratégia (config dinâmica) ────────────────────
   // Lê de sector_grouping_config (Supabase) com fallback aos defaults.
@@ -1406,25 +1693,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         ? `${colorName}::${strapSig}${lotSuffix}`
         : `${colorName}${lotSuffix}`;
 
-      const soleMapping = (soleMappings as any[]).find(
-        m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
-      );
-      const rawSoleName = (soleMapping as any)?.products?.name || '';
-      // Fallback: se não houver mapeamento em technical_sheet_sole_colors,
-      // usa o sole_material textual da ficha técnica. Antes caía em "Sem
+      // A1: solado pela resolução canônica (P0→P3 do resolve_sole_color).
+      const resolvedSole = resolveSoleForOrder(sheetId, order.color);
+      const rawSoleName = resolvedSole?.productName || '';
+      // Fallback: se a resolução canônica não achar produto, usa o
+      // sole_material textual da ficha técnica. Antes caía em "Sem
       // Solado" mesmo com a ficha tendo solado definido.
       const fallbackSole = soleMaterialByRef.get(sheetId) || '';
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Chave de agrupamento por SOLADO. Quando há mapping real em
-      // technical_sheet_sole_colors, usa sole_product_id pra agrupar fichas
-      // que usam o MESMO produto solado (legítimo). Quando cai no fallback
+      // Chave de agrupamento por SOLADO. Quando a resolução canônica acha
+      // produto, usa sole_product_id pra agrupar fichas que usam o MESMO
+      // produto solado (legítimo). Quando cai no fallback
       // textual (sole_material), usa sheetId pra evitar que fichas distintas
       // com mesmo label "01" colidam num único card (bug reportado em
       // 2026-05-19: SP117 e SP119 com sole_material='01' fundiam-se e a
       // segunda OP era engolida pela primeira processada).
-      const soleProductId = (soleMapping as any)?.sole_product_id || null;
+      const soleProductId = resolvedSole?.productId || null;
       const soleKey = soleProductId
         ? `pid::${soleProductId}`
         : (fallbackSole ? `txt::${sheetId}` : 'none');
@@ -1441,10 +1727,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         const variants = variantsByRef.get(sheetId) || [];
         const exactVariant = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower);
         const alerts: SectorAlert[] = [];
-        // Fachete: só dispara alerta se o SOLADO vinculado ao cabedal+cor
-        // tem is_fachetado=true (definido no cadastro de Solados).
+        // Fachete: só dispara alerta se o SOLADO RESOLVIDO (A1) pra esse
+        // cabedal+cor tem is_fachetado=true (definido no cadastro de Solados).
         // Antes checava liningFlag (forração da palmilha) — falso-positivo.
-        const isSoleFachetado = soleFachetadoLookup.get(`${sheetId}::${cabedelColorLower}`) === true;
+        const isSoleFachetado = resolvedSole?.isFachetado === true;
         if (isSoleFachetado) {
           alerts.push({ text: 'Solado fachetado — duplicar corte de forração do salto', variant: 'warning' });
         }
@@ -1474,12 +1760,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         // Sem isso, esses 2 setores apareciam com itens irrelevantes (ex:
         // modelos de tira no Corte Cabedal, palmilhas prontas em Corte
         // Forração) — confundia o cortador e quantidades ficavam infladas.
+        // B2: usa a pronta-na-cor EFETIVA (flag da ficha OR solado resolvido
+        // com sole_classification='palmilha_pronta') — antes só via a flag.
         const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
-          && (readyMadeLookup.get(sheetId) !== true);
+          && !isEffectiveReadyMade(sheetId, order.color);
         const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
+
+        // E1: materiais + consumo médio por par da ficha técnica — a
+        // SilkMontageWorkSheet já renderiza esses campos (ficavam vazios).
+        const sheetRow = sheetById.get(sheetId);
 
         colorMap.set(colorKey, {
           color: colorName,
+          upperMaterial: sheetRow?.upper_material || undefined,
+          liningMaterial: sheetRow?.lining_material || undefined,
+          upperConsumptionPerPair: avgConsumptionPerPair(sheetRow?.upper_consumption, sheetRow?.upper_consumption_per_size),
+          liningConsumptionPerPair: avgConsumptionPerPair(sheetRow?.lining_consumption, sheetRow?.lining_consumption_per_size),
           // Cor da forração pra essa cor de cabedal (usado em Corte Forração).
           liningColor: liningColorLookup.get(`${sheetId}::${cabedelColorLower}`) || null,
           // Modelo com tiras não tem cabedal — no Corte Forração esconde a
@@ -1586,145 +1882,187 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, soleFachetadoLookup, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
 
-  // ── Solagem: consolidated by sole color ──────────────────────────────────────
-  const solagemData = useMemo<{ bands: SoleColorBand[]; allSizes: string[]; grandTotal: number; expectedTotal: number } | null>(() => {
+  // ── Solagem / Colagem: consolidated by sole color ────────────────────────────
+  // B1 (2026-06-10): as bandas passam a ser calculadas POR SETOR — uma OP só
+  // entra na ficha de Solagem/Colagem se o setor está no roteiro da ficha
+  // técnica dela (production_sectors). Como os roteiros podem divergir entre
+  // os dois setores, o memo devolve um conjunto de bandas pra cada um.
+  type SolagemSectorData = { bands: SoleColorBand[]; allSizes: string[]; grandTotal: number; expectedTotal: number };
+  const solagemData = useMemo<{ solagem: SolagemSectorData | null; colagem: SolagemSectorData | null } | null>(() => {
     if (!includesSector('Solagem') && !includesSector('Colagem')) return null;
-    const soleColorMap = new Map<string, {
-      grade: Record<string, number>; totalPairs: number;
-      baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
-      mixedGrades: boolean;
-      refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
-      opNumbers: string[]; pvNumbers: string[];
-      soleColor: string;
-      soleType: string;
-      lotInfo?: { number: number; total: number };
-    }>();
-    const sizeSet = new Set<string>();
 
-    for (const order of expandedOrders) {
-      const sheetId = order.reference_id;
-      const cabedelColorLower = (order.color || '').toLowerCase();
-      const soleColor = soleColorLookup.get(`${sheetId}::${cabedelColorLower}`) || '';
-      const soleType = soleNameLookup.get(`${sheetId}::${cabedelColorLower}`) || '';
-      // Tipo + cor do solado entram na chave: cores de CABEDAL diferentes com o
-      // MESMO solado+cor de solado CONSOLIDAM (480 + 480 → 960); solados/cores de
-      // solado diferentes NÃO se fundem.
-      // ⚠ CRÍTICO (auditoria 2026-06-08): quando a ref NÃO tem mapeamento em
-      // technical_sheet_sole_colors (soleType='' E soleColor=''), consolidar por
-      // "::" fundiria cores de cabedal DISTINTAS numa banda só (ex.: STash STX
-      // CARAMELO+OFF WHITE+PRETO = 1 banda de 36 em vez de 3 de 12). Sem mapeamento,
-      // cada (ref, cor do cabedal) vira sua própria banda, rotulada pela cor do
-      // cabedal (fallback — o certo é cadastrar a cor do solado da ref).
-      const hasSoleMapping = soleType !== '' || soleColor !== '';
-      const bandColorLabel = soleColor || (order.color || 'Sem Cor');
-      // Lot sizing (PR 2026-05-23): lote vira parte da chave da banda de
-      // cor. Lotes diferentes da mesma cor viram bandas separadas.
-      const lotNum = order._lot_number ?? 0;
-      const lotTotal = order._total_lots ?? 0;
-      const bandKey = (hasSoleMapping
-        ? `${soleType}::${soleColor}`
-        : `nomap::${sheetId}::${cabedelColorLower}`)
-        + (lotTotal > 1 ? `::lot${lotNum}` : '');
+    const buildForSector = (sectorName: 'Solagem' | 'Colagem'): SolagemSectorData => {
+      const soleColorMap = new Map<string, {
+        grade: Record<string, number>; totalPairs: number;
+        baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
+        mixedGrades: boolean;
+        refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
+        opNumbers: string[]; pvNumbers: string[];
+        soleColor: string;
+        soleType: string;
+        lotInfo?: { number: number; total: number };
+      }>();
+      const sizeSet = new Set<string>();
+      // C1: re-bucketiza um grid pelos baldes conjugados do solado (23/24…)
+      // somando os números individuais que caem no mesmo balde.
+      const bucketizeGrid = (
+        grid: Record<string, number>,
+        conjugations: Array<{ size_key: string; sizes: number[] }> | undefined,
+      ): Record<string, number> => {
+        const out: Record<string, number> = {};
+        for (const [size, qty] of Object.entries(grid)) {
+          const k = bucketSizeKey(size, conjugations);
+          out[k] = (out[k] ?? 0) + (Number(qty) || 0);
+        }
+        return out;
+      };
+      let expectedTotal = 0;
 
-      if (!soleColorMap.has(bandKey)) {
-        soleColorMap.set(bandKey, {
-          grade: {}, totalPairs: 0,
-          baseGrade: { ...((order.grid as Record<string, number>) || {}) },
-          baseGradeSum: 0, fichas: 0, mixedGrades: false,
-          refs: [],
-          opNumbers: [], pvNumbers: [],
-          soleColor: bandColorLabel, soleType,
-          lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
-        });
-      }
-      const band = soleColorMap.get(bandKey)!;
-      if (order.op_number && !band.opNumbers.includes(order.op_number)) {
-        band.opNumbers.push(order.op_number);
-      }
-      if (order.sale_order_number && !band.pvNumbers.includes(order.sale_order_number)) {
-        band.pvNumbers.push(order.sale_order_number);
-      }
-      // Acumula referências (sandálias) com foto pra exibir no header da ficha.
-      const refCode = order.reference_code || '';
-      const refColor = order.color || '';
-      const refKey = `${refCode}::${refColor}`;
-      if (refCode && !band.refs.some(r => r.key === refKey)) {
-        const variants = variantsByRef.get(sheetId) || [];
-        const exactImg = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower)?.image_url;
-        const pretoImg = !exactImg
-          ? variants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
-          : null;
-        const tsImg = tsImageByRef.get(sheetId) || null;
-        band.refs.push({
-          key: refKey,
-          code: refCode,
-          name: order.reference_name || '',
-          color: refColor,
-          image_url: exactImg || pretoImg || tsImg || null,
-        });
-      }
-      // Scaling + baseGrade pra worksheet exibir "Por Ficha (Np)".
-      const baseGrid = (order.grid || {}) as Record<string, number>;
-      const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
-      const orderTotal = Number(order.total_pairs ?? 0);
-      const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
-      band.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-      if (baseSum > 0) {
-        if (band.baseGradeSum === 0) band.baseGradeSum = baseSum;
-        else if (band.baseGradeSum !== baseSum) band.mixedGrades = true;
-      }
-      // Largest-remainder (Hamilton) por OP: cada OP escala EXATAMENTE pro seu
-      // total — antes o Math.round por número podia driftar ±N na soma da banda
-      // (as demais fichas já usavam largest-remainder; só esta ficava no round).
-      // Guard baseSum>0: com grade vazia/zerada o largest-remainder distribuiria
-      // o orderTotal em números errados (pares fantasma).
-      if (baseSum > 0 && orderTotal > 0) {
-        const scaledGrid = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
-        for (const [size, qty] of Object.entries(scaledGrid)) {
-          const q = Number(qty) || 0;
-          if (q > 0) {
-            band.grade[size] = (band.grade[size] ?? 0) + q;
-            sizeSet.add(size);
+      for (const order of expandedOrders) {
+        const sheetId = order.reference_id;
+        // B1: OP cujo roteiro (production_sectors) não inclui este setor não
+        // entra na ficha. Fichas antigas com roteiro null/[] = sem restrição.
+        if (!orderInRoteiro(sheetId, sectorName)) continue;
+        expectedTotal += Number((order as any).total_pairs ?? 0);
+        const cabedelColorLower = (order.color || '').toLowerCase();
+        // A1: solado pela resolução canônica (P0→P3 do resolve_sole_color),
+        // não mais só pelo mapping textual de technical_sheet_sole_colors.
+        const resolvedSole = resolveSoleForOrder(sheetId, order.color);
+        const soleColor = resolvedSole?.soleColor || '';
+        const soleType = resolvedSole?.baseName || '';
+        // C1: baldes conjugados de numeração do GRUPO do solado resolvido —
+        // a coluna da ficha bate com o balde físico do estoque (stock_grade).
+        const conjugations = resolvedSole?.groupId ? sizeConjByGroup.get(resolvedSole.groupId) : undefined;
+        // Tipo + cor do solado entram na chave: cores de CABEDAL diferentes com o
+        // MESMO solado+cor de solado CONSOLIDAM (480 + 480 → 960); solados/cores de
+        // solado diferentes NÃO se fundem.
+        // ⚠ CRÍTICO (auditoria 2026-06-08): quando a ref NÃO resolve solado
+        // (soleType='' E soleColor=''), consolidar por "::" fundiria cores de
+        // cabedal DISTINTAS numa banda só (ex.: STash STX CARAMELO+OFF WHITE+
+        // PRETO = 1 banda de 36 em vez de 3 de 12). Sem resolução, cada
+        // (ref, cor do cabedal) vira sua própria banda, rotulada pela cor do
+        // cabedal (fallback — o certo é cadastrar o solado da ref).
+        const hasSoleMapping = soleType !== '' || soleColor !== '';
+        const bandColorLabel = soleColor || (order.color || 'Sem Cor');
+        // Lot sizing (PR 2026-05-23): lote vira parte da chave da banda de
+        // cor. Lotes diferentes da mesma cor viram bandas separadas.
+        const lotNum = order._lot_number ?? 0;
+        const lotTotal = order._total_lots ?? 0;
+        const bandKey = (hasSoleMapping
+          ? `${soleType}::${soleColor}`
+          : `nomap::${sheetId}::${cabedelColorLower}`)
+          + (lotTotal > 1 ? `::lot${lotNum}` : '');
+
+        if (!soleColorMap.has(bandKey)) {
+          soleColorMap.set(bandKey, {
+            grade: {}, totalPairs: 0,
+            baseGrade: bucketizeGrid((order.grid as Record<string, number>) || {}, conjugations),
+            baseGradeSum: 0, fichas: 0, mixedGrades: false,
+            refs: [],
+            opNumbers: [], pvNumbers: [],
+            soleColor: bandColorLabel, soleType,
+            lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
+          });
+        }
+        const band = soleColorMap.get(bandKey)!;
+        if (order.op_number && !band.opNumbers.includes(order.op_number)) {
+          band.opNumbers.push(order.op_number);
+        }
+        if (order.sale_order_number && !band.pvNumbers.includes(order.sale_order_number)) {
+          band.pvNumbers.push(order.sale_order_number);
+        }
+        // Acumula referências (sandálias) com foto pra exibir no header da ficha.
+        const refCode = order.reference_code || '';
+        const refColor = order.color || '';
+        const refKey = `${refCode}::${refColor}`;
+        if (refCode && !band.refs.some(r => r.key === refKey)) {
+          const variants = variantsByRef.get(sheetId) || [];
+          const exactImg = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower)?.image_url;
+          const pretoImg = !exactImg
+            ? variants.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))?.image_url
+            : null;
+          const tsImg = tsImageByRef.get(sheetId) || null;
+          band.refs.push({
+            key: refKey,
+            code: refCode,
+            name: order.reference_name || '',
+            color: refColor,
+            image_url: exactImg || pretoImg || tsImg || null,
+          });
+        }
+        // Scaling + baseGrade pra worksheet exibir "Por Ficha (Np)".
+        const baseGrid = (order.grid || {}) as Record<string, number>;
+        const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
+        const orderTotal = Number(order.total_pairs ?? 0);
+        const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
+        band.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
+        if (baseSum > 0) {
+          if (band.baseGradeSum === 0) band.baseGradeSum = baseSum;
+          else if (band.baseGradeSum !== baseSum) band.mixedGrades = true;
+        }
+        // Largest-remainder (Hamilton) por OP: cada OP escala EXATAMENTE pro seu
+        // total — antes o Math.round por número podia driftar ±N na soma da banda
+        // (as demais fichas já usavam largest-remainder; só esta ficava no round).
+        // Guard baseSum>0: com grade vazia/zerada o largest-remainder distribuiria
+        // o orderTotal em números errados (pares fantasma).
+        if (baseSum > 0 && orderTotal > 0) {
+          const scaledGrid = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
+          for (const [size, qty] of Object.entries(scaledGrid)) {
+            const q = Number(qty) || 0;
+            if (q > 0) {
+              // C1: número individual que cai num balde conjugado do solado
+              // vira a chave do balde (somando) — bate com o estoque físico.
+              const key = bucketSizeKey(size, conjugations);
+              band.grade[key] = (band.grade[key] ?? 0) + q;
+              sizeSet.add(key);
+            }
           }
         }
+        band.totalPairs = Object.values(band.grade).reduce((s, v) => s + v, 0);
       }
-      band.totalPairs = Object.values(band.grade).reduce((s, v) => s + v, 0);
-    }
 
-    // Posteriori check: baseGradeSum × fichas deve igualar totalPairs.
-    // Se não, há fichas fracionárias ou grades inconsistentes → mixed.
-    for (const band of soleColorMap.values()) {
-      if (band.baseGradeSum > 0 && band.fichas > 0 && band.baseGradeSum * band.fichas !== band.totalPairs) {
-        band.mixedGrades = true;
+      // Posteriori check: baseGradeSum × fichas deve igualar totalPairs.
+      // Se não, há fichas fracionárias ou grades inconsistentes → mixed.
+      for (const band of soleColorMap.values()) {
+        if (band.baseGradeSum > 0 && band.fichas > 0 && band.baseGradeSum * band.fichas !== band.totalPairs) {
+          band.mixedGrades = true;
+        }
       }
-    }
 
-    const allSizes = Array.from(sizeSet).sort((a, b) => {
-      const na = parseFloat(a), nb = parseFloat(b);
-      return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
-    });
-    const bands: SoleColorBand[] = Array.from(soleColorMap.values())
-      // soleColor + lotInfo já presentes no objeto interno (chave do map
-      // agora é bandKey = cor::lotN ou cor). Spread leva tudo incluindo lotInfo.
-      .map((v) => ({ ...v }))
-      .sort((a, b) => {
-        const cmp = a.soleColor.localeCompare(b.soleColor, 'pt-BR');
-        if (cmp !== 0) return cmp;
-        // Tie-break: lote 1 antes de lote 2 antes de não-splitado.
-        const aLot = a.lotInfo?.number ?? 999;
-        const bLot = b.lotInfo?.number ?? 999;
-        return aLot - bLot;
+      const allSizes = Array.from(sizeSet).sort((a, b) => {
+        const na = parseFloat(a), nb = parseFloat(b);
+        return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
       });
-    const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
-    // Guarda de reconciliação: toda OP entra numa banda, então a soma das bandas
-    // DEVE igualar a soma dos pares das OPs. Se divergir → OP perdida numa chave
-    // ou duplicada (lote): a ficha mostra aviso vermelho (pega regressão futura).
-    const expectedTotal = expandedOrders.reduce((s, o) => s + Number((o as any).total_pairs ?? 0), 0);
+      const bands: SoleColorBand[] = Array.from(soleColorMap.values())
+        // soleColor + lotInfo já presentes no objeto interno (chave do map
+        // agora é bandKey = cor::lotN ou cor). Spread leva tudo incluindo lotInfo.
+        .map((v) => ({ ...v }))
+        .sort((a, b) => {
+          const cmp = a.soleColor.localeCompare(b.soleColor, 'pt-BR');
+          if (cmp !== 0) return cmp;
+          // Tie-break: lote 1 antes de lote 2 antes de não-splitado.
+          const aLot = a.lotInfo?.number ?? 999;
+          const bLot = b.lotInfo?.number ?? 999;
+          return aLot - bLot;
+        });
+      const grandTotal = bands.reduce((s, b) => s + b.totalPairs, 0);
+      // Guarda de reconciliação: toda OP do roteiro entra numa banda, então a
+      // soma das bandas DEVE igualar a soma dos pares dessas OPs. Se divergir →
+      // OP perdida numa chave ou duplicada (lote): a ficha mostra aviso
+      // vermelho (pega regressão futura). expectedTotal acumulado no loop já
+      // exclui OPs fora do roteiro do setor (B1).
 
-    return { bands, allSizes, grandTotal, expectedTotal };
-  }, [expandedOrders, activeSectors, soleColorLookup, soleNameLookup]);
+      return { bands, allSizes, grandTotal, expectedTotal };
+    };
+
+    return {
+      solagem: includesSector('Solagem') ? buildForSector('Solagem') : null,
+      colagem: includesSector('Colagem') ? buildForSector('Colagem') : null,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedOrders, activeSectors, resolveSoleForOrder, sheetById, sizeConjByGroup, variantsByRef, tsImageByRef]);
 
   // ── Expedição: por cliente (LOJA-A-LOJA), com info de embalagem ──────────
   // Acabamento agora segue mesma lógica de Aviamento (sole+color), per user.
@@ -1743,13 +2081,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // PV (colmeia/master = caixa COLETIVA, 12 padrão), não a individual — antes
     // a expedição usava sempre pairs_per_box_individual, divergindo da NF.
     const resolveSoleInfo = (order: any, mode: string | null | undefined): { soleName: string | null; pairsPerBox: number | null } => {
-      const sheetId = order.reference_id;
-      const cabedelColorLower = (order.color || '').toLowerCase();
-      const mapping = (soleMappings as any[]).find(
-        m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
-      );
-      const soleName = (mapping as any)?.products?.name ? getBaseName((mapping as any).products.name) : null;
-      const groupId = (mapping as any)?.products?.group_id;
+      // A1: solado pela resolução canônica (P0→P3 do resolve_sole_color).
+      const resolvedSole = resolveSoleForOrder(order.reference_id, order.color);
+      const soleName = resolvedSole?.baseName || null;
+      const groupId = resolvedSole?.groupId;
       const grp = groupId ? groupPackagingById.get(groupId) : null;
       const collType = collectiveTypeForMode(mode);
       const field = collType === 'master' ? 'pairs_per_box_master'
@@ -1838,14 +2173,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [printOrders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef]);
+  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef]);
 
   // ── Ref+Cor groups: Colagem, Silk, Montagem (todos por Ref+Cor) ────────────
   // Silk e Montagem mudaram de solado+cor pra ref+cor em 20/05/2026 (pedido user).
   const groupedWorksheets = useMemo(() => {
     if (!includesSector('Colagem') && !includesSector('Silk') && !includesSector('Montagem')) return null;
     return groupOrdersByRefColor(printOrders);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printOrders, activeSectors]);
+
+  // ── Acabamento: OPs com o setor no roteiro (B1) ────────────────────────────
+  // Filtra expandedOrders pelo production_sectors da ficha — OP sem Acabamento
+  // no roteiro não imprime ficha do setor. Usado no render E no sheetCount.
+  const acabamentoOrders = useMemo(
+    () => (includesSector('Acabamento')
+      ? expandedOrders.filter(o => orderInRoteiro((o as any).reference_id, 'Acabamento'))
+      : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expandedOrders, activeSectors, sheetById],
+  );
 
   // ── Relatório Gerencial: agrupa por sale_order_id, junta costs + stages ────
   const reportGroups = useMemo<Array<{ saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }> | null>(() => {
@@ -1882,13 +2229,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
     const resolveSoleName = (order: any): string | null => {
       const sheetId = order.reference_id;
-      const cabedelColorLower = (order.color || '').toLowerCase();
-      const mapping = (soleMappings as any[]).find(
-        m => m.sheet_id === sheetId && (m.product_color || '').toLowerCase() === cabedelColorLower,
-      );
-      const name = (mapping as any)?.products?.name;
+      // A1: solado pela resolução canônica (P0→P3 do resolve_sole_color).
+      const name = resolveSoleForOrder(sheetId, order.color)?.productName;
       if (name) return getBaseName(name);
-      // Fallback: usa sole_material da ficha técnica quando não há mapping.
+      // Fallback: usa sole_material da ficha técnica quando não resolve.
       const fallback = soleMaterialByRef.get(sheetId);
       return fallback ? getBaseName(fallback) : null;
     };
@@ -1969,11 +2313,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // A10 (auditoria): largest-remainder p/ as células somarem o Total no Relatório Gerencial.
       const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, mult, orderTotal);
 
-      // Pares/caixa do solado.
-      const soleMapping = (soleMappings as any[]).find(
-        (m: any) => m.sheet_id === order.reference_id && (m.product_color || '').toLowerCase() === orderColorLower,
-      );
-      const soleGroupId = (soleMapping as any)?.products?.group_id ?? null;
+      // Pares/caixa do solado — grupo do solado RESOLVIDO (A1).
+      const soleGroupId = resolveSoleForOrder(order.reference_id, order.color)?.groupId ?? null;
       const pairsPerBox = soleGroupId
         ? ((soleGroupPackaging as any[]).find((g: any) => g.id === soleGroupId)?.pairs_per_box_individual ?? null)
         : null;
@@ -2016,7 +2357,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printOrders, saleOrders, clientsInfo, soleMappings, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
+  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
 
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
@@ -2025,7 +2366,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const sheetCount = useMemo(() => {
     let total = 0;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
-    if (activeSectors.has('Solagem') && solagemData && solagemData.bands.length > 0) total += 1;
+    if (activeSectors.has('Solagem') && solagemData?.solagem && solagemData.solagem.bands.length > 0) total += 1;
     // Corte Cabedal/Forração: 1 ficha agregada por setor (todas cores em 1 só).
     if (activeSectors.has('Corte Cabedal') && silkMontageGroups) total += 1;
     if (activeSectors.has('Corte Forração') && silkMontageGroups) total += 1;
@@ -2037,12 +2378,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
     // Colagem agora consolida por solado (1 ficha, igual à Solagem), não mais
     // 1 por ref+cor do cabedal.
-    if (activeSectors.has('Colagem') && solagemData && solagemData.bands.length > 0) total += 1;
-    if (activeSectors.has('Acabamento')) total += printOrders.length;
+    if (activeSectors.has('Colagem') && solagemData?.colagem && solagemData.colagem.bands.length > 0) total += 1;
+    // Acabamento: só OPs com o setor no roteiro (B1).
+    if (activeSectors.has('Acabamento')) total += acabamentoOrders.length;
     if (activeSectors.has('Expedição') && expedicaoGroups) total += expedicaoGroups.length;
     if (activeSectors.has('Relatório Gerencial') && reportGroups) total += reportGroups.length;
     return total;
-  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, groupedWorksheets, printOrders.length, expedicaoGroups, reportGroups]);
+  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
 
@@ -2229,7 +2571,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // se aplicam a ele — antes ambos exibiam todas as cores, inflando
           // os números pra cortador.
           const filterGroupForSector = (group: SoleSilkGroup, sector: GroupedSector): SoleSilkGroup | null => {
-            let filtered = group.colorGroups;
+            // B1: exclui colorGroups cujas OPs NÃO têm o setor no roteiro
+            // (production_sectors da ficha técnica). Vale pra TODOS os setores
+            // agrupados; 'Corte Cabedal' é sub-etapa de Corte (não existe em
+            // production_sectors), então não filtra por roteiro — segue só o
+            // critério requiresUpperCut abaixo.
+            let filtered = sector === 'Corte Cabedal'
+              ? group.colorGroups
+              : group.colorGroups.filter(cg => opsInRoteiro(cg.opNumbers, sector));
             if (sector === 'Corte Forração') {
               filtered = filtered.filter(cg => cg.requiresLiningCut === true);
             } else if (sector === 'Corte Cabedal') {
@@ -2321,7 +2670,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // separa as fichas. ANTES agrupava pela liningColor mapeada, que
           // ficava em branco ("NÃO CADASTRADA") — a cor da forração É a cor base.
           const mergeForracaoWithinSole = (group: SoleSilkGroup): SoleSilkGroup | null => {
-            const filtered = group.colorGroups.filter(cg => cg.requiresLiningCut === true);
+            // B1: além do critério de forração, a OP precisa ter Corte
+            // Forração no roteiro (production_sectors) da ficha dela.
+            const filtered = group.colorGroups.filter(cg =>
+              cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração'));
             if (filtered.length === 0) return null;
             const byColor = new Map<string, SilkColorGroup>();
             for (const cg of filtered) {
@@ -2461,32 +2813,39 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           });
         })()}
 
-        {/* ── Guarda de reconciliação: bandas de solado vs pares do pedido ── */}
-        {(includesSector('Solagem') || includesSector('Colagem')) && solagemData
-          && solagemData.grandTotal !== solagemData.expectedTotal && (
+        {/* ── Guarda de reconciliação: bandas de solado vs pares do pedido ──
+            B1: bandas agora são POR SETOR (roteiro pode divergir entre Solagem
+            e Colagem), então a guarda também roda por setor. */}
+        {solagemData && ([['Solagem', solagemData.solagem], ['Colagem', solagemData.colagem]] as const)
+          .filter((entry): entry is ['Solagem' | 'Colagem', NonNullable<typeof solagemData.solagem>] =>
+            !!entry[1] && entry[1].grandTotal !== entry[1].expectedTotal)
+          .map(([sec, d]) => (
           <div
+            key={`reconc-${sec}`}
             className="keep-together"
             style={{ border: '2px solid #C00000', background: '#fff', padding: '8px 12px', margin: '8px 0',
               color: '#C00000', fontFamily: "'Fira Sans', sans-serif", fontSize: '13px', fontWeight: 700,
               WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
           >
-            ⚠ RECONCILIAÇÃO: as bandas de solado somam {solagemData.grandTotal} pares, mas as OPs do
-            pedido somam {solagemData.expectedTotal} (diferença de {Math.abs(solagemData.grandTotal - solagemData.expectedTotal)}).
+            ⚠ RECONCILIAÇÃO ({sec}): as bandas de solado somam {d.grandTotal} pares, mas as OPs do
+            pedido somam {d.expectedTotal} (diferença de {Math.abs(d.grandTotal - d.expectedTotal)}).
             Verifique se alguma OP ficou fora de banda ou foi duplicada (lote).
           </div>
-        )}
+        ))}
 
         {/* ── Solagem ── */}
-        {includesSector('Solagem') && solagemData && solagemData.bands.length > 0 && (
-          reduced ? (
-            solagemData.bands.map((b, i) => (
+        {includesSector('Solagem') && (() => {
+          const data = solagemData?.solagem;
+          if (!data || data.bands.length === 0) return null;
+          return reduced ? (
+            data.bands.map((b, i) => (
               <div key={`sol-red-${b.soleColor}-${i}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel="Solagem"
                   title={b.soleColor || 'Solagem'}
                   imageUrl={b.refs?.[0]?.image_url}
                   grade={b.grade}
-                  allSizes={solagemData.allSizes}
+                  allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
                   consumption={consumptionForOpNumbers(b.opNumbers)}
@@ -2498,36 +2857,38 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             <div className="page-break">
               <SectorRegion sectorLabel="Solagem">
                 <SolagemWorkSheet
-                  bands={solagemData.bands.map(b => ({
+                  bands={data.bands.map(b => ({
                     ...b,
                     consumption: consumptionForOpNumbers(b.opNumbers),
                   }))}
-                  allSizes={solagemData.allSizes}
+                  allSizes={data.allSizes}
                   date={today}
-                  grandTotal={solagemData.grandTotal}
-                  sizeBand={bandForOps(solagemData.bands.flatMap(b => b.opNumbers || []))}
-                  clientNames={clientNamesForPvs(solagemData.bands.flatMap(b => b.pvNumbers || []))}
+                  grandTotal={data.grandTotal}
+                  sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
+                  clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
                 />
               </SectorRegion>
             </div>
-          )
-        )}
+          );
+        })()}
 
         {/* ── Colagem: consolidada por TIPO + COR do solado (igual à Solagem) ──
             Pedido user 2026-06-08: a ficha de operador de solado da Colagem deve
             SOMAR as cores de cabedal que compartilham o mesmo solado+cor do solado
             — antes dividia por ref+cor do cabedal (480 + 480), agora consolida
-            (960). Reusa solagemData (que agora ativa p/ Solagem OU Colagem). */}
-        {includesSector('Colagem') && solagemData && solagemData.bands.length > 0 && (
-          reduced ? (
-            solagemData.bands.map((b, i) => (
+            (960). Reusa solagemData (bandas próprias do setor — roteiro B1). */}
+        {includesSector('Colagem') && (() => {
+          const data = solagemData?.colagem;
+          if (!data || data.bands.length === 0) return null;
+          return reduced ? (
+            data.bands.map((b, i) => (
               <div key={`col-red-${b.soleColor}-${i}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel="Colagem"
                   title={b.soleColor || 'Colagem'}
                   imageUrl={b.refs?.[0]?.image_url}
                   grade={b.grade}
-                  allSizes={solagemData.allSizes}
+                  allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
                   consumption={consumptionForOpNumbers(b.opNumbers)}
@@ -2540,20 +2901,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               <SectorRegion sectorLabel="Colagem">
                 <SolagemWorkSheet
                   sector="Colagem"
-                  bands={solagemData.bands.map(b => ({
+                  bands={data.bands.map(b => ({
                     ...b,
                     consumption: consumptionForOpNumbers(b.opNumbers),
                   }))}
-                  allSizes={solagemData.allSizes}
+                  allSizes={data.allSizes}
                   date={today}
-                  grandTotal={solagemData.grandTotal}
-                  sizeBand={bandForOps(solagemData.bands.flatMap(b => b.opNumbers || []))}
-                  clientNames={clientNamesForPvs(solagemData.bands.flatMap(b => b.pvNumbers || []))}
+                  grandTotal={data.grandTotal}
+                  sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
+                  clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
                 />
               </SectorRegion>
             </div>
-          )
-        )}
+          );
+        })()}
 
         {/* ── Setores agrupados por Ref + Cor: Silk, Montagem ──
             20/05/2026: Silk e Montagem por ref+cor (refs distintas nunca fundem).
@@ -2561,7 +2922,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             Ordem de fluxo: Silk → Montagem. */}
         {groupedWorksheets && (['Silk', 'Montagem'] as const).flatMap((sectorName) => {
           if (!includesSector(sectorName)) return [];
-          return groupedWorksheets.map((group) => {
+          // B1: só imprime a ficha do setor pra grupos cuja ficha técnica tem
+          // o setor no roteiro (production_sectors; null/[] = sem restrição).
+          return groupedWorksheets
+            .filter((group) => orderInRoteiro(group.representative?.reference_id, sectorName))
+            .map((group) => {
           const { representative } = group;
           // Resolve foto via cascata: variante exata > variante "Preto" > images[0] master.
           const repColorLower = (representative.color || '').toLowerCase();
@@ -2655,8 +3020,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             agregado em silkMontageGroups por solado+cor. Agora itera OP a OP
             e renderiza OperatorWorkSheet (mesma estrutura da Colagem).
             Lot sizing (PR 2026-05-23): usa expandedOrders pra que OPs
-            splitadas virem N fichas (1 por lote) em Acabamento também. */}
-        {includesSector('Acabamento') && expandedOrders.map((order) => {
+            splitadas virem N fichas (1 por lote) em Acabamento também.
+            B1 (2026-06-10): acabamentoOrders = expandedOrders filtradas pelo
+            roteiro (production_sectors) — OP sem Acabamento não imprime. */}
+        {includesSector('Acabamento') && acabamentoOrders.map((order) => {
           const repColorLower = (order.color || '').toLowerCase();
           const variantsList = variantsByRef.get(order.reference_id) || [];
           const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
