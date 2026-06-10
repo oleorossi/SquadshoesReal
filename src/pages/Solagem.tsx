@@ -1,4 +1,5 @@
 
+import { parseDateOnly, formatDateBR } from '@/lib/dateOnly';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -236,11 +237,11 @@ export default function Solagem() {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
     const deadline = so?.delivery_deadline;
     if (!deadline) return { deadline: null, isAdiantado: false };
-    const deadlineDate = new Date(deadline);
+    const deadlineDate = parseDateOnly(deadline);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((deadlineDate.getTime() - today.getTime()) / 86400000);
-    return { deadline, isAdiantado: diffDays > 7, deadlineFormatted: new Date(deadline).toLocaleDateString('pt-BR') };
+    return { deadline, isAdiantado: diffDays > 7, deadlineFormatted: formatDateBR(deadline) };
   };
 
   // Orders at Solagem stage after UI filters

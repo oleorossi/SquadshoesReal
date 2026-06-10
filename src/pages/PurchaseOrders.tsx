@@ -1,7 +1,7 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
 import { Plus } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
-import { effectiveConversionFactor } from '@/lib/purchaseConversion';
+import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -577,12 +577,19 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           .select('quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const factor = effectiveConversionFactor({
+        const factor = effectiveConversionFactorStrict({
           unit: (prod as any)?.unit || 'un',
           purchase_unit: (prod as any)?.purchase_unit,
           conversion_rate: (prod as any)?.conversion_rate,
           dimensions_width: (prod as any)?.dimensions_width,
         });
+        if (factor == null) {
+          // Sem regra de conversão compra→estoque: bloquear em vez de creditar
+          // a quantidade crua na unidade errada (igual ao fluxo de NF).
+          throw new Error(
+            `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
+          );
+        }
         const receivedQty = item.quantity * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedQty;
@@ -665,12 +672,19 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           .select('quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const factor = effectiveConversionFactor({
+        const factor = effectiveConversionFactorStrict({
           unit: (prod as any)?.unit || 'un',
           purchase_unit: (prod as any)?.purchase_unit,
           conversion_rate: (prod as any)?.conversion_rate,
           dimensions_width: (prod as any)?.dimensions_width,
         });
+        if (factor == null) {
+          // Sem regra de conversão compra→estoque: bloquear em vez de creditar
+          // a quantidade crua na unidade errada (igual ao fluxo de NF).
+          throw new Error(
+            `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
+          );
+        }
         const receivedInStockUnit = item.quantity * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedInStockUnit;

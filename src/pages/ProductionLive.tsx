@@ -12,6 +12,7 @@
  * Topo: ritmo agregado de pares/h calculado dos últimos 60min de
  * stock_movements de saída (in/out type).
  */
+import { parseDateOnly } from '@/lib/dateOnly';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleNotch as Loader2, Warning as AlertTriangle, Pulse as Activity } from '@phosphor-icons/react';
@@ -65,7 +66,7 @@ function isLate(order: Order): boolean {
   if (!order.due_date) return false;
   const status = (order.status || '').toLowerCase();
   if (status.includes('finaliz') || status.includes('cancel')) return false;
-  return new Date(order.due_date).getTime() < Date.now();
+  return parseDateOnly(order.due_date).getTime() < Date.now();
 }
 
 /** Ring SVG component pra OEE/progresso. */

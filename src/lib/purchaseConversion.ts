@@ -85,6 +85,28 @@ export function effectiveConversionFactor(ctx: PurchaseConversionContext): numbe
   return suggestConversionRate(pu, su) ?? 1;
 }
 
+/**
+ * Variante ESTRITA: retorna null quando purchase_unit ≠ unit e não existe
+ * NENHUMA regra (sem largura, sem conversion_rate, sem sugestão segura).
+ * Use no RECEBIMENTO de compra pra bloquear o item em vez de creditar a
+ * quantidade crua na unidade errada (o fluxo de NF já bloqueia com
+ * needsConfig — este é o equivalente pro recebimento de OC).
+ * `effectiveConversionFactor` (fallback 1) continua valendo pra displays.
+ */
+export function effectiveConversionFactorStrict(ctx: PurchaseConversionContext): number | null {
+  const pu = lc(ctx.purchase_unit || ctx.unit);
+  const su = lc(ctx.unit);
+  if (pu === su) return 1;
+  if (pu === 'm' && su === 'dm²' && ctx.dimensions_width && ctx.dimensions_width > 0) {
+    return 10 * ctx.dimensions_width;
+  }
+  if (pu === 'm' && su === 'm²' && ctx.dimensions_width && ctx.dimensions_width > 0) {
+    return ctx.dimensions_width / 10;
+  }
+  if (ctx.conversion_rate && ctx.conversion_rate > 0) return ctx.conversion_rate;
+  return suggestConversionRate(pu, su);
+}
+
 /** Converte qty em purchase_unit → qty em stock unit. */
 export function purchaseToStock(qtyPurchase: number, ctx: PurchaseConversionContext): number {
   return qtyPurchase * effectiveConversionFactor(ctx);

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -79,7 +80,7 @@ export default function MrpProjectionsTab() {
     const m = new Map<string, number>();
     for (const r of (inboundRows || [])) {
       const po = Array.isArray(r.purchase_orders) ? r.purchase_orders[0] : r.purchase_orders;
-      if (r.product_id && po && (po.status === 'pending' || po.status === 'approved')) {
+      if (r.product_id && po && (po.status === 'pending' || po.status === 'approved' || po.status === 'sent')) {
         m.set(r.product_id, (m.get(r.product_id) || 0) + (Number(r.quantity) || 0));
       }
     }
@@ -119,8 +120,16 @@ export default function MrpProjectionsTab() {
       const availableStock = proj
         ? Math.max(0, proj.available)
         : Math.max(0, (p.quantity || 0) - ((p as any).reserved_stock || 0));
-      // + material em trânsito (OCs pending/approved) na projeção/ruptura.
-      const inbound = inboundByProduct.get(p.id) || 0;
+      // + material em trânsito (OCs pending/approved/sent) na projeção/ruptura.
+      // purchase_order_items.quantity está em unidade de COMPRA — converter
+      // pra unidade de estoque antes de somar (placa→dm², m→dm², kg→g…).
+      const inboundFactor = effectiveConversionFactor({
+        unit: p.unit || 'un',
+        purchase_unit: (p as any).purchase_unit,
+        conversion_rate: (p as any).conversion_rate,
+        dimensions_width: (p as any).dimensions_width,
+      });
+      const inbound = (inboundByProduct.get(p.id) || 0) * inboundFactor;
       const effectiveStock = availableStock + inbound;
       const projectedStock = Math.max(0, effectiveStock - (dailyConsumption * days));
       const shortage = Math.max(0, p.min_stock - projectedStock);

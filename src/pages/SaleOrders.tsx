@@ -1,3 +1,4 @@
+import { parseDateOnly } from '@/lib/dateOnly';
 import { useState, useMemo } from 'react';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
@@ -1767,7 +1768,7 @@ export default function SaleOrders() {
               <TableBody>
                 {filteredOrders.map(order => {
                   const isSelected = sel.isSelected(order.id);
-                  const isOverdue = order.delivery_deadline && new Date(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
+                  const isOverdue = order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
                   // PV com NF-e emitida — guiado pela TABELA nfe_emitidas (fonte da
                   // verdade fiscal), não pelo status do PV. User pediu (19/05/2026)
