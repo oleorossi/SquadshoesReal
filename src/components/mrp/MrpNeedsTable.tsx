@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useMrpNeeds, useGeneratePOFromMrp } from "@/hooks/useMrp";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -9,6 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { format, parseISO, differenceInDays, startOfDay } from "date-fns";
 import { Warning as AlertTriangle, CircleNotch as Loader2, ShoppingCart } from '@phosphor-icons/react';
 import ProductReservationDetailsDialog from "@/components/inventory/ProductReservationDetailsDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { effectiveConversionFactor, type PurchaseConversionContext } from "@/lib/purchaseConversion";
+
+// Unidades de compra DISCRETAS (não dá pra comprar fração) → Math.ceil no
+// display. Contínuas (kg, g, m, L, dm²…) mantêm 2 casas decimais.
+const DISCRETE_PURCHASE_UNITS = /^(placa|chapa|rolo|cx|caixa|un|unid|und|par|pc|pç|pct|pacote|balde|galao|galão|fardo|saco)s?$/i;
 
 export function MrpNeedsTable() {
   const { data = [], isLoading } = useMrpNeeds();
@@ -18,9 +25,39 @@ export function MrpNeedsTable() {
   // no valor "Reservado", pra ver qual OP está segurando o material.
   const [resvDialog, setResvDialog] = useState<{ id: string; name: string; unit: string } | null>(null);
 
+  // v_mrp_needs não expõe purchase_unit/dimensions_width — busca os dados de
+  // conversão direto de products pra exibir a sugestão em unidade de compra com
+  // o MESMO fator usado no recebimento (effectiveConversionFactor prioriza a
+  // largura da ficha pra m→dm², em vez de dividir só por conversion_rate).
+  const productIdsKey = data.map((d) => d.product_id).sort().join(',');
+  const { data: convCtxById = new Map<string, PurchaseConversionContext>() } = useQuery({
+    queryKey: ['mrp-needs-conversion-ctx', productIdsKey],
+    enabled: data.length > 0,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data: rows, error } = await supabase
+        .from('products')
+        .select('id, unit, purchase_unit, conversion_rate, dimensions_width')
+        .in('id', data.map((d) => d.product_id));
+      if (error) throw error;
+      return new Map<string, PurchaseConversionContext>(
+        (rows || []).map((r: any) => [r.id as string, {
+          unit: r.unit || 'un',
+          purchase_unit: r.purchase_unit,
+          conversion_rate: r.conversion_rate,
+          dimensions_width: r.dimensions_width,
+        }]),
+      );
+    },
+  });
+
+  // Só linhas com sugestão > 0 são selecionáveis (checkbox de linha fica
+  // disabled nas demais) — o "selecionar todos" compara com essa contagem.
+  const selectableCount = data.filter((d) => d.suggested_qty > 0).length;
+
   const toggleAll = () =>
     setSelected((prev) =>
-      prev.size === data.length
+      prev.size === selectableCount
         ? new Set()
         : new Set(data.filter((d) => d.suggested_qty > 0).map((d) => d.product_id)),
     );
@@ -65,7 +102,7 @@ export function MrpNeedsTable() {
           <TableRow>
             <TableHead className="w-[40px]">
               <Checkbox
-                checked={selected.size > 0 && selected.size === data.length}
+                checked={selected.size > 0 && selected.size === selectableCount}
                 onCheckedChange={toggleAll}
               />
             </TableHead>
@@ -133,11 +170,23 @@ export function MrpNeedsTable() {
                   {n.suggested_qty > 0 ? (
                     <div className="flex flex-col items-end">
                       <Badge variant="destructive">{n.suggested_qty} {n.unit}</Badge>
-                      {n.conversion_rate !== 1 && (
-                        <span className="text-xs text-muted-foreground mt-0.5">
-                          ({(n.suggested_qty / n.conversion_rate).toFixed(2)} {n.purchase_unit || n.purchase_order_unit || 'un'})
-                        </span>
-                      )}
+                      {(() => {
+                        const ctx = convCtxById.get(n.product_id);
+                        const factor = ctx
+                          ? effectiveConversionFactor(ctx)
+                          : (n.conversion_rate || 1);
+                        if (factor === 1 || factor <= 0) return null;
+                        const purchaseUnit = ctx?.purchase_unit || n.purchase_unit || n.purchase_order_unit || 'un';
+                        const inPurchaseUnit = n.suggested_qty / factor;
+                        const display = DISCRETE_PURCHASE_UNITS.test(purchaseUnit.trim())
+                          ? String(Math.ceil(inPurchaseUnit))
+                          : inPurchaseUnit.toFixed(2);
+                        return (
+                          <span className="text-xs text-muted-foreground mt-0.5">
+                            ({display} {purchaseUnit})
+                          </span>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <Badge variant="secondary">0</Badge>

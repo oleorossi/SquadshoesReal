@@ -13669,6 +13669,7 @@ export type Database = {
           product_id: string
           purchase_order_id: string
           quantity: number
+          received_at: string | null
           suggested_quantity: number
           unit: string
           unit_price: number
@@ -13684,6 +13685,7 @@ export type Database = {
           product_id: string
           purchase_order_id: string
           quantity?: number
+          received_at?: string | null
           suggested_quantity?: number
           unit?: string
           unit_price?: number
@@ -13699,6 +13701,7 @@ export type Database = {
           product_id?: string
           purchase_order_id?: string
           quantity?: number
+          received_at?: string | null
           suggested_quantity?: number
           unit?: string
           unit_price?: number

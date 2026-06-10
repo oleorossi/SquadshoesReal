@@ -423,8 +423,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
     if (item.material_variant_id) {
       const variant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
-      if (variant?.group_id) {
-        return { id: variant.group_id, name: variant.group_name || variant.material_name || '' };
+      // reference_material_variants NÃO tem group_id/group_name — o grupo é
+      // resolvido via produto de cabedal da variante (upper_material_product_id
+      // → products.group_id → product_groups.name).
+      if (variant?.upper_material_product_id) {
+        const prod = (allProducts as any[]).find((p: any) => p.id === variant.upper_material_product_id);
+        if (prod?.group_id) {
+          const group = (productGroups as any[]).find((g: any) => g.id === prod.group_id);
+          return { id: prod.group_id, name: group?.name || variant.material_name || '' };
+        }
       }
     }
     // Fallback: primeiro material de forração/palmilha no BOM
@@ -452,7 +459,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       }
     }
     return null;
-  }, [item.material_variant_id, activeMaterialVariants, refMaterials, sheetSpecs, productGroups]);
+  }, [item.material_variant_id, activeMaterialVariants, allProducts, refMaterials, sheetSpecs, productGroups]);
 
   const availableColors: string[] = useMemo(() => {
     // When a material group is selected and has specific colors defined, use those exclusively.

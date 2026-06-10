@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { parseNFeXML, type ParsedNFe } from '@/lib/nfeParser';
 import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
 import { useAddInvoice, useAddInvoiceItems } from '@/hooks/useSuppliers';
+import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -347,36 +348,21 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
             const totalValue = (oldQty * oldPrice) + (addQty * addPrice);
             const newPrice = newQty > 0 ? totalValue / newQty : addPrice;
 
-            const updatePayload: Record<string, any> = {
-              quantity: newQty,
-              unit_price: newPrice,
-            };
-
-            // Always update supplier_id to the NF supplier
-            if (supplierId) {
-              updatePayload.supplier_id = supplierId;
-            }
-
-            const { error: updateProductError } = await supabase
-              .from('products')
-              .update(updatePayload)
-              .eq('id', match.id);
-
-            if (updateProductError) throw updateProductError;
-
+            // M13 (auditoria 2026-06-09): crédito via RPC adjust_stock
+            // (adjustStockSafe) — atômico (SELECT FOR UPDATE + optimistic check
+            // em oldQty) e já grava o stock_movement com a mesma descrição.
+            // Antes era read-modify-write manual (UPDATE + INSERT separados):
+            // corrida com outro usuário corrompia a quantidade.
             const conversionNote = conv.converted
               ? ` (convertido ${invItem.quantity} ${invItem.unit} → ${addQty.toFixed(2)} ${match.unit})`
               : '';
-            const { error: stockMovementError } = await supabase.from('stock_movements').insert({
-              product_id: match.id,
-              movement_type: 'in',
-              quantity: addQty,
-              previous_stock: oldQty,
-              new_stock: newQty,
-              description: `Entrada via NF ${parsed.invoiceNumber} - ${invItem.product_name}${conversionNote}`,
+            const adjustResult = await adjustStockSafe({
+              productId: match.id,
+              expectedPrevious: oldQty,
+              newQty,
+              reason: `Entrada via NF ${parsed.invoiceNumber} - ${invItem.product_name}${conversionNote}`,
             });
-
-            if (stockMovementError) throw stockMovementError;
+            if (!adjustResult.success) throw new Error(adjustResult.errorMessage);
 
             const { error: updateInvoiceItemError } = await supabase
               .from('invoice_items')
@@ -384,6 +370,21 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
               .eq('id', invItem.id);
 
             if (updateInvoiceItemError) throw updateInvoiceItemError;
+
+            // Preço médio ponderado + fornecedor da NF — fora do ajuste de
+            // quantidade (não-crítico pra concorrência de estoque). Falha aqui
+            // não desfaz o crédito: loga e segue (o estoque já está correto).
+            const updatePayload: Record<string, any> = { unit_price: newPrice };
+            if (supplierId) {
+              updatePayload.supplier_id = supplierId;
+            }
+            const { error: updateProductError } = await supabase
+              .from('products')
+              .update(updatePayload)
+              .eq('id', match.id);
+            if (updateProductError) {
+              console.error(`[NFe Import] Falha ao atualizar preço/fornecedor de "${match.name}":`, updateProductError);
+            }
 
             // Update local cache for subsequent items
             match.quantity = newQty;
