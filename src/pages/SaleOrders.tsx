@@ -1481,7 +1481,7 @@ export default function SaleOrders() {
                       const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity').eq('sale_order_id', order.id);
                       if (!linkedOps || linkedOps.length === 0) continue;
                       for (const op of linkedOps) {
-                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
+                        const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name, barcode').eq('id', op.reference_id).single();
                         const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
                         const refImageUrl = await getSignedUrl(rawRefImageUrl);
                         const color = op.color || '';

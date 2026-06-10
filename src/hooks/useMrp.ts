@@ -23,7 +23,7 @@ export function useGeneratePOFromMrp() {
     onSuccess: (ids) => {
       toast.success(`${ids.length === 1 ? 'Gerada 1 ordem' : `Geradas ${ids.length} ordens`} de compra`);
       qc.invalidateQueries({ queryKey: ["mrp-needs"] });
-      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      qc.invalidateQueries({ queryKey: ["purchase_orders"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

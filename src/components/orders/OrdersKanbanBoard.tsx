@@ -111,16 +111,16 @@ function colorHex(name?: string | null) {
 function inferGroupKey(stages: OrderStage[] = []): typeof STAGE_GROUPS[number]['key'] {
   if (!stages.length) return 'preparacao';
   const inProgress = stages.find(s => s.status === 'em_andamento');
-  if (inProgress) return SECTOR_TO_GROUP[inProgress.sector_name] || 'preparacao';
+  if (inProgress) return SECTOR_TO_GROUP[inProgress.stage_name] || 'preparacao';
   // Senão: último concluido + 1 (se existir próximo) → senão último concluido
   const lastDone = [...stages].reverse().find(s => s.status === 'concluido');
   if (lastDone) {
     const idx = stages.findIndex(s => s.id === lastDone.id);
     const next = stages[idx + 1];
-    if (next) return SECTOR_TO_GROUP[next.sector_name] || 'preparacao';
-    return SECTOR_TO_GROUP[lastDone.sector_name] || 'expedicao';
+    if (next) return SECTOR_TO_GROUP[next.stage_name] || 'preparacao';
+    return SECTOR_TO_GROUP[lastDone.stage_name] || 'expedicao';
   }
-  return SECTOR_TO_GROUP[stages[0].sector_name] || 'preparacao';
+  return SECTOR_TO_GROUP[stages[0].stage_name] || 'preparacao';
 }
 
 function calcProgress(stages: OrderStage[] = []): number {

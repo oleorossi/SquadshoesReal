@@ -207,7 +207,7 @@ export default function ProductionLive() {
                   const current = inferCurrentStage(stages);
                   const { done, total, pct } = calcProgress(stages);
                   const late = isLate(order);
-                  const stageColor = current ? STAGE_COLORS[current.sector_name] || 'hsl(var(--muted-foreground))' : 'hsl(var(--muted-foreground))';
+                  const stageColor = current ? STAGE_COLORS[current.stage_name] || 'hsl(var(--muted-foreground))' : 'hsl(var(--muted-foreground))';
 
                   return (
                     <div
@@ -243,7 +243,7 @@ export default function ProductionLive() {
                             className="font-mono text-xs font-bold uppercase tracking-widest"
                             style={{ color: stageColor }}
                           >
-                            {current.sector_name}
+                            {current.stage_name}
                           </span>
                         </div>
                       )}

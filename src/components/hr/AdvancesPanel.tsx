@@ -53,7 +53,7 @@ export default function AdvancesPanel() {
       if (search) {
         const emp = empMap.get(a.employee_id);
         const q = normalizeForSearch(search);
-        if (!emp?.normalizeForSearch(name).includes(q) && !normalizeForSearch(a.description).includes(q)) return false;
+        if (!normalizeForSearch(emp?.name ?? '').includes(q) && !normalizeForSearch(a.description).includes(q)) return false;
       }
       return true;
     });

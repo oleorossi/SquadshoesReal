@@ -1999,6 +1999,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         insole_material: mats.insole,
         pairs_per_box: pairsPerBox,
         cost: cost ? {
+          quantity: Number(cost.quantity) || 0,
           material_cost: Number(cost.material_cost) || 0,
           labor_cost: Number(cost.labor_cost) || 0,
           overhead_cost: Number(cost.overhead_cost) || 0,

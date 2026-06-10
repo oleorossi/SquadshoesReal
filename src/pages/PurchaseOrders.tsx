@@ -447,7 +447,12 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const handleSaveItems = async () => {
     try {
       for (const [itemId, data] of Object.entries(editingItems)) {
-        await updateItem.mutateAsync({ id: itemId, data });
+        // Só as colunas editáveis — o objeto completo carrega campos mapeados
+        // (ex.: `product`) que não são colunas e o PostgREST rejeita.
+        await updateItem.mutateAsync({
+          id: itemId,
+          data: { quantity: data.quantity, unit_price: data.unit_price },
+        });
       }
       // Recalculate total
       const allItems = items.map(i => editingItems[i.id] ? { ...i, ...editingItems[i.id] } : i);
@@ -593,9 +598,22 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         }
       }
 
-      // 3. Mark as received
-      await updateOrder.mutateAsync({ id: orderId, data: { status: 'received', received_date: todayStr } });
+      // 3. Mark as received — update direto: o guard de useUpdatePurchaseOrder
+      // rejeita rows em 'receiving', que é exatamente o estado do claim.
+      const { data: doneRows, error: doneErr } = await supabase
+        .from('purchase_orders')
+        .update({ status: 'received', received_date: todayStr })
+        .eq('id', orderId)
+        .eq('status', 'receiving')
+        .select('id');
+      if (doneErr) throw new Error(doneErr.message);
+      if (!doneRows || doneRows.length === 0) {
+        throw new Error('OC saiu do estado de recebimento durante a finalização — verifique o status antes de tentar de novo.');
+      }
       claimed = false; // Successfully completed — no need to rollback
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
@@ -667,11 +685,22 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
         }
       }
-      await updateOrder.mutateAsync({
-        id: orderId,
-        data: { status: 'received', received_date: today },
-      });
+      // Update direto: o guard de useUpdatePurchaseOrder rejeita rows em
+      // 'receiving', que é exatamente o estado do claim.
+      const { data: doneRows, error: doneErr } = await supabase
+        .from('purchase_orders')
+        .update({ status: 'received', received_date: today })
+        .eq('id', orderId)
+        .eq('status', 'receiving')
+        .select('id');
+      if (doneErr) throw new Error(doneErr.message);
+      if (!doneRows || doneRows.length === 0) {
+        throw new Error('OC saiu do estado de recebimento durante a finalização — verifique o status antes de tentar de novo.');
+      }
       claimed = false; // Successfully completed — no rollback needed
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       toast.success('OC marcada como recebida — estoque atualizado!');
