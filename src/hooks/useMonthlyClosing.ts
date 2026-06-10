@@ -297,7 +297,7 @@ export function useMonthlyClosing(from: string, to: string) {
       const salary = Number((emp as any).salary) || 0;
       const normalHourRate = monthlyHours > 0 ? salary / monthlyHours : 0;
       const otHourRate = Number((emp as any).hourly_rate ?? normalHourRate) || normalHourRate;
-      const overtimeMultiplier = Number((emp as any).overtime_multiplier ?? 1.2) || 1.2;
+      const overtimeMultiplier = Number((emp as any).overtime_multiplier ?? 1.5) || 1.5; // decisão 03/06: HE 1,5×
 
       const overtimeValue = (overtimeMin / 60) * otHourRate * overtimeMultiplier;
       const deficitValue = (deficitMin / 60) * normalHourRate;

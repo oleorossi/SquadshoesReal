@@ -591,39 +591,27 @@ export function calculateDaySummary(
   const isSunday = dayOfWeek === 0;
   const isSaturday = dayOfWeek === 6;
 
-  // Expected daily minutes
-  // CLT logic: weekly target (e.g. 44h) is distributed across weekdays.
-  // If the schedule's Mon-Fri hours exceed the weekly target, cap each weekday
-  // so the total doesn't surpass the weekly hours limit.
-  const weeklyTarget = (schedule.weekly_hours || 44) * 60;
+  // Expected daily minutes — DECISÃO 03/06 (reafirmada 2026-06-10): esperado
+  // do dia = JORNADA CADASTRADA da escala (saída − entrada − almoço, ex.
+  // 08–18 c/ 1h = 540), igual ao motor da folha (salaryPayroll). A antiga
+  // distribuição semanal (44h/5 = 528) gerava ~1h/semana de HE fantasma no
+  // banco vs a folha — números nunca conciliavam.
   const morningFromSchedule = timeToMinutes(schedule.lunch_start) - timeToMinutes(schedule.entry_time);
   const afternoonFromSchedule = timeToMinutes(schedule.exit_time) - timeToMinutes(schedule.lunch_end);
   const dailyFromSchedule = morningFromSchedule + afternoonFromSchedule;
 
-  // Determine how many weekday slots share the weekly target
   const hasSaturday = !!(schedule.saturday_entry && schedule.saturday_exit);
   const satFromSchedule = hasSaturday
     ? timeToMinutes(schedule.saturday_exit!) - timeToMinutes(schedule.saturday_entry!)
     : 0;
 
-  // Distribute: weekdays get (weeklyTarget - saturdayPortion) / 5
-  const satPortion = hasSaturday ? Math.min(satFromSchedule, weeklyTarget) : 0;
-  const weekdayTarget = Math.floor((weeklyTarget - satPortion) / 5);
-  const cappedWeekday = Math.min(dailyFromSchedule, weekdayTarget);
-
   let expectedMinutes = 0;
   if (isHoliday || isSunday) {
     expectedMinutes = 0;
   } else if (isSaturday) {
-    if (hasSaturday) {
-      const weekdayTotal = cappedWeekday * 5;
-      const satRemaining = Math.max(0, weeklyTarget - weekdayTotal);
-      expectedMinutes = Math.min(satRemaining, satFromSchedule);
-    } else {
-      expectedMinutes = 0;
-    }
+    expectedMinutes = hasSaturday ? Math.max(0, satFromSchedule) : 0;
   } else {
-    expectedMinutes = cappedWeekday;
+    expectedMinutes = Math.max(0, dailyFromSchedule);
   }
 
   if (punches.length === 0) {

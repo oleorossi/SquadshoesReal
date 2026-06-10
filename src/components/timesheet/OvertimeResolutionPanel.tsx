@@ -122,7 +122,7 @@ export function OvertimeResolutionPanel() {
       const ot = (overtimeData as any[]).find(o => o.employee_id === e.id);
       const overtime_minutes = ot?.overtime_minutes ?? 0;
       const hourly_rate_resolved = Number(e.hourly_rate ?? (e.salary ? Number(e.salary) / 220 : 0));
-      const mult = Number(e.overtime_multiplier ?? 1.20);
+      const mult = Number(e.overtime_multiplier ?? 1.5); // decisão 03/06: HE 1,5×
       const estimated_pay = (overtime_minutes / 60) * hourly_rate_resolved * mult;
       const res = (resolutions as any[]).find(r => r.employee_id === e.id);
       return {
