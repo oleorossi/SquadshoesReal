@@ -35,7 +35,7 @@ type ConsumptionRow = MaterialConsumptionRow & {
   artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number };
 };
 
-const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
+const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forração Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
 
 /**
  * Solado em matriz numeração × cor (igual à visão da OC), com cada célula
@@ -503,6 +503,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       'Forração':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
       'Fachete':    { bg: '#cffafe', border: '#0891b2', text: '#155e75' },
       'Palmilha':   { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
+      'Forração Palmilha': { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
       'Solado':     { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
       'Tiras':      { bg: '#fce7f3', border: '#ec4899', text: '#831843' },
       'Químicos':   { bg: '#ede9fe', border: '#8b5cf6', text: '#4c1d95' },

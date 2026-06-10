@@ -156,7 +156,10 @@ const SECTOR_THEME: Record<GroupedSector, {
   // Corte Forração: SEM silk/marca (pedido user 09/06/2026 — o cortador da
   // forração só corta o forro na cor da palmilha, não precisa conferir
   // logomarca). showProductImage=false: corta só o forro, não vê o calçado.
-  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  // showAlerts=true (audit E2 10/06/2026): o alerta "Solado fachetado —
+  // duplicar corte de forração do salto" é EXECUTADO por este setor — antes
+  // só Aviamento via o aviso.
+  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
   // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
   // distinguir visualmente dos outros 2 cortes.

@@ -12,6 +12,7 @@ export type ConsumptionComponent =
   | 'Cabedal'
   | 'Forração'
   | 'Palmilha'
+  | 'Forração Palmilha'
   | 'Fachete'
   | 'Tiras'
   | 'Químicos'
@@ -54,6 +55,7 @@ export interface BulkOrderConsumptionInput {
 const COMPONENT_TYPE_TO_BULK: Record<string, ConsumptionComponent> = {
   Cabedal: 'Cabedal',
   Forração: 'Forração',
+  'Forração Palmilha': 'Forração Palmilha',
   Fachete: 'Fachete',
   Palmilha: 'Palmilha',
   Solado: 'Solado',
@@ -186,8 +188,14 @@ export const filterConsumptionForSector = (
   switch (sector) {
     case 'Corte Palmilha':
       return rows.filter(r => r.component === 'Palmilha' || byName(r, /palmilha|eva|forma/));
+    // 'Forração Palmilha' (forro que cobre a placa) é CORTADO no Corte
+    // Forração — é napa de forro, não placa do Corte Palmilha.
     case 'Corte Forração':
-      return rows.filter(r => r.component === 'Forração' || r.component === 'Fachete');
+      return rows.filter(r =>
+        r.component === 'Forração' ||
+        r.component === 'Forração Palmilha' ||
+        r.component === 'Fachete',
+      );
     case 'Corte Cabedal':
       return rows.filter(r => r.component === 'Cabedal' || r.component === 'Fachete');
     case 'Costura':
@@ -197,7 +205,12 @@ export const filterConsumptionForSector = (
         byName(r, /linha|fio/),
       );
     case 'Aviamento':
+      // Aviamento VÊ cabedal + forro (regra da ficha: tema showMaterials='both'
+      // no SilkMontageWorkSheet). 'Forração Palmilha' fica de fora — é corte
+      // do setor Corte Forração, não material manuseado no Aviamento.
       return rows.filter(r =>
+        r.component === 'Cabedal' ||
+        r.component === 'Forração' ||
         r.component === 'Tiras' ||
         r.component === 'Outros' ||
         r.component === 'Componente Direto' ||
