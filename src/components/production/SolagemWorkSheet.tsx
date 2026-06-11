@@ -55,16 +55,16 @@ const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
 
 const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   <div
-    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-2 bg-white"
+    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-1.5 bg-white"
     style={{ border: '2px solid #000', borderBottom: 'none' }}
   >
     <span
       className="text-black uppercase leading-none"
-      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em' }}
+      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', letterSpacing: '-0.02em' }}
     >
       {label}
     </span>
-    <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+    <span className="font-mono text-[10px] text-black tracking-widest uppercase">
       {total} pares
     </span>
   </div>
@@ -103,12 +103,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       // grade/consumo/tally — atômicas individualmente); borda fecha em
       // cada fragmento via box-decoration-break: clone.
       <div key={idx} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="keep-together keep-with-next px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+        <div className="keep-together keep-with-next px-3 py-1.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
           <div className="min-w-0 flex-1">
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
               className="uppercase leading-none block mt-0.5 truncate"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em', color: '#C00000' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em', color: '#C00000' }}
             >
               {band.soleColor}
             </span>
@@ -117,7 +117,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             {band.soleType && (
               <div className="border-l border-black pl-3">
                 <span className="section-label block" style={{ color: '#000' }}>Tipo</span>
-                <span className="font-mono text-sm font-bold text-black uppercase tracking-wider mt-1 block">
+                <span className="font-mono text-xs font-bold text-black uppercase tracking-wider mt-1 block">
                   {band.soleType}
                 </span>
               </div>
@@ -125,7 +125,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             {band.stampNumber && (
               <div className="border-l border-black pl-3">
                 <span className="section-label block" style={{ color: '#000' }}>Marcação</span>
-                <span className="font-mono text-[11px] font-bold text-black uppercase tracking-widest mt-1 block">
+                <span className="font-mono text-[10px] font-bold text-black uppercase tracking-widest mt-1 block">
                   Estampar Nº
                 </span>
               </div>
@@ -135,9 +135,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 <span className="section-label block" style={{ color: '#000' }}>Lote</span>
                 <span
                   className="text-black leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em' }}
                 >
-                  {band.lotInfo.number}<span className="text-sm font-mono tracking-widest">/{band.lotInfo.total}</span>
+                  {band.lotInfo.number}<span className="text-xs font-mono tracking-widest">/{band.lotInfo.total}</span>
                 </span>
               </div>
             )}
@@ -145,7 +145,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               <span className="section-label block" style={{ color: '#000' }}>Pares</span>
               <span
                 className="text-black leading-none block mt-0.5"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.02em' }}
               >
                 {band.totalPairs}
               </span>
@@ -159,7 +159,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             strip estourava 200mm em bandas com 6+ refs (sozinho era 73%
             da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias. */}
         {band.refs && band.refs.length > 0 && (
-          <div className="px-3 py-2 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+          <div className="px-3 py-1.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
             <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
             {band.refs.map((r) => (
               <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -198,13 +198,13 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               {/* Largura precisa caber "Total × N fichas" (≈96px); sob
                   table-layout:fixed o width do TH manda (antes 54, cortava). */}
-              <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
+              <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
               {bandSizes.map((s) => (
                 <th
                   key={s}
-                  className="py-1.5 text-black font-bold"
+                  className="py-1 text-black font-bold"
                   style={{
-                    fontSize: '13px',
+                    fontSize: '11px',
                     fontFamily: "'Fira Code', monospace",
                     borderRight: '1px solid #000',
                   }}
@@ -212,7 +212,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   {s}
                 </th>
               ))}
-              <th className="section-label py-1.5" style={{ color: '#000', width: 54 }}>Total</th>
+              <th className="section-label py-1" style={{ color: '#000', width: 54 }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -225,17 +225,17 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   Por Ficha<br />({band.baseGradeSum}p)
                 </td>
                 {bandSizes.map(s => (
-                  <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
+                  <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px', borderRight: '1px solid #000' }}>
                     {band.baseGrade?.[s] || '—'}
                   </td>
                 ))}
-                <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px' }}>
+                <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px' }}>
                   {band.baseGradeSum}
                 </td>
               </tr>
             )}
             <tr>
-              <td className="py-2 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
+              <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
                 {band.mixedGrades
                   ? <>Total<br />({band.fichas || 0} fichas*)</>
                   : band.fichas && band.fichas > 1
@@ -245,10 +245,10 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               {bandSizes.map(s => (
                 <td
                   key={s}
-                  className="py-2 text-black"
+                  className="py-1.5 text-black"
                   style={{
                     fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '24px',
+                    fontSize: '19px',
                     letterSpacing: '-0.02em',
                     lineHeight: '1',
                     borderRight: '1px solid #000',
@@ -258,10 +258,10 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 </td>
               ))}
               <td
-                className="py-2 text-black"
+                className="py-1.5 text-black"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: '24px',
+                  fontSize: '19px',
                   letterSpacing: '-0.02em',
                   lineHeight: '1',
                 }}
@@ -277,7 +277,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           const filtered = filterConsumptionForSector(band.consumption, sector);
           if (filtered.length === 0) return null;
           return (
-            <div className="mx-2 mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
+            <div className="mx-2 mt-2 px-2 py-1 keep-together" style={{ border: '1px solid #000' }}>
               <div className="flex items-baseline justify-between mb-1">
                 <span className="section-label" style={{ color: '#000' }}>
                   Consumo Previsto
@@ -304,7 +304,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           );
         })()}
 
-        <div className="px-2 py-2 border-t border-black">
+        <div className="px-2 py-1.5 border-t border-black">
           <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} />
         </div>
       </div>
@@ -332,7 +332,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                   <p
                     className="text-black leading-none mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                   >
                     {pvDisplay}
                   </p>
@@ -342,18 +342,18 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                 <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
                 <p
                   className="text-black uppercase leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                 >
-                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                  {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
                 </p>
                 {clientNames && clientNames.length > 0 && (
-                  <p className="font-mono text-[11px] text-black tracking-wider uppercase mt-1 leading-tight">
+                  <p className="font-mono text-[10px] text-black tracking-wider uppercase mt-1 leading-tight">
                     <span className="text-black/60">Cliente · </span>
                     <span className="font-bold">{clientNames.join(' · ')}</span>
                   </p>
                 )}
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
                     {bands.length} cor{bands.length !== 1 ? 'es' : ''} de solado
                   </span>
                   {hasBothGroups && (
@@ -382,7 +382,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       <div className="space-y-3">
         {bands.length === 0 ? (
           <>
-            <div className="text-center py-10 text-black italic text-sm">
+            <div className="text-center py-10 text-black italic text-xs">
               Nenhum dado de solagem para exibir.
             </div>
           </>
@@ -408,15 +408,15 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           };
 
           const trailingBlock = (
-            <div className="keep-together keep-with-next flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+            <div className="keep-together keep-with-next flex items-baseline justify-between mt-3 py-1.5" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
               <span className="section-label" style={{ color: '#000' }}>
                 Total Geral · soma de todos os solados
               </span>
               <span
                 className="text-black uppercase leading-none"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
               >
-                {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
               </span>
             </div>
           );

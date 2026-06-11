@@ -88,7 +88,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                   <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                   <p
                     className="text-black leading-none mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                   >
                     {pvDisplay}
                   </p>
@@ -98,18 +98,18 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                 <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
                 <p
                   className="text-black uppercase leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                 >
-                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                  {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
                 </p>
                 {clientNames.length > 0 && (
-                  <p className="font-mono text-[11px] text-black tracking-wider uppercase mt-1 leading-tight">
+                  <p className="font-mono text-[10px] text-black tracking-wider uppercase mt-1 leading-tight">
                     <span className="text-black/60">Cliente · </span>
                     <span className="font-bold">{clientNames.join(' · ')}</span>
                   </p>
                 )}
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
                     {groups.length} grupo{groups.length !== 1 ? 's' : ''}
                   </span>
                   <span className="font-mono text-[10px] text-black tracking-widest uppercase">
@@ -128,7 +128,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
 
       {groups.length === 0 ? (
         <>
-          <div className="text-center py-10 text-black italic text-sm">
+          <div className="text-center py-10 text-black italic text-xs">
             Nenhuma palmilha para cortar neste lote.
           </div>
         </>
@@ -167,12 +167,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
             // (box-decoration-break: clone).
             const groupBlock = (
               <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-                <div className="keep-together keep-with-next px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+                <div className="keep-together keep-with-next px-3 py-1.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                   <div className="min-w-0 flex-1">
                     <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                     <span
                       className="text-black uppercase leading-none block mt-0.5 truncate"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em' }}
                     >
                       {group.soleName}
                     </span>
@@ -186,9 +186,9 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                         <span className="section-label block" style={{ color: '#000' }}>Lote</span>
                         <span
                           className="text-black leading-none block mt-0.5"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em' }}
                         >
-                          {group.lotInfo.number}<span className="text-sm font-mono tracking-widest">/{group.lotInfo.total}</span>
+                          {group.lotInfo.number}<span className="text-xs font-mono tracking-widest">/{group.lotInfo.total}</span>
                         </span>
                       </div>
                     )}
@@ -200,7 +200,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                         <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                         <span
                           className="uppercase leading-none block mt-0.5"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em', color: '#C00000' }}
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.02em', color: '#C00000' }}
                         >
                           {group.insoleColor}
                         </span>
@@ -208,7 +208,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                     )}
                     <div className="border-l border-black pl-3">
                       <span className="section-label block" style={{ color: '#000' }}>Ação</span>
-                      <span className="font-mono text-[11px] font-bold text-black uppercase tracking-widest mt-1 block">
+                      <span className="font-mono text-[10px] font-bold text-black uppercase tracking-widest mt-1 block">
                         {group.readyMade ? 'Pronta' : 'Cortar'}
                       </span>
                     </div>
@@ -216,7 +216,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                       <span className="section-label block" style={{ color: '#000' }}>Pares</span>
                       <span
                         className="text-black leading-none block mt-0.5"
-                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em' }}
                       >
                         {group.totalPairs}
                       </span>
@@ -232,7 +232,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                     (não quebra ao meio), mas o strip COMO UM TODO pode
                     quebrar entre sandálias. */}
                 {group.refs && group.refs.length > 0 && (
-                  <div className="px-3 py-2 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+                  <div className="px-3 py-1.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
                     <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
                     {group.refs.map((r) => (
                       <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -278,13 +278,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                       {/* Largura precisa caber "Total × N fichas" (≈96px). Sob
                           table-layout:fixed quem manda é o width do TH — antes
                           era 54 e cortava o rótulo (reportado 09/06/2026). */}
-                      <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
+                      <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
                       {groupSizes.map((s) => (
                         <th
                           key={s}
-                          className="py-1.5 text-black font-bold"
+                          className="py-1 text-black font-bold"
                           style={{
-                            fontSize: '13px',
+                            fontSize: '11px',
                             fontFamily: "'Fira Code', monospace",
                             borderRight: '1px solid #000',
                           }}
@@ -292,7 +292,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                           {s}
                         </th>
                       ))}
-                      <th className="section-label py-1.5" style={{ color: '#000', width: 54 }}>Total</th>
+                      <th className="section-label py-1" style={{ color: '#000', width: 54 }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -306,17 +306,17 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                           Por Ficha<br />({group.baseGradeSum}p)
                         </td>
                         {groupSizes.map(s => (
-                          <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
+                          <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px', borderRight: '1px solid #000' }}>
                             {group.baseGrade?.[s] || '—'}
                           </td>
                         ))}
-                        <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px' }}>
+                        <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px' }}>
                           {group.baseGradeSum}
                         </td>
                       </tr>
                     )}
                     <tr>
-                      <td className="py-2 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
+                      <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
                         {group.mixedGrades
                           ? <>Total<br />({group.fichas || 0} fichas*)</>
                           : group.fichas && group.fichas > 1
@@ -326,10 +326,10 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                       {groupSizes.map(s => (
                         <td
                           key={s}
-                          className="py-2 text-black"
+                          className="py-1.5 text-black"
                           style={{
                             fontFamily: "'Anton', Impact, sans-serif",
-                            fontSize: '24px',
+                            fontSize: '19px',
                             letterSpacing: '-0.02em',
                             lineHeight: '1',
                             borderRight: '1px solid #000',
@@ -339,10 +339,10 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                         </td>
                       ))}
                       <td
-                        className="py-2 text-black"
+                        className="py-1.5 text-black"
                         style={{
                           fontFamily: "'Anton', Impact, sans-serif",
-                          fontSize: '24px',
+                          fontSize: '19px',
                           letterSpacing: '-0.02em',
                           lineHeight: '1',
                         }}
@@ -356,7 +356,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                 {/* Nota quando agrupa OPs com grades base diferentes — pra
                     o operador entender por que "Por Ficha × N" sumiu. */}
                 {group.mixedGrades && (
-                  <div className="px-3 py-1.5 border-t border-black bg-white">
+                  <div className="px-3 py-1 border-t border-black bg-white">
                     <span className="font-mono text-[9px] text-black tracking-wider uppercase">
                       * Grades base diferentes entre OPs do grupo — total agregado
                     </span>
@@ -370,7 +370,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                   const filtered = filterConsumptionForSector(group.consumption, 'Corte Palmilha');
                   if (filtered.length === 0) return null;
                   return (
-                    <div className="mx-2 mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
+                    <div className="mx-2 mt-2 px-2 py-1 keep-together" style={{ border: '1px solid #000' }}>
                       <div className="flex items-baseline justify-between mb-1">
                         <span className="section-label" style={{ color: '#000' }}>
                           Consumo Previsto
@@ -412,9 +412,9 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                 <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
                 <span
                   className="text-black uppercase leading-none py-1"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
                 >
-                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                  {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
                 </span>
               </div>
             );

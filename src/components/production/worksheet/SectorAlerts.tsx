@@ -24,7 +24,7 @@ export const SectorAlerts = ({ alerts }: Props) => {
   if (!alerts || alerts.length === 0) return null;
 
   return (
-    <div className="keep-together mb-2 space-y-1.5">
+    <div className="keep-together mb-1.5 space-y-1.5">
       {alerts.map((a, i) => {
         const variant = a.variant || 'warning';
         const Icon = variant === 'warning' ? AlertTriangle : Info;
@@ -36,7 +36,7 @@ export const SectorAlerts = ({ alerts }: Props) => {
             style={{ border: '1px solid #000' }}
           >
             <div
-              className="flex items-center justify-center px-2 py-2 shrink-0"
+              className="flex items-center justify-center px-2 py-1.5 shrink-0"
               style={{ borderRight: '1.5px solid #000', minWidth: '90px' }}
             >
               <div className="flex flex-col items-center gap-1">
@@ -49,9 +49,9 @@ export const SectorAlerts = ({ alerts }: Props) => {
                 </span>
               </div>
             </div>
-            <div className="flex items-center px-3 py-2 flex-1">
+            <div className="flex items-center px-3 py-1.5 flex-1">
               <span
-                className="text-[13px] text-black leading-tight"
+                className="text-[11px] text-black leading-tight"
                 style={{ fontWeight: 600, fontFamily: "'Fira Sans', sans-serif" }}
               >
                 {a.text}

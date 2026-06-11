@@ -271,21 +271,21 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                 <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                 <p
                   className="text-black uppercase leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
                 >
                   {group.soleName}
                 </p>
                 {group.clientNames && group.clientNames.length > 0 && (
-                  <p className="font-mono text-[11px] text-black tracking-wider uppercase mt-1 leading-tight">
+                  <p className="font-mono text-[10px] text-black tracking-wider uppercase mt-1 leading-tight">
                     <span className="text-black/60">Cliente · </span>
                     <span className="font-bold">{group.clientNames.join(' · ')}</span>
                   </p>
                 )}
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
                     {group.colorGroups.length} cor{group.colorGroups.length !== 1 ? 'es' : ''}
                   </span>
-                  <span className="font-mono text-[11px] text-black tracking-widest uppercase">
+                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
                     Total · <span className="font-bold">{group.totalPairs}</span> pares
                   </span>
                 </div>
@@ -301,7 +301,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
 
       {/* Silks em destaque — uma por solado, multiple se cliente/grupo tem silk própria */}
       {theme.showSilkImage && uniqueSilks.length > 0 && (
-        <div className="mb-2 keep-together">
+        <div className="mb-1.5 keep-together">
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>
               02 / Silk{uniqueSilks.length > 1 ? 's' : ''} · Solado {group.soleName}
@@ -330,7 +330,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                 <div className="min-w-0 flex-1">
                   <p
                     className="text-black uppercase leading-none truncate"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', letterSpacing: '-0.02em' }}
                     title={silk.silk_name}
                   >
                     {silk.silk_name}
@@ -399,7 +399,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
               {/* Color header — editorial, no fill. Atômico + colado na
                   seção seguinte (nunca órfão no fim da página). */}
-              <div className="keep-together keep-with-next px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+              <div className="keep-together keep-with-next px-3 py-1.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
                   {cg.colorHex && (
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
@@ -415,7 +415,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                     </span>
                     <span
                       className="uppercase leading-none block"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em', color: '#C00000' }}
                     >
                       {cg.color}
                     </span>
@@ -441,7 +441,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                   {cg.pvNumbers && cg.pvNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
-                      <span className="font-mono text-[12px] font-bold text-black tracking-wider">
+                      <span className="font-mono text-[11px] font-bold text-black tracking-wider">
                         {cg.pvNumbers.length === 1 ? cg.pvNumbers[0] : `${cg.pvNumbers[0]} +${cg.pvNumbers.length - 1}`}
                       </span>
                     </div>
@@ -449,7 +449,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                   {cg.opNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
-                      <span className="font-mono text-[12px] font-bold text-black tracking-wider">
+                      <span className="font-mono text-[11px] font-bold text-black tracking-wider">
                         {cg.opNumbers.length === 1 ? cg.opNumbers[0] : `${cg.opNumbers[0]} +${cg.opNumbers.length - 1}`}
                       </span>
                     </div>
@@ -459,9 +459,9 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                       <span className="section-label block" style={{ color: '#000' }}>Lote</span>
                       <span
                         className="text-black leading-none block"
-                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                       >
-                        {cg.lotInfo.number}<span className="text-sm font-mono tracking-widest">/{cg.lotInfo.total}</span>
+                        {cg.lotInfo.number}<span className="text-xs font-mono tracking-widest">/{cg.lotInfo.total}</span>
                       </span>
                     </div>
                   )}
@@ -469,7 +469,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                     <span className="section-label block" style={{ color: '#000' }}>Pares</span>
                     <span
                       className="text-black leading-none block"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.02em' }}
                     >
                       {cg.totalPairs}
                     </span>
@@ -482,7 +482,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                     `keep-together`: foto e grid de materiais devem ficar JUNTOS na mesma
                     página (auditoria mai/2026 — sem isso, em cusp de página a foto ficava
                     isolada de Cabedal/Forro, operador lia info sem ver o produto). */}
-                <div className="flex gap-2 mb-2 keep-together">
+                <div className="flex gap-2 mb-1.5 keep-together">
                   {theme.showProductImage && (
                     <ProductImageBlock
                       variantImageUrl={cg.variantImageUrl}
@@ -493,7 +493,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                       alt={`${group.soleName} ${cg.color}`}
                     />
                   )}
-                  <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+                  <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
                     {theme.showMaterials !== 'none' && (
                       <>
                         {(theme.showMaterials === 'upper' || theme.showMaterials === 'both') && (
@@ -552,7 +552,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                   // linha (tr é atômico, thead repete) pra não pular página
                   // inteira deixando branco.
                   return (
-                    <div className={`mb-2 ${cg.components.length <= 8 ? 'keep-together' : ''}`}>
+                    <div className={`mb-1.5 ${cg.components.length <= 8 ? 'keep-together' : ''}`}>
                       <div className="flex items-baseline justify-between mb-1 keep-with-next">
                         <span className="section-label" style={{ color: '#000' }}>
                           {isAllStraps ? `Sequência de Tiras · ${cg.components.length}` : 'Componentes'}
@@ -564,7 +564,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                         )}
                       </div>
                       {isAllStraps ? (
-                        <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
+                        <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <thead>
                             <tr style={{ borderBottom: '1.5px solid #000' }}>
                               <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
@@ -579,7 +579,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                               <tr key={i} style={{ borderBottom: '1px solid #000' }}>
                                 <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
                                 <td className="px-2 py-1 font-bold text-black uppercase">{c.name}</td>
-                                <td className="px-2 py-1 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em' }}>
+                                <td className="px-2 py-1 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em' }}>
                                   {c.color || '—'}
                                 </td>
                                 <td className="px-2 py-1 text-black">{c.material || '—'}</td>
@@ -591,7 +591,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                           </tbody>
                         </table>
                       ) : (
-                        <ul className="text-[11px] space-y-0.5 bg-white p-2 border-t border-black">
+                        <ul className="text-[10px] space-y-0.5 bg-white p-2 border-t border-black">
                           {cg.components.map((c, i) => (
                             <li key={i} className="text-black">
                               <span className="font-bold uppercase">{c.name}:</span>{' '}
@@ -611,7 +611,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
 
                 {/* Checklist específico de Corte de Cabedal */}
                 {theme.showCabedalCutChecklist && (
-                  <div className="mb-2 keep-together">
+                  <div className="mb-1.5 keep-together">
                     <span className="section-label block mb-1" style={{ color: '#000' }}>
                       Checklist · Corte do Cabedal · {cg.color}
                     </span>
@@ -627,7 +627,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                           ? `Consumo esperado · ${cg.upperConsumptionPerPair.toFixed(2)} dm²/par`
                           : 'Identificar lote · cor + numeração + OP',
                       ].map((item, i) => (
-                        <label key={i} className="flex items-start gap-1.5 text-[11px] leading-tight py-0.5 text-black">
+                        <label key={i} className="flex items-start gap-1.5 text-[10px] leading-tight py-0.5 text-black">
                           <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                           <span>{item}</span>
                         </label>
@@ -639,7 +639,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                 {/* Grade de números — editorial hairline. Atômica: label +
                     tabela inteira na mesma página (linhas "Por Ficha"/"Total"
                     nunca se separam). */}
-                <div className="mb-2 keep-together">
+                <div className="mb-1.5 keep-together">
                   <span className="section-label block mb-1" style={{ color: '#000' }}>Grade · Pares por Numeração</span>
                   <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
                     <thead>
@@ -647,13 +647,13 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                         {/* Coluna do rótulo: largura precisa caber "Total × N
                             fichas" (≈96px). Sob table-layout:fixed quem manda é
                             o width do TH — antes era 54 e cortava o texto. */}
-                        <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
+                        <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
                         {activeSizes.map((s, i) => (
                           <th
                             key={s}
-                            className="py-1.5 text-black font-bold"
+                            className="py-1 text-black font-bold"
                             style={{
-                              fontSize: '13px',
+                              fontSize: '11px',
                               fontFamily: "'Fira Code', monospace",
                               borderRight: '1px solid #000',
                             }}
@@ -661,7 +661,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                             {s}
                           </th>
                         ))}
-                        <th className="section-label py-1.5" style={{ color: '#000', width: 50 }}>Total</th>
+                        <th className="section-label py-1" style={{ color: '#000', width: 50 }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -675,17 +675,17 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                             Por Ficha<br />({cg.baseGradeSum}p)
                           </td>
                           {activeSizes.map(s => (
-                            <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px', borderRight: '1px solid #000' }}>
+                            <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px', borderRight: '1px solid #000' }}>
                               {cg.baseGrid?.[s] || '—'}
                             </td>
                           ))}
-                          <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '14px' }}>
+                          <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px' }}>
                             {cg.baseGradeSum}
                           </td>
                         </tr>
                       )}
                       <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
-                        <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
+                        <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
                           {cg.mixedGrades
                             ? <>Total<br />({cg.fichas || 0} fichas*)</>
                             : cg.fichas && cg.fichas > 1
@@ -695,10 +695,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                         {activeSizes.map(s => (
                           <td
                             key={s}
-                            className="py-1.5 text-black"
+                            className="py-1 text-black"
                             style={{
                               fontFamily: "'Anton', Impact, sans-serif",
-                              fontSize: '22px',
+                              fontSize: '17px',
                               letterSpacing: '-0.02em',
                               lineHeight: '1',
                               borderRight: '1px solid #000',
@@ -708,10 +708,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                           </td>
                         ))}
                         <td
-                          className="py-1.5 text-black"
+                          className="py-1 text-black"
                           style={{
                             fontFamily: "'Anton', Impact, sans-serif",
-                            fontSize: '22px',
+                            fontSize: '17px',
                             letterSpacing: '-0.02em',
                             lineHeight: '1',
                           }}
@@ -730,13 +730,13 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                           : ['Frente', 'Traseira'];
                         return steps.map((step, sIdx) => (
                           <tr key={`avi-${step}`} style={{ borderBottom: sIdx < steps.length - 1 ? '1px solid #000' : 'none' }}>
-                            <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>{step}</td>
+                            <td className="py-1 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>{step}</td>
                             {activeSizes.map(s => (
-                              <td key={s} className="py-1.5" style={{ borderRight: '1px solid #000' }}>
+                              <td key={s} className="py-1" style={{ borderRight: '1px solid #000' }}>
                                 <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
                               </td>
                             ))}
-                            <td className="py-1.5">
+                            <td className="py-1">
                               <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
                             </td>
                           </tr>
@@ -748,11 +748,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
 
                 {/* Checklist Acabamento */}
                 {theme.showFinishingChecklist && (
-                  <div className="mb-2">
+                  <div className="mb-1.5">
                     <span className="section-label block mb-1" style={{ color: '#000' }}>Checklist por Ficha</span>
                     <div className="border-t border-black pt-1.5 grid grid-cols-4 gap-2">
                       {['Limpou cola', 'Conferiu numeração', 'Conferiu par', 'Embalou'].map(item => (
-                        <label key={item} className="flex items-center gap-1.5 text-[11px] text-black">
+                        <label key={item} className="flex items-center gap-1.5 text-[10px] text-black">
                           <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
                           <span className="leading-tight">{item}</span>
                         </label>
@@ -768,7 +768,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                   const filtered = filterConsumptionForSector(cg.consumption, sector);
                   if (filtered.length === 0) return null;
                   return (
-                    <div className="mt-2 px-2 py-1.5 keep-together" style={{ border: '1px solid #000' }}>
+                    <div className="mt-2 px-2 py-1 keep-together" style={{ border: '1px solid #000' }}>
                       <div className="flex items-baseline justify-between mb-1">
                         <span className="section-label" style={{ color: '#000' }}>
                           Consumo Previsto

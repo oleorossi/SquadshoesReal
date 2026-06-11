@@ -165,11 +165,11 @@ const OperatorWorkSheet = ({
     >
       {/* ── Header — Industrial Editorial ── */}
       {/* Sector title bar — top of the page (per user feedback May/2026) */}
-      <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1.5 mb-1">
+      <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1 mb-1">
         <div className="text-black shrink-0">{meta.icon}</div>
         <span
           className="text-black uppercase leading-none flex-1"
-          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.02em' }}
+          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
         >
           {sector}
         </span>
@@ -179,13 +179,13 @@ const OperatorWorkSheet = ({
             className="text-black uppercase leading-none shrink-0 pl-3"
             style={{
               fontFamily: "'Anton', Impact, sans-serif",
-              fontSize: '34px',
+              fontSize: '26px',
               letterSpacing: '-0.02em',
               borderLeft: '2px solid #000',
             }}
             aria-label={`Lote ${lotInfo.number} de ${lotInfo.total}`}
           >
-            <span className="pl-3">LOTE {lotInfo.number}<span className="text-[18px] align-middle">/{lotInfo.total}</span></span>
+            <span className="pl-3">LOTE {lotInfo.number}<span className="text-[15px] align-middle">/{lotInfo.total}</span></span>
           </span>
         ) : (
           <span className="section-label" style={{ color: '#000' }}>Ficha de Operador</span>
@@ -204,7 +204,7 @@ const OperatorWorkSheet = ({
         </div>
       </div>
 
-      <div className="border-t border-b border-black py-1.5 mb-1 flex items-stretch gap-3">
+      <div className="border-t border-b border-black py-1 mb-1 flex items-stretch gap-3">
         {/* OP/Pares heroes */}
         <div className="flex-1 flex items-stretch gap-3 min-w-0 flex-wrap">
           <div className="flex flex-col justify-center">
@@ -213,7 +213,7 @@ const OperatorWorkSheet = ({
             </span>
             <span
               className="text-black font-mono leading-none mt-1"
-              style={{ fontFamily: "'Fira Code', monospace", fontSize: '30px', fontWeight: 700, letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Fira Code', monospace", fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em' }}
             >
               {opNumbers && opNumbers.length > 1 ? `${opNumbers[0]}+` : order.op_number}
             </span>
@@ -224,7 +224,7 @@ const OperatorWorkSheet = ({
               <span className="section-label" style={{ color: '#000' }}>Pedido</span>
               <span
                 className="text-black font-mono leading-none mt-1"
-                style={{ fontFamily: "'Fira Code', monospace", fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em' }}
+                style={{ fontFamily: "'Fira Code', monospace", fontSize: '16px', fontWeight: 700, letterSpacing: '-0.02em' }}
               >
                 {order.sale_order_number || order.pv_number}
               </span>
@@ -234,7 +234,7 @@ const OperatorWorkSheet = ({
           {clientName && (
             <div className="border-l border-black pl-4 flex flex-col justify-center min-w-0">
               <span className="section-label" style={{ color: '#000' }}>Cliente</span>
-              <span className="text-black font-mono text-[13px] leading-tight mt-1 tracking-wider uppercase font-bold truncate">
+              <span className="text-black font-mono text-[11px] leading-tight mt-1 tracking-wider uppercase font-bold truncate">
                 {clientName}
               </span>
             </div>
@@ -243,14 +243,14 @@ const OperatorWorkSheet = ({
             <span className="section-label" style={{ color: '#000' }}>Pares</span>
             <span
               className="text-black leading-none mt-1"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '48px', fontWeight: 400, letterSpacing: '-0.03em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', fontWeight: 400, letterSpacing: '-0.03em' }}
             >
               {totalPairs}
             </span>
           </div>
           <div className="border-l border-black pl-4 flex flex-col justify-center">
             <span className="section-label" style={{ color: '#000' }}>Entrega</span>
-            <span className="text-black font-mono text-base leading-tight mt-1 tracking-wider">
+            <span className="text-black font-mono text-sm leading-tight mt-1 tracking-wider">
               {order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}
             </span>
             {fichas > 1 && (
@@ -264,7 +264,7 @@ const OperatorWorkSheet = ({
               <span className="section-label block" style={{ color: '#000' }}>Loja</span>
               <p
                 className="text-black uppercase leading-tight mt-1"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.01em' }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', letterSpacing: '-0.01em' }}
               >
                 {clientInfo.name}
               </p>
@@ -286,21 +286,21 @@ const OperatorWorkSheet = ({
 
       {/* ── Produção diária / tempo estimado / por ficha / total — KPI band ── */}
       {effectiveCapacity > 0 && (
-        <div className="grid grid-cols-4 gap-0 mb-2 border-y border-black">
-          <div className="py-2 px-3">
+        <div className="grid grid-cols-4 gap-0 mb-1.5 border-y border-black">
+          <div className="py-1.5 px-3">
             <span className="section-label block" style={{ color: '#000' }}>Produção / Dia</span>
             <span
               className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
             >
               {effectiveCapacity} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
             </span>
           </div>
-          <div className="py-2 px-3 border-l border-black">
+          <div className="py-1.5 px-3 border-l border-black">
             <span className="section-label block" style={{ color: '#000' }}>Tempo Estimado</span>
             <span
               className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
             >
               {estimatedDays} <span className="text-[9px] font-mono tracking-widest uppercase">dia{estimatedDays !== 1 ? 's' : ''}</span>
             </span>
@@ -308,7 +308,7 @@ const OperatorWorkSheet = ({
           {/* Por ficha fechada — quantos pares cabem em UMA ficha. Distinto
               do total da OP (que pode ser N fichas multiplicadas).
               Grades mistas: não existe UMA grade base — mostra aviso. */}
-          <div className="py-2 px-3 border-l border-black">
+          <div className="py-1.5 px-3 border-l border-black">
             <span className="section-label block" style={{ color: '#000' }}>Por Ficha</span>
             {mixedGrades ? (
               <span className="font-mono text-[10px] tracking-widest uppercase text-black mt-1 block leading-tight">
@@ -318,7 +318,7 @@ const OperatorWorkSheet = ({
               <>
                 <span
                   className="text-black leading-none mt-1 block"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
                 >
                   {gradeSum} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
                 </span>
@@ -333,11 +333,11 @@ const OperatorWorkSheet = ({
               </>
             )}
           </div>
-          <div className="py-2 px-3 border-l border-black">
+          <div className="py-1.5 px-3 border-l border-black">
             <span className="section-label block" style={{ color: '#000' }}>Total da OP</span>
             <span
               className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
             >
               {totalPairs} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
             </span>
@@ -351,7 +351,7 @@ const OperatorWorkSheet = ({
           silk padrão do solado aqui. Mesmo destaque que o SilkMontageWorkSheet
           mostra na ficha consolidada. ── */}
       {(isSilk || isAcabamento) && silk && (
-        <div className="mb-2 keep-together">
+        <div className="mb-1.5 keep-together">
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>
               02 / Silk · {isSilk ? 'Estampar' : 'Conferir antes da entrega'}
@@ -376,7 +376,7 @@ const OperatorWorkSheet = ({
                 className="text-black uppercase leading-none mt-1 truncate"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: adaptiveFontSize(silk.silk_name || '', { maxWidthPx: 280, baseFontPx: 32, minFontPx: 14, charWidthRatio: 0.45 }),
+                  fontSize: adaptiveFontSize(silk.silk_name || '', { maxWidthPx: 280, baseFontPx: 25, minFontPx: 12, charWidthRatio: 0.45 }),
                   letterSpacing: '-0.02em',
                 }}
                 title={silk.silk_name}
@@ -392,7 +392,7 @@ const OperatorWorkSheet = ({
       )}
 
       {/* ── Product info row — editorial card with hero REF ── */}
-      <div className="flex gap-3 mb-2 border-b border-black pb-2">
+      <div className="flex gap-3 mb-1.5 border-b border-black pb-2">
         {/* Image — hairline framed */}
         <div className="w-48 h-48 bg-white overflow-hidden shrink-0 relative" style={{ border: '1.5px solid #000' }}>
           {!order.variant?.variant_image_url && (
@@ -421,7 +421,7 @@ const OperatorWorkSheet = ({
                     className="text-black uppercase leading-none mt-0.5 truncate"
                     style={{
                       fontFamily: "'Anton', Impact, sans-serif",
-                      fontSize: adaptiveFontSize(refName, { maxWidthPx: 300, baseFontPx: 32, minFontPx: 14, charWidthRatio: 0.45 }),
+                      fontSize: adaptiveFontSize(refName, { maxWidthPx: 300, baseFontPx: 25, minFontPx: 12, charWidthRatio: 0.45 }),
                       letterSpacing: '-0.025em',
                     }}
                     title={refName}
@@ -441,7 +441,7 @@ const OperatorWorkSheet = ({
                 <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
                 <span
                   className="uppercase leading-none"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
                 >
                   {resolvedColorName}
                 </span>
@@ -454,7 +454,7 @@ const OperatorWorkSheet = ({
                 <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                 <span
                   className="uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
                 >
                   {resolvedSoleColor}
                 </span>
@@ -462,7 +462,7 @@ const OperatorWorkSheet = ({
             ) : (
               <div>
                 <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
-                <p className="text-sm font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
+                <p className="text-xs font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
               </div>
             )}
 
@@ -472,7 +472,7 @@ const OperatorWorkSheet = ({
                 <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                 <span
                   className="uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
                 >
                   {resolvedInsoleColor}
                 </span>
@@ -491,7 +491,7 @@ const OperatorWorkSheet = ({
                   {silk.silk_url && (
                     <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
                   )}
-                  <span className="text-base font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
+                  <span className="text-sm font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
                 </div>
               </div>
             )}
@@ -515,7 +515,7 @@ const OperatorWorkSheet = ({
       {hasStraps && strapColors && strapColors.length > 0 && (
         // Lista curta (≤8) fica atômica; lista longa flui linha a linha
         // (tr é atômico, thead repete) pra não pular página inteira.
-        <div className={`mb-2 ${strapColors.length <= 8 ? 'keep-together' : ''}`}>
+        <div className={`mb-1.5 ${strapColors.length <= 8 ? 'keep-together' : ''}`}>
           <div className="flex items-baseline justify-between mb-1 keep-with-next">
             <span className="section-label" style={{ color: '#000' }}>
               02 / Sequência de Tiras
@@ -524,7 +524,7 @@ const OperatorWorkSheet = ({
               {strapColors.length} tira{strapColors.length > 1 ? 's' : ''} · ordem da ficha técnica
             </span>
           </div>
-          <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
+          <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
             <thead>
               <tr style={{ borderBottom: '1.5px solid #000' }}>
                 <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
@@ -539,7 +539,7 @@ const OperatorWorkSheet = ({
                 <tr key={s.id || i} style={{ borderBottom: '1px solid #000' }} className="bg-white">
                   <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
                   <td className="px-2 py-1 font-bold text-black uppercase">{s.label || `TIRA ${i + 1}`}</td>
-                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}>
+                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000' }}>
                     {s.color || '—'}
                   </td>
                   <td className="px-2 py-1 text-black">{s.group_name || '—'}</td>
@@ -554,7 +554,7 @@ const OperatorWorkSheet = ({
       )}
 
       {/* ── Grade de Produção — FULL WIDTH, hairline editorial ── */}
-      <div className="mb-2">
+      <div className="mb-1.5">
         <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <span className="section-label" style={{ color: '#000' }}>
             03 / Grade de Produção
@@ -573,13 +573,13 @@ const OperatorWorkSheet = ({
                   {/* width 96: sob table-layout fixed o th manda na coluna inteira —
                       56px clipava "Por Ficha (12p)"/"Total × N" (td tem overflow
                       hidden em print). Mesmo fix já aplicado em Silk/Palmilha/Solagem. */}
-                  <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
+                  <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
                   {chunk.map((s, i) => (
                     <th
                       key={s}
-                      className="py-1.5 text-black font-bold"
+                      className="py-1 text-black font-bold"
                       style={{
-                        fontSize: '14px',
+                        fontSize: '12px',
                         fontFamily: "'Fira Code', monospace",
                         borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                       }}
@@ -588,7 +588,7 @@ const OperatorWorkSheet = ({
                     </th>
                   ))}
                   {ci === sizeChunks.length - 1 && (
-                    <th className="section-label py-1.5" style={{ color: '#000', width: 64 }}>Total</th>
+                    <th className="section-label py-1" style={{ color: '#000', width: 64 }}>Total</th>
                   )}
                 </tr>
               </thead>
@@ -601,15 +601,15 @@ const OperatorWorkSheet = ({
                     repetir como "Por Ficha" mentiria pro operador. */}
                 {gradeSum > 0 && !mixedGrades && (
                   <tr style={{ borderBottom: '1.5px solid #000' }}>
-                    <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
+                    <td className="py-1 text-[10px] font-mono font-bold text-black leading-tight uppercase" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em' }}>
                       Por Ficha<br />({gradeSum}p)
                     </td>
                     {chunk.map((s, i) => (
                       <td
                         key={s}
-                        className="py-1.5 font-mono font-bold text-black"
+                        className="py-1 font-mono font-bold text-black"
                         style={{
-                          fontSize: '16px',
+                          fontSize: '13px',
                           borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                         }}
                       >
@@ -617,23 +617,23 @@ const OperatorWorkSheet = ({
                       </td>
                     ))}
                     {ci === sizeChunks.length - 1 && (
-                      <td className="py-1.5 font-mono text-base font-bold text-black">{gradeSum}</td>
+                      <td className="py-1 font-mono text-sm font-bold text-black">{gradeSum}</td>
                     )}
                   </tr>
                 )}
                 {/* TOTAL row — GIANT Anton numbers. Quando fichas=1, esse total
                     JÁ É o conteúdo de uma ficha — label deixa claro. */}
                 <tr>
-                  <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
+                  <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
                     {mixedGrades ? <>Total<br />(mista)</> : fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
                   </td>
                   {chunk.map((s, i) => (
                     <td
                       key={s}
-                      className="py-2 text-black"
+                      className="py-1.5 text-black"
                       style={{
                         fontFamily: "'Anton', Impact, sans-serif",
-                        fontSize: '28px',
+                        fontSize: '22px',
                         letterSpacing: '-0.02em',
                         lineHeight: '1',
                         borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
@@ -644,10 +644,10 @@ const OperatorWorkSheet = ({
                   ))}
                   {ci === sizeChunks.length - 1 && (
                     <td
-                      className="py-2 text-black"
+                      className="py-1.5 text-black"
                       style={{
                         fontFamily: "'Anton', Impact, sans-serif",
-                        fontSize: '28px',
+                        fontSize: '22px',
                         letterSpacing: '-0.02em',
                         lineHeight: '1',
                       }}
@@ -664,7 +664,7 @@ const OperatorWorkSheet = ({
 
       {/* ── Lista de OPs agrupadas (não-Acabamento com múltiplas OPs) ── */}
       {opNumbers && opNumbers.length > 1 && (
-        <div className="mb-2 keep-together">
+        <div className="mb-1.5 keep-together">
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>
               Ordens Agrupadas
@@ -677,7 +677,7 @@ const OperatorWorkSheet = ({
             {opNumbers.map(op => (
               <span
                 key={op}
-                className="font-mono text-[11px] font-bold bg-white text-black px-2 py-0.5"
+                className="font-mono text-[10px] font-bold bg-white text-black px-2 py-0.5"
                 style={{ border: '1px solid #000' }}
               >
                 {op}
@@ -707,15 +707,15 @@ const OperatorWorkSheet = ({
 
         {/* Palmilha pronta na cor: sector not applicable */}
         {isInsoleSkippedSector && (
-          <div className="col-span-2 bg-white p-3" style={{ border: '1.5px solid #000' }}>
+          <div className="col-span-2 bg-white p-2.5" style={{ border: '1.5px solid #000' }}>
             <span className="section-label block mb-1" style={{ color: '#000' }}>Aviso · Palmilha Pronta</span>
             <p
               className="text-black uppercase leading-none mb-1"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
             >
               Pronta na Cor
             </p>
-            <p className="text-[11px] text-black leading-tight">
+            <p className="text-[10px] text-black leading-tight">
               Este modelo usa palmilha pronta. Não há corte/costura de palmilha neste setor.
             </p>
           </div>
@@ -724,7 +724,7 @@ const OperatorWorkSheet = ({
         {/* CORTE PALMILHA */}
         {isCortePalmilha && !isInsoleSkippedSector && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Corte Palmilha</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -734,14 +734,14 @@ const OperatorWorkSheet = ({
                   'Pares contados e agrupados por numeração',
                   'Identificação de lote aplicada',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Informações</span>
               <div className="border-t border-black pt-1.5 text-xs space-y-1.5">
                 <div className="flex justify-between items-baseline">
@@ -759,7 +759,7 @@ const OperatorWorkSheet = ({
         {/* CORTE FORRAÇÃO */}
         {isCorteForração && !isInsoleSkippedSector && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Corte Forração</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -769,18 +769,18 @@ const OperatorWorkSheet = ({
                   'Corte por cor e numeração',
                   'Peças contadas e identificadas por cor',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1.5px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1.5px solid #000' }}>
               <span className="section-label block mb-1" style={{ color: '#000' }}>Cor de Forração</span>
               <span
                 className="uppercase leading-none block"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em', color: '#C00000' }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
               >
                 {resolvedInsoleColor}
               </span>
@@ -797,7 +797,7 @@ const OperatorWorkSheet = ({
         {/* AVIAMENTO: tiras assembly + artisanal upper work (ex-Mesa) */}
         {isAviamento && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>
                 Checklist · Aviamento {hasStraps ? '(Tiras)' : '(Cabedal)'}
               </span>
@@ -817,19 +817,19 @@ const OperatorWorkSheet = ({
                   'Verificar alinhamento das peças',
                   'Lote identificado e encaminhado',
                 ]).map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-2" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-2" style={{ border: '1px solid #000' }}>
               <span className="section-label block" style={{ color: '#000' }}>Controle Aviamento</span>
               {hasStraps && (
                 <div className="border-t border-black pt-1.5 flex justify-between items-baseline">
                   <span className="section-label" style={{ color: '#000' }}>Cor das Tiras</span>
-                  <span className="uppercase text-sm" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
+                  <span className="uppercase text-xs" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
                 </div>
               )}
               {/* Frente / Traseiro fillable fields */}
@@ -858,8 +858,8 @@ const OperatorWorkSheet = ({
         {/* SILK: silk type */}
         {isSilk && (
           <>
-            <div className="col-span-2 bg-white p-3" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block mb-2" style={{ color: '#000' }}>Arte do Silk</span>
+            <div className="col-span-2 bg-white p-2.5" style={{ border: '1.5px solid #000' }}>
+              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Arte do Silk</span>
               {silk ? (
                 <div className="flex items-center gap-4 border-t border-black pt-2">
                   {silk.silk_url && (
@@ -870,11 +870,11 @@ const OperatorWorkSheet = ({
                   <div className="flex-1">
                     <p
                       className="text-black uppercase leading-none"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                     >
                       {silk.silk_name}
                     </p>
-                    <p className="text-[11px] text-black mt-1.5 leading-tight">Verificar posicionamento e pressão antes de iniciar.</p>
+                    <p className="text-[10px] text-black mt-1.5 leading-tight">Verificar posicionamento e pressão antes de iniciar.</p>
                   </div>
                 </div>
               ) : (
@@ -893,7 +893,7 @@ const OperatorWorkSheet = ({
         {/* COLAGEM: adhesive checklist */}
         {isColagem && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Colagem</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -903,21 +903,21 @@ const OperatorWorkSheet = ({
                   'Tempo de secagem respeitado',
                   'Prensagem aplicada',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
               <span className="section-label block" style={{ color: '#000' }}>Materiais de Base</span>
               <div className="border-t border-black pt-2 space-y-2">
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -926,7 +926,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -942,7 +942,7 @@ const OperatorWorkSheet = ({
         {/* MONTAGEM: assembly instruction + materials */}
         {isMontagem && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Montagem</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -952,21 +952,21 @@ const OperatorWorkSheet = ({
                   'Verificação visual do par',
                   'Par limpo antes de embalar',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
               <span className="section-label block" style={{ color: '#000' }}>Materiais de Base</span>
               <div className="border-t border-black pt-2 space-y-2">
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -975,7 +975,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -987,7 +987,7 @@ const OperatorWorkSheet = ({
               {(order.master as any).assembly_instructions && (
                 <div className="border-t border-black pt-2">
                   <span className="section-label block mb-1" style={{ color: '#000' }}>Instrução de Montagem</span>
-                  <p className="text-[11px] text-black leading-tight">{(order.master as any).assembly_instructions}</p>
+                  <p className="text-[10px] text-black leading-tight">{(order.master as any).assembly_instructions}</p>
                 </div>
               )}
             </div>
@@ -1000,7 +1000,7 @@ const OperatorWorkSheet = ({
         {/* SOLAGEM: sole grade breakdown */}
         {isSolagem && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Solagem</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -1010,21 +1010,21 @@ const OperatorWorkSheet = ({
                   'Prensa aplicada · cura respeitada',
                   'Solado centrado e alinhado',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
               <span className="section-label block" style={{ color: '#000' }}>Materiais</span>
               <div className="border-t border-black pt-2 space-y-2">
                 <div>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -1033,7 +1033,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -1052,7 +1052,7 @@ const OperatorWorkSheet = ({
         {/* ACABAMENTO: checklist + resumo de materiais + boxes */}
         {isAcabamento && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Acabamento</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -1063,14 +1063,14 @@ const OperatorWorkSheet = ({
                   'Embalagem individual',
                   'Caixa identificada com OP',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-2" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-2" style={{ border: '1px solid #000' }}>
               <span className="section-label block" style={{ color: '#000' }}>Resumo de Materiais</span>
               <div className="border-t border-black pt-1.5 space-y-1 text-xs">
                 <div className="flex justify-between items-baseline">
@@ -1109,7 +1109,7 @@ const OperatorWorkSheet = ({
         {/* EXPEDIÇÃO: dispatch checklist + client summary */}
         {isExpedicao && (
           <>
-            <div className="bg-white p-2.5 space-y-1" style={{ border: '1px solid #000' }}>
+            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
               <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Expedição</span>
               <div className="border-t border-black pt-1.5 space-y-1">
                 {[
@@ -1120,14 +1120,14 @@ const OperatorWorkSheet = ({
                   'Romaneio de entrega gerado',
                   'Lote separado por cliente',
                 ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[12px] py-0.5 text-black">
+                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
                     <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
                     <span className="leading-tight">{item}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-2.5 space-y-2" style={{ border: '1.5px solid #000' }}>
+            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
               <span className="section-label block" style={{ color: '#000' }}>Resumo do Pedido</span>
               <div className="border-t border-black pt-1.5 space-y-1 text-xs">
                 <div className="flex justify-between items-baseline">
@@ -1146,7 +1146,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label" style={{ color: '#000' }}>Total</span>
                   <span
                     className="text-black uppercase leading-none"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
                   >
                     {totalPairs} <span className="text-[10px] font-mono tracking-widest">pares</span>
                   </span>
@@ -1180,7 +1180,7 @@ const OperatorWorkSheet = ({
         <div className="mt-4 pt-2 keep-together keep-with-previous">
           <div className="border-t border-black pt-1">
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>
-            <p className="text-[11px] text-black leading-tight">{order.notes}</p>
+            <p className="text-[10px] text-black leading-tight">{order.notes}</p>
           </div>
         </div>
       )}

@@ -17,7 +17,7 @@ interface Props {
   accentColor?: 'slate' | 'amber' | 'emerald' | 'blue' | 'pink' | 'violet' | 'cyan' | 'lime' | 'rose' | 'orange';
   /** Título customizado. Se não passar, monta um padrão. */
   title?: string;
-  /** Tamanho do quadrado. md = 24px (default), lg = 32px. */
+  /** Tamanho do quadrado. md = 20px (default), lg = 28px. */
   size?: 'md' | 'lg';
 }
 
@@ -35,33 +35,30 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   if (count <= 0) return null;
   const footerTotal = totalUnits ?? count * pairsPerCard;
 
-  // Fix 22/05/2026: w-7 (28px) → w-6 (24px) reduz altura total do tally
-  // em fichas grandes. 213 caixinhas em ~7 cols viram 30 linhas: 24px×30
-  // = 720px (190mm) vs antigo 840px (222mm) = economia de 32mm.
-  // Importante pra Solagem consolidada caber em 1 A4.
-  const boxSize = size === 'lg' ? 'w-9 h-9' : 'w-6 h-6';
+  // 22/05: w-7→w-6. 2026-06-11 (pedido do user, gastar menos A4): w-6→w-5
+  // (20px). 213 caixinhas em ~30 linhas: 20px×30 = 600px (159mm) vs 720px
+  // (190mm) = economia extra de ~31mm por tally grande.
+  const boxSize = size === 'lg' ? 'w-7 h-7' : 'w-5 h-5';
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
 
-  // Fix 22/05/2026: font-size dinâmico pra número caber na caixinha
-  // mesmo com 3+ dígitos (palmilhas consolidadas chegam a 213 fichas).
-  // box w-6 = 24×24px; com border 1.5px sobra ~20px de espaço útil.
-  //   1-2 dígitos (até 99): 10px (default)
-  //   3 dígitos (100-999): 8px
-  //   4+ dígitos (1000+): 6.5px
-  // box w-9 = 36×36px (size lg, raro); mais espaço útil
-  //   1-2 dígitos: 16px (text-base default)
-  //   3 dígitos: 13px
-  //   4+ dígitos: 10px
+  // Font-size dinâmico pra número caber na caixinha mesmo com 3+ dígitos
+  // (palmilhas consolidadas chegam a 213 fichas).
+  // box w-5 = 20×20px; com border 1.5px sobra ~16px de espaço útil.
+  //   1-2 dígitos (até 99): 9px
+  //   3 dígitos (100-999): 7.5px
+  //   4+ dígitos (1000+): 6px
+  // box w-7 = 28×28px (size lg, raro); mais espaço útil
+  //   1-2 dígitos: 13px · 3 dígitos: 11px · 4+: 9px
   const getFontSize = (n: number): string => {
     const digits = String(n).length;
     if (size === 'lg') {
-      if (digits <= 2) return '16px';
-      if (digits === 3) return '13px';
-      return '10px';
+      if (digits <= 2) return '13px';
+      if (digits === 3) return '11px';
+      return '9px';
     }
-    if (digits <= 2) return '10px';
-    if (digits === 3) return '8px';
-    return '6.5px';
+    if (digits <= 2) return '9px';
+    if (digits === 3) return '7.5px';
+    return '6px';
   };
 
   // Fix 22/05/2026: tally >60 caixinhas estourava 1 A4 e aplicar keep-together
@@ -101,7 +98,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
                 {chunk[0]} – {chunk[chunk.length - 1]}
               </div>
             )}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {chunk.map((n) => (
                 <div
                   key={n}

@@ -123,7 +123,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                 <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                 <p
                   className="text-black leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em' }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
                 >
                   {group.sale_order_number}
                 </p>
@@ -135,7 +135,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                 className="text-black uppercase leading-none mt-0.5 truncate"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: adaptiveFontSize(group.client_name || '', { maxWidthPx: 340, baseFontPx: 30, minFontPx: 14, charWidthRatio: 0.45 }),
+                  fontSize: adaptiveFontSize(group.client_name || '', { maxWidthPx: 340, baseFontPx: 24, minFontPx: 12, charWidthRatio: 0.45 }),
                   letterSpacing: '-0.025em',
                 }}
                 title={group.client_name}
@@ -186,7 +186,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
       {/* Resumo embalagem — atômico quando curto (≤8 solados); com mais
           linhas flui linha a linha (tr atômico, thead repete) pra não pular
           página inteira deixando branco. */}
-      <div className={`mb-2 ${boxesBySole.size <= 8 ? 'keep-together' : ''}`}>
+      <div className={`mb-1.5 ${boxesBySole.size <= 8 ? 'keep-together' : ''}`}>
         <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
@@ -197,7 +197,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
               <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
               <span
                 className="text-black leading-none block mt-0.5"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.02em' }}
               >
                 {totalBoxes}
               </span>
@@ -206,7 +206,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
               <span className="section-label block" style={{ color: '#000' }}>Pares</span>
               <span
                 className="text-black leading-none block mt-0.5"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.02em' }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.02em' }}
               >
                 {totalPairs}
               </span>
@@ -257,22 +257,22 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                   (sem width) recebe só a sobra — com grade mista infantil+adulto
                   (14+ numerações) as larguras antigas (40/60/70/90/26/50) deixavam
                   ~35px pra Referência e o nome quebrava letra a letra no papel. */}
-              <th className="section-label py-1.5 px-1 text-center" style={{ color: '#000', width: 44, borderRight: '1px solid #000' }}>Foto</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 48, borderRight: '1px solid #000' }}>OP</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', borderRight: '1px solid #000' }}>Referência</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Cor</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 70, borderRight: '1px solid #000' }}>Solado</th>
+              <th className="section-label py-1 px-1 text-center" style={{ color: '#000', width: 44, borderRight: '1px solid #000' }}>Foto</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: 48, borderRight: '1px solid #000' }}>OP</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', borderRight: '1px solid #000' }}>Referência</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Cor</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: 70, borderRight: '1px solid #000' }}>Solado</th>
               {allSizes.map(s => (
                 <th
                   key={s}
-                  className="py-1.5 text-black font-bold"
+                  className="py-1 text-black font-bold"
                   style={{ width: 22, fontSize: '11px', fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000' }}
                 >
                   {s}
                 </th>
               ))}
-              <th className="section-label py-1.5 px-1 text-right" style={{ color: '#000', width: 40, borderRight: '1px solid #000' }}>Total</th>
-              <th className="section-label py-1.5 text-center" style={{ color: '#000', width: 24 }}>OK</th>
+              <th className="section-label py-1 px-1 text-right" style={{ color: '#000', width: 40, borderRight: '1px solid #000' }}>Total</th>
+              <th className="section-label py-1 text-center" style={{ color: '#000', width: 24 }}>OK</th>
             </tr>
           </thead>
           <tbody>
@@ -286,15 +286,15 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                   )}
                 </td>
                 <td className="py-1 px-1 font-mono text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.op_number || '—'}</td>
-                <td className="py-1 px-1 text-[11px] text-black" style={{ borderRight: '1px solid #000' }}>
+                <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>
                   <span className="font-bold uppercase">{o.reference_name || o.reference_code || '—'}</span>
                 </td>
-                <td className="py-1 px-1 text-[11px] uppercase" style={{ borderRight: '1px solid #000', color: '#C00000', fontWeight: 800 }}>{o.color || '—'}</td>
+                <td className="py-1 px-1 text-[10px] uppercase" style={{ borderRight: '1px solid #000', color: '#C00000', fontWeight: 800 }}>{o.color || '—'}</td>
                 <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.sole_name || '—'}</td>
                 {allSizes.map(s => (
                   <td
                     key={s}
-                    className="py-1 text-center font-mono text-[11px] font-bold text-black"
+                    className="py-1 text-center font-mono text-[10px] font-bold text-black"
                     style={{ borderRight: '1px solid #000' }}
                   >
                     {o.grid?.[s] || ''}
@@ -302,7 +302,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                 ))}
                 <td
                   className="py-1 px-1 text-right font-mono font-bold text-black"
-                  style={{ fontSize: '13px', borderRight: '1px solid #000' }}
+                  style={{ fontSize: '11px', borderRight: '1px solid #000' }}
                 >
                   {o.total_pairs || 0}
                 </td>
@@ -316,16 +316,16 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
             <tr style={{ borderTop: '1.5px solid #000' }}>
               <td
                 colSpan={5 + allSizes.length}
-                className="py-2 px-2 text-right section-label"
+                className="py-1.5 px-2 text-right section-label"
                 style={{ color: '#000', borderRight: '1px solid #000' }}
               >
                 Total da Loja
               </td>
               <td
-                className="py-2 px-1 text-right text-black"
+                className="py-1.5 px-1 text-right text-black"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: '20px',
+                  fontSize: '16px',
                   letterSpacing: '-0.02em',
                   lineHeight: '1',
                   borderRight: '1px solid #000',
@@ -346,7 +346,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
           <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
           <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
             {['NF-e impressa', 'Etiqueta do cliente', 'Romaneio assinado', 'Conferência por par'].map(item => (
-              <label key={item} className="flex items-center gap-2 text-[11px] text-black">
+              <label key={item} className="flex items-center gap-2 text-[10px] text-black">
                 <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
                 <span className="leading-tight">{item}</span>
               </label>
