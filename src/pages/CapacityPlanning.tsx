@@ -12,7 +12,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, addDays, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { computeParallelWindows } from '@/lib/sectorCapacity';
+import { computeParallelWindows, setHolidayCache } from '@/lib/sectorCapacity';
+import { useHolidays } from '@/hooks/useTimesheet';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -160,6 +161,11 @@ export default function CapacityPlanning() {
     staleTime: 30_000,
   });
 
+  // Feriados → cache do motor de capacidade (alinha janelas ao SQL). Populado
+  // antes do timelineData (abaixo) recomputar; holidays entra nas deps dele.
+  const { data: holidays = [] } = useHolidays();
+  useMemo(() => setHolidayCache(holidays), [holidays]);
+
   // ─── ENRICHED ORDERS ───────────────────────────────────────────────────────
 
   const stagesByOrder = useMemo(() => {
@@ -303,7 +309,7 @@ export default function CapacityPlanning() {
           values: daily,
         };
       });
-  }, [enrichedOrders, today, horizon]);
+  }, [enrichedOrders, today, horizon, holidays]);
 
   // ─── DERIVED (status strip + drill-down) ───────────────────────────────────
 

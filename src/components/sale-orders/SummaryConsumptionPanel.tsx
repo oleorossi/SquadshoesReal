@@ -15,6 +15,7 @@ import {
    getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
    isLinearWidthMissing,
    normalizeText,
+   normalizeColorKey,
    calcRequiredForGrade,
  } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
@@ -155,7 +156,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
       // Build sole color mapping: (sheet_id, color) -> sole_product_id
       const soleColorMap = new Map<string, string>();
       for (const m of (soleColorMappings || []) as any[]) {
-        if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_product_id);
+        if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
       }
 
       // Build map of reference_id -> sheet strap_colors
@@ -277,7 +278,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const liningMatch = resolveOption(sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0, liningAlts, orderColor);
         if (liningMatch) {
           const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear' });
-          const soleProductId = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+          const soleProductId = soleColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || null;
           const { total: liningTotal } = calculateConsumptionWithUnit(
             gradeItem, 
             liningMatch.consumption, 
@@ -291,7 +292,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         }
 
         // Palmilha: converte consumo dm²/par em placas usando dimensões do GRUPO (consistente com Ficha Técnica)
-        const soleProductIdForInsole = soleColorMap.get(`${item.reference_id}::${orderColor}`) || null;
+        const soleProductIdForInsole = soleColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || null;
         const insoleGroupName = sheet?.insole_material || '';
         const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
         const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });

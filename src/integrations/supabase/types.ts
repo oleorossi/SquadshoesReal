@@ -1127,6 +1127,7 @@ export type Database = {
           metros_per_amarrado_default: number | null
           min_stock: number
           nome: string
+          empty_weight_kg: number | null
           pairs_per_box_default: number | null
           peso_kg: number | null
           quantity: number
@@ -1147,6 +1148,7 @@ export type Database = {
           metros_per_amarrado_default?: number | null
           min_stock: number
           nome: string
+          empty_weight_kg?: number | null
           pairs_per_box_default?: number | null
           peso_kg?: number | null
           quantity: number
@@ -1167,6 +1169,7 @@ export type Database = {
           metros_per_amarrado_default?: number | null
           min_stock?: number
           nome?: string
+          empty_weight_kg?: number | null
           pairs_per_box_default?: number | null
           peso_kg?: number | null
           quantity?: number

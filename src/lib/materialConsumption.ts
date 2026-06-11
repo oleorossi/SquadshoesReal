@@ -28,7 +28,9 @@ type GradeItem = {
 type SelectionMode = 'any' | 'linear' | 'plate';
 
 const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'mt']);
-const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas', 'un']);
+// 'un' é CONTAGEM, não placa — removido (auditoria 2026-06-11). Mantê-lo aqui
+// fazia um item de contagem com ficha dimensionada passar por convertDm2ToPlates.
+const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas']);
 
 const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -74,6 +76,13 @@ const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
  };
  
  export const normalizeText = (value?: string | null) => value?.trim().toLowerCase() || '';
+
+/** Normaliza cor para chave de mapa de solado: minúsculo, SEM acento (NFD) e
+ *  trim. Casa cor do pedido com product_color de forma robusta a grafia
+ *  (Café=Cafe, CARAMELO=Caramelo). Tema T3 da auditoria 2026-06-11 — build e
+ *  lookup do soleColorMap DEVEM usar este mesmo normalizador. */
+export const normalizeColorKey = (value?: string | null): string =>
+  (value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
 const convertDimensionToMm = (value?: number | null, unit?: string | null) => {
   const numericValue = Number(value) || 0;

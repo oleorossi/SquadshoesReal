@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 import type { SectorKey } from '@/lib/leadTime';
-import { computeParallelWindows } from '@/lib/sectorCapacity';
+import { computeParallelWindows, loadHolidayCache } from '@/lib/sectorCapacity';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -151,6 +151,8 @@ function useCapacityCalendar() {
     queryKey: ['production_capacity_calendar'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
+      // Aquece o cache de feriados antes de computar janelas (alinha ao SQL).
+      await loadHolidayCache();
       const [wavesRes, defaultsRes] = await Promise.all([
         supabase
           .from('production_waves')

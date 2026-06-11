@@ -720,6 +720,10 @@ export type SaleOrderFormData = {
    *  CHECK de sale_orders.order_type (carteira, programado, make_to_order,
    *  pronta_entrega, amostra, bonificacao, troca, exportacao). Paridade Tutor32. */
   order_type?: string;
+  /** TRUE quando a NF deste PV é emitida por OUTRA empresa (NF externa). Nesse
+   *  caso external_nfe_number guarda o número informado manualmente. */
+  nfe_external?: boolean;
+  external_nfe_number?: string;
 };
 
 /** Tipos de pedido (paridade Tutor32) — os `value` batem EXATAMENTE com o CHECK
@@ -1310,7 +1314,10 @@ export function useUpdateSaleOrderStatus() {
             const pkgMode2 = (soDeadline.data as any)?.packaging_mode || 'individual_amarrado';
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const deadlineDate = deadline ? new Date(deadline) : null;
+            // Parse como meia-noite LOCAL (deadline é 'yyyy-mm-dd'). new Date(iso)
+            // sem hora parseia em UTC → em UTC-3 dava off-by-one no daysUntil e
+            // podia classificar a OP como adiantada/atrasada errado no limiar.
+            const deadlineDate = deadline ? new Date(`${deadline}T00:00:00`) : null;
             const daysUntil = deadlineDate ? Math.ceil((deadlineDate.getTime() - today.getTime()) / 86400000) : 0;
             const isAhead = daysUntil > 14;
 

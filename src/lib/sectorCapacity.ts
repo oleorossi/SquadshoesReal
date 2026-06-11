@@ -44,25 +44,67 @@ export interface CapacityCheckResult {
 
 const DAY_MS = 86_400_000;
 
-function addBusinessDays(date: Date, days: number): Date {
+// ── Feriados (alinhamento com o SQL is_business_day) ──────────────────────────
+// Auditoria 2026-06-11: addBusinessDays/businessDaysBetween pulavam só fim de
+// semana, enquanto o SQL is_business_day/add_business_days (usado por
+// compute_wave_timeline / compute_min_billing_date) também pula FERIADOS
+// (data exata, optional=false). Qualquer janela com feriado fazia a UI divergir
+// das datas gravadas na onda e do min billing date do servidor.
+//
+// Cache a nível de módulo: populado por loadHolidayCache() (fetch, usado em
+// checkSectorCapacity) ou setHolidayCache() (a partir de useHolidays nas telas).
+// isBusinessDay cai no cache quando nenhum set é passado, então TODOS os cálculos
+// de dias úteis (inclusive computeParallelWindows) ficam feriado-aware sem
+// precisar threading de parâmetro. Cache vazio = comportamento antigo (sem
+// regressão).
+let _holidayCache: Set<string> | null = null;
+
+function isHoliday(rows: any[]): Set<string> {
+  return new Set<string>(
+    (rows || [])
+      .filter((r: any) => r?.optional !== true)
+      .map((r: any) => String(r.holiday_date)),
+  );
+}
+
+/** Popula o cache de feriados síncrono, a partir dos dados de useHolidays (telas). */
+export function setHolidayCache(rows: any[] | null | undefined): void {
+  _holidayCache = isHoliday(rows || []);
+}
+
+/** Carrega feriados do banco uma vez e cacheia (usado por checkSectorCapacity). */
+export async function loadHolidayCache(force = false): Promise<Set<string>> {
+  if (_holidayCache && !force) return _holidayCache;
+  const { data } = await supabase.from('holidays').select('*');
+  _holidayCache = isHoliday(data || []);
+  return _holidayCache;
+}
+
+function isBusinessDay(d: Date, holidays?: Set<string>): boolean {
+  const dow = d.getDay();
+  if (dow === 0 || dow === 6) return false;
+  const set = holidays ?? _holidayCache;
+  if (set && set.has(d.toISOString().slice(0, 10))) return false;
+  return true;
+}
+
+export function addBusinessDays(date: Date, days: number, holidays?: Set<string>): Date {
   const d = new Date(date);
   let added = 0;
   const dir = days >= 0 ? 1 : -1;
   while (added < Math.abs(days)) {
     d.setTime(d.getTime() + dir * DAY_MS);
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) added++;
+    if (isBusinessDay(d, holidays)) added++;
   }
   return d;
 }
 
-function businessDaysBetween(start: Date, end: Date): number {
+function businessDaysBetween(start: Date, end: Date, holidays?: Set<string>): number {
   if (end <= start) return 0;
   let count = 0;
   const cur = new Date(start);
   while (cur < end) {
-    const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (isBusinessDay(cur, holidays)) count++;
     cur.setTime(cur.getTime() + DAY_MS);
   }
   return Math.max(1, count);
@@ -88,6 +130,9 @@ export async function checkSectorCapacity(
   if (refIds.length === 0) {
     return { overloads: [], hasOverload: false, billingDateISO };
   }
+
+  // Feriados → dias úteis alinhados ao SQL (compute_min_billing_date etc.).
+  await loadHolidayCache();
 
   // Carrega capacidades + (lead times legados, para fallback) das fichas envolvidas
   const { data: sheets } = await supabase
@@ -151,8 +196,7 @@ export async function checkSectorCapacity(
     const cur = new Date(windowStart);
     let remaining = days;
     while (remaining > 0) {
-      const dow = cur.getDay();
-      if (dow !== 0 && dow !== 6) {
+      if (isBusinessDay(cur)) {
         addLoad(refId, sector, cur.toISOString().slice(0, 10), perDay);
         remaining--;
       }
@@ -262,8 +306,7 @@ export async function checkSectorCapacity(
       let totalShortfall = 0;
       const cur = new Date(sec.start);
       while (cur < sec.end) {
-        const dow = cur.getDay();
-        if (dow !== 0 && dow !== 6) {
+        if (isBusinessDay(cur)) {
           const existing = buckets?.get(cur.toISOString().slice(0, 10)) || 0;
           const dayTotal = existing + perDayNew;
           peakLoad = Math.max(peakLoad, dayTotal);
