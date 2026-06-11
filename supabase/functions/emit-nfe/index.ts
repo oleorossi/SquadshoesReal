@@ -773,6 +773,10 @@ Deno.serve(async (req) => {
     let pesoLiquidoStr: string | undefined;
     let qtdVolumesStr: string | undefined;
     let weightWarning: string | undefined;
+    // TRUE quando NENHUM peso veio das fichas e caímos no chute cego de 0,5
+    // kg/par — sinal forte pra UI destacar (não é estimativa por solado, é
+    // fallback genérico que pode estar bem longe do peso real).
+    let weightFallbackBlind = false;
     try {
       const { data: weightData, error: weightErr } = await adminClient.rpc(
         "calculate_sale_order_weight",
@@ -830,10 +834,13 @@ Deno.serve(async (req) => {
         const estimatedKg = (totalPairsFallback * 0.5).toFixed(3);
         if (!pesoLiquidoStr) pesoLiquidoStr = estimatedKg;
         if (!pesoBrutoStr) pesoBrutoStr = estimatedKg;
+        weightFallbackBlind = true;
         weightWarning = (weightWarning ? weightWarning + " " : "")
-          + `Peso estimado (0,5 kg/par × ${totalPairsFallback} pares = ${estimatedKg} kg) — cadastrar weight_per_pair_kg nas fichas pra peso real.`;
+          + `⚠ PESO CHUTADO: nenhuma ficha tem peso cadastrado — usado fallback CEGO de `
+          + `0,5 kg/par (${totalPairsFallback} pares = ${estimatedKg} kg), que pode estar `
+          + `bem longe do real. Cadastre weight_per_pair_kg nas fichas técnicas antes de emitir.`;
         console.warn(
-          `[emit-nfe] PV ${sale_order_id} sem peso cadastrado — usando fallback ${estimatedKg} kg`,
+          `[emit-nfe] ⚠ PV ${sale_order_id} SEM peso cadastrado — fallback CEGO 0,5 kg/par = ${estimatedKg} kg (peso da NF pode estar errado)`,
         );
       }
     }
@@ -1019,11 +1026,16 @@ Deno.serve(async (req) => {
     //  3) GC espera `volumes` como OBJETO (não array)
     //  4) Espécie correta é "Volumes" caps (não "Volumes")
     //  5) `marca` precisa ser explícita (pedido user: "Squad Shoes")
+    // marca do <vol> = marcação de TRANSPORTE do volume (não a marca do
+    // produto). A Squad Shoes não usa marcação por volume → vai VAZIA. Pôr a
+    // marca comercial aqui era semanticamente errado (a marca do produto já
+    // vai em <prod><xMarca> por item = silk do solado).
     const volumesObj: Record<string, string | number> = {
       especie: "Volumes",
-      marca: orderBrand,
+      marca: "",
     };
-    if (qtdVolumesStr) volumesObj.quantidade = qtdVolumesStr;
+    // qVol é INTEIRO no XML SEFAZ — envia como number, não string.
+    if (qtdVolumesStr) volumesObj.quantidade = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
     if (pesoLiquidoStr) volumesObj.peso_liquido = pesoLiquidoStr;
     if (pesoBrutoStr) volumesObj.peso_bruto = pesoBrutoStr;
     // Variantes de nomes de campo de modalidade de frete — diferentes ERPs
@@ -1082,7 +1094,7 @@ Deno.serve(async (req) => {
       // Peso/volumes top-level (Webmania-style fallback).
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
-      ...(qtdVolumesStr ? { quantidade_volumes: qtdVolumesStr } : {}),
+      ...(qtdVolumesStr ? { quantidade_volumes: Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) } : {}),
       especie_volumes: "Volumes",
       // valor_frete: bug fix 20/05/2026 (PV-00122). Antes a UI somava
       // mercadoria+frete (R$ 0,50/par × N pares) mas a NF emitia só
@@ -1181,11 +1193,12 @@ Deno.serve(async (req) => {
             transportador: Object.keys(transportadorBlock).length > 0
               ? transportadorBlock
               : null,
-            qtd_volumes: qtdVolumesStr,
+            qtd_volumes: qtdVolumesStr ? Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) : null,
             especie: 'VOLUME',
-            marca: orderBrand,
+            marca: '',
             peso_bruto_kg: pesoBrutoStr || null,
             peso_liquido_kg: pesoLiquidoStr || null,
+            peso_estimado_cego: weightFallbackBlind,
           },
           pagamento: pagamentoArr.map((p: any) => ({
             numero: p.numero_duplicata,
