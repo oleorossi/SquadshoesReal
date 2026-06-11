@@ -19,7 +19,9 @@ type OutdatedStatus = {
 
 /**
  * Hook: status de propagação ficha técnica → PV
- * Polling a cada 30s pra refletir cron auto-refresh-reservations (a cada 2min).
+ * Polling a cada 30s pra refletir o housekeeping do flag pelo cron
+ * (process_outdated_reservations, a cada 2min — o auto-refresh foi aposentado
+ * em 2026-06; reservas são atualizadas no fluxo de usuário aprovado).
  *
  * D7 (audit PV 2026-06): também lê sale_orders.costs_dirty_at — a view
  * v_pv_outdated_status NÃO expõe essa coluna, então buscamos direto do PV.
