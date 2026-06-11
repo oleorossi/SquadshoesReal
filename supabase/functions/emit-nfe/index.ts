@@ -908,6 +908,41 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---------- Coerência do packaging_mode ----------
+    // PV em modo amarrado/fitilho declara 1 volume por PAR. Se as fichas dos
+    // itens têm caixa MASTER/COLMEIA cadastrada, o mais provável é que o modo
+    // tenha ficado no default (amarrado) sem revisão — a NF sairia com muitos
+    // volumes a mais. Avisa (não bloqueia: amarrado é um modo legítimo).
+    let packagingModeWarning: string | undefined;
+    try {
+      const pkgM = String((order as any).packaging_mode || "");
+      if (pkgM === "individual_amarrado" || pkgM === "individual_fitilho") {
+        const refIds = [...new Set(
+          billableItems.map((it: any) => it.reference_id).filter(Boolean),
+        )];
+        if (refIds.length > 0) {
+          const { data: collBoxes } = await adminClient
+            .from("technical_sheet_box_types")
+            .select("box_types!inner(tipo)")
+            .in("sheet_id", refIds);
+          const hasCollective = (collBoxes || []).some((r: any) =>
+            ["master", "colmeia"].includes(String(r.box_types?.tipo)));
+          if (hasCollective) {
+            packagingModeWarning =
+              `Modo "${pkgM}" declara 1 volume por par (${qtdVolumesStr} volumes), mas as `
+              + `fichas têm caixa master/colmeia cadastrada. Confira o modo do PV — se os `
+              + `pares vão em caixa coletiva, troque pra "Master" pra a NF declarar o nº `
+              + `correto de caixas.`;
+            console.warn(
+              `[emit-nfe] PV ${sale_order_id}: packaging_mode possivelmente incoerente (${pkgM} com caixa coletiva cadastrada)`,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[emit-nfe] check de packaging_mode falhou:", e instanceof Error ? e.message : String(e));
+    }
+
     // Informações Complementares — concatena ordem que aparece no XML:
     //   [OC do cliente] · [Texto livre do user] · [PV interno] · [Aviso peso]
     // OC é puxada de sale_orders.client_order_number (preenchida no PV pelo
@@ -1119,6 +1154,7 @@ Deno.serve(async (req) => {
     if (isDryRun) {
       const previewWarnings: string[] = [];
       if (weightWarning) previewWarnings.push(weightWarning);
+      if (packagingModeWarning) previewWarnings.push(packagingModeWarning);
       if (!gcClientId) {
         previewWarnings.push(
           `Cliente ainda não está cadastrado no GestaoClick — será criado automaticamente na emissão.`,
