@@ -585,6 +585,11 @@ export function MasterVariantDialog({
         if (error) throw error;
       }
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      // O grid de numeração do PV (SaleOrderItemForm) cacheia o range do solado
+      // por 5 min via estas queries. Sem invalidar, editar a faixa aqui deixa o
+      // PV mostrando o range antigo (mesmo gap já corrigido em SolesCadastroTab).
+      queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
+      queryClient.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
       toast.success(`Faixa atualizada para ${updates.length} variante(s)!`);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
