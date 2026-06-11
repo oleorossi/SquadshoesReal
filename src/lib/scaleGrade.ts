@@ -32,5 +32,22 @@ export function scaleGradeWithLargestRemainder(
   for (let i = 0; diff > 0 && i < remainders.length; i++, diff--) {
     out[remainders[i].key] = (out[remainders[i].key] || 0) + 1;
   }
+  // diff < 0 (Σfloor > round(total)) — possível quando multiplier < 1. Remove o
+  // excedente dos MENORES remainders (sem deixar negativo) p/ garantir a
+  // invariante Σscaled === round(total) em qualquer multiplier. Defensivo:
+  // multiplier ≥ 1 nunca cai aqui (diff ≥ 0), então não altera o caso comum.
+  while (diff < 0) {
+    let removed = false;
+    for (let i = remainders.length - 1; diff < 0 && i >= 0; i--) {
+      const k = remainders[i].key;
+      if ((out[k] || 0) > 0) {
+        out[k] -= 1;
+        if (out[k] === 0) delete out[k];
+        diff++;
+        removed = true;
+      }
+    }
+    if (!removed) break;
+  }
   return out;
 }
