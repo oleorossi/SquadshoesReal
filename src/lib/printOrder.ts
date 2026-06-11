@@ -466,9 +466,11 @@ export async function buildSaleOrderPrintHtml(
   const subtotal = groups.reduce((s, g) => s + g.value, 0);
   const refsCount = groups.length;
   const freight = Number(order.valor_frete || 0) || (Number(order.shipping_rate_per_pair || 0) * grandPairs);
-  const orderTotal = Number(order.total || 0);
-  const totalGeral = orderTotal > 0 ? orderTotal : subtotal + freight;
-  const discount = Math.max(0, (subtotal + freight) - totalGeral);
+  // `sale_orders.total` é só MERCADORIA (Σ itens, == subtotal); o frete mora
+  // em `valor_frete` (useSaleOrders: "NF-e e financeiro usam valor_frete +
+  // total"). Logo Total geral = mercadoria + frete. Descontos já estão
+  // embutidos no unit_price (tabela de preço do cliente) → sem linha separada.
+  const totalGeral = subtotal + freight;
   const avgUnit = grandPairs > 0 ? subtotal / grandPairs : 0;
 
   // ── Render dos blocos de referência ──
@@ -755,7 +757,6 @@ export async function buildSaleOrderPrintHtml(
       <div class="pv-tline"><span>Total de pares</span><b>${grandPairs}</b></div>
       <div class="pv-tline"><span>Subtotal itens</span><b>${money(subtotal)}</b></div>
       <div class="pv-tline"><span>Frete</span><b>${money(freight)}</b></div>
-      ${discount > 0.005 ? `<div class="pv-tline"><span>Descontos</span><b>− ${money(discount)}</b></div>` : ''}
       <div class="pv-tline grand"><span>Total geral</span><b>${money(totalGeral)}</b></div>
       <div class="pv-tline avg"><span>Médio / par</span><b>${money(avgUnit)}</b></div>
     </div>
