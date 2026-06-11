@@ -28,7 +28,9 @@ type GradeItem = {
 type SelectionMode = 'any' | 'linear' | 'plate';
 
 const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'mt']);
-const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas', 'un']);
+// 'un' é CONTAGEM, não placa — removido (auditoria 2026-06-11). Mantê-lo aqui
+// fazia um item de contagem com ficha dimensionada passar por convertDm2ToPlates.
+const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas']);
 
 const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
