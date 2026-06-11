@@ -2253,7 +2253,10 @@ export default function SaleOrders() {
                 {loadingOrderItems ? (
                   <div className="text-center py-12 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Carregando...</div>
                 ) : selectedOrderItems.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">Nenhum item</div>
+                  <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
+                    <Package className="h-8 w-8 opacity-40" />
+                    <p className="text-sm">Nenhum item neste pedido</p>
+                  </div>
                 ) : (
                   <div className="divide-y">
                     <div className={cn(
@@ -2269,106 +2272,126 @@ export default function SaleOrders() {
                       {canSeeFinancialValues && <span className="w-20 text-right">Unitário</span>}
                       {canSeeFinancialValues && <span className="w-24 text-right">Total</span>}
                     </div>
-                    {[...selectedOrderItems]
-                      // Agrupa por referência (code+name) e depois cor.
-                      // Antes vinha na ordem de inserção do banco, então
-                      // CF 05 aparecia depois de ST 10. Pedido user 20/05/2026.
-                      .sort((a, b) => {
-                        const ra = `${(a as any).technical_sheets?.code || ''} ${(a as any).technical_sheets?.name || ''}`.trim();
-                        const rb = `${(b as any).technical_sheets?.code || ''} ${(b as any).technical_sheets?.name || ''}`.trim();
-                        const refCmp = ra.localeCompare(rb, 'pt-BR', { numeric: true });
-                        if (refCmp !== 0) return refCmp;
-                        return String(a.color || '').localeCompare(String(b.color || ''), 'pt-BR');
-                      })
-                      .map((item) => {
-                      const grade = (item.grade || {}) as Record<string, number>;
-                      // Ordena grade por menor numeração; conjugadas (33/34)
-                      // usam o primeiro número. Antes Number("33/34") virava NaN
-                      // e a ordem ficava inconsistente.
-                      const gradeEntries = Object.entries(grade)
-                        .filter(([k, qty]) => !k.startsWith('_') && Number(qty) > 0)
+                    {(() => {
+                      // Agrupa por referência (code+name): cabeçalho da ref UMA
+                      // vez (foto + código + descrição + totais) e as cores como
+                      // sub-linhas abaixo. Pedido user 11/06/2026 — "mesma
+                      // referência uma embaixo da outra".
+                      const map = new Map<string, { key: string; refId: string | null; refCode: string; refName: string; refImage: string; items: any[] }>();
+                      const order: string[] = [];
+                      [...selectedOrderItems]
                         .sort((a, b) => {
-                          const na = parseInt(String(a[0]).split('/')[0], 10);
-                          const nb = parseInt(String(b[0]).split('/')[0], 10);
-                          return (isNaN(na) ? 0 : na) - (isNaN(nb) ? 0 : nb);
+                          const ra = `${(a as any).technical_sheets?.code || ''} ${(a as any).technical_sheets?.name || ''}`.trim();
+                          const rb = `${(b as any).technical_sheets?.code || ''} ${(b as any).technical_sheets?.name || ''}`.trim();
+                          const refCmp = ra.localeCompare(rb, 'pt-BR', { numeric: true });
+                          if (refCmp !== 0) return refCmp;
+                          return String(a.color || '').localeCompare(String(b.color || ''), 'pt-BR');
+                        })
+                        .forEach((item) => {
+                          const refCode = (item as any).technical_sheets?.code || '';
+                          const refName = (item as any).technical_sheets?.name || '';
+                          const key = `${refCode}||${refName}`.toLowerCase() || item.id;
+                          const tsImages = (item as any).technical_sheets?.images as string[] | null;
+                          const img = item.variant_image_url || (tsImages && tsImages.length > 0 ? tsImages[0] : ((item as any).technical_sheets?.image_url || ''));
+                          let g = map.get(key);
+                          if (!g) { g = { key, refId: item.reference_id, refCode, refName, refImage: img, items: [] }; map.set(key, g); order.push(key); }
+                          if (!g.refImage && img) g.refImage = img;
+                          g.items.push(item);
                         });
-                      const gradePairs = gradeEntries.reduce((s, [, qty]) => s + Number(qty), 0);
-                      const totalQty = Number(item.quantity || 0);
-                      const fichas = gradePairs > 0 ? Math.round(totalQty / gradePairs) : 1;
-                      const unit = Number(item.unit_price || 0);
-                      const refName = (item as any).technical_sheets?.name || '—';
-                      const refCode = (item as any).technical_sheets?.code || '';
-                      const tsImages = (item as any).technical_sheets?.images as string[] | null;
-                      const refImage = item.variant_image_url || (tsImages && tsImages.length > 0 ? tsImages[0] : ((item as any).technical_sheets?.image_url || ''));
-                      return (
-                        <div
-                          key={item.id}
-                          className={cn(
-                            'grid items-start px-4 py-3 gap-2 hover:bg-muted/20 transition-colors',
-                            canSeeFinancialValues
-                              ? 'grid-cols-[1fr_auto_auto_auto_auto_auto]'
-                              : 'grid-cols-[1fr_auto_auto_auto]',
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            {refImage ? <img src={refImage} alt={refName} className="h-12 w-12 rounded object-cover border shrink-0" /> : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs shrink-0">Sem foto</div>}
-                            <div className="space-y-0.5">
-                              {/* Nome da referência → abre a ficha técnica (deep-link ?ref=).
-                                  Pedido user 09/06/2026. */}
-                              {item.reference_id ? (
-                                <button
-                                  type="button"
-                                  onClick={() => { setDetailDialogOpen(false); navigate(`/fichas-tecnicas?ref=${item.reference_id}`); }}
-                                  title="Abrir ficha técnica desta referência"
-                                  className="group inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline text-left"
-                                >
-                                  {refCode && refCode !== refName ? `${refCode} · ${refName}` : (refCode || refName)}
-                                  <ExternalLink className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
-                                </button>
-                              ) : (
-                                <p className="text-sm font-semibold">{refCode && refCode !== refName ? `${refCode} · ${refName}` : (refCode || refName)}</p>
-                              )}
-                              <p className="text-sm">{item.color || '—'}</p>
-                              {(item.strap_colors as any[])?.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
-                                  <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>
-                                  {(item.strap_colors as any[]).map((s: any, sIdx: number) => (
-                                    <div key={sIdx} className="flex items-center gap-1.5 bg-background px-2 py-0.5 rounded border text-xs">
-                                      <span className="font-semibold text-muted-foreground truncate max-w-[60px]">{s.label || `TIRA ${sIdx + 1}`}:</span>
-                                      <span className="font-bold text-primary">{s.color || '—'}</span>
+                      return order.map((key) => {
+                        const g = map.get(key)!;
+                        const groupPairs = g.items.reduce((s, i) => s + Number(i.quantity || 0), 0);
+                        const groupValue = g.items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0);
+                        const headLabel = g.refCode && g.refCode !== g.refName ? `${g.refCode} · ${g.refName}` : (g.refCode || g.refName || '—');
+                        return (
+                          <div key={key}>
+                            {/* Cabeçalho da referência (uma vez por grupo) */}
+                            <div className="flex items-center gap-3 bg-muted/40 px-4 py-2.5">
+                              {g.refImage ? <img src={g.refImage} alt={g.refName} className="h-11 w-11 rounded object-cover border shrink-0" /> : <div className="h-11 w-11 rounded bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
+                              <div className="min-w-0 flex-1">
+                                {g.refId ? (
+                                  <button type="button" onClick={() => { setDetailDialogOpen(false); navigate(`/fichas-tecnicas?ref=${g.refId}`); }} title="Abrir ficha técnica desta referência" className="group inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline text-left">
+                                    {headLabel}<ExternalLink className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                  </button>
+                                ) : <p className="text-sm font-bold">{headLabel}</p>}
+                                <p className="text-xs text-muted-foreground">{g.items.length} {g.items.length === 1 ? 'cor' : 'cores'}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-mono font-bold text-sm">{groupPairs} <span className="text-xs font-normal text-muted-foreground">pares</span></p>
+                                {canSeeFinancialValues && <p className="font-mono text-xs text-muted-foreground">{formatCurrency(groupValue)}</p>}
+                              </div>
+                            </div>
+                            {/* Sub-linhas por cor */}
+                            <div className="divide-y divide-border/50">
+                              {g.items.map((item) => {
+                                const grade = (item.grade || {}) as Record<string, number>;
+                                const gradeEntries = Object.entries(grade)
+                                  .filter(([k, qty]) => !k.startsWith('_') && Number(qty) > 0)
+                                  .sort((a, b) => {
+                                    const na = parseInt(String(a[0]).split('/')[0], 10);
+                                    const nb = parseInt(String(b[0]).split('/')[0], 10);
+                                    return (isNaN(na) ? 0 : na) - (isNaN(nb) ? 0 : nb);
+                                  });
+                                const gradePairs = gradeEntries.reduce((s, [, qty]) => s + Number(qty), 0);
+                                const totalQty = Number(item.quantity || 0);
+                                const fichas = gradePairs > 0 ? Math.round(totalQty / gradePairs) : 1;
+                                const unit = Number(item.unit_price || 0);
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={cn(
+                                      'grid items-start px-4 py-3 gap-2 pl-6 hover:bg-muted/20 transition-colors',
+                                      canSeeFinancialValues
+                                        ? 'grid-cols-[1fr_auto_auto_auto_auto_auto]'
+                                        : 'grid-cols-[1fr_auto_auto_auto]',
+                                    )}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold">{item.color || '—'}</p>
+                                      {(item.strap_colors as any[])?.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
+                                          <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>
+                                          {(item.strap_colors as any[]).map((s: any, sIdx: number) => (
+                                            <div key={sIdx} className="flex items-center gap-1.5 bg-background px-2 py-0.5 rounded border text-xs">
+                                              <span className="font-semibold text-muted-foreground truncate max-w-[60px]">{s.label || `TIRA ${sIdx + 1}`}:</span>
+                                              <span className="font-bold text-primary">{s.color || '—'}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
-                                  ))}
-                                </div>
-                              )}
+                                    <div className="w-20 text-right text-sm font-mono pt-1" />
+                                    <div className="w-[220px] text-center space-y-1 pt-0.5">
+                                      {gradeEntries.length > 0 ? (
+                                        <>
+                                          <p className="text-xs text-muted-foreground">Grade: {gradePairs} pares × {fichas} fichas</p>
+                                          <div className="flex justify-center gap-0">
+                                            <table className="border-collapse">
+                                              <thead><tr>{gradeEntries.map(([size]) => <th key={size} className="px-1.5 py-0.5 text-xs text-muted-foreground font-medium border border-border/50 bg-muted/40">{size}</th>)}</tr></thead>
+                                              <tbody>
+                                                <tr>{gradeEntries.map(([size, qty]) => <td key={size} className="px-1.5 py-0.5 text-xs font-mono font-semibold text-center border border-border/50">{qty}</td>)}</tr>
+                                                {fichas > 1 && <tr className="bg-muted/40">{gradeEntries.map(([size, qty]) => <td key={size} className="px-1.5 py-0.5 text-xs font-mono font-bold text-center border border-border/50">{Number(qty) * fichas}</td>)}</tr>}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </>
+                                      ) : <span className="text-xs text-muted-foreground">—</span>}
+                                    </div>
+                                    <div className="w-16 text-center font-mono font-bold text-sm pt-1">{totalQty}</div>
+                                    {canSeeFinancialValues && (
+                                      <>
+                                        <div className="w-20 text-right font-mono text-sm pt-1">{formatCurrency(unit)}</div>
+                                        <div className="w-24 text-right font-mono font-bold text-sm pt-1">{formatCurrency(totalQty * unit)}</div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                          <div className="w-20 text-right text-sm font-mono pt-1" />
-                          <div className="w-[220px] text-center space-y-1 pt-0.5">
-                            {gradeEntries.length > 0 ? (
-                              <>
-                                <p className="text-xs text-muted-foreground">Grade: {gradePairs} pares × {fichas} fichas</p>
-                                <div className="flex justify-center gap-0">
-                                  <table className="border-collapse">
-                                    <thead><tr>{gradeEntries.map(([size]) => <th key={size} className="px-1.5 py-0.5 text-xs text-muted-foreground font-medium border border-border/50 bg-muted/40">{size}</th>)}</tr></thead>
-                                    <tbody>
-                                      <tr>{gradeEntries.map(([size, qty]) => <td key={size} className="px-1.5 py-0.5 text-xs font-mono font-semibold text-center border border-border/50">{qty}</td>)}</tr>
-                                      {fichas > 1 && <tr className="bg-muted/40">{gradeEntries.map(([size, qty]) => <td key={size} className="px-1.5 py-0.5 text-xs font-mono font-bold text-center border border-border/50">{Number(qty) * fichas}</td>)}</tr>}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </>
-                            ) : <span className="text-xs text-muted-foreground">—</span>}
-                          </div>
-                          <div className="w-16 text-center font-mono font-bold text-sm pt-1">{totalQty}</div>
-                          {canSeeFinancialValues && (
-                            <>
-                              <div className="w-20 text-right font-mono text-sm pt-1">{formatCurrency(unit)}</div>
-                              <div className="w-24 text-right font-mono font-bold text-sm pt-1">{formatCurrency(totalQty * unit)}</div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>
