@@ -307,7 +307,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const { data: allProducts = [] } = useQuery({
     queryKey: ['products_for_colors'],
     queryFn: async () => {
-      const { data } = await supabase.from('products').select('id, name, color, group_id, category').eq('active', true);
+      // Inclui inativos de propósito: os ponteiros *_material_product_id das
+      // variantes resolvem grupo via find por id — se o produto apontado for
+      // desativado, o filtro active aqui mataria TODAS as cores do grupo em
+      // silêncio. A enumeração de CORES filtra p.active === false caso a caso.
+      const { data } = await supabase.from('products').select('id, name, color, group_id, category, active');
       return data || [];
     },
     staleTime: 5 * 60 * 1000,
@@ -362,7 +366,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const getColorsFromProducts = (groupId: string) => {
     return uniqueSortedColors(
       allProducts.flatMap((product: any) => {
-        if (product.group_id !== groupId) return [];
+        if (product.group_id !== groupId || product.active === false) return [];
         const colors = new Set<string>();
         const explicitColor = product.color?.trim();
         const derivedColor = getDerivedProductColor(product);
@@ -478,8 +482,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // _material_product_id → products.group_id → cores do grupo), unidas às dos
     // materiais da ficha abaixo. Adicionado 11/06/2026 — user cadastrou variante
     // NAPA SOFT na EC23 (grupo com 27 cores) e o PV só mostrava as 3 cores do
-    // forro da ficha. Sem variante selecionada (itens legados), todas as ativas
-    // entram no pool. Solado fica de fora — cor de solado é campo próprio.
+    // forro da ficha. Sem variante selecionada, todas as ativas entram no pool —
+    // o dropdown principal fica travado até escolher material, mas esse pool
+    // alimenta o fallback de cor das TIRAS sem group_id (não travado). Solado
+    // fica de fora — cor de solado é campo próprio.
     const variantsForColors = item.material_variant_id
       ? activeMaterialVariants.filter(v => v.id === item.material_variant_id)
       : activeMaterialVariants;
@@ -530,7 +536,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
     // Fallback: all products categorized as "Forração da Palmilha"
     if (colorSet.size === 0) {
-      const forracaoProducts = allProducts.filter((p: any) => p.category === 'Forração da Palmilha');
+      const forracaoProducts = allProducts.filter((p: any) => p.category === 'Forração da Palmilha' && p.active !== false);
       forracaoProducts.forEach((product: any) => {
         const explicitColor = product.color?.trim();
         const derivedColor = getDerivedProductColor(product);
