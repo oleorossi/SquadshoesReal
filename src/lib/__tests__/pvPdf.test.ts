@@ -12,7 +12,10 @@ describe('buildSaleOrderPrintHtml', () => {
     order_number: 'PV-00231', status: 'Aprovado', created_at: '2026-06-11T12:00:00Z',
     client_name: 'Calçados Bela Vista LTDA', client_cnpj: '12345678000199',
     representative: 'João Vendedor', payment_condition: '30/60/90 dias',
-    delivery_deadline: '2026-07-15', valor_frete: 480.5, total: 0,
+    delivery_deadline: '2026-07-15', valor_frete: 480.5,
+    // total = só MERCADORIA (Σ itens) no banco; o frete é separado. Garante
+    // que o PDF SOMA o frete e NÃO trata o total-mercadoria como "desconto".
+    total: 5558.4,
     notes: 'Entregar paletizado.', client_id: 'c1',
   };
   const company = { razao_social: 'Squad Shoes LTDA', nome_fantasia: 'Squad Shoes', cnpj: '44556677000188' };
@@ -62,8 +65,11 @@ describe('buildSaleOrderPrintHtml', () => {
     expect(html).toContain('<b>72</b> pares');
     // Subtotal itens = 24*89.9 + 12*89.9 + 36*64.5 = 3236.40 + 2322.00 = 5558.40
     expect(html).toContain('R$ 5.558,40');
-    // Total geral = subtotal + frete (480.50) = 6038.90
+    // Total geral = subtotal + frete (480.50) = 6038.90 — frete SOMADO mesmo
+    // com order.total preenchido (que é só mercadoria).
     expect(html).toContain('R$ 6.038,90');
+    // Sem linha de "Descontos" (frete não pode virar desconto).
+    expect(html).not.toContain('Descontos');
   });
 
   it('não quebra sem company/client (fallback p/ campos do pedido)', async () => {
