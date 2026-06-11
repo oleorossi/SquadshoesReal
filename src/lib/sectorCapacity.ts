@@ -88,7 +88,7 @@ function isBusinessDay(d: Date, holidays?: Set<string>): boolean {
   return true;
 }
 
-function addBusinessDays(date: Date, days: number, holidays?: Set<string>): Date {
+export function addBusinessDays(date: Date, days: number, holidays?: Set<string>): Date {
   const d = new Date(date);
   let added = 0;
   const dir = days >= 0 ? 1 : -1;

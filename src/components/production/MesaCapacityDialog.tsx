@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CalendarBlank as CalendarDays, TrendUp as TrendingUp } from '@phosphor-icons/react';
 import { useUpdateMesaCapacity } from '@/hooks/useProductionWaves';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { addBusinessDays, loadHolidayCache } from '@/lib/sectorCapacity';
 
 function calcDays(totalPairs: number, capacityPerDay: number): number {
   if (capacityPerDay <= 0) return 0;
@@ -16,7 +17,9 @@ function calcDays(totalPairs: number, capacityPerDay: number): number {
 
 function availableDate(startedAt: string | null, daysNeeded: number): Date {
   const base = startedAt ? new Date(startedAt) : new Date();
-  return addDays(base, daysNeeded);
+  // Dias ÚTEIS (não corridos) — alinha com o motor de ondas/SQL. Antes addDays
+  // somava dias corridos, projetando a disponibilidade do Aviamento errada.
+  return addBusinessDays(base, daysNeeded);
 }
 
 export function MesaCapacityDialog({
@@ -38,6 +41,8 @@ export function MesaCapacityDialog({
 }) {
   const [newCapacity, setNewCapacity] = useState(currentCapacity > 0 ? currentCapacity : 1);
   const update = useUpdateMesaCapacity();
+  // Aquece o cache de feriados pra projeção de dias úteis bater com o servidor.
+  useEffect(() => { if (open) loadHolidayCache(); }, [open]);
 
   const currentDays = calcDays(totalPairs, currentCapacity);
   const newDays = calcDays(totalPairs, newCapacity);
