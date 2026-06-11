@@ -155,10 +155,18 @@ export default function Payroll() {
     }
     const cPeriod = rangeToPeriod(cFrom, cTo);
     // Mês cheio paga salário (30 avos); período parcial (quinzena) = proporcional aos dias.
-    const cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
+    let cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
     // Dias do mês p/ a base proporcional da quinzena: 1ª(15) + 2ª(mês−15) = salário EXATO
     // (sem pagar 1 dia a mais num mês de 31). Mês cheio ignora (cBaseDays undefined).
     const cMonthDays = daysBetween(`${cFrom.slice(0, 7)}-01`, lastDayOfMonth(cFrom.slice(0, 7)));
+    // Guard cross-month: cMonthDays é só do mês de cFrom; um intervalo manual que
+    // CRUZA meses faria base = salário × dias ÷ diasDoMêsDeFrom passar de 1 salário
+    // (ex.: 01/05–20/06 = 51/31 = 1,65×). Os atalhos (1ª/2ª/Mês) ficam sempre num
+    // mês só. Capamos a base em ≤ 1 salário e avisamos pra preferir os atalhos.
+    if (cBaseDays !== undefined && cFrom.slice(0, 7) !== cTo.slice(0, 7)) {
+      cBaseDays = Math.min(cBaseDays, cMonthDays);
+      toast.warning('Intervalo cruza meses: a base é aproximada (capada em 1 salário). Para base exata, use os atalhos 1ª/2ª quinzena ou Mês.');
+    }
     setCalcRunning(true);
     try {
       // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
