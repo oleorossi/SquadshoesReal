@@ -490,8 +490,10 @@ const OperatorWorkSheet = ({
             modelos com tiras de cores diferentes precisam montagem na
             ordem certa (TIRA 1 = frontal, TIRA 2 = traseira, etc). */}
       {hasStraps && strapColors && strapColors.length > 0 && (
-        <div className="mb-2 keep-together">
-          <div className="flex items-baseline justify-between mb-1">
+        // Lista curta (≤8) fica atômica; lista longa flui linha a linha
+        // (tr é atômico, thead repete) pra não pular página inteira.
+        <div className={`mb-2 ${strapColors.length <= 8 ? 'keep-together' : ''}`}>
+          <div className="flex items-baseline justify-between mb-1 keep-with-next">
             <span className="section-label" style={{ color: '#000' }}>
               02 / Sequência de Tiras
             </span>
@@ -530,7 +532,7 @@ const OperatorWorkSheet = ({
 
       {/* ── Grade de Produção — FULL WIDTH, hairline editorial ── */}
       <div className="mb-2">
-        <div className="flex items-baseline justify-between mb-1">
+        <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <span className="section-label" style={{ color: '#000' }}>
             03 / Grade de Produção
           </span>
@@ -538,9 +540,11 @@ const OperatorWorkSheet = ({
             Pares a produzir
           </span>
         </div>
-        <div style={{ border: '1.5px solid #000' }}>
+        {/* flow-card: quebra só ENTRE chunks de tamanhos (cada tabela é
+            atômica) e fecha a borda em cada fragmento de página. */}
+        <div className="flow-card" style={{ border: '1.5px solid #000' }}>
           {sizeChunks.map((chunk, ci) => (
-            <table key={ci} className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <table key={ci} className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ borderBottom: '1.5px solid #000' }}>
                   <th className="section-label py-1.5" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Nº</th>
@@ -852,7 +856,7 @@ const OperatorWorkSheet = ({
             {/* TallyBox — controle de fichas (PR 2026-05-26):
                 operador de Silk marca uma caixinha por ficha conforme conclui.
                 Mesmo padrão de Colagem/Montagem/Acabamento. */}
-            <div className="col-span-2 keep-with-next keep-together">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -901,7 +905,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2 keep-with-next keep-together">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -959,7 +963,7 @@ const OperatorWorkSheet = ({
                 </div>
               )}
             </div>
-            <div className="col-span-2 keep-with-next keep-together">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -1011,7 +1015,7 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2 keep-with-next keep-together">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
             </div>
           </>
@@ -1068,7 +1072,7 @@ const OperatorWorkSheet = ({
                 </p>
               )}
             </div>
-            <div className="col-span-2 keep-with-next keep-together">
+            <div className="col-span-2 keep-with-next">
               <TallyBox count={boxes} pairsPerCard={12} title={`Caixas · ${boxes} × 12 pares`} />
             </div>
           </>

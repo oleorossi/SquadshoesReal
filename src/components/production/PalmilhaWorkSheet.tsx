@@ -162,10 +162,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
             // e 213 caixinhas de tally = 380mm de altura, IMPOSSÍVEL caber
             // em 1 A4 (281mm útil). keep-together era violado pelo browser
             // e o tally aparecia cortado. Solução: deixar o block fluir
-            // (break-inside: auto implícito) e aplicar keep-together só
-            // nas sub-seções que CABEM individualmente.
+            // e aplicar keep-together só nas sub-seções que CABEM
+            // individualmente. v6 (2026-06-11): flow-card explicita o
+            // comportamento e fecha a borda em cada fragmento de página
+            // (box-decoration-break: clone).
             const groupBlock = (
-              <div className="bg-white" style={{ border: '1.5px solid #000' }}>
+              <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
                 <div className="keep-together keep-with-next px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                   <div className="min-w-0 flex-1">
                     <span className="section-label block" style={{ color: '#000' }}>Solado</span>
@@ -270,7 +272,8 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                   </div>
                 )}
 
-                <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                {/* keep-together: grade inteira (Por Ficha + Total) na mesma página */}
+                <table className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <thead>
                     <tr style={{ borderBottom: '1.5px solid #000' }}>
                       {/* Largura precisa caber "Total × N fichas" (≈96px). Sob
@@ -409,7 +412,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
             // grupos faziam o footer vazar sozinho pra próxima A4.
             const trailingBlock = (
               <>
-                <div className="flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+                <div className="keep-together keep-with-next flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
                   <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
                   <span
                     className="text-black uppercase leading-none py-1"
@@ -458,14 +461,14 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
             );
 
             if (isLast) {
-              // Bloco final (total geral + footer) atômico e ancorado ao
-              // grupo anterior — só pula de página quando não cabe. (Antes
-              // .force-page-before SEMPRE abria página nova → branco
-              // desnecessário na página anterior.)
+              // Trailing (total geral + kit checklist + footer): cada bloco
+              // é atômico POR SI e ancorado ao anterior — enchem a página
+              // um a um em vez de pular juntos como blocão (que deixava
+              // meia página em branco quando não cabia inteiro).
               return (
                 <div key={idx}>
                   {groupBlock}
-                  <div className="keep-together keep-with-previous">
+                  <div className="keep-with-previous">
                     {trailingBlock}
                   </div>
                 </div>

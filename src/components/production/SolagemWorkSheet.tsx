@@ -55,7 +55,7 @@ const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
 
 const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   <div
-    className="keep-together flex items-baseline justify-between px-3 py-2 bg-white"
+    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-2 bg-white"
     style={{ border: '2px solid #000', borderBottom: 'none' }}
   >
     <span
@@ -92,8 +92,11 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
       (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0
     );
     return (
-      <div key={idx} className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+      // flow-card (v6): banda pode fragmentar ENTRE seções (header/strip/
+      // grade/consumo/tally — atômicas individualmente); borda fecha em
+      // cada fragmento via box-decoration-break: clone.
+      <div key={idx} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
+        <div className="keep-together keep-with-next px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
           <div className="min-w-0 flex-1">
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
@@ -182,7 +185,8 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           </div>
         )}
 
-        <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        {/* keep-together: grade inteira (Por Ficha + Total) na mesma página */}
+        <table className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               {/* Largura precisa caber "Total × N fichas" (≈96px); sob
@@ -399,7 +403,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
 
           const trailingBlock = (
             <>
-              <div className="flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+              <div className="keep-together keep-with-next flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
                 <span className="section-label" style={{ color: '#000' }}>
                   Total Geral · soma de todos os solados
                 </span>
@@ -419,15 +423,15 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             const header = renderHeader(band, idx);
             const body = renderBand(band, idx);
             if (isLast) {
-              // Bloco final (total geral + footer) atômico e ancorado à
-              // última banda — só pula de página quando não cabe. (Antes
-              // .force-page-before SEMPRE abria página nova → branco
-              // desnecessário na página anterior.)
+              // Trailing (total geral + footer): cada bloco é atômico POR SI
+              // (total tem keep-together keep-with-next; footer idem +
+              // keep-with-previous) — enchem a página um a um em vez de
+              // pular juntos como blocão deixando meia página em branco.
               return (
                 <div key={`last-${idx}`}>
                   {header}
                   {body}
-                  <div className="keep-together keep-with-previous">
+                  <div className="keep-with-previous">
                     {trailingBlock}
                   </div>
                 </div>

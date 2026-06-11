@@ -210,29 +210,36 @@ const printStyles = `
     }
 
     /* Evita quebra horrível dentro de tabelas, cards e linhas de tabela.
-       .keep-together é a classe-chave: aplicada a TableBox, card de cor,
-       header de ficha, footer de assinatura e KPI grids — garante que
-       esses blocos atômicos ficam INTEIROS na mesma página A4. */
+       .keep-together é a classe-chave: aplicada a blocos ATÔMICOS PEQUENOS
+       (header de card, tabela de grade, chunk de tally, checklist, footer)
+       — garante que ficam INTEIROS na mesma página A4. Blocos GRANDES não
+       devem usá-la: usam .flow-card (abaixo) e marcam keep-together só nas
+       sub-seções. */
     table { break-inside: auto; }
     tr, .keep-together {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
-    /* "Branco à toa" fix (2026-06): um .keep-together GRANDE que contém conteúdo
-       JÁ quebrável — tabela com linhas, OU keep-together aninhado (ex.: TallyBox
-       em chunks dentro de um wrapper col-span-2 keep-together) — NÃO deve pular
-       inteiro pra próxima página deixando vão branco embaixo. Deixa o bloco FLUIR
-       e quebrar nas fronteiras atômicas internas (linha / chunk), enchendo a
-       página. Os filhos atômicos seguem inteiros (tr/chunk têm avoid próprio) e
-       o 1º filho (cabeçalho) fica colado no conteúdo (break-after: avoid) pra não
-       orfanar. Usa :has() (suportado no print do Chrome ≥105). */
-    .print-area .keep-together:has(table),
-    .print-area .keep-together:has(.keep-together) {
+    /* flow-card — v6 (2026-06-11). Container de card (cor/banda/grupo) que
+       PODE fragmentar entre páginas, mas SÓ nas fronteiras das sub-seções
+       internas (cada uma com .keep-together próprio).
+       Substitui o unlock automático via :has(table)/:has(.keep-together),
+       que anulava o keep-together de TODOS os cards (todo card tem tabela
+       de grade dentro) e deixava o browser quebrar em QUALQUER ponto
+       interno — header órfão, "Por Ficha" separado do "Total", borda
+       fatiada aberta.
+       box-decoration-break: clone (Chrome ≥130) fecha a borda do card em
+       CADA fragmento — a quebra sai com caixa visualmente fechada nas duas
+       páginas (em browsers antigos degrada pro slice, sem regressão). */
+    .print-area .flow-card {
       break-inside: auto !important;
       page-break-inside: auto !important;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
     }
-    .print-area .keep-together:has(table) > :first-child,
-    .print-area .keep-together:has(.keep-together) > :first-child {
+    /* Header do card nunca fica órfão no fim da página: o 1º filho do
+       flow-card cola no bloco seguinte. */
+    .print-area .flow-card > :first-child {
       break-after: avoid !important;
       page-break-after: avoid !important;
     }
@@ -269,18 +276,6 @@ const printStyles = `
     .print-area .keep-with-next {
       break-after: avoid !important;
       page-break-after: avoid !important;
-    }
-
-    /* force-page-before — HARD constraint pra wrapper do último bloco
-       + SignatureFooter. Diferente de keep-together (soft, Chrome
-       ignora em layouts complexos), page-break-before: always é HARD
-       e garante matematicamente que o footer não vire órfão: o wrapper
-       SEMPRE começa em pg nova, então última cor + footer aparecem
-       juntos sem chance de quebra entre eles. Trade-off: sobra pequena
-       na pg anterior. */
-    .print-area .force-page-before {
-      page-break-before: always !important;
-      break-before: page !important;
     }
 
     /* Cores fiéis na impressão (sem desbotamento) */

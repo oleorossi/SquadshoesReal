@@ -204,6 +204,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
     }, [])
     .slice(0, 6);
 
+  // Auditoria visual 11/06/2026: numeração de seção dinâmica — seções
+  // condicionais (cliente/galeria/silks/timeline) escondidas faziam a
+  // numeração pular (ex: 06 → 08). Contador incrementa só no que renderiza.
+  let sectionNo = 0;
+  const nextSection = () => String(++sectionNo).padStart(2, '0');
+
   return (
     <div
       className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger"
@@ -311,7 +317,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               color: '#000',
             }}
           >
-            01
+            {nextSection()}
           </span>
           <span className="section-label" style={{ color: '#000' }}>
             Indicadores do Pedido
@@ -327,9 +333,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
         </div>
       </section>
 
-      {/* ─────────────────────────────── 03 / STATUS POR SETOR ─────────────────────────────── */}
-      <section className="keep-together mb-6">
-        <div className="flex items-baseline gap-3 mb-4">
+      {/* ─────────────────────────────── 03 / STATUS POR SETOR ───────────────────────────────
+          Sem keep-together no section: a tabela cresce com o nº de OPs e o
+          bloco inteiro atômico pulava de página deixando branco. Header da
+          seção ancorado à tabela (keep-with-next); linhas atômicas + thead
+          repetindo fazem a quebra limpa. */}
+      <section className="mb-6">
+        <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
           <span
             className="font-display"
             style={{
@@ -338,7 +348,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               color: '#000',
             }}
           >
-            02
+            {nextSection()}
           </span>
           <span className="section-label" style={{ color: '#000' }}>
             Ordens de Produção · Status por Setor
@@ -426,7 +436,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               className="font-display"
               style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
             >
-              03
+              {nextSection()}
             </span>
             <span className="section-label" style={{ color: '#000' }}>
               Dados do Cliente
@@ -466,13 +476,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
       {/* ─────────────────────────────── 04 / GALERIA PRODUTOS ─────────────────────────────── */}
       {galleryItems.length > 0 && (
-        <section className="keep-together mb-6">
-          <div className="flex items-baseline gap-3 mb-4">
+        <section className="mb-6">
+          <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
               className="font-display"
               style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
             >
-              04
+              {nextSection()}
             </span>
             <span className="section-label" style={{ color: '#000' }}>
               Produtos · Galeria
@@ -502,13 +512,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
       {/* ─────────────────────────────── 05 / SILKS · ARTES ─────────────────────────────── */}
       {silksUnique.length > 0 && (
-        <section className="keep-together mb-6">
-          <div className="flex items-baseline gap-3 mb-4">
+        <section className="mb-6">
+          <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
               className="font-display"
               style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
             >
-              05
+              {nextSection()}
             </span>
             <span className="section-label" style={{ color: '#000' }}>
               Silks · Artes Aplicadas
@@ -531,12 +541,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
       {/* ─────────────────────────────── 06 / DETALHAMENTO DAS OPs ─────────────────────────────── */}
       <section className="mb-6">
-        <div className="flex items-baseline gap-3 mb-4">
+        <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
           <span
             className="font-display"
             style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
           >
-            06
+            {nextSection()}
           </span>
           <span className="section-label" style={{ color: '#000' }}>
             Detalhamento das Ordens · Grade · Tiras · Materiais
@@ -673,12 +683,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       {/* ─────────────────────────────── 07 / LINHA DO TEMPO ─────────────────────────────── */}
       {orders.some(o => (o.stages || []).some(s => s.started_at || s.completed_at)) && (
         <section className="mb-6">
-          <div className="flex items-baseline gap-3 mb-4">
+          <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
               className="font-display"
               style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
             >
-              07
+              {nextSection()}
             </span>
             <span className="section-label" style={{ color: '#000' }}>
               Linha do Tempo · Setores
@@ -721,13 +731,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
 
       {/* ─────────────────────────────── 08 / CUSTOS & MARGEM ─────────────────────────────── */}
       {totalsFinancial.hasAny ? (
-        <section className="keep-together mb-6">
-          <div className="flex items-baseline gap-3 mb-4">
+        <section className="mb-6">
+          <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
               className="font-display"
               style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
             >
-              08
+              {nextSection()}
             </span>
             <span className="section-label" style={{ color: '#000' }}>
               Custos & Margem
@@ -735,7 +745,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             <div className="flex-1 h-px bg-black" />
           </div>
 
-          <div className="grid grid-cols-4 gap-0 border-t border-b border-black mb-4">
+          <div className="keep-together keep-with-next grid grid-cols-4 gap-0 border-t border-b border-black mb-4">
             <KpiBlock label="Receita" value={fmtBRL(totalsFinancial.revenue)} />
             <KpiBlock label="Custo total" value={fmtBRL(totalsFinancial.cost)} bordered />
             <KpiBlock label="Margem" value={fmtBRL(totalsFinancial.margin)} bordered
@@ -891,12 +901,16 @@ function KpiBlock({
       }}
     >
       <p className="section-label mb-2" style={{ color: '#000' }}>{label}</p>
+      {/* Auditoria visual 11/06/2026: 22pt fixo estourava a célula com valores
+          monetários longos (ex: "R$ 3.600,00" invadia o KPI vizinho e "Margem"
+          colidia com "Margem %"). Fonte agora escala pelo tamanho do texto. */}
       <p
         className="font-mono font-bold leading-none"
         style={{
           fontFamily: "'Fira Code', monospace",
-          fontSize: '22pt',
+          fontSize: value.length <= 7 ? '22pt' : value.length <= 10 ? '17pt' : value.length <= 13 ? '14pt' : '12pt',
           letterSpacing: '-0.03em',
+          overflowWrap: 'anywhere',
           color: accent === 'negative' ? '#E11D2E' : '#000',
         }}
       >

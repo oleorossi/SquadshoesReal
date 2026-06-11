@@ -451,9 +451,15 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
           const isLast = idx === group.colorGroups.length - 1;
 
           const colorBlock = (
-            <div className="keep-together bg-white" style={{ border: '1.5px solid #000' }}>
-              {/* Color header — editorial, no fill */}
-              <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+            // flow-card (v6): o card pode fragmentar ENTRE seções internas
+            // (header/foto/grade/consumo/tally — cada uma keep-together
+            // próprio). Borda fecha em cada fragmento via box-decoration-
+            // break: clone. Antes era keep-together anulado pelo unlock
+            // :has(table) — quebrava em qualquer ponto interno.
+            <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
+              {/* Color header — editorial, no fill. Atômico + colado na
+                  seção seguinte (nunca órfão no fim da página). */}
+              <div className="keep-together keep-with-next px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
                   {cg.colorHex && (
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
@@ -602,9 +608,12 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                     "Sequência de Tiras". */}
                 {(theme.showMaterials === 'both' || sector === 'Montagem') && cg.components && cg.components.length > 0 && (() => {
                   const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
+                  // Lista curta (≤8) fica atômica; lista longa flui linha a
+                  // linha (tr é atômico, thead repete) pra não pular página
+                  // inteira deixando branco.
                   return (
-                    <div className="mb-2 keep-together">
-                      <div className="flex items-baseline justify-between mb-1">
+                    <div className={`mb-2 ${cg.components.length <= 8 ? 'keep-together' : ''}`}>
+                      <div className="flex items-baseline justify-between mb-1 keep-with-next">
                         <span className="section-label" style={{ color: '#000' }}>
                           {isAllStraps ? `Sequência de Tiras · ${cg.components.length}` : 'Componentes'}
                         </span>
@@ -687,8 +696,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                   </div>
                 )}
 
-                {/* Grade de números — editorial hairline */}
-                <div className="mb-2">
+                {/* Grade de números — editorial hairline. Atômica: label +
+                    tabela inteira na mesma página (linhas "Por Ficha"/"Total"
+                    nunca se separam). */}
+                <div className="mb-2 keep-together">
                   <span className="section-label block mb-1" style={{ color: '#000' }}>Grade · Pares por Numeração</span>
                   <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
                     <thead>
@@ -850,17 +861,16 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             </div>
           );
 
-          // Último colorBlock + checklist + SignatureFooter: o bloco final
-          // (checklist+footer) é atômico (.keep-together) e ancorado ao
-          // conteúdo anterior (.keep-with-previous) — só pula de página
-          // quando realmente não cabe. (Antes usava .force-page-before, que
-          // SEMPRE abria página nova e deixava branco desnecessário na
-          // página anterior.)
+          // Último colorBlock + checklist + SignatureFooter: cada bloco do
+          // trailing é atômico POR SI (checklist e footer têm keep-together
+          // próprio) e ancorado ao anterior via keep-with-previous — assim
+          // enchem a página um a um em vez de pular juntos como um blocão
+          // (que deixava meia página em branco quando não cabia inteiro).
           if (isLast) {
             return (
               <div key={idx}>
                 {colorBlock}
-                <div className="keep-together keep-with-previous">
+                <div className="keep-with-previous">
                   <KitHandoffChecklist sector={sector} />
                   <SignatureFooter />
                 </div>

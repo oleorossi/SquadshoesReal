@@ -179,9 +179,11 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
         index={`OP ${formatOpNumber('Expedição')} / EXPEDIÇÃO`}
       />
 
-      {/* Resumo embalagem */}
-      <div className="keep-together mb-2">
-        <div className="flex items-baseline justify-between mb-1">
+      {/* Resumo embalagem — atômico quando curto (≤8 solados); com mais
+          linhas flui linha a linha (tr atômico, thead repete) pra não pular
+          página inteira deixando branco. */}
+      <div className={`mb-2 ${boxesBySole.size <= 8 ? 'keep-together' : ''}`}>
+        <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
             <span className="section-label" style={{ color: '#000' }}>02 / Embalagem · Caixas Coletivas</span>
@@ -330,9 +332,9 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
       </div>
 
       {/* Checklist final + SignatureFooter num único wrapper .keep-together
-          pra forçar paginação atômica (fix 21/05/2026 — footer não fica
-          órfão em pg seguinte em fichas longas). */}
-      <div className="keep-together">
+          (bloco pequeno, ~50mm) + keep-with-previous pra ancorar à tabela
+          de itens — não vira órfão nem deixa vão na página anterior. */}
+      <div className="keep-together keep-with-previous">
         <div className="mt-2">
           <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
           <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
