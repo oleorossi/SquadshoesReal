@@ -44,7 +44,7 @@ export default function Colagem() {
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
   const { getStrapsLabel } = useOrderStraps();
-  const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'active');
+  const [filterStatus, setFilterStatus] = usePersistedState<string>('colagem-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
@@ -52,7 +52,7 @@ export default function Colagem() {
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedSaleOrders, setCollapsedSaleOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('searchQuery', '');
+  const [searchQuery, setSearchQuery] = usePersistedState('colagem-searchQuery', '');
 
   const toggleCollapse = (key: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setter(prev => {

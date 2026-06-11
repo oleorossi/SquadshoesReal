@@ -1322,7 +1322,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       'assembly_capacity_per_day', 'soling_capacity_per_day',
       'expedition_capacity_per_day', 'finishing_capacity_per_day',
       'costura_capacity_per_day',
-      'production_sectors', 'shoe_category_id', 'primary_sole_id',
+      // production_sectors NÃO entra no form: tem caminho de escrita próprio
+      // (ProductionSectorsTab → updateSheet direto). Hidratado aqui, o saveAll
+      // reenviava o valor STALE (re-sync bloqueado com dirty=true) por cima do
+      // que o painel acabou de salvar — setor removido "ressuscitava" e a
+      // ficha dele voltava a sair na impressão.
+      'shoe_category_id', 'primary_sole_id',
       'assembly_time_minutes', 'process_difficulty',
     ];
     for (const key of EXTRA_DB_FIELDS) {
@@ -1354,7 +1359,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       'sewing_capacity_per_day','silk_capacity_per_day','gluing_capacity_per_day',
       'assembly_capacity_per_day','soling_capacity_per_day',
       'expedition_capacity_per_day','finishing_capacity_per_day',
-      'costura_capacity_per_day','production_sectors','shoe_category_id',
+      // production_sectors fora do form — vide comentário do init acima.
+      'costura_capacity_per_day','shoe_category_id',
       'primary_sole_id','assembly_time_minutes','process_difficulty',
     ];
     for (const key of EXTRA) {
@@ -1849,7 +1855,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
   const saveAll = async () => {
     try {
-      await updateSheet.mutateAsync({ id: sheet.id, data: form });
+      // Cinto-e-suspensório: garante que production_sectors/aviamento_steps
+      // jamais saem pelo save geral (escrita exclusiva do ProductionSectorsTab).
+      const { production_sectors: _ps, aviamento_steps: _as, ...payload } = form as any;
+      await updateSheet.mutateAsync({ id: sheet.id, data: payload });
       setDirty(false);
       onSaveSuccess();
     } catch (err) {
@@ -3323,7 +3332,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
+             insoleReadyMade={(sheet as any).insole_ready_made === true}
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
              }}
@@ -3583,11 +3593,14 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
    // Sub-etapas paralelas de Corte (decisão 2026-05-12):
    //   - Corte Palmilha: sempre (todo sapato tem palmilha)
    //   - Corte Forração: quando o modelo tem forração na palmilha
-   //   - Corte Cabedal:  quando NÃO has_straps (modelo sem tiras)
    //   - Costura: junta palmilha + forração + cabedal
+   // ⚠ 'Corte Cabedal' NÃO é selecionável: o trigger
+   // tg_normalize_production_sectors descarta ele do array (fora da lista
+   // canônica), então o chip era salvo e sumia em silêncio. A impressão
+   // decide esse setor sozinha por has_straps (modelo sem tiras = corta
+   // cabedal) — não depende do roteiro.
    { name: 'Corte Palmilha', order: 1 },
    { name: 'Corte Forração', order: 2 },
-   { name: 'Corte Cabedal',  order: 3 },
    { name: 'Costura',        order: 4 },
    { name: 'Aviamento',      order: 5 },
    { name: 'Silk',           order: 6 },
@@ -3597,6 +3610,11 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
    { name: 'Acabamento',     order: 10 },
    { name: 'Expedição',      order: 11 },
  ];
+
+// Setores removidos automaticamente pelo trigger do banco
+// (tg_strip_cut_sectors_when_ready_made) quando a palmilha é pronta na cor.
+// O editor desabilita os chips pra não fingir que a seleção foi salva.
+const READY_MADE_STRIPPED_SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura'];
  
 // Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
 // production_sectors, abre um sub-painel pra escolher quais dessas etapas
@@ -3610,14 +3628,29 @@ const AVIAMENTO_STEPS = [
 function ProductionSectorsTab({
   sectors, onChange,
   aviamentoSteps, onChangeAviamentoSteps,
+  insoleReadyMade = false,
 }: {
   sectors: string[];
   onChange: (sectors: string[]) => void;
   aviamentoSteps: string[];
   onChangeAviamentoSteps: (steps: string[]) => void;
+  /** Palmilha pronta na cor: o trigger do banco remove Corte Palmilha/
+   *  Corte Forração/Costura do roteiro — os chips ficam desabilitados. */
+  insoleReadyMade?: boolean;
 }) {
    const [localSectors, setLocalSectors] = useState<string[]>(sectors);
    const [localSteps, setLocalSteps] = useState<string[]>(aviamentoSteps);
+
+   // Re-sincroniza com o valor PERSISTIDO quando a prop muda (refetch
+   // pós-save). Sem isso, o painel continuava exibindo a seleção do usuário
+   // mesmo quando um trigger do banco a revertia — e ele só descobria na
+   // impressão, quando o setor "salvo" não saía (ou saía um removido).
+   // Keyed pelo CONTEÚDO (JSON), não pela referência: o pai recria o array a
+   // cada render e um dep cru resetaria a edição em andamento.
+   const sectorsKey = JSON.stringify(sectors);
+   const stepsKey = JSON.stringify(aviamentoSteps);
+   useEffect(() => { setLocalSectors(JSON.parse(sectorsKey)); }, [sectorsKey]);
+   useEffect(() => { setLocalSteps(JSON.parse(stepsKey)); }, [stepsKey]);
 
    const toggle = (sectorName: string) => {
     setLocalSectors(prev => {
@@ -3651,24 +3684,39 @@ function ProductionSectorsTab({
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
          {ALL_PRODUCTION_SECTORS.map(sector => {
            const isActive = localSectors.includes(sector.name);
+           // Pronta na cor: o trigger do banco remove esses setores em todo
+           // save — marcar aqui era desfeito em silêncio (toast de sucesso
+           // enganava e a ficha do setor nunca saía na impressão).
+           const lockedByReadyMade = insoleReadyMade && READY_MADE_STRIPPED_SECTORS.includes(sector.name);
            return (
              <button
                key={sector.name}
                type="button"
+               disabled={lockedByReadyMade}
                onClick={() => toggle(sector.name)}
+               title={lockedByReadyMade
+                 ? 'Indisponível: palmilha pronta na cor — o sistema remove este setor do roteiro automaticamente. Desligue "Palmilha pronta na cor" para usá-lo.'
+                 : sector.name}
                className={cn(
                  'flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all min-w-0',
-                 isActive
-                   ? 'border-primary bg-primary/10 text-primary cursor-pointer'
-                   : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/50 cursor-pointer'
+                 lockedByReadyMade
+                   ? 'border-border bg-muted/20 text-muted-foreground/50 cursor-not-allowed opacity-60'
+                   : isActive
+                     ? 'border-primary bg-primary/10 text-primary cursor-pointer'
+                     : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/50 cursor-pointer'
                )}
              >
-               <Checkbox checked={isActive} className="pointer-events-none shrink-0" />
-               <span className="truncate" title={sector.name}>{sector.name}</span>
+               <Checkbox checked={isActive && !lockedByReadyMade} className="pointer-events-none shrink-0" />
+               <span className="truncate">{sector.name}</span>
              </button>
            );
          })}
       </div>
+      {insoleReadyMade && (
+        <p className="text-xs text-amber-700">
+          ⚠ Palmilha pronta na cor: Corte Palmilha, Corte Forração e Costura são removidos do roteiro automaticamente.
+        </p>
+      )}
 
       {/* Sub-painel Aviamento: aparece só quando Aviamento está selecionado.
           Cada etapa marcada vira uma linha de checklist na ficha de operador

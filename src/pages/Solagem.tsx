@@ -112,9 +112,9 @@ export default function Solagem() {
     };
   }, [soleRefMappings]);
 
-  const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'active');
+  const [filterStatus, setFilterStatus] = usePersistedState<string>('solagem-filterStatus', 'active');
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('searchQuery', '');
+  const [searchQuery, setSearchQuery] = usePersistedState('solagem-searchQuery', '');
   const [filterPeriod, setFilterPeriod] = usePersistedState<string>('solagemFilterPeriod', 'all');
   const [filterCategoria, setFilterCategoria] = usePersistedState<string>('solagemFilterCategoria', 'all');
   const [showDetail, setShowDetail] = useState(false);

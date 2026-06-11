@@ -41,12 +41,12 @@ export default function Acabamento() {
   const { data: clients = [] } = useClients();
   const queryClient = useQueryClient();
   const { getStrapsLabel } = useOrderStraps();
-  const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'active');
+  const [filterStatus, setFilterStatus] = usePersistedState<string>('acabamento-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
-  const [searchQuery, setSearchQuery] = usePersistedState('searchQuery', '');
+  const [searchQuery, setSearchQuery] = usePersistedState('acabamento-searchQuery', '');
 
   const toggleOrder = (id: string) => {
     setSelectedOrders(prev => {

@@ -44,7 +44,7 @@ export default function Aviamento() {
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
   const { getStrapsLabel } = useOrderStraps();
-  const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'active');
+  const [filterStatus, setFilterStatus] = usePersistedState<string>('aviamento-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
@@ -52,7 +52,7 @@ export default function Aviamento() {
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedSaleOrders, setCollapsedSaleOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('searchQuery', '');
+  const [searchQuery, setSearchQuery] = usePersistedState('aviamento-searchQuery', '');
 
   const toggleCollapse = (key: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setter(prev => {
@@ -272,7 +272,7 @@ export default function Aviamento() {
             {selectedOrders.size > 0 && (
               <Button size="sm" variant="outline" onClick={() => {
                 const ids = aviamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/orders/grouped-summary?sector=colagem&ids=${ids}`);
+                navigate(`/orders/grouped-summary?sector=aviamento&ids=${ids}`);
               }}>
                 <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
               </Button>

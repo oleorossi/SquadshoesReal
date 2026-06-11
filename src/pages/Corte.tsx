@@ -31,6 +31,14 @@ import { getGradeTotal, getOrderTotalPairs } from '@/lib/cuttingCounts';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeSector } from '@/lib/sectors';
+
+// Stage da OP correspondente a este setor. O stage_name no banco é
+// 'Corte Palmilha' desde o rename de 2026-05-06 — o match literal por 'Corte'
+// nunca achava nada (página listava 0 OPs no filtro padrão e TODAS no 'all').
+// normalizeSector cobre o canônico E o alias legado 'Corte'.
+const isCorteStage = (stageName: string | null | undefined): boolean =>
+  normalizeSector(String(stageName ?? '')) === 'corte_palmilha';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -79,13 +87,13 @@ export default function Corte() {
     },
   });
   const { getStrapsLabel } = useOrderStraps();
-  const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'active');
+  const [filterStatus, setFilterStatus] = usePersistedState<string>('corte-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
 
-  const [searchQuery, setSearchQuery] = usePersistedState('searchQuery', '');
+  const [searchQuery, setSearchQuery] = usePersistedState('corte-searchQuery', '');
 
   const toggleOrderSelection = (orderId: string) => {
     setSelectedOrders(prev => {
@@ -112,7 +120,7 @@ export default function Corte() {
       
       // Use the new transition logic for each order
       const results = (await Promise.all(
-        orderIds.map(orderId => finalizeSectorTask(orderId, 'Corte'))
+        orderIds.map(orderId => finalizeSectorTask(orderId, 'Corte Palmilha'))
       )) as any[];
 
       const successCount = results.filter(r => r && r.success).length;
@@ -149,7 +157,7 @@ export default function Corte() {
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
       const stages = allStages.filter(s => s.order_id === order.id);
-      const corteStage = stages.find(s => s.stage_name === 'Corte');
+      const corteStage = stages.find(s => isCorteStage(s.stage_name));
       if (!corteStage) return filterStatus === 'all';
       if (filterStatus === 'active' && corteStage.status !== 'pendente' && corteStage.status !== 'em_andamento') return false;
 
@@ -563,7 +571,7 @@ if (totalPairsAll !== palmTotal) {
           const fichas = gradeSum > 0 ? totalPairs / gradeSum : 0;
           const isSelected = selectedOrders.has(order.id);
 
-          const corteStage = allStages.find(s => s.order_id === order.id && s.stage_name === 'Corte');
+          const corteStage = allStages.find(s => s.order_id === order.id && isCorteStage(s.stage_name));
           const stageColor = corteStage?.status === 'concluido' ? 'border-l-emerald-500' : corteStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
           return (

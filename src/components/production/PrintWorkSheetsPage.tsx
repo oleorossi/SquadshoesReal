@@ -643,6 +643,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   const toggleSector = (s: string) => {
     setActiveSectors(prev => {
+      // Estado inicial = TODOS marcados. O 1º clique num chip era um toggle
+      // puro: DESMARCAVA exatamente o setor que o usuário queria imprimir —
+      // o relatório saía com os outros 11 setores e sem o escolhido (bug
+      // reportado 11/06/2026: "seleciono um setor e não aparece, outro setor
+      // aparece sem estar relacionado"). A partir do estado todos-marcados,
+      // o clique agora ISOLA o setor clicado; "Marcar todos" continua
+      // cobrindo o caso imprimir-tudo.
+      if (prev.size === SECTORS.length) return new Set([s]);
       const next = new Set(prev);
       if (next.has(s)) next.delete(s); else next.add(s);
       return next;
@@ -1836,6 +1844,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleEntry = soleMap.get(soleKey)!;
       const colorMap = soleEntry.colorMap;
 
+      // Flags pra filtrar setores de Corte — calculadas POR OP (a chave do
+      // colorMap não inclui a ref, então fichas técnicas DISTINTAS caem no
+      // mesmo grupo; antes as flags eram calculadas só na criação da chave e
+      // congelavam o valor da 1ª OP iterada — conforme a ordem, a ficha de
+      // Corte Forração sumia ou o Corte Cabedal incluía modelos de tira).
+      // Agregadas por OR logo abaixo.
+      //  - Corte Forração: cores cuja palmilha PRECISA ser forrada
+      //    (insole_has_lining=true E não pronta na cor efetiva — B2)
+      //  - Corte Cabedal: modelos SEM tiras (que têm cabedal a cortar)
+      const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
+        && !isEffectiveReadyMade(sheetId, order.color);
+      const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
+
       if (!colorMap.has(colorKey)) {
         // Sempre calcula silk + alerts (independente do sector). O componente
         // decide via theme se renderiza. Permite reutilizar o mesmo memo em
@@ -1869,19 +1890,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           qty: undefined,
           color: s?.color || '—',
         }));
-
-        // Flags pra filtrar setores de Corte:
-        //  - Corte Forração só renderiza cores cuja palmilha PRECISA ser
-        //    forrada (insole_has_lining=true E não pronta na cor)
-        //  - Corte Cabedal só renderiza modelos SEM tiras (has_straps=false)
-        // Sem isso, esses 2 setores apareciam com itens irrelevantes (ex:
-        // modelos de tira no Corte Cabedal, palmilhas prontas em Corte
-        // Forração) — confundia o cortador e quantidades ficavam infladas.
-        // B2: usa a pronta-na-cor EFETIVA (flag da ficha OR solado resolvido
-        // com sole_classification='palmilha_pronta') — antes só via a flag.
-        const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
-          && !isEffectiveReadyMade(sheetId, order.color);
-        const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
 
         // E1: materiais + consumo médio por par da ficha técnica — a
         // SilkMontageWorkSheet já renderiza esses campos (ficavam vazios).
@@ -1922,6 +1930,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       }
 
       const cg = colorMap.get(colorKey)!;
+      // OR das flags entre as OPs do grupo: se QUALQUER ficha do grupo exige
+      // o corte, a ficha do setor imprime (semântica igual ao opsInRoteiro
+      // de grupos mistos — não some com quantidades).
+      cg.requiresLiningCut = cg.requiresLiningCut === true || requiresLiningCut;
+      cg.requiresUpperCut = cg.requiresUpperCut === true || requiresUpperCut;
       cg.opNumbers.push(order.op_number);
       if (order.sale_order_number && !cg.pvNumbers.includes(order.sale_order_number)) {
         cg.pvNumbers.push(order.sale_order_number);
@@ -2225,9 +2238,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       transportByOrder.set(t.id, (t.transport_companies as any)?.nome || null);
     }
 
+    // B1: mesmo filtro de roteiro dos demais setores — OP cuja ficha técnica
+    // não tem 'Expedição' em production_sectors não entra no romaneio (era o
+    // único setor sem o filtro; ex.: BT01 ficava fora do roteiro de Expedição
+    // mas imprimia a ficha mesmo assim).
+    const expedicaoOrders = printOrders.filter(o => orderInRoteiro(o.reference_id, 'Expedição'));
+
     // Agrupa por client_id (fallback: sale_order_id pra avulsos)
     const map = new Map<string, ExpedicaoCustomerGroup>();
-    for (const order of printOrders) {
+    for (const order of expedicaoOrders) {
       const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
       const clientId = so?.client_id || `__order_${order.sale_order_id ?? order.id}`;
       const client = so?.client_id ? clientById.get(so.client_id) : null;
@@ -2290,7 +2309,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
 
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'));
-  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef]);
+  // sheetById entra nas deps porque orderInRoteiro (filtro B1 acima) lê dele.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef, sheetById]);
 
   // ── Ref+Cor groups: Colagem, Silk, Montagem (todos por Ref+Cor) ────────────
   // Silk e Montagem mudaram de solado+cor pra ref+cor em 20/05/2026 (pedido user).
@@ -2573,10 +2594,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             >
               Limpar
             </button>
-            <Button onClick={() => printWith(false)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading}>
+            {/* failedQueries > 0 também bloqueia: query de technical_sheets em
+                erro zera sheetById e o filtro de roteiro/flags falha ABERTO —
+                OPs entram em setores errados e Corte Forração some. O banner
+                vermelho acima explica e pede recarga. */}
+            <Button onClick={() => printWith(false)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : undefined}>
               <Printer className="h-4 w-4" /> Imprimir
             </Button>
-            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading} title="Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)">
+            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0} title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)'}>
               <Rows className="h-4 w-4" /> Relatório simplificado
             </Button>
           </div>
@@ -3242,7 +3267,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
           });
           return (
+            // SectorRegion (igual aos demais setores): sem ele, as páginas de
+            // continuação de uma ficha multipágina de Acabamento saíam sem o
+            // marker "Setor · Pg N/Total" — no maço impresso o operador
+            // atribuía a página órfã ao setor anterior.
             <div key={`acab-${order.id}`} className="page-break">
+              <SectorRegion sectorLabel={`Acabamento · ${order.reference_name || order.reference_code || '—'} ${order.color || ''}`}>
               <OperatorWorkSheet
                 order={syntheticOrder}
                 sector="Acabamento"
@@ -3264,6 +3294,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 }
                 sizeBand={bandForGrid((order as any).grid)}
               />
+              </SectorRegion>
             </div>
           );
         })}

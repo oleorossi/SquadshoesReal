@@ -114,9 +114,9 @@ export default function Silk() {
     };
   }, [soleRefMappings]);
 
-  const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'active');
+  const [filterStatus, setFilterStatus] = usePersistedState<string>('silk-filterStatus', 'active');
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('searchQuery', '');
+  const [searchQuery, setSearchQuery] = usePersistedState('silk-searchQuery', '');
   const [filterPeriod, setFilterPeriod] = usePersistedState<string>('silkFilterPeriod', 'all');
   const [filterCategoria, setFilterCategoria] = usePersistedState<string>('silkFilterCategoria', 'all');
   const [showDetail, setShowDetail] = useState(false);

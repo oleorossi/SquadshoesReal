@@ -210,9 +210,20 @@ export const filterConsumptionForSector = (
     regex.test((r.product_name || '').toLowerCase()) ||
     regex.test((r.category || '').toLowerCase());
 
+  // Linha não classificada pelo motor — único caso onde o fallback por NOME
+  // pode rotear. Aplicar byName em linha JÁ classificada cruzava setores:
+  // o cabedal 'Suede EVA + Cacharrel' casava /eva/ e os metros de suede
+  // saíam impressos na ficha de Corte de Placa de Fibra.
+  const unclassified = (r: ConsumptionRow) => !r.component || r.component === 'Outros';
+
   switch (sector) {
     case 'Corte Palmilha':
-      return rows.filter(r => r.component === 'Palmilha' || byName(r, /palmilha|eva|forma/));
+      // \beva\b: só a palavra isolada (placa EVA) — /forma/ removido (não há
+      // match legítimo e capturava 'plataforma').
+      return rows.filter(r =>
+        r.component === 'Palmilha' ||
+        (unclassified(r) && byName(r, /palmilha|\beva\b|placa\s+de\s+fibra/)),
+      );
     // 'Forração Palmilha' (forro que cobre a placa) é CORTADO no Corte
     // Forração — é napa de forro, não placa do Corte Palmilha.
     case 'Corte Forração':
@@ -237,7 +248,10 @@ export const filterConsumptionForSector = (
         r.component === 'Cabedal' ||
         r.component === 'Forração' ||
         r.component === 'Tiras' ||
-        r.component === 'Outros' ||
+        // Linha/fio de costura cai em 'Outros' (classifyBomMaterial não tem
+        // regra pra linha) mas é material da COSTURA — sem a exclusão, o
+        // LINHANYL saía em kg na ficha de Aviamento de todas as refs.
+        (r.component === 'Outros' && !byName(r, /linha|fio/)) ||
         r.component === 'Componente Direto' ||
         r.component === 'BOM' ||
         r.component === 'Forração (alternativa)' ||

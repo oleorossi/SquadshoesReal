@@ -289,12 +289,12 @@ export default function Costura() {
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · CORTE FORRAÇÃO"
         title={`Setor de ${SECTOR_NAME}`}
-        description="Fichas de controle com checklist de pares para costura"
+        description="Fichas de controle com checklist de pares para corte de forração"
         actions={<>
           {selectedOrders.size > 0 && (
             <Button size="sm" variant="outline" onClick={() => {
               const ids = costuraOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-              navigate(`/orders/grouped-summary?sector=costura&ids=${ids}`);
+              navigate(`/orders/grouped-summary?sector=corte_forracao&ids=${ids}`);
             }}>
               <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
             </Button>
