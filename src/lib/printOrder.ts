@@ -1,6 +1,8 @@
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { escapeHtml } from './htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+import { supabase } from '@/integrations/supabase/client';
+import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 function buildPrintHtmlContent(title: string, bodyHtml: string, options?: { landscape?: boolean }): string {
   const pageSize = options?.landscape ? 'A4 landscape' : 'A4';
@@ -308,857 +310,465 @@ export function printHtml(title: string, bodyHtml: string, options?: { landscape
 
 // --- Sale Order & Production Order builders below ---
 
-export async function buildSaleOrderPrintHtml(order: any, items: any[], colorVariants: any[] = []) {
-  const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+// ── Helpers de formatação BR (CNPJ/CPF, CEP, telefone) ──
+function fmtDoc(doc?: string | null): string {
+  if (!doc) return '';
+  const d = String(doc).replace(/\D/g, '');
+  if (d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  if (d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  return String(doc);
+}
+function fmtCep(cep?: string | null): string {
+  if (!cep) return '';
+  const d = String(cep).replace(/\D/g, '');
+  if (d.length === 8) return d.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+  return String(cep);
+}
+function fmtPhone(tel?: string | null): string {
+  if (!tel) return '';
+  const d = String(tel).replace(/\D/g, '');
+  if (d.length === 11) return d.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+  if (d.length === 10) return d.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3');
+  return String(tel);
+}
 
+/**
+ * Busca os dados complementares (itens, imagens de cor, cliente completo e
+ * identidade da empresa) e abre o preview de impressão do PV.
+ *
+ * Centraliza o fetch que antes estava DUPLICADO inline em 2 botões da
+ * página de pedidos. Assim o PDF sempre recebe bloco do cliente completo
+ * (razão/CNPJ/IE/endereço/contato) e o cabeçalho da Squad Shoes
+ * (logo + CNPJ + endereço) — antes o `order` cru não trazia nada disso.
+ */
+export async function fetchCompanySettings(): Promise<any> {
+  const { data } = await (supabase as any)
+    .from('company_settings').select('*').eq('is_default', true).maybeSingle();
+  return data || null;
+}
+
+/**
+ * Monta o HTML do PV já com os dados complementares (itens, imagens de cor,
+ * cliente completo). `company` pode ser pré-buscado (impressão em lote busca
+ * 1×) ou omitido (busca aqui).
+ */
+export async function buildSaleOrderHtmlWithData(order: any, company?: any): Promise<string> {
+  const db = supabase as any;
+  const co = company !== undefined ? company : await fetchCompanySettings();
+  const { data: itemsData } = await db
+    .from('sale_order_items')
+    .select('*, technical_sheets(name, code, image_url, images)')
+    .eq('sale_order_id', order.id);
+  const items = (itemsData || []) as any[];
+  const refIds = [...new Set(items.map((i) => i.reference_id).filter(Boolean))];
+  const [variantsRes, clientRes] = await Promise.all([
+    refIds.length
+      ? db.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds)
+      : Promise.resolve({ data: [] as any[] }),
+    order.client_id
+      ? db.from('clients').select('*').eq('id', order.client_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  return buildSaleOrderPrintHtml(order, items, variantsRes.data || [], {
+    company: co,
+    client: clientRes.data || null,
+  });
+}
+
+export async function printSaleOrderPdf(order: any): Promise<void> {
+  const html = await buildSaleOrderHtmlWithData(order);
+  printHtml(`PV ${order.order_number}`, html);
+}
+
+export async function buildSaleOrderPrintHtml(
+  order: any,
+  items: any[],
+  colorVariants: any[] = [],
+  opts: { company?: any; client?: any } = {},
+) {
+  const money = (v: number) =>
+    'R$ ' + new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v) || 0);
+
+  // ── Resolve imagens p/ signed URLs (storage privado) ──
   const getItemImage = (item: any): string | null => {
     const color = item.color || '';
     const refId = item.reference_id;
-    // 1. Color-specific variant
     if (color && colorVariants.length > 0) {
-      const variant = colorVariants.find((v: any) => v.reference_id === refId && v.color?.toLowerCase() === color.toLowerCase() && v.image_url);
-      if (variant?.image_url) return variant.image_url;
+      const v = colorVariants.find((cv: any) => cv.reference_id === refId && cv.color?.toLowerCase() === color.toLowerCase() && cv.image_url);
+      if (v?.image_url) return v.image_url;
     }
-    // 2. Technical sheet images
     const images = item.technical_sheets?.images;
-    if (images && Array.isArray(images) && images.length > 0) {
+    if (Array.isArray(images) && images.length > 0) {
       const first = images[0];
       if (typeof first === 'string') return first;
       if (first?.url) return first.url;
     }
     if (item.technical_sheets?.image_url) return item.technical_sheets.image_url;
-    // 3. Any variant of this reference that has an image
     if (colorVariants.length > 0) {
-      const anyVariant = colorVariants.find((v: any) => v.reference_id === refId && v.image_url);
-      if (anyVariant?.image_url) return anyVariant.image_url;
+      const any = colorVariants.find((cv: any) => cv.reference_id === refId && cv.image_url);
+      if (any?.image_url) return any.image_url;
     }
     return null;
   };
-
-  // Resolve all image URLs to signed URLs for private storage
   const imageUrlMap = new Map<string, string>();
-  const rawUrls = items.map(item => getItemImage(item)).filter(Boolean) as string[];
-  const uniqueUrls = [...new Set(rawUrls)];
-  await Promise.all(uniqueUrls.map(async (url) => {
-    const signed = await getSignedUrl(url);
-    imageUrlMap.set(url, signed);
-  }));
-  const resolveUrl = (url: string | null) => url ? (imageUrlMap.get(url) || url) : null;
+  const rawUrls = [...new Set(items.map(getItemImage).filter(Boolean) as string[])];
+  await Promise.all(rawUrls.map(async (url) => { imageUrlMap.set(url, await getSignedUrl(url)); }));
+  const resolveUrl = (url: string | null) => (url ? imageUrlMap.get(url) || url : null);
 
-  const allSizes = new Set<string>();
-  items.forEach(item => {
-    const grade = item.grade as Record<string, number> | null;
-    if (grade) Object.keys(grade).filter(s => !s.startsWith('_')).forEach(s => allSizes.add(s));
-  });
-  // Ordena numérico; numerações conjugadas ("33/34") ordenam pela 1ª parte.
-  // ANTES usava Number("33/34") = NaN → colunas conjugadas saíam fora de ordem.
-  const sizeOrder = (s: string) => parseInt(String(s).split('/')[0], 10) || 0;
-  const sizes = Array.from(allSizes).sort((a, b) => sizeOrder(a) - sizeOrder(b));
+  const sizeKey = (s: string) => parseInt(String(s).split('/')[0], 10) || 0;
 
-  let bodyRows = '';
-  const grandTotals: Record<string, { pedida: number; valor: number }> = {};
-  sizes.forEach(s => { grandTotals[s] = { pedida: 0, valor: 0 }; });
-  let grandTotalPairs = 0;
-  let grandTotalValue = 0;
-  const unitPrice = items.length > 0 ? Number(items[0].unit_price) : 0;
+  // ── AGRUPAMENTO POR REFERÊNCIA ──
+  // Cada referência (code+name) vira um bloco; as cores são sub-linhas da
+  // grade. `item.grade` no banco é a grade BASE (1 ficha ~12 pares); escala
+  // p/ a qtd real (`item.quantity`) com largest-remainder pra a soma por
+  // numeração bater EXATAMENTE com o pedido — igual à tela do PV e à OP.
+  type ColorRow = { color: string; grade: Record<string, number>; pairs: number; unit: number; total: number };
+  type RefGroup = { key: string; code: string; name: string; image: string | null; sizes: Set<string>; rows: ColorRow[]; pairs: number; value: number };
+  const groupsMap = new Map<string, RefGroup>();
+  const groupOrder: string[] = [];
 
-  items.forEach(item => {
-    // `item.grade` no banco é a grade BASE (1 ficha, soma ~12/15). A
-    // quantidade REALMENTE pedida está em `item.quantity`. O PDF precisa
-    // escalar a base pela qtd real (multiplier = quantity / soma da base),
-    // com largest-remainder pra a soma por numeração bater EXATAMENTE com
-    // quantity — igual à tela do PV e à geração de OP.
-    // BUG (corrigido 2026-06-09): antes usava a grade base CRUA → mostrava
-    // ~12 pares por item e valores ~37× menores que o total real do pedido.
+  for (const item of items) {
     const baseGrade = item.grade as Record<string, number> | null;
     const baseSum = baseGrade
-      ? Object.entries(baseGrade).reduce((s, [k, v]) => k.startsWith('_') ? s : s + (Number(v) || 0), 0)
+      ? Object.entries(baseGrade).reduce((s, [k, v]) => (k.startsWith('_') ? s : s + (Number(v) || 0)), 0)
       : 0;
     const realQty = Number(item.quantity) || 0;
-    const grade = (baseSum > 0 && realQty > 0)
+    const grade = baseSum > 0 && realQty > 0
       ? scaleGradeWithLargestRemainder(baseGrade, realQty / baseSum, realQty)
       : (baseGrade || {});
-    const refCode = item.technical_sheets?.code || '';
-    const refName = item.technical_sheets?.name || '';
-    const color = item.color || '—';
-    const price = Number(item.unit_price);
-    let itemTotal = 0;
-    let itemPairs = 0;
-    const imageUrl = resolveUrl(getItemImage(item));
+    const code = item.technical_sheets?.code || '';
+    const name = item.technical_sheets?.name || '';
+    const key = `${code}||${name}||${item.reference_id || ''}`.toLowerCase();
+    const unit = Number(item.unit_price) || 0;
+    let pairs = 0;
+    Object.entries(grade).forEach(([k, v]) => { if (!k.startsWith('_')) pairs += Number(v) || 0; });
+    const total = pairs * unit;
+    const image = resolveUrl(getItemImage(item));
 
-    let pedidaCells = '';
-    let unitarioCells = '';
-    let valorCells = '';
-    sizes.forEach(s => {
-      const qty = grade?.[s] ? Number(grade[s]) : 0;
-      const val = qty * price;
-      pedidaCells += `<td class="pv-size-cell${qty ? '' : ' empty'}">${qty || '·'}</td>`;
-      unitarioCells += `<td class="pv-size-cell${qty > 0 ? '' : ' empty'}" style="font-size:8.5px;">${qty > 0 ? formatCurrency(price) : '·'}</td>`;
-      valorCells += `<td class="pv-size-cell${qty > 0 ? '' : ' empty'}" style="font-size:8.5px;">${qty > 0 ? formatCurrency(val) : '·'}</td>`;
-      itemTotal += val;
-      itemPairs += qty;
-      grandTotals[s].pedida += qty;
-      grandTotals[s].valor += val;
-    });
-    grandTotalPairs += itemPairs;
-    grandTotalValue += itemTotal;
+    let g = groupsMap.get(key);
+    if (!g) {
+      g = { key, code, name, image, sizes: new Set(), rows: [], pairs: 0, value: 0 };
+      groupsMap.set(key, g);
+      groupOrder.push(key);
+    }
+    if (!g.image && image) g.image = image;
+    Object.keys(grade).forEach((s) => { if (!s.startsWith('_')) g!.sizes.add(s); });
+    g.rows.push({ color: item.color || '—', grade, pairs, unit, total });
+    g.pairs += pairs;
+    g.value += total;
+  }
 
-    const imgCell = imageUrl
-      ? `<td rowspan="3" class="pv-img-cell"><img src="${imageUrl}" alt="${escapeHtml(refCode)}" /></td>`
-      : `<td rowspan="3" class="pv-img-cell empty">sem<br>foto</td>`;
+  const groups = groupOrder.map((k) => groupsMap.get(k)!);
+  groups.sort((a, b) => `${a.code} ${a.name}`.trim().localeCompare(`${b.code} ${b.name}`.trim(), 'pt-BR', { numeric: true }));
+  groups.forEach((g) => g.rows.sort((a, b) => a.color.localeCompare(b.color, 'pt-BR')));
 
-    // Evita duplicação "DS05/DS05" quando code == name. Mostra só o code
-    // se houver, ou só o name. ref-name só aparece quando difere do code.
-    const showName = refName && refName !== refCode;
-    const refCellContent = refCode
-      ? `<span class="ref-code">${escapeHtml(refCode)}</span>${showName ? `<span class="ref-name">${escapeHtml(refName)}</span>` : ''}`
-      : escapeHtml(refName || '—');
+  const grandPairs = groups.reduce((s, g) => s + g.pairs, 0);
+  const subtotal = groups.reduce((s, g) => s + g.value, 0);
+  const refsCount = groups.length;
+  const freight = Number(order.valor_frete || 0) || (Number(order.shipping_rate_per_pair || 0) * grandPairs);
+  const orderTotal = Number(order.total || 0);
+  const totalGeral = orderTotal > 0 ? orderTotal : subtotal + freight;
+  const discount = Math.max(0, (subtotal + freight) - totalGeral);
+  const avgUnit = grandPairs > 0 ? subtotal / grandPairs : 0;
 
-    bodyRows += `
-      <tr class="pv-row-qty">
-        ${imgCell}
-        <td rowspan="3" class="pv-ref-cell">${refCellContent}</td>
-        <td rowspan="3" class="pv-color-cell">${escapeHtml(color)}</td>
-        <td class="pv-type-cell pv-type-cell--qty">Pedido</td>
-        ${pedidaCells}
-        <td class="pv-total-cell pv-total-cell--qty">${itemPairs}</td>
-      </tr>
-      <tr class="pv-row-unit">
-        <td class="pv-type-cell">Unit.</td>
-        ${unitarioCells}
-        <td class="pv-total-cell pv-total-cell--unit">${formatCurrency(price)}</td>
-      </tr>
-      <tr class="pv-row-total">
-        <td class="pv-type-cell">Total</td>
-        ${valorCells}
-        <td class="pv-total-cell pv-total-cell--total">${formatCurrency(itemTotal)}</td>
-      </tr>`;
-  });
+  // ── Render dos blocos de referência ──
+  let refBlocks = '';
+  for (const g of groups) {
+    const gsizes = Array.from(g.sizes).sort((a, b) => sizeKey(a) - sizeKey(b));
+    const showName = g.name && g.name !== g.code;
+    const head = `
+      <div class="ref-head">
+        ${g.image ? `<img class="ref-photo" src="${g.image}" alt="${escapeHtml(g.code)}" />` : `<div class="ref-photo empty">sem<br>foto</div>`}
+        <div class="ref-id">
+          <span class="ref-code">${escapeHtml(g.code || g.name || '—')}</span>
+          ${showName ? `<span class="ref-name">${escapeHtml(g.name)}</span>` : ''}
+        </div>
+        <div class="ref-kpi">
+          <span class="ref-kpi-pairs">${g.pairs}<em>pares</em></span>
+          <span class="ref-kpi-val">${money(g.value)}</span>
+        </div>
+      </div>`;
 
-  // Calculate averages or just show unit price if it's unique
-  const avgUnitPrice = grandTotalPairs > 0 ? grandTotalValue / grandTotalPairs : unitPrice;
+    const colHead = gsizes.map((s) => `<th>${escapeHtml(s)}</th>`).join('');
+    let rowsHtml = '';
+    for (const r of g.rows) {
+      const cells = gsizes.map((s) => {
+        const q = Number(r.grade?.[s] || 0);
+        return `<td class="size${q ? '' : ' empty'}">${q || '·'}</td>`;
+      }).join('');
+      rowsHtml += `
+        <tr>
+          <td class="color">${escapeHtml(r.color)}</td>
+          ${cells}
+          <td class="pairs">${r.pairs}</td>
+          <td class="unit">${money(r.unit)}</td>
+          <td class="total">${money(r.total)}</td>
+        </tr>`;
+    }
+    const subCells = gsizes.map((s) => {
+      const q = g.rows.reduce((acc, r) => acc + Number(r.grade?.[s] || 0), 0);
+      return `<td class="size">${q || '·'}</td>`;
+    }).join('');
+    const subRow = g.rows.length > 1 ? `
+        <tr class="ref-sub">
+          <td class="color">Subtotal ref.</td>
+          ${subCells}
+          <td class="pairs">${g.pairs}</td>
+          <td class="unit"></td>
+          <td class="total">${money(g.value)}</td>
+        </tr>` : '';
 
-  // Industrial Editorial Pro: status são INK+texto, não bg colorido infantil.
-  // Manter só accent semântico no dot (verde/âmbar/vermelho).
+    refBlocks += `
+      <div class="ref-block keep-together">
+        ${head}
+        <table class="ref-grade">
+          <thead>
+            <tr>
+              <th class="color">Cor</th>
+              ${colHead}
+              <th class="pairs">Pares</th>
+              <th class="unit">Unit.</th>
+              <th class="total">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            ${subRow}
+          </tbody>
+        </table>
+      </div>`;
+  }
+  if (groups.length === 0) {
+    refBlocks = `<div class="pv-empty">Pedido sem itens cadastrados.</div>`;
+  }
+
+  // ── Identidade da empresa (company_settings) ──
+  const co = opts.company || {};
+  const coName = co.nome_fantasia || co.razao_social || 'Squad Shoes';
+  const coRazao = co.razao_social && co.razao_social !== coName ? co.razao_social : '';
+  const coDoc = fmtDoc(co.cnpj || co.cpf);
+  const coAddrLine = [co.endereco, [co.cidade, co.uf].filter(Boolean).join('/'), fmtCep(co.cep) ? `CEP ${fmtCep(co.cep)}` : ''].filter(Boolean).join(' · ');
+  const coContact = [fmtPhone(co.telefone), co.email].filter(Boolean).join(' · ');
+
+  // ── Cliente (clients row OU fallback p/ campos do pedido) ──
+  const cl = opts.client || {};
+  const clName = cl.razao_social || order.client_name || '—';
+  const clFantasia = cl.nome_fantasia && cl.nome_fantasia !== clName ? cl.nome_fantasia : '';
+  const clDoc = fmtDoc(cl.cnpj || order.client_cnpj);
+  const clIe = cl.inscricao_estadual || '';
+  const clAddr = [
+    [cl.endereco, cl.numero].filter(Boolean).join(', '),
+    cl.complemento,
+    cl.bairro,
+    [cl.cidade, cl.estado].filter(Boolean).join('/'),
+    fmtCep(cl.cep) ? `CEP ${fmtCep(cl.cep)}` : '',
+  ].filter(Boolean).join(' · ');
+  const clContact = [cl.contato, fmtPhone(cl.telefone || order.client_contact), cl.email].filter(Boolean).join(' · ');
+  const clNumber = cl.client_number || (order as any).client_number || '';
+
+  // ── Status (accent semântico só no dot) ──
   const statusDot: Record<string, string> = {
-    'Rascunho':           '#a1a1aa',
-    'Pendente':           '#f59e0b',
-    'Aprovado':           '#0a7b2c',
-    'Em Produção':        '#3b82f6',
-    'Pronto':             '#0a7b2c',
-    'Faturado':           '#0a7b2c',
-    'Expedido':           '#0a7b2c',
-    'Concluído':          '#0a7b2c',
-    'Finalizado s/ NF':   '#a1a1aa',
-    'Cancelado':          '#D9264E',
+    'Rascunho': '#a1a1aa', 'Pendente': '#f59e0b', 'Aprovado': '#0a7b2c', 'Em Produção': '#3b82f6',
+    'Pronto': '#0a7b2c', 'Faturado': '#0a7b2c', 'Expedido': '#0a7b2c', 'Concluído': '#0a7b2c',
+    'Finalizado s/ NF': '#a1a1aa', 'Cancelado': '#D9264E',
   };
-  const dotColor = statusDot[order.status] || '#a1a1aa';
+  const dotColor = statusDot[order.status] || '#71717a';
 
   const issuedDate = order.created_at
     ? new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const deadline = order.delivery_deadline ? new Date(order.delivery_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
+  const genStamp = new Date().toLocaleString('pt-BR');
+
+  const clientRow = (lbl: string, val: string) => val
+    ? `<div class="kv"><span class="k">${lbl}</span><span class="v">${escapeHtml(val)}</span></div>` : '';
 
   return `
 <style>
-  /* ═══════════════════════════════════════════════════════════════════════
-     PV PRINT — Industrial Editorial Pro (2026-05-29 redesign)
-     PAPER #FAFAF7 · INK #0A0A0A · RED #D9264E
-     Anton (display) · Fira Sans (body) · Fira Code (numbers)
-     Rule-thick 3px · radius sharp 2px · sem gradientes
-     ═══════════════════════════════════════════════════════════════════════ */
   @import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
   .pv-doc {
-    font-family: 'Fira Sans', system-ui, -apple-system, sans-serif;
-    color: #0A0A0A;
-    font-size: 10.5px;
-    line-height: 1.45;
-    background: #FAFAF7;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    --ink: #15171a; --muted: #6b7280; --line: #d7dade; --line-strong: #15171a;
+    --red: #D9264E; --paper: #ffffff; --soft: #f4f5f7;
+    font-family: 'Inter Tight', system-ui, -apple-system, Arial, sans-serif;
+    color: var(--ink); font-size: 11px; line-height: 1.45; background: var(--paper);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .pv-doc * { box-sizing: border-box; }
+  .pv-doc .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; font-variant-numeric: tabular-nums; }
 
-  /* ── Eyebrow MONO (10px tracking widest uppercase) ── */
-  .ed-eyebrow {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8px;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-    line-height: 1;
-  }
+  /* ── Topo: marca (logo + identidade) | documento ── */
+  .pv-top { display: grid; grid-template-columns: 1fr auto; align-items: flex-start; gap: 20px; padding-bottom: 12px; border-bottom: 2.5px solid var(--line-strong); }
+  .pv-brand { display: flex; align-items: flex-start; gap: 12px; }
+  .pv-logo { height: 38px; width: auto; object-fit: contain; margin-top: 1px; }
+  .pv-brand-name { font-family: 'Anton', Impact, sans-serif; font-size: 20px; letter-spacing: 0.01em; text-transform: uppercase; line-height: 1; }
+  .pv-brand-sub { font-size: 10px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+  .pv-brand-meta { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+  .pv-brand-meta span { font-size: 9px; color: var(--muted); line-height: 1.35; }
+  .pv-doc-id { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .pv-doc-kind { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+  .pv-doc-num { font-family: 'Anton', Impact, sans-serif; font-size: 30px; line-height: 0.9; letter-spacing: 0.005em; }
+  .pv-doc-status { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1.5px solid var(--line-strong); border-radius: 3px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .pv-doc-status .dot { width: 7px; height: 7px; border-radius: 50%; background: ${dotColor}; }
 
-  /* ── Header editorial: 3 colunas com rule-thick embaixo ── */
-  .pv-header {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: flex-end;
-    gap: 24px;
-    padding: 0 0 14px 0;
-    border-bottom: 3px solid #0A0A0A;
-    margin-bottom: 16px;
-  }
-  .pv-header__brand {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .pv-header__brand-mark {
-    font-family: 'Anton', Impact, sans-serif;
-    font-size: 28px;
-    letter-spacing: -0.02em;
-    line-height: 0.9;
-    text-transform: uppercase;
-    color: #0A0A0A;
-    padding-top: 0.06em;
-  }
-  .pv-header__brand-mark .dot { color: #D9264E; }
-  .pv-header__brand-tag {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8.5px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-  }
-  .pv-header__title {
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-  .pv-header__title-eyebrow {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-  }
-  .pv-header__num {
-    font-family: 'Anton', Impact, sans-serif;
-    font-size: 38px;
-    letter-spacing: -0.01em;
-    line-height: 0.9;
-    color: #0A0A0A;
-    padding-top: 0.05em;
-  }
-  .pv-header__meta {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: center;
-    text-align: right;
-  }
-  .pv-header__meta-item {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 80px;
-    text-align: right;
-  }
-  .pv-header__meta-label {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8px;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-  }
-  .pv-header__meta-value {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 11px;
-    font-weight: 700;
-    color: #0A0A0A;
-    font-variant-numeric: tabular-nums;
-  }
-  .pv-header__status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 9px;
-    border: 1.5px solid #0A0A0A;
-    border-radius: 2px;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #0A0A0A;
-  }
-  .pv-header__status-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: ${dotColor};
-  }
+  /* ── Cartões: Cliente | Pedido ── */
+  .pv-meta { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; margin: 14px 0 16px; }
+  .pv-card { border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .pv-card__h { background: var(--soft); padding: 5px 10px; font-size: 9px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); border-bottom: 1.5px solid var(--line); }
+  .pv-card__b { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+  .pv-card__b .kv { display: grid; grid-template-columns: 78px 1fr; gap: 8px; align-items: baseline; }
+  .pv-card__b .kv .k { font-size: 8.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .pv-card__b .kv .v { font-size: 10.5px; font-weight: 500; color: var(--ink); }
+  .pv-card__b .kv .v strong { font-weight: 800; }
 
-  /* ── Cards de informações: 3 colunas, sharp 2px, sem fundo ── */
-  .pv-info {
-    display: grid;
-    grid-template-columns: 1.3fr 1fr 1fr;
-    gap: 14px;
-    margin-bottom: 16px;
-  }
-  .pv-card {
-    page-break-inside: avoid;
-  }
-  .pv-card__title {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8.5px;
-    font-weight: 600;
-    color: #0A0A0A;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    padding-bottom: 6px;
-    margin-bottom: 8px;
-    border-bottom: 1.5px solid #0A0A0A;
-  }
-  .pv-card__row {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 3px 0;
-    font-size: 10.5px;
-    align-items: baseline;
-  }
-  .pv-card__row .lbl {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8.5px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-    white-space: nowrap;
-  }
-  .pv-card__row .val {
-    color: #0A0A0A;
-    font-weight: 600;
-    text-align: right;
-    font-size: 11px;
-  }
-  .pv-card__row .val strong { font-weight: 800; }
-  .pv-card__row .val.mono {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-variant-numeric: tabular-nums;
-  }
+  /* ── Título da seção de itens ── */
+  .pv-items-h { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2px solid var(--line-strong); padding-bottom: 6px; margin-bottom: 12px; }
+  .pv-items-h h2 { font-family: 'Anton', Impact, sans-serif; font-size: 16px; letter-spacing: 0.01em; text-transform: uppercase; margin: 0; }
+  .pv-items-h .count { font-size: 9.5px; font-weight: 600; color: var(--muted); }
+  .pv-items-h .count b { color: var(--ink); font-weight: 800; }
 
-  /* ── Section title antes da tabela (rule + eyebrow + Anton) ── */
-  .pv-items-title {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    padding-bottom: 8px;
-    border-bottom: 1.5px solid #0A0A0A;
-    margin-bottom: 8px;
-  }
-  .pv-items-title__h {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .pv-items-title__eyebrow {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-  }
-  .pv-items-title h2 {
-    font-family: 'Anton', Impact, sans-serif;
-    font-size: 18px;
-    letter-spacing: -0.01em;
-    text-transform: uppercase;
-    color: #0A0A0A;
-    margin: 0;
-    line-height: 1;
-    padding-top: 0.05em;
-  }
-  .pv-items-title .count {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 10px;
-    font-weight: 700;
-    color: #0A0A0A;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.04em;
-  }
-  .pv-items-title .count em { color: rgba(10,10,10,0.55); font-style: normal; font-weight: 500; margin: 0 4px; }
+  /* ── Bloco de referência ── */
+  .ref-block { border: 1.5px solid var(--line); border-radius: 5px; overflow: hidden; margin-bottom: 12px; }
+  .ref-head { display: flex; align-items: center; gap: 11px; padding: 7px 11px; background: var(--soft); border-bottom: 1.5px solid var(--line); }
+  .ref-photo { width: 42px; height: 42px; object-fit: cover; border-radius: 4px; border: 1.5px solid var(--line-strong); background: #fff; flex: none; }
+  .ref-photo.empty { display: flex; align-items: center; justify-content: center; text-align: center; font-size: 7px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); line-height: 1.1; }
+  .ref-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ref-code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.01em; }
+  .ref-name { font-size: 10px; color: var(--muted); font-weight: 500; }
+  .ref-kpi { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex: none; }
+  .ref-kpi-pairs { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; font-weight: 700; }
+  .ref-kpi-pairs em { font-style: normal; font-size: 8.5px; font-weight: 600; color: var(--muted); margin-left: 3px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .ref-kpi-val { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; font-weight: 700; color: var(--red); }
 
-  /* ── Tabela editorial — borda sharp, header INK ── */
-  .pv-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 10px;
-    margin-bottom: 0;
-    border: 1.5px solid #0A0A0A;
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .pv-table thead th {
-    background: #0A0A0A;
-    color: #FAFAF7;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-weight: 700;
-    font-size: 8.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    padding: 8px 4px;
-    text-align: center;
-    border: none;
-  }
-  .pv-table thead th.text-left { text-align: left; padding-left: 10px; }
+  .ref-grade { width: 100%; border-collapse: collapse; }
+  .ref-grade thead th { background: var(--ink); color: #fff; font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 600; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 3px; text-align: center; }
+  .ref-grade thead th.color { text-align: left; padding-left: 11px; width: 96px; }
+  .ref-grade thead th.pairs, .ref-grade thead th.unit, .ref-grade thead th.total { width: 62px; }
+  .ref-grade tbody td { border-top: 1px solid var(--line); padding: 5px 3px; text-align: center; font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+  .ref-grade tbody td.color { text-align: left; padding-left: 11px; font-family: 'Inter Tight', sans-serif; font-weight: 600; font-size: 10.5px; }
+  .ref-grade tbody td.size { color: var(--ink); font-weight: 600; }
+  .ref-grade tbody td.size.empty { color: #c4c8ce; font-weight: 400; }
+  .ref-grade tbody td.pairs { font-weight: 800; background: var(--soft); }
+  .ref-grade tbody td.unit { color: var(--muted); font-size: 9.5px; }
+  .ref-grade tbody td.total { font-weight: 700; color: var(--ink); }
+  .ref-grade tbody tr.ref-sub td { background: #eef0f3; font-weight: 800; border-top: 1.5px solid var(--line-strong); }
+  .ref-grade tbody tr.ref-sub td.color { text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.08em; color: var(--muted); }
+  .ref-grade tbody tr.ref-sub td.total { color: var(--red); }
 
-  .pv-table tbody td {
-    padding: 4px 5px;
-    vertical-align: middle;
-    font-size: 10px;
-    border: none;
-  }
-  .pv-row-qty td { border-top: 1.5px solid #0A0A0A; }
-  .pv-table tbody tr:first-child td { border-top: none; }
+  .pv-empty { padding: 24px; text-align: center; color: var(--muted); font-style: italic; border: 1.5px dashed var(--line); border-radius: 5px; }
 
-  .pv-img-cell {
-    width: 60px;
-    text-align: center;
-    padding: 5px !important;
-    background: #FAFAF7;
-    border-right: 1px solid rgba(10,10,10,0.12);
-  }
-  .pv-img-cell img {
-    width: 50px;
-    height: 50px;
-    object-fit: cover;
-    border-radius: 2px;
-    border: 1.5px solid #0A0A0A;
-    display: block;
-    margin: 0 auto;
-  }
-  .pv-img-cell.empty {
-    color: rgba(10,10,10,0.35);
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 7.5px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
+  /* ── Resumo: observações | totais ── */
+  .pv-summary { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; margin-top: 4px; page-break-inside: avoid; }
+  .pv-notes { border: 1.5px solid var(--line); border-radius: 4px; padding: 9px 11px; }
+  .pv-notes-title { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); margin-bottom: 4px; }
+  .pv-notes-body { font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; }
+  .pv-notes-body.empty { color: var(--muted); font-style: italic; }
+  .pv-totals { border: 1.5px solid var(--line-strong); border-radius: 4px; overflow: hidden; align-self: start; }
+  .pv-tline { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 10.5px; }
+  .pv-tline span { color: var(--muted); font-weight: 600; font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .pv-tline b { font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pv-tline.grand { background: var(--ink); color: #fff; padding: 8px 12px; border-bottom: none; }
+  .pv-tline.grand span { color: rgba(255,255,255,0.7); font-weight: 700; }
+  .pv-tline.grand b { color: #fff; font-size: 15px; }
+  .pv-tline.avg { border-bottom: none; }
+  .pv-tline.avg b { color: var(--muted); font-weight: 600; }
 
-  .pv-ref-cell {
-    font-weight: 700;
-    color: #0A0A0A;
-    font-size: 11px;
-    padding-left: 10px !important;
-    border-right: 1px solid rgba(10,10,10,0.12);
-  }
-  .pv-ref-cell .ref-code {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    color: #0A0A0A;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    font-size: 12px;
-  }
-  .pv-ref-cell .ref-name {
-    color: rgba(10,10,10,0.55);
-    font-weight: 500;
-    font-size: 9px;
-    display: block;
-    margin-top: 2px;
-    font-style: italic;
-  }
+  /* ── Assinaturas ── */
+  .pv-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 26px; padding: 0 6px; page-break-inside: avoid; }
+  .pv-sign__box { text-align: center; border-top: 1.5px solid var(--line-strong); padding-top: 6px; }
+  .pv-sign__box .l { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+  .pv-sign__box .s { font-size: 9px; color: var(--muted); margin-top: 2px; }
 
-  .pv-color-cell {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-weight: 700;
-    color: #0A0A0A;
-    font-size: 9.5px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    border-right: 1px solid rgba(10,10,10,0.12);
-    text-align: center;
-  }
+  /* ── Rodapé: estático no preview, fixo/repetido na impressão ── */
+  .pv-foot { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 8.5px; color: var(--muted); letter-spacing: 0.04em; }
+  .pv-foot .mono { font-size: 8.5px; }
 
-  .pv-type-cell {
-    background: rgba(10,10,10,0.04);
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-weight: 600;
-    font-size: 8.5px;
-    color: rgba(10,10,10,0.55);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    text-align: left;
-    padding-left: 10px !important;
-    width: 60px;
-    white-space: nowrap;
-    border-right: 1px solid rgba(10,10,10,0.12);
-  }
-  .pv-type-cell--qty {
-    color: #0A0A0A;
-    background: rgba(10,10,10,0.08);
-    font-weight: 700;
-  }
-
-  .pv-size-cell {
-    text-align: center;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-variant-numeric: tabular-nums;
-    color: rgba(10,10,10,0.7);
-    padding: 4px 4px;
-  }
-  .pv-size-cell.empty { color: rgba(10,10,10,0.18); }
-  .pv-row-qty .pv-size-cell {
-    color: #0A0A0A;
-    font-weight: 700;
-    font-size: 12px;
-  }
-  .pv-row-unit .pv-size-cell {
-    color: rgba(10,10,10,0.5);
-    font-size: 8.5px;
-    font-weight: 500;
-  }
-  .pv-row-total .pv-size-cell {
-    color: rgba(10,10,10,0.7);
-    font-size: 8.5px;
-    font-weight: 600;
-  }
-
-  .pv-total-cell {
-    text-align: center;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-variant-numeric: tabular-nums;
-    color: #0A0A0A;
-    background: rgba(10,10,10,0.04);
-    border-left: 1.5px solid #0A0A0A;
-  }
-  .pv-total-cell--qty { font-weight: 800; font-size: 12px; }
-  .pv-total-cell--unit { font-weight: 600; font-size: 9px; color: rgba(10,10,10,0.6); }
-  .pv-total-cell--total { font-weight: 800; font-size: 10.5px; color: #D9264E; }
-
-  /* ── Linha de totais geral (INK) ── */
-  .pv-totals-row td {
-    background: #0A0A0A !important;
-    color: #FAFAF7 !important;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-weight: 700;
-    padding: 9px 5px;
-    font-size: 10.5px;
-    border: none !important;
-    border-top: 2px solid #0A0A0A !important;
-  }
-  .pv-totals-row .label-cell {
-    text-align: right;
-    padding-right: 14px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    font-size: 9px;
-  }
-  .pv-totals-value-row td {
-    background: rgba(10,10,10,0.04) !important;
-    color: rgba(10,10,10,0.85) !important;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-weight: 700;
-    padding: 7px 5px;
-    font-size: 9.5px;
-    border: none !important;
-    border-top: 1px solid rgba(10,10,10,0.12) !important;
-  }
-  .pv-totals-value-row .label-cell {
-    text-align: right;
-    padding-right: 14px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: rgba(10,10,10,0.55);
-    font-size: 9px;
-    font-weight: 600;
-  }
-
-  /* ── Resumo: notas + KPI hero ── */
-  .pv-summary {
-    display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
-    gap: 14px;
-    margin-top: 16px;
-    page-break-inside: avoid;
-  }
-  .pv-summary__notes {
-    padding: 12px 14px;
-    background: #FAFAF7;
-    border: 1.5px solid #0A0A0A;
-    border-radius: 2px;
-  }
-  .pv-summary__notes-title {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8.5px;
-    font-weight: 600;
-    color: #0A0A0A;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    margin-bottom: 6px;
-    padding-bottom: 5px;
-    border-bottom: 1.5px solid #0A0A0A;
-  }
-  .pv-summary__notes-content {
-    font-family: 'Fira Sans', sans-serif;
-    font-size: 10.5px;
-    color: #0A0A0A;
-    line-height: 1.5;
-    white-space: pre-wrap;
-  }
-  .pv-summary__notes-content.empty {
-    color: rgba(10,10,10,0.35);
-    font-style: italic;
-  }
-  .pv-summary__kpi {
-    padding: 12px 14px;
-    background: #FAFAF7;
-    border: 1.5px solid #0A0A0A;
-    border-radius: 2px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-  }
-  .pv-summary__kpi.primary {
-    background: #0A0A0A;
-    color: #FAFAF7;
-    border-color: #0A0A0A;
-  }
-  .pv-summary__kpi-label {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8.5px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    color: rgba(10,10,10,0.55);
-  }
-  .pv-summary__kpi.primary .pv-summary__kpi-label {
-    color: rgba(250,250,247,0.65);
-  }
-  .pv-summary__kpi-value {
-    font-family: 'Anton', Impact, sans-serif;
-    font-size: 32px;
-    font-weight: 400;
-    color: #0A0A0A;
-    line-height: 0.92;
-    letter-spacing: -0.02em;
-    padding-top: 0.05em;
-    font-variant-numeric: tabular-nums;
-  }
-  .pv-summary__kpi.primary .pv-summary__kpi-value {
-    color: #FAFAF7;
-    font-size: 28px;
-  }
-  .pv-summary__kpi-sub {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 9px;
-    font-weight: 500;
-    color: rgba(10,10,10,0.55);
-    margin-top: 2px;
-    letter-spacing: 0.04em;
-  }
-  .pv-summary__kpi.primary .pv-summary__kpi-sub {
-    color: rgba(250,250,247,0.55);
-  }
-
-  /* ── Assinaturas: rule INK 1.5px ── */
-  .pv-signatures {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 32px;
-    margin-top: 28px;
-    padding: 0 4px;
-    page-break-inside: avoid;
-  }
-  .pv-sig-box {
-    text-align: center;
-    border-top: 1.5px solid #0A0A0A;
-    padding-top: 8px;
-  }
-  .pv-sig-box .lbl {
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 9px;
-    color: #0A0A0A;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-  }
-  .pv-sig-box .sub {
-    font-family: 'Fira Sans', sans-serif;
-    font-size: 9px;
-    color: rgba(10,10,10,0.55);
-    margin-top: 3px;
-    font-style: italic;
-  }
-
-  .pv-footer {
-    margin-top: 18px;
-    padding-top: 10px;
-    border-top: 1.5px solid #0A0A0A;
-    font-family: 'Fira Code', ui-monospace, monospace;
-    font-size: 8.5px;
-    color: rgba(10,10,10,0.55);
-    text-align: center;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+  @media print {
+    .pv-foot { position: fixed; left: 0; right: 0; bottom: 0; margin-top: 0; padding: 4px 2mm; background: #fff; border-top: 1px solid var(--line); }
+    .pv-doc { padding-bottom: 12mm; }
+    .ref-block, .pv-summary, .pv-sign, .pv-card { page-break-inside: avoid; }
+    .keep-together { break-inside: avoid; }
   }
 </style>
 
 <div class="pv-doc">
-  <!-- Header editorial: 3 colunas + rule-thick -->
-  <div class="pv-header">
-    <div class="pv-header__brand">
-      <div class="pv-header__brand-mark">Squad<span class="dot">·</span>Shoes</div>
-      <div class="pv-header__brand-tag">Gestão Industrial · Indústria</div>
-    </div>
-    <div class="pv-header__title">
-      <div class="pv-header__title-eyebrow">Pedido de Venda</div>
-      <div class="pv-header__num">${escapeHtml(order.order_number || '—')}</div>
-    </div>
-    <div class="pv-header__meta">
-      <div class="pv-header__meta-item">
-        <span class="pv-header__meta-label">Emitido</span>
-        <span class="pv-header__meta-value">${issuedDate}</span>
+  <div class="pv-top">
+    <div class="pv-brand">
+      <img class="pv-logo" src="${logoSquad}" alt="${escapeHtml(coName)}" />
+      <div class="pv-brand-id">
+        <div class="pv-brand-name">${escapeHtml(coName)}</div>
+        ${coRazao ? `<div class="pv-brand-sub">${escapeHtml(coRazao)}</div>` : ''}
+        <div class="pv-brand-meta">
+          ${coDoc ? `<span>CNPJ ${escapeHtml(coDoc)}</span>` : ''}
+          ${coAddrLine ? `<span>${escapeHtml(coAddrLine)}</span>` : ''}
+          ${coContact ? `<span>${escapeHtml(coContact)}</span>` : ''}
+        </div>
       </div>
-      ${order.client_order_number ? `
-      <div class="pv-header__meta-item">
-        <span class="pv-header__meta-label">Ped. cliente</span>
-        <span class="pv-header__meta-value">${escapeHtml(order.client_order_number)}</span>
-      </div>` : ''}
-      <div class="pv-header__status">
-        <span class="pv-header__status-dot"></span>
-        ${escapeHtml(order.status || '—')}
+    </div>
+    <div class="pv-doc-id">
+      <div class="pv-doc-kind">Pedido de Venda</div>
+      <div class="pv-doc-num">${escapeHtml(order.order_number || '—')}</div>
+      <div class="pv-doc-status"><span class="dot"></span>${escapeHtml(order.status || '—')}</div>
+    </div>
+  </div>
+
+  <div class="pv-meta">
+    <div class="pv-card">
+      <div class="pv-card__h">Cliente</div>
+      <div class="pv-card__b">
+        <div class="kv"><span class="k">Razão</span><span class="v">${clNumber ? `<strong>#${escapeHtml(clNumber)}</strong> · ` : ''}<strong>${escapeHtml(clName)}</strong></span></div>
+        ${clientRow('Fantasia', clFantasia)}
+        <div class="kv"><span class="k">CNPJ/CPF</span><span class="v mono">${escapeHtml(clDoc || '—')}</span></div>
+        ${clientRow('Insc. Est.', clIe)}
+        ${clientRow('Endereço', clAddr)}
+        ${clientRow('Contato', clContact)}
+      </div>
+    </div>
+    <div class="pv-card">
+      <div class="pv-card__h">Pedido</div>
+      <div class="pv-card__b">
+        <div class="kv"><span class="k">Emitido</span><span class="v mono">${issuedDate}</span></div>
+        <div class="kv"><span class="k">Prazo</span><span class="v mono"><strong>${deadline}</strong></span></div>
+        <div class="kv"><span class="k">Vendedor</span><span class="v">${escapeHtml(order.representative || '—')}</span></div>
+        <div class="kv"><span class="k">Pagamento</span><span class="v">${escapeHtml(order.payment_condition || '—')}</span></div>
+        ${order.client_order_number ? `<div class="kv"><span class="k">Ped. cliente</span><span class="v mono">${escapeHtml(order.client_order_number)}</span></div>` : ''}
+        ${order.nfe ? `<div class="kv"><span class="k">NF-e</span><span class="v mono">${escapeHtml(order.nfe)}</span></div>` : ''}
       </div>
     </div>
   </div>
 
-  <!-- Cards informativos -->
-  <div class="pv-info">
-    <div class="pv-card">
-      <div class="pv-card__title">Cliente</div>
-      <div class="pv-card__row">
-        <span class="lbl">Razão</span>
-        <span class="val">
-          ${(order as any).client_number ? `<strong>#${escapeHtml((order as any).client_number)}</strong> · ` : ''}<strong>${escapeHtml(order.client_name || '—')}</strong>
-        </span>
-      </div>
-      <div class="pv-card__row">
-        <span class="lbl">CNPJ/CPF</span>
-        <span class="val mono">${escapeHtml(order.client_cnpj || '—')}</span>
-      </div>
-      <div class="pv-card__row">
-        <span class="lbl">Contato</span>
-        <span class="val">${escapeHtml(order.client_contact || '—')}</span>
-      </div>
-    </div>
-    <div class="pv-card">
-      <div class="pv-card__title">Comercial</div>
-      <div class="pv-card__row">
-        <span class="lbl">Vendedor</span>
-        <span class="val">${escapeHtml(order.representative || '—')}</span>
-      </div>
-      <div class="pv-card__row">
-        <span class="lbl">Pagamento</span>
-        <span class="val">${escapeHtml(order.payment_condition || '—')}</span>
-      </div>
-      ${order.commission_value ? `
-      <div class="pv-card__row">
-        <span class="lbl">Comissão</span>
-        <span class="val mono">R$ ${formatCurrency(Number(order.commission_value))}</span>
-      </div>` : ''}
-    </div>
-    <div class="pv-card">
-      <div class="pv-card__title">Entrega</div>
-      <div class="pv-card__row">
-        <span class="lbl">Prazo</span>
-        <span class="val mono"><strong>${order.delivery_deadline ? new Date(order.delivery_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</strong></span>
-      </div>
-      ${order.delivery_month ? `
-      <div class="pv-card__row">
-        <span class="lbl">Faturamento</span>
-        <span class="val mono">${escapeHtml(order.delivery_month)}${order.delivery_week ? ` · ${escapeHtml(order.delivery_week)}` : ''}</span>
-      </div>` : ''}
-      ${order.nfe ? `
-      <div class="pv-card__row">
-        <span class="lbl">NF-e</span>
-        <span class="val mono">${escapeHtml(order.nfe)}</span>
-      </div>` : ''}
-    </div>
+  <div class="pv-items-h">
+    <h2>Itens do Pedido</h2>
+    <span class="count"><b>${refsCount}</b> ${refsCount === 1 ? 'referência' : 'referências'} · <b>${grandPairs}</b> pares · <b>${money(subtotal)}</b></span>
   </div>
 
-  <!-- Section title editorial pra tabela -->
-  <div class="pv-items-title">
-    <div class="pv-items-title__h">
-      <span class="pv-items-title__eyebrow">Detalhamento</span>
-      <h2>Itens do Pedido</h2>
-    </div>
-    <span class="count">${items.length}<em>${items.length === 1 ? 'ref' : 'refs'}</em>${grandTotalPairs}<em>pares</em>R$ ${formatCurrency(grandTotalValue)}</span>
-  </div>
+  ${refBlocks}
 
-  <table class="pv-table">
-    <thead>
-      <tr>
-        <th style="width:56px;">Foto</th>
-        <th class="text-left" style="min-width:130px;">Referência</th>
-        <th style="width:80px;">Cor</th>
-        <th style="width:54px;">Tipo</th>
-        ${sizes.map(s => `<th style="min-width:32px;">${s}</th>`).join('')}
-        <th style="width:74px;">Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${bodyRows}
-      <tr class="pv-totals-row">
-        <td colspan="3" class="label-cell">Total · Pares</td>
-        <td class="pv-type-cell" style="background:transparent !important; color:#FAFAF7 !important;font-weight:700;border-right:none !important;">PARES</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="color:#FAFAF7 !important;font-weight:800;font-size:12px;">${grandTotals[s].pedida || '·'}</td>`).join('')}
-        <td class="pv-total-cell" style="background:transparent !important; color:#FAFAF7 !important; border-left:1.5px solid rgba(250,250,247,0.3) !important;font-weight:800;font-size:12px;">${grandTotalPairs}</td>
-      </tr>
-      <tr class="pv-totals-value-row">
-        <td colspan="4" class="label-cell">Valor por Numeração</td>
-        ${sizes.map(s => `<td class="pv-size-cell" style="font-family:'Fira Code',monospace;font-size:8.5px;color:rgba(10,10,10,0.7) !important;">${grandTotals[s].valor > 0 ? formatCurrency(grandTotals[s].valor) : '·'}</td>`).join('')}
-        <td class="pv-total-cell" style="color:#D9264E !important;font-weight:800;font-size:10.5px;border-left:1.5px solid #0A0A0A !important;">${formatCurrency(grandTotalValue)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Resumo + KPIs editorial -->
   <div class="pv-summary">
-    ${order.notes ? `
-    <div class="pv-summary__notes">
-      <div class="pv-summary__notes-title">Observações</div>
-      <div class="pv-summary__notes-content">${escapeHtml(order.notes)}</div>
-    </div>` : `
-    <div class="pv-summary__notes">
-      <div class="pv-summary__notes-title">Observações</div>
-      <div class="pv-summary__notes-content empty">Nenhuma observação adicional.</div>
-    </div>`}
-    <div class="pv-summary__kpi">
-      <div class="pv-summary__kpi-label">Pares</div>
-      <div class="pv-summary__kpi-value">${grandTotalPairs}</div>
-      <div class="pv-summary__kpi-sub">${items.length} ${items.length === 1 ? 'referência' : 'referências'}</div>
+    <div class="pv-notes">
+      <div class="pv-notes-title">Observações</div>
+      <div class="pv-notes-body${order.notes ? '' : ' empty'}">${order.notes ? escapeHtml(order.notes) : 'Nenhuma observação adicional.'}</div>
+      ${order.informacoes_complementares_nf ? `<div class="pv-notes-title" style="margin-top:8px">Informações complementares (NF)</div><div class="pv-notes-body">${escapeHtml(order.informacoes_complementares_nf)}</div>` : ''}
     </div>
-    <div class="pv-summary__kpi primary">
-      <div class="pv-summary__kpi-label">Total</div>
-      <div class="pv-summary__kpi-value">R$ ${formatCurrency(grandTotalValue)}</div>
-      <div class="pv-summary__kpi-sub">R$ ${formatCurrency(avgUnitPrice)} / par</div>
+    <div class="pv-totals">
+      <div class="pv-tline"><span>Referências</span><b>${refsCount}</b></div>
+      <div class="pv-tline"><span>Total de pares</span><b>${grandPairs}</b></div>
+      <div class="pv-tline"><span>Subtotal itens</span><b>${money(subtotal)}</b></div>
+      <div class="pv-tline"><span>Frete</span><b>${money(freight)}</b></div>
+      ${discount > 0.005 ? `<div class="pv-tline"><span>Descontos</span><b>− ${money(discount)}</b></div>` : ''}
+      <div class="pv-tline grand"><span>Total geral</span><b>${money(totalGeral)}</b></div>
+      <div class="pv-tline avg"><span>Médio / par</span><b>${money(avgUnit)}</b></div>
     </div>
   </div>
 
-  <!-- Assinaturas -->
-  <div class="pv-signatures">
-    <div class="pv-sig-box">
-      <div class="lbl">Cliente</div>
-      <div class="sub">${escapeHtml(order.client_name || '')}</div>
-    </div>
-    <div class="pv-sig-box">
-      <div class="lbl">Vendedor / Representante</div>
-      <div class="sub">${escapeHtml(order.representative || '—')}</div>
-    </div>
+  <div class="pv-sign">
+    <div class="pv-sign__box"><div class="l">Cliente</div><div class="s">${escapeHtml(clName)}</div></div>
+    <div class="pv-sign__box"><div class="l">Vendedor / Representante</div><div class="s">${escapeHtml(order.representative || '—')}</div></div>
   </div>
 
-  <div class="pv-footer">
-    Squad Shoes · Gestão Comercial · ${new Date().toLocaleString('pt-BR')}
+  <div class="pv-foot">
+    <span>${escapeHtml(coName)} · Pedido de Venda ${escapeHtml(order.order_number || '')}</span>
+    <span class="mono">Gerado em ${genStamp}</span>
   </div>
 </div>`;
 }
