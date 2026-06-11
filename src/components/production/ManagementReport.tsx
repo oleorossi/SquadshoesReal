@@ -1,6 +1,6 @@
 import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
-import { adaptiveFontSize, adaptiveNumberFontSize } from '@/lib/adaptiveFontSize';
+import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 
 export interface ReportStage {
   stage_name: string;
@@ -500,6 +500,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                   <SignedImage
                     src={g.url}
                     alt={g.label}
+                    loading="eager"
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -530,7 +531,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             {silksUnique.map(s => (
               <div key={s.name} className="keep-together border border-black p-2">
                 <div className="w-full aspect-[4/3] bg-white overflow-hidden mb-1">
-                  <SignedImage src={s.url} alt={s.name} className="w-full h-full object-contain" />
+                  <SignedImage src={s.url} alt={s.name} loading="eager" className="w-full h-full object-contain" />
                 </div>
                 <p className="text-[8pt] text-black font-semibold leading-tight">{s.name}</p>
               </div>
@@ -908,7 +909,11 @@ function KpiBlock({
         className="font-mono font-bold leading-none"
         style={{
           fontFamily: "'Fira Code', monospace",
-          fontSize: value.length <= 7 ? '22pt' : value.length <= 10 ? '17pt' : value.length <= 13 ? '14pt' : '12pt',
+          // Célula do grid-cols-4 em A4 tem ~156px úteis; "R$ 123.456,78" em
+          // 22pt mono ≈ 230px — estourava por cima do KPI vizinho no papel.
+          // Usa o helper canônico (diretriz adaptiveFontSize) em vez de
+          // breakpoints manuais por nº de chars.
+          fontSize: `${adaptiveFontSize(value, { maxWidthPx: 156, baseFontPx: 29, minFontPx: 13, charWidthRatio: 0.6 })}px`,
           letterSpacing: '-0.03em',
           overflowWrap: 'anywhere',
           color: accent === 'negative' ? '#E11D2E' : '#000',

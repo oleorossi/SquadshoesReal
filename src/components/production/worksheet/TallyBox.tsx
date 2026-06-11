@@ -6,6 +6,13 @@ interface Props {
   count: number;
   /** Pares por ficha (default 12). Aparece no título. */
   pairsPerCard?: number;
+  /** Total REAL de unidades do rodapé. Sem isso o rodapé mostra
+   *  count × pairsPerCard, que ultrapassa quando a última ficha é parcial
+   *  (ex.: 30 pares em caixas de 12 → "3× · 36 pares" ao lado de um total
+   *  de ficha de 30). Passar o total reconcilia os números no papel. */
+  totalUnits?: number;
+  /** Rótulo da unidade do rodapé (default 'pares'). Expedição usa 'caixas'. */
+  unit?: string;
   /** [LEGACY] cor — mantido pra compat. No design Industrial Editorial é sempre preto. */
   accentColor?: 'slate' | 'amber' | 'emerald' | 'blue' | 'pink' | 'violet' | 'cyan' | 'lime' | 'rose' | 'orange';
   /** Título customizado. Se não passar, monta um padrão. */
@@ -24,8 +31,9 @@ interface Props {
  *   - quadrados 1.5px border-black, número em font-mono, fundo branco
  *   - sem fundo colorido, sem header preenchido
  */
-export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props) => {
+export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares', title, size = 'md' }: Props) => {
   if (count <= 0) return null;
+  const footerTotal = totalUnits ?? count * pairsPerCard;
 
   // Fix 22/05/2026: w-7 (28px) → w-6 (24px) reduz altura total do tally
   // em fichas grandes. 213 caixinhas em ~7 cols viram 30 linhas: 24px×30
@@ -79,9 +87,9 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
           {titleText}
         </span>
         <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-          {count}× · {count * pairsPerCard} pares
+          {count}× · {footerTotal} {unit}
           {chunks.length > 1 && (
-            <span className="ml-2 text-black/60">· {chunks.length} grupos</span>
+            <span className="ml-2" style={{ color: '#666' }}>· {chunks.length} grupos</span>
           )}
         </span>
       </div>
@@ -89,7 +97,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, title, size = 'md' }: Props
         {chunks.map((chunk, ci) => (
           <div key={ci} className="keep-together">
             {chunks.length > 1 && (
-              <div className="text-[8px] font-mono text-black/60 mb-1 uppercase tracking-widest">
+              <div className="text-[8px] font-mono mb-1 uppercase tracking-widest" style={{ color: '#666' }}>
                 {chunk[0]} – {chunk[chunk.length - 1]}
               </div>
             )}

@@ -109,7 +109,7 @@ export function ReducedWorkSheet({
             Ref.
           </span>
           {imageUrl ? (
-            <SignedImage src={thumbUrl(imageUrl, 130) || imageUrl} alt={title} className="w-full h-full object-contain mix-blend-multiply" />
+            <SignedImage src={thumbUrl(imageUrl, 130) || imageUrl} alt={title} loading="eager" className="w-full h-full object-contain mix-blend-multiply" />
           ) : (
             <span className="font-mono uppercase text-center" style={{ fontSize: 9, color: '#000', padding: '0 10px', letterSpacing: '0.1em' }}>
               Sem foto cadastrada

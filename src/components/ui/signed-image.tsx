@@ -49,11 +49,14 @@ export function SignedImage({ src, className, fit = 'cover', alt, ...props }: Si
 
   return (
     <img
+      // Defaults ANTES do spread: caller pode sobrescrever (fichas de
+      // impressão precisam de loading="eager" — lazy off-viewport não
+      // carrega no snapshot do print em Firefox/Safari).
+      loading="lazy"
+      decoding="async"
       {...props}
       src={resolvedUrl}
       alt={alt}
-      loading="lazy"
-      decoding="async"
       onError={() => setHasError(true)}
       className={cn(
         fit === 'cover' ? 'object-cover' : 'object-contain',

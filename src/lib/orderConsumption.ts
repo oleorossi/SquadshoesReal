@@ -10,6 +10,7 @@ import {
   normalizeColorKey,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 /**
  * Motor CANÔNICO de consumo de materiais.
@@ -704,17 +705,24 @@ export function computeConsumptionForItems(
     const soleGroupName = soleGroup?.name || soleProduct?.name || sheet?.sole_material || '';
 
     // Breakdown de numerações escalado pro TOTAL real do item.
+    // Largest remainder (regra canônica de exibição por numeração) — o
+    // Math.round por tamanho podia somar ±N pares vs itemQuantity (ex.:
+    // 7 tamanhos × multiplier 2,5 → 31 ou 29 pares pra um item de 30).
     const grade = (item as any).grade as Record<string, number> | null | undefined;
-    const scaledBreakdown: Record<string, number> = {};
+    let scaledBreakdown: Record<string, number> = {};
     if (grade && typeof grade === 'object') {
       // Mantém numerações conjugadas (ex: "33/34") — só descarta meta (_size_*).
       const isSize = (k: string) => !k.startsWith('_');
-      const baseSum = Object.entries(grade).reduce((s, [k, v]) => isSize(k) ? s + (Number(v) || 0) : s, 0);
-      const multiplier = baseSum > 0 ? itemQuantity / baseSum : 0;
+      const baseGrade: Record<string, number> = {};
       for (const [size, qty] of Object.entries(grade)) {
-        if (!isSize(size)) continue;
-        const scaled = Math.round((Number(qty) || 0) * multiplier);
-        if (scaled > 0) scaledBreakdown[size] = scaled;
+        if (isSize(size) && (Number(qty) || 0) > 0) baseGrade[size] = Number(qty) || 0;
+      }
+      const baseSum = Object.values(baseGrade).reduce((s, v) => s + v, 0);
+      if (baseSum > 0) {
+        scaledBreakdown = scaleGradeWithLargestRemainder(baseGrade, itemQuantity / baseSum, itemQuantity);
+        for (const size of Object.keys(scaledBreakdown)) {
+          if (!(scaledBreakdown[size] > 0)) delete scaledBreakdown[size];
+        }
       }
     }
 

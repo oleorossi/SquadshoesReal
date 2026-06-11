@@ -202,7 +202,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                         <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                         <span
                           className="uppercase leading-none block mt-0.5"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em', color: '#C00000' }}
                         >
                           {group.insoleColor}
                         </span>
@@ -401,7 +401,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
 
                 {!group.readyMade && (
                   <div className="px-2 pb-2 pt-2 border-t border-black">
-                    <TallyBox count={cards} pairsPerCard={pairsPerCard} />
+                    <TallyBox count={cards} pairsPerCard={pairsPerCard} totalUnits={group.totalPairs} />
                   </div>
                 )}
               </div>

@@ -67,15 +67,20 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
   const allOpNumbers = group.orders.map(o => o.op_number).filter((v): v is string => !!v);
   const batchId = generateBatchId('Expedição', allOpNumbers, date);
 
+  // Agrega por solado + pares/caixa: a ficha é por CLIENTE e pode juntar PVs
+  // com packaging_mode diferente (12/caixa vs fitilho 1/volume). Agregar só
+  // por solado fazia o ppb do PRIMEIRO pedido valer pro solado inteiro e o
+  // nº de caixas sair errado. Mesmo solado com ppb distinto vira 2 linhas.
   const boxesBySole = new Map<string, { soleName: string; pairs: number; pairsPerBox: number; boxes: number }>();
   for (const order of group.orders) {
-    const soleKey = order.sole_name || 'Sem Solado';
+    const soleName = order.sole_name || 'Sem Solado';
     const ppb = order.pairs_per_box && order.pairs_per_box > 0 ? order.pairs_per_box : 12;
-    const existing = boxesBySole.get(soleKey);
+    const key = `${soleName}::${ppb}`;
+    const existing = boxesBySole.get(key);
     if (existing) {
       existing.pairs += order.total_pairs || 0;
     } else {
-      boxesBySole.set(soleKey, { soleName: soleKey, pairs: order.total_pairs || 0, pairsPerBox: ppb, boxes: 0 });
+      boxesBySole.set(key, { soleName, pairs: order.total_pairs || 0, pairsPerBox: ppb, boxes: 0 });
     }
   }
   for (const v of boxesBySole.values()) {
@@ -232,7 +237,7 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
       </div>
 
       {/* Tally de caixas conferidas */}
-      <TallyBox count={totalBoxes} pairsPerCard={1} title="Caixas conferidas · marcar cada caixa coletiva" />
+      <TallyBox count={totalBoxes} pairsPerCard={1} unit="caixas" title="Caixas conferidas · marcar cada caixa coletiva" />
 
       {/* Itens conferência — header "03 / ..." ancorado à tabela via
           `.keep-with-next` pra não virar órfão quando a tabela quebra de
@@ -249,21 +254,25 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
         <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #000' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
-              <th className="section-label py-1.5 px-1 text-center" style={{ color: '#000', width: 40, borderRight: '1px solid #000' }}>Foto</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 60, borderRight: '1px solid #000' }}>OP</th>
+              {/* Larguras enxutas: sob table-layout fixed, a coluna Referência
+                  (sem width) recebe só a sobra — com grade mista infantil+adulto
+                  (14+ numerações) as larguras antigas (40/60/70/90/26/50) deixavam
+                  ~35px pra Referência e o nome quebrava letra a letra no papel. */}
+              <th className="section-label py-1.5 px-1 text-center" style={{ color: '#000', width: 44, borderRight: '1px solid #000' }}>Foto</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 48, borderRight: '1px solid #000' }}>OP</th>
               <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', borderRight: '1px solid #000' }}>Referência</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 70, borderRight: '1px solid #000' }}>Cor</th>
-              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 90, borderRight: '1px solid #000' }}>Solado</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Cor</th>
+              <th className="section-label py-1.5 px-1 text-left" style={{ color: '#000', width: 70, borderRight: '1px solid #000' }}>Solado</th>
               {allSizes.map(s => (
                 <th
                   key={s}
                   className="py-1.5 text-black font-bold"
-                  style={{ width: 26, fontSize: '11px', fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000' }}
+                  style={{ width: 22, fontSize: '11px', fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000' }}
                 >
                   {s}
                 </th>
               ))}
-              <th className="section-label py-1.5 px-1 text-right" style={{ color: '#000', width: 50, borderRight: '1px solid #000' }}>Total</th>
+              <th className="section-label py-1.5 px-1 text-right" style={{ color: '#000', width: 40, borderRight: '1px solid #000' }}>Total</th>
               <th className="section-label py-1.5 text-center" style={{ color: '#000', width: 24 }}>OK</th>
             </tr>
           </thead>

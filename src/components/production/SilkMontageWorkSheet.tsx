@@ -298,6 +298,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
               <SignedImage
                 src={uniqueSilks[0].silk_url}
                 alt={uniqueSilks[0].silk_name}
+                loading="eager"
                 className="w-full h-full object-contain"
               />
             </div>
@@ -387,6 +388,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                     <SignedImage
                       src={silk.silk_url}
                       alt={silk.silk_name}
+                      loading="eager"
                       className="w-full h-full object-contain"
                     />
                   </div>
@@ -857,7 +859,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                 })()}
 
                 {/* Tally Box */}
-                <TallyBox count={cards} pairsPerCard={pairsPerCard} />
+                <TallyBox count={cards} pairsPerCard={pairsPerCard} totalUnits={cg.totalPairs} />
               </div>
             </div>
           );

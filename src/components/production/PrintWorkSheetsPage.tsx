@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useIsFetching } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Stack as Layers, Rows } from '@phosphor-icons/react';
@@ -45,6 +45,14 @@ const printStyles = `
     .print-area {
       padding: 0;
     }
+  }
+
+  /* Markers "Setor · Pg N/Total" do SectorRegion existem só pro papel.
+     A regra precisa viver FORA do @media print — antes ela ficava dentro
+     dele e em tela não havia nada escondendo os markers, que apareciam
+     soltos (absolutos a 273mm/554mm…) por cima do preview das fichas. */
+  .sector-page-marker {
+    display: none;
   }
 
   @page {
@@ -94,6 +102,15 @@ const printStyles = `
       max-width: none !important;
       max-height: none !important;
       min-height: 0 !important;
+    }
+
+    /* O reset acima mata o overflow:hidden do .truncate (importância vence
+       especificidade) mas deixa o white-space:nowrap — texto longo (razão
+       social, nome de solado/produto) vazava por cima da coluna vizinha no
+       papel. Reativa o clipping dentro da print-area (vem DEPOIS do reset,
+       mesma importância → vence). */
+    .print-area .truncate {
+      overflow: hidden !important;
     }
 
     /* Em ancestrais conhecidos da print-area (AppLayout: wrapper externo,
@@ -204,6 +221,16 @@ const printStyles = `
       height: auto !important;
       display: block !important;
     }
+    /* Com o wrapper SectorRegion, o root flex da ficha virou NETO do
+       .page-break (.page-break > .sector-region > ficha) e deixava de
+       receber o display:block acima — o bug de clipping da pg 2+ voltava
+       nas fichas multipágina. Aplica o mesmo fix um nível abaixo. */
+    .page-break .sector-region > div:not(.sector-page-marker) {
+      width: 100% !important;
+      min-height: 0 !important;
+      height: auto !important;
+      display: block !important;
+    }
     .store-divider {
       page-break-before: always;
       break-before: page;
@@ -293,53 +320,50 @@ const printStyles = `
        Posição: top calculado por JS em SectorRegion.tsx baseado em
        281mm × pageIndex + 273mm (= 8mm acima da borda inferior).
 
-       z-index alto pra não ser coberto por TallyBox / footer. */
+       z-index alto pra não ser coberto por TallyBox / footer.
+       O display:none de tela vive FORA do @media print (regra global
+       acima do @page). */
     .sector-page-marker {
-      display: none;
+      display: block !important;
+      font-family: 'Fira Code', ui-monospace, monospace;
+      font-size: 8px;
+      line-height: 1;
+      color: #000;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: #fff;
+      padding: 2px 6px;
+      border: 1px solid #000;
+      z-index: 100;
+      white-space: nowrap;
     }
-    @media print {
-      .sector-page-marker {
-        display: block !important;
-        font-family: 'Fira Code', ui-monospace, monospace;
-        font-size: 8px;
-        line-height: 1;
-        color: #000;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        background: #fff;
-        padding: 2px 6px;
-        border: 1px solid #000;
-        z-index: 100;
-        white-space: nowrap;
-      }
-      .sector-page-marker-label {
-        font-weight: 700;
-      }
-      .sector-page-marker-sep {
-        color: rgba(0, 0, 0, 0.4);
-      }
-      .sector-page-marker-page {
-        font-weight: 600;
-      }
-      /* Variante topo (full-width, double hairline preto). Aparece SOMENTE
-         nas páginas 2+ pra reidentificar setor sem conflitar com o
-         WorksheetHeader gigante da página 1. Padrão de continuation
-         header de manufacturing traveler. */
-      .sector-page-marker-top {
-        font-size: 9px !important;
-        padding: 3px 8px !important;
-        border-width: 1px 0 1px 0 !important;
-        border-color: #000 !important;
-        border-style: solid !important;
-        text-align: left;
-        background: #fff !important;
-        display: flex !important;
-        align-items: baseline;
-        gap: 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
+    .sector-page-marker-label {
+      font-weight: 700;
+    }
+    .sector-page-marker-sep {
+      color: #666;
+    }
+    .sector-page-marker-page {
+      font-weight: 600;
+    }
+    /* Variante topo (full-width, double hairline preto). Aparece SOMENTE
+       nas páginas 2+ pra reidentificar setor sem conflitar com o
+       WorksheetHeader gigante da página 1. Padrão de continuation
+       header de manufacturing traveler. */
+    .sector-page-marker-top {
+      font-size: 9px !important;
+      padding: 3px 8px !important;
+      border-width: 1px 0 1px 0 !important;
+      border-color: #000 !important;
+      border-style: solid !important;
+      text-align: left;
+      background: #fff !important;
+      display: flex !important;
+      align-items: baseline;
+      gap: 4px;
+      white-space: nowrap;
+      overflow: hidden !important;
+      text-overflow: ellipsis;
     }
 
     /* Tipografia comprimida pra caber 1 ficha por A4 (281mm úteis após
@@ -498,9 +522,24 @@ function groupOrdersByRefColor(orders: any[]): Array<{
         g.mixedGrades = true;
       }
     }
-    for (const [size, qty] of Object.entries(baseGrid)) {
-      const scaled = Math.round((Number(qty) || 0) * multiplier);
-      if (scaled > 0) g.combinedGrid[size] = (g.combinedGrid[size] ?? 0) + scaled;
+    // Detect mixed grades #1b: mesma SOMA mas DISTRIBUIÇÃO diferente (ex.:
+    // grade infantil 25-32 e adulta 33-40, ambas somando 12). Sem isso a
+    // ficha escalava a grade da 1ª OP pro total do grupo e os números da
+    // outra grade desapareciam do papel.
+    if (!g.mixedGrades && baseSum > 0) {
+      const allSizes = new Set([...Object.keys(g.baseGrid), ...Object.keys(baseGrid)]);
+      for (const size of allSizes) {
+        if ((Number(g.baseGrid[size]) || 0) !== (Number(baseGrid[size]) || 0)) {
+          g.mixedGrades = true;
+          break;
+        }
+      }
+    }
+    // Escala por OP com largest remainder (Math.round por tamanho podia
+    // somar ±N pares vs o total da OP — regra canônica de exibição).
+    const scaledGrid = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
+    for (const [size, qty] of Object.entries(scaledGrid)) {
+      if (qty > 0) g.combinedGrid[size] = (g.combinedGrid[size] ?? 0) + qty;
     }
   }
 
@@ -570,6 +609,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // Layout da ficha: false = completa (padrão), true = reduzida (só foto + grade + qty).
   const [reduced, setReduced] = useState(false);
+  // Gate de loading: conta queries em PRIMEIRO carregamento (sem dado ainda).
+  // Imprimir com soleMappings/clientsInfo/consumo em voo gera fichas
+  // estruturalmente erradas (refs distintas fundidas em soleKey='none',
+  // Expedição "Sem cliente", consumo vazio) — os botões esperam.
+  // Refetches de fundo (query já com dado) NÃO contam (sem flicker).
+  const initialQueriesLoading = useIsFetching({ predicate: q => q.state.status === 'pending' }) > 0;
   // Filtros de impressão: faixa (infantil/adulto, por numeração) e solado(s).
   const [sizeFilter, setSizeFilter] = useState<'all' | 'infantil' | 'adulto'>('all');
   const [soleFilter, setSoleFilter] = useState<Set<string>>(new Set()); // vazio = todos
@@ -587,9 +632,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const clearSectors = () => setActiveSectors(new Set());
   // Imprime com o layout escolhido. flushSync força o re-render (ficha completa OU
   // reduzida) ANTES do window.print(), pra o diálogo já pegar o DOM certo.
-  const printWith = (asReduced: boolean) => {
+  // Depois aguarda fontes + imagens da print-area: o layout reduzido troca as
+  // fotos por thumbs de OUTRA largura (cache frio) e sem o await o snapshot
+  // do print saía com fotos em branco. decode() também força o load de
+  // imagens lazy fora do viewport (Firefox/Safari não carregam no print).
+  const printWith = async (asReduced: boolean) => {
     flushSync(() => setReduced(asReduced));
+    const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
+    const waits: Promise<unknown>[] = imgs.map(img =>
+      img.complete ? Promise.resolve() : img.decode().catch(() => undefined)
+    );
+    waits.push(document.fonts.ready);
+    // Teto de 4s — imagem que não chegou até aqui não trava a impressão.
+    await Promise.race([
+      Promise.allSettled(waits),
+      new Promise(res => setTimeout(res, 4000)),
+    ]);
     window.print();
+    // Restaura o layout completo no preview — sem isso, depois do "Relatório
+    // simplificado" um Ctrl+P manual sairia na versão reduzida sem pedir.
+    setReduced(false);
   };
 
   const referenceIds = useMemo(() => [...new Set(orders.map(o => o.reference_id).filter(Boolean))], [orders]);
@@ -631,16 +693,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
    * por produto. Soma `required`, mantém `consumption_per_unit`. Usado
    * pra anexar `consumption` a cada SilkColorGroup / PalmilhaGroup /
    * SoleColorBand antes do render.
+   *
+   * `groupPairs`: pares REAIS do grupo. OPs splitadas em lote mantêm o
+   * op_number da OP-mãe, então o lookup resolve o consumo da OP INTEIRA —
+   * cada ficha de lote mostrava o consumo cheio (lote 1 e lote 2 de 360
+   * pares imprimiam ambos o consumo de 720 → operador separava material
+   * 2×). Quando groupPairs < soma cheia das OPs, rateia proporcionalmente.
    */
   const consumptionForOpNumbers = useMemo(
-    () => (opNumbers: string[] | undefined): ConsumptionRow[] => {
+    () => (opNumbers: string[] | undefined, groupPairs?: number): ConsumptionRow[] => {
       if (!consumptionByKey || !opNumbers || opNumbers.length === 0) return [];
       const byProduct = new Map<string, ConsumptionRow>();
+      let fullPairs = 0;
       for (const op of opNumbers) {
         const o = ordersByOpNumber.get(String(op));
         if (!o?.reference_id) continue;
         const qty = Number(o.total_pairs ?? o.quantity ?? 0);
         if (qty <= 0) continue;
+        fullPairs += qty;
         const key = bulkConsumptionKey(o.reference_id, o.color, qty);
         const rows = consumptionByKey.get(key) ?? [];
         for (const r of rows) {
@@ -654,7 +724,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           }
         }
       }
-      return Array.from(byProduct.values());
+      const rows = Array.from(byProduct.values());
+      if (groupPairs && groupPairs > 0 && fullPairs > 0 && groupPairs < fullPairs) {
+        const ratio = groupPairs / fullPairs;
+        for (const r of rows) {
+          r.required = r.required * ratio;
+          r.stock_ok = r.available >= r.required;
+        }
+      }
+      return rows;
     },
     [consumptionByKey, ordersByOpNumber],
   );
@@ -695,7 +773,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   const { data: orderCosts = [] } = useQuery({
     queryKey: ['order_costs_for_report', orderIds],
-    enabled: orderIds.length > 0,
+    // Gate pelo setor: só o Relatório Gerencial consome custos — sem o gate
+    // toda impressão de qualquer setor disparava essas 2 queries à toa.
+    enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
     queryFn: async () => {
       const saleOrderIdsSet = new Set(orders.map((o: any) => o.sale_order_id).filter(Boolean));
       if (saleOrderIdsSet.size === 0) return [];
@@ -710,7 +790,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   const { data: orderStagesData = [] } = useQuery({
     queryKey: ['order_stages_for_report', orderIds],
-    enabled: orderIds.length > 0,
+    enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('order_stages')
@@ -1312,8 +1392,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // Nome-base do solado resolvido (ex.: "Solado Tratorado"); '' sem resolução.
   // Substitui o antigo soleNameLookup (que só via technical_sheet_sole_colors).
-  const soleNameFor = (referenceId: string | null | undefined, cabedalColor: string | null | undefined): string =>
-    resolveSoleForOrder(referenceId, cabedalColor)?.baseName || '';
+  // Fallback sole_material: as FICHAS usam esse fallback pra nomear a banda —
+  // o filtro de Solado precisa do MESMO nome, senão a opção não aparece no
+  // chip e qualquer filtro ativo derrubava essas OPs de todas as fichas
+  // silenciosamente (a guarda de reconciliação roda DEPOIS do filtro).
+  const soleNameFor = (referenceId: string | null | undefined, cabedalColor: string | null | undefined): string => {
+    const resolved = resolveSoleForOrder(referenceId, cabedalColor)?.baseName;
+    if (resolved) return resolved;
+    const fallback = referenceId ? soleMaterialByRef.get(referenceId) : null;
+    return fallback ? getBaseName(fallback) : '';
+  };
 
   // B2 — "palmilha pronta" EFETIVA: flag da ficha OR produto do solado
   // resolvido com sole_classification='palmilha_pronta' (zera corte de
@@ -2196,11 +2284,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
 
-    // Costs indexados por (sale_order_id, sale_order_item_id) — match item-a-item
-    // se possível. Como `orders` aqui são production orders (orders), pegamos
-    // por reference_id+color como fallback.
+    // Costs indexados POR ITEM (sale_order_item_id) quando disponível — 2
+    // itens do mesmo PV com mesma ref+cor (grade infantil + adulta) têm
+    // linhas de custo distintas; o match só por ref+cor sobrescrevia uma com
+    // a outra e o KPI somava 2× o custo de um item e zerava o do outro.
+    // Fallback por (PV, ref, cor) pra OPs antigas sem sale_order_item_id.
+    const costsByItemId = new Map<string, any>();
     const costsBySaleAndRef = new Map<string, any>();
     for (const c of orderCosts as any[]) {
+      if (c.sale_order_item_id) costsByItemId.set(String(c.sale_order_item_id), c);
       const key = `${c.sale_order_id}::${c.reference_id || ''}::${(c.color || '').toLowerCase()}`;
       costsBySaleAndRef.set(key, c);
     }
@@ -2266,7 +2358,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       }
       const g = map.get(so.id)!;
       const costKey = `${so.id}::${order.reference_id || ''}::${(order.color || '').toLowerCase()}`;
-      const cost = costsBySaleAndRef.get(costKey);
+      const itemId = (order as any).sale_order_item_id;
+      const cost = (itemId && costsByItemId.get(String(itemId))) || costsBySaleAndRef.get(costKey);
 
       // Imagem: cascata variante-exata > variante-Preto > ficha-técnica
       const orderColorLower = (order.color || '').toLowerCase();
@@ -2351,8 +2444,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return Array.from(map.values()).sort((a, b) =>
       (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
     );
+    // silkRegistrations/economicGroupsInfo entram nas deps porque getOrderSilk
+    // os lê — sem eles, se a query resolvesse por último o memo não recomputava
+    // e o relatório imprimia pra sempre a logo fallback (race em rede lenta).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
+  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo]);
 
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
@@ -2362,13 +2458,32 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     let total = 0;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
     if (activeSectors.has('Solagem') && solagemData?.solagem && solagemData.solagem.bands.length > 0) total += 1;
-    // Corte Cabedal/Forração: 1 ficha agregada por setor (todas cores em 1 só).
-    if (activeSectors.has('Corte Cabedal') && silkMontageGroups) total += 1;
-    if (activeSectors.has('Corte Forração') && silkMontageGroups) total += 1;
-    // Costura/Aviamento: 1 ficha por solado (continuam por sole+cor).
+    // Corte Cabedal: 1 ficha agregada — mas SÓ se sobra alguma cor após o
+    // filtro requiresUpperCut (modelos 100% tiras → mergeColorsAcrossSoles
+    // devolve null e nada renderiza; contar 1 habilitava print em branco).
+    const smGroups = silkMontageGroups || [];
+    if (activeSectors.has('Corte Cabedal') && smGroups.some(g =>
+      g.colorGroups.some(cg => cg.requiresUpperCut === true))) total += 1;
+    // Corte Forração: 1 ficha POR SOLADO com pelo menos uma cor de forração
+    // no roteiro (espelha mergeForracaoWithinSole).
+    if (activeSectors.has('Corte Forração')) {
+      total += smGroups.filter(g =>
+        g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração'))).length;
+    }
+    // Costura/Aviamento: 1 ficha por solado COM o setor no roteiro
+    // (espelha filterGroupForSector — grupos 100% fora não imprimem).
     for (const sec of ['Costura', 'Aviamento'] as const) {
-      if (activeSectors.has(sec) && silkMontageGroups) {
-        total += silkMontageGroups.length;
+      if (activeSectors.has(sec)) {
+        total += smGroups.filter(g =>
+          g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, sec))).length;
+      }
+    }
+    // Silk/Montagem: 1 ficha por grupo ref+cor no roteiro (groupedWorksheets).
+    // FALTAVAM na contagem — com só Silk/Montagem marcados o sheetCount ficava
+    // 0 e o botão Imprimir era desabilitado com fichas visíveis na tela.
+    for (const sec of ['Silk', 'Montagem'] as const) {
+      if (activeSectors.has(sec) && groupedWorksheets) {
+        total += groupedWorksheets.filter(g => orderInRoteiro(g.representative?.reference_id, sec)).length;
       }
     }
     // Colagem agora consolida por solado (1 ficha, igual à Solagem), não mais
@@ -2379,6 +2494,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     if (activeSectors.has('Expedição') && expedicaoGroups) total += expedicaoGroups.length;
     if (activeSectors.has('Relatório Gerencial') && reportGroups) total += reportGroups.length;
     return total;
+    // opsInRoteiro/orderInRoteiro são closures recriadas a cada render — fora
+    // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
+    // elas leem chegam via silkMontageGroups/groupedWorksheets.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
@@ -2396,6 +2515,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             <h2 className="font-bold text-lg">Imprimir Fichas</h2>
             <span className="text-sm text-muted-foreground">
               {printOrders.length} OP(s) · {activeSectors.size} setor{activeSectors.size === 1 ? '' : 'es'} · {sheetCount} ficha{sheetCount === 1 ? '' : 's'}
+              {initialQueriesLoading && <span className="ml-2 text-amber-600">· carregando dados…</span>}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -2414,10 +2534,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             >
               Limpar
             </button>
-            <Button onClick={() => printWith(false)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0}>
+            <Button onClick={() => printWith(false)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading}>
               <Printer className="h-4 w-4" /> Imprimir
             </Button>
-            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0} title="Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)">
+            <Button variant="outline" onClick={() => printWith(true)} className="gap-2" disabled={activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading} title="Mesma seleção, mas as fichas de operador saem na versão reduzida (foto + grade + quantidades)">
               <Rows className="h-4 w-4" /> Relatório simplificado
             </Button>
           </div>
@@ -2531,7 +2651,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={palmilhaAllSizes}
                   totalPairs={g.totalPairs}
                   totalNote={g.fichas && g.baseGradeSum ? `${g.fichas} ficha(s) de ${g.baseGradeSum}` : undefined}
-                  consumption={consumptionForOpNumbers(g.opNumbers)}
+                  consumption={consumptionForOpNumbers(g.opNumbers, g.totalPairs)}
                   consumptionSector="Corte Palmilha"
                 />
               </div>
@@ -2542,7 +2662,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 <PalmilhaWorkSheet
                   groups={palmilhaGroups.map(g => ({
                     ...g,
-                    consumption: consumptionForOpNumbers(g.opNumbers),
+                    consumption: consumptionForOpNumbers(g.opNumbers, g.totalPairs),
                     clientNames: clientNamesForPvs(g.pvNumbers),
                   }))}
                   allSizes={palmilhaAllSizes}
@@ -2720,7 +2840,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             clientNames: clientNamesForPvs(group.colorGroups.flatMap(cg => cg.pvNumbers || [])),
             colorGroups: group.colorGroups.map(cg => ({
               ...cg,
-              consumption: consumptionForOpNumbers(cg.opNumbers),
+              consumption: consumptionForOpNumbers(cg.opNumbers, cg.totalPairs),
             })),
           });
 
@@ -2746,7 +2866,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={sizes}
                   totalPairs={group.totalPairs}
                   colors={colors}
-                  consumption={consumptionForOpNumbers(allOpNumbers)}
+                  consumption={consumptionForOpNumbers(allOpNumbers, group.totalPairs)}
                   consumptionSector={sectorName}
                 />
               </div>
@@ -2843,7 +2963,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
-                  consumption={consumptionForOpNumbers(b.opNumbers)}
+                  consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
                   consumptionSector="Solagem"
                 />
               </div>
@@ -2854,7 +2974,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 <SolagemWorkSheet
                   bands={data.bands.map(b => ({
                     ...b,
-                    consumption: consumptionForOpNumbers(b.opNumbers),
+                    consumption: consumptionForOpNumbers(b.opNumbers, b.totalPairs),
                   }))}
                   allSizes={data.allSizes}
                   date={today}
@@ -2886,7 +3006,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
-                  consumption={consumptionForOpNumbers(b.opNumbers)}
+                  consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
                   consumptionSector="Colagem"
                 />
               </div>
@@ -2898,7 +3018,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   sector="Colagem"
                   bands={data.bands.map(b => ({
                     ...b,
-                    consumption: consumptionForOpNumbers(b.opNumbers),
+                    consumption: consumptionForOpNumbers(b.opNumbers, b.totalPairs),
                   }))}
                   allSizes={data.allSizes}
                   date={today}
@@ -2934,7 +3054,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
           if (reduced) {
             const baseSum = Object.values(group.baseGrid || {}).reduce((s, v) => s + (Number(v) || 0), 0);
-            const g = scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
+            // Grades mistas: a base da 1ª OP não representa o grupo — usa a
+            // grade combinada (já escalada por OP com largest remainder).
+            const g = group.mixedGrades
+              ? group.combinedGrid
+              : scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
             return (
               <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="reduced-card">
                 <ReducedWorkSheet
@@ -2944,7 +3068,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={g}
                   allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                   totalPairs={group.totalPairs}
-                  consumption={consumptionForOpNumbers(group.opNumbers)}
+                  consumption={consumptionForOpNumbers(group.opNumbers, group.totalPairs)}
                   consumptionSector={sectorName}
                 />
               </div>
@@ -2965,7 +3089,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             // OperatorWorkSheet escala internamente e calcula fichas corretamente.
             // Antes passava combinedGrid (já escalado) → multiplier=1, fichas=1,
             // e a linha "Por Ficha (12p)" sumia.
-            grid: group.baseGrid,
+            // EXCEÇÃO grades mistas: a base da 1ª OP não representa o grupo
+            // (infantil+adulta na mesma ref+cor) — passa a combinada e a
+            // worksheet omite "Por Ficha" via prop mixedGrades.
+            grid: group.mixedGrades ? group.combinedGrid : group.baseGrid,
             total_pairs: group.totalPairs,
             due_date: group.latestDueDate || representative.due_date,
             op_number: group.opNumbers[0],
@@ -3002,6 +3129,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   opNumbers={group.opNumbers}
                   sizeBand={bandForOps(group.opNumbers)}
                   clientName={clientNamesForPvs(group.pvNumbers).join(' · ') || undefined}
+                  mixedGrades={group.mixedGrades}
                 />
               </SectorRegion>
             </div>
@@ -3041,7 +3169,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={g}
                   allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                   totalPairs={tot}
-                  consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean))}
+                  consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean), tot)}
                   consumptionSector="Acabamento"
                 />
               </div>

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
@@ -42,10 +43,20 @@ const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Finalizado'];
 const EM_FLUXO = ['Reservado', 'Em Produção'];
 
 export default function PrintWorkSheets() {
-  const [statusFilter, setStatusFilter] = useState<string>('em_fluxo');
+  // Deep-link da bulk bar de /ordens: "Imprimir fichas" navega pra cá com
+  // ?orderIds=a,b,c. Antes o parâmetro era silenciosamente descartado — o
+  // usuário caía com seleção VAZIA e imprimia outro conjunto sem perceber.
+  // Pré-seleciona as OPs e abre o status em 'todos' (OP Finalizada do link
+  // não pode sumir da lista, senão cai fora do lote sem aviso).
+  const [searchParams] = useSearchParams();
+  const deepLinkIds = useMemo(() => {
+    const raw = searchParams.get('orderIds');
+    return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  }, [searchParams]);
+  const [statusFilter, setStatusFilter] = useState<string>(deepLinkIds.length > 0 ? 'todos' : 'em_fluxo');
   const [pvFilter, setPvFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(deepLinkIds));
   const [showPrintView, setShowPrintView] = useState(false);
 
   const { data: rows = [], isLoading } = useQuery({
@@ -157,6 +168,11 @@ export default function PrintWorkSheets() {
         client_name: r.sale_orders?.client_name ?? '',
         sale_order_number: r.sale_orders?.order_number ?? '',
         sale_order_id: r.sale_order_id,
+        // Necessário pro Relatório Gerencial casar custo item-a-item: 2 itens
+        // do mesmo PV com mesma ref+cor (grade infantil + adulta) têm custos
+        // distintos em order_costs — sem o id o match por ref+cor duplicava
+        // o custo de um e zerava o do outro.
+        sale_order_item_id: r.sale_order_item_id ?? null,
         status: r.status,
         // Sequência de tiras preservando a ordem (TIRA 1, TIRA 2, ...). Vazio
         // pra modelos sem tiras. As fichas de operador (Aviamento, Colagem)

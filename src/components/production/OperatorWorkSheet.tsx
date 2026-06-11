@@ -41,6 +41,12 @@ interface Props {
   lotInfo?: { number: number; total: number };
   /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
   sizeBand?: 'infantil' | 'adulto' | 'misto';
+  /** TRUE quando o grupo agrega OPs com grades base DIFERENTES (ex.: grade
+   *  infantil + adulta da mesma ref+cor). Nesse caso `order.grid` já chega
+   *  COMBINADO (soma escalada das OPs) — a ficha omite a linha "Por Ficha"
+   *  e o KPI correspondente, porque não existe UMA grade base que
+   *  multiplicada feche o total. */
+  mixedGrades?: boolean;
 }
 
 const SECTOR_META: Record<string, { icon: React.ReactNode; color: string; bg: string; border: string }> = {
@@ -76,6 +82,7 @@ const OperatorWorkSheet = ({
   clientInfo,
   lotInfo,
   sizeBand,
+  mixedGrades,
 }: Props) => {
   const displayImage = getProductImage(order.variant, order.master);
   const meta = SECTOR_META[sector] || SECTOR_META['Montagem'];
@@ -136,6 +143,13 @@ const OperatorWorkSheet = ({
   const resolvedSoleColor = soleColor || resolvedColorName;
 
   const boxes = isAcabamento ? Math.ceil(totalPairs / 12) : 0;
+
+  // Tally de controle por setor: 1 caixinha = 1 ficha fechada. Usa a grade
+  // BASE (gradeSum) como pares/ficha — antes era 12 fixo, que divergia do
+  // KPI "Por Ficha {gradeSum}p × {fichas} fichas" quando a grade base ≠ 12.
+  // Grades mistas: grid já é o combinado (gradeSum=totalPairs) → volta ao 12.
+  const tallyCards = !mixedGrades && fichas > 0 ? fichas : Math.max(1, Math.ceil(totalPairs / 12));
+  const tallyPairsPerCard = !mixedGrades && gradeSum > 0 ? gradeSum : 12;
 
   // Large-print grade cols: max ~10 cols comfortable; split if more
   const colsPerRow = activeSizes.length <= 12 ? activeSizes.length : 12;
@@ -292,22 +306,31 @@ const OperatorWorkSheet = ({
             </span>
           </div>
           {/* Por ficha fechada — quantos pares cabem em UMA ficha. Distinto
-              do total da OP (que pode ser N fichas multiplicadas). */}
+              do total da OP (que pode ser N fichas multiplicadas).
+              Grades mistas: não existe UMA grade base — mostra aviso. */}
           <div className="py-2 px-3 border-l border-black">
             <span className="section-label block" style={{ color: '#000' }}>Por Ficha</span>
-            <span
-              className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
-            >
-              {gradeSum} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
-            </span>
-            {fichas > 1 && (
-              <span
-                className="font-mono tracking-widest uppercase text-black mt-0.5 block"
-                style={{ fontSize: adaptiveLabelFontSize(fichas) - 1 }}
-              >
-                × {fichas} fichas
+            {mixedGrades ? (
+              <span className="font-mono text-[10px] tracking-widest uppercase text-black mt-1 block leading-tight">
+                Grades<br />mistas
               </span>
+            ) : (
+              <>
+                <span
+                  className="text-black leading-none mt-1 block"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                >
+                  {gradeSum} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
+                </span>
+                {fichas > 1 && (
+                  <span
+                    className="font-mono tracking-widest uppercase text-black mt-0.5 block"
+                    style={{ fontSize: adaptiveLabelFontSize(fichas) - 1 }}
+                  >
+                    × {fichas} fichas
+                  </span>
+                )}
+              </>
             )}
           </div>
           <div className="py-2 px-3 border-l border-black">
@@ -340,7 +363,7 @@ const OperatorWorkSheet = ({
           <div className="border-t border-black pt-2 flex items-center gap-3 bg-white p-2" style={{ border: '1px solid #000' }}>
             {silk.silk_url ? (
               <div className="w-24 h-24 bg-white overflow-hidden shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
-                <SignedImage src={silk.silk_url} alt={silk.silk_name} className="w-full h-full object-contain" />
+                <SignedImage src={silk.silk_url} alt={silk.silk_name} loading="eager" className="w-full h-full object-contain" />
               </div>
             ) : (
               <div className="w-24 h-24 bg-white shrink-0 flex items-center justify-center" style={{ border: '1.5px solid #000' }}>
@@ -418,7 +441,7 @@ const OperatorWorkSheet = ({
                 <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
                 <span
                   className="uppercase leading-none"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000' }}
                 >
                   {resolvedColorName}
                 </span>
@@ -431,7 +454,7 @@ const OperatorWorkSheet = ({
                 <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                 <span
                   className="uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000' }}
                 >
                   {resolvedSoleColor}
                 </span>
@@ -449,7 +472,7 @@ const OperatorWorkSheet = ({
                 <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                 <span
                   className="uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.01em', color: '#C00000' }}
                 >
                   {resolvedInsoleColor}
                 </span>
@@ -466,7 +489,7 @@ const OperatorWorkSheet = ({
                 <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
                 <div className="flex items-center gap-2 mt-0.5">
                   {silk.silk_url && (
-                    <img src={silk.silk_url} alt="Silk" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
+                    <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
                   )}
                   <span className="text-base font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
                 </div>
@@ -516,7 +539,7 @@ const OperatorWorkSheet = ({
                 <tr key={s.id || i} style={{ borderBottom: '1px solid #000' }} className="bg-white">
                   <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
                   <td className="px-2 py-1 font-bold text-black uppercase">{s.label || `TIRA ${i + 1}`}</td>
-                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000', fontWeight: 800 }}>
+                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}>
                     {s.color || '—'}
                   </td>
                   <td className="px-2 py-1 text-black">{s.group_name || '—'}</td>
@@ -547,7 +570,10 @@ const OperatorWorkSheet = ({
             <table key={ci} className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ borderBottom: '1.5px solid #000' }}>
-                  <th className="section-label py-1.5" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Nº</th>
+                  {/* width 96: sob table-layout fixed o th manda na coluna inteira —
+                      56px clipava "Por Ficha (12p)"/"Total × N" (td tem overflow
+                      hidden em print). Mesmo fix já aplicado em Silk/Palmilha/Solagem. */}
+                  <th className="section-label py-1.5" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
                   {chunk.map((s, i) => (
                     <th
                       key={s}
@@ -562,7 +588,7 @@ const OperatorWorkSheet = ({
                     </th>
                   ))}
                   {ci === sizeChunks.length - 1 && (
-                    <th className="section-label py-1.5" style={{ color: '#000', width: 56 }}>Total</th>
+                    <th className="section-label py-1.5" style={{ color: '#000', width: 64 }}>Total</th>
                   )}
                 </tr>
               </thead>
@@ -570,8 +596,10 @@ const OperatorWorkSheet = ({
                 {/* Linha POR FICHA — base grade. SEMPRE aparece (user pediu
                     explicitamente em 2026-05). Mesmo quando fichas=1 e a
                     linha total mostra o mesmo número, o operador quer ver
-                    a distribuição da grade individual destacada. */}
-                {gradeSum > 0 && (
+                    a distribuição da grade individual destacada.
+                    EXCEÇÃO grades mistas: grid já é o combinado do grupo —
+                    repetir como "Por Ficha" mentiria pro operador. */}
+                {gradeSum > 0 && !mixedGrades && (
                   <tr style={{ borderBottom: '1.5px solid #000' }}>
                     <td className="py-1.5 text-[10px] font-mono font-bold text-black leading-tight uppercase" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
                       Por Ficha<br />({gradeSum}p)
@@ -597,7 +625,7 @@ const OperatorWorkSheet = ({
                     JÁ É o conteúdo de uma ficha — label deixa claro. */}
                 <tr>
                   <td className="py-2 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '8px 6px', letterSpacing: '0.04em' }}>
-                    {fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
+                    {mixedGrades ? <>Total<br />(mista)</> : fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
                   </td>
                   {chunk.map((s, i) => (
                     <td
@@ -752,7 +780,7 @@ const OperatorWorkSheet = ({
               <span className="section-label block mb-1" style={{ color: '#000' }}>Cor de Forração</span>
               <span
                 className="uppercase leading-none block"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em', color: '#C00000' }}
               >
                 {resolvedInsoleColor}
               </span>
@@ -836,7 +864,7 @@ const OperatorWorkSheet = ({
                 <div className="flex items-center gap-4 border-t border-black pt-2">
                   {silk.silk_url && (
                     <div className="w-20 h-20 bg-white overflow-hidden shrink-0" style={{ border: '1.5px solid #000' }}>
-                      <img src={silk.silk_url} alt="Silk" className="w-full h-full object-contain" />
+                      <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="w-full h-full object-contain" />
                     </div>
                   )}
                   <div className="flex-1">
@@ -856,8 +884,8 @@ const OperatorWorkSheet = ({
             {/* TallyBox — controle de fichas (PR 2026-05-26):
                 operador de Silk marca uma caixinha por ficha conforme conclui.
                 Mesmo padrão de Colagem/Montagem/Acabamento. */}
-            <div className="col-span-2 keep-with-next">
-              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+<div className="col-span-2 keep-with-next">
+              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
             </div>
           </>
         )}
@@ -889,7 +917,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -898,15 +926,15 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedInsoleColor}
                   </span>
                 </div>
               </div>
             </div>
-            <div className="col-span-2 keep-with-next">
-              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+<div className="col-span-2 keep-with-next">
+              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
             </div>
           </>
         )}
@@ -938,7 +966,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -947,7 +975,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -963,8 +991,8 @@ const OperatorWorkSheet = ({
                 </div>
               )}
             </div>
-            <div className="col-span-2 keep-with-next">
-              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+<div className="col-span-2 keep-with-next">
+              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
             </div>
           </>
         )}
@@ -996,7 +1024,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedSoleColor}
                   </span>
@@ -1005,7 +1033,7 @@ const OperatorWorkSheet = ({
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000', fontWeight: 800 }}
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em', color: '#C00000' }}
                   >
                     {resolvedInsoleColor}
                   </span>
@@ -1015,8 +1043,8 @@ const OperatorWorkSheet = ({
                 </div>
               </div>
             </div>
-            <div className="col-span-2 keep-with-next">
-              <TallyBox count={Math.max(1, Math.ceil(totalPairs / 12))} pairsPerCard={12} />
+<div className="col-span-2 keep-with-next">
+              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
             </div>
           </>
         )}
@@ -1072,8 +1100,8 @@ const OperatorWorkSheet = ({
                 </p>
               )}
             </div>
-            <div className="col-span-2 keep-with-next">
-              <TallyBox count={boxes} pairsPerCard={12} title={`Caixas · ${boxes} × 12 pares`} />
+<div className="col-span-2 keep-with-next">
+              <TallyBox count={boxes} pairsPerCard={12} totalUnits={totalPairs} title={`Caixas · ${boxes} × 12 pares`} />
             </div>
           </>
         )}

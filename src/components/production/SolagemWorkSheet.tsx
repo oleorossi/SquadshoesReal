@@ -102,7 +102,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
               className="uppercase leading-none block mt-0.5 truncate"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em', color: '#C00000', fontWeight: 800 }}
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '32px', letterSpacing: '-0.025em', color: '#C00000' }}
             >
               {band.soleColor}
             </span>
@@ -176,7 +176,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                     {r.name || r.code || '—'}
                   </span>
                   {r.color && (
-                    <div className="font-mono" style={{ fontSize: '7px', color: '#C00000', fontWeight: 800 }}>
+                    <div className="font-mono" style={{ fontSize: '7px', color: '#C00000', fontWeight: 700 }}>
                       {r.color}
                     </div>
                   )}
@@ -299,7 +299,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
         })()}
 
         <div className="px-2 py-2 border-t border-black">
-          <TallyBox count={cards} pairsPerCard={pairsPerCard} />
+          <TallyBox count={cards} pairsPerCard={pairsPerCard} totalUnits={band.totalPairs} />
         </div>
       </div>
     );
