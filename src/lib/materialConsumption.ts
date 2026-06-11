@@ -75,6 +75,13 @@ const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
  
  export const normalizeText = (value?: string | null) => value?.trim().toLowerCase() || '';
 
+/** Normaliza cor para chave de mapa de solado: minúsculo, SEM acento (NFD) e
+ *  trim. Casa cor do pedido com product_color de forma robusta a grafia
+ *  (Café=Cafe, CARAMELO=Caramelo). Tema T3 da auditoria 2026-06-11 — build e
+ *  lookup do soleColorMap DEVEM usar este mesmo normalizador. */
+export const normalizeColorKey = (value?: string | null): string =>
+  (value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
 const convertDimensionToMm = (value?: number | null, unit?: string | null) => {
   const numericValue = Number(value) || 0;
   const normalizedUnit = normalizeText(unit);

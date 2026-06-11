@@ -7,6 +7,7 @@ import {
   convertDm2ToPlates,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   normalizeText,
+  normalizeColorKey,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 
@@ -248,7 +249,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   // (sheet_id, cor do cabedal) → produto-solado específico
   const soleColorMap = new Map<string, string>();
   for (const m of (soleColorMappings || []) as any[]) {
-    if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_product_id);
+    if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
   }
   const palmilhaColorMap = new Map<string, { color: string; productId: string | null }>();
   for (const m of (palmilhaColorMappings || []) as any[]) {
@@ -369,7 +370,7 @@ export function computeConsumptionForItems(
   // mapping explícito (technical_sheet_sole_colors) e depois as coligações
   // (sole_color_conjugations) — espelha o resolve_sole_color do backend.
   const resolveSoleProductId = (refId: string, cabedalColor: string): string | null => {
-    const direct = soleColorMap.get(`${refId}::${cabedalColor}`);
+    const direct = soleColorMap.get(`${refId}::${normalizeColorKey(cabedalColor)}`);
     if (direct) return direct;
     const soleGroupId = sheetSoleGroupMap.get(refId);
     if (!soleGroupId) return null;
