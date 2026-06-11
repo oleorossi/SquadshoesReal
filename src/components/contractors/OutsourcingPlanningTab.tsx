@@ -178,6 +178,35 @@ export function OutsourcingPlanningTab() {
     });
   }, []);
 
+  /** Rótulo da OS de excedente (display na description). */
+  const dedupToken = (cell: Pick<WeekSectorCell, 'sectorLabel' | 'weekIso'>) =>
+    `Excedente ${cell.sectorLabel} semana ${cell.weekIso}`;
+
+  /** Já existe OS ATIVA designada pra mesma semana/setor?
+   *  Anti-duplicação ESTRUTURAL pelas colunas bottleneck_week + target_sector
+   *  (antes era token textual na description — frágil). */
+  const hasActiveOsFor = (cell: WeekSectorCell) =>
+    serviceOrders.some(
+      (o: any) => !OS_TERMINAL_STATUSES.has(o.status)
+        && o.bottleneck_week === cell.weekIso
+        && (o.target_sector || '') === cell.sectorKey,
+    );
+
+  /** Pares JÁ na rua em OSs ativas do mesmo setor cobrindo algum dos PVs —
+   *  descontados do excedente (ex.: atalho do PV já mandou corte de cabedal). */
+  const pairsAlreadyOutsourced = (sectorKey: string, pvIds: string[]) => {
+    const pvSet = new Set(pvIds);
+    let pairs = 0;
+    for (const o of serviceOrders as any[]) {
+      if (OS_TERMINAL_STATUSES.has(o.status)) continue;
+      if ((o.target_sector || '') !== sectorKey) continue;
+      const linked: string[] = Array.isArray(o.linked_sale_order_ids) ? o.linked_sale_order_ids : [];
+      const touches = (o.sale_order_id && pvSet.has(o.sale_order_id)) || linked.some((id) => pvSet.has(id));
+      if (touches) pairs += Number(o.quantity || 0);
+    }
+    return pairs;
+  };
+
   const cells = useMemo<WeekSectorCell[]>(() => {
     const result: WeekSectorCell[] = [];
     const activePvs = (saleOrders as any[]).filter(
@@ -218,7 +247,9 @@ export function OutsourcingPlanningTab() {
         // Média ponderada por pares (fichas sem capacidade pesam 0 — conservador).
         const capacityPerDay = demand > 0 ? capWeight / demand : 0;
         const capacityWeek = Math.round(capacityPerDay * WORK_DAYS_PER_WEEK);
-        const excess = Math.max(0, Math.ceil(demand - capacityWeek));
+        // Desconta o que JÁ está na rua pra este setor×PVs (atalho do PV etc.)
+        const alreadyOut = pairsAlreadyOutsourced(sector.key, Array.from(pvIds));
+        const excess = Math.max(0, Math.ceil(demand - capacityWeek - alreadyOut));
 
         result.push({
           weekIso: week.iso,
@@ -238,16 +269,6 @@ export function OutsourcingPlanningTab() {
     return result;
   }, [weeks, saleOrders, itemsByPv, sheetMap]);
 
-  /** Token determinístico usado na description da OS — base da anti-duplicação. */
-  const dedupToken = (cell: Pick<WeekSectorCell, 'sectorLabel' | 'weekIso'>) =>
-    `Excedente ${cell.sectorLabel} semana ${cell.weekIso}`;
-
-  /** Já existe OS ATIVA designada pra mesma semana/setor? */
-  const hasActiveOsFor = (cell: WeekSectorCell) =>
-    serviceOrders.some(
-      (o) => !OS_TERMINAL_STATUSES.has(o.status) && (o.description || '').includes(dedupToken(cell)),
-    );
-
   const handleAssign = async () => {
     if (!assignTarget || !assignContractorId) return;
     setAssigning(true);
@@ -255,19 +276,29 @@ export function OutsourcingPlanningTab() {
       // Fluxo canônico de criação de OS (mesmo do ServiceOrderFormDialog):
       // número via generateServiceOrderNumber, status 'Pendente', target_sector.
       const order_number = await generateServiceOrderNumber();
+      // Tarifa vigente serviço×prestadora — OS de excedente não nasce mais sem preço
+      let unitPrice = 0;
+      try {
+        const { data: rate } = await (supabase as any).rpc('get_contractor_rate', {
+          p_contractor_id: assignContractorId,
+          p_sector: assignTarget.sectorKey,
+          p_date: format(new Date(), 'yyyy-MM-dd'),
+        });
+        unitPrice = rate != null ? Number(rate) : 0;
+      } catch { /* sem tarifa */ }
       await createOrder.mutateAsync({
         contractor_id: assignContractorId,
         order_number,
         description: `${dedupToken(assignTarget)} — ${assignTarget.excess} pares (PVs: ${assignTarget.pvNumbers.join(', ')})`,
         service_date: format(new Date(), 'yyyy-MM-dd'),
         quantity: assignTarget.excess,
-        unit_price: 0,
-        total_value: 0,
+        unit_price: unitPrice,
+        total_value: unitPrice > 0 ? unitPrice * assignTarget.excess : 0,
         status: 'Pendente',
         target_sector: assignTarget.sectorKey,
         bottleneck_week: assignTarget.weekIso,
         linked_sale_order_ids: assignTarget.pvIds,
-        notes: 'Gerada pela aba Planejamento (demanda programada > capacidade interna). Definir valor por par com a contratada.',
+        notes: unitPrice > 0 ? 'Gerada pela aba Planejamento (demanda > capacidade interna). Preço pela tabela vigente.' : 'Gerada pela aba Planejamento (demanda > capacidade interna). SEM TARIFA cadastrada — definir valor por par com a contratada.',
       } as any);
       toast.success(`OS de excedente criada — ${assignTarget.sectorLabel}, semana de ${format(new Date(assignTarget.weekIso + 'T00:00:00'), 'dd/MM/yyyy')}.`);
       setAssignTarget(null);

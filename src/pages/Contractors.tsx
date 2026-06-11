@@ -41,6 +41,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { useProducts, getBaseName } from '@/hooks/useProducts';
 import { ContractorHistoryDialog } from '@/components/contractors/ContractorHistoryDialog';
+import { ContractorRatesDialog } from '@/components/contractors/ContractorRatesDialog';
 import { OutsourcingPlanningTab } from '@/components/contractors/OutsourcingPlanningTab';
 const emptyRecipe: Partial<ArtisanalRecipe> = { name: '', artisanal_product_name: '', base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0, active: true };
 
@@ -233,6 +234,7 @@ export default function Contractors() {
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
   const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status-v2', 'active');
   const [historyContractor, setHistoryContractor] = useState<Contractor | null>(null);
+  const [ratesContractor, setRatesContractor] = useState<Contractor | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [recipeDialog, setRecipeDialog] = useState(false);
@@ -1508,6 +1510,9 @@ export default function Contractors() {
                                 <ClockCounterClockwise className="h-3.5 w-3.5" />
                                 Histórico
                               </Button>
+                              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" title="Tabela de preços por serviço (R$/par com vigência)" onClick={() => setRatesContractor(c)}>
+                                Tarifas
+                              </Button>
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /></Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
@@ -2383,6 +2388,12 @@ export default function Contractors() {
         contractorName={historyContractor ? (historyContractor.trade_name || historyContractor.name) : null}
         open={!!historyContractor}
         onOpenChange={(open) => { if (!open) setHistoryContractor(null); }}
+      />
+
+      <ContractorRatesDialog
+        open={!!ratesContractor}
+        onOpenChange={(open) => { if (!open) setRatesContractor(null); }}
+        contractor={ratesContractor ? { id: ratesContractor.id, name: ratesContractor.trade_name || ratesContractor.name } : null}
       />
 
       <ReceivePiecesDialog

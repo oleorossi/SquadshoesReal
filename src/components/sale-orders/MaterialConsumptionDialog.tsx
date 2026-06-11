@@ -350,10 +350,12 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // casa pela referência (code, senão nome) + cor presentes na description.
       const osByKey: Record<string, string> = {};
       if (upperGroups.length > 0) {
+        // Inclui OSs vinculadas via linked_sale_order_ids (ex.: excedente do
+        // Planejamento cobrindo este PV) — não só as criadas por este modal.
         const { data: existingOs } = await (supabase as any)
           .from('service_orders')
           .select('order_number, description, status')
-          .eq('sale_order_id', saleOrderId)
+          .or(`sale_order_id.eq.${saleOrderId},linked_sale_order_ids.cs.{${saleOrderId}}`)
           .eq('target_sector', UPPER_CUT_SECTOR);
         const activeOs = ((existingOs || []) as Array<{ order_number: string; description: string | null; status: string }>)
           .filter((o) => !FINALIZED_OS_STATUSES.includes(o.status));
@@ -513,6 +515,17 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     setCreatingKey(g.key);
     try {
       const order_number = await generateServiceOrderNumber();
+      // Tarifa vigente serviço×prestadora (Fase 1 facção) — evita OS sem preço
+      // (65% das OSs históricas) e alimenta a conta a pagar por pares bons.
+      let unitPrice = 0;
+      try {
+        const { data: rate } = await (supabase as any).rpc('get_contractor_rate', {
+          p_contractor_id: contractorId,
+          p_sector: UPPER_CUT_SECTOR,
+          p_date: new Date().toISOString().slice(0, 10),
+        });
+        unitPrice = rate != null ? Number(rate) : 0;
+      } catch { /* sem tarifa — OS nasce com preço 0, definir depois */ }
       const refLabel = [g.refCode, g.refName].filter(Boolean).join(' ');
       const colorPart = g.color !== '—' ? ` · cor ${g.color}` : '';
       const payload = {
@@ -524,6 +537,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         sale_order_id: saleOrderId,
         linked_sale_order_ids: [saleOrderId],
         quantity: g.pairs,
+        unit_price: unitPrice,
+        total_value: unitPrice > 0 ? unitPrice * g.pairs : 0,
         status: 'Pendente',
       };
       const { data: inserted, error } = await (supabase as any)
@@ -539,7 +554,11 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       qc.invalidateQueries({ queryKey: ['contractors'] });
       qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
-      toast.success(`OS ${inserted.order_number} criada — já visível no menu Terceirizados.`);
+      if (unitPrice > 0) {
+        toast.success(`OS ${inserted.order_number} criada (R$ ${unitPrice.toFixed(2)}/par pela tabela) — visível no menu Terceirizados.`);
+      } else {
+        toast.warning(`OS ${inserted.order_number} criada SEM preço — cadastre a tarifa da prestadora ou defina o valor na OS.`);
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Falha ao criar a OS de corte de cabedal.');
     } finally {
