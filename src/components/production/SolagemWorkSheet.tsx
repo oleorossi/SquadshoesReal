@@ -7,6 +7,7 @@ import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
+import { formatUnitLabel } from '@/lib/unitLabels';
 import {
   filterConsumptionForSector,
   type ConsumptionRow,
@@ -287,7 +288,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                       {row.required >= 10 ? row.required.toFixed(1) : row.required.toFixed(2)}
                       {' '}
                       <span className="text-[8px] text-black/60 uppercase tracking-widest">
-                        {row.unit || (row.component === 'Solado' ? 'par' : 'un')}
+                        {formatUnitLabel(row.unit, row.component === 'Solado' ? 'par' : 'un')}
                       </span>
                     </span>
                   </div>

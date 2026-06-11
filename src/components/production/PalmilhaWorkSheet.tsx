@@ -8,6 +8,7 @@ import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
+import { formatUnitLabel } from '@/lib/unitLabels';
 import {
   filterConsumptionForSector,
   type ConsumptionRow,
@@ -388,7 +389,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
                               {row.required >= 10 ? row.required.toFixed(1) : row.required.toFixed(2)}
                               {' '}
                               <span className="text-[8px] text-black/60 uppercase tracking-widest">
-                                {row.unit || 'un'}
+                                {formatUnitLabel(row.unit)}
                               </span>
                             </span>
                           </div>

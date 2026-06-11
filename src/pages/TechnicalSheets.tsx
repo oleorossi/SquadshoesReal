@@ -4725,7 +4725,7 @@ function SoleClassificationBadge({ groupId, soleMaterial, process, products }: {
     queryFn: async () => {
       const { count: conjCount } = await supabase
         .from('sole_size_conjugations')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('sole_group_id', groupId);
       return { conjCount: conjCount || 0 };
     },

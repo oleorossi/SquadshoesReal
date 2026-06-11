@@ -256,6 +256,39 @@ export default function Corte() {
             orderNumber: order.order_number || '', orderId: order.id,
           });
         }
+
+        // Auditoria visual 11/06/2026: KPIs de demanda zeravam (com 4.380
+        // pares no setor) — os materiais de cabedal/forro/palmilha em geral
+        // NÃO estão em sheet_materials (BOM, que só tinha Componente/
+        // Embalagem/Linhanyl), e sim nos campos upper/lining/insole_material
+        // da ficha técnica. Se o BOM não gerou linha pra categoria, deriva a
+        // demanda (pares por numeração) direto da ficha. Palmilha "pronta na
+        // cor" (insole_ready_made) não gera demanda de corte.
+        const categoriesCovered = new Set(
+          rows.filter(r => r.orderId === order.id).map(r => r.materialCategory)
+        );
+        const fichaFallbacks: Array<{ category: string; name: string | null }> = [
+          { category: 'Cabedal',  name: (ref as any).upper_material || null },
+          { category: 'Forração', name: (ref as any).lining_material || null },
+          { category: 'Palmilha', name: (ref as any).insole_ready_made ? null : ((ref as any).insole_material || null) },
+        ];
+        for (const fb of fichaFallbacks) {
+          if (!fb.name || categoriesCovered.has(fb.category)) continue;
+          const sizeMap: Record<string, number> = {};
+          let total = 0;
+          for (const [size, qty] of Object.entries(grade)) {
+            const q = Math.round((Number(qty) || 0) * multiplier);
+            if (q > 0) { sizeMap[size] = (sizeMap[size] || 0) + q; total += q; }
+          }
+          if (total === 0) continue;
+          rows.push({
+            refCode: ref.code || '', refName: ref.name || '',
+            color: order.color || '—',
+            materialName: fb.name, materialCategory: fb.category,
+            sizes: sizeMap, totalPairs: total,
+            orderNumber: order.order_number || '', orderId: order.id,
+          });
+        }
       }
       // Debug: log palmilha vs total counts
       const palmRows = rows.filter(r => r.materialCategory === 'Palmilha');

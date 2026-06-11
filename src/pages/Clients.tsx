@@ -1,6 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
-import { usePersistedState } from '@/hooks/usePersistedState';
 import { Users, Plus, CircleNotch as Loader2, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, Buildings as Building2, CaretDown as ChevronDown, FileArrowUp as FileUp, Storefront as Store, Check, Star, ArrowsClockwise as RefreshCw, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -66,7 +65,11 @@ export default function Clients() {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('q') || '';
   })();
-  const [search, setSearch] = usePersistedState('search', initialSearch);
+  // Auditoria visual 11/06/2026: busca NÃO persiste mais entre sessões. A chave
+  // genérica 'search' era compartilhada com outras telas e um termo antigo
+  // (ex: "sarja") fazia a página abrir "Nenhum cliente encontrado" com 42
+  // clientes cadastrados. ?q= da URL continua funcionando.
+  const [search, setSearch] = useState(initialSearch);
   const [clientDialog, setClientDialog] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [form, setForm] = useState<ClientFormData>(emptyClient);

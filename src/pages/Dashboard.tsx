@@ -34,14 +34,17 @@ export default function Dashboard() {
         { count: ordersCount },
         { count: pendingSalesCount }
       ] = await Promise.all([
+        // Auditoria visual 11/06/2026: HEAD count com select('*') retornava
+        // 503 do PostgREST (4 requests falhando em silêncio a cada load).
+        // Pra contagem, basta selecionar uma coluna única ('id').
         // Estoque é estado atual — não filtra por período
-        supabase.from('products').select('*', { count: 'exact', head: true }),
-        supabase.from('products').select('*', { count: 'exact', head: true }).lt('quantity', 10),
+        supabase.from('products').select('id', { count: 'exact', head: true }),
+        supabase.from('products').select('id', { count: 'exact', head: true }).lt('quantity', 10),
         // OPs ativas e PVs pendentes filtram por created_at do período
-        supabase.from('orders').select('*', { count: 'exact', head: true })
+        supabase.from('orders').select('id', { count: 'exact', head: true })
           .in('status', ['Reservado', 'Em Produção', 'Em produção'])
           .gte('created_at', range.startISO).lte('created_at', range.endISO),
-        supabase.from('sale_orders').select('*', { count: 'exact', head: true })
+        supabase.from('sale_orders').select('id', { count: 'exact', head: true })
           .in('status', ['Rascunho', 'rascunho'])
           .gte('created_at', range.startISO).lte('created_at', range.endISO)
       ]);

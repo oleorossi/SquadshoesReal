@@ -1,0 +1,154 @@
+-- =============================================================================
+-- Auditoria visual 11/06/2026 — códigos de onda com prefixo duplicado "PV-PV-"
+-- =============================================================================
+-- create_solo_wave fazia 'PV-' || order_number, mas order_number JÁ começa
+-- com "PV-" → "PV-PV-00116". Redefine a função (base: 20260605180000,
+-- versão idempotente) prefixando só quando falta, e faz backfill dos códigos
+-- existentes (sem colidir com código já ocupado).
+-- ✅ APLICADA via Supabase MCP em 11/06/2026.
+
+CREATE OR REPLACE FUNCTION public.create_solo_wave(p_sale_order_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_existing_wave_id uuid;
+  v_wave_id    uuid;
+  v_wave_code  text;
+  v_week_start date;
+  v_week_end   date;
+  v_order_num  text;
+  v_item_id    uuid;
+  v_row        RECORD;
+  v_mesa_cap   int := 0;
+  v_needs_palm boolean;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Autenticação necessária';
+  END IF;
+
+  -- Idempotência: se o PV já está em uma onda ATIVA (status não finished
+  -- nem cancelled), retorna o ID dela sem tentar criar nada novo. Evita
+  -- conflito com check_sale_order_single_active_wave que bloquearia o
+  -- insert de duplicate source. Caso comum: PV reaberto pra Em Produção
+  -- ainda vinculado à onda multi-PV anterior.
+  SELECT wi.wave_id INTO v_existing_wave_id
+  FROM public.production_wave_item_sources s
+  JOIN public.production_wave_items wi ON wi.id = s.wave_item_id
+  JOIN public.production_waves pw ON pw.id = wi.wave_id
+  WHERE s.sale_order_id = p_sale_order_id
+    AND pw.status NOT IN ('finished', 'cancelled')
+  LIMIT 1;
+
+  IF v_existing_wave_id IS NOT NULL THEN
+    RETURN v_existing_wave_id;
+  END IF;
+
+  v_week_start := date_trunc('week', current_date)::date;
+  v_week_end   := v_week_start + 6;
+
+  SELECT COALESCE(order_number, id::text) INTO v_order_num
+    FROM sale_orders WHERE id = p_sale_order_id;
+
+  -- Fix 11/06/2026 (auditoria visual): order_number já vem com prefixo "PV-"
+  -- (ex: PV-00142). Concatenar cegamente gerava "PV-PV-00142". Só prefixa
+  -- quando faltar.
+  IF v_order_num LIKE 'PV-%' THEN
+    v_wave_code := v_order_num;
+  ELSE
+    v_wave_code := 'PV-' || v_order_num;
+  END IF;
+
+  INSERT INTO production_waves(code, week_start, week_end, status, created_by)
+  VALUES (v_wave_code, v_week_start, v_week_end, 'draft', auth.uid())
+  ON CONFLICT (code) DO UPDATE SET updated_at = now()
+  RETURNING id INTO v_wave_id;
+
+  INSERT INTO production_wave_stages(wave_id, stage, status)
+  SELECT v_wave_id, s::production_stage_enum, 'pending'
+  FROM unnest(ARRAY['corte','costura','montagem','solagem','acabamento']) AS s
+  ON CONFLICT DO NOTHING;
+
+  SELECT EXISTS (
+    SELECT 1 FROM sale_order_items soi
+    JOIN technical_sheets ts ON ts.id = soi.reference_id
+    WHERE soi.sale_order_id = p_sale_order_id
+      AND (ts.insole_ready_made IS NULL OR ts.insole_ready_made = false)
+  ) INTO v_needs_palm;
+
+  IF v_needs_palm THEN
+    INSERT INTO production_wave_stages(wave_id, stage, status)
+    VALUES (v_wave_id, 'palmilha', 'pending')
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  SELECT COALESCE(MAX(ts.mesa_daily_capacity), 0) INTO v_mesa_cap
+    FROM sale_order_items soi
+    JOIN technical_sheets ts ON ts.id = soi.reference_id
+   WHERE soi.sale_order_id = p_sale_order_id
+     AND ts.mesa_daily_capacity > 0;
+
+  IF v_mesa_cap > 0 THEN
+    INSERT INTO production_wave_stages(wave_id, stage, status, capacity_per_day)
+    VALUES (v_wave_id, 'mesa', 'pending', v_mesa_cap)
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  FOR v_row IN
+    SELECT
+      soi.id                                 AS source_item_id,
+      so.id                                  AS sale_order_id,
+      so.client_id,
+      COALESCE(c.razao_social, so.id::text)  AS store_name,
+      soi.reference_id,
+      COALESCE(soi.color, '')                AS color,
+      COALESCE(soi.quantity, 0)::numeric     AS qty,
+      COALESCE(soi.grade, '{}'::jsonb)       AS grade,
+      (SELECT sole_product_id
+         FROM resolve_sole_color(soi.reference_id, COALESCE(soi.color, ''))) AS sole_id
+    FROM sale_orders so
+    JOIN sale_order_items soi ON soi.sale_order_id = so.id
+    LEFT JOIN clients c ON c.id = so.client_id
+    WHERE so.id = p_sale_order_id
+  LOOP
+    INSERT INTO production_wave_items(wave_id, reference_id, sole_product_id, color, total_quantity, grade)
+    VALUES (v_wave_id, v_row.reference_id, v_row.sole_id, v_row.color, v_row.qty, v_row.grade)
+    ON CONFLICT (wave_id, reference_id, sole_product_id, color)
+    DO UPDATE SET total_quantity = production_wave_items.total_quantity + EXCLUDED.total_quantity
+    RETURNING id INTO v_item_id;
+
+    INSERT INTO production_wave_item_sources(
+      wave_item_id, sale_order_id, sale_order_item_id, client_id, store_name, quantity, grade
+    ) VALUES (
+      v_item_id, v_row.sale_order_id, v_row.source_item_id,
+      v_row.client_id, v_row.store_name, v_row.qty, v_row.grade
+    );
+  END LOOP;
+
+  UPDATE production_waves SET
+    total_pairs = COALESCE((SELECT SUM(total_quantity) FROM production_wave_items WHERE wave_id = v_wave_id), 0),
+    total_items = COALESCE((SELECT COUNT(*) FROM production_wave_items WHERE wave_id = v_wave_id), 0),
+    status = 'planning'
+  WHERE id = v_wave_id;
+
+  PERFORM public.start_wave(v_wave_id);
+
+  RETURN v_wave_id;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.create_solo_wave(uuid) IS
+  'Cria onda dedicada pra um único PV. Idempotente. Código = order_number '
+  '(sem duplicar prefixo PV-). Fix auditoria visual 11/06/2026.';
+
+
+-- Backfill: renomeia ondas existentes com prefixo duplicado, sem colidir
+UPDATE public.production_waves pw
+SET code = regexp_replace(pw.code, '^PV-PV-', 'PV-')
+WHERE pw.code LIKE 'PV-PV-%'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.production_waves p2
+    WHERE p2.code = regexp_replace(pw.code, '^PV-PV-', 'PV-')
+  );

@@ -129,7 +129,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
 
-  const [search, setSearch] = usePersistedState('search', '');
+  // Auditoria visual 11/06/2026: busca não persiste entre sessões (chave
+  // genérica 'search' compartilhada entre telas escondia materiais ao abrir).
+  const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebounce(search, 400);
   const [groupFilter] = usePersistedState('groupFilter', 'all');
   const [supplierFilter] = usePersistedState('supplierFilter', 'all');

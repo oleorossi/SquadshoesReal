@@ -487,7 +487,11 @@ export default function SaleOrders() {
     else sel.selectAll();
   };
 
-  const activeCount = useMemo(() => orders.filter(o => o.status !== 'Rascunho' && o.status !== 'Cancelado' && !TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
+  // Auditoria visual 11/06/2026: o badge da aba excluía Rascunho/Cancelado,
+  // mas a lista da aba "Ativos" inclui ambos (só exclui faturados) — badge
+  // mostrava 9 com KPI "Total Pedidos 11". Agora usa o MESMO predicado do
+  // tab gating em filteredOrders (não-faturados).
+  const activeCount = useMemo(() => orders.filter(o => !TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
   const billedCount = useMemo(() => orders.filter(o => TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
 
   const pendingOrders = useMemo(() => orders.filter(o => o.status === 'Rascunho'), [orders]);

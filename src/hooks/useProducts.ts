@@ -34,7 +34,7 @@ export function useProducts() {
       // Get total count first so we can fetch all pages in parallel.
       const { count, error: countError } = await supabase
         .from('products')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
       if (countError) throw countError;
       const total = count ?? 0;
       if (total === 0) return [];

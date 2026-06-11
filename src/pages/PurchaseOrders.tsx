@@ -78,14 +78,21 @@ function mergeReceivedGrade(
   return merged;
 }
 
+const VALID_PO_STATUS_FILTERS = ['all', 'pending', 'approved', 'sent', 'received', 'cancelled'];
+
 export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = usePurchaseOrders();
   const updateOrder = useUpdatePurchaseOrder();
   const deleteOrder = useDeletePurchaseOrder();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
-  const [search, setSearch] = usePersistedState('search', '');
-  const [statusFilter, setStatusFilter] = usePersistedState('statusFilter', 'all');
+  // Auditoria visual 11/06/2026: busca não persiste mais entre sessões (termo
+  // antigo fazia a página abrir "vazia") e o filtro de status é validado —
+  // chaves antigas genéricas ('search'/'statusFilter') podiam conter valor de
+  // outra tela, deixando o Select em branco e escondendo TODAS as OCs.
+  const [search, setSearch] = useState('');
+  const [statusFilterRaw, setStatusFilter] = usePersistedState('po-status-filter', 'all');
+  const statusFilter = VALID_PO_STATUS_FILTERS.includes(statusFilterRaw) ? statusFilterRaw : 'all';
   const [supplierFilter, setSupplierFilter] = usePersistedState('po-supplier-filter', 'all');
    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
    const [createDialogOpen, setCreateDialogOpen] = useState(false);

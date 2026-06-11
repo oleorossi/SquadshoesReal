@@ -48,7 +48,10 @@ export function BottomRow({ period = 'current_month' }: { period?: DashboardPeri
         if (isLate) status = "err";
         else if (op.status === "pending" || op.status === "awaiting") status = "warn";
         return {
-          id:     `OP-${op.order_number ?? op.id.slice(0, 6)}`,
+          // Auditoria visual 11/06/2026: order_number já vem com o prefixo
+          // "OP-" do banco — concatenar de novo gerava "OP-OP-2026-00951".
+          // Só prefixamos no fallback (id curto), que não tem prefixo.
+          id:     op.order_number ?? `OP-${op.id.slice(0, 6)}`,
           qty:    `${Number(op.quantity).toLocaleString("pt-BR")} pares`,
           status,
           label:  STATUS_LABEL[op.status] ?? op.status ?? "Em andamento",

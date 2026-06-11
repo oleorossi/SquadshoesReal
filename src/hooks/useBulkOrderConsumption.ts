@@ -6,6 +6,7 @@ import {
   type ConsumptionItem,
   type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
+import { formatUnitLabel } from '@/lib/unitLabels';
 
 export type ConsumptionComponent =
   | 'Solado'
@@ -273,7 +274,8 @@ export const aggregateConsumption = (
  * Ex: "EVA 3MM · 0.456 m" / "Solado Saltinho Bloco · 12 pares"
  */
 export const formatConsumptionLine = (r: ConsumptionRow): string => {
-  const unit = r.unit || (r.component === 'Solado' ? 'par' : 'un');
+  // Auditoria visual 11/06/2026: normaliza grafia ('metro' → 'm') na exibição.
+  const unit = formatUnitLabel(r.unit, r.component === 'Solado' ? 'par' : 'un');
   const qty = r.required >= 10
     ? r.required.toFixed(1)
     : r.required.toFixed(2);

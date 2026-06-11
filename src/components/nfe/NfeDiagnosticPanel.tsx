@@ -95,9 +95,9 @@ export default function NfeDiagnosticPanel() {
       // anterior `.not('ncm', 'is', null)` contava fichas com NCM vazio como
       // preenchido. Filtra por NCM no formato exato exigido pela NF-e: 8 dígitos.
       const { count: sheetCount } = await supabase
-        .from('technical_sheets').select('*', { count: 'exact', head: true });
+        .from('technical_sheets').select('id', { count: 'exact', head: true });
       const { count: sheetWithNcm } = await supabase
-        .from('technical_sheets').select('*', { count: 'exact', head: true })
+        .from('technical_sheets').select('id', { count: 'exact', head: true })
         .not('ncm', 'is', null)
         .neq('ncm', '');
       const ncmRatio = sheetCount && sheetCount > 0 ? (sheetWithNcm ?? 0) / sheetCount : 0;
@@ -109,7 +109,7 @@ export default function NfeDiagnosticPanel() {
 
       // 6. NF-es já emitidas
       const { count: nfeCount } = await supabase
-        .from('nfe_emitidas').select('*', { count: 'exact', head: true });
+        .from('nfe_emitidas').select('id', { count: 'exact', head: true });
       items.push({
         key: 'nfe-history',
         label: 'Histórico de emissão',

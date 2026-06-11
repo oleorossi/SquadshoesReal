@@ -375,7 +375,9 @@ export default function Suppliers() {
   const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [search, setSearch] = usePersistedState('search', '');
+  // Auditoria visual 11/06/2026: busca não persiste entre sessões (chave
+  // genérica 'search' compartilhada entre telas escondia a lista ao abrir).
+  const [search, setSearch] = useState('');
   const [stockDialogInvoiceId, setStockDialogInvoiceId] = useState<string | null>(null);
   const [stockDialogItems, setStockDialogItems] = useState<InvoiceItem[]>([]);
   const [itemsDialogSupplier, setItemsDialogSupplier] = useState<Supplier | null>(null);
