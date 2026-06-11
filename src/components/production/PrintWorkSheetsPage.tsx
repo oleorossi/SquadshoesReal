@@ -1718,6 +1718,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       if (baseSum > 0) {
         if (group.baseGradeSum === 0) group.baseGradeSum = baseSum;
         else if (group.baseGradeSum !== baseSum) group.mixedGrades = true;
+        else {
+          // Mesma SOMA, distribuição por numeração DIFERENTE da 1ª OP (cujo
+          // baseGrade congela em ~1689). Sem isso, "Por Ficha (Np)" mostraria
+          // a grade da 1ª OP pras duas (ex.: OP-A {33:12} + OP-B {34:12}, ambas
+          // somam 12 → linha sairia 33→12 / 34→"—", mentindo pro operador).
+          // Marca mixedGrades p/ a worksheet omitir a linha "Por Ficha".
+          const accBase = group.baseGrade || {};
+          const keys = new Set([...Object.keys(accBase), ...Object.keys(baseGrid)]);
+          for (const k of keys) {
+            if ((Number(accBase[k]) || 0) !== (Number(baseGrid[k]) || 0)) {
+              group.mixedGrades = true;
+              break;
+            }
+          }
+        }
       }
       // Largest-remainder (Hamilton) por OP: a grade escalada soma EXATO
       // orderTotal. Math.round por tamanho deixava a soma off por ±N (operador
@@ -2135,6 +2150,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         if (baseSum > 0) {
           if (band.baseGradeSum === 0) band.baseGradeSum = baseSum;
           else if (band.baseGradeSum !== baseSum) band.mixedGrades = true;
+          else {
+            // Mesma SOMA, distribuição por numeração DIFERENTE da 1ª OP (cujo
+            // baseGrade bucketizado congela em ~2095). Compara BUCKETIZADO
+            // (conjugadas) p/ casar com a chave de band.baseGrade. Sem isso,
+            // "Por Ficha (Np)" mostraria a grade da 1ª OP pras duas, mentindo
+            // pro operador → marca mixedGrades p/ a worksheet omitir a linha.
+            const accBase = band.baseGrade || {};
+            const curBase = bucketizeGrid(baseGrid, conjugations);
+            const keys = new Set([...Object.keys(accBase), ...Object.keys(curBase)]);
+            for (const k of keys) {
+              if ((Number(accBase[k]) || 0) !== (Number(curBase[k]) || 0)) {
+                band.mixedGrades = true;
+                break;
+              }
+            }
+          }
         }
         // Largest-remainder (Hamilton) por OP: cada OP escala EXATAMENTE pro seu
         // total — antes o Math.round por número podia driftar ±N na soma da banda
