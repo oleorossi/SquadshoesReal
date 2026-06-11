@@ -38,7 +38,15 @@ export const SectorRegion = ({ sectorLabel, children }: Props) => {
     const measure = () => {
       if (!ref.current) return;
       const height = ref.current.scrollHeight;
-      const pages = Math.max(1, Math.ceil(height / PAGE_HEIGHT_PX));
+      // Folga de medição: a altura é medida no layout de TELA (largura 198mm,
+      // tipografia cheia), mas o print comprime a fonte pra 8.5pt + spacing
+      // reduzido — o conteúdo de print costuma ser MAIS BAIXO. Sem folga,
+      // conteúdo logo acima da fronteira superestimava o pageCount e o último
+      // marker caía sozinho numa A4 extra EM BRANCO. Viés proposital pra
+      // baixo: marker faltando na última página é cosmético; página em branco
+      // no meio do lote de fichas não é.
+      const slackPx = Math.max(24, height * 0.03);
+      const pages = Math.max(1, Math.ceil((height - slackPx) / PAGE_HEIGHT_PX));
       setPageCount(prev => (prev === pages ? prev : pages));
     };
 

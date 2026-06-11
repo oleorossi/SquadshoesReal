@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { useQuery, useIsFetching } from '@tanstack/react-query';
+import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Stack as Layers, Rows } from '@phosphor-icons/react';
@@ -437,9 +437,17 @@ function orderSizeBands(order: any): { inf: boolean; ad: boolean } {
   let inf = false, ad = false;
   for (const [size, qty] of Object.entries(grid)) {
     if (!(Number(qty) > 0)) continue;
-    const first = parseInt(String(size).split('/')[0], 10);
-    if (!Number.isNaN(first)) { if (first < 33) inf = true; else ad = true; }
+    // Numeração conjugada ("32/33") classifica em TODAS as faixas que cobre —
+    // antes só o 1º número contava e o filtro "Adulto" derrubava o balde
+    // 32/33 inteiro (perdia os pares do 33) na fronteira infantil/adulto.
+    for (const part of String(size).split('/')) {
+      const n = parseInt(part, 10);
+      if (!Number.isNaN(n)) { if (n < 33) inf = true; else ad = true; }
+    }
   }
+  // OP sem grade classificável retorna {false,false} — o selo INFANTIL/ADULTO
+  // não deve aparecer. O FILTRO de faixa trata esse caso à parte (entra nas
+  // duas faixas em vez de sumir silenciosamente).
   return { inf, ad };
 }
 
@@ -615,6 +623,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // Expedição "Sem cliente", consumo vazio) — os botões esperam.
   // Refetches de fundo (query já com dado) NÃO contam (sem flicker).
   const initialQueriesLoading = useIsFetching({ predicate: q => q.state.status === 'pending' }) > 0;
+  // Erros de query eram engolidos: toda query desestrutura `data = []` e a
+  // ficha saía incompleta (sem cliente, sem solado, sem consumo) SEM nenhum
+  // sinal. Conta queries em estado de erro via cache do react-query e mostra
+  // banner — o usuário decide recarregar antes de imprimir.
+  const queryClient = useQueryClient();
+  const [failedQueries, setFailedQueries] = useState(0);
+  useEffect(() => {
+    const cache = queryClient.getQueryCache();
+    const update = () => setFailedQueries(cache.getAll().filter(q => q.state.status === 'error').length);
+    update();
+    return cache.subscribe(update);
+  }, [queryClient]);
   // Filtros de impressão: faixa (infantil/adulto, por numeração) e solado(s).
   const [sizeFilter, setSizeFilter] = useState<'all' | 'infantil' | 'adulto'>('all');
   const [soleFilter, setSoleFilter] = useState<Set<string>>(new Set()); // vazio = todos
@@ -711,7 +731,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         const qty = Number(o.total_pairs ?? o.quantity ?? 0);
         if (qty <= 0) continue;
         fullPairs += qty;
-        const key = bulkConsumptionKey(o.reference_id, o.color, qty);
+        // Mesmos campos do consumptionInputs (grade + tiras na chave) — senão
+        // o lookup erra quando 2 OPs têm mesma ref+cor+qtd mas grades/tiras
+        // diferentes.
+        const key = bulkConsumptionKey(
+          o.reference_id,
+          o.color,
+          qty,
+          (o.grid ?? null) as Record<string, number> | null,
+          Array.isArray(o.strap_colors) ? o.strap_colors : null,
+        );
         const rows = consumptionByKey.get(key) ?? [];
         for (const r of rows) {
           const existing = byProduct.get(r.product_id);
@@ -1448,8 +1477,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return (orders as any[]).filter(o => {
       if (sizeFilter !== 'all') {
         const { inf, ad } = orderSizeBands(o);
-        if (sizeFilter === 'infantil' && !inf) return false;
-        if (sizeFilter === 'adulto' && !ad) return false;
+        // OP sem grade classificável NÃO pode sumir dos dois filtros
+        // silenciosamente — sem faixa identificável, entra em ambos.
+        const unclassified = !inf && !ad;
+        if (!unclassified) {
+          if (sizeFilter === 'infantil' && !inf) return false;
+          if (sizeFilter === 'adulto' && !ad) return false;
+        }
       }
       if (soleFilter.size > 0) {
         const sole = soleNameFor(o.reference_id, o.color);
@@ -2517,6 +2551,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               {printOrders.length} OP(s) · {activeSectors.size} setor{activeSectors.size === 1 ? '' : 'es'} · {sheetCount} ficha{sheetCount === 1 ? '' : 's'}
               {initialQueriesLoading && <span className="ml-2 text-amber-600">· carregando dados…</span>}
             </span>
+            {failedQueries > 0 && (
+              <span className="text-xs text-red-600 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">
+                ⚠ {failedQueries} consulta{failedQueries > 1 ? 's' : ''} de dados {failedQueries > 1 ? 'falharam' : 'falhou'} — fichas podem sair incompletas (cliente, solado ou consumo). Recarregue a página antes de imprimir.
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -2583,6 +2622,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 {f === 'all' ? 'Todas' : f === 'infantil' ? 'Infantil' : 'Adulto'}
               </button>
             ))}
+            {sizeFilter !== 'all' && (
+              <span className="text-[11px] text-amber-600">
+                OP de grade mista entra INTEIRA (tarja MISTO) — o filtro não recorta a grade.
+              </span>
+            )}
           </div>
           {soleOptions.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">

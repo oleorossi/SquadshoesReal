@@ -104,13 +104,14 @@ export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow 
  * UI da ficha deixou de usá-lo.
  */
 export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => {
-  // Dedup determinístico por (ref, cor, qtd) — mesmo contrato de bulkConsumptionKey.
+  // Dedup determinístico pelo MESMO contrato de bulkConsumptionKey (inclui
+  // grade + tiras — antes era só ref::COR::qtd e a 2ª OP "igual" era dropada).
   const uniqueInputs = Array.from(
     new Map(
       inputs
         .filter(i => i.reference_id && i.quantity > 0)
         .map(i => [
-          `${i.reference_id}::${(i.color || '').toUpperCase()}::${i.quantity}`,
+          bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any),
           i,
         ]),
     ).values(),
@@ -120,7 +121,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
     queryKey: [
       'bulk-order-consumption',
       uniqueInputs
-        .map(i => `${i.reference_id}::${i.color}::${i.quantity}::${JSON.stringify(i.grade ?? null)}`)
+        .map(i => bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any))
         .sort()
         .join('|'),
     ],
@@ -137,7 +138,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
       ]);
 
       for (const input of uniqueInputs) {
-        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity);
+        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity, input.grade, input.strap_colors as any);
         try {
           const item: ConsumptionItem = {
             reference_id: input.reference_id,
@@ -160,11 +161,34 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
   });
 };
 
+/** Assinatura estável de grade + tiras pra chave de consumo. Duas OPs com a
+ *  mesma ref+cor+qtd mas grade OU tiras diferentes têm consumo DIFERENTE
+ *  (numeração do solado, cores das tiras) — sem isso a 2ª OP reusava o
+ *  resultado da 1ª (a ficha imprimia consumo de tiras/numeração da outra). */
+const consumptionVariantSig = (
+  grade?: Record<string, number> | null,
+  straps?: Array<{ label?: string; color?: string }> | null,
+): string => {
+  const g = grade
+    ? Object.entries(grade)
+        .filter(([k, v]) => !k.startsWith('_') && (Number(v) || 0) > 0)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join(',')
+    : '';
+  const s = (straps || [])
+    .map(t => `${(t.label || '').toUpperCase()}:${(t.color || '').toUpperCase()}`)
+    .join('|');
+  return `${g}#${s}`;
+};
+
 export const bulkConsumptionKey = (
   reference_id: string,
   color: string | null | undefined,
   quantity: number,
-): string => `${reference_id}::${(color || '').toUpperCase()}::${quantity}`;
+  grade?: Record<string, number> | null,
+  straps?: Array<{ label?: string; color?: string }> | null,
+): string => `${reference_id}::${(color || '').toUpperCase()}::${quantity}::${consumptionVariantSig(grade, straps)}`;
 
 /**
  * Filtra componentes relevantes a um setor. Padrão de mercado: cada

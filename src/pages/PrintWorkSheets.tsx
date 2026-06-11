@@ -59,7 +59,7 @@ export default function PrintWorkSheets() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(deepLinkIds));
   const [showPrintView, setShowPrintView] = useState(false);
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['print_worksheets_orders', statusFilter],
     queryFn: async () => {
       let q = (supabase as any)
@@ -299,6 +299,17 @@ export default function PrintWorkSheets() {
           {isLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : isError ? (
+            // Erro ≠ lista vazia: antes o erro de rede caía no empty state
+            // ("Nenhuma OP encontrada") e o usuário achava que não havia OPs.
+            <div className="text-center py-8 space-y-2">
+              <p className="text-sm text-red-600">
+                ⚠ Falha ao carregar as OPs — verifique a conexão.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                Tentar novamente
+              </Button>
             </div>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8 italic">
