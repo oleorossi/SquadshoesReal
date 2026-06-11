@@ -953,7 +953,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <div className="relative">
                 <NumberInput
                   value={item.unit_price}
-                  onChange={(v) => onUpdate(index, 'unit_price', v)}
+                  // Clamp >=0: o NumberInput não impede negativo colado (min é
+                  // prop morta lá), e preço negativo entrava no total/AR/margem.
+                  onChange={(v) => onUpdate(index, 'unit_price', Math.max(0, v))}
                   className="h-9 font-mono text-xs"
                   decimals={2}
                 />
