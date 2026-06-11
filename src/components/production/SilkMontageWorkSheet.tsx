@@ -5,7 +5,6 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
-import { SignatureFooter } from './worksheet/SignatureFooter';
 import { SignedImage } from '@/components/ui/signed-image';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
@@ -170,77 +169,8 @@ const SECTOR_THEME: Record<GroupedSector, {
   'Acabamento':     { border: 'border-emerald-700', bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', border1: 'border-emerald-500',textColor: 'text-emerald-900', icon: Sparkles,   accentColor: 'emerald', showFrenteTraseiro: false, showSilkImage: true,  showProductImage: true,  showAlerts: false, showMaterials: 'none',  showStitching: false, showFinishingChecklist: true,  showIndividualBox: true  },
 };
 
-/**
- * Checklist de kit handoff/receipt — adotado como prática enxuta (Toyota/
- * Lectra). Cada setor formaliza recebimento do upstream + entrega pro
- * downstream em sacolas etiquetadas, eliminando erro de separação.
- *
- * Convenção: a ficha mostra o que o operador deve confirmar AO RECEBER e
- * AO ENTREGAR. Sem isso, kits viravam responsabilidade tácita e variavam
- * por operador.
- */
-const KIT_FLOWS: Record<GroupedSector, { receive: string[]; deliver: string[]; nextSector: string } | null> = {
-  'Corte Forração': {
-    receive: ['Palmilhas recebidas do Corte Palmilha', 'Cor de forração conferida com ficha técnica'],
-    deliver: ['Forrações agrupadas por cor', 'Sacolas etiquetadas (cor + qtd)', 'Encaminhado ao próximo setor'],
-    nextSector: 'Aviamento / Costura',
-  },
-  'Corte Cabedal': {
-    receive: ['Couro/material separado por cor'],
-    deliver: ['Cabedais cortados por cor + numeração', 'Sacolas etiquetadas (cor + qtd)', 'Encaminhado à Costura'],
-    nextSector: 'Costura',
-  },
-  'Costura': {
-    receive: ['Cabedal recebido do Corte', 'Forrações recebidas do Corte Forração', 'Linha na cor conferida'],
-    deliver: ['Peças costuradas conferidas', 'Encaminhado ao Aviamento'],
-    nextSector: 'Aviamento',
-  },
-  'Aviamento': {
-    receive: ['Palmilha + forração + cabedal recebidos', 'Aviamentos (fivelas/ilhoses) separados por cor', 'Componentes batem com a ficha técnica'],
-    deliver: ['Conjuntos completos por par', 'Sacolas etiquetadas (cor + numeração)', 'Encaminhado à Montagem'],
-    nextSector: 'Montagem',
-  },
-  'Silk':       null,
-  'Montagem':   null,
-  'Acabamento': null,
-};
-
-const KitHandoffChecklist = ({ sector }: { sector: GroupedSector }) => {
-  const flow = KIT_FLOWS[sector];
-  if (!flow) return null;
-  return (
-    <div className="mt-3 mb-2 px-2 py-2 keep-together" style={{ border: '1.5px solid #000' }}>
-      <div className="flex items-baseline justify-between mb-1">
-        <span className="section-label" style={{ color: '#000' }}>
-          Kit · Recebimento / Entrega ({flow.nextSector})
-        </span>
-        <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
-          Kit handoff
-        </span>
-      </div>
-      <div className="border-t border-black pt-1.5 grid grid-cols-2 gap-x-4 gap-y-1.5">
-        <div>
-          <span className="section-label block mb-1" style={{ color: '#000' }}>Ao Receber</span>
-          {flow.receive.map(item => (
-            <div key={item} className="flex items-start gap-2 text-[11px] text-black mb-0.5">
-              <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-              <span className="leading-tight">{item}</span>
-            </div>
-          ))}
-        </div>
-        <div>
-          <span className="section-label block mb-1" style={{ color: '#000' }}>Ao Entregar</span>
-          {flow.deliver.map(item => (
-            <div key={item} className="flex items-start gap-2 text-[11px] text-black mb-0.5">
-              <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-              <span className="leading-tight">{item}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
+// KIT handoff/receipt (caixa "Recebimento / Entrega") removido das fichas de
+// operador em 2026-06-11 — bloco desnecessário no papel (pedido do user).
 
 /**
  * Ficha de operador genérica pra setores que agrupam por SOLADO + COR.
@@ -451,7 +381,6 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
               return a.localeCompare(b);
             });
           const cards = Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
-          const isLast = idx === group.colorGroups.length - 1;
 
           const colorBlock = (
             // flow-card (v6): o card pode fragmentar ENTRE seções internas
@@ -864,31 +793,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             </div>
           );
 
-          // Último colorBlock + checklist + SignatureFooter: cada bloco do
-          // trailing é atômico POR SI (checklist e footer têm keep-together
-          // próprio) e ancorado ao anterior via keep-with-previous — assim
-          // enchem a página um a um em vez de pular juntos como um blocão
-          // (que deixava meia página em branco quando não cabia inteiro).
-          if (isLast) {
-            return (
-              <div key={idx}>
-                {colorBlock}
-                <div className="keep-with-previous">
-                  <KitHandoffChecklist sector={sector} />
-                  <SignatureFooter />
-                </div>
-              </div>
-            );
-          }
+          // Fix 2026-06-11: KIT handoff + rodapé (horário/assinaturas)
+          // removidos — a ficha termina no conteúdo do setor, sem trailing.
           return <React.Fragment key={idx}>{colorBlock}</React.Fragment>;
         })}
-        {/* Ficha sem cores: ainda precisa de footer. */}
-        {group.colorGroups.length === 0 && (
-          <>
-            <KitHandoffChecklist sector={sector} />
-            <SignatureFooter />
-          </>
-        )}
       </div>
     </div>
   );

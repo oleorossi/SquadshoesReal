@@ -4,7 +4,6 @@ import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
-import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
 
@@ -340,9 +339,8 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
         </table>
       </div>
 
-      {/* Checklist final + SignatureFooter num único wrapper .keep-together
-          (bloco pequeno, ~50mm) + keep-with-previous pra ancorar à tabela
-          de itens — não vira órfão nem deixa vão na página anterior. */}
+      {/* Checklist final ancorado à tabela de itens (keep-with-previous).
+          Rodapé de assinaturas removido em 2026-06-11 (pedido do user). */}
       <div className="keep-together keep-with-previous">
         <div className="mt-2">
           <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
@@ -355,7 +353,6 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
             ))}
           </div>
         </div>
-        <SignatureFooter labels={['Conferente', 'Embalagem', 'Transportadora']} showTime={false} />
       </div>
     </div>
   );

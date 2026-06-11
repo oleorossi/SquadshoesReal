@@ -5,7 +5,6 @@ import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
-import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { formatUnitLabel } from '@/lib/unitLabels';
@@ -66,13 +65,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
   // Batch ID determinístico (genealogia da consolidação).
   const allOpNumbers = groups.flatMap(g => g.opNumbers || []);
   const batchId = generateBatchId('Corte Palmilha', allOpNumbers, date);
-  // Kit handoff: distingue 3 cenários — todos cortados / todos prontos /
-  // misto. Texto e checklist mudam conforme. Bug encontrado em auditoria
-  // 22/05/2026: antes mostrava sempre "Entrega para Corte Forração" mesmo
-  // pra palmilhas prontas na cor (que pulam Corte Forração e vão direto
-  // pra Aviamento). Operador confuso.
-  const hasCutGroups = groups.some(g => !g.readyMade);
-  const hasReadyGroups = groups.some(g => g.readyMade);
 
   return (
     <div
@@ -139,7 +131,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
           <div className="text-center py-10 text-black italic text-sm">
             Nenhuma palmilha para cortar neste lote.
           </div>
-          <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
         </>
       ) : (
         <div className="space-y-2">
@@ -407,58 +398,18 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
               </div>
             );
 
-            // Fix 21/05/2026: último grupo + Total Geral + SignatureFooter
-            // ficam num único wrapper .keep-together pra forçar paginação
-            // atômica do "trailing" da ficha. Sem isso, fichas com 5+
-            // grupos faziam o footer vazar sozinho pra próxima A4.
+            // Fix 2026-06-11: KIT handoff + rodapé (assinaturas) removidos.
+            // Trailing agora é só o "Total Geral" da ficha.
             const trailingBlock = (
-              <>
-                <div className="keep-together keep-with-next flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-                  <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
-                  <span
-                    className="text-black uppercase leading-none py-1"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
-                  >
-                    {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
-                  </span>
-                </div>
-                {/* Kit handoff checklist — Toyota/Lectra. Distingue 3
-                    cenários: todos cortados / todos prontos / misto. */}
-                <div className="mt-3 mb-2 px-2 py-2 keep-together" style={{ border: '1.5px solid #000' }}>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <span className="section-label" style={{ color: '#000' }}>
-                      {hasCutGroups && hasReadyGroups
-                        ? 'Entrega · Cortadas → Corte Forração · Prontas → Aviamento'
-                        : hasReadyGroups
-                          ? 'Entrega · Palmilhas Prontas → Aviamento'
-                          : 'Entrega · Próximo Setor (Corte Forração)'}
-                    </span>
-                    <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
-                      Kit handoff
-                    </span>
-                  </div>
-                  <div className="border-t border-black pt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
-                    {[
-                      ...(hasCutGroups ? [
-                        'Cortadas: separadas por solado + cor',
-                        'Cortadas: sacolas → Corte Forração',
-                      ] : []),
-                      ...(hasReadyGroups ? [
-                        'Prontas: conferidas com ficha técnica',
-                        'Prontas: sacolas → Aviamento (pula Corte Forração)',
-                      ] : []),
-                      'Tally completo · sem caixa em branco',
-                      'Sacolas etiquetadas (solado, cor, qtd)',
-                    ].map(item => (
-                      <div key={item} className="flex items-start gap-2 text-[11px] text-black">
-                        <span className="w-3.5 h-3.5 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                        <span className="leading-tight">{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <SignatureFooter labels={['Operador(a)', 'Conferente', 'Supervisor(a)']} />
-              </>
+              <div className="keep-together keep-with-next flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+                <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+                <span
+                  className="text-black uppercase leading-none py-1"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+                >
+                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+                </span>
+              </div>
             );
 
             if (isLast) {

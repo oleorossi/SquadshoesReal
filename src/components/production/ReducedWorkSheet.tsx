@@ -1,6 +1,5 @@
 import { SignedImage } from '@/components/ui/signed-image';
 import { thumbUrl } from '@/lib/imageThumb';
-import { SignatureFooter } from './worksheet/SignatureFooter';
 import { filterConsumptionForSector, formatConsumptionLine, type ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 /**
@@ -257,7 +256,6 @@ export function ReducedWorkSheet({
           </ul>
         </div>
       )}
-      <SignatureFooter compact />
     </div>
   );
 }

@@ -367,10 +367,14 @@ const printStyles = `
     }
 
     /* Tipografia comprimida pra caber 1 ficha por A4 (281mm úteis após
-       margin de 8mm). Reduzido de 9pt/1.25 → 8.5pt/1.18. */
+       margin de 8mm). Histórico: 9pt/1.25 → 8.5pt/1.18 → 8pt/1.12.
+       Fix 2026-06-11: reduzido de novo (pedido do user) pra puxar o
+       "filete" de fichas cheias de volta pra mesma folha em vez de
+       desperdiçar uma 2ª página quase vazia. Fichas genuinamente grandes
+       continuam fluindo em múltiplas A4 (decisão 24/05 preservada). */
     body {
-      font-size: 8.5pt;
-      line-height: 1.18;
+      font-size: 8pt;
+      line-height: 1.12;
     }
 
     /* Comprime spacing utilities do Tailwind dentro da print-area pra

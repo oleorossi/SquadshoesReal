@@ -121,7 +121,9 @@ export function WorkSheetSettingsButton({ onSettingsChange }: Props) {
               <ToggleRow label="Observações do Item" checked={settings.showObservation} onChange={v => update('showObservation', v)} />
               <ToggleRow label="SILK do Cliente" checked={settings.showSilk} onChange={v => update('showSilk', v)} />
               <ToggleRow label="Dados do Pedido de Venda" checked={settings.showSaleOrderInfo} onChange={v => update('showSaleOrderInfo', v)} />
-              <ToggleRow label="Assinatura do Operador" checked={settings.showSignature} onChange={v => update('showSignature', v)} />
+              {/* "Assinatura do Operador" removido em 2026-06-11: o rodapé de
+                  assinaturas saiu de todas as fichas de operador, então o
+                  toggle não tinha mais efeito. */}
             </div>
 
             <Separator />

@@ -604,12 +604,8 @@ type RenderCaches = {
         </div>`)
     : '';
 
-  const signatureHtml = settings.showSignature ? `
-    <div style="margin-top:4px;padding-top:6px;border-top:1px solid #ccc;display:flex;justify-content:space-between;font-size:${Math.round(9 * fontScale)}px;color:#666;">
-      <span>Operador: ________________________</span>
-      <span>Data: ____/____/________</span>
-      <span>Hora Início: ________ Fim: ________</span>
-    </div>` : '';
+  // Rodapé de assinatura/horário removido das fichas de operador (2026-06-11).
+  const signatureHtml = '';
 
   const gradeTableHtml = isGrouped
     ? buildGroupedGradeTable(groupData!.totalBySize, activeSizes, totalPairs)
@@ -719,10 +715,6 @@ function buildSolagemGroupCard(
         <span style="font-size:14px;font-weight:900;background:${borderColor};color:#fff;padding:2px 8px;border-radius:4px;">${totalPairs} PARES</span>
       </div>
       <div style="margin-top:4px;">${gradeBlock}</div>
-      <div style="margin-top:4px;padding-top:6px;border-top:1px solid ${borderColor};display:flex;justify-content:space-between;font-size:9px;color:${titleColor};">
-        <span>Operador: ________________________</span>
-        <span>Data: ____/____/________</span>
-      </div>
     </div>`;
 }
 
@@ -922,30 +914,7 @@ async function buildSectorWorkSheetsHtml(
      true
    );
 
-   // Kit handoff checklist (Toyota/Lectra) — formaliza entrega pro próximo
-   // setor em sacolas etiquetadas, eliminando erro de separação.
-   const kitHandoffHtml = `
-     <div style="margin-top:6px;padding:5px 6px;border:1.5px solid #16a34a;background:#fff;">
-       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
-         <span style="font-size:9px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.05em;">
-           Entrega · Próximo Setor (Corte Forração)
-         </span>
-         <span style="font-size:7px;font-family:monospace;color:#16a34a;opacity:0.7;letter-spacing:0.1em;text-transform:uppercase;">Kit handoff</span>
-       </div>
-       <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;border-top:1px solid #16a34a;padding-top:3px;">
-         ${[
-           'Palmilhas separadas por solado + cor',
-           'Sacolas etiquetadas (solado, cor, qtd)',
-           'Tally completo · sem caixa em branco',
-           'Sacolas encaminhadas ao próximo setor',
-         ].map(item => `
-           <div style="display:flex;align-items:flex-start;gap:4px;font-size:10px;color:#111;">
-             <span style="width:10px;height:10px;border:1.5px solid #111;display:inline-block;margin-top:1px;flex-shrink:0;"></span>
-             <span style="line-height:1.2;">${escapeHtml(item)}</span>
-           </div>`).join('')}
-       </div>
-     </div>`;
-
+   // Kit handoff + rodapé de assinatura removidos das fichas (2026-06-11).
    return `
      <div style="border:2px solid #16a34a;padding:6px;page-break-inside:avoid;margin:0 0 4mm 0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;background:#f0fdf4;">
        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #16a34a;padding-bottom:4px;margin-bottom:4px;">
@@ -963,11 +932,6 @@ async function buildSectorWorkSheetsHtml(
        </div>
        <div style="margin-top:4px;">
          ${palmilhaBlock}
-       </div>
-       ${kitHandoffHtml}
-       <div style="margin-top:4px;padding-top:6px;border-top:1px solid #16a34a;display:flex;justify-content:space-between;font-size:9px;color:#16a34a;">
-         <span>Operador: ________________________</span>
-         <span>Data: ____/____/________</span>
        </div>
      </div>`;
  }

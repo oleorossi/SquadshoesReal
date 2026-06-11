@@ -4,7 +4,6 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
-import { SignatureFooter } from './worksheet/SignatureFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { formatUnitLabel } from '@/lib/unitLabels';
@@ -379,7 +378,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             <div className="text-center py-10 text-black italic text-sm">
               Nenhum dado de solagem para exibir.
             </div>
-            <SignatureFooter />
           </>
         ) : (() => {
           // Achata pretoBands + outrosBands em uma lista ordenada pra
@@ -403,20 +401,17 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           };
 
           const trailingBlock = (
-            <>
-              <div className="keep-together keep-with-next flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-                <span className="section-label" style={{ color: '#000' }}>
-                  Total Geral · soma de todos os solados
-                </span>
-                <span
-                  className="text-black uppercase leading-none"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
-                >
-                  {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
-                </span>
-              </div>
-              <SignatureFooter />
-            </>
+            <div className="keep-together keep-with-next flex items-baseline justify-between mt-3 py-2" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+              <span className="section-label" style={{ color: '#000' }}>
+                Total Geral · soma de todos os solados
+              </span>
+              <span
+                className="text-black uppercase leading-none"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '36px', letterSpacing: '-0.025em' }}
+              >
+                {grandTotal} <span className="text-sm font-mono tracking-widest">pares</span>
+              </span>
+            </div>
           );
 
           return orderedBands.map((band, idx) => {

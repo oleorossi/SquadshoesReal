@@ -1173,53 +1173,17 @@ const OperatorWorkSheet = ({
           direto do grid de checklist+caixas. Combinado com .keep-with-next
           nos col-span-2 do TallyBox, forma sandwich forte que mantém caixas
           + footer na mesma página A4 (era órfão em Acabamento com 30+ caixas). */}
-      <div className="mt-4 pt-2 keep-together keep-with-previous">
-        {(order.notes) && (
-          <div className="mb-2 border-t border-black pt-1">
+      {/* Fix 2026-06-11: rodapé (Início/Fim/Data/Turno + assinaturas)
+          removido das fichas de operador (pedido do user). Só sobra a
+          observação do PV, quando houver. */}
+      {order.notes && (
+        <div className="mt-4 pt-2 keep-together keep-with-previous">
+          <div className="border-t border-black pt-1">
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>
             <p className="text-[11px] text-black leading-tight">{order.notes}</p>
           </div>
-        )}
-        <div
-          className="w-full mb-2"
-          style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', height: '3px' }}
-        />
-        <div className="grid grid-cols-4 gap-3 mb-3">
-          <div>
-            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Início</span>
-            <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
-          </div>
-          <div>
-            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Fim</span>
-            <span className="font-mono text-sm text-black tracking-wider">__ : __</span>
-          </div>
-          <div>
-            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Data</span>
-            <span className="font-mono text-sm text-black tracking-wider">__ / __ / ____</span>
-          </div>
-          <div>
-            <span className="section-label block mb-0.5" style={{ color: '#000' }}>Turno</span>
-            <div className="flex items-center gap-2 mt-0.5">
-              {['M', 'T', 'N'].map(t => (
-                <span key={t} className="w-5 h-5 flex items-center justify-center font-bold font-mono text-[11px] text-black" style={{ border: '1.5px solid #000' }}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          </div>
         </div>
-        <div className="flex items-end justify-between gap-4">
-          {['Operador(a)', 'Conferente', 'Supervisor(a)'].map(label => (
-            <div key={label} className="flex-1">
-              <div className="border-t border-black pt-1 mt-4">
-                <p className="section-label" style={{ color: '#000' }}>
-                  Assinatura · {label}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
       </div>
     </div>
   );
