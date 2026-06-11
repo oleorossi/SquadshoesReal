@@ -1,4 +1,4 @@
- import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
+ import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
 import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1478,8 +1478,27 @@ export default function SaleOrderFormPanel({
           const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
           const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
           const isSameRefAndColor = isSameRef && prevItem?.color === item.color;
+          // Cabeçalho de grupo: aparece no 1º item de cada referência, agrupando
+          // visualmente as cores da mesma ref. Pedido user 11/06/2026.
+          const isNewRefGroup = !!item.reference_id && !isSameRef;
+          const groupRef = isNewRefGroup ? references.find((r) => r.id === item.reference_id) : null;
+          const groupLabel = groupRef
+            ? (groupRef.code && groupRef.code !== groupRef.name ? `${groupRef.code} · ${groupRef.name}` : (groupRef.code || groupRef.name || 'Referência'))
+            : 'Referência';
+          const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
           return (
-            <div key={`${idx}-${item.reference_id}`}
+            <Fragment key={`${idx}-${item.reference_id}`}>
+            {isNewRefGroup && (
+              <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
+                <div className="h-px flex-1 bg-border" />
+                <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {groupLabel}
+                  <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">· {groupColorCount} {groupColorCount === 1 ? 'cor' : 'cores'}</span>
+                </span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            )}
+            <div
               className={
                 isSameRefAndColor && item.color
                   ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
@@ -1514,6 +1533,7 @@ export default function SaleOrderFormPanel({
                 onToggleSelect={toggleItemSelection}
               />
             </div>
+            </Fragment>
           );
         })}
         <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-1.5 w-full">
