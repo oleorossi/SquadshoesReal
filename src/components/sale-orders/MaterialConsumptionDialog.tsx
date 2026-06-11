@@ -55,6 +55,40 @@ const haveForCol = (stock: Record<string, number> | undefined, col: string): num
   return 0;
 };
 
+// Estoque EFETIVO por numeração exibida. Cobre o caso inverso do haveForCol:
+// breakdown com numerações INDIVIDUAIS ("33","34") mas stock_grade só com a chave
+// CONJUGADA ("33/34") — sem isto cada coluna individual dava 0 (falsa falta
+// vermelha). Distribui cada balde conjugado entre seus membros individuais
+// exibidos (proporcional à necessidade, divisão igual se sem necessidade), sem
+// contar o mesmo balde duas vezes. Espelha soleAvailability.ts.
+const effectiveStockBySize = (
+  stock: Record<string, number> | undefined,
+  sizes: string[],
+  needBySize: Record<string, number>,
+): Record<string, number> => {
+  const eff: Record<string, number> = {};
+  for (const s of sizes) eff[s] = haveForCol(stock, s);
+  if (!stock) return eff;
+  for (const [key, qtyRaw] of Object.entries(stock)) {
+    const qty = Number(qtyRaw) || 0;
+    if (qty <= 0) continue;
+    const members = key.split(/[/-]/).map((x) => x.trim());
+    if (members.length <= 1) continue;           // não é balde conjugado
+    if (sizes.includes(key)) continue;           // coluna conjugada já tratada (direto)
+    // Membros que SÃO colunas individuais exibidas e ainda sem estoque direto.
+    const targets = members.filter((m) => sizes.includes(m) && (Number(stock[m]) || 0) === 0);
+    if (targets.length === 0) continue;
+    const totalNeed = targets.reduce((s, m) => s + (Number(needBySize[m]) || 0), 0);
+    for (const m of targets) {
+      const share = totalNeed > 0
+        ? qty * ((Number(needBySize[m]) || 0) / totalNeed)
+        : qty / targets.length;
+      eff[m] += share;
+    }
+  }
+  return eff;
+};
+
 function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
   const sizes = useMemo(() => {
     const set = new Set<string>();
@@ -114,12 +148,14 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
         <TableBody>
           {rows.map((r, i) => {
             const total = Object.values(r.sizeBreakdown || {}).reduce((s, v) => s + (Number(v) || 0), 0) || r.totalQuantity;
+            // Estoque efetivo distribuindo baldes conjugados nas numerações individuais.
+            const effStock = effectiveStockBySize(r.soleSizeStock, sizes, r.sizeBreakdown || {});
             return (
               <TableRow key={i}>
                 <TableCell><Badge variant="outline" className="text-xs">{r.color}</Badge></TableCell>
                 {sizes.map((s) => {
                   const need = r.sizeBreakdown?.[s] || 0;
-                  const have = haveForCol(r.soleSizeStock, s);
+                  const have = effStock[s] ?? 0;
                   if (need <= 0) return <TableCell key={s} className="text-center text-muted-foreground">·</TableCell>;
                   const ok = have >= need;
                   return (
