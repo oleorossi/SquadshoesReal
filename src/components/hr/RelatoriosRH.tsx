@@ -595,8 +595,8 @@ export default function RelatoriosRH() {
               </Card>
 
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>Nota:</strong> 1ª + 2ª quinzena somam mais que o mês porque a base é proporcional aos dias
-                (1ª = 15/30, 2ª = {monthDays.length - 15}/30 ⇒ {monthDays.length}/30); o mês cheio paga 30/30 (salário).
+                <strong>Nota:</strong> a base é proporcional aos dias do mês (salário × dias do período ÷ {monthDays.length}),
+                então 1ª ({15}/{monthDays.length}) + 2ª ({monthDays.length - 15}/{monthDays.length}) = salário exato; o mês cheio paga o salário.
                 O detalhe dia a dia de cada funcionário sai no <strong>demonstrativo individual</strong> (selecione um funcionário e clique Imprimir).
               </p>
             </div>
