@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -41,6 +41,22 @@ interface OrderRow {
 // Default 'em_fluxo' cobre OPs ainda passíveis de impressão de ficha.
 const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Finalizado'];
 const EM_FLUXO = ['Reservado', 'Em Produção'];
+
+// Faixa etária por NUMERAÇÃO da grade (< 33 = infantil) — mesma regra
+// canônica do filtro de faixa da tela de print e dos selos das fichas
+// (shoe_category traz o ESTILO, raramente "Infantil"). Numeração conjugada
+// ("32/33") conta nas duas faixas. Grade mista → os dois badges aparecem.
+function rowSizeBands(grade: Record<string, number> | null): { inf: boolean; ad: boolean } {
+  let inf = false, ad = false;
+  for (const [size, qty] of Object.entries(grade || {})) {
+    if (!(Number(qty) > 0)) continue;
+    for (const part of String(size).split('/')) {
+      const n = parseInt(part, 10);
+      if (!Number.isNaN(n)) { if (n < 33) inf = true; else ad = true; }
+    }
+  }
+  return { inf, ad };
+}
 
 export default function PrintWorkSheets() {
   // Deep-link da bulk bar de /ordens: "Imprimir fichas" navega pra cá com
@@ -339,10 +355,19 @@ export default function PrintWorkSheets() {
                 <tbody>
                   {filtered.map(r => {
                     const checked = selectedIds.has(r.id);
+                    const { inf, ad } = rowSizeBands(r.grade);
                     return (
                       <tr
                         key={r.id}
-                        className={`border-t border-border/40 cursor-pointer hover:bg-muted/30 ${checked ? 'bg-primary/5' : ''}`}
+                        className={`border-t border-border/40 cursor-pointer ${
+                          checked
+                            ? 'bg-primary/5 hover:bg-primary/10'
+                            // Linha infantil com fundo rosa-claro — mesmo padrão
+                            // visual da lista de Pedidos de Venda.
+                            : inf
+                              ? 'bg-pink-500/[0.06] hover:bg-pink-500/[0.11]'
+                              : 'hover:bg-muted/30'
+                        }`}
                         onClick={() => toggleOne(r.id)}
                       >
                         <td className="p-2">
@@ -368,6 +393,26 @@ export default function PrintWorkSheets() {
                               </Badge>
                             );
                           })()}
+                          {/* Faixa por numeração — visual igual ao badge Infantil
+                              dos Pedidos de Venda; grade mista mostra os dois. */}
+                          {inf && (
+                            <Badge
+                              variant="outline"
+                              className="ml-1.5 h-4 pl-1 pr-1.5 text-[10px] uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/40 gap-0.5"
+                              title="Grade com numeração infantil (abaixo do 33)"
+                            >
+                              <Baby className="h-3 w-3" weight="fill" /> Infantil
+                            </Badge>
+                          )}
+                          {ad && (
+                            <Badge
+                              variant="outline"
+                              className="ml-1.5 h-4 px-1.5 text-[10px] uppercase font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                              title="Grade com numeração adulta (33 ou acima)"
+                            >
+                              Adulto
+                            </Badge>
+                          )}
                         </td>
                         <td className="p-2">
                           <p className="font-medium">{r.sale_orders?.order_number || '—'}</p>
