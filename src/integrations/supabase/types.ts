@@ -2225,6 +2225,54 @@ export type Database = {
           },
         ]
       }
+      contractor_service_rates: {
+        Row: {
+          contractor_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          price_per_pair: number
+          sector: string
+          valid_from: string
+          valid_to: string | null
+        }
+        Insert: {
+          contractor_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          price_per_pair: number
+          sector: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Update: {
+          contractor_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          price_per_pair?: number
+          sector?: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_service_rates_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_service_rates_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
+          },
+        ]
+      }
       contractors: {
         Row: {
           active: boolean
@@ -16793,6 +16841,77 @@ export type Database = {
         }
         Relationships: []
       }
+      service_order_returns: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          defect_notes: string | null
+          id: string
+          qty_defect: number
+          qty_good: number
+          qty_loss: number
+          returned_at: string
+          service_order_id: string
+          settlement_id: string | null
+          signed_photo_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          defect_notes?: string | null
+          id?: string
+          qty_defect?: number
+          qty_good?: number
+          qty_loss?: number
+          returned_at?: string
+          service_order_id: string
+          settlement_id?: string | null
+          signed_photo_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          defect_notes?: string | null
+          id?: string
+          qty_defect?: number
+          qty_good?: number
+          qty_loss?: number
+          returned_at?: string
+          service_order_id?: string
+          settlement_id?: string | null
+          signed_photo_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_order_returns_service_order_id_fkey"
+            columns: ["service_order_id"]
+            isOneToOne: false
+            referencedRelation: "service_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_order_returns_service_order_id_fkey"
+            columns: ["service_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_history_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_order_returns_service_order_id_fkey"
+            columns: ["service_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_open_service_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_order_returns_service_order_id_fkey"
+            columns: ["service_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_service_order_balance"
+            referencedColumns: ["service_order_id"]
+          },
+        ]
+      }
       service_orders: {
         Row: {
           artisanal_base_color: string | null
@@ -16806,6 +16925,7 @@ export type Database = {
           bottleneck_week: string | null
           contractor_id: string
           created_at: string
+          delivered_at: string | null
           description: string
           id: string
           linked_sale_order_ids: string[] | null
@@ -16849,6 +16969,7 @@ export type Database = {
           bottleneck_week?: string | null
           contractor_id: string
           created_at?: string
+          delivered_at?: string | null
           description?: string
           id?: string
           linked_sale_order_ids?: string[] | null
@@ -16892,6 +17013,7 @@ export type Database = {
           bottleneck_week?: string | null
           contractor_id?: string
           created_at?: string
+          delivered_at?: string | null
           description?: string
           id?: string
           linked_sale_order_ids?: string[] | null
@@ -22464,6 +22586,7 @@ export type Database = {
           completed_orders: number | null
           contractor_id: string | null
           contractor_name: string | null
+          defect_pct: number | null
           last_order_at: string | null
           late_count: number | null
           on_time_count: number | null
@@ -22472,6 +22595,9 @@ export type Database = {
           service_type: string | null
           total_orders: number | null
           total_quantity: number | null
+          total_returned_defect: number | null
+          total_returned_good: number | null
+          total_returned_loss: number | null
           total_value_all: number | null
           total_value_open: number | null
           total_value_paid: number | null
@@ -24495,6 +24621,34 @@ export type Database = {
           },
         ]
       }
+      v_service_order_balance: {
+        Row: {
+          contractor_id: string | null
+          last_return_at: string | null
+          qty_in_field: number | null
+          qty_loss: number | null
+          qty_returned_defect: number | null
+          qty_returned_good: number | null
+          qty_sent: number | null
+          service_order_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_orders_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_orders_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
+          },
+        ]
+      }
       v_sheets_missing_lining_consumption: {
         Row: {
           code: string | null
@@ -25695,30 +25849,18 @@ export type Database = {
         Args: { p_sale_order_id: string }
         Returns: Json
       }
-      freeze_technical_sheet:
-        | {
-            Args: {
-              p_color: string
-              p_quantity: number
-              p_reference_id: string
-              p_sale_order_id: string
-              p_sale_order_item_id: string
-              p_size?: number
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              p_color: string
-              p_grade?: Json
-              p_quantity: number
-              p_reference_id: string
-              p_sale_order_id: string
-              p_sale_order_item_id: string
-              p_size?: number
-            }
-            Returns: string
-          }
+      freeze_technical_sheet: {
+        Args: {
+          p_color: string
+          p_grade?: Json
+          p_quantity: number
+          p_reference_id: string
+          p_sale_order_id: string
+          p_sale_order_item_id: string
+          p_size?: number
+        }
+        Returns: string
+      }
       generate_bloco_k: {
         Args: { p_period_end: string; p_period_start: string }
         Returns: Json
@@ -25751,6 +25893,10 @@ export type Database = {
           price_list_id: string
           transport_company_id: string
         }[]
+      }
+      get_contractor_rate: {
+        Args: { p_contractor_id: string; p_date?: string; p_sector: string }
+        Returns: number
       }
       get_distinct_batches: {
         Args: never
@@ -26374,6 +26520,10 @@ export type Database = {
       sector_display_to_enum: {
         Args: { p_name: string }
         Returns: Database["public"]["Enums"]["production_stage_enum"]
+      }
+      service_order_payable_amount: {
+        Args: { p_so: Database["public"]["Tables"]["service_orders"]["Row"] }
+        Returns: number
       }
       snapshot_all_employees_week: {
         Args: { p_lock?: boolean; p_week_start: string }
