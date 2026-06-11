@@ -701,6 +701,10 @@ export type SaleOrderFormData = {
    *  CHECK de sale_orders.order_type (carteira, programado, make_to_order,
    *  pronta_entrega, amostra, bonificacao, troca, exportacao). Paridade Tutor32. */
   order_type?: string;
+  /** TRUE quando a NF deste PV é emitida por OUTRA empresa (NF externa). Nesse
+   *  caso external_nfe_number guarda o número informado manualmente. */
+  nfe_external?: boolean;
+  external_nfe_number?: string;
 };
 
 /** Tipos de pedido (paridade Tutor32) — os `value` batem EXATAMENTE com o CHECK

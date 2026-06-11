@@ -46,6 +46,8 @@ const emptyForm: SaleOrderFormData = {
   informacoes_complementares_nf: '',
   brand: 'Squad Shoes',
   order_type: 'carteira',
+  nfe_external: false,
+  external_nfe_number: '',
 };
 
 const emptyItem: SaleOrderItemFormData = {
@@ -356,6 +358,10 @@ export default function SaleOrderForm() {
         informacoes_complementares_nf: (order as any).informacoes_complementares_nf || '',
         brand: (order as any).brand || 'Squad Shoes',
         order_type: (order as any).order_type || 'carteira',
+        // Sem carregar estes dois, reabrir um PV "NF externa" o mostrava como
+        // interno e (com o RPC já gravando a coluna) o save resetava pra false.
+        nfe_external: (order as any).nfe_external === true,
+        external_nfe_number: (order as any).external_nfe_number || '',
       });
       setPackagingProductId((order as any).packaging_product_id || '');
       setPackagingQuantity((order as any).packaging_quantity || 0);
