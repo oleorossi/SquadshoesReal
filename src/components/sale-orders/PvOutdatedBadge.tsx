@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Warning as AlertTriangle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
+import { Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
@@ -65,10 +65,11 @@ const labelMap: Record<OutdatedStatus['status_label'], { text: string; tooltip: 
     severity: 'info',
   },
   reservations_outdated: {
-    text: 'Reservas pendentes de atualização',
+    text: 'Ficha/itens editados após reservar',
     tooltip:
-      'A ficha técnica foi editada e as reservas serão recalculadas automaticamente em até 2 minutos. ' +
-      'Se houver OPs já em produção, o estoque consumido NÃO muda.',
+      'A ficha técnica ou os itens deste PV foram editados depois que as reservas foram feitas. ' +
+      'As reservas são atualizadas ao salvar o PV/ficha ou via "Resync OPs". ' +
+      'Este aviso some sozinho na próxima varredura.',
     severity: 'warn',
   },
   snapshot_outdated: {
@@ -83,7 +84,7 @@ const labelMap: Record<OutdatedStatus['status_label'], { text: string; tooltip: 
     text: 'Ficha modificada — snapshot e reservas desatualizados',
     tooltip:
       'A ficha técnica foi editada após algumas OPs entrarem em produção. ' +
-      'Reservas pré-produção serão recalculadas em até 2 minutos. ' +
+      'As reservas pré-produção são atualizadas ao salvar o PV/ficha ou via "Resync OPs". ' +
       'Pra OPs já em produção, considere "Resync OPs" se a mudança foi corretiva.',
     severity: 'warn',
   },
@@ -112,9 +113,6 @@ export function PvOutdatedBadge({ saleOrderId }: { saleOrderId: string | null })
             >
               <AlertTriangle className="h-3 w-3" />
               <span className="text-xs font-medium">{meta!.text}</span>
-              {data.status_label === 'reservations_outdated' && (
-                <RefreshCw className="h-3 w-3 animate-spin opacity-60" />
-              )}
             </Badge>
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
