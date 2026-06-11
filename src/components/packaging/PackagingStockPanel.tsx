@@ -51,6 +51,8 @@ interface BoxRow {
   largura_cm: number;
   altura_cm: number;
   peso_kg: number | null;
+  /** Tara da caixa vazia em KG — fonte do peso bruto da NF (Σ caixas × tara). */
+  empty_weight_kg: number | null;
   empilhamento_maximo: number | null;
   quantity: number;
   min_stock: number;
@@ -69,6 +71,7 @@ const emptyForm = {
   largura_cm: 0,
   altura_cm: 0,
   peso_kg: 0,
+  empty_weight_kg: 0,
   empilhamento_maximo: 0,
   quantity: 0,
   min_stock: 0,
@@ -164,6 +167,7 @@ export default function PackagingStockPanel() {
       largura_cm: Number(b.largura_cm || 0),
       altura_cm: Number(b.altura_cm || 0),
       peso_kg: Number(b.peso_kg || 0),
+      empty_weight_kg: Number(b.empty_weight_kg || 0),
       empilhamento_maximo: Number(b.empilhamento_maximo || 0),
       quantity: Number(b.quantity || 0),
       min_stock: Number(b.min_stock || 0),
@@ -193,6 +197,7 @@ export default function PackagingStockPanel() {
           largura_cm: form.largura_cm,
           altura_cm: form.altura_cm,
           peso_kg: form.peso_kg,
+          empty_weight_kg: form.empty_weight_kg || null,
           empilhamento_maximo: form.empilhamento_maximo || null,
           quantity: form.quantity,
           min_stock: form.min_stock,
@@ -365,6 +370,18 @@ export default function PackagingStockPanel() {
               value={form.peso_kg || ''}
               onChange={(e) => setForm((f) => ({ ...f, peso_kg: Number(e.target.value) }))}
             />
+          </div>
+          <div>
+            <Label>Tara — caixa vazia (kg)</Label>
+            <Input
+              type="number"
+              step="0.001"
+              value={form.empty_weight_kg || ''}
+              onChange={(e) => setForm((f) => ({ ...f, empty_weight_kg: Number(e.target.value) }))}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Peso da caixa vazia em kg. Usado no peso bruto da NF-e (peso líquido + nº de caixas × tara).
+            </p>
           </div>
           <div>
             <Label>Empilhamento</Label>
@@ -567,6 +584,9 @@ export default function PackagingStockPanel() {
                     </TableCell>
                     <TableCell className="text-center text-xs">
                       {b.peso_kg ? `${b.peso_kg} g` : '—'}
+                      {b.empty_weight_kg ? (
+                        <span className="block text-[11px] text-muted-foreground">tara {b.empty_weight_kg} kg</span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-center">
                       <span className={`font-semibold ${isLow ? 'text-destructive' : ''}`}>
