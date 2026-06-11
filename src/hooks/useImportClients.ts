@@ -171,14 +171,14 @@ export async function extractClientsFromFile(file: File): Promise<ExtractedClien
   if (kind === 'excel' || kind === 'csv') {
     return parseExcelOrCsv(file);
   }
+  if (kind === 'doc_legacy') {
+    throw new Error(
+      `Formato .doc (Word 97-2003) não é suportado pelo extrator de IA. ` +
+      `Abra "${file.name}" no Word/LibreOffice e salve como PDF, ou converta pra .docx — ` +
+      `ou tire foto/screenshot e envie como imagem.`,
+    );
+  }
   if (kind === 'unknown') {
-    if (kind === 'doc_legacy') {
-      throw new Error(
-        `Formato .doc (Word 97-2003) não é suportado pelo extrator de IA. ` +
-        `Abra "${file.name}" no Word/LibreOffice e salve como PDF, ou converta pra .docx — ` +
-        `ou tire foto/screenshot e envie como imagem.`,
-      );
-    }
     throw new Error(`Formato não suportado: ${file.name}. Aceito: .xlsx, .xls, .csv, .pdf, .docx, .jpg, .png, .webp`);
   }
 

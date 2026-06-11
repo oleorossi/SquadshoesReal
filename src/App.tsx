@@ -1110,6 +1110,9 @@ const router = createBrowserRouter([
     ],
   },
 ], {
+  // v7_startTransition não faz parte do FutureConfig do createBrowserRouter
+  // (é flag do <RouterProvider future>), mas mantê-lo aqui suprime o
+  // deprecation warning do logV6DeprecationWarnings — cast localizado.
   future: {
     v7_startTransition: true,
     v7_relativeSplatPath: true,
@@ -1117,7 +1120,7 @@ const router = createBrowserRouter([
     v7_normalizeFormMethod: true,
     v7_partialHydration: true,
     v7_skipActionErrorRevalidation: true,
-  },
+  } as Record<string, boolean>,
 });
 
 const App = () => (

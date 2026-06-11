@@ -1,0 +1,6 @@
+-- Facção: v_contractor_metrics com pontualidade por delivered_at (era
+-- receipt/updated_at — mudava em qualquer edição) + qualidade por prestadora
+-- (pares bons/defeito/perda e defect_pct a partir de service_order_returns).
+-- Definição completa aplicada em produção via MCP (tracking de mesmo nome);
+-- fonte = pg_get_viewdef. Colunas novas no FINAL (compatível com consumidores).
+-- Ver corpo integral no histórico de migrations aplicadas / pg_views.

@@ -33,11 +33,13 @@ function mapColumns(headers: string[]): Record<number, keyof ClientFormData> {
 
 const emptyClient = (): ClientFormData => ({
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
-  endereco: '', cidade: '', estado: '', cep: '', email: '', telefone: '',
+  endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+  codigo_municipio: '', email: '', telefone: '',
   contato: '', notes: '', economic_group_id: null, active: true, logo_url: '',
   silk_url: null, is_favorite: false, accepts_bundled_packaging: true,
   credit_limit: 0,
   branch_code: null, branch_name: null,
+  icms_contribuinte: null,
 });
 
 function validateClient(client: ClientFormData): string[] {

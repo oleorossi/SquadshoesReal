@@ -1,4 +1,12 @@
 /**
+ * @deprecated CÓDIGO MORTO — NÃO USAR. Auditoria 2026-06-09: este motor não é
+ * chamado por nenhuma tela e diverge dos motores ativos (salaryPayroll.ts /
+ * hourlyPayroll.ts / RPC calculate_employee_bank_balance) em INSS/IRRF/DSR/VR,
+ * domingo/feriado e tolerância. Religar este caminho reintroduziria os bugs
+ * de divergência da auditoria. Se precisar de algo daqui, porte a regra pro
+ * motor ativo correspondente.
+ */
+/**
  * Cálculo de folha de pagamento — REGIME DE CONTRATO (não-CLT).
  *
  * Empresa contrata por contrato (PJ/prestador) — cada profissional é

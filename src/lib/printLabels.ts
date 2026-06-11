@@ -90,10 +90,6 @@ export interface BoxIdentificationData {
   /** Página global e total (ex.: 41 de 72). Omite quando ambos faltam. */
   pageNumber?: number;
   pageTotal?: number;
-  /** Solado do produto (ex.: 'TR-04', 'EVA-22'). Define qual SILK é estampado
-   *  na etiqueta — mapeamento via `silkBySoladoForLabel()` interno. Quando
-   *  ausente ou desconhecido, faz fallback para silk 'HOST'. */
-  solado?: string;
   /** Número da ficha/talão dentro do PV. Aparece no header como metadata
    *  secundária ("PROG.: <orderNumber> / FICHA <ficha>"). Opcional. */
   ficha?: string;
@@ -131,21 +127,14 @@ function safeScriptBlock(code: string): string {
   return `<script>${code}<` + `/script>`;
 }
 
-// ─── Mapeamento solado → silk (espelha src/components/ui/silk-mark.tsx) ──
-// HTML builder não pode importar JSX, então duplica a tabela. Mantenha em
-// sync com src/components/ui/silk-mark.tsx::SOLADO_TO_SILK. Solado desconhecido
-// cai pra 'HOST'.
-const LABEL_SOLADO_TO_SILK: Record<string, string> = {
-  'TR-04': 'HOST', 'TR-PR': 'HOST', 'TR-09': 'HOST', 'TR-14': 'HOST',
-  'TR-12': 'NOVA', 'TR-21': 'NOVA', 'EVA-22': 'NOVA',
-  'PU-08': 'PRIME', 'COURO-A': 'PRIME',
-};
-function silkBySoladoForLabel(solado?: string | null): string {
-  if (!solado) return 'HOST';
-  return LABEL_SOLADO_TO_SILK[solado.toUpperCase()] || 'HOST';
-}
-
-/** SVG inline do logo SilkMark. currentColor → herda fg da .silk-mark. */
+/** SVG inline do logo SilkMark — só pra marcas legacy catalogadas (HOST/NOVA/
+ *  PRIME). A MARCA real vem do caller via `item.marca` (RPC resolve_item_brand
+ *  = silk do solado, cascata cliente→grupo→padrão; fallback 'Squad Shoes').
+ *  Marca sem logo catalogado → retorna '' e o selo sai só com o texto.
+ *  ⚠ O antigo mapa LABEL_SOLADO_TO_SILK (solado→silk hardcoded) foi removido
+ *  em 10/06/2026: tinha códigos de solado inexistentes e nenhum caller passava
+ *  o solado — o selo saía SEMPRE 'HOST' inventado. (Audit F3.)
+ *  currentColor → herda fg do container. */
 function silkLogoSvg(silk: string, size: number): string {
   if (silk === 'HOST') {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">
@@ -200,17 +189,6 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       <span class="lbl">${escapeHtml(label)}:</span>
       <span class="val">${escapeHtml(String(val))}</span>
     </div>`;
-  };
-
-  // Helper: HTML do SilkMark inline (espelha SilkMark.tsx visualmente para o
-  // builder de HTML strings). Variant 'dark' (faixa preta + texto amarelo) é
-  // o usado na linha MARCA da tabela de grade.
-  const renderSilkMarkHtml = (silk: string, height = 22): string => {
-    const logoSize = Math.max(0, height - 6);
-    return `<span class="silk-mark" style="height:${height}px;">
-      ${silkLogoSvg(silk, logoSize)}
-      <span class="silk-name" style="font-size:${Math.round(height * 0.7)}px;">${escapeHtml(silk)}</span>
-    </span>`;
   };
 
   // Fallback SVG quando imageUrl ausente/quebrada — silhueta de calçado escura
@@ -280,12 +258,12 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     ).join('');
     const totalQty = item.grade.reduce((sum, g) => sum + g.qty, 0);
 
-    // ─── MARCA SILK (linha 1 da tabela de grade) ───────────
-    // O solado define o silk. Quando solado ausente/desconhecido → HOST.
-    const silk = silkBySoladoForLabel(item.solado);
-    const silkLegend = item.solado
-      ? `SILK DEFINIDO PELO SOLADO ${escapeHtml(item.solado.toUpperCase())}`
-      : 'SILK PADRÃO';
+    // ─── MARCA / SELO (linha 1 da tabela de grade) ─────────
+    // Selo e texto usam a MESMA marca: item.marca, resolvida pelo caller via
+    // RPC resolve_item_brand (silk do solado, cascata cliente→grupo→padrão).
+    // Sem marca → 'Squad Shoes' (default do RPC) — NUNCA um silk inventado.
+    const brand = (item.marca || '').trim() || 'Squad Shoes';
+    const brandLogo = silkLogoSvg(brand.toUpperCase(), 14);
 
     // ─── RODAPÉ PEDIDO / VOLUME ────────────────────────────
     const pedidoFooter = item.clientOrderNumber || item.orderNumber || '—';
@@ -318,7 +296,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
         <div class="grade-table" style="grid-template-columns:110px repeat(${gradeCols}, 1fr);">
           <div class="glabel first">MARCA:</div>
-          <div class="row-marca"><span class="brand-mark">${escapeHtml(item.marca || 'Squad Shoes')}</span></div>
+          <div class="row-marca">${brandLogo}<span class="brand-mark">${escapeHtml(brand)}</span></div>
           <div class="glabel">REFERENCIA</div>
           <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
           <div class="glabel">TAMANHO</div>
@@ -467,11 +445,6 @@ ${LABEL_PRINT_HARDENING}
 .grade-table > .row-marca{grid-column:2 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #FFE94A;}
 .grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.08em;color:#FFE94A;line-height:1;}
 .grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:14px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;display:flex;align-items:center;}
-
-/* SilkMark inline (espelha src/components/ui/silk-mark.tsx) */
-.silk-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#000;color:#FFE94A;box-sizing:border-box;line-height:1;}
-.silk-mark svg{flex-shrink:0;}
-.silk-mark .silk-name{font-family:'Anton',sans-serif;letter-spacing:0.06em;line-height:1;}
 
 /* RODAPÉ PEDIDO + VOLUME ──────────── */
 .footer{display:flex;border-top:1.5px solid #000;background:#000;color:#FFE94A;flex-shrink:0;}

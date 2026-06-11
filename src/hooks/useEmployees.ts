@@ -50,7 +50,16 @@ export interface EmployeeAdvance {
   updated_at: string;
 }
 
-type EmployeeForm = Omit<Employee, 'id' | 'created_at' | 'updated_at'>;
+/** Campos de remuneração/escala são opcionais no form: o cadastro simples
+ *  (Employees.tsx) não os envia e o insert cai nos defaults do banco;
+ *  no update, omitidos = não tocados. */
+type EmployeePayKeys =
+  | 'hourly_rate' | 'overtime_hourly_rate' | 'overtime_multiplier'
+  | 'payment_type' | 'daily_rate' | 'work_schedule_id'
+  | 'overtime_50_pct' | 'overtime_100_pct' | 'night_bonus_pct';
+type EmployeeForm =
+  Omit<Employee, 'id' | 'created_at' | 'updated_at' | EmployeePayKeys> &
+  Partial<Pick<Employee, EmployeePayKeys>>;
 type AdvanceForm = Omit<EmployeeAdvance, 'id' | 'created_at' | 'updated_at'>;
 
 export function useEmployees() {

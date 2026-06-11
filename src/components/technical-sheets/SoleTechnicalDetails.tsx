@@ -709,7 +709,11 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             <Copy className="h-4 w-4" />
             Copiar de Qualquer Solado
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
+          {/* NOTA (typecheck 2026-06-10): antes era onClick={handleSave} — o MouseEvent
+              caía em skipMissingCheck como truthy, ou seja, o check de numerações
+              faltantes JÁ era pulado no Save direto. `true` explícito preserva esse
+              comportamento; pra reativar a validação, troque por () => handleSave(). */}
+          <Button onClick={() => handleSave(true)} disabled={saving} className="gap-2 shrink-0">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Salvar
           </Button>

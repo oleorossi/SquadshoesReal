@@ -368,7 +368,8 @@ import { supabase } from '@/integrations/supabase/client';
                      </div>
                    </TableCell>
                    <TableCell>
-                     {v.unit_price_override != null && v.unit_price_override !== '' ? (
+                     {/* Cast: tipo é number|null, mas o guard defensivo contra '' (dado legado de form) é mantido. */}
+                     {v.unit_price_override != null && (v.unit_price_override as unknown) !== '' ? (
                        <span className="text-sm font-semibold text-green-600">R$ {Number(v.unit_price_override).toFixed(2)}</span>
                      ) : (
                        <span className="text-xs text-muted-foreground italic">Padrão da ficha</span>

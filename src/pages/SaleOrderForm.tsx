@@ -707,10 +707,19 @@ export default function SaleOrderForm() {
         // Edit mode: server-side compute_min_billing_date(id) — alinhada com
         // compute_wave_timeline (mesmos 8 setores + buffer + supplier).
         // New mode: itera capacidade setorial via computeMinBillingForNewOrder.
-        let suggestion: { minDateISO: string; minWeekISO: string } | null = null;
+        let suggestion: MinBillingResult | null = null;
         if (isEdit && id) {
           const iso = await fetchMinBillingDate(id);
-          if (iso) suggestion = { minDateISO: iso, minWeekISO: toISOWeek(iso) };
+          // Server-side não detalha gargalo — defaults equivalem aos defaults
+          // do MinBillingDateSuggestionDialog (bottleneck 'nenhum' não renderiza
+          // a seção de gargalo), preservando o comportamento anterior.
+          if (iso) {
+            suggestion = {
+              minDateISO: iso, minWeekISO: toISOWeek(iso),
+              bottleneck: 'nenhum', capacityReadyDateISO: iso,
+              materialReadyDateISO: iso, materialShortfalls: [],
+            };
+          }
         } else {
           const capInputs = validItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);

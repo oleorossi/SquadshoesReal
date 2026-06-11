@@ -156,7 +156,10 @@ const SECTOR_THEME: Record<GroupedSector, {
   // Corte Forração: SEM silk/marca (pedido user 09/06/2026 — o cortador da
   // forração só corta o forro na cor da palmilha, não precisa conferir
   // logomarca). showProductImage=false: corta só o forro, não vê o calçado.
-  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: false, showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
+  // showAlerts=true (audit E2 10/06/2026): o alerta "Solado fachetado —
+  // duplicar corte de forração do salto" é EXECUTADO por este setor — antes
+  // só Aviamento via o aviso.
+  'Corte Forração': { border: 'border-cyan-700',    bg: 'bg-cyan-600',    bgLight: 'bg-cyan-50',    border1: 'border-cyan-500',   textColor: 'text-cyan-900',    icon: Cloud,      accentColor: 'cyan',    showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showMaterials: 'lining',showStitching: false, showFinishingChecklist: false, showIndividualBox: false },
   // Corte Cabedal — só em modelos has_straps=false. Mostra material do cabedal,
   // sem silk, sem foto do calçado (cortador só vê o cabedal por cor). Amber pra
   // distinguir visualmente dos outros 2 cortes.
@@ -847,27 +850,20 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             </div>
           );
 
-          // Último colorBlock + SignatureFooter ficam num wrapper que:
-          //   1. .keep-together (não quebram entre si — soft constraint)
-          //   2. .force-page-before (page-break-before: always — HARD)
-          //
-          // O page-break-before garante matematicamente que o footer não
-          // vire órfão: o wrapper SEMPRE começa em nova pg, então cor +
-          // footer aparecem juntos. Trade-off: sobra pequena na pg
-          // anterior. Aceitável vs footer numa pg dedicada com gap gigante.
-          //
-          // Só força break se houver mais de 1 cor (com 1 só, a ficha já
-          // cabe inteira em 1-2 pgs sem precisar de pg dedicada).
+          // Último colorBlock + checklist + SignatureFooter: o bloco final
+          // (checklist+footer) é atômico (.keep-together) e ancorado ao
+          // conteúdo anterior (.keep-with-previous) — só pula de página
+          // quando realmente não cabe. (Antes usava .force-page-before, que
+          // SEMPRE abria página nova e deixava branco desnecessário na
+          // página anterior.)
           if (isLast) {
-            const forceBreak = group.colorGroups.length > 1;
             return (
-              <div
-                key={idx}
-                className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
-              >
+              <div key={idx}>
                 {colorBlock}
-                <KitHandoffChecklist sector={sector} />
-                <SignatureFooter />
+                <div className="keep-together keep-with-previous">
+                  <KitHandoffChecklist sector={sector} />
+                  <SignatureFooter />
+                </div>
               </div>
             );
           }

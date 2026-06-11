@@ -1,4 +1,7 @@
 import React, { useMemo, useState } from 'react';
+import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Truck, ArrowSquareOut, Buildings, Funnel, Warning as AlertTriangle,
   CurrencyDollar as DollarSign, Package as Boxes, X, CheckCircle, Clock,
@@ -420,8 +423,36 @@ export default function OutsourcedInFieldPage() {
   }, [items]);
 
   // Tabela: aplica filtros + sort
+  // Saldo na rua REAL por OS (Fase 1 facção): enviado − devolvido.
+  // v_service_order_balance ainda não está no types.ts (regenerar depois).
+  const soIds = useMemo(
+    () => items.filter(i => i.source === 'service_order').map(i => i.id),
+    [items],
+  );
+  const { data: balances = [] } = useQuery({
+    queryKey: ['so_balances', soIds.sort().join(',')],
+    enabled: soIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('v_service_order_balance')
+        .select('service_order_id, qty_sent, qty_returned_good, qty_returned_defect, qty_loss, qty_in_field')
+        .in('service_order_id', soIds);
+      if (error) throw error;
+      return data as Array<{ service_order_id: string; qty_sent: number; qty_returned_good: number; qty_returned_defect: number; qty_loss: number; qty_in_field: number }>;
+    },
+    staleTime: 30_000,
+  });
+  const balanceById = useMemo(() => new Map(balances.map(b => [b.service_order_id, b])), [balances]);
+
   const filtered = useMemo(() => {
     let arr = items;
+    // OS com saldo zerado (tudo devolvido) não está mais "na rua" — a view
+    // legada ainda lista até o status virar finalizado; o saldo é a verdade.
+    arr = arr.filter((i) => {
+      if (i.source !== 'service_order') return true;
+      const bal = balanceById.get(i.id);
+      return !bal || Number(bal.qty_in_field) > 0;
+    });
     if (contractorFilter) arr = arr.filter((i) => i.contractor_id === contractorFilter);
     if (sectorFilter !== 'all') arr = arr.filter((i) => i.sector === sectorFilter);
     if (statusFilter !== 'all') {
@@ -444,7 +475,7 @@ export default function OutsourcedInFieldPage() {
       const by = b.sent_at ? new Date(b.sent_at).getTime() : 0;
       return ay - by;
     });
-  }, [items, contractorFilter, sectorFilter, statusFilter, onlyLate]);
+  }, [items, contractorFilter, sectorFilter, statusFilter, onlyLate, balanceById]);
 
   const clearFilters = () => {
     setContractorFilter(null);
@@ -455,7 +486,17 @@ export default function OutsourcedInFieldPage() {
 
   const hasFilters = contractorFilter || sectorFilter !== 'all' || statusFilter !== 'all' || onlyLate;
 
+
+
+  // Fase 1 facção: OS terceirizada recebe via REGISTRO DE RETORNO (parcial,
+  // bons/defeito/perda) — o banco fecha a OS e gera a conta a pagar pelos
+  // pares bons. OPs legadas (outsourced_op) mantêm o fluxo antigo.
+  const [returnItem, setReturnItem] = useState<OutsourcedItem | null>(null);
   const handleReceive = (item: OutsourcedItem) => {
+    if (item.source === 'service_order') {
+      setReturnItem(item);
+      return;
+    }
     if (!confirm(`Marcar OP ${item.op_number} como recebida da terceirizada?`)) return;
     receiveItem.mutate(item);
   };
@@ -819,7 +860,19 @@ export default function OutsourcedInFieldPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-xs">
-                          {Number(it.pairs).toLocaleString('pt-BR')}
+                          {(() => {
+                            const bal = it.source === 'service_order' ? balanceById.get(it.id) : undefined;
+                            if (!bal) return Number(it.pairs).toLocaleString('pt-BR');
+                            const returned = bal.qty_returned_good + bal.qty_returned_defect + bal.qty_loss;
+                            return (
+                              <span title={`Enviado ${bal.qty_sent} · Devolvido ${returned}${bal.qty_returned_defect > 0 ? ` (${bal.qty_returned_defect} defeito)` : ''}${bal.qty_loss > 0 ? ` · ${bal.qty_loss} perda` : ''}`}>
+                                {Number(bal.qty_in_field).toLocaleString('pt-BR')}
+                                {returned > 0 && (
+                                  <span className="text-muted-foreground"> / {bal.qty_sent}</span>
+                                )}
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-xs">{sectorLabel(it.sector)}</TableCell>
                         <TableCell className="text-xs">{it.contractor_name}</TableCell>
@@ -981,6 +1034,17 @@ export default function OutsourcedInFieldPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ServiceOrderReturnDialog
+        open={!!returnItem}
+        onOpenChange={(o) => { if (!o) setReturnItem(null); }}
+        serviceOrder={returnItem ? {
+          id: returnItem.id,
+          order_number: returnItem.op_number,
+          quantity: returnItem.pairs,
+          contractorName: returnItem.contractor_name,
+        } : null}
+      />
     </div>
   );
 }

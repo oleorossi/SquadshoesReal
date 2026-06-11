@@ -1,3 +1,4 @@
+import { parseDateOnly, formatDateBR } from '@/lib/dateOnly';
 import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
@@ -147,11 +148,11 @@ export default function Montagem() {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
     const deadline = so?.delivery_deadline;
     if (!deadline) return { deadline: null, isAdiantado: false };
-    const deadlineDate = new Date(deadline);
+    const deadlineDate = parseDateOnly(deadline);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((deadlineDate.getTime() - today.getTime()) / 86400000);
-    return { deadline, isAdiantado: diffDays > 7, deadlineFormatted: new Date(deadline).toLocaleDateString('pt-BR') };
+    return { deadline, isAdiantado: diffDays > 7, deadlineFormatted: formatDateBR(deadline) };
   };
 
   const buildPrintContent = (order: any) => {
@@ -400,7 +401,7 @@ export default function Montagem() {
                             <p className="text-xs">PV: <strong>{so.order_number}</strong></p>
                             <p className="text-xs">Cliente: <strong>{so.client_name || '—'}</strong></p>
                             {so.delivery_deadline && (
-                              <p className="text-xs">Prazo: <strong>{new Date(so.delivery_deadline).toLocaleDateString('pt-BR')}</strong></p>
+                              <p className="text-xs">Prazo: <strong>{formatDateBR(so.delivery_deadline)}</strong></p>
                             )}
                           </>
                         )}

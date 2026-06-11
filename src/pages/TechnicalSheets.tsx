@@ -649,7 +649,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                           <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase font-bold flex-wrap">
                             <span>{sheet.upper_material || 'Material s/ def.'}</span>
                             <ChevronRight className="h-2.5 w-2.5" />
-                            <span className="text-primary truncate max-w-[150px]">{sheet.reference_color_variants?.[0]?.color || 'Sem cores'}</span>
+                            {/* reference_color_variants não vem no select('*') de useTechnicalSheets —
+                                cai sempre no fallback 'Sem cores' (comportamento atual preservado). */}
+                            <span className="text-primary truncate max-w-[150px]">{(sheet as any).reference_color_variants?.[0]?.color || 'Sem cores'}</span>
                             <ChevronRight className="h-2.5 w-2.5" />
                             <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
                           </div>
@@ -1305,11 +1307,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       }
     });
     // Hidrata campos extras que existem no DB mas não no emptySheetForm
-    // (ex.: fachete_material, fachete_consumption, fachete_consumption_per_size).
-    // Sem isso, ao abrir uma ficha existente os valores desses campos sumiam
-    // do form e qualquer save os zerava.
+    // (ex.: fachete_consumption, fachete_consumption_per_size). Sem isso, ao
+    // abrir uma ficha existente os valores desses campos sumiam do form e
+    // qualquer save os zerava. (fachete_material foi promovido pra
+    // SheetFormData/emptySheetForm em 2026-06-10 — hidrata no loop acima.)
     const EXTRA_DB_FIELDS = [
-      'fachete_material', 'fachete_consumption', 'fachete_consumption_per_size',
+      'fachete_consumption', 'fachete_consumption_per_size',
       'lead_time_corte_dias', 'lead_time_costura_dias', 'lead_time_silk_dias',
       'lead_time_colagem_dias', 'lead_time_montagem_dias',
       'lead_time_acabamento_dias', 'lead_time_expedicao_dias',
@@ -1343,7 +1346,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       }
     });
     const EXTRA = [
-      'fachete_material','fachete_consumption','fachete_consumption_per_size',
+      'fachete_consumption','fachete_consumption_per_size',
       'lead_time_corte_dias','lead_time_costura_dias','lead_time_silk_dias',
       'lead_time_colagem_dias','lead_time_montagem_dias',
       'lead_time_acabamento_dias','lead_time_expedicao_dias',
@@ -3104,7 +3107,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   const consumptionPerSize: Record<string, number> = strap.consumption_per_size || {};
                   const filledSizes = strapSizes.filter(s => (consumptionPerSize[String(s)] || 0) > 0);
                   const avgConsumption = filledSizes.length > 0
-                    ? filledSizes.reduce((sum, s) => sum + parseSafeNumber(consumptionPerSize[String(s)]), 0) / filledSizes.length
+                    ? filledSizes.map(s => parseSafeNumber(consumptionPerSize[String(s)])).reduce((sum, v) => sum + v, 0) / filledSizes.length
                     : parseSafeNumber(strap.consumption);
                   return (
                     <div key={strap.id || idx} className="p-3 rounded-lg border bg-background space-y-3">

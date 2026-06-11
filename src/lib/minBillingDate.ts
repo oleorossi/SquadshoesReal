@@ -131,8 +131,8 @@ export async function computeMinBillingForNewOrder(
   let materialShortfalls: MaterialShortfall[] = [];
   try {
     const rpcItems = items
-      .filter(i => i.reference_id && (i.total_pairs ?? 0) > 0)
-      .map(i => ({ reference_id: i.reference_id, quantity: i.total_pairs ?? 0 }));
+      .filter(i => i.reference_id && (i.quantity ?? 0) > 0)
+      .map(i => ({ reference_id: i.reference_id, quantity: i.quantity ?? 0 }));
     if (rpcItems.length > 0) {
       const { data, error } = await (supabase as any).rpc('compute_material_ready_date', {
         p_items: rpcItems,

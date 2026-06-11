@@ -1,9 +1,10 @@
 import AppLayout from "@/components/layout/AppLayout";
+import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, Funnel as Filter, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,9 @@ import {
 } from '@/hooks/useArtisanalRecipes';
 import { Switch } from '@/components/ui/switch';
 import { useProducts, getBaseName } from '@/hooks/useProducts';
+import { ContractorHistoryDialog } from '@/components/contractors/ContractorHistoryDialog';
+import { ContractorRatesDialog } from '@/components/contractors/ContractorRatesDialog';
+import { OutsourcingPlanningTab } from '@/components/contractors/OutsourcingPlanningTab';
 const emptyRecipe: Partial<ArtisanalRecipe> = { name: '', artisanal_product_name: '', base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0, active: true };
 
 import { useSaleOrders } from '@/hooks/useSaleOrders';
@@ -67,6 +71,41 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   artisanal_base_color: '',
   artisanal_stock_entry_done: false,
 };
+
+// ── Vocabulário canônico de status de OS ─────────────────────────────────────
+// O DB mistura grafias ('Concluído' do form, 'received' do fluxo de gargalos,
+// 'cancelled' legacy). Centralizar aqui evita filtro/ação divergente por grafia.
+const OS_DONE_STATUSES = ['Concluído', 'Concluido', 'concluido', 'received', 'finalizado', 'Finalizado'];
+const OS_CANCELLED_STATUSES = ['Cancelado', 'cancelled', 'cancelado'];
+// pending_quote/quoted_unconfirmed/quoted = fluxo de gargalos pré-execução →
+// contam como "Pendente" nos chips (e como ativas).
+const OS_PENDING_STATUSES = ['Pendente', 'pending_quote', 'quoted_unconfirmed', 'quoted'];
+const isOsDone = (s: string) => OS_DONE_STATUSES.includes(s);
+const isOsCancelled = (s: string) => OS_CANCELLED_STATUSES.includes(s);
+const isOsActive = (s: string) => !isOsDone(s) && !isOsCancelled(s);
+
+// Chips de filtro da lista de OSs. Labels seguem a linguagem do dono:
+// 'Em Andamento' (DB) → "Em Processamento", 'Concluído' (DB) → "Entregue".
+// Default 'active' = só Pendente + Em Processamento (o que precisa de ação).
+const STATUS_CHIPS: { value: string; label: string }[] = [
+  { value: 'active', label: 'Ativas' },
+  { value: 'all', label: 'Todas' },
+  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Em Andamento', label: 'Em Processamento' },
+  { value: 'Concluído', label: 'Entregue' },
+  { value: 'Cancelado', label: 'Cancelada' },
+];
+function matchesStatusChip(status: string, chip: string): boolean {
+  switch (chip) {
+    case 'all': return true;
+    case 'active': return isOsActive(status);
+    case 'Pendente': return OS_PENDING_STATUSES.includes(status);
+    case 'Em Andamento': return status === 'Em Andamento';
+    case 'Concluído': return isOsDone(status);
+    case 'Cancelado': return isOsCancelled(status);
+    default: return status === chip;
+  }
+}
 
 function getMaterials(order: ServiceOrder): MaterialSent[] {
   if (order.materials_sent && Array.isArray(order.materials_sent) && order.materials_sent.length > 0) return order.materials_sent;
@@ -191,7 +230,11 @@ export default function Contractors() {
   const queryClient = useQueryClient();
 
   const [search, setSearch] = usePersistedState('contractors-search', '');
-  const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status', 'all');
+  // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
+  // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
+  const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status-v2', 'active');
+  const [historyContractor, setHistoryContractor] = useState<Contractor | null>(null);
+  const [ratesContractor, setRatesContractor] = useState<Contractor | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [recipeDialog, setRecipeDialog] = useState(false);
@@ -301,12 +344,21 @@ export default function Contractors() {
     });
   };
 
-  const filteredOrders = useMemo(() => {
+  const searchedOrders = useMemo(() => {
     const q = normalizeForSearch(search);
-    let result = orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
-    if (statusFilter !== 'all') result = result.filter(o => o.status === statusFilter);
-    return result;
-  }, [orders, search, statusFilter]);
+    return orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
+  }, [orders, search]);
+
+  const statusChipCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const chip of STATUS_CHIPS) counts[chip.value] = searchedOrders.filter(o => matchesStatusChip(o.status, chip.value)).length;
+    return counts;
+  }, [searchedOrders]);
+
+  const filteredOrders = useMemo(
+    () => searchedOrders.filter(o => matchesStatusChip(o.status, statusFilter)),
+    [searchedOrders, statusFilter],
+  );
 
   // ── Artisanal helpers ──────────────────────────────────────────────────────
   const findProductByNameColor = useCallback((name: string, color: string) => {
@@ -389,40 +441,10 @@ export default function Contractors() {
     }
   };
 
-  const createPayableForOrder = useCallback(async (order: Partial<ServiceOrder>, contractorName: string, contractorId?: string) => {
-    const total = order.total_value || order.unit_price || 0;
-    if (total <= 0) { toast.error('Valor da OS é zero — conta a pagar não gerada.'); return; }
-
-    // Idempotency: skip if a non-cancelled AP already exists for this service_order.
-    // Must exclude cancelled rows so a re-completed OS (Concluído→Cancelado→Concluído)
-    // can create a fresh AP after the prior one was cancelled by cancelArtisanalOutput.
-    if (order.id) {
-      const { data: existing } = await supabase
-        .from('accounts_payable')
-        .select('id')
-        .eq('reference_type', 'service_order')
-        .eq('reference_id', order.id)
-        .neq('status', 'cancelled')
-        .limit(1);
-      if (existing && existing.length > 0) {
-        toast.info('Conta a pagar já existe para esta OS.');
-        return;
-      }
-    }
-
-    const contractor = contractors.find(c => c.id === (contractorId || order.contractor_id));
-    const paymentDays = contractor?.payment_days ?? 15;
-    const dueDate = format(addDays(new Date(), paymentDays), 'yyyy-MM-dd');
-    const { error } = await supabase.from('accounts_payable').insert({
-      description: `OS ${order.order_number || ''} - ${order.description || 'Serviço terceirizado'} - ${contractorName}`,
-      amount: total, due_date: dueDate, category: 'servico', status: 'pending',
-      reference_id: order.id || null,
-      reference_type: order.id ? 'service_order' : null,
-      notes: `Gerado automaticamente a partir da OS concluída. Prestador: ${contractorName}. Prazo: ${paymentDays} dias.`,
-    } as any);
-    if (error) toast.error('Erro ao gerar conta a pagar: ' + error.message);
-    else { toast.success(`Conta a pagar gerada com vencimento em ${paymentDays} dias`); queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); }
-  }, [queryClient, contractors]);
+  // Conta a pagar: criador ÚNICO é o banco (tg_create_ap_for_service_order,
+  // disparado na transição pra status finalizado; valor = pares BONS devolvidos
+  // × unit_price via service_order_payable_amount). O createPayableForOrder
+  // client-side foi removido na Fase 1 de facção (3 escritores divergentes).
 
   // Reverse artisanal stock entries when a Concluído OS is cancelled.
   const cancelArtisanalOutput = useCallback(async (
@@ -773,6 +795,43 @@ export default function Contractors() {
     queryClient.invalidateQueries({ queryKey: ['service_orders'] });
   };
 
+  // ── Ações rápidas de status (1 clique na linha, sem abrir o form) ──────────
+  // "Marcar como Entregue": status → 'Concluído' + delivered_at (data real).
+  // Reusa o mesmo claim atômico do checkbox de materiais pra evitar dupla conta
+  // a pagar / duplo lançamento artesanal em duplo-clique ou abas concorrentes.
+  // "Entregue" agora REGISTRA RETORNO (Fase 1 facção): dialog com pares
+  // bons/defeito/perda — o banco fecha a OS, grava delivered_at e gera a
+  // conta a pagar pelos pares bons. Caso comum (retorno total) = 2 cliques.
+  const [returnDialogOs, setReturnDialogOs] = useState<ServiceOrder | null>(null);
+  const markDelivered = useCallback((o: ServiceOrder) => {
+    setReturnDialogOs(o);
+  }, []);
+  const handleReturnSaved = useCallback(async (info: { completed: boolean }) => {
+    const o = returnDialogOs;
+    if (!info.completed || !o) return;
+    // Efeito que era do fluxo antigo de conclusão: saída artesanal (1×).
+    if ((o as any).artisanal_recipe_id) {
+      const { data: fresh } = await (supabase as any)
+        .from('service_orders')
+        .select('order_number, artisanal_stock_entry_done')
+        .eq('id', o.id)
+        .maybeSingle();
+      if (fresh && !fresh.artisanal_stock_entry_done) {
+        await produceArtisanalOutput(
+          { ...o, artisanal_stock_entry_done: fresh.artisanal_stock_entry_done } as any,
+          fresh.order_number || '',
+          o.id,
+        );
+      }
+    }
+  }, [returnDialogOs, produceArtisanalOutput]);
+
+  // "Em Processamento" (DB: 'Em Andamento') — passa pelo hook canônico, que já
+  // bloqueia downgrade de OS Concluída e invalida o cache.
+  const markInProgress = useCallback((o: ServiceOrder) => {
+    updateOrder.mutate({ id: o.id, status: 'Em Andamento' } as any);
+  }, [updateOrder]);
+
   const handleSaveOrder = () => {
     if (!editingOrder.contractor_id) return;
     const recipe = isArtisanal ? recipes.find(r => r.id === artRecipeId) : null;
@@ -856,11 +915,8 @@ export default function Contractors() {
         onSuccess: async () => {
           setOrderDialog(false);
           if (justCompleted) {
-            try {
-              await createPayableForOrder({ ...payload, order_number: originalOrder?.order_number }, contractorName);
-            } catch (e: any) {
-              toast.error(`Falha ao gerar conta a pagar: ${e?.message || 'erro desconhecido'}`);
-            }
+            // Conta a pagar: gerada pelo banco na transição de status.
+            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
             if (payload.artisanal_recipe_id) {
               try {
                 await produceArtisanalOutput(payload, originalOrder?.order_number || '', osId);
@@ -934,11 +990,8 @@ export default function Contractors() {
             toast.error(`Falha ao debitar materiais: ${e?.message || 'erro desconhecido'}`);
           }
           if (editingOrder.status === 'Concluído') {
-            try {
-              await createPayableForOrder({ ...payload, order_number: data?.order_number }, contractorName);
-            } catch (e: any) {
-              toast.error(`Falha ao gerar conta a pagar: ${e?.message || 'erro desconhecido'}`);
-            }
+            // Conta a pagar: gerada pelo banco na transição de status.
+            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
             if (payload.artisanal_recipe_id) {
               try {
                 await produceArtisanalOutput(payload, data?.order_number, data?.id);
@@ -995,11 +1048,15 @@ export default function Contractors() {
     return 'outline';
   };
 
-  // Labels amigáveis pros status do fluxo de gargalos (DB usa underscore)
+  // Labels amigáveis: fluxo de gargalos (underscore) + vocabulário do dono
+  // ('Em Andamento'→Em Processamento, 'Concluído'/'received'→Entregue).
   const statusLabel = (s: string) => {
     if (s === 'pending_quote') return 'Aguardando prazo';
     if (s === 'quoted_unconfirmed') return 'Aguardando prazo';
     if (s === 'quoted') return 'Prazo confirmado';
+    if (s === 'Em Andamento') return 'Em Processamento';
+    if (isOsDone(s)) return 'Entregue';
+    if (isOsCancelled(s)) return 'Cancelada';
     return s;
   };
 
@@ -1046,6 +1103,7 @@ export default function Contractors() {
         <Tabs defaultValue="orders">
           <TabsList>
             <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
+            <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
             <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
             <TabsTrigger value="recipes" className="gap-1.5"><FlaskConical className="h-3.5 w-3.5" /> Receitas Artesanais</TabsTrigger>
           </TabsList>
@@ -1057,21 +1115,24 @@ export default function Contractors() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Buscar OS, prestador..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-9 w-[160px]">
-                  <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="pending_quote">Aguardando prazo</SelectItem>
-                  <SelectItem value="quoted">Prazo confirmado</SelectItem>
-                  <SelectItem value="Pendente">Pendente</SelectItem>
-                  <SelectItem value="Em Andamento">Em Andamento</SelectItem>
-                  <SelectItem value="Concluído">Concluído</SelectItem>
-                  <SelectItem value="Cancelado">Cancelado</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Chips de status — default "Ativas" (Pendente + Em Processamento).
+                  Labels: 'Em Andamento'→Em Processamento, 'Concluído'→Entregue. */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {STATUS_CHIPS.map(chip => (
+                  <Button
+                    key={chip.value}
+                    size="sm"
+                    variant={statusFilter === chip.value ? 'default' : 'outline'}
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() => setStatusFilter(chip.value)}
+                  >
+                    {chip.label}
+                    <span className={cn('text-[10px] font-mono tabular-nums', statusFilter === chip.value ? 'opacity-80' : 'text-muted-foreground')}>
+                      {statusChipCounts[chip.value] ?? 0}
+                    </span>
+                  </Button>
+                ))}
+              </div>
               <div className="ml-auto">
                 <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>
               </div>
@@ -1158,7 +1219,8 @@ export default function Contractors() {
                                             }
                                             toast.success('Todos os itens concluídos! OS marcada como Concluída.');
                                             queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-                                            createPayableForOrder(o, o.contractors?.name || '');
+                                            // Conta a pagar: gerada pelo banco na transição de status.
+                                            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
                                             const freshOs = claimed[0] as any;
                                             if ((o as any).artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
                                               // Pass freshOs flag so the early-return inside produceArtisanalOutput
@@ -1221,9 +1283,7 @@ export default function Contractors() {
                               <div className="flex flex-col gap-1">
                                 <Badge variant={statusColor(o.status)} className="text-xs w-fit">{statusLabel(o.status)}</Badge>
                                 {/* Botão "Marcar recebido" só aparece em OS de gargalo ainda não recebidas */}
-                                {!!o.target_sector &&
-                                 o.status !== 'received' && o.status !== 'Concluído' &&
-                                 o.status !== 'Cancelado' && o.status !== 'cancelled' && (
+                                {!!o.target_sector && isOsActive(o.status) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1233,6 +1293,33 @@ export default function Contractors() {
                                     <CheckCircle2 className="h-3 w-3" />
                                     Receber
                                   </Button>
+                                )}
+                                {/* Ações rápidas (1 clique, sem abrir o form) em OS ativa */}
+                                {isOsActive(o.status) && (
+                                  <div className="flex items-center gap-1">
+                                    {o.status !== 'Em Andamento' && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 px-1.5 text-xs gap-1"
+                                        title="Mover para Em Processamento"
+                                        onClick={e => { e.stopPropagation(); markInProgress(o); }}
+                                      >
+                                        <Play className="h-3 w-3" />
+                                        Processar
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-1.5 text-xs gap-1 text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10"
+                                      title="Marcar como Entregue (grava a data de entrega)"
+                                      onClick={e => { e.stopPropagation(); markDelivered(o); }}
+                                    >
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      Entregue
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             </TableCell>
@@ -1262,6 +1349,11 @@ export default function Contractors() {
                   </Table>
                 </div>
             </Panel>
+          </TabsContent>
+
+          {/* ── PLANNING TAB ── */}
+          <TabsContent value="planning" className="mt-3">
+            <OutsourcingPlanningTab />
           </TabsContent>
 
           {/* ── RECIPES TAB ── */}
@@ -1386,7 +1478,7 @@ export default function Contractors() {
                         <TableHead>Cidade/UF</TableHead>
                         <TableHead className="w-[80px]">Prazo Pgto</TableHead>
                         <TableHead className="w-[70px]">Status</TableHead>
-                        <TableHead className="text-right w-[80px]">Ações</TableHead>
+                        <TableHead className="text-right w-[170px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1414,6 +1506,13 @@ export default function Contractors() {
                           <TableCell><Badge variant={c.active ? 'default' : 'secondary'} className="text-xs">{c.active ? 'Ativo' : 'Inativo'}</Badge></TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-0.5">
+                              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" title="Histórico de OSs da terceirizada" onClick={() => setHistoryContractor(c)}>
+                                <ClockCounterClockwise className="h-3.5 w-3.5" />
+                                Histórico
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" title="Tabela de preços por serviço (R$/par com vigência)" onClick={() => setRatesContractor(c)}>
+                                Tarifas
+                              </Button>
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /></Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
@@ -2246,6 +2345,19 @@ export default function Contractors() {
             </TabsContent>
           </Tabs>
 
+      <ServiceOrderReturnDialog
+        open={!!returnDialogOs}
+        onOpenChange={(o) => { if (!o) setReturnDialogOs(null); }}
+        serviceOrder={returnDialogOs ? {
+          id: returnDialogOs.id,
+          order_number: returnDialogOs.order_number,
+          quantity: returnDialogOs.quantity,
+          description: returnDialogOs.description,
+          contractorName: returnDialogOs.contractors?.name ?? null,
+        } : null}
+        onSaved={handleReturnSaved}
+      />
+
           <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
             <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
             <Button variant="secondary" className="h-9 gap-1" onClick={() => {
@@ -2270,6 +2382,19 @@ export default function Contractors() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ContractorHistoryDialog
+        contractorId={historyContractor?.id || null}
+        contractorName={historyContractor ? (historyContractor.trade_name || historyContractor.name) : null}
+        open={!!historyContractor}
+        onOpenChange={(open) => { if (!open) setHistoryContractor(null); }}
+      />
+
+      <ContractorRatesDialog
+        open={!!ratesContractor}
+        onOpenChange={(open) => { if (!open) setRatesContractor(null); }}
+        contractor={ratesContractor ? { id: ratesContractor.id, name: ratesContractor.trade_name || ratesContractor.name } : null}
+      />
 
       <ReceivePiecesDialog
         open={receiveDialogOpen}

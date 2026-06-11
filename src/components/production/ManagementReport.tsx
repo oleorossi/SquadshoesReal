@@ -43,6 +43,7 @@ export interface ReportOrder {
   pairs_per_box?: number | null;
   /** Snapshot de custo da OP (order_costs) — opcional. */
   cost?: {
+    quantity?: number;
     material_cost: number;
     labor_cost: number;
     overhead_cost: number;

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useOrders } from '@/hooks/useOrders';
 import { checkSoleAvailability } from '@/lib/soleAvailability';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
 import { useState, useMemo } from 'react';
@@ -19,14 +19,21 @@ export default function SolePurchaseTab() {
   const { data: technicalSheets = [] } = useTechnicalSheets();
   const { data: suppliers = [] } = useSuppliers();
   const createPO = useCreatePurchaseOrder();
+  const queryClient = useQueryClient();
   const [overriddenSuppliers, setOverriddenSuppliers] = useState<Record<string, string>>({});
 
   const handleSupplierChange = (soleProductId: string, supplierId: string) => {
     setOverriddenSuppliers(prev => ({ ...prev, [soleProductId]: supplierId }));
   };
 
+  // Key estável com os IDs das OPs (length sozinho não invalida quando uma OP
+  // é trocada por outra mantendo a mesma contagem).
+  const ordersKey = useMemo(
+    () => orders.map((o: any) => o.id).sort().join(','),
+    [orders],
+  );
   const { data: shortageResult, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['sole_shortages', orders.length],
+    queryKey: ['sole_shortages', ordersKey],
     enabled: orders.length > 0,
     queryFn: async () => {
       const items = orders.map((o: any) => ({
@@ -121,6 +128,9 @@ export default function SolePurchaseTab() {
         count++;
       }
       toast.success(`${count} OC(s) gerada(s) com sucesso!`);
+      // Recalcula as faltas — as OCs recém-criadas entram como "em trânsito" e
+      // a lista não deve continuar sugerindo a mesma compra.
+      queryClient.invalidateQueries({ queryKey: ['sole_shortages'] });
     } catch (e: any) {
       toast.error(`Erro ao gerar OCs: ${e.message}`);
     }

@@ -252,7 +252,18 @@ export function useAllActiveReferenceMaterialVariants() {
 export type VariantSummary = { id: string; material_name: string; sku: string | null; available_colors: string[] };
 
 
-export type ReferenceMaterialVariantInsert = Omit<ReferenceMaterialVariant, 'id' | 'created_at' | 'updated_at'>;
+/** Campos de override de material/consumo são opcionais no upsert: quando
+ *  omitidos, o UPDATE não toca neles (preserva valores existentes) e o INSERT
+ *  cai no default do banco (NULL). NÃO enviar null explícito num edit parcial. */
+type VariantOverrideKeys =
+  | 'upper_consumption_override'
+  | 'lining_material_product_id' | 'lining_consumption_override'
+  | 'insole_material_product_id' | 'insole_consumption_override'
+  | 'sole_material_product_id' | 'sole_consumption_override';
+
+export type ReferenceMaterialVariantInsert =
+  Omit<ReferenceMaterialVariant, 'id' | 'created_at' | 'updated_at' | VariantOverrideKeys> &
+  Partial<Pick<ReferenceMaterialVariant, VariantOverrideKeys>>;
 
 
 export type ReferenceMaterialVariantUpdate = Partial<Omit<ReferenceMaterialVariant, 'id' | 'reference_id' | 'created_at' | 'updated_at'>>;

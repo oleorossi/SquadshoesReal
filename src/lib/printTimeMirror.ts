@@ -7,7 +7,9 @@ export interface TimeMirrorDay {
   workedMinutes: number;
   expectedMinutes: number;
   overtimeMinutes: number;
-  status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete';
+  // Mesma união de status do dia em useTimesheet (inclui irregular/inconsistent,
+  // usados nas cores do calendário abaixo).
+  status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete' | 'irregular' | 'inconsistent';
   notes?: string;
 }
 

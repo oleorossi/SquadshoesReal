@@ -297,7 +297,7 @@ export function MaterialVariantsPanel({ referenceId, referenceName, referenceNcm
 
   const handleDelete = async (v: ReferenceMaterialVariant) => {
     if (!window.confirm(`Excluir grupo "${v.material_name}"?\n\nAtenção: a operação falhará se pedidos existentes referenciarem este grupo (restrição fiscal).`)) return;
-    await deleteVariant.mutateAsync({ id: v.id, referenceId });
+    await deleteVariant.mutateAsync(v.id);
     toast.success('Grupo de material excluído');
   };
 

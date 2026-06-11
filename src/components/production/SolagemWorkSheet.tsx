@@ -419,17 +419,17 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
             const header = renderHeader(band, idx);
             const body = renderBand(band, idx);
             if (isLast) {
-              // Força nova pg pro último band + total geral + footer.
-              // keep-together é soft; page-break-before é HARD.
-              const forceBreak = orderedBands.length > 1;
+              // Bloco final (total geral + footer) atômico e ancorado à
+              // última banda — só pula de página quando não cabe. (Antes
+              // .force-page-before SEMPRE abria página nova → branco
+              // desnecessário na página anterior.)
               return (
-                <div
-                  key={`last-${idx}`}
-                  className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
-                >
+                <div key={`last-${idx}`}>
                   {header}
                   {body}
-                  {trailingBlock}
+                  <div className="keep-together keep-with-previous">
+                    {trailingBlock}
+                  </div>
                 </div>
               );
             }

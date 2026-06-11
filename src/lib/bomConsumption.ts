@@ -2,10 +2,12 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   calculateGradeBasedDm2,
   calculateConsumptionWithUnit,
+  convertDm2ToLinearMeters,
   convertDm2ToPlates,
   convertDm2ToLinearMeters,
   isLinearWidthMissing,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
+  isLinearWidthMissing,
   normalizeText,
   normalizeColorKey,
 } from '@/lib/materialConsumption';
@@ -18,8 +20,8 @@ export type ConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
-  // Ficha de área sem largura → consumo fica em dm² (não convertido); a UI deve
-  // deixar a linha neutra (não comparar com estoque). Regra canônica do CLAUDE.md.
+  /** Material de área (dm²/par) cuja ficha de componente não tem largura →
+   *  não dá pra converter pra metros; valor fica em dm² e a UI deve avisar. */
   widthMissing?: boolean;
 };
 
@@ -346,18 +348,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       let totalQty = rawQty;
       let widthMissing = false;
 
-      // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de componente
-      // e quantity_per_unit está em dm²/par. Converter para metros lineares pela
-      // largura — senão aparece ~100× inflado. (Mesma regra de orderConsumption.ts;
-      // antes este loop só convertia cm→metro e inflava material de área em "m".)
+      // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
+      // componente e quantity_per_unit está em dm²/par. Converter para metros
+      // lineares pela largura — senão aparece ~100× inflado. Tiras/itens
+      // lineares sem ficha passam direto. (Espelha o motor canônico —
+      // orderConsumption.ts, caminho BOM.)
       const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
       if (isLinearUnit && cs) {
         if (!isLinearWidthMissing(cs as any, productUnit)) {
           totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
           productUnit = 'metro';
         } else {
-          // Ficha de área SEM largura → não dá pra converter dm²→metro. Mantém o
-          // valor em dm² (regra canônica) e marca aviso; a UI deixa a linha neutra.
+          // Ficha de área SEM largura → não dá pra converter dm²→metro.
+          // Mantém o valor em dm² (regra canônica) e marca o aviso.
           widthMissing = true;
           totalQty = rawQty;
           productUnit = 'dm2';

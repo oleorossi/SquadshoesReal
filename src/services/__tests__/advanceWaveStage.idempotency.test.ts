@@ -27,10 +27,10 @@ describe('advanceWaveStage — idempotência', () => {
   });
 
   it('chama a RPC com os parâmetros corretos', async () => {
-    rpcMock.mockResolvedValue({ data: 'corte', error: null });
-    await advanceWaveStage(WAVE_ID);
+    rpcMock.mockResolvedValue({ data: 'corte_palmilha', error: null });
+    await advanceWaveStage(WAVE_ID, 'corte_palmilha');
     expect(rpcMock).toHaveBeenCalledTimes(1);
-    expect(rpcMock).toHaveBeenCalledWith('advance_wave_stage', { p_wave_id: WAVE_ID });
+    expect(rpcMock).toHaveBeenCalledWith('advance_wave_stage', { p_wave_id: WAVE_ID, p_stage: 'corte_palmilha' });
   });
 
   it('retorna o mesmo estágio em chamadas consecutivas (no-op no backend)', async () => {
@@ -38,8 +38,8 @@ describe('advanceWaveStage — idempotência', () => {
       .mockResolvedValueOnce({ data: 'montagem', error: null })
       .mockResolvedValueOnce({ data: 'montagem', error: null });
 
-    const a = await advanceWaveStage(WAVE_ID);
-    const b = await advanceWaveStage(WAVE_ID);
+    const a = await advanceWaveStage(WAVE_ID, 'montagem');
+    const b = await advanceWaveStage(WAVE_ID, 'montagem');
 
     expect(a).toBe('montagem');
     expect(b).toBe('montagem');
@@ -48,7 +48,7 @@ describe('advanceWaveStage — idempotência', () => {
 
   it('retorna null quando a onda chegou ao estágio terminal', async () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
-    const stage = await advanceWaveStage(WAVE_ID);
+    const stage = await advanceWaveStage(WAVE_ID, 'expedicao');
     expect(stage).toBeNull();
   });
 
@@ -56,9 +56,9 @@ describe('advanceWaveStage — idempotência', () => {
     rpcMock.mockResolvedValue({ data: 'acabamento', error: null });
 
     const results = await Promise.all([
-      advanceWaveStage(WAVE_ID),
-      advanceWaveStage(WAVE_ID),
-      advanceWaveStage(WAVE_ID),
+      advanceWaveStage(WAVE_ID, 'acabamento'),
+      advanceWaveStage(WAVE_ID, 'acabamento'),
+      advanceWaveStage(WAVE_ID, 'acabamento'),
     ]);
 
     expect(new Set(results)).toEqual(new Set(['acabamento']));
@@ -70,7 +70,7 @@ describe('advanceWaveStage — idempotência', () => {
       data: null,
       error: { message: 'wave not found', code: 'P0002' },
     });
-    await expect(advanceWaveStage(WAVE_ID)).rejects.toMatchObject({
+    await expect(advanceWaveStage(WAVE_ID, 'corte_palmilha')).rejects.toMatchObject({
       message: 'wave not found',
     });
   });

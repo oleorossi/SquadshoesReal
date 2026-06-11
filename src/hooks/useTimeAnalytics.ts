@@ -48,7 +48,7 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
     id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
     exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
     overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 2.0,
-    tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, created_at: '', updated_at: '',
+    tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true, works_thursday: true, works_friday: true, works_saturday: true, created_at: '', updated_at: '',
   };
 
   const analytics = useMemo<TimeAnalyticsResult>(() => {
@@ -76,6 +76,10 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
 
     empNames.forEach(name => {
       const empRecords = records.filter(r => r.employee_name === name);
+      // Escala INDIVIDUAL do funcionário (fallback default) — KPIs do hub
+      // divergiam das demais telas quando a escala não era a padrão.
+      const empRec = employees.find(e => e.name?.toLowerCase().trim() === name?.toLowerCase().trim());
+      const empSchedule = ((empRec as any)?.work_schedule_id && schedules.find(s => s.id === (empRec as any).work_schedule_id)) || defaultSchedule;
       const empDays: Parameters<typeof calculateWeeklyPeriod>[0] = [];
 
       empRecords.forEach(rec => {
@@ -86,12 +90,12 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
           return h.holiday_date === rec.record_date;
         });
         const punches = rec.punches as string[];
-        const summary = calculateDaySummary(punches, dayOfWeek, defaultSchedule, isHol);
+        const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol);
 
         if (summary.expectedMinutes > 0) {
           totalDaysExpected++;
           if (punches.length > 0) totalDaysPresent++;
-          if (punches.length >= 2 && summary.workedMinutes >= summary.expectedMinutes - (defaultSchedule.tolerance_minutes || 10)) {
+          if (punches.length >= 2 && summary.workedMinutes >= summary.expectedMinutes - (empSchedule.tolerance_minutes ?? 10)) {
             totalDaysPunctual++;
           }
         }
@@ -112,7 +116,7 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       });
 
       // Weekly calculation is the correct source of overtime (per-day value is always 0)
-      const period = calculateWeeklyPeriod(empDays, defaultSchedule);
+      const period = calculateWeeklyPeriod(empDays, empSchedule);
       totalOvertimeMinutes += period.totalOvertimeMinutes;
     });
 
@@ -129,7 +133,7 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       total_exceptions: exceptions.filter(e => e.status === 'pending').length,
       data_quality_score: Math.round(dataQualityScore * 10) / 10,
     };
-  }, [records, employees, holidays, defaultSchedule, exceptions]);
+  }, [records, employees, holidays, defaultSchedule, schedules, exceptions]);
 
   return { data: analytics, isLoading: recordsLoading };
 }

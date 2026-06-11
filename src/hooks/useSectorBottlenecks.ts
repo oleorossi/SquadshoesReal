@@ -29,11 +29,15 @@ export interface SectorBottleneck {
   contributing_orders: ContributingOrder[];
 }
 
-export const SECTOR_LABEL: Record<SectorKey, string> = {
+// Inclui 'corte_cabedal' (não é setor de gargalo, mas é um target_sector
+// válido de service_orders — OS geradas pelo modal Consumo de Materiais do
+// PV) pra que Contractors.tsx e afins exibam o label amigável.
+export const SECTOR_LABEL: Record<SectorKey | 'corte_cabedal', string> = {
   costura: 'Costura',
   mesa: 'Aviamento',
   corte_palmilha: 'Corte Palmilha',
   corte_forracao: 'Corte Forração',
+  corte_cabedal: 'Corte Cabedal',
 };
 
 export function useSectorBottlenecks() {

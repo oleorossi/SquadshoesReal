@@ -407,8 +407,8 @@ export default function WeeklyClosePage() {
                     <TableCell className="text-xs">
                       {a.employees?.name ? (
                         <>
-                          <div className="font-medium text-foreground truncate max-w-[180px]" title={a.employees.full_name}>
-                            {a.employees.full_name}
+                          <div className="font-medium text-foreground truncate max-w-[180px]" title={a.employees.name}>
+                            {a.employees.name}
                           </div>
                           <div className="font-mono text-[10px] text-muted-foreground/60">{a.employee_id?.slice(0, 8)}…</div>
                         </>

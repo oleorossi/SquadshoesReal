@@ -56,6 +56,7 @@ const SECTORS = [
   { value: 'mesa',           label: 'Aviamento' },
   { value: 'corte_palmilha', label: 'Corte Palmilha' },
   { value: 'corte_forracao', label: 'Corte Forração' },
+  { value: 'corte_cabedal',  label: 'Corte Cabedal' },
   { value: 'silk',           label: 'Silk' },
   { value: 'colagem',        label: 'Colagem' },
   { value: 'montagem',       label: 'Montagem' },
@@ -96,6 +97,28 @@ export function ServiceOrderFormDialog({
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [notes, setNotes] = useState<string>('');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
+
+  // Tarifa vigente serviço×prestadora (contractor_service_rates — fora do
+  // types.ts; regenerar depois). Pré-preenche o valor por par; digitar
+  // diferente vira override visível ("preço fora da tabela").
+  const { data: tableRate } = useQuery({
+    queryKey: ['contractor_rate', contractorId, sector, serviceDate],
+    enabled: open && !!contractorId && !!sector,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('get_contractor_rate', {
+        p_contractor_id: contractorId,
+        p_sector: sector,
+        p_date: serviceDate || todayISO(),
+      });
+      if (error) throw error;
+      return data != null ? Number(data) : null;
+    },
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    if (open && tableRate != null && tableRate > 0) setUnitPrice(tableRate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableRate, open]);
 
   // Inicializa com props quando o dialog abre
   useEffect(() => {
@@ -333,6 +356,12 @@ export function ServiceOrderFormDialog({
                   <CurrencyDollar className="h-3 w-3" /> Valor por par *
                 </Label>
                 <NumberInput value={unitPrice} onChange={setUnitPrice} step="0.01" min={0} className="mt-1 h-9" />
+                {tableRate != null && tableRate > 0 && Math.abs(unitPrice - tableRate) > 0.004 && (
+                  <p className="text-[11px] text-amber-600 mt-0.5">Preço fora da tabela (vigente: {formatCurrency(tableRate)})</p>
+                )}
+                {contractorId && (tableRate == null || tableRate <= 0) && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Sem tarifa cadastrada p/ este serviço</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs">Total da OS</Label>

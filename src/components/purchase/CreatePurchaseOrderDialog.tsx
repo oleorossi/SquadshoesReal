@@ -11,6 +11,7 @@
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { toast } from 'sonner';
  import { effectiveConversionFactor, describeConversion } from '@/lib/purchaseConversion';
+ import { searchMatchesAny } from '@/lib/searchUtils';
 
  type OrderItem = {
    product_id: string;
@@ -36,8 +37,16 @@
    const [notes, setNotes] = useState('');
    const [items, setItems] = useState<OrderItem[]>([]);
    const [isSubmitting, setIsSubmitting] = useState(false);
+   const [productFilter, setProductFilter] = useState('');
+
+   // Filtro tolerante a espaços/acentos/hífens ("SP10" acha "SP 10").
+   const filteredProducts = useMemo(
+     () => products.filter(p => searchMatchesAny(productFilter, p.name, p.sku)),
+     [products, productFilter],
+   );
  
    const handleAddItem = (productId: string) => {
+     setProductFilter('');
      const product = products.find(p => p.id === productId);
      if (!product) return;
      
@@ -163,11 +172,22 @@
                <SelectContent>
                  <div className="relative">
                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                   <Input className="pl-8 border-0 ring-0 focus-visible:ring-0" placeholder="Filtrar..." />
+                   <Input
+                     className="pl-8 border-0 ring-0 focus-visible:ring-0"
+                     placeholder="Filtrar..."
+                     value={productFilter}
+                     onChange={e => setProductFilter(e.target.value)}
+                     // Radix Select captura teclas pra typeahead — sem isso o
+                     // input não recebe a digitação dentro do SelectContent.
+                     onKeyDown={e => e.stopPropagation()}
+                   />
                  </div>
-                 {products.map(p => (
+                 {filteredProducts.map(p => (
                    <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
                  ))}
+                 {filteredProducts.length === 0 && (
+                   <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum produto encontrado</div>
+                 )}
                </SelectContent>
              </Select>
            </div>

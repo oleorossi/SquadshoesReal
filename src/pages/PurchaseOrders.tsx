@@ -1,7 +1,7 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
 import { Plus } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
-import { effectiveConversionFactor } from '@/lib/purchaseConversion';
+import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -36,6 +36,47 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
 };
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * M3 (auditoria 2026-06-09): recebimento de SOLADO com grade deve somar a grade
+ * recebida (`item.grade`, jsonb por numeração — editável via SoleGradeEditorDialog)
+ * ao `products.stock_grade` JUNTO com o crédito de `quantity`. O trigger
+ * `check_grade_quantity_coherence` exige SUM(stock_grade) == quantity, então os
+ * dois precisam mudar na MESMA operação — a RPC `adjust_stock` aceita
+ * `p_new_grade` e atualiza quantity + stock_grade no mesmo UPDATE (atômico).
+ *
+ * Retorna o stock_grade COMPLETO já mesclado, ou null quando não se aplica
+ * (item sem grade, produto sem stock_grade/flat, ou fator de conversão ≠ 1 —
+ * grade é contagem de pares, só faz sentido quando 1 un de compra = 1 par).
+ * Lança erro com mensagem amigável quando a grade do item não fecha com a
+ * quantidade (senão o trigger abortaria com erro críptico de SQL).
+ */
+function mergeReceivedGrade(
+  itemGrade: Record<string, number> | null | undefined,
+  itemQty: number,
+  prodStockGrade: unknown,
+  factor: number,
+  productName: string,
+): Record<string, number> | null {
+  const entries = Object.entries(itemGrade || {}).filter(([, v]) => Number(v) > 0);
+  if (entries.length === 0) return null;
+  if (!prodStockGrade || typeof prodStockGrade !== 'object' || Array.isArray(prodStockGrade)) return null;
+  if (factor !== 1) return null;
+  const gradeSum = entries.reduce((s, [, v]) => s + Number(v), 0);
+  if (Math.abs(gradeSum - itemQty) > 0.01) {
+    throw new Error(
+      `${productName}: a grade do item soma ${gradeSum} pares mas a quantidade é ${itemQty} — corrija a grade da OC (lápis na coluna Grade) antes de receber.`,
+    );
+  }
+  const merged: Record<string, number> = {};
+  for (const [k, v] of Object.entries(prodStockGrade as Record<string, unknown>)) {
+    merged[k] = Number(v) || 0;
+  }
+  for (const [size, qty] of entries) {
+    merged[size] = (merged[size] || 0) + Number(qty);
+  }
+  return merged;
+}
 
 export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = usePurchaseOrders();
@@ -447,7 +488,12 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const handleSaveItems = async () => {
     try {
       for (const [itemId, data] of Object.entries(editingItems)) {
-        await updateItem.mutateAsync({ id: itemId, data });
+        // Só as colunas editáveis — o objeto completo carrega campos mapeados
+        // (ex.: `product`) que não são colunas e o PostgREST rejeita.
+        await updateItem.mutateAsync({
+          id: itemId,
+          data: { quantity: data.quantity, unit_price: data.unit_price },
+        });
       }
       // Recalculate total
       const allItems = items.map(i => editingItems[i.id] ? { ...i, ...editingItems[i.id] } : i);
@@ -567,35 +613,77 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       // virem dm² corretamente.
       const todayStr = new Date().toISOString().slice(0, 10);
       for (const item of items) {
+        // M6: idempotência por item — retry após falha parcial pula itens cujo
+        // estoque já foi creditado (received_at é marcado logo após o crédito).
+        if (item.received_at) continue;
         const { data: prod } = await supabase
           .from('products')
-          .select('quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
+          .select('name, quantity, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const factor = effectiveConversionFactor({
+        const factor = effectiveConversionFactorStrict({
           unit: (prod as any)?.unit || 'un',
           purchase_unit: (prod as any)?.purchase_unit,
           conversion_rate: (prod as any)?.conversion_rate,
           dimensions_width: (prod as any)?.dimensions_width,
         });
+        if (factor == null) {
+          // Sem regra de conversão compra→estoque: bloquear em vez de creditar
+          // a quantidade crua na unidade errada (igual ao fluxo de NF).
+          throw new Error(
+            `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
+          );
+        }
         const receivedQty = item.quantity * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedQty;
+        // M3: solado com grade — soma a grade recebida ao stock_grade na MESMA
+        // chamada que credita quantity (adjust_stock faz o UPDATE atômico).
+        const mergedGrade = mergeReceivedGrade(
+          item.grade,
+          item.quantity,
+          (prod as any)?.stock_grade,
+          factor,
+          (prod as any)?.name || 'Produto',
+        );
         const result = await adjustStockSafe({
           productId: item.product_id,
           expectedPrevious: prev,
           newQty,
           reason: `Finalização OC ${order.order_number} — ${order.supplier_name}`,
+          newGrade: mergedGrade,
         });
         if (!result.success) throw new Error(result.errorMessage);
+        // M6: marca o item como recebido IMEDIATAMENTE após o crédito, pra um
+        // retry não re-creditar. Falha aqui não aborta (o crédito já aconteceu;
+        // abortar deixaria itens seguintes sem crédito e ESTE re-creditável).
+        const { error: markErr } = await supabase
+          .from('purchase_order_items')
+          .update({ received_at: new Date().toISOString() })
+          .eq('id', item.id);
+        if (markErr) console.error(`[PO finalize] Falha ao marcar received_at do item ${item.id}:`, markErr);
         if (order.supplier_id && !(prod as any)?.supplier_id) {
           await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
         }
       }
 
-      // 3. Mark as received
-      await updateOrder.mutateAsync({ id: orderId, data: { status: 'received', received_date: todayStr } });
+      // 3. Mark as received — update direto: o guard de useUpdatePurchaseOrder
+      // rejeita rows em 'receiving', que é exatamente o estado do claim.
+      const { data: doneRows, error: doneErr } = await supabase
+        .from('purchase_orders')
+        .update({ status: 'received', received_date: todayStr })
+        .eq('id', orderId)
+        .eq('status', 'receiving')
+        .select('id');
+      if (doneErr) throw new Error(doneErr.message);
+      if (!doneRows || doneRows.length === 0) {
+        throw new Error('OC saiu do estado de recebimento durante a finalização — verifique o status antes de tentar de novo.');
+      }
       claimed = false; // Successfully completed — no need to rollback
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
@@ -642,36 +730,76 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       // effectiveConversionFactor cobre tanto conversion_rate fixo (1 placa = 144 dm²)
       // quanto largura para linear→área (1 m × dimensions_width dm = dm²).
       for (const item of items) {
+        // M6: idempotência por item — retry após falha parcial pula itens cujo
+        // estoque já foi creditado (received_at é marcado logo após o crédito).
+        if (item.received_at) continue;
         const { data: prod } = await supabase
           .from('products')
-          .select('quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
+          .select('name, quantity, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const factor = effectiveConversionFactor({
+        const factor = effectiveConversionFactorStrict({
           unit: (prod as any)?.unit || 'un',
           purchase_unit: (prod as any)?.purchase_unit,
           conversion_rate: (prod as any)?.conversion_rate,
           dimensions_width: (prod as any)?.dimensions_width,
         });
+        if (factor == null) {
+          // Sem regra de conversão compra→estoque: bloquear em vez de creditar
+          // a quantidade crua na unidade errada (igual ao fluxo de NF).
+          throw new Error(
+            `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
+          );
+        }
         const receivedInStockUnit = item.quantity * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedInStockUnit;
+        // M3: solado com grade — soma a grade recebida ao stock_grade na MESMA
+        // chamada que credita quantity (adjust_stock faz o UPDATE atômico).
+        const mergedGrade = mergeReceivedGrade(
+          item.grade,
+          item.quantity,
+          (prod as any)?.stock_grade,
+          factor,
+          (prod as any)?.name || 'Produto',
+        );
         const result = await adjustStockSafe({
           productId: item.product_id,
           expectedPrevious: prev,
           newQty,
           reason: `Recebimento OC ${order.order_number} — ${order.supplier_name}`,
+          newGrade: mergedGrade,
         });
         if (!result.success) throw new Error(result.errorMessage);
+        // M6: marca o item como recebido IMEDIATAMENTE após o crédito, pra um
+        // retry não re-creditar. Falha aqui não aborta (o crédito já aconteceu;
+        // abortar deixaria itens seguintes sem crédito e ESTE re-creditável).
+        const { error: markErr } = await supabase
+          .from('purchase_order_items')
+          .update({ received_at: new Date().toISOString() })
+          .eq('id', item.id);
+        if (markErr) console.error(`[PO receive] Falha ao marcar received_at do item ${item.id}:`, markErr);
         if (order.supplier_id && !(prod as any)?.supplier_id) {
           await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
         }
       }
-      await updateOrder.mutateAsync({
-        id: orderId,
-        data: { status: 'received', received_date: today },
-      });
+      // Update direto: o guard de useUpdatePurchaseOrder rejeita rows em
+      // 'receiving', que é exatamente o estado do claim.
+      const { data: doneRows, error: doneErr } = await supabase
+        .from('purchase_orders')
+        .update({ status: 'received', received_date: today })
+        .eq('id', orderId)
+        .eq('status', 'receiving')
+        .select('id');
+      if (doneErr) throw new Error(doneErr.message);
+      if (!doneRows || doneRows.length === 0) {
+        throw new Error('OC saiu do estado de recebimento durante a finalização — verifique o status antes de tentar de novo.');
+      }
       claimed = false; // Successfully completed — no rollback needed
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       toast.success('OC marcada como recebida — estoque atualizado!');

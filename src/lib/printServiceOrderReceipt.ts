@@ -64,6 +64,7 @@ const SECTOR_LABEL: Record<string, string> = {
   mesa: 'Aviamento',
   corte_palmilha: 'Corte Palmilha',
   corte_forracao: 'Corte Forração',
+  corte_cabedal: 'Corte Cabedal',
   silk: 'Silk',
   colagem: 'Colagem',
   montagem: 'Montagem',

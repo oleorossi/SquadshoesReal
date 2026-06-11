@@ -60,10 +60,11 @@ interface AggregatedMaterial {
   unit: string; // purchase_order_unit for display
   current_stock: number; // in stock unit
   stock_after: number; // in purchase unit
-  unit_price: number;
+  unit_price: number; // R$ per PURCHASE unit (já convertido de R$/un estoque)
   estimated_cost: number;
   selected: boolean;
   supplier_name?: string;
+  supplier_id?: string; // FK suppliers — gravado na OC
   orders: string[];
   product_id?: string; // representative product id for PO item creation
 }
@@ -206,16 +207,22 @@ export default function PurchasePlanningWizard() {
         groupIdMap.set(g.id, g.name);
       }
 
+      // Disponível líquido = quantity − reserved_stock (fix A3.1 — reservas de OPs
+      // ativas não podem contar como estoque livre pro plano de compras)
+      const availableStock = (p: any) =>
+        Math.max(0, (Number(p?.quantity) || 0) - (Number(p?.reserved_stock) || 0));
+
       // Build group_id → aggregated stock/price from all products in that group
-      const groupStockMap = new Map<string, { total_stock: number; avg_price: number; supplier: string; product_count: number; purchase_unit: string; conversion_rate: number; stock_unit: string }>();
+      const groupStockMap = new Map<string, { total_stock: number; avg_price: number; supplier: string; supplier_id: string | null; product_count: number; purchase_unit: string; conversion_rate: number; stock_unit: string }>();
       for (const p of productRows) {
         if (!p.group_id) continue;
-        const existing = groupStockMap.get(p.group_id) || { total_stock: 0, avg_price: 0, supplier: '', product_count: 0, purchase_unit: '', conversion_rate: 0, stock_unit: '' };
-        existing.total_stock += Number(p.quantity) || 0;
+        const existing = groupStockMap.get(p.group_id) || { total_stock: 0, avg_price: 0, supplier: '', supplier_id: null, product_count: 0, purchase_unit: '', conversion_rate: 0, stock_unit: '' };
+        existing.total_stock += availableStock(p);
         existing.avg_price += Number(p.unit_price) || 0;
         existing.product_count++;
         const supplierName = getSupplierName(p);
         if (!existing.supplier && supplierName) existing.supplier = supplierName;
+        if (!existing.supplier_id && p.supplier_id) existing.supplier_id = p.supplier_id;
         // Prefer PO unit from actual purchase orders, fallback to product.unit
         const displayUnit = getDisplayUnit(p);
         if (!existing.purchase_unit && displayUnit) existing.purchase_unit = displayUnit;
@@ -232,7 +239,7 @@ export default function PurchasePlanningWizard() {
       }
 
       // Helper: resolve a material name to stock info (try group first, then direct product match)
-      function resolveMaterial(materialName: string): { stock: number; price: number; supplier: string; purchase_unit: string; conversion_rate: number; stock_unit: string; product_id?: string } {
+      function resolveMaterial(materialName: string): { stock: number; price: number; supplier: string; supplier_id?: string; purchase_unit: string; conversion_rate: number; stock_unit: string; product_id?: string } {
         if (!materialName) return { stock: 0, price: 0, supplier: '', purchase_unit: 'un', conversion_rate: 1, stock_unit: 'un' };
         const nameLower = materialName.toLowerCase().trim();
 
@@ -256,7 +263,7 @@ export default function PurchasePlanningWizard() {
         if (groupId) {
           const info = groupStockMap.get(groupId);
           if (info) {
-            return { stock: info.total_stock, price: info.avg_price, supplier: info.supplier, purchase_unit: info.purchase_unit || 'un', conversion_rate: info.conversion_rate || 1, stock_unit: info.stock_unit || 'un', product_id: findProductIdForGroup(groupId) };
+            return { stock: info.total_stock, price: info.avg_price, supplier: info.supplier, supplier_id: info.supplier_id || undefined, purchase_unit: info.purchase_unit || 'un', conversion_rate: info.conversion_rate || 1, stock_unit: info.stock_unit || 'un', product_id: findProductIdForGroup(groupId) };
           }
         }
 
@@ -265,7 +272,7 @@ export default function PurchasePlanningWizard() {
           if (gName.includes(nameLower) || nameLower.includes(gName)) {
             const info = groupStockMap.get(gId);
             if (info) {
-              return { stock: info.total_stock, price: info.avg_price, supplier: info.supplier, purchase_unit: info.purchase_unit || 'un', conversion_rate: info.conversion_rate || 1, stock_unit: info.stock_unit || 'un', product_id: findProductIdForGroup(gId) };
+              return { stock: info.total_stock, price: info.avg_price, supplier: info.supplier, supplier_id: info.supplier_id || undefined, purchase_unit: info.purchase_unit || 'un', conversion_rate: info.conversion_rate || 1, stock_unit: info.stock_unit || 'un', product_id: findProductIdForGroup(gId) };
             }
           }
         }
@@ -275,16 +282,18 @@ export default function PurchasePlanningWizard() {
         let totalPrice = 0;
         let count = 0;
         let supplier = '';
+        let supplierId: string | undefined;
         let purchaseInfo = { purchase_unit: 'un', conversion_rate: 1, stock_unit: 'un' };
         let firstProductId: string | undefined;
         for (const p of productRows) {
           const pName = p.name?.toLowerCase() || '';
           if (pName === nameLower || pName.startsWith(nameLower + ':') || pName.startsWith(nameLower + ' ')) {
-            totalStock += Number(p.quantity) || 0;
+            totalStock += availableStock(p);
             totalPrice += Number(p.unit_price) || 0;
             count++;
             const supplierName = getSupplierName(p);
             if (!supplier && supplierName) supplier = supplierName;
+            if (!supplierId && p.supplier_id) supplierId = p.supplier_id;
             const pInfo = getProductPurchaseInfo(p);
             // Use the highest conversion_rate found across variants
             if (pInfo.conversion_rate > purchaseInfo.conversion_rate) {
@@ -293,7 +302,7 @@ export default function PurchasePlanningWizard() {
             if (!firstProductId) firstProductId = p.id;
           }
         }
-        if (count > 0) return { stock: totalStock, price: totalPrice / count, supplier, ...purchaseInfo, product_id: firstProductId };
+        if (count > 0) return { stock: totalStock, price: totalPrice / count, supplier, supplier_id: supplierId, ...purchaseInfo, product_id: firstProductId };
 
         return { stock: 0, price: 0, supplier: '', purchase_unit: 'un', conversion_rate: 1, stock_unit: 'un' };
       }
@@ -332,10 +341,11 @@ export default function PurchasePlanningWizard() {
           supplierOverride?: string,
           purchaseUnitOverride?: string,
           convRateOverride?: number,
+          supplierIdOverride?: string,
         ): MaterialLine & { _stock: number; _price: number; _supplier: string } {
           const resolved = productIdOverride === undefined
             ? resolveMaterial(materialName)
-            : { stock: stockOverride ?? 0, price: priceOverride ?? 0, supplier: supplierOverride ?? '', purchase_unit: purchaseUnitOverride ?? rawUnit, conversion_rate: convRateOverride ?? 1, stock_unit: rawUnit, product_id: productIdOverride ?? undefined };
+            : { stock: stockOverride ?? 0, price: priceOverride ?? 0, supplier: supplierOverride ?? '', supplier_id: supplierIdOverride, purchase_unit: purchaseUnitOverride ?? rawUnit, conversion_rate: convRateOverride ?? 1, stock_unit: rawUnit, product_id: productIdOverride ?? undefined };
 
           const totalNeededRaw = consumptionPerPair * qty * (applyLoss ? lossFactor : 1);
           const convRate = resolved.conversion_rate || 1;
@@ -350,6 +360,11 @@ export default function PurchasePlanningWizard() {
           const needInStock = totalNeededRaw / needToStockDivisor;
           const totalNeededConverted = needInStock / stockToPurchaseDivisor;
           const stockInPurchaseUnit = resolved.stock / stockToPurchaseDivisor;
+          // unit_price em products é R$/unidade de ESTOQUE; déficit/qty estão em
+          // unidade de COMPRA → converte o preço pelo MESMO fator estoque→compra
+          // usado nas quantidades (fix A3.2 — antes investimento e unit_price da
+          // OC ficavam errados pelo fator de conversão, ex.: R$ 8 em vez de R$ 800).
+          const priceInPurchaseUnit = resolved.price * stockToPurchaseDivisor;
 
           return {
             product_id: resolved.product_id ?? productIdOverride ?? null,
@@ -362,8 +377,9 @@ export default function PurchasePlanningWizard() {
             purchase_unit: purchaseUnit,
             conversion_rate: convRate,
             _stock: stockInPurchaseUnit,
-            _price: resolved.price,
+            _price: priceInPurchaseUnit,
             _supplier: resolved.supplier,
+            _supplier_id: resolved.supplier_id ?? undefined,
             _product_id: resolved.product_id ?? productIdOverride ?? undefined,
           } as any;
         }
@@ -400,11 +416,12 @@ export default function PurchasePlanningWizard() {
               compUnit,
               false,
               comp.product_id || null,
-              product ? Number(product.quantity) || 0 : 0,
+              product ? availableStock(product) : 0,
               product ? Number(product.unit_price) || 0 : 0,
               getSupplierName(product),
               getDisplayUnit(product),
               Number(product?.conversion_rate) || 1,
+              product?.supplier_id || undefined,
             ));
           }
         }
@@ -479,6 +496,7 @@ export default function PurchasePlanningWizard() {
             estimated_cost: 0,
             selected: false,
             supplier_name: matAny._supplier || undefined,
+            supplier_id: matAny._supplier_id || undefined,
             orders: [],
             product_id: matAny._product_id || undefined,
           });
@@ -551,6 +569,7 @@ export default function PurchasePlanningWizard() {
   };
 
   const handleCreatePOs = async () => {
+    if (creating) return; // guard contra double-click (fix A3.3a)
     setCreating(true);
     try {
       const active = selectedMaterials.filter(m => m.selected && m.stock_after < 0);
@@ -563,15 +582,24 @@ export default function PurchasePlanningWizard() {
 
       let count = 0;
       for (const [supplierName, items] of Array.from(bySupplier)) {
+        // estimated_cost já está em R$ de unidade de COMPRA (preço convertido
+        // pelo fator estoque→compra em buildMaterialLine) — fix A3.2.
         const totalValue = items.reduce((s, i) => s + i.estimated_cost, 0);
+        // FK do fornecedor quando algum produto do grupo tem (fix A3.3b) —
+        // sem ele a OC caía no default de prazo de pagamento.
+        const supplierId = items.find(i => i.supplier_id)?.supplier_id ?? null;
         const { data: po, error: poErr } = await supabase
           .from('purchase_orders')
           .insert({
             supplier_name: supplierName,
+            supplier_id: supplierId,
             total_value: totalValue,
             notes: `Plano de compras baseado em pedidos`,
             auto_generated: true,
             status: 'pending',
+            // trigger tg_purchase_order_idempotency (20260523130000) rejeita
+            // key repetida em 30s — protege contra double-click/retry
+            idempotency_key: crypto.randomUUID(),
           })
           .select('id')
           .single();
@@ -594,7 +622,7 @@ export default function PurchasePlanningWizard() {
             max_stock: 0,
             suggested_quantity: qty,
             quantity: qty,
-            unit_price: item.unit_price,
+            unit_price: item.unit_price, // R$/unidade de COMPRA (convenção de purchase_order_items)
             unit: item.unit,
           };
         });

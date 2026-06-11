@@ -176,12 +176,22 @@ export default function Payroll() {
 
       // Batidas do período. time_records não tem FK pra employees — casa por
       // matrícula (employee_external_id) ou nome.
-      const { data: timeRecords, error } = await supabase
-        .from('time_records')
-        .select('employee_external_id, employee_name, record_date, punches')
-        .gte('record_date', cFrom)
-        .lte('record_date', cTo);
-      if (error) throw error;
+      // Paginado: o cap default de 1000 rows do PostgREST cortava dias do fim
+      // do período silenciosamente → dia sem ponto = falta descontada errada.
+      const timeRecords: any[] = [];
+      const PAGE = 1000;
+      for (let fromIdx = 0; ; fromIdx += PAGE) {
+        const { data: page, error } = await supabase
+          .from('time_records')
+          .select('employee_external_id, employee_name, record_date, punches')
+          .gte('record_date', cFrom)
+          .lte('record_date', cTo)
+          .order('record_date', { ascending: true })
+          .range(fromIdx, fromIdx + PAGE - 1);
+        if (error) throw error;
+        timeRecords.push(...(page || []));
+        if (!page || page.length < PAGE) break;
+      }
 
       const byExternalId = new Map<string, Map<string, string[]>>();
       const byExtIdName = new Map<string, Map<string, string[]>>(); // chave `${extId}|${nome}`
@@ -213,7 +223,8 @@ export default function Payroll() {
         .select('employee_id, amount, advance_date, status, payroll_run_id')
         .gte('advance_date', cFrom)
         .lte('advance_date', cTo)
-        .or('payroll_run_id.is.null,status.eq.pending');
+        .is('payroll_run_id', null)
+        .eq('status', 'pending');
       const advancesByEmp = new Map<string, number>();
       for (const a of (advances || []) as any[]) {
         advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + Number(a.amount || 0));
@@ -222,7 +233,10 @@ export default function Payroll() {
       let calculated = 0;
       let withIncomplete = 0;
       let sharedMatricula = 0;
-      for (const emp of employees.filter(e => e.active)) {
+      // Diarista tem cálculo próprio (useMonthlyClosing) — o motor de salário
+      // mensal gravaria líquido negativo (salário 0 − vales).
+      const isDiarista = (e: any) => String(e.payment_type || '').toLowerCase() === 'diarista';
+      for (const emp of employees.filter(e => e.active && !isDiarista(e))) {
         // Match das batidas por MATRÍCULA + NOME. Se a matrícula é compartilhada por
         // mais de um nome (ex.: ext_id 1 = "valdilene" + "Dona Val"), pega SÓ as
         // batidas com o nome DESTE funcionário — senão herdaria o ponto do outro.
@@ -269,6 +283,9 @@ export default function Payroll() {
           business_days_worked: result.worked_days,
           absent_days: result.falta_days,
           absence_discount: result.falta_desconto,
+          // Minutos de HE que geraram overtime_amount (o holerite exibe esta
+          // coluna; premium_minutes é outro conceito — pós-18h/fds).
+          overtime_50_minutes: result.he_minutes,
           deductions_amount: result.atraso_desconto,
           overtime_amount: result.he_value,
           advances_total: result.advances_total,
@@ -522,7 +539,7 @@ export default function Payroll() {
                 label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) proporcional)`,
                 value: periodBase, type: 'p' as const, always: true,
               },
-              { label: `Horas extras 1,5× (${fmtHoras(r.premium_minutes)})`, value: r.overtime_amount || 0, type: 'p' as const },
+              { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
               { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.base_salary || 0) / 30)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
               { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
               { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },

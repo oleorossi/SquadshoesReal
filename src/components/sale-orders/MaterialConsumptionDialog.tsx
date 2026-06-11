@@ -1,11 +1,16 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon } from '@phosphor-icons/react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon, Scissors, CheckCircle } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useContractors } from '@/hooks/useContractors';
+import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import {
   fetchConsumptionContext,
   computeConsumptionForItems,
@@ -35,7 +40,37 @@ type ConsumptionRow = MaterialConsumptionRow & {
   artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number };
 };
 
-const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
+const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forração Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
+
+// Normalização de texto (lowercase + sem acento) — usada no match de cor do
+// estoque e no match de OS já gerada de corte de cabedal.
+const normTxt = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+/* ── Terceirização do Corte de Cabedal ─────────────────────────────────────
+ * Itens do PV cuja ficha técnica NÃO tem tiras (has_straps !== true) passam
+ * pela sub-etapa "Corte Cabedal" — mesma regra `requiresUpperCut` da ficha de
+ * operador (PrintWorkSheetsPage). A seção abaixo permite gerar a OS de
+ * terceirização direto do modal, espelhando o payload do
+ * ServiceOrderFormDialog (criação manual canônica do menu Terceirizados). */
+type UpperCutGroup = {
+  /** chave estável referência+cor */
+  key: string;
+  refId: string;
+  refCode: string | null;
+  refName: string;
+  color: string;
+  pairs: number;
+};
+
+/** Valor de domínio pro setor de corte de cabedal — existe no enum SQL
+ *  `production_stage_enum` ('corte_cabedal') e segue o padrão lowercase dos
+ *  demais target_sector ('costura', 'corte_palmilha', ...). */
+const UPPER_CUT_SECTOR = 'corte_cabedal';
+
+/** Status que encerram uma OS — mesma lista usada no fluxo de gargalos
+ *  (useSectorBottlenecks) e nos guards do Contractors.tsx. OS nesses status
+ *  NÃO bloqueia gerar outra (anti-duplicação só considera OS ativa). */
+const FINALIZED_OS_STATUSES = ['received', 'Concluído', 'concluido', 'finalizado', 'Finalizado', 'Cancelado', 'cancelled', 'cancelado'];
 
 /**
  * Solado em matriz numeração × cor (igual à visão da OC), com cada célula
@@ -45,14 +80,52 @@ const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Solado
 // Ordena numerações (dígito ou conjugada "33/34") pelo primeiro número.
 const sizeSortKey = (s: string) => { const n = parseInt(s, 10); return Number.isFinite(n) ? n : 9999; };
 
-// Estoque da COLUNA (numeração da grade, possivelmente conjugada "33/34"):
-// direto se a chave existe no stock_grade; senão soma os números-membro.
-const haveForCol = (stock: Record<string, number> | undefined, col: string): number => {
-  if (!stock) return 0;
-  if (stock[col] != null) return Number(stock[col]) || 0;
-  const members = col.split(/[/-]/).map((x) => x.trim());
-  if (members.length > 1) return members.reduce((s, m) => s + (Number(stock[m]) || 0), 0);
-  return 0;
+// Disponibilidade efetiva por COLUNA da grade, cobrindo os dois sentidos de
+// conjugação (regra do CLAUDE.md — distribuir balde sem contar 2×):
+//  - coluna conjugada "33/34" com estoque individual → soma os membros;
+//  - coluna individual "33" com estoque bucketado "33/34" → o balde é
+//    DISTRIBUÍDO entre as colunas individuais que cobre, proporcional à
+//    necessidade de cada uma (não conta o mesmo balde duas vezes).
+const buildColAvailability = (
+  stock: Record<string, number> | undefined,
+  cols: string[],
+  needs: Record<string, number>,
+): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (!stock) { for (const c of cols) out[c] = 0; return out; }
+  const remaining: Record<string, number> = {};
+  for (const [k, v] of Object.entries(stock)) remaining[k] = Number(v) || 0;
+
+  // 1ª passada: chave exata + coluna conjugada somando membros individuais
+  for (const c of cols) {
+    let have = 0;
+    if (remaining[c] != null) { have += remaining[c]; remaining[c] = 0; }
+    const members = c.split(/[/-]/).map((x) => x.trim()).filter(Boolean);
+    if (members.length > 1) {
+      for (const m of members) {
+        if (remaining[m]) { have += remaining[m]; remaining[m] = 0; }
+      }
+    }
+    out[c] = have;
+  }
+
+  // 2ª passada: baldes conjugados restantes no estoque distribuídos entre as
+  // colunas individuais que cobrem, proporcional à necessidade.
+  for (const [key, qty] of Object.entries(remaining)) {
+    if (!qty || qty <= 0) continue;
+    const members = key.split(/[/-]/).map((x) => x.trim()).filter(Boolean);
+    if (members.length < 2) continue;
+    const covered = cols.filter((c) => members.includes(c));
+    if (covered.length === 0) continue;
+    const totalNeed = covered.reduce((s, c) => s + Math.max(0, (needs[c] || 0) - (out[c] || 0)), 0);
+    for (const c of covered) {
+      const gap = Math.max(0, (needs[c] || 0) - (out[c] || 0));
+      const share = totalNeed > 0 ? (qty * gap) / totalNeed : qty / covered.length;
+      out[c] = (out[c] || 0) + share;
+    }
+    remaining[key] = 0;
+  }
+  return out;
 };
 
 // Estoque EFETIVO por numeração exibida. Cobre o caso inverso do haveForCol:
@@ -153,9 +226,11 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
             return (
               <TableRow key={i}>
                 <TableCell><Badge variant="outline" className="text-xs">{r.color}</Badge></TableCell>
-                {sizes.map((s) => {
+                {(() => {
+                  const avail = buildColAvailability(r.soleSizeStock, sizes, r.sizeBreakdown || {});
+                  return sizes.map((s) => {
                   const need = r.sizeBreakdown?.[s] || 0;
-                  const have = effStock[s] ?? 0;
+                  const have = avail[s] || 0;
                   if (need <= 0) return <TableCell key={s} className="text-center text-muted-foreground">·</TableCell>;
                   const ok = have >= need;
                   return (
@@ -167,7 +242,8 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
                       {need}
                     </TableCell>
                   );
-                })}
+                  });
+                })()}
                 <TableCell className="text-right font-mono font-bold whitespace-nowrap">{total} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
               </TableRow>
             );
@@ -210,8 +286,22 @@ function SoleSection({ rows }: { rows: ConsumptionRow[] }) {
 }
 
 export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrderId, orderNumber }: Props) {
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
+
+  // ── Corte de Cabedal — terceirização ────────────────────────────────────
+  const { data: contractors = [] } = useContractors();
+  const activeContractors = useMemo(
+    () => contractors.filter((c) => c.active), // hook já ordena por nome
+    [contractors],
+  );
+  const [upperCutGroups, setUpperCutGroups] = useState<UpperCutGroup[]>([]);
+  /** key do grupo → order_number da OS ativa já existente (anti-duplicação) */
+  const [existingOsByKey, setExistingOsByKey] = useState<Record<string, string>>({});
+  /** key do grupo → contractor_id selecionado no Select */
+  const [contractorByKey, setContractorByKey] = useState<Record<string, string>>({});
+  const [creatingKey, setCreatingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !saleOrderId) return;
@@ -235,6 +325,10 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           fichas,
           strap_colors,
           technical_sheets(
+            id,
+            code,
+            name,
+            has_straps,
             upper_material,
             upper_consumption,
             upper_consumption_per_size,
@@ -260,7 +354,66 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       if (itemsError) throw itemsError;
       if (!items || items.length === 0) {
         setRows([]);
+        setUpperCutGroups([]);
+        setExistingOsByKey({});
+        setContractorByKey({});
         return;
+      }
+
+      // ── Itens com Corte de Cabedal (has_straps !== true), agrupados por
+      //    referência + cor — alimenta a seção de terceirização. ────────────
+      const groupsMap = new Map<string, UpperCutGroup>();
+      for (const item of items as any[]) {
+        const sheet = item.technical_sheets;
+        if (!item.reference_id || !sheet || sheet.has_straps === true) continue;
+        const color = (item.color || '').trim() || '—';
+        const key = `${item.reference_id}|${normTxt(color)}`;
+        const g = groupsMap.get(key) || {
+          key,
+          refId: item.reference_id,
+          refCode: sheet.code || null,
+          refName: sheet.name || '',
+          color,
+          pairs: 0,
+        };
+        g.pairs += Number(item.quantity) || 0;
+        groupsMap.set(key, g);
+      }
+      const upperGroups = Array.from(groupsMap.values())
+        .filter((g) => g.pairs > 0)
+        .sort((a, b) => (a.refCode || a.refName).localeCompare(b.refCode || b.refName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
+
+      // OS ativas de corte de cabedal já vinculadas a ESTE PV (anti-duplicação):
+      // casa pela referência (code, senão nome) + cor presentes na description.
+      const osByKey: Record<string, string> = {};
+      if (upperGroups.length > 0) {
+        // Inclui OSs vinculadas via linked_sale_order_ids (ex.: excedente do
+        // Planejamento cobrindo este PV) — não só as criadas por este modal.
+        const { data: existingOs } = await (supabase as any)
+          .from('service_orders')
+          .select('order_number, description, status')
+          .or(`sale_order_id.eq.${saleOrderId},linked_sale_order_ids.cs.{${saleOrderId}}`)
+          .eq('target_sector', UPPER_CUT_SECTOR);
+        const activeOs = ((existingOs || []) as Array<{ order_number: string; description: string | null; status: string }>)
+          .filter((o) => !FINALIZED_OS_STATUSES.includes(o.status));
+        for (const g of upperGroups) {
+          const refToken = normTxt(g.refCode || g.refName);
+          if (!refToken) continue;
+          const hit = activeOs.find((o) => {
+            const desc = normTxt(o.description || '');
+            if (!desc.includes(refToken)) return false;
+            // se o grupo tem cor definida, exige a cor na description também
+            if (g.color !== '—' && !desc.includes(normTxt(g.color))) return false;
+            return true;
+          });
+          if (hit) osByKey[g.key] = hit.order_number;
+        }
+      }
+
+      if (!isCancelled()) {
+        setUpperCutGroups(upperGroups);
+        setExistingOsByKey(osByKey);
+        setContractorByKey({});
       }
 
       const refIds = [...new Set(items.map((item) => item.reference_id).filter(Boolean))];
@@ -287,7 +440,6 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // ── Disponibilidade em estoque (no momento da consulta) ──────────────
       // Não-solado: soma o estoque dos produtos do grupo que casam na cor.
       // Solado: pega o stock_grade do produto-solado (número a número).
-      const normTxt = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
       const colorMatchesProduct = (p: any, color: string): boolean => {
         if (!color || color === '—') return true;
         const c = normTxt(color);
@@ -388,6 +540,66 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       setRows([]);
     } finally {
       if (!isCancelled()) setLoading(false);
+    }
+  };
+
+  /** Cria a OS de corte de cabedal pro grupo (ref+cor) — espelha o payload do
+   *  ServiceOrderFormDialog (criação manual canônica): order_number via
+   *  generateServiceOrderNumber(), status 'Pendente', service_date hoje. */
+  const handleCreateUpperCutOS = async (g: UpperCutGroup) => {
+    const contractorId = contractorByKey[g.key];
+    if (!saleOrderId || !contractorId || creatingKey) return;
+    setCreatingKey(g.key);
+    try {
+      const order_number = await generateServiceOrderNumber();
+      // Tarifa vigente serviço×prestadora (Fase 1 facção) — evita OS sem preço
+      // (65% das OSs históricas) e alimenta a conta a pagar por pares bons.
+      let unitPrice = 0;
+      try {
+        const { data: rate } = await (supabase as any).rpc('get_contractor_rate', {
+          p_contractor_id: contractorId,
+          p_sector: UPPER_CUT_SECTOR,
+          p_date: new Date().toISOString().slice(0, 10),
+        });
+        unitPrice = rate != null ? Number(rate) : 0;
+      } catch { /* sem tarifa — OS nasce com preço 0, definir depois */ }
+      const refLabel = [g.refCode, g.refName].filter(Boolean).join(' ');
+      const colorPart = g.color !== '—' ? ` · cor ${g.color}` : '';
+      const payload = {
+        contractor_id: contractorId,
+        order_number,
+        description: `Corte de cabedal — REF ${refLabel}${colorPart} · ${g.pairs} pares (PV ${orderNumber})`,
+        service_date: new Date().toISOString().slice(0, 10),
+        target_sector: UPPER_CUT_SECTOR,
+        sale_order_id: saleOrderId,
+        linked_sale_order_ids: [saleOrderId],
+        quantity: g.pairs,
+        unit_price: unitPrice,
+        total_value: unitPrice > 0 ? unitPrice * g.pairs : 0,
+        status: 'Pendente',
+      };
+      const { data: inserted, error } = await (supabase as any)
+        .from('service_orders')
+        .insert(payload)
+        .select('id, order_number')
+        .single();
+      if (error) throw new Error(error.message);
+
+      setExistingOsByKey((prev) => ({ ...prev, [g.key]: inserted.order_number as string }));
+      // Re-valida os caches das listas de Terceirizados — a OS aparece sem refresh.
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['contractors'] });
+      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
+      qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
+      if (unitPrice > 0) {
+        toast.success(`OS ${inserted.order_number} criada (R$ ${unitPrice.toFixed(2)}/par pela tabela) — visível no menu Terceirizados.`);
+      } else {
+        toast.warning(`OS ${inserted.order_number} criada SEM preço — cadastre a tarifa da prestadora ou defina o valor na OS.`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao criar a OS de corte de cabedal.');
+    } finally {
+      setCreatingKey(null);
     }
   };
 
@@ -499,6 +711,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       'Forração':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
       'Fachete':    { bg: '#cffafe', border: '#0891b2', text: '#155e75' },
       'Palmilha':   { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
+      'Forração Palmilha': { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
       'Solado':     { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
       'Tiras':      { bg: '#fce7f3', border: '#ec4899', text: '#831843' },
       'Químicos':   { bg: '#ede9fe', border: '#8b5cf6', text: '#4c1d95' },
@@ -737,6 +950,95 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── Corte de Cabedal — Terceirização ──────────────────────────────
+            Visível quando ≥1 item do PV tem referência SEM tiras (modelo com
+            cabedal completo a cortar). Atalho pro fluxo manual do menu
+            Terceirizados: seleciona a terceirizada e gera a OS daqui. */}
+        {!loading && upperCutGroups.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <Scissors className="h-4 w-4" />
+              Corte de Cabedal — Terceirização
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Referências deste pedido com corte de cabedal (modelo sem tiras). Selecione a terceirizada e
+              gere a Ordem de Serviço direto daqui — ela entra como <strong>Pendente</strong> nas listas do
+              menu Terceirizados.
+            </p>
+            <div className="rounded-lg border overflow-hidden overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Referência</TableHead>
+                    <TableHead>Cor</TableHead>
+                    <TableHead className="text-right w-20">Pares</TableHead>
+                    <TableHead className="w-64">Terceirizada</TableHead>
+                    <TableHead className="text-right w-44">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {upperCutGroups.map((g) => {
+                    const existingOs = existingOsByKey[g.key];
+                    const selected = contractorByKey[g.key] || '';
+                    const isCreating = creatingKey === g.key;
+                    return (
+                      <TableRow key={g.key}>
+                        <TableCell className="font-medium">
+                          {g.refCode && <span className="font-mono text-xs mr-1.5 text-muted-foreground">{g.refCode}</span>}
+                          {g.refName}
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs">{g.color}</Badge></TableCell>
+                        <TableCell className="text-right font-mono font-semibold">{g.pairs}</TableCell>
+                        <TableCell>
+                          {existingOs ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <Select value={selected} onValueChange={(v) => setContractorByKey((prev) => ({ ...prev, [g.key]: v }))}>
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Selecionar terceirizada..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {activeContractors.length === 0 && (
+                                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                                    Nenhuma terceirizada ativa. Cadastre em Terceirizados.
+                                  </div>
+                                )}
+                                {activeContractors.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>{c.trade_name || c.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {existingOs ? (
+                            <Badge variant="outline" className="text-xs gap-1 bg-green-500/10 text-green-700 border-green-500/40 dark:text-green-400">
+                              <CheckCircle className="h-3 w-3" />
+                              OS já gerada: {existingOs}
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs gap-1.5"
+                              disabled={!selected || isCreating}
+                              onClick={() => handleCreateUpperCutOS(g)}
+                            >
+                              {isCreating
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Scissors className="h-3.5 w-3.5" />}
+                              {isCreating ? 'Gerando...' : 'Gerar OS'}
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </DialogContent>

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass as Search, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { printBoxLabels } from '@/lib/printLabels';
-import { buildIndividualLabelsHtml } from '@/lib/printLabels';
+import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { printHtml, writeRawPrintWindow, openPrintWindow } from '@/lib/printOrder';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -471,7 +471,26 @@ ${cardsHtml}
               <BoxIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Rótulo Caixa</span>
             </Button>
-            <Button variant="outline" onClick={() => { const html = buildIndividualLabelsHtml(grouped.map(toLabelData)); const w = window.open('', '_blank'); if (w) { w.document.open(); w.document.write(html); w.document.close(); } }} className="gap-2">
+            <Button variant="outline" onClick={() => {
+              // Etiqueta individual sai na impressora TÉRMICA (100×30mm, 1 por
+              // página) — A4 fica pros rótulos de caixa e listas.
+              const thermal = grouped.flatMap(g =>
+                g.items.filter(i => i.quantity > 0).flatMap(i =>
+                  Array.from({ length: i.quantity }, () => ({
+                    refCode: g.refCode,
+                    refName: g.refName,
+                    mainMaterial: '',
+                    color: g.color,
+                    size: i.size,
+                    barcode: g.refCode || g.refName,
+                    imageUrl: g.imageUrl,
+                    shoeCategory: g.category,
+                  }))
+                )
+              );
+              const html = buildThermalLabelsHtml(thermal, '', { width: 100, height: 30 });
+              const w = window.open('', '_blank'); if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+            }} className="gap-2">
               <Tag className="h-4 w-4" />
               <span className="hidden sm:inline">Etiquetas</span>
             </Button>

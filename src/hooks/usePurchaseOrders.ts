@@ -33,6 +33,9 @@ export type PurchaseOrderItem = {
   created_at: string;
   grade?: Record<string, number> | null;
   color?: string | null;
+  /** Timestamp do crédito de estoque deste item (M6 — idempotência por item no
+   *  retry de recebimento). NULL = ainda não creditado. */
+  received_at?: string | null;
   product?: { name: string; sku: string; category: string; color?: string | null; stock_grade?: Record<string, any> | null };
 };
 
@@ -162,11 +165,14 @@ export function useDeletePurchaseOrder() {
       // Cancela também qualquer accounts_payable pendente vinculado a esta OC,
       // para que a OC cancelada não fique inflando o aging financeiro. Entries
       // já pagas (paid) são preservadas para audit trail.
-      await supabase
+      // Vínculo real = token [OC#id] em notes (padrão do createAPEntries) — a
+      // coluna purchase_order_id nunca existiu, este cleanup era no-op.
+      const { error: apErr } = await supabase
         .from('accounts_payable')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() } as any)
-        .eq('purchase_order_id', id)
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .ilike('notes', `%[OC#${id}]%`)
         .in('status', ['pending', 'partial']);
+      if (apErr) console.error('[cancelPO] falha ao cancelar contas a pagar vinculadas:', apErr.message);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });

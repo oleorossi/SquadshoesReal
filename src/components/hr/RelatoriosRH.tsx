@@ -25,7 +25,7 @@ import {
   printCalendarReport, printIndividualCalendarReport,
   type EmployeeTimesheetData,
 } from '@/lib/printTimesheet';
-import { printTimeMirror } from '@/lib/printTimeMirror';
+import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
@@ -284,7 +284,9 @@ export default function RelatoriosRH() {
     const days = data.days.map(d => ({
       date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches,
       workedMinutes: d.workedMinutes, expectedMinutes: d.expectedMinutes,
-      overtimeMinutes: d.overtimeMinutes, status: d.status,
+      // status vem como string em EmployeeTimesheetData; valores reais são os
+      // de DaySummary (mesma união de TimeMirrorDay).
+      overtimeMinutes: d.overtimeMinutes, status: d.status as TimeMirrorDay['status'],
       notes: d.isHoliday ? 'FERIADO' : '',
     }));
     printTimeMirror({

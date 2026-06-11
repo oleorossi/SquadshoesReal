@@ -897,6 +897,11 @@ export default function PickingListPage() {
                             </TableCell>
                             <TableCell className="py-2 text-center text-muted-foreground text-sm">
                               {formatUnit(row.productUnit)}
+                              {row.widthMissing && (
+                                <div className="text-[10px] text-amber-600 mt-0.5" title="Ficha de componente sem largura cadastrada — valor em dm² (não convertido para metros)">
+                                  ⚠ sem largura
+                                </div>
+                              )}
                             </TableCell>
                           </TableRow>
                         );

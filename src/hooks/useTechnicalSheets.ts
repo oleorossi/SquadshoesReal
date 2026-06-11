@@ -88,6 +88,10 @@ export type SheetFormData = {
   upper_material: string;
   upper_thickness: string;
   lining_material: string;
+  /** Grupo de material da forração de salto (fachete) — usado quando o solado
+   *  é fachetado. Consumo por numeração vem do cadastro do solado. Segue o
+   *  mesmo padrão de lining_material (nome do grupo, coluna text no DB). */
+  fachete_material: string;
   insole_material: string;
   sole_type: string;
   sole_group_id: string | null;
@@ -158,6 +162,7 @@ export const emptySheetForm: SheetFormData = {
   status_ficha: 'rascunho',
   upper_material: '', upper_thickness: '',
   lining_material: '',
+  fachete_material: '',
   insole_material: '',
   sole_type: '', sole_material: '', sole_color: '', sole_process: '', sole_group_id: null, insole_color: '', insole_plate_product: '',
   heel_height: '',
@@ -318,8 +323,10 @@ export function useDeleteSheet() {
     mutationFn: async (id: string) => {
       const [{ count: matCount, error: matErr }, { count: ordCount, error: ordErr }, { count: soiCount, error: soiErr }] = await Promise.all([
         supabase.from('sheet_materials').select('id', { count: 'exact', head: true }).eq('sheet_id', id),
-        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('technical_sheet_id', id),
-        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('technical_sheet_id', id),
+        // FK real é reference_id → technical_sheets (a coluna technical_sheet_id
+        // nunca existiu — o guard quebrava com 400 e a exclusão nunca validava OPs/itens).
+        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('reference_id', id),
+        supabase.from('sale_order_items').select('id', { count: 'exact', head: true }).eq('reference_id', id),
       ]);
       if (matErr) throw matErr;
       if (ordErr) throw ordErr;

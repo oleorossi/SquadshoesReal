@@ -16,6 +16,7 @@
  *   - bank_hours_balance VIEW (saldo por funcionário, só movements)
  *   - calculate_employee_bank_balance() RPC (saldo completo)
  */
+import { formatDateBR } from '@/lib/dateOnly';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -102,6 +103,7 @@ const TYPE_LABELS: Record<string, string> = {
   adjustment: 'Ajuste manual',
   compensation: 'Compensação',
   payout: 'Pagamento de HE',
+  payment: 'Pagamento de HE',
   manual: 'Manual',
   timesheet_auto: 'Auto (batidas)',
 };
@@ -212,11 +214,11 @@ export default function BankHours() {
   const [form, setForm] = useState({
     employee_id: '',
     movement_date: todayISO(),
-    movement_type: 'credit' as 'credit' | 'debit' | 'adjustment' | 'compensation' | 'pay',
+    movement_type: 'credit' as 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payment',
     overtime_pct: 50 as 50 | 100,
     hoursStr: '',
     minutesSign: 1 as 1 | -1,
-    reason: '',
+    description: '',
   });
 
   const filteredEmployees = useMemo(() => {
@@ -245,21 +247,21 @@ export default function BankHours() {
       mins = Math.round(Number(form.hoursStr) * 60);
     }
     if (!mins) return;
-    // Para 'pay': minutos saem do banco (sinal negativo) e marcam overtime_pct
+    // Para 'payment': minutos saem do banco (sinal negativo) e marcam overtime_pct
     // pro Payroll detectar (folha de Maio vai pagar essas horas).
-    const autoSign = (form.movement_type === 'debit' || form.movement_type === 'pay') ? -1 : 1;
+    const autoSign = (form.movement_type === 'debit' || form.movement_type === 'payment') ? -1 : 1;
     const finalMins = mins * (form.movement_type === 'adjustment' ? form.minutesSign : autoSign);
     await addMovement.mutateAsync({
       employee_id: form.employee_id,
       movement_date: form.movement_date,
       movement_type: form.movement_type,
       minutes: finalMins,
-      reason: form.reason,
-      // overtime_pct só relevante pra 'pay' — payrollCalc usa pra separar 50/100.
-      overtime_pct: form.movement_type === 'pay' ? form.overtime_pct : null,
+      description: form.description,
+      // overtime_pct só relevante pra 'payment' — payrollCalc usa pra separar 50/100.
+      overtime_pct: form.movement_type === 'payment' ? form.overtime_pct : null,
     } as any);
     setMovementDialogOpen(false);
-    setForm(f => ({ ...f, hoursStr: '', reason: '' }));
+    setForm(f => ({ ...f, hoursStr: '', description: '' }));
   };
 
   const summary = summaryQ.data;
@@ -328,7 +330,7 @@ export default function BankHours() {
                       </Select>
                     </div>
                   )}
-                  {form.movement_type === 'pay' && (
+                  {form.movement_type === 'payment' && (
                     <div>
                       <Label>Adicional HE</Label>
                       <Select value={String(form.overtime_pct)} onValueChange={v => setForm(f => ({ ...f, overtime_pct: Number(v) as 50 | 100 }))}>
@@ -346,7 +348,7 @@ export default function BankHours() {
                 </div>
                 <div>
                   <Label>Motivo / observação</Label>
-                  <Input value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} placeholder="Opcional" />
+                  <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Opcional" />
                 </div>
                 <Button onClick={handleAddMovement} disabled={addMovement.isPending || !form.employee_id || !form.hoursStr} className="w-full">
                   {addMovement.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
@@ -448,10 +450,10 @@ export default function BankHours() {
                         const today = new Date();
                         const d = (n: number) => {
                           const x = new Date(today); x.setDate(x.getDate() - n);
-                          return x.toISOString().slice(0, 10);
+                          return x.toLocaleDateString('sv-SE');
                         };
                         setDateFrom(d(7));
-                        setDateTo(today.toISOString().slice(0, 10));
+                        setDateTo(today.toLocaleDateString('sv-SE'));
                       }}
                     >7 dias</Button>
                     <Button
@@ -461,8 +463,8 @@ export default function BankHours() {
                       onClick={() => {
                         const today = new Date();
                         const d = new Date(today); d.setDate(d.getDate() - 30);
-                        setDateFrom(d.toISOString().slice(0, 10));
-                        setDateTo(today.toISOString().slice(0, 10));
+                        setDateFrom(d.toLocaleDateString('sv-SE'));
+                        setDateTo(today.toLocaleDateString('sv-SE'));
                       }}
                     >30 dias</Button>
                     <Button
@@ -472,8 +474,8 @@ export default function BankHours() {
                       onClick={() => {
                         const today = new Date();
                         const first = new Date(today.getFullYear(), today.getMonth(), 1);
-                        setDateFrom(first.toISOString().slice(0, 10));
-                        setDateTo(today.toISOString().slice(0, 10));
+                        setDateFrom(first.toLocaleDateString('sv-SE'));
+                        setDateTo(today.toLocaleDateString('sv-SE'));
                       }}
                     >Este mês</Button>
                   </div>
@@ -560,7 +562,7 @@ export default function BankHours() {
                           </div>
                           {emp.last_movement_date && (
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              últ. {new Date(emp.last_movement_date).toLocaleDateString('pt-BR')}
+                              últ. {formatDateBR(emp.last_movement_date)}
                             </div>
                           )}
                         </div>
@@ -652,9 +654,9 @@ export default function BankHours() {
                         </div>
                         {(dateFrom || dateTo) && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            {dateFrom ? new Date(dateFrom).toLocaleDateString('pt-BR') : '—'}
+                            {dateFrom ? formatDateBR(dateFrom) : '—'}
                             {' '}até{' '}
-                            {dateTo ? new Date(dateTo).toLocaleDateString('pt-BR') : 'hoje'}
+                            {dateTo ? formatDateBR(dateTo) : 'hoje'}
                           </div>
                         )}
                         <div className={cn('display text-5xl mt-3 tabular-nums', balanceClass(detailQ.data.balance_min))}>
@@ -772,7 +774,7 @@ export default function BankHours() {
                       ) : (
                         <div className="divide-y border-t">
                           {(movementsQ.data || []).slice(0, 30).map((mov: any) => {
-                            const isPayout = mov.movement_type === 'payout';
+                            const isPayout = mov.movement_type === 'payment' || mov.movement_type === 'payout';
                             const createdAt = mov.created_at ? new Date(mov.created_at) : null;
                             return (
                               <div key={mov.id} className={cn(
@@ -791,7 +793,7 @@ export default function BankHours() {
                                       {TYPE_LABELS[mov.movement_type] || mov.movement_type}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">
-                                      {new Date(mov.movement_date).toLocaleDateString('pt-BR')}
+                                      {formatDateBR(mov.movement_date)}
                                     </span>
                                     {isPayout && createdAt && (
                                       <span className="text-xs text-muted-foreground">
@@ -799,8 +801,8 @@ export default function BankHours() {
                                       </span>
                                     )}
                                   </div>
-                                  {mov.reason && (
-                                    <div className="text-xs text-muted-foreground mt-0.5 truncate">{mov.reason}</div>
+                                  {mov.description && (
+                                    <div className="text-xs text-muted-foreground mt-0.5 truncate">{mov.description}</div>
                                   )}
                                 </div>
                                 <div className={cn('font-mono text-sm font-bold tabular-nums', balanceClass(mov.minutes))}>

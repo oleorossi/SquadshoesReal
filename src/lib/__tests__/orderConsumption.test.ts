@@ -130,7 +130,9 @@ describe('orderConsumption — motor canônico', () => {
     expect(placa.productUnit).toBe('placa');
     expect(placa.totalQuantity).toBeCloseTo(2.4, 6);
 
-    const palmForr = find('Palmilha', 'Forração Palmilha')!;
+    // componentType DISTINTO (audit E3 10/06/2026): forro da palmilha é
+    // cortado no Corte Forração, não no Corte Palmilha.
+    const palmForr = find('Forração Palmilha', 'Forração Palmilha')!;
     expect(palmForr.groupName).toBe('NAPA FORRO');
     expect(palmForr.productUnit).toBe('metro');
     expect(palmForr.totalQuantity).toBeCloseTo(1.44, 6);
@@ -162,23 +164,38 @@ describe('orderConsumption — motor canônico', () => {
     expect(sumBulk).toBeCloseTo(sumModal, 9);
   });
 
-  it('Corte Palmilha exibe placa + forração da palmilha e oculta cabedal/solado/cola', () => {
+  it('Corte Palmilha exibe a placa; Corte Forração recebe a forração da palmilha (E3)', () => {
     const bulk = computeConsumptionForItems([buildItem()], buildContext()).map(toBulkConsumptionRow);
-    const filtered = filterConsumptionForSector(bulk, 'Corte Palmilha');
+    const palmilha = filterConsumptionForSector(bulk, 'Corte Palmilha');
 
-    expect(filtered.every(r => r.component === 'Palmilha')).toBe(true);
-    const names = filtered.map(r => r.product_name).sort();
-    expect(names).toContain('EVA PLACA');
-    expect(names).toContain('NAPA FORRO');
-    expect(filtered.find(r => r.product_name === 'SOLADO TR 01')).toBeUndefined();
-    expect(filtered.find(r => r.component === 'Cabedal')).toBeUndefined();
-    expect(filtered.find(r => r.component === 'Químicos')).toBeUndefined();
+    // Só a PLACA — a forração da palmilha é corte do setor Corte Forração.
+    expect(palmilha.every(r => r.component === 'Palmilha')).toBe(true);
+    expect(palmilha.map(r => r.product_name)).toContain('EVA PLACA');
+    expect(palmilha.find(r => r.component === 'Forração Palmilha')).toBeUndefined();
+    expect(palmilha.find(r => r.product_name === 'SOLADO TR 01')).toBeUndefined();
+    expect(palmilha.find(r => r.component === 'Cabedal')).toBeUndefined();
+    expect(palmilha.find(r => r.component === 'Químicos')).toBeUndefined();
+
+    const forracao = filterConsumptionForSector(bulk, 'Corte Forração');
+    expect(forracao.find(r => r.component === 'Forração Palmilha')).toBeDefined();
+    expect(forracao.find(r => r.component === 'Forração')).toBeDefined();
+    expect(forracao.find(r => r.component === 'Palmilha')).toBeUndefined();
+  });
+
+  it('Aviamento vê cabedal + forro, mas não a forração da palmilha (E4)', () => {
+    const bulk = computeConsumptionForItems([buildItem()], buildContext()).map(toBulkConsumptionRow);
+    const aviamento = filterConsumptionForSector(bulk, 'Aviamento');
+    expect(aviamento.find(r => r.component === 'Cabedal')).toBeDefined();
+    expect(aviamento.find(r => r.component === 'Forração')).toBeDefined();
+    expect(aviamento.find(r => r.component === 'Forração Palmilha')).toBeUndefined();
+    expect(aviamento.find(r => r.component === 'Solado')).toBeUndefined();
   });
 
   it('palmilha pronta (insole_ready_made) não gera nenhuma linha de palmilha', () => {
     const item = buildItem({ technical_sheets: buildSheet({ insole_ready_made: true }) });
     const rows = computeConsumptionForItems([item], buildContext());
     expect(rows.find(r => r.componentType === 'Palmilha')).toBeUndefined();
+    expect(rows.find(r => r.componentType === 'Forração Palmilha')).toBeUndefined();
     // mas mantém cabedal/forração/solado normalmente
     expect(rows.find(r => r.componentType === 'Cabedal')).toBeDefined();
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();

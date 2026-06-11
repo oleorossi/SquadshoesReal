@@ -278,6 +278,8 @@ export type WaveSaleOrder = {
   sale_order_id: string;
   order_number: string | null;
   client_name: string | null;
+  /** Nome fantasia — opcional; getWaveSaleOrders não popula hoje (UI cai no client_name). */
+  client_fantasy?: string | null;
   total_pairs: number;
   delivery_deadline: string | null;
   status: string | null;

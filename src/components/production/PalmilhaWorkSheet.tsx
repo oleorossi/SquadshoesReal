@@ -458,17 +458,16 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
             );
 
             if (isLast) {
-              // Força nova pg pro último grupo + total geral + footer.
-              // keep-together é soft (Chrome ignora em layouts complexos);
-              // page-break-before é HARD e garante footer nunca órfão.
-              const forceBreak = groups.length > 1;
+              // Bloco final (total geral + footer) atômico e ancorado ao
+              // grupo anterior — só pula de página quando não cabe. (Antes
+              // .force-page-before SEMPRE abria página nova → branco
+              // desnecessário na página anterior.)
               return (
-                <div
-                  key={idx}
-                  className={forceBreak ? 'keep-together force-page-before' : 'keep-together'}
-                >
+                <div key={idx}>
                   {groupBlock}
-                  {trailingBlock}
+                  <div className="keep-together keep-with-previous">
+                    {trailingBlock}
+                  </div>
                 </div>
               );
             }

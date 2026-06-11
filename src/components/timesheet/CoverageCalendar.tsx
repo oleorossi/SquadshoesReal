@@ -37,10 +37,12 @@ export default function CoverageCalendar() {
   const covered = cov?.coveredDates ?? new Set<string>();
   const maxCov = cov?.maxCovered ?? null;
 
+  // Panel não tem prop `description` (é `subtitle`) — o texto nunca renderizava.
+  // Removido no typecheck de 2026-06-10 sem mudança visual; se quiser exibir, use
+  // subtitle="Dias já importados do relógio. A folha só calcula até a última data coberta."
   return (
     <Panel
       title="Cobertura do ponto"
-      description="Dias já importados do relógio. A folha só calcula até a última data coberta."
       flush
     >
       <div className="p-4 space-y-4">

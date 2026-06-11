@@ -61,8 +61,8 @@ function calcGroupStatus(stages: OrderStage[], group: typeof STAGE_GROUPS[number
   // diretamente, com fallback de normalização para tolerar capitalização
   // variada ou aliases legados.
   const groupStages = stages.filter(s => {
-    if (group.sectors.includes(s.sector_name)) return true;
-    const normalized = normalizeSectorId(s.sector_name);
+    if (group.sectors.includes(s.stage_name)) return true;
+    const normalized = normalizeSectorId(s.stage_name);
     if (!normalized) return false;
     return group.sectors.some(
       (lbl) => normalizeSectorId(lbl) === normalized,
