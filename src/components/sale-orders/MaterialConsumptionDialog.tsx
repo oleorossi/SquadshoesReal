@@ -215,7 +215,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             sole_group_id,
             lining_accessories,
             components_accessories,
-            direct_components
+            direct_components,
+            sole_drives_consumption
           )
         `)
         .eq('sale_order_id', saleOrderId);

@@ -122,7 +122,8 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   sole_group_id,
   lining_accessories,
   components_accessories,
-  direct_components
+  direct_components,
+  sole_drives_consumption
 `;
 
 /** Classifica um material de BOM (sheet_materials) num componentType. */
