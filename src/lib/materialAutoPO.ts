@@ -26,16 +26,31 @@ export async function autoCreateMaterialPO(params: {
   // ── Step 1: Fetch product details ────────────────────────────────────────
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, quantity, min_stock, unit_price, unit, group_id, supplier_id, color')
+    .select('id, name, quantity, min_stock, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color')
     .eq('id', productId)
     .maybeSingle();
 
   if (!product) return null;
 
-  const unitPrice = Number(product.unit_price) || 0;
   const currentStock = Number(product.quantity) || 0;
   const minStock = Number(product.min_stock) || 0;
-  const unit = params.unit || product.unit || 'un';
+
+  // ── Conversão estoque→compra (espelha generate_purchase_orders_from_mrp) ──
+  // shortageQty vem na unidade de ESTOQUE; a OC deve sair na unidade de COMPRA.
+  // Sem isto, PLACA EVA (estoque dm², compra 'placa', rate 150) saía com
+  // quantidade/unidade/preço errados e a acumulação não casava com itens do RPC.
+  const convRate = Number((product as any).conversion_rate) || 1;
+  const purchaseUnit = (params.unit && params.unit === product.unit)
+    ? (((product as any).purchase_order_unit as string) || product.unit || 'un')
+    : (((product as any).purchase_order_unit as string) || params.unit || product.unit || 'un');
+  const unit = purchaseUnit;
+  // R$/estoque × (estoque/compra) = R$/compra. total_value fica invariante.
+  const unitPrice = (Number(product.unit_price) || 0) * convRate;
+  const DISCRETE_PURCHASE_UNITS = ['un', 'cx', 'rolo', 'chapa', 'placa', 'placas', 'unidade', 'par'];
+  let orderQty = shortageQty / (convRate || 1);
+  if (DISCRETE_PURCHASE_UNITS.includes(String(purchaseUnit).toLowerCase())) {
+    orderQty = Math.ceil(orderQty);
+  }
 
   // ── Step 2: Resolve supplier ─────────────────────────────────────────────
   let supplierName = 'A definir';
@@ -83,12 +98,12 @@ export async function autoCreateMaterialPO(params: {
     openPO = data ?? null;
   }
 
-  const appendNote = `\nFalta de "${productName}" para PV ${orderRef} — faltam ${shortageQty} ${unit}`;
+  const appendNote = `\nFalta de "${productName}" para PV ${orderRef} — pedir ${orderQty} ${unit}`;
 
   const itemBase = {
     product_id: productId,
-    quantity: shortageQty,
-    suggested_quantity: shortageQty,
+    quantity: orderQty,
+    suggested_quantity: orderQty,
     unit_price: unitPrice,
     unit,
     current_stock: currentStock,
@@ -102,7 +117,7 @@ export async function autoCreateMaterialPO(params: {
     const { error: upsertErr } = await (supabase as any).rpc('upsert_po_item_atomic', {
       p_po_id: openPO.id,
       p_product_id: productId,
-      p_qty_delta: shortageQty,
+      p_qty_delta: orderQty,
       p_unit_price: unitPrice,
       p_unit: unit,
       p_current_stock: currentStock,
@@ -128,8 +143,8 @@ export async function autoCreateMaterialPO(params: {
       supplier_name: supplierName,
       supplier_id: supplierId,
       auto_generated: true,
-      total_value: shortageQty * unitPrice,
-      notes: `Gerada automaticamente — Falta de "${productName}" para PV ${orderRef}. Faltam ${shortageQty} ${unit}.`,
+      total_value: orderQty * unitPrice,
+      notes: `Gerada automaticamente — Falta de "${productName}" para PV ${orderRef}. Pedir ${orderQty} ${unit}.`,
     })
     .select('id, order_number')
     .single();
