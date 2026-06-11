@@ -7,6 +7,7 @@ import {
   convertDm2ToPlates,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   normalizeText,
+  normalizeColorKey,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 
@@ -254,7 +255,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   // (sheet_id, cor do cabedal) → produto-solado específico
   const soleColorMap = new Map<string, string>();
   for (const m of (soleColorMappings || []) as any[]) {
-    if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_product_id);
+    if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
   }
   // Mappings LEGADOS sem sole_product_id (só sole_group_id) — P2 do
   // resolve_sole_color: o produto é escolhido pelo maior estoque do grupo.
@@ -421,8 +422,9 @@ export function computeConsumptionForItems(
       }
     }
 
-    // P1 — mapping explícito. Tenta a chave exata e depois scan normalizado.
-    const direct = soleColorMap.get(`${refId}::${cabedalColor}`);
+    // P1 — mapping explícito. Chave normalizada (NFD+lower) — consistente com o
+    // build do soleColorMap; depois scan normalizado via normColor (≡ normalizeColorKey).
+    const direct = soleColorMap.get(`${refId}::${normalizeColorKey(cabedalColor)}`);
     if (direct) return direct;
     for (const [k, v] of soleColorMap.entries()) {
       const sep = k.indexOf('::');

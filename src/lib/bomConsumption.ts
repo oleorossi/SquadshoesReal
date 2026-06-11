@@ -7,6 +7,7 @@ import {
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   isLinearWidthMissing,
   normalizeText,
+  normalizeColorKey,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 
@@ -119,7 +120,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   const saleItemsMap = new Map((saleOrderItems || []).map((si: any) => [si.id, si]));
   const soleColorMap = new Map<string, string>();
   for (const m of (soleColorMappings || []) as any[]) {
-    if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_product_id);
+    if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
   }
 
   const getComponentSheetsForGroup = (groupName: string) => {
@@ -243,7 +244,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const liningMatch = resolveOption(sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0, liningAlts, orderColor);
     if (liningMatch) {
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-      const soleProductId = soleColorMap.get(`${order.reference_id}::${orderColor}`) || null;
+      const soleProductId = soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
       const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração',
@@ -255,7 +256,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // de fábrica): a grade não cobra placa. Mesma regra do orderConsumption.ts
     // (motor canônico). Antes o BOM contava placa mesmo na palmilha pronta,
     // inflando consumo/compra (MRP)/custo.
-    const soleProductIdForInsole = soleColorMap.get(`${order.reference_id}::${orderColor}`) || null;
+    const soleProductIdForInsole = soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
     const insoleSoleProd = soleProductIdForInsole
       ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole)
       : null;

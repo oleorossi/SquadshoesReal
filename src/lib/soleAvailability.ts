@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
+import { normalizeColorKey } from '@/lib/materialConsumption';
 
 export interface SoleShortage {
   sole_product_id: string;
@@ -107,7 +108,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   // sole color mapping: "sheetId::cabedelColor" → sole_product_id
   const soleColorMap = new Map<string, string>();
   for (const m of soleMappings || []) {
-    const key = `${(m as any).sheet_id}::${((m as any).product_color || '').toLowerCase().trim()}`;
+    const key = `${(m as any).sheet_id}::${normalizeColorKey((m as any).product_color)}`;
     soleColorMap.set(key, (m as any).sole_product_id);
   }
 
@@ -135,7 +136,7 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     if (!sheet) continue;
 
     // ── Sole ──
-    const soleKey = `${item.reference_id}::${(item.color || '').toLowerCase().trim()}`;
+    const soleKey = `${item.reference_id}::${normalizeColorKey(item.color)}`;
     const soleId = soleColorMap.get(soleKey) || sheet.primary_sole_id;
     if (soleId) {
       const existing = requiredSoles.get(soleId) || { qty: 0, references: new Set<string>(), sizeBreakdown: {} as Record<string, number>, orderNumbers: new Set<string>() };
