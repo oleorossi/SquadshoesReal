@@ -41,17 +41,12 @@ export default function MrpPage() {
   const [statusFilter, setStatusFilter] = useState('open');
   const [typeFilter, setTypeFilter] = useState('all');
 
-  // Calculate stock shortages from current orders
+  // Alertas de estoque por mínimo (min_stock). A demanda real por PV está nas
+  // abas Sugestões/Necessidades (v_mrp_needs / fn_projected_demand, server-side).
+  // Auditoria 2026-06-11: removido loop morto sobre `orders` + reqMap nunca usado
+  // (fingia agregar necessidade por pedido mas o corpo era vazio).
   const stockAlerts = useMemo(() => {
     const alerts: Array<{ product: any; required: number; available: number; shortage: number; orders: string[] }> = [];
-    const productMap = new Map(products.map(p => [p.id, p]));
-
-    // Group requirements by product
-    const reqMap = new Map<string, { required: number; orders: string[] }>();
-
-    for (const order of orders.filter(o => o.status === 'Em Produção' || o.status === 'Reservado')) {
-      // Simple aggregation - products below min_stock
-    }
 
     for (const p of products) {
       if (p.active && p.min_stock > 0 && p.quantity <= p.min_stock) {
@@ -66,7 +61,7 @@ export default function MrpPage() {
     }
 
     return alerts.slice(0, 50);
-  }, [products, orders]);
+  }, [products]);
 
   const filteredSuggestions = useMemo(() => {
     let result = suggestions as any[];
