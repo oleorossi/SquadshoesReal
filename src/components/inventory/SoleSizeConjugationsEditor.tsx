@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Plus, FloppyDisk as Save, Trash as Trash2, Link as Link2, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   useSoleConjugations,
@@ -37,6 +38,7 @@ type DraftRow = {
  * adicionar pares (ou trios) usando os tamanhos contidos na faixa atual.
  */
 export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Props) {
+  const qc = useQueryClient();
   const { data: existing = [], isLoading } = useSoleConjugations(soleGroupId);
   const upsert = useUpsertSoleConjugation();
   const remove = useDeleteSoleConjugation();
@@ -216,6 +218,12 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
           if (uErr) throw uErr;
         }
         toast.info(`Range expandido: ${sizeFrom}-${sizeTo} → ${newFrom}-${newTo}`);
+        // A expansão regrava stock_grade._size_from/_to de TODAS as variantes —
+        // sem invalidar, o PV (SaleOrderItemForm, 'sole_size_range_specific',
+        // staleTime 5min) e as listas seguem com o range antigo. As conjugações
+        // em si já são invalidadas pelo hook useUpsertSoleConjugation.
+        qc.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
+        qc.invalidateQueries({ queryKey: ['products'] });
       }
 
       // 2) Persiste as conjugações

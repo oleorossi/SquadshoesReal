@@ -759,6 +759,14 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       // Invalidar apenas o painel de itens padrão aqui; as queries de produtos
       // são invalidadas pelo onSuccess das mutações (após o insert/update completar).
       queryClient.invalidateQueries({ queryKey: ['sole_standard_items'] });
+      // Range de numeração do solado alimenta a grade do PV/ficha técnica
+      // (SaleOrderItemForm: 'sole_size_range_specific'/'sole_size_conjugations',
+      // staleTime 5min). Editar/criar solado aqui sem invalidar deixava o PV
+      // mostrando o range ANTIGO (mesmo gap corrigido em SolesCadastroTab e
+      // MasterVariantDialog). Invalidação incondicional — barata e cobre
+      // edição própria, sync de siblings e criação de variante nova no grupo.
+      queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
+      queryClient.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
 
       // Emitir evento global para destacar o item recém-habilitado em painéis abertos
       if (isStandardNow && !wasStandard) {

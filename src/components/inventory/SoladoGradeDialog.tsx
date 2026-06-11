@@ -544,6 +544,11 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
       }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      // O save regrava _size_from/_size_to no stock_grade (linha ~500) — se o
+      // range resolvido divergir do metadata antigo (ex.: grade sem metadata,
+      // range inferido das keys), o PV cacheia o range velho por 5min
+      // ('sole_size_range_specific'). Invalidar é barato e mantém coerência.
+      queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
       // Mensagem precisa: só conta as cores que de fato foram editadas
       // (não inclui as preservadas como antes — vide fix do bloco else acima).
       const updatedNames = updates
