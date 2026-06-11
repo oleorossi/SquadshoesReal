@@ -473,6 +473,28 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
     const colorSet = new Set<string>();
 
+    // Variante SEM curadoria manual (available_colors vazio): as cores vêm do
+    // grupo de produtos do material apontado pela variante (upper/lining/insole
+    // _material_product_id → products.group_id → cores do grupo), unidas às dos
+    // materiais da ficha abaixo. Adicionado 11/06/2026 — user cadastrou variante
+    // NAPA SOFT na EC23 (grupo com 27 cores) e o PV só mostrava as 3 cores do
+    // forro da ficha. Sem variante selecionada (itens legados), todas as ativas
+    // entram no pool. Solado fica de fora — cor de solado é campo próprio.
+    const variantsForColors = item.material_variant_id
+      ? activeMaterialVariants.filter(v => v.id === item.material_variant_id)
+      : activeMaterialVariants;
+    variantsForColors.forEach(v => {
+      (v.available_colors || []).forEach(color => colorSet.add(color));
+      [v.upper_material_product_id, v.lining_material_product_id, v.insole_material_product_id]
+        .filter(Boolean)
+        .forEach(productId => {
+          const prod = (allProducts as any[]).find((p: any) => p.id === productId);
+          if (prod?.group_id) {
+            getColorsFromGroupId(prod.group_id).forEach(color => colorSet.add(color));
+          }
+        });
+    });
+
     // Primary source: colors from ALL BOM groups whose product category is lining/insole-related
     const liningCategories = new Set(['Forração da Palmilha', 'Palmilha']);
     refMaterials.forEach((m: any) => {
