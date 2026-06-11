@@ -28,7 +28,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
-import { computeParallelWindows } from '@/lib/sectorCapacity';
+import { computeParallelWindows, loadHolidayCache } from '@/lib/sectorCapacity';
 import { DISPLAY_SECTORS, normalizeSector, type SectorKey } from '@/lib/sectors';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -249,6 +249,9 @@ function useScheduleData() {
     queryKey: ['production_daily_schedule_v2'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
+      // Aquece o cache de feriados antes de computar janelas (alinha as datas
+      // por setor ao SQL is_business_day). Sem isto a UI divergia do servidor.
+      await loadHolidayCache();
       const [wavesRes, defaultsRes] = await Promise.all([
         supabase
           .from('production_waves')
