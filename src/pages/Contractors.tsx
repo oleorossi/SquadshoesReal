@@ -1,4 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
+import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -438,40 +439,10 @@ export default function Contractors() {
     }
   };
 
-  const createPayableForOrder = useCallback(async (order: Partial<ServiceOrder>, contractorName: string, contractorId?: string) => {
-    const total = order.total_value || order.unit_price || 0;
-    if (total <= 0) { toast.error('Valor da OS é zero — conta a pagar não gerada.'); return; }
-
-    // Idempotency: skip if a non-cancelled AP already exists for this service_order.
-    // Must exclude cancelled rows so a re-completed OS (Concluído→Cancelado→Concluído)
-    // can create a fresh AP after the prior one was cancelled by cancelArtisanalOutput.
-    if (order.id) {
-      const { data: existing } = await supabase
-        .from('accounts_payable')
-        .select('id')
-        .eq('reference_type', 'service_order')
-        .eq('reference_id', order.id)
-        .neq('status', 'cancelled')
-        .limit(1);
-      if (existing && existing.length > 0) {
-        toast.info('Conta a pagar já existe para esta OS.');
-        return;
-      }
-    }
-
-    const contractor = contractors.find(c => c.id === (contractorId || order.contractor_id));
-    const paymentDays = contractor?.payment_days ?? 15;
-    const dueDate = format(addDays(new Date(), paymentDays), 'yyyy-MM-dd');
-    const { error } = await supabase.from('accounts_payable').insert({
-      description: `OS ${order.order_number || ''} - ${order.description || 'Serviço terceirizado'} - ${contractorName}`,
-      amount: total, due_date: dueDate, category: 'servico', status: 'pending',
-      reference_id: order.id || null,
-      reference_type: order.id ? 'service_order' : null,
-      notes: `Gerado automaticamente a partir da OS concluída. Prestador: ${contractorName}. Prazo: ${paymentDays} dias.`,
-    } as any);
-    if (error) toast.error('Erro ao gerar conta a pagar: ' + error.message);
-    else { toast.success(`Conta a pagar gerada com vencimento em ${paymentDays} dias`); queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); }
-  }, [queryClient, contractors]);
+  // Conta a pagar: criador ÚNICO é o banco (tg_create_ap_for_service_order,
+  // disparado na transição pra status finalizado; valor = pares BONS devolvidos
+  // × unit_price via service_order_payable_amount). O createPayableForOrder
+  // client-side foi removido na Fase 1 de facção (3 escritores divergentes).
 
   // Reverse artisanal stock entries when a Concluído OS is cancelled.
   const cancelArtisanalOutput = useCallback(async (
@@ -826,41 +797,32 @@ export default function Contractors() {
   // "Marcar como Entregue": status → 'Concluído' + delivered_at (data real).
   // Reusa o mesmo claim atômico do checkbox de materiais pra evitar dupla conta
   // a pagar / duplo lançamento artesanal em duplo-clique ou abas concorrentes.
-  const markDelivered = useCallback(async (o: ServiceOrder) => {
-    try {
-      // delivered_at é coluna nova (migration 20260722180000_service-orders-
-      // delivered-at) — `(supabase as any)` até o types.ts ser regenerado.
-      const { data: claimed, error } = await (supabase as any)
+  // "Entregue" agora REGISTRA RETORNO (Fase 1 facção): dialog com pares
+  // bons/defeito/perda — o banco fecha a OS, grava delivered_at e gera a
+  // conta a pagar pelos pares bons. Caso comum (retorno total) = 2 cliques.
+  const [returnDialogOs, setReturnDialogOs] = useState<ServiceOrder | null>(null);
+  const markDelivered = useCallback((o: ServiceOrder) => {
+    setReturnDialogOs(o);
+  }, []);
+  const handleReturnSaved = useCallback(async (info: { completed: boolean }) => {
+    const o = returnDialogOs;
+    if (!info.completed || !o) return;
+    // Efeito que era do fluxo antigo de conclusão: saída artesanal (1×).
+    if ((o as any).artisanal_recipe_id) {
+      const { data: fresh } = await (supabase as any)
         .from('service_orders')
-        .update({ status: 'Concluído', delivered_at: new Date().toISOString() })
+        .select('order_number, artisanal_stock_entry_done')
         .eq('id', o.id)
-        .not('status', 'in', '("Concluído","Concluido","received","Cancelado","cancelled")')
-        .select('id, order_number, artisanal_stock_entry_done');
-      if (error) throw error;
-      if (!claimed || claimed.length === 0) {
-        // Já finalizada por outro clique/aba — só sincroniza a lista.
-        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-        toast.info('OS já estava finalizada — lista atualizada.');
-        return;
-      }
-      queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-      queryClient.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
-      queryClient.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
-      toast.success(`OS ${o.order_number} marcada como Entregue.`);
-      // Mesmos efeitos da conclusão via form: conta a pagar + saída artesanal.
-      await createPayableForOrder(o, o.contractors?.name || '');
-      const freshOs = claimed[0] as any;
-      if (o.artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
+        .maybeSingle();
+      if (fresh && !fresh.artisanal_stock_entry_done) {
         await produceArtisanalOutput(
-          { ...o, artisanal_stock_entry_done: freshOs.artisanal_stock_entry_done } as any,
-          freshOs.order_number || '',
+          { ...o, artisanal_stock_entry_done: fresh.artisanal_stock_entry_done } as any,
+          fresh.order_number || '',
           o.id,
         );
       }
-    } catch (e: any) {
-      toast.error(`Falha ao marcar entrega: ${e?.message || 'erro desconhecido'}`);
     }
-  }, [queryClient, createPayableForOrder, produceArtisanalOutput]);
+  }, [returnDialogOs, produceArtisanalOutput]);
 
   // "Em Processamento" (DB: 'Em Andamento') — passa pelo hook canônico, que já
   // bloqueia downgrade de OS Concluída e invalida o cache.
@@ -951,11 +913,8 @@ export default function Contractors() {
         onSuccess: async () => {
           setOrderDialog(false);
           if (justCompleted) {
-            try {
-              await createPayableForOrder({ ...payload, order_number: originalOrder?.order_number }, contractorName);
-            } catch (e: any) {
-              toast.error(`Falha ao gerar conta a pagar: ${e?.message || 'erro desconhecido'}`);
-            }
+            // Conta a pagar: gerada pelo banco na transição de status.
+            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
             if (payload.artisanal_recipe_id) {
               try {
                 await produceArtisanalOutput(payload, originalOrder?.order_number || '', osId);
@@ -1029,11 +988,8 @@ export default function Contractors() {
             toast.error(`Falha ao debitar materiais: ${e?.message || 'erro desconhecido'}`);
           }
           if (editingOrder.status === 'Concluído') {
-            try {
-              await createPayableForOrder({ ...payload, order_number: data?.order_number }, contractorName);
-            } catch (e: any) {
-              toast.error(`Falha ao gerar conta a pagar: ${e?.message || 'erro desconhecido'}`);
-            }
+            // Conta a pagar: gerada pelo banco na transição de status.
+            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
             if (payload.artisanal_recipe_id) {
               try {
                 await produceArtisanalOutput(payload, data?.order_number, data?.id);
@@ -1261,7 +1217,8 @@ export default function Contractors() {
                                             }
                                             toast.success('Todos os itens concluídos! OS marcada como Concluída.');
                                             queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-                                            createPayableForOrder(o, o.contractors?.name || '');
+                                            // Conta a pagar: gerada pelo banco na transição de status.
+                                            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
                                             const freshOs = claimed[0] as any;
                                             if ((o as any).artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
                                               // Pass freshOs flag so the early-return inside produceArtisanalOutput
@@ -2382,6 +2339,19 @@ export default function Contractors() {
               </div>
             </TabsContent>
           </Tabs>
+
+      <ServiceOrderReturnDialog
+        open={!!returnDialogOs}
+        onOpenChange={(o) => { if (!o) setReturnDialogOs(null); }}
+        serviceOrder={returnDialogOs ? {
+          id: returnDialogOs.id,
+          order_number: returnDialogOs.order_number,
+          quantity: returnDialogOs.quantity,
+          description: returnDialogOs.description,
+          contractorName: returnDialogOs.contractors?.name ?? null,
+        } : null}
+        onSaved={handleReturnSaved}
+      />
 
           <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
             <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
