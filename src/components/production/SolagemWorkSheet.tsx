@@ -84,7 +84,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
   const hasBothGroups = pretoBands.length > 0 && outrosBands.length > 0;
 
   const renderBand = (band: SoleColorBand, idx: number) => {
-    const cards = Math.max(1, Math.ceil(band.totalPairs / pairsPerCard));
+    // FIX 2026-06-11: tally de FICHAS. Grade base uniforme → 1 caixinha = 1
+    // ficha de baseGradeSum pares (bate com "Por Ficha (Np) × M fichas");
+    // grade mista cai no box genérico (pairsPerCard).
+    const bandBgs = band.baseGradeSum ?? 0;
+    const bandNf = band.fichas ?? 0;
+    const bandUniform = !band.mixedGrades && bandBgs > 0 && bandNf > 0;
+    const tallyPerCard = bandUniform ? bandBgs : pairsPerCard;
+    const cards = bandUniform ? bandNf : Math.max(1, Math.ceil(band.totalPairs / pairsPerCard));
     // Fix 22/05/2026: tabela mostra só o range desta band (não todos os
     // tamanhos universais). Union de grade + baseGrade — qualquer tamanho
     // com valor > 0 em pelo menos um deles entra.
@@ -298,7 +305,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
         })()}
 
         <div className="px-2 py-2 border-t border-black">
-          <TallyBox count={cards} pairsPerCard={pairsPerCard} totalUnits={band.totalPairs} />
+          <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} />
         </div>
       </div>
     );

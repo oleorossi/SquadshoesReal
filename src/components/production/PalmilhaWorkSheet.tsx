@@ -135,7 +135,14 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
       ) : (
         <div className="space-y-2">
           {groups.map((group, idx) => {
-            const cards = Math.max(1, Math.ceil(group.totalPairs / pairsPerCard));
+            // FIX 2026-06-11: tally de FICHAS. Grade base uniforme → 1 caixinha
+            // = 1 ficha de baseGradeSum pares (bate com "Por Ficha (Np) × M
+            // fichas"); grade mista cai no box genérico (pairsPerCard).
+            const grpBgs = group.baseGradeSum ?? 0;
+            const grpNf = group.fichas ?? 0;
+            const grpUniform = !group.mixedGrades && grpBgs > 0 && grpNf > 0;
+            const tallyPerCard = grpUniform ? grpBgs : pairsPerCard;
+            const cards = grpUniform ? grpNf : Math.max(1, Math.ceil(group.totalPairs / pairsPerCard));
             const alerts: SectorAlert[] = [];
             if (group.readyMade) {
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
@@ -392,7 +399,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
 
                 {!group.readyMade && (
                   <div className="px-2 pb-2 pt-2 border-t border-black">
-                    <TallyBox count={cards} pairsPerCard={pairsPerCard} totalUnits={group.totalPairs} />
+                    <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} />
                   </div>
                 )}
               </div>

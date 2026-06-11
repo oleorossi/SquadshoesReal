@@ -28,6 +28,7 @@ import { printCuttingGroupedReport } from '@/lib/printCuttingGroupedReport';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { getGradeTotal, getOrderTotalPairs } from '@/lib/cuttingCounts';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -1068,14 +1069,20 @@ if (totalPairsAll !== palmTotal) {
                 const grade = o.grade as Record<string, number> | null;
                 const gradeSum = getGradeTotal(grade);
                 const tp = getOrderTotalPairs(o);
-                const mult = gradeSum > 0 ? 1 : 0;
+                // FIX 2026-06-11: escala a grade BASE pro total REAL (Hamilton).
+                // Antes mult=1 mostrava a grade base crua (somando ~12) ao lado
+                // de um Total de centenas — o cortador não sabia quantos pares
+                // cortar por numeração. Σ(células)=tp por construção.
+                const scaled = gradeSum > 0
+                  ? scaleGradeWithLargestRemainder(grade || {}, tp / gradeSum, tp)
+                  : {};
                 totalPairsAll += tp;
                 opSummaryRows += `<tr>`;
                 opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;font-weight:600;">${o.order_number}</td>`;
                 opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;">${ref?.code || ''} ${ref?.name || ''}</td>`;
                 opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;">${o.color || '—'}</td>`;
                 allActiveSizesReport.forEach(s => {
-                  const qty = Math.round((Number(grade?.[s]) || 0) * mult);
+                  const qty = Number(scaled[s]) || 0;
                   opSizeTotals[s] += qty;
                   opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:${qty > 0 ? '700' : '400'}">${qty || ''}</td>`;
                 });
@@ -1135,9 +1142,14 @@ if (totalPairsAll !== palmTotal) {
                 const grade = o.grade as Record<string, number> | null;
                 const gradeSum = getGradeTotal(grade);
                 const tp = getOrderTotalPairs(o);
-                const mult = gradeSum > 0 ? 1 : 0;
+                // FIX 2026-06-11: escala a grade BASE pro total REAL (Hamilton);
+                // mult=1 antes mostrava a grade base crua sob o Total real.
+                const scaled = gradeSum > 0
+                  ? scaleGradeWithLargestRemainder(grade || {}, tp / gradeSum, tp)
+                  : {};
                 const opActiveSizes = SIZES.filter(s => grade && Number(grade[s]) > 0);
-                const fichas = Math.ceil(tp / 12);
+                // fichas = total / grade base (não /12, que erra quando a base ≠ 12).
+                const fichas = gradeSum > 0 ? Math.round(tp / gradeSum) : Math.ceil(tp / 12);
 
                 const imageUrl = ((ref as any).images as string[] | undefined)?.[0] || ref.image_url || '';
                 const imgTag = imageUrl
@@ -1147,7 +1159,7 @@ if (totalPairsAll !== palmTotal) {
                 // Compact grade inline
                 let gradeInline = '';
                 if (grade && opActiveSizes.length > 0) {
-                  gradeInline = opActiveSizes.map(s => `<span style="display:inline-block;text-align:center;margin:0 2px;"><span style="font-size:7px;color:#888;display:block;">${s}</span><span style="font-size:9px;font-weight:700;font-family:monospace;">${Math.round((grade[s] || 0) * mult)}</span></span>`).join('');
+                  gradeInline = opActiveSizes.map(s => `<span style="display:inline-block;text-align:center;margin:0 2px;"><span style="font-size:7px;color:#888;display:block;">${s}</span><span style="font-size:9px;font-weight:700;font-family:monospace;">${Number(scaled[s]) || 0}</span></span>`).join('');
                   gradeInline = `<div style="margin-top:3px;background:#f9f9f5;border:1px solid #ddd;border-radius:3px;padding:2px 4px;display:inline-flex;align-items:center;gap:1px;">${gradeInline}<span style="display:inline-block;text-align:center;margin:0 2px;border-left:1px solid #ccc;padding-left:4px;"><span style="font-size:7px;color:#888;display:block;">Tot</span><span style="font-size:9px;font-weight:700;font-family:monospace;">${tp}</span></span></div>`;
                 }
 
@@ -1211,6 +1223,11 @@ if (totalPairsAll !== palmTotal) {
                 const totalPairs = getOrderTotalPairs(order);
                 const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
                 const fichas = multiplier;
+                // FIX 2026-06-11: linha "Total" escala a base por Hamilton —
+                // Math.round(grade[s]*fichas) por número somava ±N vs o Total.
+                const scaledTotal = gradeSum > 0
+                  ? scaleGradeWithLargestRemainder(grade, multiplier, totalPairs)
+                  : {};
                 const activeSizes = SIZES.filter(s => Number(grade[s]) > 0);
                 const imageUrl = ((ref as any).images as string[] | undefined)?.[0] || ref.image_url || '';
 
@@ -1259,7 +1276,7 @@ if (totalPairsAll !== palmTotal) {
                       <td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;background:#f5f5f0;">${gradeSum}</td>
                     </tr>
                     <tr style="background:#f5f5f0;font-weight:700;"><td style="border:1px solid #999;padding:3px 6px;font-size:10px;">Total (${Math.ceil(fichas)} fichas)</td>
-                      ${activeSizes.map(s => `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;">${Math.round((grade[s] || 0) * fichas)}</td>`).join('')}
+                      ${activeSizes.map(s => `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;">${Number(scaledTotal[s]) || 0}</td>`).join('')}
                       <td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:12px;background:#e0e0c8;">${totalPairs}</td>
                     </tr></tbody></table>`;
                 };

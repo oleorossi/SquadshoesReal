@@ -129,14 +129,17 @@ function buildSummedGradeTable(
 
     if (grade && typeof grade === 'object') {
       const scaled = scaleGradeWithLargestRemainder(grade as Record<string, number>, multiplier, totalPairs);
-      for (const s of SIZES) {
-        const qty = scaled[s] || 0;
-        if (qty > 0) sizeTotals[s] += qty;
+      // FIX 2026-06-11: itera as chaves REAIS do scaled (não só SIZES), senão
+      // numerações conjugadas ("33/34") somem das células mas contam no Total.
+      for (const [k, qty] of Object.entries(scaled)) {
+        if (qty > 0) sizeTotals[k] = (sizeTotals[k] || 0) + qty;
       }
     }
   }
 
-  const activeSizes = SIZES.filter(s => (sizeTotals[s] || 0) > 0);
+  const activeSizes = Object.keys(sizeTotals)
+    .filter(s => (sizeTotals[s] || 0) > 0)
+    .sort((a, b) => (parseFloat(a) - parseFloat(b)) || a.localeCompare(b));
   if (activeSizes.length === 0) return '';
 
   let rows = `<tr>`;
@@ -182,15 +185,17 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
     }
     if (grade) {
       const scaled = scaleGradeWithLargestRemainder(grade as Record<string, number>, multiplier, totalPairs);
-      for (const s of SIZES) {
-        const qty = scaled[s] || 0;
-        if (qty > 0) group.sizes[s] = (group.sizes[s] || 0) + qty;
+      // FIX 2026-06-11: chaves reais (inclui conjugadas "33/34"), não só SIZES.
+      for (const [k, qty] of Object.entries(scaled)) {
+        if (qty > 0) group.sizes[k] = (group.sizes[k] || 0) + qty;
       }
     }
   }
 
   const items = Array.from(byColor.values()).sort((a, b) => a.color.localeCompare(b.color));
-  const activeSizes = SIZES.filter(s => items.some(g => (g.sizes[s] || 0) > 0));
+  const activeSizes = Array.from(new Set(items.flatMap(g => Object.keys(g.sizes))))
+    .filter(s => items.some(g => (g.sizes[s] || 0) > 0))
+    .sort((a, b) => (parseFloat(a) - parseFloat(b)) || a.localeCompare(b));
   const grandTotal = items.reduce((s, g) => s + g.totalPairs, 0);
   return { items, activeSizes, grandTotal };
 }

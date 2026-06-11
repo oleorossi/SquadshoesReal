@@ -380,7 +380,15 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
               if (bIsNum) return -1;
               return a.localeCompare(b);
             });
-          const cards = Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
+          // FIX 2026-06-11: a tally é de FICHAS. Com grade base uniforme
+          // (!mixedGrades), 1 caixinha = 1 ficha de baseGradeSum pares —
+          // reconcilia com "Por Ficha (Np) × M fichas". Grade mista cai no box
+          // genérico (pairsPerCard, default 12).
+          const cgBgs = cg.baseGradeSum ?? 0;
+          const cgNf = cg.fichas ?? 0;
+          const cgUniform = !cg.mixedGrades && cgBgs > 0 && cgNf > 0;
+          const tallyPerCard = cgUniform ? cgBgs : pairsPerCard;
+          const cards = cgUniform ? cgNf : Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
 
           const colorBlock = (
             // flow-card (v6): o card pode fragmentar ENTRE seções internas
@@ -788,7 +796,7 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
                 })()}
 
                 {/* Tally Box */}
-                <TallyBox count={cards} pairsPerCard={pairsPerCard} totalUnits={cg.totalPairs} />
+                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} />
               </div>
             </div>
           );

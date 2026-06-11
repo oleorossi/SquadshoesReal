@@ -324,9 +324,12 @@ export function buildGroupedReportHtml(
       const imageUrl = (images && images.length > 0 ? images[0] : ref.image_url) || '';
       const baseGrade: Record<string, number> = {};
       if (grade) {
-        for (const s of SIZES) {
-          const qty = Number(grade[s]) || 0;
-          if (qty > 0) baseGrade[s] = qty;
+        // FIX 2026-06-11: chaves reais (inclui conjugadas "33/34"), não só
+        // SIZES — senão a linha "Por Ficha" perde o balde conjugado enquanto
+        // a coluna (derivada de g.sizes) e o Total o incluem.
+        for (const [s, qty] of Object.entries(grade as Record<string, number>)) {
+          const q = Number(qty) || 0;
+          if (q > 0) baseGrade[s] = q;
         }
       }
       groupMap.set(key, {
