@@ -41,7 +41,7 @@ import { NfePreviewDialog } from '@/components/nfe/NfePreviewDialog';
 import type { NfeEmitida } from '@/hooks/useNfe';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
-import { printHtml, buildSaleOrderPrintHtml } from '@/lib/printOrder';
+import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
@@ -735,12 +735,10 @@ export default function SaleOrders() {
     if (selectedIds.size === 0) return;
     const selectedOrders = orders.filter(o => selectedIds.has(o.id));
     const allHtmlParts: string[] = [];
+    // Busca a identidade da empresa 1× e reaproveita em todos os PVs do lote.
+    const company = await fetchCompanySettings();
     for (const order of selectedOrders) {
-      const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', order.id);
-      // Fetch color variant images
-      const refIds = [...new Set((oi || []).map(i => i.reference_id))];
-      const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds);
-      allHtmlParts.push(await buildSaleOrderPrintHtml(order, oi || [], colorVariants || []));
+      allHtmlParts.push(await buildSaleOrderHtmlWithData(order, company));
     }
     const combinedHtml = allHtmlParts.join('<div style="page-break-before:always"></div>');
     printHtml(`Pedidos de Venda (${selectedOrders.length})`, combinedHtml);
@@ -1959,12 +1957,7 @@ export default function SaleOrders() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar PDF" onClick={async () => {
-                            const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', order.id);
-                            const refIds = [...new Set((oi || []).map(i => i.reference_id))];
-                            const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds);
-                            printHtml(`PV ${order.order_number}`, await buildSaleOrderPrintHtml(order, oi || [], colorVariants || []));
-                          }}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar PDF" onClick={() => { void printSaleOrderPdf(order); }}>
                             <Printer className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar por grupo" onClick={() => openDupDialog(order.id)}>
@@ -2212,7 +2205,7 @@ export default function SaleOrders() {
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => { const { data: oi } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', selectedOrder.id); const refIds = [...new Set((oi || []).map(i => i.reference_id))]; const { data: colorVariants } = await supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', refIds); printHtml(`PV ${selectedOrder.order_number}`, await buildSaleOrderPrintHtml(selectedOrder, oi || [], colorVariants || [])); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
                   {/* Botão "Etiquetas" — abre /etiquetas pré-filtrado pelo PV.
                       Antes printava térmica direto (perdia acesso a caixa externa,
                       hangtag, etc). Agora navega pra página completa de etiquetas
