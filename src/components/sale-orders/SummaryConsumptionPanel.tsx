@@ -12,6 +12,7 @@ import {
    calculateConsumptionWithUnit,
    convertDm2ToLinearMeters,
    convertDm2ToPlates,
+   isLinearWidthMissing,
    getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
    normalizeText,
    calcRequiredForGrade,
@@ -25,6 +26,8 @@ type ConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
+  // Ficha de área sem largura → consumo em dm² (não convertido); UI deixa neutra.
+  widthMissing?: boolean;
 };
 
 type SoleByType = Record<string, Record<string, number>>; // soleColor -> size -> total pairs
@@ -72,10 +75,11 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
 
   if (existing) {
     existing.totalQuantity += totalQuantity;
+    if (row.widthMissing) existing.widthMissing = true;
     return;
   }
 
-  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity });
+  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing });
 };
 
 const formatUnit = (unit: string) => {
@@ -395,9 +399,29 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             if (shouldSkip) continue;
           }
           let productUnit = product.unit || 'un';
-          let totalQty = (Number(material.quantity_per_unit) || 0) * qty;
-          if (productUnit === 'cm') { totalQty /= 100; productUnit = 'metro'; }
-          addConsumptionRow(consumptionMap, { componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''), groupName, materialName: product.name || groupName, productUnit, color: material.color || '—', totalQuantity: totalQty });
+          const unitLc = (productUnit || '').toString().toLowerCase().trim();
+          const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+          const rawQty = (Number(material.quantity_per_unit) || 0) * qty;
+          let totalQty = rawQty;
+          let widthMissing = false;
+          // Material de ÁREA (napa/couro) em unidade linear: quantity_per_unit está
+          // em dm²/par → converter pela largura da ficha (senão ~100× inflado).
+          // Mesma regra de orderConsumption.ts; antes só convertia cm→metro.
+          const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
+          if (isLinearUnit && cs) {
+            if (!isLinearWidthMissing(cs as any, productUnit)) {
+              totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
+              productUnit = 'metro';
+            } else {
+              widthMissing = true;
+              totalQty = rawQty;
+              productUnit = 'dm2';
+            }
+          } else if (unitLc === 'cm') {
+            totalQty = rawQty / 100;
+            productUnit = 'metro';
+          }
+          addConsumptionRow(consumptionMap, { componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''), groupName, materialName: product.name || groupName, productUnit, color: material.color || '—', totalQuantity: totalQty, widthMissing });
         }
       }
 
