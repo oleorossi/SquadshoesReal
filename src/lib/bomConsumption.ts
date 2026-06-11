@@ -3,6 +3,8 @@ import {
   calculateGradeBasedDm2,
   calculateConsumptionWithUnit,
   convertDm2ToPlates,
+  convertDm2ToLinearMeters,
+  isLinearWidthMissing,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   normalizeText,
 } from '@/lib/materialConsumption';
@@ -15,6 +17,9 @@ export type ConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
+  // Ficha de área sem largura → consumo fica em dm² (não convertido); a UI deve
+  // deixar a linha neutra (não comparar com estoque). Regra canônica do CLAUDE.md.
+  widthMissing?: boolean;
 };
 
 export const COMPONENT_ORDER = [
@@ -56,10 +61,11 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
 
   if (existing) {
     existing.totalQuantity += totalQuantity;
+    if (row.widthMissing) existing.widthMissing = true;
     return;
   }
 
-  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity });
+  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing });
 };
 
 export async function calculateBomForOrders(orderIds: string[]): Promise<ConsumptionRow[]> {
@@ -333,18 +339,38 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       }
 
       let productUnit = product.unit || 'un';
-      let quantityPerUnit = Number(material.quantity_per_unit) || 0;
-      // Normaliza unidade: case/espaços não devem causar conversão errada (100×).
-      if ((productUnit || '').toString().toLowerCase().trim() === 'cm') {
-        quantityPerUnit = quantityPerUnit / 100;
+      const unitLc = (productUnit || '').toString().toLowerCase().trim();
+      const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+      const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
+      let totalQty = rawQty;
+      let widthMissing = false;
+
+      // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de componente
+      // e quantity_per_unit está em dm²/par. Converter para metros lineares pela
+      // largura — senão aparece ~100× inflado. (Mesma regra de orderConsumption.ts;
+      // antes este loop só convertia cm→metro e inflava material de área em "m".)
+      const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
+      if (isLinearUnit && cs) {
+        if (!isLinearWidthMissing(cs as any, productUnit)) {
+          totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
+          productUnit = 'metro';
+        } else {
+          // Ficha de área SEM largura → não dá pra converter dm²→metro. Mantém o
+          // valor em dm² (regra canônica) e marca aviso; a UI deixa a linha neutra.
+          widthMissing = true;
+          totalQty = rawQty;
+          productUnit = 'dm2';
+        }
+      } else if (unitLc === 'cm') {
+        totalQty = rawQty / 100;
         productUnit = 'metro';
       }
-      const totalQty = quantityPerUnit * itemQuantity;
 
       addConsumptionRow(consumptionMap, {
         componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''),
         groupName, materialName: product.name || groupName, productUnit,
         color: material.color || '—', totalQuantity: totalQty,
+        widthMissing,
       });
     }
   }
