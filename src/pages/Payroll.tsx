@@ -316,7 +316,7 @@ export default function Payroll() {
     <div className="space-y-4 page-enter">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário÷30 × dias do período · falta = −1 dia · atraso/saída cedo = min × (salário÷220) ·
+          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário × dias do período ÷ dias do mês · falta = −1 dia (salário÷30) · atraso/saída cedo = min × (salário÷220) ·
           {' '}hora extra após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
