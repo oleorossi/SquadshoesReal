@@ -694,7 +694,7 @@ export async function buildSaleOrderPrintHtml(
 <div class="pv-doc">
   <div class="pv-top">
     <div class="pv-brand">
-      <img class="pv-logo" src="${logoSquad}" alt="${escapeHtml(coName)}" />
+      <img class="pv-logo" src="${logoSquad}" alt="${escapeHtml(coName)}" onerror="this.style.display='none'" />
       <div class="pv-brand-id">
         <div class="pv-brand-name">${escapeHtml(coName)}</div>
         ${coRazao ? `<div class="pv-brand-sub">${escapeHtml(coRazao)}</div>` : ''}
