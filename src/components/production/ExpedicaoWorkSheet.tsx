@@ -1,12 +1,12 @@
 import React from 'react';
 import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
-import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { adaptiveTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
+import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { generateBatchId } from './worksheet/batchId';
+import { PaginatedSheet } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface ExpedicaoOrder {
@@ -47,10 +47,17 @@ export interface ExpedicaoCustomerGroup {
 
 interface Props {
   group: ExpedicaoCustomerGroup;
-  date?: string;
   /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
   sizeBand?: 'infantil' | 'adulto' | 'misto';
+  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet). */
+  sectorLabel?: string;
 }
+
+/** Linhas por chunk da tabela "Itens · Conferência". Cada chunk vira um
+ *  bloco atômico no PaginatedSheet com thead repetido — nenhuma linha é
+ *  cortada ao meio e a faixa de setor aparece em toda página. ~14 linhas
+ *  (foto 36px + paddings ≈ 46px/linha) cabem com folga numa página. */
+const ITEM_ROWS_PER_CHUNK = 14;
 
 /**
  * Ficha de Expedição — uma por cliente/CNPJ. Mostra:
@@ -61,12 +68,8 @@ interface Props {
  *   - Lista de OPs com checkbox de conferência por linha
  *   - Checklist final (NF impressa / etiqueta / romaneio)
  */
-export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
+export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   const totalPairs = group.orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
-  // Batch ID determinístico por cliente — cada ficha de cliente vira um batch
-  // independente. Genealogia: lista de op_numbers fica na seção "Itens · Conferência".
-  const allOpNumbers = group.orders.map(o => o.op_number).filter((v): v is string => !!v);
-  const batchId = generateBatchId('Expedição', allOpNumbers, date);
 
   // Agrega por solado + pares/caixa: a ficha é por CLIENTE e pode juntar PVs
   // com packaging_mode diferente (12/caixa vs fitilho 1/volume). Agregar só
@@ -125,57 +128,36 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
     group.client_cep ? `CEP ${group.client_cep}` : null,
   ].filter(Boolean).join(' · ');
 
-  return (
-    <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
-    >
+  // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
+  // Header → embalagem → tally de caixas → tabela de itens em CHUNKS de
+  // linhas (thead repetido por chunk) → checklist final + rodapé.
+  const headerBlock = (
       <WorksheetHeader
         sector="Expedição"
         icon={Truck}
         sizeBand={sizeBand}
         identification={
-          <div className="flex items-start gap-4 min-w-0">
-            {/* PV destacado — pedido user 19/05/2026 */}
-            {group.sale_order_number && (
-              <div className="shrink-0">
-                <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
-                <p
-                  className="text-black leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
-                >
-                  {group.sale_order_number}
-                </p>
+          // PV adaptativo + razão social em vermelho logo abaixo (2026-06-12)
+          // — o campo "Cliente" pequeno saiu, a razão social é o destaque.
+          <HeaderIdentification
+            pvNumbers={group.sale_order_number ? [group.sale_order_number] : []}
+            clientNames={[group.client_name]}
+          >
+            <div className="flex items-baseline gap-3 flex-wrap text-[10px] font-mono text-black tracking-widest uppercase">
+              {group.client_cnpj && <span>CNPJ {group.client_cnpj}</span>}
+              {group.client_ie && <span>IE {group.client_ie}</span>}
+              {group.client_telefone && (
+                <span className="flex items-center gap-1"><Phone className="h-3 w-3" weight="bold" />{group.client_telefone}</span>
+              )}
+            </div>
+            {(enderecoLinha1 || enderecoLinha2) && (
+              <div className="text-[10px] text-black leading-tight mt-0.5 font-mono tracking-wider">
+                <MapPin className="h-3 w-3 inline mr-1 text-black" weight="bold" />
+                {enderecoLinha1 && <span className="font-bold uppercase">{enderecoLinha1}</span>}
+                {enderecoLinha2 && <span className="ml-1 uppercase">· {enderecoLinha2}</span>}
               </div>
             )}
-            <div className={`min-w-0 flex-1 ${group.sale_order_number ? 'border-l border-black pl-4' : ''}`}>
-              <span className="section-label block" style={{ color: '#000' }}>Cliente</span>
-              <p
-                className="text-black uppercase leading-none mt-0.5 truncate"
-                style={{
-                  fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: adaptiveFontSize(group.client_name || '', { maxWidthPx: 340, baseFontPx: 24, minFontPx: 12, charWidthRatio: 0.45 }),
-                  letterSpacing: '-0.025em',
-                }}
-                title={group.client_name}
-              >
-                {group.client_name}
-              </p>
-              <div className="flex items-baseline gap-3 flex-wrap text-[10px] mt-1 font-mono text-black tracking-widest uppercase">
-                {group.client_cnpj && <span>CNPJ {group.client_cnpj}</span>}
-                {group.client_ie && <span>IE {group.client_ie}</span>}
-                {group.client_telefone && (
-                  <span className="flex items-center gap-1"><Phone className="h-3 w-3" weight="bold" />{group.client_telefone}</span>
-                )}
-              </div>
-              {(enderecoLinha1 || enderecoLinha2) && (
-                <div className="text-[10px] text-black leading-tight mt-0.5 font-mono tracking-wider">
-                  <MapPin className="h-3 w-3 inline mr-1 text-black" weight="bold" />
-                  {enderecoLinha1 && <span className="font-bold uppercase">{enderecoLinha1}</span>}
-                  {enderecoLinha2 && <span className="ml-1 uppercase">· {enderecoLinha2}</span>}
-                </div>
-              )}
-              <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] font-mono tracking-widest uppercase">
+            <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] font-mono tracking-widest uppercase">
               {group.nfe_numero && (
                 <span className="text-black flex items-center gap-1">
                   <Receipt className="h-3 w-3" weight="bold" />
@@ -188,25 +170,23 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                   Transp. <span className="font-bold">{group.transport_name}</span>
                 </span>
               )}
-                <span className="text-black">
-                  {group.orders.length} ite{group.orders.length === 1 ? 'm' : 'ns'} ·{' '}
-                  <span className="font-bold">{totalPairs} pares</span>
-                </span>
-              </div>
+              <span className="text-black">
+                {group.orders.length} ite{group.orders.length === 1 ? 'm' : 'ns'} ·{' '}
+                <span className="font-bold">{totalPairs} pares</span>
+              </span>
             </div>
-          </div>
+          </HeaderIdentification>
         }
         qrLabel="EXPED."
-        date={date}
-        batchId={batchId}
         index={`OP ${formatOpNumber('Expedição')} / EXPEDIÇÃO`}
       />
+  );
 
-      {/* Resumo embalagem — atômico quando curto (≤8 solados); com mais
-          linhas flui linha a linha (tr atômico, thead repete) pra não pular
-          página inteira deixando branco. */}
-      <div className={`mb-1.5 ${boxesBySole.size <= 8 ? 'keep-together' : ''}`}>
-        <div className="flex items-baseline justify-between mb-1 keep-with-next">
+  // Resumo embalagem — bloco atômico no paginador (se exceder 1 página
+  // inteira, flui linha a linha: tr atômico, thead repete).
+  const embalagemBlock = (
+      <div className="mb-1.5">
+        <div className="flex items-baseline justify-between mb-1">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
             <span className="section-label" style={{ color: '#000' }}>02 / Embalagem · Caixas Coletivas</span>
@@ -253,23 +233,25 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
           </tbody>
         </table>
       </div>
+  );
 
-      {/* Tally de caixas conferidas */}
-      <TallyBox count={totalBoxes} pairsPerCard={1} unit="caixas" title="Caixas conferidas · marcar cada caixa coletiva" />
+  // Tally de caixas conferidas
+  const tallyBlock = (
+    <TallyBox count={totalBoxes} pairsPerCard={1} unit="caixas" title="Caixas conferidas · marcar cada caixa coletiva" />
+  );
 
-      {/* Itens conferência — header "03 / ..." ancorado à tabela via
-          `.keep-with-next` pra não virar órfão quando a tabela quebra de
-          página em pedidos grandes (>20 items). Tabela em si quebra
-          naturalmente entre rows; `<thead>` repete em cada página via
-          regra global `display: table-header-group`. */}
-      <div className="flex-1 mt-2">
-        <div className="flex items-baseline justify-between mb-1 keep-with-next">
-          <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
-          <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-            {group.orders.length} item{group.orders.length !== 1 ? 'ns' : ''}
-          </span>
-        </div>
-        <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #000' }}>
+  // ── Itens · Conferência — tabela longa quebrada em CHUNKS de linhas ──
+  // Cada chunk é um bloco atômico (tabela própria com thead repetido).
+  // Nenhuma linha é cortada ao meio; o heading "03 / ..." vive no MESMO
+  // bloco do 1º chunk (nunca vira órfão no pé da página); o tfoot com o
+  // total só aparece no último chunk.
+  const itemChunks: ExpedicaoOrder[][] = [];
+  for (let i = 0; i < group.orders.length; i += ITEM_ROWS_PER_CHUNK) {
+    itemChunks.push(group.orders.slice(i, i + ITEM_ROWS_PER_CHUNK));
+  }
+  if (itemChunks.length === 0) itemChunks.push([]);
+
+  const itemsHead = (
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               {/* Larguras enxutas: sob table-layout fixed, a coluna Referência
@@ -294,8 +276,9 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
               <th className="section-label py-1 text-center" style={{ color: '#000', width: 24 }}>OK</th>
             </tr>
           </thead>
-          <tbody>
-            {group.orders.map(o => (
+  );
+
+  const renderItemRow = (o: ExpedicaoOrder) => (
               <tr key={o.id} style={{ borderBottom: '1px solid #000' }}>
                 <td className="p-1 text-center" style={{ borderRight: '1px solid #000' }}>
                   {o.image_url ? (
@@ -331,8 +314,9 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                   <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
                 </td>
               </tr>
-            ))}
-          </tbody>
+  );
+
+  const itemsFoot = (
           <tfoot>
             <tr style={{ borderTop: '1.5px solid #000' }}>
               <td
@@ -357,12 +341,36 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
               <td />
             </tr>
           </tfoot>
+  );
+
+  const itemBlocks = itemChunks.map((chunk, ci) => {
+    const isFirst = ci === 0;
+    const isLast = ci === itemChunks.length - 1;
+    return (
+      <div key={`items-${ci}`} className="mt-2">
+        {isFirst && (
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              {group.orders.length} item{group.orders.length !== 1 ? 'ns' : ''}
+            </span>
+          </div>
+        )}
+        <table className="w-full text-xs" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #000' }}>
+          {itemsHead}
+          <tbody>
+            {chunk.map(renderItemRow)}
+          </tbody>
+          {isLast && itemsFoot}
         </table>
       </div>
+    );
+  });
 
-      {/* Checklist final ancorado à tabela de itens (keep-with-previous).
-          Rodapé de assinaturas removido em 2026-06-11 (pedido do user). */}
-      <div className="keep-together keep-with-previous">
+  // Checklist final + rodapé de conclusão (Executado por / Data / Visto).
+  // Assinaturas removidas em 2026-06-11 (pedido do user).
+  const checklistBlock = (
+      <div className="keep-together">
         <div className="mt-2">
           <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
           <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
@@ -374,10 +382,17 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
             ))}
           </div>
         </div>
-
-        {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
         <CompletionFooter />
       </div>
-    </div>
   );
+
+  const blocks: React.ReactNode[] = [
+    headerBlock,
+    embalagemBlock,
+    tallyBlock,
+    ...itemBlocks,
+    checklistBlock,
+  ];
+
+  return <PaginatedSheet sectorLabel={sectorLabel || `Expedição · ${group.client_name}`} blocks={blocks} />;
 };

@@ -4,11 +4,13 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont } from './worksheet/adaptiveFont';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
+import { HeaderIdentification } from './worksheet/HeaderIdentification';
+import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';
 import { CompletionFooter } from './worksheet/CompletionFooter';
+import { PaginatedSheet } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
-import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface SilkColorGroup {
@@ -88,6 +90,9 @@ export interface SoleSilkGroup {
    *    irrelevante) — header rotula "Referência" e os cards escondem a
    *    badge de ref (redundante, a ficha inteira É de uma ref). */
   groupKind?: 'sole' | 'reference';
+  /** Faixa etária do GRUPO (por numeração) — selo no sub-header do grupo
+   *  dentro do maço contínuo do setor (2026-06-12). */
+  sizeBand?: 'infantil' | 'adulto' | 'misto';
 }
 
 export type GroupedSector =
@@ -101,13 +106,17 @@ export type GroupedSector =
   | 'Acabamento';
 
 interface Props {
-  group: SoleSilkGroup;
+  /** Grupos do SETOR INTEIRO (1 por solado/referência) — fluxo contínuo no
+   *  mesmo maço de páginas (2026-06-12). Cada grupo abre com um sub-header
+   *  compacto (GroupSubHeader); o WorksheetHeader agregado aparece 1× só. */
+  groups: SoleSilkGroup[];
   sector: GroupedSector;
-  date?: string;
   /** Pares por ficha. Default 12. */
   pairsPerCard?: number;
-  /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
+  /** Faixa etária AGREGADA do setor — selo INFANTIL/ADULTO no header. */
   sizeBand?: 'infantil' | 'adulto' | 'misto';
+  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet). */
+  sectorLabel?: string;
 }
 
 // Simplificação 2026-06-12: KPIs, blocos de materiais (cabedal/forro),
@@ -176,37 +185,35 @@ const sortSizes = (sizes: string[]): string[] =>
  * Ficha de operador genérica pra setores agrupados (solado+cor ou, no
  * Aviamento, referência+cor — `group.groupKind`).
  *
+ * FLUXO CONTÍNUO POR SETOR (2026-06-12, pedido do dono): o componente recebe
+ * TODOS os grupos do setor e emite UM PaginatedSheet só — header agregado do
+ * setor (1×) + sub-header compacto por grupo + cards + CompletionFooter por
+ * grupo. Grupo que não cabe no resto da página vai inteiro pra próxima, sem
+ * repetir header gigante (a identificação das páginas 2+ é a faixa fina do
+ * próprio PaginatedSheet).
+ *
  * Layout completo (Corte Cabedal/Costura Cabedal/Aviamento/Acabamento):
  * card por cor com foto (quando aplicável), grade, alertas e tally.
  *
  * Layout compacto (Corte Forração/Costura Palmilha/Silk — pedido user
  * 2026-06-12): por cor, apenas nome da cor + grade por ficha + total por
  * numeração + alerta fachetado em 1 linha + tally. Silk adiciona o bloco
- * da LOGOMARCA a estampar (única por ficha, ou por cor quando divergem).
+ * da LOGOMARCA a estampar (única por grupo, ou por cor quando divergem).
  */
-export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, sizeBand }: Props) => {
+export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
-  // Silks únicos deste solado (deduplica por silk_url). Pra setores que
-  // exibem silk (Silk + Acabamento), mostra cada silk uma vez — se o cliente
-  // tiver silk própria, ela aparece aqui no lugar da silk padrão do solado
-  // (resolução já feita no PrintWorkSheetsPage.getOrderSilk com cascata
-  // cliente → grupo econômico → silk default do solado).
-  const uniqueSilks = theme.showSilkImage
-    ? Array.from(
-        new Map(
-          group.colorGroups
-            .map(g => g.silk)
-            .filter((s): s is { silk_name: string; silk_url: string | null } => !!s)
-            .map(s => [s.silk_url || s.silk_name, s] as const),
-        ).values(),
-      )
-    : [];
 
-  // Batch ID determinístico — mesma set de OPs no mesmo dia → mesmo ID.
-  // Operadora anota pra bater apontamentos depois (genealogia).
-  const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers || []);
-  const batchId = generateBatchId(sector, allOpNumbers, date);
+  // ── Agregados do setor (header consolidado, padrão PalmilhaWorkSheet) ──
+  const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
+  const totalColors = groups.reduce((s, g) => s + g.colorGroups.length, 0);
+  const allPvs = Array.from(new Set(
+    groups.flatMap(g => g.colorGroups.flatMap(cg => cg.pvNumbers || [])).filter(Boolean),
+  )).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const allClients = Array.from(new Set(
+    groups.flatMap(g => g.clientNames || []).filter(Boolean),
+  )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const groupNoun = groups[0]?.groupKind === 'reference' ? 'referência' : 'solado';
 
   /** Tabela de grade compartilhada (Por Ficha + Total + etapas Aviamento). */
   const renderGradeTable = (cg: SilkColorGroup) => {
@@ -345,111 +352,76 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
     );
   };
 
-  return (
-    <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
-    >
+  // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
+  // Header agregado do SETOR (1×) → [sub-header + cards + rodapé] por grupo.
+  const headerBlock = (
       <WorksheetHeader
         sector={sector}
         icon={Icon}
         sizeBand={sizeBand}
-        imageSlot={
-          // Em Silk (layout compacto 2026-06-12), a logomarca aparece no bloco
-          // de destaque logo abaixo do header — repetir no header seria ruído
-          // (e com silks distintos por cor, a 1ª no header enganaria). Slot
-          // mantido só pro caso de layout completo com silk (nenhum hoje).
-          sector === 'Silk' && !theme.compact && uniqueSilks[0]?.silk_url ? (
-            <div
-              className="w-20 h-20 bg-white overflow-hidden shrink-0 flex items-center justify-center"
-              style={{ border: '1.5px solid #000' }}
+        identification={
+          // PVs do setor inteiro, lista COMPLETA com fonte adaptativa (não
+          // "+N outros") — o operador vê exatamente quais pedidos estão no
+          // maço. Razão social em vermelho logo abaixo (2026-06-12).
+          <HeaderIdentification pvNumbers={allPvs} clientNames={allClients}>
+            <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
+            <p
+              className="text-black uppercase leading-none mt-0.5"
+              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
             >
-              <SignedImage
-                src={uniqueSilks[0].silk_url}
-                alt={uniqueSilks[0].silk_name}
-                loading="eager"
-                className="w-full h-full object-contain"
-              />
+              {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+            </p>
+            <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+              <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                {groups.length} {groupNoun}{groups.length !== 1 ? 's' : ''}
+              </span>
+              <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                {totalColors} cor{totalColors !== 1 ? 'es' : ''}
+              </span>
             </div>
-          ) : undefined
+          </HeaderIdentification>
         }
-        identification={(() => {
-          // Coleta PVs únicos de todas as cores deste solado pra destacar no header.
-          const pvs = Array.from(new Set(
-            group.colorGroups.flatMap(cg => cg.pvNumbers || []).filter(Boolean)
-          )).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-          // Fichas agregadas (Corte Forração / Corte Cabedal / Costura) cobrem
-          // múltiplos PVs por design. Mostrar lista COMPLETA (não "+N outros")
-          // pra que o operador veja exatamente quais pedidos estão na ficha
-          // — evita bug onde "OFF WHITE de outro PV" entrou sem perceber.
-          const isAggregated = sector === 'Corte Forração' || sector === 'Corte Cabedal'
-            || sector === 'Costura Palmilha' || sector === 'Costura Cabedal';
-          const pvDisplay = pvs.length === 0 ? null
-            : pvs.length === 1 || isAggregated ? pvs.join(' · ')
-            : `${pvs[0]} +${pvs.length - 1}`;
-          return (
-            <div className="flex items-start gap-4 min-w-0">
-              {/* PV destacado — pedido user 19/05/2026 */}
-              {pvDisplay && (
-                <div className={isAggregated ? 'min-w-0 flex-1' : 'shrink-0'}>
-                  <span className="section-label block" style={{ color: '#000' }}>
-                    {pvs.length > 1 ? `Pedidos (${pvs.length})` : 'Pedido'}
-                  </span>
-                  <p
-                    className={`text-black leading-tight mt-0.5 ${isAggregated && pvs.length > 1 ? 'break-words' : ''}`}
-                    style={{
-                      fontFamily: "'Anton', Impact, sans-serif",
-                      fontSize: isAggregated && pvs.length > 1 ? '20px' : '32px',
-                      letterSpacing: '-0.025em',
-                    }}
-                  >
-                    {pvDisplay}
-                  </p>
-                </div>
-              )}
-              <div className={`min-w-0 flex-1 ${pvDisplay ? 'border-l border-black pl-4' : ''}`}>
-                {/* Agrupamento por REFERÊNCIA (Aviamento): identifica o modelo —
-                    o solado é irrelevante pro setor e SAI do header. */}
-                <span className="section-label block" style={{ color: '#000' }}>
-                  {group.groupKind === 'reference' ? 'Referência' : 'Solado'}
-                </span>
-                <p
-                  className="text-black uppercase leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
-                >
-                  {group.soleName}
-                </p>
-                {group.clientNames && group.clientNames.length > 0 && (
-                  <p className="font-mono text-[10px] text-black tracking-wider uppercase mt-1 leading-tight">
-                    <span className="text-black/60">Cliente · </span>
-                    <span className="font-bold">{group.clientNames.join(' · ')}</span>
-                  </p>
-                )}
-                <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    {group.colorGroups.length} cor{group.colorGroups.length !== 1 ? 'es' : ''}
-                  </span>
-                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    Total · <span className="font-bold">{group.totalPairs}</span> pares
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
         qrLabel={sector.toUpperCase().slice(0, 8)}
-        date={date}
-        batchId={batchId}
         index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
+  );
 
-      {/* ── Logomarca a estampar (Silk compacto, 2026-06-12) ──
-          UMA logomarca por ficha (cascata cliente → grupo econômico → solado
-          → Squad já resolvida): bloco único em destaque. Quando cores do
-          mesmo solado resolvem silks DIFERENTES, a logomarca desce pro nível
-          da cor (bloco por seção, renderizado no loop abaixo). */}
-      {theme.compact && theme.showSilkImage && uniqueSilks.length === 1 && (
-        <div className="keep-together keep-with-next mb-2 flex items-center gap-3 bg-white p-2" style={{ border: '2px solid #000' }}>
+  // ── Builder dos blocos de UM grupo (solado/referência) ──
+  // Sub-header compacto (faixa fina — NÃO o header gigante) + logomarca +
+  // 1 card por cor + rodapé de conclusão do grupo.
+  const buildGroupBlocks = (group: SoleSilkGroup, gi: number): React.ReactNode[] => {
+    // Silks únicos deste grupo (deduplica por silk_url). Se o cliente tiver
+    // silk própria, ela aparece no lugar da silk padrão do solado (cascata
+    // cliente → grupo econômico → solado já resolvida no getOrderSilk).
+    const uniqueSilks = theme.showSilkImage
+      ? Array.from(
+          new Map(
+            group.colorGroups
+              .map(g => g.silk)
+              .filter((s): s is { silk_name: string; silk_url: string | null } => !!s)
+              .map(s => [s.silk_url || s.silk_name, s] as const),
+          ).values(),
+        )
+      : [];
+
+    const groupOps = Array.from(new Set(group.colorGroups.flatMap(cg => cg.opNumbers || []).filter(Boolean)));
+    const subHeaderBlock = (
+      <GroupSubHeader
+        eyebrow={`${group.groupKind === 'reference' ? 'Referência' : 'Solado'} ${gi + 1}/${groups.length}`}
+        title={group.soleName}
+        pairs={group.totalPairs}
+        ops={groupOps}
+        sizeBand={group.sizeBand}
+      />
+    );
+
+  // ── Logomarca a estampar (Silk compacto, 2026-06-12) ──
+  // UMA logomarca por grupo (cascata cliente → grupo econômico → solado
+  // → Squad já resolvida): bloco único em destaque. Quando cores do
+  // mesmo solado resolvem silks DIFERENTES, a logomarca desce pro nível
+  // da cor (bloco por seção, renderizado no loop abaixo).
+  const silkSingleBlock = theme.compact && theme.showSilkImage && uniqueSilks.length === 1 ? (
+        <div className="keep-together mb-2 flex items-center gap-3 bg-white p-2" style={{ border: '2px solid #000' }}>
           {uniqueSilks[0].silk_url ? (
             <div className="bg-white overflow-hidden shrink-0 flex items-center justify-center" style={{ width: 110, height: 110, border: '1.5px solid #000' }}>
               <SignedImage
@@ -477,11 +449,11 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             )}
           </div>
         </div>
-      )}
+  ) : null;
 
-      {/* Silks em destaque (layout COMPLETO — Acabamento): uma por solado,
-          multiple se cliente/grupo tem silk própria */}
-      {!theme.compact && theme.showSilkImage && uniqueSilks.length > 0 && (
+  // Silks em destaque (layout COMPLETO — Acabamento): uma por solado,
+  // multiple se cliente/grupo tem silk própria
+  const silksGridBlock = !theme.compact && theme.showSilkImage && uniqueSilks.length > 0 ? (
         <div className="mb-1.5 keep-together">
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>
@@ -524,11 +496,10 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
             ))}
           </div>
         </div>
-      )}
+  ) : null;
 
-      {/* Per-color blocks */}
-      <div className="flex-1 space-y-2">
-        {group.colorGroups.map((cg, idx) => {
+  // Per-color blocks — 1 bloco atômico por cor no paginador.
+  const colorBlocks = group.colorGroups.map((cg, idx) => {
           // FIX 2026-06-11: a tally é de FICHAS. Com grade base uniforme
           // (!mixedGrades), 1 caixinha = 1 ficha de baseGradeSum pares —
           // reconcilia com "Por Ficha (Np) × M fichas". Grade mista cai no box
@@ -805,11 +776,23 @@ export const SilkMontageWorkSheet = ({ group, sector, date, pairsPerCard = 12, s
           );
 
           return <React.Fragment key={idx}>{colorBlock}</React.Fragment>;
-        })}
-      </div>
+  });
 
-      {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
-      <CompletionFooter />
-    </div>
-  );
+    return [
+      subHeaderBlock,
+      ...(silkSingleBlock ? [silkSingleBlock] : []),
+      ...(silksGridBlock ? [silksGridBlock] : []),
+      ...colorBlocks,
+      // Rodapé de conclusão do GRUPO — Executado por / Data / Visto
+      <CompletionFooter />,
+    ];
+  };
+
+  // ── Maço contínuo do setor: header agregado + grupos em sequência ──
+  const blocks: React.ReactNode[] = [
+    headerBlock,
+    ...groups.flatMap((group, gi) => buildGroupBlocks(group, gi)),
+  ];
+
+  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} />;
 };

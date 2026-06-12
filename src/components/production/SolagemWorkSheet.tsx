@@ -5,8 +5,9 @@ import { gradeTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
+import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { generateBatchId } from './worksheet/batchId';
+import { PaginatedSheet } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface SoleColorBand {
@@ -35,7 +36,6 @@ export interface SoleColorBand {
 interface Props {
   bands: SoleColorBand[];
   allSizes: string[];
-  date?: string;
   grandTotal: number;
   pairsPerCard?: number;
   /** Setor que usa esta ficha de solado (Solagem ou Colagem). Default Solagem. */
@@ -44,6 +44,8 @@ interface Props {
   sizeBand?: 'infantil' | 'adulto' | 'misto';
   /** Razão social do(s) cliente(s) dos PVs desta ficha. */
   clientNames?: string[];
+  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet). */
+  sectorLabel?: string;
 }
 
 const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
@@ -65,10 +67,7 @@ const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   </div>
 );
 
-export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCard = 12, sector = 'Solagem', sizeBand, clientNames }: Props) => {
-  // Batch ID determinístico (genealogia da consolidação).
-  const allOpNumbers = bands.flatMap(b => b.opNumbers || []);
-  const batchId = generateBatchId(sector, allOpNumbers, date);
+export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 12, sector = 'Solagem', sizeBand, clientNames, sectorLabel }: Props) => {
   // Solado preto deve ficar fisicamente separado das demais cores na ficha de
   // operador de Solagem — pedido em 2026-05 pra evitar mistura de banda preta
   // com bandas coloridas no fluxo da equipe.
@@ -284,147 +283,90 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
     );
   };
 
-  return (
-    <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col"
-      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
-    >
+  // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
+  // Header → bandas (divider de seção colado à 1ª banda do grupo) →
+  // Total Geral → rodapé. O paginador garante "card inteiro ou nada".
+  const headerBlock = (
       <WorksheetHeader
         sector={sector}
         icon={Footprints}
         sizeBand={sizeBand}
         identification={(() => {
           const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
-          const pvDisplay = pvs.length === 0 ? null
-            : pvs.length === 1 ? pvs[0]
-            : `${pvs[0]} +${pvs.length - 1}`;
           return (
-            <div className="flex items-start gap-4 min-w-0">
-              {pvDisplay && (
-                <div className="shrink-0">
-                  <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
-                  <p
-                    className="text-black leading-none mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
-                  >
-                    {pvDisplay}
-                  </p>
-                </div>
-              )}
-              <div className={`min-w-0 flex-1 ${pvDisplay ? 'border-l border-black pl-4' : ''}`}>
-                <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
-                <p
-                  className="text-black uppercase leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
-                >
-                  {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
-                </p>
-                {clientNames && clientNames.length > 0 && (
-                  <p className="font-mono text-[10px] text-black tracking-wider uppercase mt-1 leading-tight">
-                    <span className="text-black/60">Cliente · </span>
-                    <span className="font-bold">{clientNames.join(' · ')}</span>
-                  </p>
-                )}
-                <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+            <HeaderIdentification pvNumbers={pvs} clientNames={clientNames}>
+              <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
+              <p
+                className="text-black uppercase leading-none mt-0.5"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
+              >
+                {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+              </p>
+              <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+                <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                  {bands.length} cor{bands.length !== 1 ? 'es' : ''} de solado
+                </span>
+                {hasBothGroups && (
                   <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    {bands.length} cor{bands.length !== 1 ? 'es' : ''} de solado
+                    Preto separado das demais cores
                   </span>
-                  {hasBothGroups && (
-                    <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                      Preto separado das demais cores
-                    </span>
-                  )}
-                </div>
+                )}
               </div>
-            </div>
+            </HeaderIdentification>
           );
         })()}
         qrLabel={sector.toUpperCase()}
-        date={date}
-        batchId={batchId}
         index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
+  );
 
-      {/* Fix 20/05/2026: era `flex-1` que combinado com flex-col do container
-          raiz expandia o conteúdo verticalmente sem limite — em print isso
-          empurrava o footer pra próxima página, gerando folha em branco
-          intermediária. Mesma classe de problema do mt-auto corrigido antes.
-          Fix 21/05/2026: o último band + Total Geral + SignatureFooter agora
-          ficam num wrapper .keep-together pra evitar footer órfão em fichas
-          com muitas cores de solado. */}
-      <div className="space-y-3">
-        {bands.length === 0 ? (
-          <>
-            <div className="text-center py-10 text-black italic text-xs">
-              Nenhum dado de solagem para exibir.
-            </div>
-          </>
-        ) : (() => {
-          // Achata pretoBands + outrosBands em uma lista ordenada pra
-          // separar os "todos menos último" do "último + trailing".
-          const orderedBands = [...pretoBands, ...outrosBands];
-          const lastBand = orderedBands[orderedBands.length - 1];
+  // Bandas ordenadas: preto primeiro, depois as demais cores. O divider de
+  // seção (quando há os dois grupos) entra no MESMO bloco da 1ª banda do
+  // grupo — nunca vira órfão no fim de uma página.
+  const orderedBands = [...pretoBands, ...outrosBands];
+  const bandBlocks = orderedBands.map((band, idx) => {
+    const isInPreto = pretoBands.includes(band);
+    const isFirstOfGroup = isInPreto ? pretoBands[0] === band : outrosBands[0] === band;
+    const divider = hasBothGroups && isFirstOfGroup ? (
+      <SectionDivider
+        label={isInPreto ? 'Solado Preto' : 'Outras Cores de Solado'}
+        total={isInPreto ? pretoTotal : outrosTotal}
+      />
+    ) : null;
+    return (
+      <React.Fragment key={idx}>
+        {divider}
+        {renderBand(band, idx)}
+      </React.Fragment>
+    );
+  });
 
-          const renderHeader = (band: SoleColorBand, idx: number) => {
-            const isInPreto = pretoBands.includes(band);
-            const isFirstOfGroup = isInPreto ? pretoBands[0] === band : outrosBands[0] === band;
-            if (hasBothGroups && isFirstOfGroup) {
-              return (
-                <SectionDivider
-                  key={`hdr-${idx}`}
-                  label={isInPreto ? 'Solado Preto' : 'Outras Cores de Solado'}
-                  total={isInPreto ? pretoTotal : outrosTotal}
-                />
-              );
-            }
-            return null;
-          };
-
-          const trailingBlock = (
-            <div className="keep-together keep-with-next flex items-baseline justify-between mt-3 py-1.5" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-              <span className="section-label" style={{ color: '#000' }}>
-                Total Geral · soma de todos os solados
-              </span>
-              <span
-                className="text-black uppercase leading-none"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
-              >
-                {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
-              </span>
-            </div>
-          );
-
-          return orderedBands.map((band, idx) => {
-            const isLast = band === lastBand;
-            const header = renderHeader(band, idx);
-            const body = renderBand(band, idx);
-            if (isLast) {
-              // Trailing (total geral + footer): cada bloco é atômico POR SI
-              // (total tem keep-together keep-with-next; footer idem +
-              // keep-with-previous) — enchem a página um a um em vez de
-              // pular juntos como blocão deixando meia página em branco.
-              return (
-                <div key={`last-${idx}`}>
-                  {header}
-                  {body}
-                  <div className="keep-with-previous">
-                    {trailingBlock}
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <React.Fragment key={idx}>
-                {header}
-                {body}
-              </React.Fragment>
-            );
-          });
-        })()}
-      </div>
-
-      {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
-      <CompletionFooter />
+  const trailingBlock = (
+    <div className="keep-together flex items-baseline justify-between mt-3 py-1.5" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+      <span className="section-label" style={{ color: '#000' }}>
+        Total Geral · soma de todos os solados
+      </span>
+      <span
+        className="text-black uppercase leading-none"
+        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+      >
+        {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+      </span>
     </div>
   );
+
+  const blocks: React.ReactNode[] = [
+    headerBlock,
+    ...(bands.length === 0
+      ? [(
+          <div className="text-center py-10 text-black italic text-xs">
+            Nenhum dado de solagem para exibir.
+          </div>
+        )]
+      : [...bandBlocks, trailingBlock]),
+    // Rodapé de conclusão — Executado por / Data / Visto (2026-06-12)
+    <CompletionFooter />,
+  ];
+
+  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} />;
 };

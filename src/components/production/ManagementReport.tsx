@@ -2,6 +2,7 @@ import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { adaptiveTableFont } from './worksheet/adaptiveFont';
+import { PaginatedSheet } from './worksheet/PaginatedSheet';
 
 export interface ReportStage {
   stage_name: string;
@@ -81,6 +82,9 @@ interface Props {
   saleOrder: ReportSaleOrder;
   orders: ReportOrder[];
   date?: string;
+  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet) —
+   *  ex.: "Relatório Gerencial · PV-00123". */
+  sectorLabel?: string;
 }
 
 // Setores canônicos da produção (PR Costura / PR 3 paralelismo).
@@ -131,7 +135,7 @@ function fmtDateTime(d?: string | null): string {
  * Design language: Print Editorial (FT/WSJ-style). White-dominant,
  * hairlines, big display type pra hierarquia, números em mono.
  */
-export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
+export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props) => {
   const totalPairs = orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
 
   // Custos agregados (quando disponíveis)
@@ -222,16 +226,14 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   // Custos: 8 colunas, conteúdo longo ("R$ 123.456,78" ≈ 13 chars).
   const costF = adaptiveTableFont(8, 13);
 
-  return (
-    <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger"
-      style={{
-        boxSizing: 'border-box',
-        fontFamily: "'Fira Sans', 'Inter', system-ui, sans-serif",
-        fontSize: '10pt',
-      }}
-    >
-      {/* ─────────────────────────────── 01 / MASTHEAD ─────────────────────────────── */}
+  // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
+  // Cada seção do relatório vira um bloco; cada card de OP do detalhamento
+  // também. Tabelas longas (status/timeline/custos) são blocos únicos — se
+  // excederem 1 página inteira, fluem no browser (tr atômico, thead repete).
+
+  // ─────────────────────────────── 01 / MASTHEAD ───────────────────────────────
+  const headerBlock = (
+    <>
       <header className="mb-6">
         <div className="flex items-baseline justify-between gap-4 mb-3">
           <span className="section-label" style={{ color: '#000' }}>
@@ -317,8 +319,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
       </header>
 
       <div className="rule-line-double mb-6" style={{ borderColor: '#000' }} />
+    </>
+  );
 
-      {/* ─────────────────────────────── 02 / INDICADORES ─────────────────────────────── */}
+  // ─────────────────────────────── 02 / INDICADORES ───────────────────────────────
+  const indicadoresBlock = (
       <section className="keep-together mb-6">
         <div className="flex items-baseline gap-3 mb-4">
           <span
@@ -344,12 +349,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           <KpiBlock label="Progresso" value={`${progressPct}%`} sub={`${stageStats.done} / ${stageStats.total} setores`} bordered />
         </div>
       </section>
+  );
 
-      {/* ─────────────────────────────── 03 / STATUS POR SETOR ───────────────────────────────
-          Sem keep-together no section: a tabela cresce com o nº de OPs e o
-          bloco inteiro atômico pulava de página deixando branco. Header da
-          seção ancorado à tabela (keep-with-next); linhas atômicas + thead
-          repetindo fazem a quebra limpa. */}
+  // ─────────────────────────────── 03 / STATUS POR SETOR ───────────────────────────────
+  // Bloco único no paginador; se exceder 1 página inteira, flui no browser
+  // (linhas atômicas + thead repetindo fazem a quebra limpa).
+  const statusBlock = (
       <section className="mb-6">
         <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
           <span
@@ -450,11 +455,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           </span>
         </div>
       </section>
+  );
 
-      {/* ─────────────────────────────── 03 / DADOS DO CLIENTE ─────────────────────────────── */}
-      {(saleOrder.client_ie || saleOrder.client_phone || saleOrder.client_email
-        || saleOrder.client_address || saleOrder.representative
-        || saleOrder.payment_condition || saleOrder.notes) && (
+  // ─────────────────────────────── 04 / DADOS DO CLIENTE ───────────────────────────────
+  const clienteBlock = (saleOrder.client_ie || saleOrder.client_phone || saleOrder.client_email
+    || saleOrder.client_address || saleOrder.representative
+    || saleOrder.payment_condition || saleOrder.notes) ? (
         <section className="keep-together mb-6">
           <div className="flex items-baseline gap-3 mb-4">
             <span
@@ -497,10 +503,10 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             </div>
           )}
         </section>
-      )}
+  ) : null;
 
-      {/* ─────────────────────────────── 04 / GALERIA PRODUTOS ─────────────────────────────── */}
-      {galleryItems.length > 0 && (
+  // ─────────────────────────────── 05 / GALERIA PRODUTOS ───────────────────────────────
+  const galeriaBlock = galleryItems.length > 0 ? (
         <section className="mb-6">
           <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
@@ -534,10 +540,10 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             ))}
           </div>
         </section>
-      )}
+  ) : null;
 
-      {/* ─────────────────────────────── 05 / SILKS · ARTES ─────────────────────────────── */}
-      {silksUnique.length > 0 && (
+  // ─────────────────────────────── 06 / SILKS · ARTES ───────────────────────────────
+  const silksBlock = silksUnique.length > 0 ? (
         <section className="mb-6">
           <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
@@ -563,11 +569,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             ))}
           </div>
         </section>
-      )}
+  ) : null;
 
-      {/* ─────────────────────────────── 06 / DETALHAMENTO DAS OPs ─────────────────────────────── */}
-      <section className="mb-6">
-        <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
+  // ─────────────────────────────── 07 / DETALHAMENTO DAS OPs ───────────────────────────────
+  // Heading anexado ao 1º card (nunca órfão); cada card de OP é um bloco.
+  const detalheHeading = (
+        <div className="flex items-baseline gap-3 mb-4">
           <span
             className="font-display"
             style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
@@ -579,9 +586,9 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           </span>
           <div className="flex-1 h-px bg-black" />
         </div>
+  );
 
-        <div className="space-y-3">
-          {orders.map(o => {
+  const detalheCards = orders.map(o => {
             const gradeEntries = o.grade
               ? Object.entries(o.grade)
                   .filter(([, v]) => v && Number(v) > 0)
@@ -708,12 +715,19 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                 )}
               </div>
             );
-          })}
-        </div>
-      </section>
+  });
 
-      {/* ─────────────────────────────── 07 / LINHA DO TEMPO ─────────────────────────────── */}
-      {orders.some(o => (o.stages || []).some(s => s.started_at || s.completed_at)) && (
+  const detalheBlocks: React.ReactNode[] = detalheCards.length > 0
+    ? detalheCards.map((card, i) => (
+        <React.Fragment key={`det-${i}`}>
+          {i === 0 ? detalheHeading : null}
+          {card}
+        </React.Fragment>
+      ))
+    : [detalheHeading];
+
+  // ─────────────────────────────── 08 / LINHA DO TEMPO ───────────────────────────────
+  const timelineBlock = orders.some(o => (o.stages || []).some(s => s.started_at || s.completed_at)) ? (
         <section className="mb-6">
           <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
@@ -761,10 +775,10 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             </tbody>
           </table>
         </section>
-      )}
+  ) : null;
 
-      {/* ─────────────────────────────── 08 / CUSTOS & MARGEM ─────────────────────────────── */}
-      {totalsFinancial.hasAny ? (
+  // ─────────────────────────────── 09 / CUSTOS & MARGEM ───────────────────────────────
+  const custosBlock = totalsFinancial.hasAny ? (
         <section className="mb-6">
           <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
             <span
@@ -868,7 +882,7 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             </p>
           )}
         </section>
-      ) : (
+  ) : (
         <section className="keep-together mb-6 border-l-2 border-amber-600 pl-3">
           <p className="section-label mb-1" style={{ color: '#a16207' }}>Custos não calculados</p>
           <p className="text-[8pt] text-neutral-700 leading-snug">
@@ -876,18 +890,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
             <strong> "Calcular Custos"</strong>. Em seguida, gere este relatório novamente.
           </p>
         </section>
-      )}
+  );
 
-      {/* ─────────────────────────────── FOOTER · ASSINATURAS ───────────────────────────────
-          Fix 20/05/2026: era `mt-auto pt-8` com container raiz `flex flex-col`.
-          Em print, o flex-col sem altura definida fazia o `mt-auto` empurrar
-          o footer pra um espaço estranho, gerando página em branco extra.
-          Trocado por margin top fixa (mt-8) — footer aparece direto após
-          conteúdo, sem quebra fantasma.
-          Fix 21/05/2026: keep-together + keep-with-previous evitam que o
-          bloco de assinaturas vaze sozinho pra próxima A4 em relatórios
-          longos. */}
-      <footer className="mt-8 pt-8 keep-together keep-with-previous">
+  // ─────────────────────────────── FOOTER · ASSINATURAS ───────────────────────────────
+  // Bloco atômico próprio no paginador (assinaturas nunca quebram no meio).
+  const footerBlock = (
+      <footer className="mt-8 pt-8 keep-together">
         <div className="rule-line mb-6" style={{ backgroundColor: '#000' }} />
         <div className="grid grid-cols-3 gap-8">
           {['PCP', 'Comercial', 'Financeiro'].map(label => (
@@ -903,7 +911,27 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           <span className="font-mono">{saleOrder.order_number || 'PV —'} · {date || new Date().toLocaleDateString('pt-BR')}</span>
         </div>
       </footer>
-    </div>
+  );
+
+  const blocks: React.ReactNode[] = [
+    headerBlock,
+    indicadoresBlock,
+    statusBlock,
+    ...(clienteBlock ? [clienteBlock] : []),
+    ...(galeriaBlock ? [galeriaBlock] : []),
+    ...(silksBlock ? [silksBlock] : []),
+    ...detalheBlocks,
+    ...(timelineBlock ? [timelineBlock] : []),
+    custosBlock,
+    footerBlock,
+  ];
+
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || `Relatório Gerencial · ${saleOrder.order_number || 'PV —'}`}
+      blocks={blocks}
+      pageStyle={{ fontFamily: "'Fira Sans', 'Inter', system-ui, sans-serif", fontSize: '10pt' }}
+    />
   );
 };
 
