@@ -6,6 +6,7 @@ import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont } from './worksheet/adaptiveFont';
+import { resolveFicha } from './worksheet/fichaSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
@@ -44,6 +45,15 @@ export interface OperatorWorkSheetItem {
    *  COMBINADO (soma escalada das OPs) — a ficha omite a linha "Por Ficha",
    *  porque não existe UMA grade base que multiplicada feche o total. */
   mixedGrades?: boolean;
+  /** Nº de corrugados do grupo (somado entre OPs — 7º passe). Quando ausente,
+   *  a ficha deriva via resolveFicha(totalPairs, order.grid). */
+  fichas?: number;
+  /** Pares por corrugado físico (12/15/18). Fallback: resolveFicha. */
+  corrugado?: number;
+  /** Corrugados DIFERENTES entre OPs do grupo — tally avisa no título. */
+  corrugadosMistos?: boolean;
+  /** Alguma OP com última ficha parcial — grade exibe "≈ N fichas". */
+  fichasAproximadas?: boolean;
 }
 
 interface Props {
@@ -137,7 +147,18 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const gradeSum = Object.values(grid).reduce((s, v) => s + (Number(v) || 0), 0);
     const totalPairs = order.total_pairs || gradeSum || 0;
     const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
-    const fichas = gradeSum > 0 ? Math.ceil(totalPairs / gradeSum) : 0;
+    // Corrugado físico (7º passe, 2026-06-12): uma "ficha" é um corrugado de
+    // 12/15/18 pares, DERIVADO do total + grade — `order.grid` pode chegar
+    // como curva-base (soma 12) OU como grade total do pedido (soma 120+).
+    // O item pode trazer a resolução agregada do grupo (Montagem multi-OP);
+    // senão deriva aqui da própria grade.
+    const fichaRes = resolveFicha(totalPairs, grid as Record<string, number>);
+    const fichas = item.fichas ?? fichaRes.fichas;
+    const corrugado = item.corrugado ?? fichaRes.corrugado;
+    const fichasAproximadas = item.fichasAproximadas ?? !fichaRes.exact;
+    const corrugadosMistos = item.corrugadosMistos === true;
+    /** Curva de 1 corrugado (linha "Por Ficha") — NULL quando inexata. */
+    const baseCurve = fichaRes.baseCurve;
     const baseGrade: Record<string, number> = {};
     const activeSizes = Object.keys(grid).filter(s => Number(grid[s]) > 0);
     for (const s of activeSizes) baseGrade[s] = Number(grid[s]) || 0;
@@ -162,11 +183,13 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
 
     const boxes = isAcabamento ? Math.ceil(totalPairs / 12) : 0;
 
-    // Tally de controle por setor: 1 caixinha = 1 ficha fechada. Usa a grade
-    // BASE (gradeSum) como pares/ficha. Grades mistas: grid já é o combinado
-    // (gradeSum=totalPairs) → volta ao 12.
-    const tallyCards = !mixedGrades && fichas > 0 ? fichas : Math.max(1, Math.ceil(totalPairs / 12));
-    const tallyPairsPerCard = !mixedGrades && gradeSum > 0 ? gradeSum : 12;
+    // Tally de controle por setor: 1 caixinha = 1 CORRUGADO físico (12/15/18
+    // pares) — SEMPRE, mesmo com grades mistas (7º passe). Quando os
+    // corrugados divergem entre OPs do grupo, o título avisa "corrugados
+    // mistos" em vez de exibir um pares/ficha enganoso.
+    const tallyCards = fichas > 0 ? fichas : Math.max(1, Math.ceil(totalPairs / 12));
+    const tallyPairsPerCard = corrugado || 12;
+    const tallyTitle = corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
 
     // Large-print grade cols: max ~10 cols comfortable; split if more
     const colsPerRow = activeSizes.length <= 12 ? activeSizes.length : 12;
@@ -433,13 +456,14 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
                 </tr>
               </thead>
               <tbody>
-                {/* Linha POR FICHA — base grade. SEMPRE aparece (user pediu
-                    explicitamente em 2026-05). EXCEÇÃO grades mistas: grid já
-                    é o combinado do grupo — repetir como "Por Ficha" mentiria. */}
-                {gradeSum > 0 && !mixedGrades && (
+                {/* Linha POR FICHA — curva de 1 CORRUGADO (12/15/18p, derivada
+                    pelo resolveFicha). SEMPRE aparece (user pediu em 2026-05).
+                    EXCEÇÕES: grades mistas (grupo combinado) ou resolução
+                    inexata (sem curva confiável) — repetir mentiria. */}
+                {baseCurve && !mixedGrades && (
                   <tr style={{ borderBottom: '1.5px solid #000' }}>
                     <td className="py-1 text-[10px] font-mono font-bold text-black leading-tight uppercase" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em' }}>
-                      Por Ficha<br />({gradeSum}p)
+                      Por Ficha<br />({corrugado}p)
                     </td>
                     {chunk.map((s, i) => (
                       <td
@@ -452,18 +476,22 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
                           borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                         }}
                       >
-                        {baseGrade[s] || '—'}
+                        {baseCurve[s] || '—'}
                       </td>
                     ))}
                     {ci === sizeChunks.length - 1 && (
-                      <td className="py-1 font-mono text-sm font-bold text-black">{gradeSum}</td>
+                      <td className="py-1 font-mono text-sm font-bold text-black">{corrugado}</td>
                     )}
                   </tr>
                 )}
                 {/* TOTAL row — GIANT Anton numbers. */}
                 <tr>
                   <td className="py-1.5 text-[10px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 78, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em' }}>
-                    {mixedGrades ? <>Total<br />(mista)</> : fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
+                    {fichasAproximadas
+                      ? <>Total<br />≈ {fichas} fichas</>
+                      : mixedGrades
+                        ? <>Total<br />({fichas} fichas*)</>
+                        : fichas > 1 ? <>Total<br />× {fichas}</> : <>Total<br />(1 ficha)</>}
                   </td>
                   {chunk.map((s, i) => (
                     <td
@@ -579,7 +607,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
             Solagem); Acabamento mantém o tally próprio de caixas abaixo. */}
         {!isAcabamento && (
           <div className="keep-with-next">
-            <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
+            <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} title={tallyTitle} />
           </div>
         )}
         {isAcabamento && (

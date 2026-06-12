@@ -56,8 +56,10 @@ const BUCKETS: ReadonlyArray<AdaptiveTableFont> = [
  * @param longestContent Comprimento (chars) do maior conteúdo de célula —
  *   opcional. Conteúdo longo (chave conjugada "33/34", moeda "R$ 123.456,78")
  *   rebaixa o bucket: > 3 chars desce 1 nível; > 10 chars desce 2.
+ * @param bumpLevels Rebaixamento extra de bucket (densidade). Usado pelos
+ *   layouts COMPACTOS (7º passe, 2026-06-12) pra 2 cores caberem numa A4.
  */
-export function adaptiveTableFont(columns: number, longestContent = 0): AdaptiveTableFont {
+export function adaptiveTableFont(columns: number, longestContent = 0, bumpLevels = 0): AdaptiveTableFont {
   let bucket =
     columns <= 8 ? 0 :
     columns <= 12 ? 1 :
@@ -65,6 +67,7 @@ export function adaptiveTableFont(columns: number, longestContent = 0): Adaptive
     columns <= 20 ? 3 : 4;
   if (longestContent > 10) bucket += 2;
   else if (longestContent > 3) bucket += 1;
+  bucket += bumpLevels;
   return BUCKETS[Math.min(bucket, BUCKETS.length - 1)];
 }
 
@@ -72,8 +75,11 @@ export function adaptiveTableFont(columns: number, longestContent = 0): Adaptive
  * Conveniência pras GRADES de numeração das fichas: recebe as chaves de
  * numeração ativas e devolve o spec + a maior chave (pra largura de coluna).
  * Conta +2 colunas fixas (rótulo "Nº/Por Ficha/Total" + coluna Total).
+ *
+ * @param dense TRUE rebaixa 1 bucket (layout compacto — Corte Forração /
+ *   Costura Palmilha / Silk, 7º passe). Não afeta os demais layouts.
  */
-export function gradeTableFont(sizeKeys: ReadonlyArray<string>): AdaptiveTableFont & { longestKey: number } {
+export function gradeTableFont(sizeKeys: ReadonlyArray<string>, dense = false): AdaptiveTableFont & { longestKey: number } {
   const longestKey = sizeKeys.reduce((m, s) => Math.max(m, String(s).length), 0);
-  return { ...adaptiveTableFont(sizeKeys.length + 2, longestKey), longestKey };
+  return { ...adaptiveTableFont(sizeKeys.length + 2, longestKey, dense ? 1 : 0), longestKey };
 }

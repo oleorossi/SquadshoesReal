@@ -28,6 +28,7 @@ import { getClientLogoUrl } from '@/lib/getClientLogo';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { RefChip } from '@/components/ui/ref-chip';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
@@ -204,8 +205,12 @@ export default function Costura() {
     const activeSizes = SIZES.filter(s => grade && Number(grade[s]) > 0);
     const gradeSum = grade ? Object.values(grade).reduce((s, v) => s + Number(v), 0) : 0;
     const totalPairs = order.quantity || gradeSum || 0;
-    const pairsPerFicha = gradeSum || 12;
-    const totalFichas = Math.ceil(totalPairs / pairsPerFicha);
+    // 7º passe (2026-06-12): pares/ficha = CORRUGADO físico (12/15/18)
+    // derivado pelo resolveFicha — `grade` pode ser curva-base OU grade
+    // total do pedido (antes mostrava "120 pares/ficha" · 1 ficha).
+    const fichaRes = resolveFicha(totalPairs, grade || {});
+    const pairsPerFicha = fichaRes.corrugado;
+    const totalFichas = Math.max(1, fichaRes.fichas);
 
     let imageUrl = '';
     if (ref) {

@@ -70,11 +70,17 @@ export function ReducedWorkSheet({
     : [];
   // Controle de Fichas (6º passe, 2026-06-12 — exigência do dono: tally em
   // TODO artefato de impressão). Usa fichas/pairsPerFicha quando o caller
-  // tem a grade base; senão fallback ceil(totalPairs / 12).
+  // tem a resolução de corrugado; senão fallback ceil(totalPairs / 12).
+  // 7º passe: caller que passa `fichas` SEM `pairsPerFicha` sinaliza
+  // corrugados MISTOS entre as OPs — o título avisa em vez de exibir
+  // um "12 pares / ficha" enganoso.
   const tallyPerCard = pairsPerFicha && pairsPerFicha > 0 ? pairsPerFicha : 12;
   const tallyCount = fichas && fichas > 0
     ? fichas
     : Math.max(1, Math.ceil(totalPairs / tallyPerCard));
+  const tallyTitle = fichas && fichas > 0 && !(pairsPerFicha && pairsPerFicha > 0)
+    ? 'Controle de Fichas · corrugados mistos'
+    : undefined;
 
   return (
     <div
@@ -252,7 +258,7 @@ export function ReducedWorkSheet({
           Renderiza sempre que há pares (count ≥ 1) — sem condicional de setor. */}
       {totalPairs > 0 && (
         <div className="keep-together" style={{ marginTop: 8 }}>
-          <TallyBox count={tallyCount} pairsPerCard={tallyPerCard} totalUnits={totalPairs} />
+          <TallyBox count={tallyCount} pairsPerCard={tallyPerCard} totalUnits={totalPairs} title={tallyTitle} />
         </div>
       )}
 

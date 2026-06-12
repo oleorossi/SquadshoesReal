@@ -16,15 +16,20 @@ export interface PalmilhaGroup {
   insoleColor: string;
   totalPairs: number;
   grade: Record<string, number>;
-  /** Grade BASE de 1 ficha fechada (ex: {34:1,...,40:1} soma 12). */
+  /** Curva-base de 1 CORRUGADO físico (soma = baseGradeSum). Vazia/ausente
+   *  quando a resolução é inexata. */
   baseGrade?: Record<string, number>;
-  /** Soma da grade base = pares por 1 ficha fechada. */
+  /** Pares por corrugado físico: 12/15/18 (resolveFicha, 7º passe). */
   baseGradeSum?: number;
-  /** Quantas fichas no total. */
+  /** Quantas fichas (corrugados) no total — somado entre OPs. */
   fichas?: number;
   /** TRUE quando o grupo agrega OPs com grades base diferentes — a linha
    *  "Por Ficha (Np)" não tem sentido (perCard × N ≠ Total). */
   mixedGrades?: boolean;
+  /** Corrugados DIFERENTES entre OPs do grupo — título do tally avisa. */
+  corrugadosMistos?: boolean;
+  /** Alguma OP com última ficha parcial — grade exibe "≈ N fichas". */
+  fichasAproximadas?: boolean;
   readyMade?: boolean;
   /** Sandálias que usam essa palmilha (ref + cor + foto). */
   refs?: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
@@ -98,14 +103,15 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   );
 
   const groupBlocks = groups.map((group, idx) => {
-            // FIX 2026-06-11: tally de FICHAS. Grade base uniforme → 1 caixinha
-            // = 1 ficha de baseGradeSum pares (bate com "Por Ficha (Np) × M
-            // fichas"); grade mista cai no box genérico (pairsPerCard).
+            // 7º passe (2026-06-12): tally de CORRUGADOS (12/15/18 pares)
+            // SEMPRE — mesmo com grades mistas (fichas soma certo entre OPs).
+            // Corrugados divergentes: título avisa "corrugados mistos".
+            // Fallback (sem resolução): pairsPerCard (12).
             const grpBgs = group.baseGradeSum ?? 0;
             const grpNf = group.fichas ?? 0;
-            const grpUniform = !group.mixedGrades && grpBgs > 0 && grpNf > 0;
-            const tallyPerCard = grpUniform ? grpBgs : pairsPerCard;
-            const cards = grpUniform ? grpNf : Math.max(1, Math.ceil(group.totalPairs / pairsPerCard));
+            const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
+            const cards = grpNf > 0 ? grpNf : Math.max(1, Math.ceil(group.totalPairs / tallyPerCard));
+            const tallyTitle = group.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
             const alerts: SectorAlert[] = [];
             if (group.readyMade) {
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
@@ -284,11 +290,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     )}
                     <tr>
                       <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
-                        {group.mixedGrades
-                          ? <>Total<br />({group.fichas || 0} fichas*)</>
-                          : group.fichas && group.fichas > 1
-                            ? <>Total<br />× {group.fichas} fichas</>
-                            : <>Total<br />(1 ficha)</>}
+                        {group.fichasAproximadas
+                          ? <>Total<br />≈ {group.fichas || 0} fichas</>
+                          : group.mixedGrades
+                            ? <>Total<br />({group.fichas || 0} fichas*)</>
+                            : group.fichas && group.fichas > 1
+                              ? <>Total<br />× {group.fichas} fichas</>
+                              : <>Total<br />(1 ficha)</>}
                       </td>
                       {groupSizes.map(s => (
                         <td
@@ -339,7 +347,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     quando readyMade, mas o dono exige Controle de Fichas em
                     todos os setores (o alerta "Palmilha PRONTA" permanece). */}
                 <div className="px-2 pb-2 pt-2 border-t border-black">
-                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} />
+                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} />
                 </div>
               </div>
             );
