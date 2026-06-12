@@ -111,6 +111,18 @@ export default function AppLayout({ children, printMode = false }: { children: R
     });
   };
 
+  // Favoritos: chave de colapso dedicada (não colide com label de grupo real,
+  // reaproveita o mesmo mecanismo de `collapsedGroups`/`nav-collapsed-groups`)
+  // e helper pra recuperar o ícone original do item a partir do path.
+  const FAVORITES_KEY = '__favoritos__';
+  const iconForPath = (path: string) => {
+    for (const group of menuGroups) {
+      const found = group.items.find(i => i.path === path);
+      if (found) return found.icon;
+    }
+    return Star;
+  };
+
   const filteredMenuGroups = React.useMemo(() =>
     menuGroups
       .map(group => ({ ...group, items: group.items.filter(item => canAccessRoute(item.path)) }))
@@ -258,29 +270,61 @@ export default function AppLayout({ children, printMode = false }: { children: R
             </div>
           )}
 
-          {/* Favoritos */}
-          {!isCollapsed && filteredFavorites.length > 0 && (
-            <div className="px-2 pb-2">
-              <div className="flex items-center gap-2 px-3 py-1.5 ed-eyebrow text-sidebar-muted">
-                <Star className="h-3 w-3 fill-primary text-primary" />
-                <span>Favoritos</span>
+          {/* Favoritos — grupo fixo no topo, acima dos demais. Mesmo
+              tratamento visual de grupo recolhível (cabeçalho + chevron). */}
+          {!isCollapsed && filteredFavorites.length > 0 && (() => {
+            const favActive = filteredFavorites.some(f =>
+              location.pathname === f.path || location.pathname.startsWith(f.path + '/')
+            );
+            const favCollapsed = collapsedGroups.has(FAVORITES_KEY) && !favActive;
+            return (
+              <div className="px-2 pb-1 mb-1 border-b border-sidebar-border/30">
+                <button
+                  onClick={() => toggleGroup(FAVORITES_KEY)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors",
+                    favActive ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Star className="h-3 w-3 shrink-0 fill-primary text-primary" />
+                    <span>Favoritos</span>
+                  </div>
+                  <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", favCollapsed && "-rotate-90")} />
+                </button>
+                {!favCollapsed && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {filteredFavorites.map((item) => {
+                      const Icon = iconForPath(item.path);
+                      return (
+                        <NavLink
+                          key={item.path}
+                          to={item.path}
+                          onClick={mobile ? () => setMobileOpen(false) : undefined}
+                          onMouseEnter={() => prefetch(item.path)}
+                          onMouseLeave={cancelPrefetch}
+                          onFocus={() => prefetch(item.path)}
+                          className={({ isActive }) => navItemClass(isActive)}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                          <button
+                            onClick={(e) => toggleFavorite(e, item.name, item.path)}
+                            className="p-1 opacity-100 text-primary hover:text-primary/60 transition-all duration-200"
+                            aria-label={`Remover ${item.name} dos favoritos`}
+                          >
+                            <Star className="h-3 w-3 fill-current" />
+                          </button>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="mt-0.5 space-y-0.5">
-                {filteredFavorites.map((item) => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className="group flex items-center justify-between px-3 py-1.5 rounded-sm text-[13px] font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04] transition-all duration-100"
-                  >
-                    <span className="truncate">{item.name}</span>
-                    <button onClick={(e) => toggleFavorite(e, item.name, item.path)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-primary transition-opacity">
-                      <Star className="h-3 w-3 fill-primary text-primary" />
-                    </button>
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Menu groups */}
           {isCollapsed ? (
@@ -289,11 +333,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               {filteredFavorites.length > 0 && (
                 <div className="pb-3 border-b border-sidebar-border/40">
                   {filteredFavorites.map((item) => {
-                    let Icon = Star;
-                    for (const group of filteredMenuGroups) {
-                      const found = group.items.find(i => i.path === item.path);
-                      if (found) { Icon = found.icon; break; }
-                    }
+                    const Icon = iconForPath(item.path);
                     return (
                       <Tooltip key={item.path} delayDuration={0}>
                         <TooltipTrigger asChild>
@@ -393,8 +433,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
                                 onClick={(e) => toggleFavorite(e, item.name, item.path)}
                                 className={cn(
                                   "p-1 transition-all duration-200",
-                                  isFavorite ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-100 text-sidebar-muted hover:text-primary"
+                                  isFavorite ? "opacity-100 text-primary" : "opacity-40 hover:opacity-100 text-sidebar-muted hover:text-primary"
                                 )}
+                                aria-label={isFavorite ? `Remover ${item.name} dos favoritos` : `Adicionar ${item.name} aos favoritos`}
                               >
                                 <Star className={cn("h-3 w-3", isFavorite && "fill-current")} />
                               </button>
