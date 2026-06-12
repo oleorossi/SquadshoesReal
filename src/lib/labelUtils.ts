@@ -1,14 +1,21 @@
 import { supabase } from "@/integrations/supabase/client";
 
+// Nome do material/família exibido na etiqueta (abaixo da cor).
+// Fonte: technical_sheets.upper_material (cabedal) — campo de texto livre que
+// guarda a família/grupo (ex.: "NAPA SOFT", "NAPA SANTORINE", "NEW VELVET").
+// Fallback: lining_material (forro) quando o cabedal não foi preenchido.
+//
+// ⚠ Antes lia de `reference_materials`, que está 100% vazia no banco — por isso
+// o material NUNCA aparecia em nenhuma etiqueta. Repontado pra fonte viva.
 export async function fetchMainMaterial(referenceId: string): Promise<string> {
-  const { data: materials } = await supabase
-    .from('reference_materials')
-    .select('*, products(name, category, group_id, product_groups!products_group_id_fkey(name))')
-    .eq('reference_id', referenceId);
-  const cabedal = materials?.find((m: any) => m.products?.category === 'Cabedal');
-  const main = cabedal || materials?.[0];
-  const groupName = (main as any)?.products?.product_groups?.name;
-  return groupName || (main as any)?.products?.name || '';
+  const { data } = await supabase
+    .from('technical_sheets')
+    .select('upper_material, lining_material')
+    .eq('id', referenceId)
+    .maybeSingle();
+  const upper = (data?.upper_material || '').trim();
+  if (upper) return upper;
+  return (data?.lining_material || '').trim();
 }
 
 export function parseSizes(sizesStr?: string): string[] {

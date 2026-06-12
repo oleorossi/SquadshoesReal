@@ -676,7 +676,7 @@ export function buildThermalLabelsHtml(labels: {
 
         <div class="label-info">
           <p class="info-reference">${escapeHtml(displayReference)}</p>
-          <p class="info-color"><span class="color-dot">▪</span>${escapeHtml(l.color || '—')}${l.strapsLabel ? ` <span class="info-straps">| ${escapeHtml(l.strapsLabel.replace(/\|/g, ' · ').replace(/:/g, ': '))}</span>` : ''}${!showHeader && l.qty ? ` <strong class="info-qty">×${l.qty}</strong>` : ''}</p>
+          <p class="info-color">${escapeHtml(l.color || '—')}${l.strapsLabel ? ` <span class="info-straps">| ${escapeHtml(l.strapsLabel.replace(/\|/g, ' · ').replace(/:/g, ': '))}</span>` : ''}${!showHeader && l.qty ? ` <strong class="info-qty">×${l.qty}</strong>` : ''}</p>
           ${c.showMaterial && l.mainMaterial ? `<p class="info-material">${escapeHtml(l.mainMaterial)}</p>` : ''}
           ${c.showPedido && l.clientOrderNumber ? `<p class="info-pedido">PED. ${escapeHtml(l.clientOrderNumber)}</p>` : ''}
           ${!showHeader && c.showCategory && l.shoeCategory ? `<p class="info-category">${escapeHtml(l.shoeCategory)}</p>` : ''}
@@ -856,13 +856,6 @@ ${preloadLinks}
     line-height:1;
     margin-bottom:0.3mm;
     text-transform:uppercase;
-  }
-  .color-dot{
-    display:inline-block;
-    margin-right:0.5mm;
-    font-size:${+(3.5 * scaleH).toFixed(1)}pt;
-    line-height:1;
-    vertical-align:middle;
   }
   .label-info{
     min-width:0;
@@ -1220,7 +1213,7 @@ export async function buildThermalLabelsPdf(
     // Color
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(Math.max(6, 6.5 * scale));
-    const colorText = '■ ' + (l.color || '—').toUpperCase() + (l.qty ? `   ×${l.qty}` : '');
+    const colorText = (l.color || '—').toUpperCase() + (l.qty ? `   ×${l.qty}` : '');
     doc.text(fitText(colorText, infoW), infoX, infoY + lineGap * 1.7, { baseline: 'middle' });
 
     // Material
