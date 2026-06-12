@@ -8,7 +8,7 @@ import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import { ProductImageBlock } from './worksheet/ProductImageBlock';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { PaginatedSheet } from './worksheet/PaginatedSheet';
+import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
@@ -487,7 +487,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // ── Builder dos blocos de UM grupo (solado/referência) ──
   // Sub-header compacto (faixa fina — NÃO o header gigante) + logomarca +
   // 1 card por cor + rodapé de conclusão do grupo.
-  const buildGroupBlocks = (group: SoleSilkGroup, gi: number): React.ReactNode[] => {
+  const buildGroupBlocks = (group: SoleSilkGroup, gi: number): SheetBlock[] => {
     // Silks únicos deste grupo (deduplica por silk_url). Se o cliente tiver
     // silk própria, ela aparece no lugar da silk padrão do solado (cascata
     // cliente → grupo econômico → solado já resolvida no getOrderSilk).
@@ -881,13 +881,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       ...(silkSingleBlock ? [silkSingleBlock] : []),
       ...(silksGridBlock ? [silksGridBlock] : []),
       ...colorBlocks,
-      // Rodapé de conclusão do GRUPO — Executado por / Data / Visto
-      <CompletionFooter />,
+      // Rodapé de conclusão do GRUPO — keepWithPrev: nunca abre página
+      // sozinho, puxa o último card do grupo junto.
+      { node: <CompletionFooter />, keepWithPrev: true },
     ];
   };
 
   // ── Maço contínuo do setor: header agregado + grupos em sequência ──
-  const blocks: React.ReactNode[] = [
+  const blocks: SheetBlock[] = [
     headerBlock,
     ...(knivesBlock ? [knivesBlock] : []),
     ...groups.flatMap((group, gi) => buildGroupBlocks(group, gi)),

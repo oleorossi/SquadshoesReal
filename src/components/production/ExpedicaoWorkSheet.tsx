@@ -6,7 +6,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { PaginatedSheet } from './worksheet/PaginatedSheet';
+import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface ExpedicaoOrder {
@@ -386,12 +386,14 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
       </div>
   );
 
-  const blocks: React.ReactNode[] = [
+  const blocks: SheetBlock[] = [
     headerBlock,
     embalagemBlock,
     tallyBlock,
     ...itemBlocks,
-    checklistBlock,
+    // Checklist final + rodapé de conclusão (mesmo bloco) com keepWithPrev:
+    // nunca abrem página sozinhos — puxam o último chunk de itens junto.
+    { node: checklistBlock, keepWithPrev: true },
   ];
 
   return <PaginatedSheet sectorLabel={sectorLabel || `Expedição · ${group.client_name}`} blocks={blocks} />;

@@ -65,6 +65,37 @@ describe('packBlocks — paginação explícita das fichas', () => {
     expect(pages).toHaveLength(1);
   });
 
+  it('keepWithPrev: rodapé que não cabe puxa o bloco anterior pra próxima página', () => {
+    // Página 1: [0, 1] (900 + 10 + 50 = 960). Rodapé (2, 80px) não cabe
+    // (960 + 10 + 80 > 1000) → puxa o bloco 1 junto: página 2 = [1, 2].
+    const pages = packBlocks([900, 50, 80], CAP, GAP, [false, false, true]);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1, 2]]);
+  });
+
+  it('keepWithPrev: sem o flag, o rodapé abriria página sozinho (regressão)', () => {
+    const pages = packBlocks([900, 50, 80], CAP, GAP);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0, 1], [2]]);
+  });
+
+  it('keepWithPrev: quando rodapé CABE no restante, nada muda', () => {
+    const pages = packBlocks([500, 50, 80], CAP, GAP, [false, false, true]);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0, 1, 2]]);
+  });
+
+  it('keepWithPrev: anterior era o único da página → página não sai vazia', () => {
+    // Bloco 0 (980) sozinho na pág 1; rodapé (1) não cabe e puxa o 0 —
+    // ambos vão juntos pra única página (980 + 10 + 5 ≤ 1000 não… 995 ≤ 1000 ok).
+    const pages = packBlocks([980, 5], CAP, GAP, [false, true]);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].blockIdxs).toEqual([0, 1]);
+  });
+
+  it('keepWithPrev: anterior + rodapé maiores que a página → rodapé abre sozinho (fallback)', () => {
+    const pages = packBlocks([900, 950, 100], CAP, GAP, [false, false, true]);
+    // 950 + 10 + 100 > 1000 → não dá pra manter juntos; fallback antigo.
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1], [2]]);
+  });
+
   it('constantes reais: capacidade A4 com margens internas é plausível', () => {
     // 296mm − 6 − 8 − 8 (faixa) = 274mm ≈ 1035px @96dpi
     expect(PAGE_CAPACITY_PX).toBeGreaterThan(1000);

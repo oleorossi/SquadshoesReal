@@ -2,7 +2,7 @@ import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { adaptiveTableFont } from './worksheet/adaptiveFont';
-import { PaginatedSheet } from './worksheet/PaginatedSheet';
+import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 
 export interface ReportStage {
   stage_name: string;
@@ -785,7 +785,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
       </footer>
   );
 
-  const blocks: React.ReactNode[] = [
+  const blocks: SheetBlock[] = [
     headerBlock,
     indicadoresBlock,
     statusBlock,
@@ -794,7 +794,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
     ...(silksBlock ? [silksBlock] : []),
     ...detalheBlocks,
     ...(timelineBlock ? [timelineBlock] : []),
-    footerBlock,
+    // Assinaturas com keepWithPrev: nunca abrem página sozinhas.
+    { node: footerBlock, keepWithPrev: true },
   ];
 
   return (

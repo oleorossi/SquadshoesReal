@@ -66,11 +66,17 @@ export interface PackedPage {
 /**
  * Empacota blocos em páginas (first-fit sequencial, sem reordenação — a
  * ordem dos blocos é semântica). Pura e determinística pra teste unitário.
+ *
+ * `keepWithPrev[i]` = bloco i não pode ABRIR página sozinho (rodapés
+ * "Executado por" / "Total Geral"): se não couber no restante, puxa o bloco
+ * anterior junto pra próxima página — senão a última folha do maço sai quase
+ * vazia, só com o rodapé (defeito reportado pelo dono em 2026-06-12).
  */
 export function packBlocks(
   heights: number[],
   capacity: number = PAGE_CAPACITY_PX,
   gap: number = BLOCK_GAP_PX,
+  keepWithPrev?: boolean[],
 ): PackedPage[] {
   const pages: PackedPage[] = [];
   let cur: number[] = [];
@@ -91,6 +97,20 @@ export function packBlocks(
     }
     const needed = h + (cur.length > 0 ? gap : 0);
     if (used + needed > capacity) {
+      // keep-with-previous: rodapé puxa o bloco anterior junto, se os dois
+      // couberem numa página. Se o anterior era o único da página atual, a
+      // página esvazia e simplesmente não é emitida (flush ignora vazia).
+      if (keepWithPrev?.[i] && cur.length > 0) {
+        const prev = cur[cur.length - 1];
+        const hPrev = heights[prev];
+        if (hPrev + gap + h <= capacity) {
+          cur.pop();
+          flush();
+          cur = [prev, i];
+          used = hPrev + gap + h;
+          return;
+        }
+      }
       // Não cabe no restante → resto da página fica EM BRANCO, bloco abre a próxima.
       flush();
       cur = [i];
@@ -110,16 +130,28 @@ export function packBlocks(
   return pages;
 }
 
+/** Bloco da ficha: nó cru, ou envelopado com flags de empacotamento. */
+export type SheetBlock =
+  | React.ReactNode
+  | { node: React.ReactNode; keepWithPrev?: boolean };
+
+const isWrappedBlock = (
+  b: SheetBlock,
+): b is { node: React.ReactNode; keepWithPrev?: boolean } =>
+  typeof b === 'object' && b !== null && !React.isValidElement(b) && !Array.isArray(b) && 'node' in b;
+
 interface PaginatedSheetProps {
   /** Rótulo da faixa de cabeçalho (ex.: "Corte Forração · Solado 01"). */
   sectorLabel: string;
   /** Blocos atômicos na ordem de leitura (header da ficha → cards → footer). */
-  blocks: React.ReactNode[];
+  blocks: SheetBlock[];
   /** Estilo extra aplicado a cada página (ex.: fontSize 10pt do relatório). */
   pageStyle?: React.CSSProperties;
 }
 
 export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedSheetProps) => {
+  const nodes = blocks.map(b => (isWrappedBlock(b) ? b.node : b));
+  const keepFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithPrev : false));
   const [heights, setHeights] = useState<number[]>([]);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
@@ -187,7 +219,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
       // pelo useLayoutEffect antes do paint.
       return [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }];
     }
-    return packBlocks(heights);
+    return packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, heights, blocks.length]);
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
@@ -262,7 +294,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
                 marginBottom: j < page.blockIdxs.length - 1 ? `${BLOCK_GAP_MM}mm` : 0,
               }}
             >
-              {blocks[bi]}
+              {nodes[bi]}
             </div>
           ))}
         </div>
