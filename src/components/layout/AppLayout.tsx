@@ -19,6 +19,7 @@ import PageHeader from './PageHeader';
 import { TabBar } from './TabBar';
 import { BottomNav } from './BottomNav';
 import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
+import { useNavOrder, reorderKeys } from '@/hooks/useNavOrder';
 import { NavigationAuditWatcher } from './NavigationAuditWatcher';
 import { DiagnosticsFab } from '@/components/DiagnosticsFab';
 
@@ -130,6 +131,21 @@ export default function AppLayout({ children, printMode = false }: { children: R
     [canAccessRoute]
   );
 
+  // Ordem customizada (arrastar-e-soltar) — aplica a preferência salva sobre
+  // os grupos já filtrados por acesso. Usado tanto no modo expandido quanto
+  // no colapsado pra a ordem ficar consistente.
+  const { applyNavOrder, setGroupOrder, setItemOrder, resetOrder, hasCustomOrder } = useNavOrder();
+  const orderedGroups = React.useMemo(
+    () => applyNavOrder(filteredMenuGroups),
+    [applyNavOrder, filteredMenuGroups]
+  );
+
+  // Drag & drop state: `dragInfo` (ref, não re-renderiza no início do arraste)
+  // guarda o que está sendo arrastado; `dropTarget` (state) dirige o indicador
+  // visual de onde vai cair (linha vermelha antes/depois do alvo).
+  const dragInfo = React.useRef<{ kind: 'group' | 'item'; group: string; path?: string } | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{ kind: 'group' | 'item'; key: string; pos: 'before' | 'after' } | null>(null);
+
   const filteredSystemItems = isAdmin ? systemItems : [];
   const { prefetch, cancel: cancelPrefetch } = usePrefetchRoute();
   const isDashboard = location.pathname === '/' || location.pathname === '/dashboard';
@@ -160,6 +176,79 @@ export default function AppLayout({ children, printMode = false }: { children: R
       return next;
     });
   };
+
+  // ── Drag & drop: reordenar grupos e itens (desktop, mouse) ───────────────
+  // API nativa de DnD do navegador (sem dependência). v1: grupos entre si +
+  // itens DENTRO do próprio grupo (mover item entre grupos diferentes fica
+  // pra depois). Ordem persistida via useNavOrder.
+  const clearDrag = () => { dragInfo.current = null; setDropTarget(null); };
+
+  // antes/depois conforme o mouse cair na metade de cima ou de baixo do alvo
+  const dropPos = (e: React.DragEvent): 'before' | 'after' => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY - rect.top > rect.height / 2 ? 'after' : 'before';
+  };
+
+  const handleGroupDragStart = (label: string) => (e: React.DragEvent) => {
+    dragInfo.current = { kind: 'group', group: label };
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', label); } catch { /* firefox precisa de algum dado */ }
+  };
+
+  // Container do grupo é zona de drop pra arraste de GRUPO (zona grande). Itens
+  // que não dão stopPropagation deixam o evento subir até aqui.
+  const handleGroupDragOver = (label: string) => (e: React.DragEvent) => {
+    if (dragInfo.current?.kind !== 'group') return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ kind: 'group', key: label, pos: dropPos(e) });
+  };
+
+  const handleGroupDrop = (label: string) => (e: React.DragEvent) => {
+    const drag = dragInfo.current;
+    if (drag?.kind !== 'group') return;
+    e.preventDefault();
+    setGroupOrder(reorderKeys(orderedGroups.map(g => g.label), drag.group, label, dropPos(e)));
+    clearDrag();
+  };
+
+  const handleItemDragStart = (group: string, path: string) => (e: React.DragEvent) => {
+    dragInfo.current = { kind: 'item', group, path };
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', path); } catch { /* idem */ }
+  };
+
+  const handleItemDragOver = (group: string, path: string) => (e: React.DragEvent) => {
+    const drag = dragInfo.current;
+    // só permite soltar DENTRO do mesmo grupo; senão deixa o evento subir pro
+    // container (caso seja arraste de grupo).
+    if (drag?.kind !== 'item' || drag.group !== group) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ kind: 'item', key: path, pos: dropPos(e) });
+  };
+
+  const handleItemDrop = (group: string, path: string) => (e: React.DragEvent) => {
+    const drag = dragInfo.current;
+    if (drag?.kind !== 'item' || drag.group !== group) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const groupObj = orderedGroups.find(g => g.label === group);
+    if (!groupObj) { clearDrag(); return; }
+    setItemOrder(group, reorderKeys(groupObj.items.map(i => i.path), drag.path, path, dropPos(e)));
+    clearDrag();
+  };
+
+  // Indicador visual (linha vermelha inset, sem deslocar layout)
+  const groupDropStyle = (label: string): React.CSSProperties | undefined =>
+    dropTarget?.kind === 'group' && dropTarget.key === label
+      ? { boxShadow: dropTarget.pos === 'before' ? 'inset 0 3px 0 0 hsl(var(--primary))' : 'inset 0 -3px 0 0 hsl(var(--primary))', borderRadius: '2px' }
+      : undefined;
+  const itemDropStyle = (path: string): React.CSSProperties | undefined =>
+    dropTarget?.kind === 'item' && dropTarget.key === path
+      ? { boxShadow: dropTarget.pos === 'before' ? 'inset 0 2px 0 0 hsl(var(--primary))' : 'inset 0 -2px 0 0 hsl(var(--primary))' }
+      : undefined;
 
   // ── Nav item active class ────────────────────────────────
   // Industrial Editorial Pro: active state ganha borda esquerda 2px vermelho
@@ -352,7 +441,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 </div>
               )}
               {/* Grupos colapsados */}
-              {filteredMenuGroups.map((group, gi) => (
+              {orderedGroups.map((group, gi) => (
                 <div key={group.label} className={cn(gi > 0 && "pt-2 border-t border-sidebar-border/40")}>
                   {group.items.map((item) => {
                     const isFavorite = favorites.some(f => f.path === item.path);
@@ -390,18 +479,27 @@ export default function AppLayout({ children, printMode = false }: { children: R
             </div>
           ) : (
             <div className="px-2 space-y-0.5">
-              {filteredMenuGroups.map((group) => {
+              {orderedGroups.map((group) => {
                 const active = isGroupActive(group);
                 const isGroupCollapsed = collapsedGroups.has(group.label) && !active;
                 return (
-                  <div key={group.label}>
+                  <div
+                    key={group.label}
+                    onDragOver={!mobile ? handleGroupDragOver(group.label) : undefined}
+                    onDrop={!mobile ? handleGroupDrop(group.label) : undefined}
+                    style={groupDropStyle(group.label)}
+                  >
                     <button
+                      draggable={!mobile}
+                      onDragStart={!mobile ? handleGroupDragStart(group.label) : undefined}
+                      onDragEnd={!mobile ? clearDrag : undefined}
                       onClick={() => toggleGroup(group.label)}
                       className={cn(
                         // Industrial Editorial Pro: group label vira eyebrow
                         // (Fira Code 10px tracking widest uppercase).
                         "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors mt-2",
-                        active ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
+                        active ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground",
+                        !mobile && "cursor-grab active:cursor-grabbing select-none"
                       )}
                     >
                       <div className="flex items-center gap-1.5">
@@ -419,11 +517,17 @@ export default function AppLayout({ children, printMode = false }: { children: R
                             <NavLink
                               key={item.name}
                               to={item.path}
+                              draggable={!mobile}
+                              onDragStart={!mobile ? handleItemDragStart(group.label, item.path) : undefined}
+                              onDragOver={!mobile ? handleItemDragOver(group.label, item.path) : undefined}
+                              onDrop={!mobile ? handleItemDrop(group.label, item.path) : undefined}
+                              onDragEnd={!mobile ? clearDrag : undefined}
                               onClick={mobile ? () => setMobileOpen(false) : undefined}
                               onMouseEnter={() => prefetch(item.path)}
                               onMouseLeave={cancelPrefetch}
                               onFocus={() => prefetch(item.path)}
-                              className={({ isActive }) => cn(navItemClass(isActive), isSubItem && "ml-5 border-l border-sidebar-border/40 pl-3")}
+                              style={itemDropStyle(item.path)}
+                              className={({ isActive }) => cn(navItemClass(isActive), isSubItem && "ml-5 border-l border-sidebar-border/40 pl-3", !mobile && "cursor-grab active:cursor-grabbing select-none")}
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <item.icon className={cn("shrink-0", isSubItem ? "h-3.5 w-3.5" : "h-4 w-4")} />
@@ -447,6 +551,16 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   </div>
                 );
               })}
+
+              {/* Restaurar ordem padrão — só aparece se houver ordem customizada */}
+              {!mobile && hasCustomOrder && (
+                <button
+                  onClick={resetOrder}
+                  className="w-full text-left px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+                >
+                  ↺ Restaurar ordem padrão
+                </button>
+              )}
 
               {/* Seção Sistema — visível para admins no final da sidebar */}
               {filteredSystemItems.length > 0 && (
