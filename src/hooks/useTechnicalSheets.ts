@@ -154,8 +154,10 @@ export type SheetFormData = {
    /** Mapeamento de facas de Corte Cabedal por ref (22/05/2026). Cada bucket
     *  agrega numerações (ex: P=[34,35,36], M=[37,38], G=[39,40]). Usado APENAS
     *  no setor Corte Cabedal pra somar quantidades por faca em vez de mostrar
-    *  número-a-número. NULL = sem cadastro, ficha mostra sizes individuais. */
-   knife_size_ranges?: Array<{ label: string; sizes: string[] }> | null;
+    *  número-a-número. NULL = sem cadastro, ficha mostra sizes individuais.
+    *  `code` (2026-06-12) = código físico da faca — opcional e retrocompatível
+    *  (JSONB livre, ranges antigos sem o campo seguem válidos; sem migration). */
+   knife_size_ranges?: Array<{ label: string; sizes: string[]; code?: string }> | null;
 };
 
 export const emptySheetForm: SheetFormData = {

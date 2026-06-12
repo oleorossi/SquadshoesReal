@@ -14,6 +14,7 @@ import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } 
 import { collectiveTypeForMode, pairsPerVolumeForMode } from '@/lib/packagingPairsPerBox';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
+import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
   useBulkOrderConsumption,
@@ -773,7 +774,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     },
   });
 
-  // Costs e stages só carregados quando "Relatório Gerencial" está selecionado
+  // Stages só carregados quando "Relatório Gerencial" está selecionado.
+  // (Query de order_costs REMOVIDA em 2026-06-12 — a seção "Custos & Margem"
+  //  saiu do Relatório Gerencial a pedido do dono.)
   const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
 
   // Lot sizing (PR 2026-05-23): carrega lots em batch; cada OP splitada vira
@@ -784,25 +787,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // expandedOrders movido p/ DEPOIS de resolveSoleForOrder — expande `printOrders`
   // (orders já filtradas por faixa/solado), e o filtro de solado usa o lookup.
 
-  const { data: orderCosts = [] } = useQuery({
-    queryKey: ['order_costs_for_report', orderIds],
-    // Gate pelo setor: só o Relatório Gerencial consome custos — sem o gate
-    // toda impressão de qualquer setor disparava essas 2 queries à toa.
-    enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
-    queryFn: async () => {
-      const saleOrderIdsSet = new Set(orders.map((o: any) => o.sale_order_id).filter(Boolean));
-      if (saleOrderIdsSet.size === 0) return [];
-      const { data, error } = await (supabase as any)
-        .from('order_costs')
-        .select('id, sale_order_id, sale_order_item_id, reference_id, color, quantity, material_cost, labor_cost, overhead_cost, packaging_cost, total_cost, revenue, margin, margin_pct')
-        .in('sale_order_id', Array.from(saleOrderIdsSet));
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
   const { data: orderStagesData = [] } = useQuery({
     queryKey: ['order_stages_for_report', orderIds],
+    // Gate pelo setor: só o Relatório Gerencial consome stages — sem o gate
+    // toda impressão de qualquer setor disparava a query à toa.
     enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -1079,14 +1067,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   });
 
   // Map reference_id → facas de Corte Cabedal (P/M/G/...). Cada ref pode
-  // definir buckets que agregam numerações. Usado APENAS no setor Corte
-  // Cabedal — fichas sem cadastro caem no comportamento individual.
+  // definir buckets que agregam numerações (+ `code` opcional = código
+  // físico da faca, 2026-06-12). Usado APENAS no setor Corte Cabedal —
+  // fichas sem cadastro caem no comportamento individual.
   const knifeRangesByRef = useMemo(() => {
-    const m = new Map<string, Array<{ label: string; sizes: string[] }>>();
+    const m = new Map<string, Array<{ label: string; sizes: string[]; code?: string }>>();
     for (const s of sheetLiningFlags as any[]) {
       const r = s.knife_size_ranges;
       if (Array.isArray(r) && r.length > 0) {
-        m.set(s.id, r as Array<{ label: string; sizes: string[] }>);
+        m.set(s.id, r as Array<{ label: string; sizes: string[]; code?: string }>);
       }
     }
     return m;
@@ -1783,17 +1772,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const soleName = rawSoleName
         ? getBaseName(rawSoleName)
         : (fallbackSole ? getBaseName(fallbackSole) : 'Sem Solado');
-      // Chave de agrupamento por SOLADO. Quando a resolução canônica acha
-      // produto, usa sole_product_id pra agrupar fichas que usam o MESMO
-      // produto solado (legítimo). Quando cai no fallback
-      // textual (sole_material), usa sheetId pra evitar que fichas distintas
-      // com mesmo label "01" colidam num único card (bug reportado em
-      // 2026-05-19: SP117 e SP119 com sole_material='01' fundiam-se e a
-      // segunda OP era engolida pela primeira processada).
-      const soleProductId = resolvedSole?.productId || null;
-      const soleKey = soleProductId
-        ? `pid::${soleProductId}`
-        : (fallbackSole ? `txt::${sheetId}` : 'none');
+      // Chave de agrupamento por SOLADO — pelo GRUPO do produto (= MODELO
+      // do solado, mesma identidade do título impresso). FIX 2026-06-12
+      // (dono: "Corte de forração tá duplicado / vários setores repetindo"):
+      // a chave anterior era o sole_product_id, que é um SKU POR COR — um PV
+      // com N cores de cabedal resolvia N produtos do MESMO solado e o maço
+      // imprimia N grupos consecutivos todos com o MESMO título (getBaseName
+      // tira o sufixo de cor). Fallback textual (sole_material) continua POR
+      // FICHA (sheetId) pra fichas distintas com mesmo label "01" não
+      // colidirem (bug 2026-05-19: SP117/SP119). Ver worksheet/soleGroupKey.ts.
+      const soleKey = soleGroupKey(resolvedSole, fallbackSole, sheetId);
 
       // Agrupamento por REFERÊNCIA (Aviamento, 2026-06-12): chave = identidade
       // da ref com o MESMO fallback do groupOrdersByRefColor (reference_id →
@@ -2356,19 +2344,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const clientById = new Map<string, any>();
     for (const c of clientsInfo as any[]) clientById.set((c as any).id, c);
 
-    // Costs indexados POR ITEM (sale_order_item_id) quando disponível — 2
-    // itens do mesmo PV com mesma ref+cor (grade infantil + adulta) têm
-    // linhas de custo distintas; o match só por ref+cor sobrescrevia uma com
-    // a outra e o KPI somava 2× o custo de um item e zerava o do outro.
-    // Fallback por (PV, ref, cor) pra OPs antigas sem sale_order_item_id.
-    const costsByItemId = new Map<string, any>();
-    const costsBySaleAndRef = new Map<string, any>();
-    for (const c of orderCosts as any[]) {
-      if (c.sale_order_item_id) costsByItemId.set(String(c.sale_order_item_id), c);
-      const key = `${c.sale_order_id}::${c.reference_id || ''}::${(c.color || '').toLowerCase()}`;
-      costsBySaleAndRef.set(key, c);
-    }
-
+    // (Indexação de order_costs REMOVIDA em 2026-06-12 — Custos & Margem
+    //  saiu do Relatório Gerencial a pedido do dono.)
     const stagesByOrderId = new Map<string, ReportStage[]>();
     for (const s of orderStagesData as any[]) {
       const arr = stagesByOrderId.get(s.order_id) ?? [];
@@ -2429,9 +2406,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         });
       }
       const g = map.get(so.id)!;
-      const costKey = `${so.id}::${order.reference_id || ''}::${(order.color || '').toLowerCase()}`;
-      const itemId = (order as any).sale_order_item_id;
-      const cost = (itemId && costsByItemId.get(String(itemId))) || costsBySaleAndRef.get(costKey);
 
       // Imagem: cascata variante-exata > variante-Preto > ficha-técnica
       const orderColorLower = (order.color || '').toLowerCase();
@@ -2499,17 +2473,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         lining_material: mats.lining,
         insole_material: mats.insole,
         pairs_per_box: pairsPerBox,
-        cost: cost ? {
-          quantity: Number(cost.quantity) || 0,
-          material_cost: Number(cost.material_cost) || 0,
-          labor_cost: Number(cost.labor_cost) || 0,
-          overhead_cost: Number(cost.overhead_cost) || 0,
-          packaging_cost: Number(cost.packaging_cost) || 0,
-          total_cost: Number(cost.total_cost) || 0,
-          revenue: Number(cost.revenue) || 0,
-          margin: Number(cost.margin) || 0,
-          margin_pct: Number(cost.margin_pct) || 0,
-        } : null,
       });
     }
 
@@ -2520,7 +2483,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // os lê — sem eles, se a query resolvesse por último o memo não recomputava
     // e o relatório imprimia pra sempre a logo fallback (race em rede lenta).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderCosts, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo]);
+  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo]);
 
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
@@ -2999,6 +2962,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 .filter((g): g is SoleSilkGroup => g !== null);
             }
             if (groupsForSector.length === 0) return [];
+            // Facas de Corte (pedido do dono 2026-06-12): SÓ no Corte Cabedal.
+            // Uma entrada por REFERÊNCIA presente no maço (modelos com cabedal
+            // a cortar) cuja ficha técnica tem knife_size_ranges cadastrado —
+            // a worksheet mostra quantidade de facas + código + numerações
+            // cobertas, identificando a referência quando o maço tem várias.
+            const knives = sectorName === 'Corte Cabedal'
+              ? (() => {
+                  const seen = new Map<string, { refCode: string; refName: string; ranges: Array<{ label: string; sizes: string[]; code?: string }> }>();
+                  for (const order of expandedOrders) {
+                    const sheetId = (order as any).reference_id;
+                    if (!sheetId || seen.has(sheetId)) continue;
+                    // Modelo de tiras não tem cabedal — fora do Corte Cabedal.
+                    if (hasStrapsLookup.get(sheetId) === true) continue;
+                    const ranges = knifeRangesByRef.get(sheetId);
+                    if (!ranges || ranges.length === 0) continue;
+                    seen.set(sheetId, {
+                      refCode: (order as any).reference_code || '',
+                      refName: (order as any).reference_name || (order as any).reference_code || '—',
+                      ranges,
+                    });
+                  }
+                  return Array.from(seen.values());
+                })()
+              : undefined;
             if (reduced) {
               return groupsForSector.map((g, gi) =>
                 reducedSilkNode(withClientNames(g), sectorName, `${sectorName}-red-${gi}-${g.soleName}`));
@@ -3015,6 +3002,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   sectorLabel={sectorName}
                   groups={enriched}
                   sector={sectorName}
+                  knives={knives}
                   sizeBand={bandForOps(enriched.flatMap(g => g.colorGroups.flatMap(cg => cg.opNumbers || [])))}
                 />
               </div>,
