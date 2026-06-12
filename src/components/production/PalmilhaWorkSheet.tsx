@@ -54,8 +54,9 @@ interface Props {
  * Ficha de Corte de Palmilha — agrupa SOMENTE por solado. Cabedal, tiras,
  * cor da palmilha e pronta-vs-cortar são indiferentes pro cortador; ele
  * só quer qty por numeração por solado. `readyMade` do grupo é true só
- * quando 100% das OPs daquele solado vêm prontas (suprime tally e mostra
- * alerta); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
+ * quando 100% das OPs daquele solado vêm prontas (mostra alerta "não
+ * cortar"); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
+ * O Controle de Fichas (tally) renderiza SEMPRE (6º passe, 2026-06-12).
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
@@ -334,11 +335,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                 {/* "Consumo Previsto" removido em 2026-06-12 — métrica de
                     planejamento, não pertence à ficha de operador. */}
 
-                {!group.readyMade && (
-                  <div className="px-2 pb-2 pt-2 border-t border-black">
-                    <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} />
-                  </div>
-                )}
+                {/* 6º passe (2026-06-12): tally SEMPRE — antes era suprimido
+                    quando readyMade, mas o dono exige Controle de Fichas em
+                    todos os setores (o alerta "Palmilha PRONTA" permanece). */}
+                <div className="px-2 pb-2 pt-2 border-t border-black">
+                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} />
+                </div>
               </div>
             );
 

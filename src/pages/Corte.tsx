@@ -1,5 +1,6 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers } from '@phosphor-icons/react';
@@ -20,7 +21,6 @@ import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
-import { printSectorWorkSheets } from '@/lib/printSectorWorkSheet';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
 import { printGroupedReport } from '@/lib/printGroupedReport';
 import { printCuttingGroupedReport } from '@/lib/printCuttingGroupedReport';
@@ -71,6 +71,7 @@ type CuttingRow = {
 
 
 export default function Corte() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: orders = [] } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
@@ -955,15 +956,12 @@ if (totalPairsAll !== palmTotal) {
                 <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar Tudo ({cuttingOrders.length})
               </Button>
             <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
-                const ordersToprint = cuttingOrders.filter(o => selectedOrders.has(o.id));
-                printSectorWorkSheets({
-                  sectorName: 'Corte',
-                  sectorEmoji: '✂️',
-                  orders: ordersToprint as any,
-                  references: references as any,
-                  saleOrders: saleOrders as any,
-                  getStrapsLabel,
-                });
+                // 6º passe (2026-06-12): popup legado de fichas por setor
+                // morto — deep-link pra tela central (modelo v7, TallyBox).
+                // A ficha legada de 'Corte' englobava cabedal + forração +
+                // palmilha, então pré-seleciona as 3 sub-etapas de Corte.
+                const ids = cuttingOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Corte Palmilha,Corte Forração,Corte Cabedal')}`);
               }}>
                 <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
               </Button>

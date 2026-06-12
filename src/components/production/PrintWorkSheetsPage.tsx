@@ -410,7 +410,9 @@ interface PrintWorkSheetsPageProps {
 // Cabedal' (roteiro 'Corte Cabedal' + upper_corte_a_fio=false). Camada SÓ de
 // impressão: o setor 'Costura' único continua intacto no fluxo de produção
 // (enum do banco, compute_wave_timeline, capacidades).
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
+// Exportado pra tela wrapper (PrintWorkSheets.tsx) validar o deep-link
+// `?sectors=` vindo das páginas de setor (6º passe, 2026-06-12).
+export const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // Rótulos de exibição (chip do seletor + título da região na tela). A CHAVE
 // interna 'Corte Palmilha' é mantida (capacidade/roteamento/batch dependem
@@ -2695,6 +2697,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={palmilhaAllSizes}
                   totalPairs={g.totalPairs}
                   totalNote={g.fichas && g.baseGradeSum ? `${g.fichas} ficha(s) de ${g.baseGradeSum}` : undefined}
+                  fichas={!g.mixedGrades && g.fichas ? g.fichas : undefined}
+                  pairsPerFicha={!g.mixedGrades && g.baseGradeSum ? g.baseGradeSum : undefined}
                   consumption={consumptionForOpNumbers(g.opNumbers, g.totalPairs)}
                   consumptionSector="Corte Palmilha"
                 />
@@ -2913,6 +2917,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const colors = group.colorGroups.map(cg => ({ name: cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
             // Agrega OPs do grupo inteiro pra puxar o consumo filtrado pelo setor.
             const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers);
+            // Tally do grupo: soma das fichas das cores quando TODAS têm grade
+            // base uniforme E mesma soma — senão o fallback ceil(total/12).
+            const tallyUniform = group.colorGroups.length > 0
+              && group.colorGroups.every(cg => !cg.mixedGrades && (cg.fichas ?? 0) > 0 && (cg.baseGradeSum ?? 0) > 0)
+              && new Set(group.colorGroups.map(cg => cg.baseGradeSum)).size === 1;
             return (
               <div key={key} className="reduced-card">
                 <ReducedWorkSheet
@@ -2923,6 +2932,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={sizes}
                   totalPairs={group.totalPairs}
                   colors={colors}
+                  fichas={tallyUniform ? group.colorGroups.reduce((s, cg) => s + (cg.fichas || 0), 0) : undefined}
+                  pairsPerFicha={tallyUniform ? group.colorGroups[0].baseGradeSum : undefined}
                   consumption={consumptionForOpNumbers(allOpNumbers, group.totalPairs)}
                   consumptionSector={sectorName}
                 />
@@ -3045,6 +3056,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
+                  fichas={b.baseGradeSum ? Math.max(1, Math.round(b.totalPairs / b.baseGradeSum)) : undefined}
+                  pairsPerFicha={b.baseGradeSum || undefined}
                   consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
                   consumptionSector="Solagem"
                 />
@@ -3082,6 +3095,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
                   totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
+                  fichas={b.baseGradeSum ? Math.max(1, Math.round(b.totalPairs / b.baseGradeSum)) : undefined}
+                  pairsPerFicha={b.baseGradeSum || undefined}
                   consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
                   consumptionSector="Colagem"
                 />
@@ -3143,6 +3158,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     grade={g}
                     allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                     totalPairs={group.totalPairs}
+                    fichas={!group.mixedGrades && group.fichas > 0 ? group.fichas : undefined}
+                    pairsPerFicha={!group.mixedGrades && group.baseGradeSum > 0 ? group.baseGradeSum : undefined}
                     consumption={consumptionForOpNumbers(group.opNumbers, group.totalPairs)}
                     consumptionSector={sectorName}
                   />
@@ -3254,6 +3271,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     grade={g}
                     allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                     totalPairs={tot}
+                    fichas={baseSum > 0 ? Math.max(1, Math.round(tot / baseSum)) : undefined}
+                    pairsPerFicha={baseSum > 0 ? baseSum : undefined}
                     consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean), tot)}
                     consumptionSector="Acabamento"
                   />

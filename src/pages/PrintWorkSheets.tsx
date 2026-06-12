@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
-import PrintWorkSheetsPage from '@/components/production/PrintWorkSheetsPage';
+import PrintWorkSheetsPage, { SECTORS } from '@/components/production/PrintWorkSheetsPage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -68,6 +68,18 @@ export default function PrintWorkSheets() {
   const deepLinkIds = useMemo(() => {
     const raw = searchParams.get('orderIds');
     return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  }, [searchParams]);
+  // Deep-link `?sectors=Silk,Montagem` (6º passe, 2026-06-12): os botões
+  // "Fichas Operador" das páginas de setor (Silk/Montagem/Corte/Solagem)
+  // navegam pra cá em vez do popup legado de fichas por setor (lib removida)
+  // — assim TODOS os caminhos de impressão passam pelo modelo v7 (TallyBox
+  // em todo setor). Nomes inválidos são descartados; sem param = todos.
+  const deepLinkSectors = useMemo(() => {
+    const raw = searchParams.get('sectors');
+    if (!raw) return null;
+    const valid = new Set<string>(SECTORS);
+    const list = raw.split(',').map(s => s.trim()).filter(s => valid.has(s));
+    return list.length > 0 ? new Set(list) : null;
   }, [searchParams]);
   const [statusFilter, setStatusFilter] = useState<string>(deepLinkIds.length > 0 ? 'todos' : 'em_fluxo');
   const [pvFilter, setPvFilter] = useState<string>('all');
@@ -205,6 +217,7 @@ export default function PrintWorkSheets() {
       <PrintWorkSheetsPage
         orders={selectedOrders}
         onBack={() => setShowPrintView(false)}
+        initialSectors={deepLinkSectors ?? undefined}
       />
     );
   }

@@ -574,8 +574,10 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
           </div>
         )}
 
-        {/* TallyBox — controle de fichas do operador. */}
-        {(isSilk || isColagem || isMontagem || isSolagem) && (
+        {/* TallyBox — controle de fichas do operador. 6º passe (2026-06-12):
+            renderiza pra QUALQUER setor (antes só Silk/Colagem/Montagem/
+            Solagem); Acabamento mantém o tally próprio de caixas abaixo. */}
+        {!isAcabamento && (
           <div className="keep-with-next">
             <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
           </div>

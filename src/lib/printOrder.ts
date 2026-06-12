@@ -6,10 +6,10 @@ import logoSquad from '@/assets/logo-squad-shoes.jpg';
 
 function buildPrintHtmlContent(title: string, bodyHtml: string, options?: { landscape?: boolean }): string {
   const pageSize = options?.landscape ? 'A4 landscape' : 'A4';
-  // OTIMIZAÇÃO DE ESPAÇO: helper compartilhado por ~10 arquivos lib/print*.ts
-  // (printGroupedReport, printCombinedSectorReport, printSectorWorkSheet,
-  //  printPurchaseOrder, printSaleOrderOPs, printStockPurchaseOrder,
-  //  printTimeMirror, printTimesheet, printLabels, printCuttingGroupedReport).
+  // OTIMIZAÇÃO DE ESPAÇO: helper compartilhado pelos arquivos lib/print*.ts
+  // (printGroupedReport, printCombinedSectorReport, printPurchaseOrder,
+  //  printSaleOrderOPs, printStockPurchaseOrder, printTimeMirror,
+  //  printTimesheet, printLabels, printCuttingGroupedReport).
   // Reduzir margens/paddings/font-sizes aqui = otimizar TODOS de uma vez.
   return `<!DOCTYPE html>
 <html>
