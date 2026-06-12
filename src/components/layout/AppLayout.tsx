@@ -530,7 +530,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
             <div className="px-2 space-y-0.5">
               {orderedGroups.map((group) => {
                 const active = isGroupActive(group);
-                const isGroupCollapsed = collapsedGroups.has(group.label) && !active;
+                // Respeita o recolhimento manual do grupo MESMO quando a rota
+                // atual está dentro dele. Antes tinha `&& !active`, que forçava
+                // o grupo a abrir ao navegar (ex.: clicar num favorito abria o
+                // setor) — comportamento que o usuário não quer.
+                const isGroupCollapsed = collapsedGroups.has(group.label);
                 return (
                   <div
                     key={group.label}
