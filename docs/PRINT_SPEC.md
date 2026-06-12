@@ -202,7 +202,7 @@ gigante repetido na seguinte). Estrutura do maço:
    (Anton **adaptativo**, lista completa), **razão social dos clientes em
    VERMELHO `#C00000`** logo abaixo do PV, total de pares, nº de grupos.
    O strip "Batch · XXX-YYMMDD-HASH + data" foi **removido** (pedido do dono;
-   `generateBatchId` segue vivo só no popup legado `printSectorWorkSheet.ts`).
+   `generateBatchId` foi deletado junto com o popup legado no 6º passe).
 2. **`GroupSubHeader`** por grupo (`worksheet/GroupSubHeader.tsx`): faixa fina
    com hairline — eyebrow ("SOLADO 02/05"), título em Anton menor adaptativo,
    selo INFANTIL/ADULTO, lote, OPs e pares do grupo.
@@ -235,6 +235,29 @@ knife_size_ranges[].code`, campo novo opcional no JSONB, sem migration);
 Relatório Gerencial perdeu a seção "Custos & Margem" (KPIs apenas
 operacionais) e a seção de Silks agora lista as referências que levam cada
 silk abaixo da imagem.
+
+### 6º passe (2026-06-12) — caminho legado removido + tally universal
+
+1. **`src/lib/printSectorWorkSheet.ts` foi DELETADO** (junto com
+   `worksheet/batchId.ts` + teste, que só ele usava). Era o popup
+   `window.open` legado dos botões "Fichas Operador" das páginas de setor
+   (`Silk.tsx`, `Montagem.tsx`, `Corte.tsx`, `Solagem.tsx`) — sem TallyBox
+   e fora do modelo v7; era por ele que o dono imprimia setores sem ver o
+   Controle de Fichas. Os botões agora NAVEGAM pra rota central:
+   `/imprimir-fichas?orderIds=<ids>&sectors=<Nome,Nome>`. O novo param
+   `sectors` (validado contra `SECTORS`, exportado do
+   `PrintWorkSheetsPage.tsx`) pré-seleciona só esses chips via
+   `initialSectors`. Mapeamento: Silk→Silk, Montagem→Montagem,
+   Solagem→Solagem, Corte→Corte Palmilha + Corte Forração + Corte Cabedal
+   (a ficha legada de "Corte" englobava as 3 sub-etapas).
+2. **TallyBox (Controle de Fichas) é UNIVERSAL**: `ReducedWorkSheet` ganhou
+   o tally compacto (props `fichas`/`pairsPerFicha`; fallback
+   `ceil(totalPairs/12)`); `PalmilhaWorkSheet` renderiza o tally SEMPRE
+   (antes suprimia quando `readyMade` — o alerta "Palmilha PRONTA"
+   permanece); `OperatorWorkSheet` renderiza pra qualquer setor (antes só
+   Silk/Colagem/Montagem/Solagem; Acabamento mantém o tally de caixas).
+   SilkMontage (compacto+completo), Solagem/Colagem e Expedição já eram
+   incondicionais.
 
 ### Exceção: bloco maior que 1 página inteira
 

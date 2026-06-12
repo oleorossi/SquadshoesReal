@@ -1,5 +1,6 @@
 import { SignedImage } from '@/components/ui/signed-image';
 import { thumbUrl } from '@/lib/imageThumb';
+import { TallyBox } from './worksheet/TallyBox';
 import { filterConsumptionForSector, formatConsumptionLine, type ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 /**
@@ -49,11 +50,16 @@ export interface ReducedWorkSheetProps {
   consumption?: ConsumptionRow[];
   /** Nome do setor pra filtrar consumo (ex.: "Corte Forração", "Aviamento"). */
   consumptionSector?: string;
+  /** Nº de fichas fechadas do grupo (Controle de Fichas). Sem isso o tally
+   *  usa `ceil(totalPairs / pairsPerFicha)`. */
+  fichas?: number;
+  /** Pares por ficha fechada (= baseGradeSum). Default 12. */
+  pairsPerFicha?: number;
 }
 
 export function ReducedWorkSheet({
   sectorLabel, title, meta, imageUrl, grade, allSizes, totalPairs, colors, totalNote,
-  consumption, consumptionSector,
+  consumption, consumptionSector, fichas, pairsPerFicha,
 }: ReducedWorkSheetProps) {
   const sizes = allSizes;
   const byColor = !!(colors && colors.length > 0);
@@ -62,6 +68,13 @@ export function ReducedWorkSheet({
   const sectorConsumption = consumption && consumption.length > 0
     ? (consumptionSector ? filterConsumptionForSector(consumption, consumptionSector) : consumption)
     : [];
+  // Controle de Fichas (6º passe, 2026-06-12 — exigência do dono: tally em
+  // TODO artefato de impressão). Usa fichas/pairsPerFicha quando o caller
+  // tem a grade base; senão fallback ceil(totalPairs / 12).
+  const tallyPerCard = pairsPerFicha && pairsPerFicha > 0 ? pairsPerFicha : 12;
+  const tallyCount = fichas && fichas > 0
+    ? fichas
+    : Math.max(1, Math.ceil(totalPairs / tallyPerCard));
 
   return (
     <div
@@ -234,6 +247,14 @@ export function ReducedWorkSheet({
           </div>
         )}
       </div>
+
+      {/* Controle de Fichas — versão compacta do tally das fichas completas.
+          Renderiza sempre que há pares (count ≥ 1) — sem condicional de setor. */}
+      {totalPairs > 0 && (
+        <div className="keep-together" style={{ marginTop: 8 }}>
+          <TallyBox count={tallyCount} pairsPerCard={tallyPerCard} totalUnits={totalPairs} />
+        </div>
+      )}
 
       {/* Consumo de materiais COMPACTO — só os itens relevantes pro setor.
           Espelha o card de Consumo do worksheet tradicional, mas numa linha

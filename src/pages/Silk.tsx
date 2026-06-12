@@ -18,7 +18,6 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { printHtml } from '@/lib/printOrder';
-import { printSectorWorkSheets } from '@/lib/printSectorWorkSheet';
 import { normalizeForSearch } from '@/lib/searchUtils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -553,17 +552,10 @@ export default function Silk() {
               <Printer className="h-4 w-4 mr-1" /> Imprimir
             </Button>
             <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
-              const ordersToPrint = solagemOrders.filter(o => selectedOrders.has(o.id));
-              printSectorWorkSheets({
-                sectorName: 'Silk',
-                sectorEmoji: SECTOR_EMOJI,
-                orders: ordersToPrint as any,
-                references: references as any,
-                saleOrders: saleOrders as any,
-                getStrapsLabel,
-                getSoleColor: getSoleColorForSize,
-                getSoleReference: (order: any) => getSoleReferenceName(order),
-              });
+              // 6º passe (2026-06-12): popup legado de fichas por setor
+              // morto — deep-link pra tela central (modelo v7, com TallyBox).
+              const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+              navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Silk')}`);
             }}>
               <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
             </Button>

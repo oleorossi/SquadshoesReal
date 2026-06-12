@@ -19,7 +19,6 @@ import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { printHtml } from '@/lib/printOrder';
-import { printSectorWorkSheets } from '@/lib/printSectorWorkSheet';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
@@ -266,15 +265,10 @@ export default function Montagem() {
             </SelectContent>
           </Select>
           <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
-            const ordersToPrint = montagemOrders.filter(o => selectedOrders.has(o.id));
-            printSectorWorkSheets({
-              sectorName: 'Montagem',
-              sectorEmoji: '🔧',
-              orders: ordersToPrint as any,
-              references: references as any,
-              saleOrders: saleOrders as any,
-              getStrapsLabel,
-            });
+            // 6º passe (2026-06-12): popup legado de fichas por setor
+            // morto — deep-link pra tela central (modelo v7, com TallyBox).
+            const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+            navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Montagem')}`);
           }}>
             <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
           </Button>
