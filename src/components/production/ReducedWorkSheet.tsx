@@ -1,10 +1,12 @@
+import { SignedImage } from '@/components/ui/signed-image';
+import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 
 /**
  * ReducedWorkSheet — ficha de operador REDUZIDA.
  *
- * Layout compacto para economizar folha: sem foto, sem consumo previsto.
- * Mantém: grade completa, quantidades por cor e controle de fichas (tally).
+ * Layout compacto para economizar folha: sem consumo previsto.
+ * Foto do produto é opcional — ativada via `showImage` (ex.: Aviamento).
  *
  * Print component: inline styles + cores hardcoded (#000) — NÃO usar tokens
  * com alpha aqui (regra CLAUDE.md pra worksheets).
@@ -25,12 +27,14 @@ export interface ReducedColor {
 export interface ReducedWorkSheetProps {
   /** Eyebrow do setor (ex.: "Corte Palmilha"). */
   sectorLabel: string;
-  /** Título grande (ex.: nome do solado). */
+  /** Título grande (ex.: nome do solado/referência). */
   title: string;
   /** Metadados curtos no topo direito (Lote / OPs / Solado). */
   meta?: Array<{ label: string; value: string }>;
-  /** @deprecated mantido pra compat com callers existentes — não renderiza mais */
+  /** URL da foto do produto (Supabase). Só renderiza quando `showImage=true`. */
   imageUrl?: string | null;
+  /** Exibe a foto do produto ao lado da grade. Padrão: false. */
+  showImage?: boolean;
   /** Grade do grupo: numeração → pares. */
   grade: Record<string, number>;
   /** Ordem das numerações a exibir. */
@@ -51,11 +55,12 @@ export interface ReducedWorkSheetProps {
 }
 
 export function ReducedWorkSheet({
-  sectorLabel, title, meta, grade, allSizes, totalPairs, colors, totalNote,
-  fichas, pairsPerFicha,
+  sectorLabel, title, meta, imageUrl, showImage, grade, allSizes, totalPairs,
+  colors, totalNote, fichas, pairsPerFicha,
 }: ReducedWorkSheetProps) {
   const sizes = allSizes;
   const byColor = !!(colors && colors.length > 0);
+  const withPhoto = !!(showImage && imageUrl);
 
   const tallyPerCard = pairsPerFicha && pairsPerFicha > 0 ? pairsPerFicha : 12;
   const tallyCount = fichas && fichas > 0
@@ -95,37 +100,63 @@ export function ReducedWorkSheet({
         )}
       </div>
 
-      {/* ── Grade (largura total — sem foto) ── */}
+      {/* ── Grade (com foto opcional ao lado) ── */}
       <div className="keep-together" style={{ marginTop: 5 }}>
-        <span className="font-mono uppercase flex items-baseline justify-between" style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', borderBottom: '1px solid #000', paddingBottom: 2, marginBottom: 4 }}>
-          <span>Grade · Numeração</span>
-          <span style={{ fontWeight: 400, color: '#444', letterSpacing: '0.05em' }}>pares por número</span>
-        </span>
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-          <thead>
-            <tr>
-              {sizes.map(s => (
-                <th key={s} className="font-mono" style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 0', textAlign: 'center' }}>{s}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {sizes.map(s => {
-                const q = grade[s] || 0;
-                return (
-                  <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '1px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 17, lineHeight: 1 } : { color: '#bbb', fontSize: 10 }) }}>
-                    {q > 0 ? q : 0}
-                  </td>
-                );
-              })}
-            </tr>
-          </tbody>
-        </table>
-        <div className="flex items-baseline justify-end" style={{ gap: 6, borderTop: '2px solid #000', marginTop: 1, paddingTop: 3 }}>
-          <span className="uppercase" style={{ fontSize: 10, letterSpacing: '0.14em', fontWeight: 700 }}>Total da grade</span>
-          <span style={{ ...DISPLAY, fontSize: 22, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
-          <span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.1em' }}>pares</span>
+        <div className="flex" style={{ gap: withPhoto ? 10 : 0 }}>
+          {/* Foto — só Aviamento (e setores futuros com showImage=true) */}
+          {withPhoto && (
+            <div
+              className="shrink-0 relative flex items-center justify-center"
+              style={{ width: '26mm', height: '26mm', border: '1.5px solid #000', background: '#fff' }}
+            >
+              <span
+                className="absolute font-mono uppercase"
+                style={{ top: 0, left: 0, background: '#fff', borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000', fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', padding: '1px 4px' }}
+              >
+                Ref.
+              </span>
+              <SignedImage
+                src={thumbUrl(imageUrl!, 100) || imageUrl!}
+                alt={title}
+                loading="eager"
+                className="w-full h-full object-contain mix-blend-multiply"
+              />
+            </div>
+          )}
+
+          {/* Grade */}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <span className="font-mono uppercase flex items-baseline justify-between" style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', borderBottom: '1px solid #000', paddingBottom: 2, marginBottom: 4 }}>
+              <span>Grade · Numeração</span>
+              <span style={{ fontWeight: 400, color: '#444', letterSpacing: '0.05em' }}>pares por número</span>
+            </span>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  {sizes.map(s => (
+                    <th key={s} className="font-mono" style={{ border: '1px solid #000', background: '#000', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 0', textAlign: 'center' }}>{s}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {sizes.map(s => {
+                    const q = grade[s] || 0;
+                    return (
+                      <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '1px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 17, lineHeight: 1 } : { color: '#bbb', fontSize: 10 }) }}>
+                        {q > 0 ? q : 0}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
+            <div className="flex items-baseline justify-end" style={{ gap: 6, borderTop: '2px solid #000', marginTop: 1, paddingTop: 3 }}>
+              <span className="uppercase" style={{ fontSize: 10, letterSpacing: '0.14em', fontWeight: 700 }}>Total da grade</span>
+              <span style={{ ...DISPLAY, fontSize: 22, lineHeight: 0.8 }}>{fmtInt(totalPairs)}</span>
+              <span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.1em' }}>pares</span>
+            </div>
+          </div>
         </div>
       </div>
 

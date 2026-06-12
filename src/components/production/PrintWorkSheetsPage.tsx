@@ -2975,6 +2975,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   sectorLabel={sectorName}
                   title={group.soleName}
                   imageUrl={img}
+                  showImage={sectorName === 'Aviamento'}
                   grade={grade}
                   allSizes={sizes}
                   totalPairs={group.totalPairs}
