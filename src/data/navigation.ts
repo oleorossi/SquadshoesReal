@@ -89,6 +89,7 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: Package,        path: "/expedicao" },
+      { name: "Etiquetas",        icon: Tag,            path: "/label-system" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
@@ -152,7 +153,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
   { name: "Sessões de Picking",   icon: ClipboardCheck,   path: "/picking-sessions",       group: "Logística" },
   { name: "Rastreamento",         icon: Activity,         path: "/delivery-tracking",      group: "Logística" },
-  { name: "Etiquetas",            icon: Tag,              path: "/label-system",           group: "Logística" },
+  // "Etiquetas" (/label-system) foi promovida pro menu visível (grupo Logística).
   // Financeiro
   { name: "Markup / Pricing",     icon: Calculator,       path: "/pricing-calculator",     group: "Financeiro" },
   { name: "CT-e",                 icon: Truck,            path: "/cte",                    group: "Financeiro" },
