@@ -151,19 +151,20 @@
   --stage-qc-bg:     354 78% 95%;  --stage-qc-fg:     354 78% 50%;  /* vermelho QC (Squad) */
 
   /* ═══════════════════════════════════════════════════════════════
-     ▼ SIDEBAR (preto editorial · destaque vermelho Squad · permanente)
+     ▼ SIDEBAR (grafite editorial · destaque vermelho Squad · permanente)
+     Cinza escuro em vez de preto puro — preto chapado cansava a leitura.
      ═════════════════════════════════════════════════════════════ */
-  --sidebar-background:           0 0% 4%;             /* #0A0A0A */
-  --sidebar-foreground:           0 0% 90%;
-  --sidebar-muted:                0 0% 43%;
-  --sidebar-accent:               0 0% 11%;            /* #1C1C1C */
+  --sidebar-background:           0 0% 15%;            /* #262626 */
+  --sidebar-foreground:           0 0% 92%;
+  --sidebar-muted:                0 0% 58%;            /* texto 2º plano legível */
+  --sidebar-accent:               0 0% 23%;            /* #3B3B3B hover/ativo */
   --sidebar-accent-foreground:    0 0% 100%;
-  --sidebar-border:               0 0% 14%;            /* #242424 */
+  --sidebar-border:               0 0% 28%;            /* #474747 divisor visível */
   --sidebar-primary:              354 78% 50%;         /* vermelho Squad */
   --sidebar-primary-foreground:   0 0% 100%;
   --sidebar-ring:                 354 78% 50%;
-  --sidebar-gradient-from:        0 0% 3%;
-  --sidebar-gradient-to:          0 0% 6%;
+  --sidebar-gradient-from:        0 0% 14%;
+  --sidebar-gradient-to:          0 0% 18%;
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ RADIUS · escala (Factory OS — radius mais generoso)
@@ -396,17 +397,17 @@
   --stage-qc-bg:     354 40% 15%;
 
   /* Sidebar (dark — mantém o mesmo do :root pq sempre é dark) */
-  --sidebar-background:           0 0% 0%;
-  --sidebar-foreground:           0 0% 90%;
-  --sidebar-muted:                0 0% 43%;
-  --sidebar-accent:               0 0% 11%;
+  --sidebar-background:           0 0% 15%;            /* #262626 — cinza escuro, não preto */
+  --sidebar-foreground:           0 0% 92%;
+  --sidebar-muted:                0 0% 58%;
+  --sidebar-accent:               0 0% 23%;
   --sidebar-accent-foreground:    0 0% 100%;
-  --sidebar-border:               0 0% 14%;
+  --sidebar-border:               0 0% 28%;
   --sidebar-primary:              354 78% 50%;
   --sidebar-primary-foreground:   0 0% 100%;
   --sidebar-ring:                 354 78% 50%;
-  --sidebar-gradient-from:        0 0% 0%;
-  --sidebar-gradient-to:          0 0% 5%;
+  --sidebar-gradient-from:        0 0% 14%;
+  --sidebar-gradient-to:          0 0% 18%;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
