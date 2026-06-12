@@ -25,14 +25,19 @@ export interface SilkColorGroup {
    *  chave literal (ex: '41'). Sem cadastro = NULL/vazio = fallback pro
    *  combinedGrid (sizes individuais). */
   knifeGrid?: Record<string, number>;
-  /** Grade BASE de 1 ficha fechada (ex: {34:1,...,40:1} soma 12). */
+  /** Curva-base de 1 CORRUGADO físico (soma = baseGradeSum). Vazia/ausente
+   *  quando a resolução é inexata. */
   baseGrid?: Record<string, number>;
-  /** Soma da grade base = pares por 1 ficha fechada. */
+  /** Pares por corrugado físico: 12/15/18 (resolveFicha, 7º passe). */
   baseGradeSum?: number;
-  /** Quantas fichas no total (= totalPairs / baseGradeSum). */
+  /** Quantas fichas (corrugados) no total — somado entre OPs. */
   fichas?: number;
   /** TRUE quando agrega OPs com grades base diferentes — omite "Por Ficha". */
   mixedGrades?: boolean;
+  /** Corrugados DIFERENTES entre OPs do grupo — título do tally avisa. */
+  corrugadosMistos?: boolean;
+  /** Alguma OP com última ficha parcial — grade exibe "≈ N fichas". */
+  fichasAproximadas?: boolean;
   totalPairs: number;
   opNumbers: string[];
   /** Números de PV (pedidos de venda) que originaram as OPs do grupo. */
@@ -240,8 +245,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     const sourceGrid: Record<string, number> = usingKnife ? cg.knifeGrid! : cg.combinedGrid;
     const activeSizes = sortSizes(Object.keys(sourceGrid).filter(s => (sourceGrid[s] ?? 0) > 0));
     // Fontes adaptativas pela qtd de colunas (2026-06-12): grade mista
-    // (16+ numerações) cortava as células com fonte fixa.
-    const ft = gradeTableFont(activeSizes);
+    // (16+ numerações) cortava as células com fonte fixa. No layout COMPACTO
+    // a grade desce 1 bucket (dense, 7º passe) pra caberem 2 cores por página.
+    const ft = gradeTableFont(activeSizes, theme.compact);
     return (
       <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
         <thead>
@@ -290,11 +296,13 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           )}
           <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
             <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
-              {cg.mixedGrades
-                ? <>Total<br />({cg.fichas || 0} fichas*)</>
-                : cg.fichas && cg.fichas > 1
-                  ? <>Total<br />× {cg.fichas} fichas</>
-                  : <>Total<br />(1 ficha)</>}
+              {cg.fichasAproximadas
+                ? <>Total<br />≈ {cg.fichas || 0} fichas</>
+                : cg.mixedGrades
+                  ? <>Total<br />({cg.fichas || 0} fichas*)</>
+                  : cg.fichas && cg.fichas > 1
+                    ? <>Total<br />× {cg.fichas} fichas</>
+                    : <>Total<br />(1 ficha)</>}
             </td>
             {activeSizes.map(s => (
               <td
@@ -598,31 +606,36 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
 
   // Per-color blocks — 1 bloco atômico por cor no paginador.
   const colorBlocks = group.colorGroups.map((cg, idx) => {
-          // FIX 2026-06-11: a tally é de FICHAS. Com grade base uniforme
-          // (!mixedGrades), 1 caixinha = 1 ficha de baseGradeSum pares —
-          // reconcilia com "Por Ficha (Np) × M fichas". Grade mista cai no box
-          // genérico (pairsPerCard, default 12).
+          // 7º passe (2026-06-12): a tally é de CORRUGADOS (12/15/18 pares)
+          // SEMPRE — 1 caixinha = 1 corrugado físico, mesmo com grades mistas
+          // (fichas agora soma certo entre OPs). Corrugados divergentes entre
+          // OPs: o título avisa "corrugados mistos" em vez de mostrar um
+          // pares/ficha enganoso. Fallback (sem resolução): pairsPerCard (12).
           const cgBgs = cg.baseGradeSum ?? 0;
           const cgNf = cg.fichas ?? 0;
-          const cgUniform = !cg.mixedGrades && cgBgs > 0 && cgNf > 0;
-          const tallyPerCard = cgUniform ? cgBgs : pairsPerCard;
-          const cards = cgUniform ? cgNf : Math.max(1, Math.ceil(cg.totalPairs / pairsPerCard));
+          const tallyPerCard = cgBgs > 0 ? cgBgs : pairsPerCard;
+          const cards = cgNf > 0 ? cgNf : Math.max(1, Math.ceil(cg.totalPairs / tallyPerCard));
+          const tallyTitle = cg.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
 
           // ── Layout COMPACTO (Corte Forração / Costura Palmilha) ──
           // Pedido user 2026-06-12: por cor, apenas nome da cor (Anton),
           // grade por ficha + total por numeração, alerta fachetado em 1
           // linha e tally. Sem foto, sem materiais, sem checklist.
+          // Densidade do compacto (7º passe, pedido do dono: "reduzir um pouco
+          // a fonte dos itens em cima" pra 2 cores caberem na mesma A4):
+          // cor 26→20px, total 22→17px, margens mb-1→mb-0.5 / pt-1.5→pt-1,
+          // grade 1 bucket menor (dense) e tally size="sm".
           if (theme.compact) {
             return (
-              <div key={idx} className="pt-1.5" style={{ borderTop: '2px solid #000' }}>
-                <div className="keep-together keep-with-next flex items-end justify-between gap-3 mb-1">
+              <div key={idx} className="pt-1" style={{ borderTop: '2px solid #000' }}>
+                <div className="keep-together keep-with-next flex items-end justify-between gap-3 mb-0.5">
                   <div className="flex items-center gap-2 min-w-0">
                     {cg.colorHex && (
-                      <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
+                      <div className="w-4 h-4 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                     )}
                     <span
                       className="uppercase leading-none block truncate"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '26px', letterSpacing: '-0.025em', color: '#C00000' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.025em', color: '#C00000' }}
                     >
                       {cg.color}
                     </span>
@@ -635,7 +648,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     )}
                     <span
                       className="text-black leading-none"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', letterSpacing: '-0.02em' }}
                     >
                       {cg.totalPairs} <span className="text-[10px] font-mono tracking-widest">pares</span>
                     </span>
@@ -675,7 +688,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   {renderGradeTable(cg)}
                 </div>
                 {renderCompactAlerts(cg)}
-                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} />
+                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size="sm" />
               </div>
             );
           }
@@ -868,7 +881,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 </div>
 
                 {/* Tally Box */}
-                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} />
+                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} />
               </div>
             </div>
           );

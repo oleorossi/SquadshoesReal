@@ -14,6 +14,7 @@ import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } 
 import { collectiveTypeForMode, pairsPerVolumeForMode } from '@/lib/packagingPairsPerBox';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
+import { resolveFicha, type FichaResolution } from '@/components/production/worksheet/fichaSize';
 import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
@@ -444,15 +445,77 @@ function orderSizeBands(order: any): { inf: boolean; ad: boolean } {
   return { inf, ad };
 }
 
+/**
+ * Acumula a resolução de corrugado de UMA OP no agregado do grupo (7º passe,
+ * 2026-06-12). Compartilhado pelos 4 builders de grupos (ref+cor, palmilha,
+ * silkMontage/aviamento, solagem). Muta `g` (fichas/baseGradeSum/flags) e
+ * RETORNA a curva-base acumulada (o caller grava no campo dele — baseGrid ou
+ * baseGrade, bucketizada ou não).
+ *
+ * Semântica dos campos após o fold:
+ *  - `baseGradeSum` = CORRUGADO físico (12/15/18) — não mais a soma crua do grid.
+ *  - `fichas`       = nº de corrugados (quadradinhos do tally), somado entre OPs.
+ *  - `mixedGrades`  = TRUE se curvas divergem, corrugados divergem ou alguma OP
+ *                     é inexata → worksheet omite a linha "Por Ficha".
+ *  - `corrugadosMistos`  = corrugados DIFERENTES entre OPs (título do tally avisa).
+ *  - `fichasAproximadas` = alguma OP com última ficha parcial (exibe "≈ N fichas").
+ */
+function foldFichaIntoGroup(
+  g: {
+    baseGradeSum?: number;
+    fichas?: number;
+    mixedGrades?: boolean;
+    corrugadosMistos?: boolean;
+    fichasAproximadas?: boolean;
+  },
+  r: FichaResolution,
+  /** Curva-base da OP (já bucketizada quando o caller usa baldes conjugados). */
+  curve: Record<string, number> | null,
+  /** Curva-base acumulada do grupo até aqui. */
+  accCurve: Record<string, number> | undefined,
+): Record<string, number> {
+  g.fichas = (g.fichas || 0) + r.fichas;
+  if (r.fichas > 0) {
+    if (!r.exact) {
+      g.mixedGrades = true;
+      g.fichasAproximadas = true;
+    }
+    if (!g.baseGradeSum) {
+      g.baseGradeSum = r.corrugado;
+    } else if (g.baseGradeSum !== r.corrugado) {
+      g.mixedGrades = true;
+      g.corrugadosMistos = true;
+    }
+  }
+  const acc = accCurve || {};
+  if (r.exact && curve) {
+    if (Object.keys(acc).length === 0) return { ...curve };
+    // Mesma soma (corrugado) mas DISTRIBUIÇÃO por numeração diferente da
+    // acumulada → marca mixedGrades (a linha "Por Ficha" mentiria).
+    const keys = new Set([...Object.keys(acc), ...Object.keys(curve)]);
+    for (const k of keys) {
+      if ((Number(acc[k]) || 0) !== (Number(curve[k]) || 0)) {
+        g.mixedGrades = true;
+        break;
+      }
+    }
+  }
+  return acc;
+}
+
 function groupOrdersByRefColor(orders: any[]): Array<{
   representative: any;
   combinedGrid: Record<string, number>;
-  /** Grade BASE (por 1 ficha fechada). Pega da primeira OP do grupo. */
+  /** Curva-base de 1 CORRUGADO (soma = baseGradeSum). Vazia se inexata. */
   baseGrid: Record<string, number>;
-  /** Pares por ficha fechada (= sum(baseGrid)). */
+  /** Pares por corrugado físico (12/15/18 — resolveFicha). */
   baseGradeSum: number;
   /** Quantas fichas no total (soma de fichas de cada OP). */
   fichas: number;
+  /** Corrugados DIFERENTES entre OPs do grupo (tally avisa no título). */
+  corrugadosMistos?: boolean;
+  /** Alguma OP com última ficha parcial (exibe "≈ N fichas"). */
+  fichasAproximadas?: boolean;
   /** TRUE quando as OPs do grupo têm grades base diferentes — não dá pra
    *  mostrar "Por Ficha (Np) × N fichas" porque a multiplicação não bate
    *  com o Total. Worksheets devem omitir a linha "Por Ficha" e mostrar
@@ -489,7 +552,7 @@ function groupOrdersByRefColor(orders: any[]): Array<{
       map.set(key, {
         representative: order,
         combinedGrid: {},
-        baseGrid: { ...((order.grid as Record<string, number>) || {}) },
+        baseGrid: {},
         baseGradeSum: 0,
         fichas: 0,
         mixedGrades: false,
@@ -507,35 +570,15 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     const orderTotal = Number(order.total_pairs ?? 0);
     g.totalPairs += orderTotal;
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
-    // orders.grade é a grade BASE de 1 ficha (ex: {34:1,...,40:1} soma 12) e
-    // total_pairs é o real (= base × fichas). Pra agregação somada nos setores
-    // (SilkMontage/Palmilha/Solagem) precisamos da escalada. Pra ficha de
-    // operador exibir "Por Ficha (12p)" precisamos da base. Mantemos as duas.
+    // order.grid ora chega como CURVA-BASE (soma 12), ora como GRADE TOTAL
+    // (soma 120/360/444 — bug do 7º passe). resolveFicha deriva o CORRUGADO
+    // físico (12/15/18) + nº de fichas + curva de 1 ficha em qualquer caso.
+    // Pra agregação somada nos setores ainda escalamos o grid cru pro total.
     const baseGrid: Record<string, number> = order.grid ?? {};
     const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
     const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
-    g.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-    // Detect mixed grades #1: OPs do mesmo grupo têm baseSum diferentes.
-    if (baseSum > 0) {
-      if (g.baseGradeSum === 0) {
-        g.baseGradeSum = baseSum;
-      } else if (g.baseGradeSum !== baseSum) {
-        g.mixedGrades = true;
-      }
-    }
-    // Detect mixed grades #1b: mesma SOMA mas DISTRIBUIÇÃO diferente (ex.:
-    // grade infantil 25-32 e adulta 33-40, ambas somando 12). Sem isso a
-    // ficha escalava a grade da 1ª OP pro total do grupo e os números da
-    // outra grade desapareciam do papel.
-    if (!g.mixedGrades && baseSum > 0) {
-      const allSizes = new Set([...Object.keys(g.baseGrid), ...Object.keys(baseGrid)]);
-      for (const size of allSizes) {
-        if ((Number(g.baseGrid[size]) || 0) !== (Number(baseGrid[size]) || 0)) {
-          g.mixedGrades = true;
-          break;
-        }
-      }
-    }
+    const ficha = resolveFicha(orderTotal, baseGrid);
+    g.baseGrid = foldFichaIntoGroup(g, ficha, ficha.baseCurve, g.baseGrid);
     // Escala por OP com largest remainder (Math.round por tamanho podia
     // somar ±N pares vs o total da OP — regra canônica de exibição).
     const scaledGrid = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
@@ -544,10 +587,10 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     }
   }
 
-  // Detect mixed grades #2 (posteriori): baseGradeSum × fichas deve igualar
-  // totalPairs. Se não, há fichas fracionárias (Math.round perdeu info) ou
-  // OPs com grades inconsistentes (ex: grade base parcial — só alguns
-  // tamanhos no grid). Worksheet vai mostrar como mixed pra não mentir.
+  // Detect mixed grades #2 (posteriori): corrugado × fichas deve igualar
+  // totalPairs. Diverge quando há fichas parciais (fallback do resolveFicha)
+  // ou corrugados mistos entre OPs — ambos já marcados pelo fold; isto é
+  // rede de segurança. Worksheet mostra como mixed pra não mentir.
   for (const g of map.values()) {
     if (g.baseGradeSum > 0 && g.fichas > 0 && g.baseGradeSum * g.fichas !== g.totalPairs) {
       g.mixedGrades = true;
@@ -1599,7 +1642,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           soleName, insoleColor: '—', totalPairs: 0, grade: {},
-          baseGrade: { ...((order.grid as Record<string, number>) || {}) },
+          baseGrade: {},
           baseGradeSum: 0, fichas: 0, mixedGrades: false,
           readyMade: isReadyMade,
           refs: [],  // Refs não exibidas mais — pedido 22/05/2026: cortador
@@ -1621,32 +1664,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       if (order.sale_order_number && !group.pvNumbers.includes(order.sale_order_number)) {
         group.pvNumbers.push(order.sale_order_number);
       }
-      // Scaling: grade base × multiplier = pares reais. Acumula também baseGrade
-      // + fichas pra worksheet exibir "Por Ficha (Np)".
+      // Scaling: grid cru × multiplier = pares reais. O corrugado (12/15/18)
+      // + nº de fichas + curva de 1 ficha vêm do resolveFicha (7º passe) —
+      // o grid pode ser curva-base OU grade total do pedido.
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
-      group.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-      if (baseSum > 0) {
-        if (group.baseGradeSum === 0) group.baseGradeSum = baseSum;
-        else if (group.baseGradeSum !== baseSum) group.mixedGrades = true;
-        else {
-          // Mesma SOMA, distribuição por numeração DIFERENTE da 1ª OP (cujo
-          // baseGrade congela em ~1689). Sem isso, "Por Ficha (Np)" mostraria
-          // a grade da 1ª OP pras duas (ex.: OP-A {33:12} + OP-B {34:12}, ambas
-          // somam 12 → linha sairia 33→12 / 34→"—", mentindo pro operador).
-          // Marca mixedGrades p/ a worksheet omitir a linha "Por Ficha".
-          const accBase = group.baseGrade || {};
-          const keys = new Set([...Object.keys(accBase), ...Object.keys(baseGrid)]);
-          for (const k of keys) {
-            if ((Number(accBase[k]) || 0) !== (Number(baseGrid[k]) || 0)) {
-              group.mixedGrades = true;
-              break;
-            }
-          }
-        }
-      }
+      const ficha = resolveFicha(orderTotal, baseGrid);
+      group.baseGrade = foldFichaIntoGroup(group, ficha, ficha.baseCurve, group.baseGrade);
       // Largest-remainder (Hamilton) por OP: a grade escalada soma EXATO
       // orderTotal. Math.round por tamanho deixava a soma off por ±N (operador
       // via "Total 26" mas a grade somava 24).
@@ -1860,7 +1886,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           hasStraps: hasStrapsLookup.get(sheetId) === true,
           colorHex,
           combinedGrid: {},
-          baseGrid: { ...((order.grid as Record<string, number>) || {}) },
+          baseGrid: {},
           baseGradeSum: 0,
           fichas: 0,
           mixedGrades: false,
@@ -1908,29 +1934,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       if (refCode && !cg.refs!.some((r: any) => r.code === refCode)) {
         cg.refs!.push({ code: refCode, name: order.reference_name || '' });
       }
-      // Mantém combinedGrid (escalado) pra exibir "Pares" total e baseGrid+fichas
-      // pra exibir "Por Ficha (Np)" — ambas precisam aparecer na ficha.
+      // Mantém combinedGrid (escalado) pra exibir "Pares" total. O corrugado
+      // (12/15/18) + fichas + curva de 1 ficha pro "Por Ficha (Np)" vêm do
+      // resolveFicha (7º passe) — o grid pode ser curva-base OU grade total.
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
-      cg.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-      if (baseSum > 0) {
-        if (cg.baseGradeSum === 0) cg.baseGradeSum = baseSum;
-        else if (cg.baseGradeSum !== baseSum) cg.mixedGrades = true;
-        else {
-          // Mesma SOMA, mas distribuição por tamanho diferente da 1ª OP (cujo
-          // baseGrid fica congelado em 1359). "Por Ficha (Np)" mostraria a grade
-          // errada → marca mixedGrades p/ a worksheet omitir essa linha.
-          const keys = new Set([...Object.keys(cg.baseGrid), ...Object.keys(baseGrid)]);
-          for (const k of keys) {
-            if ((Number(cg.baseGrid[k]) || 0) !== (Number((baseGrid as Record<string, number>)[k]) || 0)) {
-              cg.mixedGrades = true;
-              break;
-            }
-          }
-        }
-      }
+      const ficha = resolveFicha(orderTotal, baseGrid);
+      cg.baseGrid = foldFichaIntoGroup(cg, ficha, ficha.baseCurve, cg.baseGrid);
       // Knife mapping da ficha técnica desta OP (P/M/G/...). NULL se não
       // cadastrado — neste caso o knifeGrid recebe a numeração literal como
       // chave (fallback transparente, comportamento idêntico a combinedGrid).
@@ -2016,6 +2028,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         grade: Record<string, number>; totalPairs: number;
         baseGrade: Record<string, number>; baseGradeSum: number; fichas: number;
         mixedGrades: boolean;
+        corrugadosMistos?: boolean; fichasAproximadas?: boolean;
         refs: Array<{ key: string; code: string; name: string; color: string; image_url: string | null }>;
         opNumbers: string[]; pvNumbers: string[];
         soleColor: string;
@@ -2076,7 +2089,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         if (!soleColorMap.has(bandKey)) {
           soleColorMap.set(bandKey, {
             grade: {}, totalPairs: 0,
-            baseGrade: bucketizeGrid((order.grid as Record<string, number>) || {}, conjugations),
+            baseGrade: {},
             baseGradeSum: 0, fichas: 0, mixedGrades: false,
             refs: [],
             opNumbers: [], pvNumbers: [],
@@ -2110,32 +2123,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             image_url: exactImg || pretoImg || tsImg || null,
           });
         }
-        // Scaling + baseGrade pra worksheet exibir "Por Ficha (Np)".
+        // Scaling + corrugado (7º passe): resolveFicha roda na grade ORIGINAL
+        // (antes do bucketing de conjugadas) e a curva de 1 ficha é bucketizada
+        // DEPOIS — assim a linha "Por Ficha" bate com as colunas da banda
+        // (baldes físicos do estoque) sem perder a divisibilidade da curva.
         const baseGrid = (order.grid || {}) as Record<string, number>;
         const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
         const orderTotal = Number(order.total_pairs ?? 0);
         const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
-        band.fichas += baseSum > 0 ? Math.round(orderTotal / baseSum) : 0;
-        if (baseSum > 0) {
-          if (band.baseGradeSum === 0) band.baseGradeSum = baseSum;
-          else if (band.baseGradeSum !== baseSum) band.mixedGrades = true;
-          else {
-            // Mesma SOMA, distribuição por numeração DIFERENTE da 1ª OP (cujo
-            // baseGrade bucketizado congela em ~2095). Compara BUCKETIZADO
-            // (conjugadas) p/ casar com a chave de band.baseGrade. Sem isso,
-            // "Por Ficha (Np)" mostraria a grade da 1ª OP pras duas, mentindo
-            // pro operador → marca mixedGrades p/ a worksheet omitir a linha.
-            const accBase = band.baseGrade || {};
-            const curBase = bucketizeGrid(baseGrid, conjugations);
-            const keys = new Set([...Object.keys(accBase), ...Object.keys(curBase)]);
-            for (const k of keys) {
-              if ((Number(accBase[k]) || 0) !== (Number(curBase[k]) || 0)) {
-                band.mixedGrades = true;
-                break;
-              }
-            }
-          }
-        }
+        const ficha = resolveFicha(orderTotal, baseGrid);
+        band.baseGrade = foldFichaIntoGroup(
+          band,
+          ficha,
+          ficha.baseCurve ? bucketizeGrid(ficha.baseCurve, conjugations) : null,
+          band.baseGrade,
+        );
         // Largest-remainder (Hamilton) por OP: cada OP escala EXATAMENTE pro seu
         // total — antes o Math.round por número podia driftar ±N na soma da banda
         // (as demais fichas já usavam largest-remainder; só esta ficava no round).
@@ -2696,9 +2698,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={g.grade}
                   allSizes={palmilhaAllSizes}
                   totalPairs={g.totalPairs}
-                  totalNote={g.fichas && g.baseGradeSum ? `${g.fichas} ficha(s) de ${g.baseGradeSum}` : undefined}
-                  fichas={!g.mixedGrades && g.fichas ? g.fichas : undefined}
-                  pairsPerFicha={!g.mixedGrades && g.baseGradeSum ? g.baseGradeSum : undefined}
+                  totalNote={g.fichas
+                    ? g.corrugadosMistos
+                      ? `${g.fichas} fichas · corrugados mistos`
+                      : `${g.fichasAproximadas ? '≈ ' : ''}${g.fichas} ficha(s) de ${g.baseGradeSum}`
+                    : undefined}
+                  fichas={g.fichas || undefined}
+                  pairsPerFicha={!g.corrugadosMistos && g.baseGradeSum ? g.baseGradeSum : undefined}
                   consumption={consumptionForOpNumbers(g.opNumbers, g.totalPairs)}
                   consumptionSector="Corte Palmilha"
                 />
@@ -2825,7 +2831,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                       if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
                     }
                   }
-                  if (existing.baseGradeSum !== cg.baseGradeSum) existing.mixedGrades = true;
+                  // Propaga flags de corrugado (7º passe): corrugados distintos
+                  // entre grupos fundidos = título do tally avisa "mistos".
+                  if (cg.mixedGrades) existing.mixedGrades = true;
+                  if (cg.fichasAproximadas) existing.fichasAproximadas = true;
+                  if (cg.corrugadosMistos) existing.corrugadosMistos = true;
+                  if (existing.baseGradeSum !== cg.baseGradeSum) {
+                    existing.mixedGrades = true;
+                    existing.corrugadosMistos = true;
+                  }
                 }
               }
             }
@@ -2885,7 +2899,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 // Ao fundir refs/tiras distintas numa mesma cor base, a grade
                 // "por ficha" deixa de ter sentido único → marca mixed (a
                 // worksheet omite a linha "Por Ficha × N", mantém o total).
+                // O tally continua somando fichas; corrugados distintos entre
+                // refs fundidas viram "corrugados mistos" no título (7º passe).
                 existing.mixedGrades = true;
+                if (cg.fichasAproximadas) existing.fichasAproximadas = true;
+                if (cg.corrugadosMistos || existing.baseGradeSum !== cg.baseGradeSum) {
+                  existing.corrugadosMistos = true;
+                }
               }
             }
             const colorGroups = Array.from(byColor.values())
@@ -2917,11 +2937,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const colors = group.colorGroups.map(cg => ({ name: cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
             // Agrega OPs do grupo inteiro pra puxar o consumo filtrado pelo setor.
             const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers);
-            // Tally do grupo: soma das fichas das cores quando TODAS têm grade
-            // base uniforme E mesma soma — senão o fallback ceil(total/12).
-            const tallyUniform = group.colorGroups.length > 0
-              && group.colorGroups.every(cg => !cg.mixedGrades && (cg.fichas ?? 0) > 0 && (cg.baseGradeSum ?? 0) > 0)
-              && new Set(group.colorGroups.map(cg => cg.baseGradeSum)).size === 1;
+            // Tally do grupo (7º passe): fichas = soma dos corrugados de TODAS
+            // as cores (sempre). pairsPerFicha só quando o corrugado é único
+            // entre as cores — senão omite e o título avisa "corrugados mistos".
+            const groupFichas = group.colorGroups.reduce((s, cg) => s + (cg.fichas || 0), 0);
+            const groupCorrugados = new Set(
+              group.colorGroups.map(cg => cg.baseGradeSum).filter((n): n is number => (n ?? 0) > 0),
+            );
+            const uniformCorrugado = groupCorrugados.size === 1
+              && !group.colorGroups.some(cg => cg.corrugadosMistos);
             return (
               <div key={key} className="reduced-card">
                 <ReducedWorkSheet
@@ -2932,8 +2956,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   allSizes={sizes}
                   totalPairs={group.totalPairs}
                   colors={colors}
-                  fichas={tallyUniform ? group.colorGroups.reduce((s, cg) => s + (cg.fichas || 0), 0) : undefined}
-                  pairsPerFicha={tallyUniform ? group.colorGroups[0].baseGradeSum : undefined}
+                  fichas={groupFichas > 0 ? groupFichas : undefined}
+                  pairsPerFicha={uniformCorrugado ? Array.from(groupCorrugados)[0] : undefined}
                   consumption={consumptionForOpNumbers(allOpNumbers, group.totalPairs)}
                   consumptionSector={sectorName}
                 />
@@ -3055,9 +3079,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={b.grade}
                   allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
-                  totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
-                  fichas={b.baseGradeSum ? Math.max(1, Math.round(b.totalPairs / b.baseGradeSum)) : undefined}
-                  pairsPerFicha={b.baseGradeSum || undefined}
+                  totalNote={b.fichas
+                    ? b.corrugadosMistos
+                      ? `${b.fichas} fichas · corrugados mistos`
+                      : `${b.fichasAproximadas ? '≈ ' : ''}${b.fichas} ficha(s) de ${b.baseGradeSum}`
+                    : undefined}
+                  fichas={b.fichas || undefined}
+                  pairsPerFicha={!b.corrugadosMistos && b.baseGradeSum ? b.baseGradeSum : undefined}
                   consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
                   consumptionSector="Solagem"
                 />
@@ -3094,9 +3122,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   grade={b.grade}
                   allSizes={data.allSizes}
                   totalPairs={b.totalPairs}
-                  totalNote={b.baseGradeSum ? `${Math.round(b.totalPairs / b.baseGradeSum)} ficha(s) de ${b.baseGradeSum}` : undefined}
-                  fichas={b.baseGradeSum ? Math.max(1, Math.round(b.totalPairs / b.baseGradeSum)) : undefined}
-                  pairsPerFicha={b.baseGradeSum || undefined}
+                  totalNote={b.fichas
+                    ? b.corrugadosMistos
+                      ? `${b.fichas} fichas · corrugados mistos`
+                      : `${b.fichasAproximadas ? '≈ ' : ''}${b.fichas} ficha(s) de ${b.baseGradeSum}`
+                    : undefined}
+                  fichas={b.fichas || undefined}
+                  pairsPerFicha={!b.corrugadosMistos && b.baseGradeSum ? b.baseGradeSum : undefined}
                   consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
                   consumptionSector="Colagem"
                 />
@@ -3158,8 +3190,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     grade={g}
                     allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                     totalPairs={group.totalPairs}
-                    fichas={!group.mixedGrades && group.fichas > 0 ? group.fichas : undefined}
-                    pairsPerFicha={!group.mixedGrades && group.baseGradeSum > 0 ? group.baseGradeSum : undefined}
+                    fichas={group.fichas > 0 ? group.fichas : undefined}
+                    pairsPerFicha={!group.corrugadosMistos && group.baseGradeSum > 0 ? group.baseGradeSum : undefined}
                     consumption={consumptionForOpNumbers(group.opNumbers, group.totalPairs)}
                     consumptionSector={sectorName}
                   />
@@ -3217,6 +3249,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               sizeBand: bandForOps(group.opNumbers),
               clientName: clientNamesForPvs(group.pvNumbers).join(' · ') || undefined,
               mixedGrades: group.mixedGrades,
+              // Resolução de corrugado AGREGADA do grupo (7º passe): a soma
+              // de fichas das OPs é mais fiel que re-derivar do grid combinado
+              // (ex.: 10×12 + 6×15 = 16 fichas, não 14×15). Booleans explícitos
+              // pra worksheet NÃO cair no fallback interno quando o grupo já
+              // resolveu (?? trataria undefined como "sem info").
+              fichas: group.fichas > 0 ? group.fichas : undefined,
+              corrugado: group.baseGradeSum > 0 ? group.baseGradeSum : undefined,
+              corrugadosMistos: group.corrugadosMistos === true,
+              fichasAproximadas: group.fichas > 0 ? group.fichasAproximadas === true : undefined,
             };
           });
           const allPvs = Array.from(new Set(sectorGroups.flatMap(g => g.pvNumbers || []).filter(Boolean)))
@@ -3262,6 +3303,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               const baseG = ((order as any).grid || {}) as Record<string, number>;
               const baseSum = Object.values(baseG).reduce((s, v) => s + (Number(v) || 0), 0);
               const g = scaleGradeWithLargestRemainder(baseG, baseSum > 0 ? tot / baseSum : 1, tot);
+              // Corrugado físico derivado (7º passe) — grid pode ser curva-base
+              // ou grade total; nunca exibir "ficha de 120p".
+              const fichaRes = resolveFicha(tot, baseG);
               return (
                 <div key={`acab-red-${order.id}`} className="reduced-card">
                   <ReducedWorkSheet
@@ -3271,8 +3315,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     grade={g}
                     allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
                     totalPairs={tot}
-                    fichas={baseSum > 0 ? Math.max(1, Math.round(tot / baseSum)) : undefined}
-                    pairsPerFicha={baseSum > 0 ? baseSum : undefined}
+                    fichas={fichaRes.fichas > 0 ? fichaRes.fichas : undefined}
+                    pairsPerFicha={fichaRes.corrugado}
                     consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean), tot)}
                     consumptionSector="Acabamento"
                   />

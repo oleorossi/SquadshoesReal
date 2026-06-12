@@ -14,12 +14,19 @@ export interface SoleColorBand {
   soleColor: string;
   grade: Record<string, number>;
   totalPairs: number;
-  /** Grade BASE de 1 ficha fechada. */
+  /** Curva-base de 1 CORRUGADO físico, bucketizada pelas conjugadas
+   *  (soma = baseGradeSum). Vazia/ausente quando a resolução é inexata. */
   baseGrade?: Record<string, number>;
+  /** Pares por corrugado físico: 12/15/18 (resolveFicha, 7º passe). */
   baseGradeSum?: number;
+  /** Quantas fichas (corrugados) no total — somado entre OPs. */
   fichas?: number;
   /** TRUE quando agrega OPs com grades base diferentes — omite "Por Ficha". */
   mixedGrades?: boolean;
+  /** Corrugados DIFERENTES entre OPs da banda — título do tally avisa. */
+  corrugadosMistos?: boolean;
+  /** Alguma OP com última ficha parcial — grade exibe "≈ N fichas". */
+  fichasAproximadas?: boolean;
   /** Tipo do solado (TR, PU, borracha). */
   soleType?: string;
   /** Estampar numeração no solado? */
@@ -78,14 +85,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   const hasBothGroups = pretoBands.length > 0 && outrosBands.length > 0;
 
   const renderBand = (band: SoleColorBand, idx: number) => {
-    // FIX 2026-06-11: tally de FICHAS. Grade base uniforme → 1 caixinha = 1
-    // ficha de baseGradeSum pares (bate com "Por Ficha (Np) × M fichas");
-    // grade mista cai no box genérico (pairsPerCard).
+    // 7º passe (2026-06-12): tally de CORRUGADOS (12/15/18 pares) SEMPRE —
+    // mesmo com grades mistas (fichas soma certo entre OPs). Corrugados
+    // divergentes: título avisa "corrugados mistos". Fallback: pairsPerCard.
     const bandBgs = band.baseGradeSum ?? 0;
     const bandNf = band.fichas ?? 0;
-    const bandUniform = !band.mixedGrades && bandBgs > 0 && bandNf > 0;
-    const tallyPerCard = bandUniform ? bandBgs : pairsPerCard;
-    const cards = bandUniform ? bandNf : Math.max(1, Math.ceil(band.totalPairs / pairsPerCard));
+    const tallyPerCard = bandBgs > 0 ? bandBgs : pairsPerCard;
+    const cards = bandNf > 0 ? bandNf : Math.max(1, Math.ceil(band.totalPairs / tallyPerCard));
+    const tallyTitle = band.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
     // Fix 22/05/2026: tabela mostra só o range desta band (não todos os
     // tamanhos universais). Union de grade + baseGrade — qualquer tamanho
     // com valor > 0 em pelo menos um deles entra.
@@ -235,11 +242,13 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             )}
             <tr>
               <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
-                {band.mixedGrades
-                  ? <>Total<br />({band.fichas || 0} fichas*)</>
-                  : band.fichas && band.fichas > 1
-                    ? <>Total<br />× {band.fichas} fichas</>
-                    : <>Total<br />(1 ficha)</>}
+                {band.fichasAproximadas
+                  ? <>Total<br />≈ {band.fichas || 0} fichas</>
+                  : band.mixedGrades
+                    ? <>Total<br />({band.fichas || 0} fichas*)</>
+                    : band.fichas && band.fichas > 1
+                      ? <>Total<br />× {band.fichas} fichas</>
+                      : <>Total<br />(1 ficha)</>}
               </td>
               {bandSizes.map(s => (
                 <td
@@ -277,7 +286,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             planejamento, não pertence à ficha de operador. */}
 
         <div className="px-2 py-1.5 border-t border-black">
-          <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} />
+          <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} title={tallyTitle} />
         </div>
       </div>
     );

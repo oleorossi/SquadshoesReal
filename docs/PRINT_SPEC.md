@@ -259,6 +259,37 @@ silk abaixo da imagem.
    SilkMontage (compacto+completo), Solagem/Colagem e Expedição já eram
    incondicionais.
 
+### 7º passe (2026-06-12) — corrugado 12/15/18 derivado + densidade do compacto
+
+1. **Conceito de "ficha" corrigido**: uma ficha é um CORRUGADO físico que só
+   existe em **12, 15 ou 18 pares** (regra do dono). O corrugado é **derivado**
+   do pedido (total + grade) pelo helper puro
+   `worksheet/fichaSize.ts → resolveFicha(totalPairs, grid)` (testado) — NÃO
+   há campo no banco. Motivo: `order.grid` ora chega como curva-base (soma 12),
+   ora como **grade total** do pedido (soma 120/360/444 — ex. real TAMARA), e o
+   cálculo antigo (`fichas = round(total/Σgrid)`) imprimia "POR FICHA (120P) ·
+   1 ficha". Resolução: (1) grid já é curva (Σ∈{12,15,18}) → preserva;
+   (2) grid é grade total → tenta corrugado 12 > 15 > 18 com divisão exata
+   célula-a-célula; (3) curva multiplicada (Σ=24…) → reduz; (4) fallback
+   corrugado 12 + `exact=false` (última ficha parcial → grade exibe "≈ N
+   fichas", sem linha "Por Ficha"). Todos os builders de grupos
+   (`PrintWorkSheetsPage` — ref+cor, palmilha, silkMontage/aviamento, solagem
+   via `foldFichaIntoGroup`) e o `OperatorWorkSheet` usam o helper. Na
+   Solagem, o resolve roda na grade ORIGINAL e a curva é bucketizada depois
+   (conjugadas). Semântica nova dos campos: `baseGradeSum` = corrugado,
+   `baseGrid/baseGrade` = curva de 1 ficha, `fichas` = nº de corrugados.
+   **Tally**: 1 caixinha = 1 corrugado SEMPRE (mesmo `mixedGrades`); quando
+   OPs do grupo resolvem corrugados DIFERENTES (`corrugadosMistos`), o título
+   do tally vira "Controle de Fichas · corrugados mistos". Expedição não muda
+   (caixas de embarque = `pairs_per_box`, outro conceito).
+2. **Densidade do layout COMPACTO** (Corte Forração / Costura Palmilha /
+   Silk — pedido do dono, foto real com 2ª cor empurrada inteira pra página
+   seguinte): nome da cor 26→20px, total "N pares" 22→17px, margens
+   reduzidas, grade 1 bucket menor (`gradeTableFont(sizes, dense)`) e
+   `TallyBox size="sm"` (caixinha 16px, gap 2px, fontes 8/6.5/5.5px).
+   Objetivo: bloco de cor típico (grade 5-7 numerações + tally de 40 fichas)
+   ≤ ~470px → DUAS cores por página A4 (capacidade ~1035px do PaginatedSheet).
+
 ### Exceção: bloco maior que 1 página inteira
 
 Ganha página própria com `height: auto; min-height: 296mm` e **flui** — o

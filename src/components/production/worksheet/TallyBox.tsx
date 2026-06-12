@@ -17,8 +17,9 @@ interface Props {
   accentColor?: 'slate' | 'amber' | 'emerald' | 'blue' | 'pink' | 'violet' | 'cyan' | 'lime' | 'rose' | 'orange';
   /** Título customizado. Se não passar, monta um padrão. */
   title?: string;
-  /** Tamanho do quadrado. md = 20px (default), lg = 28px. */
-  size?: 'md' | 'lg';
+  /** Tamanho do quadrado. sm = 16px (layout compacto), md = 20px (default),
+   *  lg = 28px. */
+  size?: 'sm' | 'md' | 'lg';
 }
 
 /**
@@ -38,7 +39,9 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // 22/05: w-7→w-6. 2026-06-11 (pedido do user, gastar menos A4): w-6→w-5
   // (20px). 213 caixinhas em ~30 linhas: 20px×30 = 600px (159mm) vs 720px
   // (190mm) = economia extra de ~31mm por tally grande.
-  const boxSize = size === 'lg' ? 'w-7 h-7' : 'w-5 h-5';
+  // 7º passe (2026-06-12): size 'sm' (16px, gap 2px) pros layouts COMPACTOS
+  // (Corte Forração / Costura Palmilha / Silk) — 2 cores por A4.
+  const boxSize = size === 'lg' ? 'w-7 h-7' : size === 'sm' ? 'w-4 h-4' : 'w-5 h-5';
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
 
   // Font-size dinâmico pra número caber na caixinha mesmo com 3+ dígitos
@@ -47,6 +50,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   //   1-2 dígitos (até 99): 9px
   //   3 dígitos (100-999): 7.5px
   //   4+ dígitos (1000+): 6px
+  // box w-4 = 16×16px (size sm): 1-2 dígitos 8px · 3 díg. 6.5px · 4+ 5.5px
   // box w-7 = 28×28px (size lg, raro); mais espaço útil
   //   1-2 dígitos: 13px · 3 dígitos: 11px · 4+: 9px
   const getFontSize = (n: number): string => {
@@ -55,6 +59,11 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
       if (digits <= 2) return '13px';
       if (digits === 3) return '11px';
       return '9px';
+    }
+    if (size === 'sm') {
+      if (digits <= 2) return '8px';
+      if (digits === 3) return '6.5px';
+      return '5.5px';
     }
     if (digits <= 2) return '9px';
     if (digits === 3) return '7.5px';
@@ -78,8 +87,8 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   }
 
   return (
-    <div className="my-2 text-black">
-      <div className="keep-together keep-with-next flex items-baseline justify-between mb-1.5">
+    <div className={cn('text-black', size === 'sm' ? 'my-1' : 'my-2')}>
+      <div className={cn('keep-together keep-with-next flex items-baseline justify-between', size === 'sm' ? 'mb-1' : 'mb-1.5')}>
         <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
           {titleText}
         </span>
@@ -90,7 +99,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
           )}
         </span>
       </div>
-      <div className="border-t border-black pt-2 space-y-1.5">
+      <div className={cn('border-t border-black space-y-1.5', size === 'sm' ? 'pt-1' : 'pt-2')}>
         {chunks.map((chunk, ci) => (
           <div key={ci} className="keep-together">
             {chunks.length > 1 && (
@@ -98,7 +107,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
                 {chunk[0]} – {chunk[chunk.length - 1]}
               </div>
             )}
-            <div className="flex flex-wrap gap-1">
+            <div className={cn('flex flex-wrap', size === 'sm' ? 'gap-0.5' : 'gap-1')}>
               {chunk.map((n) => (
                 <div
                   key={n}

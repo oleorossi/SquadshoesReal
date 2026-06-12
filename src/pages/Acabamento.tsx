@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -158,8 +159,13 @@ export default function Acabamento() {
     const gradeSum = grade ? Object.values(grade).reduce((s, v) => s + Number(v), 0) : 0;
     const totalPairs = order.quantity || gradeSum || 0;
     const fichas = gradeSum > 0 ? totalPairs / gradeSum : 1;
-    const pairsPerFicha = gradeSum || 12;
-    const totalFichas = Math.ceil(fichas);
+    // 7º passe (2026-06-12): pares/ficha = CORRUGADO físico (12/15/18)
+    // derivado pelo resolveFicha — `grade` pode ser curva-base OU grade
+    // total do pedido (antes mostrava "120 pares/ficha" · 1 ficha).
+    // `fichas` (acima) segue sendo o MULTIPLICADOR de exibição da grade.
+    const fichaRes = resolveFicha(totalPairs, grade || {});
+    const pairsPerFicha = fichaRes.corrugado;
+    const totalFichas = Math.max(1, fichaRes.fichas);
 
     let imageUrl = '';
     if (ref) {
