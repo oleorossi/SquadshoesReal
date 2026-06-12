@@ -394,12 +394,19 @@ export default function SaleOrders() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
-      // Tab gating: ativos => não-terminais; faturados => Faturado + Finalizado s/ NF
+      // Tab gating: ativos => não-terminais; faturados => Faturado + Finalizado s/ NF.
+      // Exceção: com BUSCA ativa, ignora a aba e procura em Ativos E Faturados
+      // juntos — senão buscar por referência/cliente "não acha" pedidos que
+      // estão na outra aba (78% ficam em Faturados). Os demais filtros
+      // explícitos (status/rep/grupo/segmento/mês) continuam valendo.
       const isBilled = TERMINAL_BILLED_STATUSES.includes(order.status);
-      if (mainTab === 'faturados') {
-        if (!isBilled) return false;
-      } else {
-        if (isBilled) return false;
+      const searching = searchTerm.trim().length > 0;
+      if (!searching) {
+        if (mainTab === 'faturados') {
+          if (!isBilled) return false;
+        } else {
+          if (isBilled) return false;
+        }
       }
       if (filterStatus !== 'all' && order.status !== filterStatus) return false;
       if (filterRep !== 'all' && order.representative !== filterRep) return false;
@@ -1676,6 +1683,14 @@ export default function SaleOrders() {
               </Button>
             )}
           </div>
+
+          {/* Aviso: durante a busca, ignora a aba e procura em Ativos + Faturados
+              (senão referência/cliente cujos pedidos já faturaram "não apareciam"). */}
+          {searchTerm.trim() && (
+            <p className="text-xs text-muted-foreground -mt-1">
+              Buscando em <span className="font-medium text-foreground">Ativos e Faturados</span> · {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''}
+            </p>
+          )}
 
           {/* Filter Row */}
           {showFilters && (
