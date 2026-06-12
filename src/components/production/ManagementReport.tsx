@@ -43,18 +43,8 @@ export interface ReportOrder {
   insole_material?: string | null;
   /** Caixas (pares por caixa). */
   pairs_per_box?: number | null;
-  /** Snapshot de custo da OP (order_costs) — opcional. */
-  cost?: {
-    quantity?: number;
-    material_cost: number;
-    labor_cost: number;
-    overhead_cost: number;
-    packaging_cost: number;
-    total_cost: number;
-    revenue: number;
-    margin: number;
-    margin_pct: number;
-  } | null;
+  // (cost/order_costs REMOVIDO em 2026-06-12 — pedido do dono: o Relatório
+  //  Gerencial não exibe mais Custos & Margem; KPIs são só operacionais.)
 }
 
 export interface ReportSaleOrder {
@@ -112,11 +102,6 @@ function fmtDate(d?: string | null): string {
   }
 }
 
-function fmtBRL(v: number | null | undefined): string {
-  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 function fmtDateTime(d?: string | null): string {
   if (!d) return '—';
   try {
@@ -138,26 +123,8 @@ function fmtDateTime(d?: string | null): string {
 export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props) => {
   const totalPairs = orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
 
-  // Custos agregados (quando disponíveis)
-  const totalsFinancial = orders.reduce(
-    (acc, o) => {
-      const c = o.cost;
-      if (!c) return acc;
-      acc.material += c.material_cost;
-      acc.labor += c.labor_cost;
-      acc.overhead += c.overhead_cost;
-      acc.packaging += c.packaging_cost;
-      acc.cost += c.total_cost;
-      acc.revenue += c.revenue;
-      acc.margin += c.margin;
-      acc.hasAny = true;
-      return acc;
-    },
-    { material: 0, labor: 0, overhead: 0, packaging: 0, cost: 0, revenue: 0, margin: 0, hasAny: false },
-  );
-  const marginPct = totalsFinancial.revenue > 0
-    ? Math.round((totalsFinancial.margin / totalsFinancial.revenue) * 100)
-    : 0;
+  // (Custos & Margem REMOVIDOS em 2026-06-12 — pedido do dono. O relatório
+  //  mantém apenas KPIs operacionais: OPs, pares, prazos e status.)
 
   // Progresso operacional (% de stages concluídos)
   const stageStats = orders.reduce(
@@ -198,13 +165,20 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
     }, [])
     .slice(0, 12);
 
-  // Silks únicos (por nome)
+  // Silks únicos (por nome) + QUAIS referências levam cada silk (pedido do
+  // dono 2026-06-12): abaixo da imagem de cada silk, a lista de modelos/refs
+  // que a recebem — agregado silk → referências a partir das OPs do PV.
   const silksUnique = orders
     .filter(o => o.silk_url)
-    .reduce<Array<{ name: string; url: string }>>((acc, o) => {
-      if (!acc.some(s => s.name === (o.silk_name || ''))) {
-        acc.push({ name: o.silk_name || 'Silk', url: o.silk_url! });
+    .reduce<Array<{ name: string; url: string; refs: string[] }>>((acc, o) => {
+      const name = o.silk_name || 'Silk';
+      let entry = acc.find(s => s.name === name);
+      if (!entry) {
+        entry = { name, url: o.silk_url!, refs: [] };
+        acc.push(entry);
       }
+      const refLabel = o.reference_name || o.reference_code || '';
+      if (refLabel && !entry.refs.includes(refLabel)) entry.refs.push(refLabel);
       return acc;
     }, [])
     .slice(0, 6);
@@ -223,8 +197,6 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
   // Status por setor: 4 colunas fixas + 1 por setor presente.
   const stF = adaptiveTableFont(4 + sectorsOrdered.length);
   const sectorColWidth = sectorsOrdered.length > 8 ? 28 : 34;
-  // Custos: 8 colunas, conteúdo longo ("R$ 123.456,78" ≈ 13 chars).
-  const costF = adaptiveTableFont(8, 13);
 
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
   // Cada seção do relatório vira um bloco; cada card de OP do detalhamento
@@ -565,6 +537,17 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                   <SignedImage src={s.url} alt={s.name} loading="eager" className="w-full h-full object-contain" />
                 </div>
                 <p className="text-[8pt] text-black font-semibold leading-tight">{s.name}</p>
+                {/* Referências que levam esta silk (2026-06-12). */}
+                {s.refs.length > 0 && (
+                  <div className="mt-1 pt-1" style={{ borderTop: '0.5px solid #d4d4d4' }}>
+                    <p className="section-label" style={{ color: '#666' }}>
+                      Referência{s.refs.length > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-[7.5pt] text-black leading-snug mt-0.5">
+                      {s.refs.join(' · ')}
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -777,120 +760,9 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
         </section>
   ) : null;
 
-  // ─────────────────────────────── 09 / CUSTOS & MARGEM ───────────────────────────────
-  const custosBlock = totalsFinancial.hasAny ? (
-        <section className="mb-6">
-          <div className="flex items-baseline gap-3 mb-4 keep-together keep-with-next">
-            <span
-              className="font-display"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '14pt', color: '#000' }}
-            >
-              {nextSection()}
-            </span>
-            <span className="section-label" style={{ color: '#000' }}>
-              Custos & Margem
-            </span>
-            <div className="flex-1 h-px bg-black" />
-          </div>
-
-          <div className="keep-together keep-with-next grid grid-cols-4 gap-0 border-t border-b border-black mb-4">
-            <KpiBlock label="Receita" value={fmtBRL(totalsFinancial.revenue)} />
-            <KpiBlock label="Custo total" value={fmtBRL(totalsFinancial.cost)} bordered />
-            <KpiBlock label="Margem" value={fmtBRL(totalsFinancial.margin)} bordered
-              accent={totalsFinancial.margin < 0 ? 'negative' : undefined} />
-            <KpiBlock label="Margem %" value={`${marginPct}%`} bordered
-              accent={marginPct < 0 ? 'negative' : undefined} />
-          </div>
-
-          {/* Larguras das colunas monetárias dimensionadas pro pior caso
-              ("R$ 123.456,78") na fonte adaptativa — antes 60-70px fixos com
-              9pt mono cortavam/quebravam o valor letra a letra no papel. */}
-          <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-            <thead>
-              <tr style={{ borderBottom: '1.5px solid #000' }}>
-                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 50, color: '#000' }}>OP</th>
-                <th className="text-left py-1.5 pr-2 section-label" style={{ color: '#000' }}>Ref · Cor</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 78, color: '#000' }}>Material</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 64, color: '#000' }}>MO</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 64, color: '#000' }}>Overhead</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 78, color: '#000' }}>Custo</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 78, color: '#000' }}>Receita</th>
-                <th className="text-right py-1.5 section-label" style={{ width: 78, color: '#000' }}>Margem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map(o => {
-                const c = o.cost;
-                const moneyStyle: React.CSSProperties = { fontSize: `${costF.cellPx}px`, lineHeight: 1.25 };
-                if (!c) return (
-                  <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
-                    <td className="py-1.5 pr-2 font-mono text-black" style={moneyStyle}>{o.op_number || '—'}</td>
-                    <td className="py-1.5 pr-2 text-black" style={{ fontSize: `${costF.textPx + 1}px`, lineHeight: 1.25 }}>
-                      <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
-                      {o.color && <span> · {o.color}</span>}
-                    </td>
-                    <td colSpan={6} className="py-1.5 text-[8pt] text-neutral-500 italic text-right">
-                      Custo não calculado
-                    </td>
-                  </tr>
-                );
-                // Guard (auditoria 2026-06-07): custo absurdo (dado de ficha errado —
-                // consumo/largura/unidade) gera margem catastrófica FALSA. Não exibir
-                // como real: marca a linha e troca a margem por "⚠ revisar".
-                const suspect = c.quantity > 0
-                  && (c.material_cost / c.quantity > 200 || (c.revenue > 0 && c.total_cost > 3 * c.revenue));
-                return (
-                  <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
-                    <td className="py-1.5 pr-2 font-mono text-black" style={moneyStyle}>{o.op_number || '—'}</td>
-                    <td className="py-1.5 pr-2 text-black" style={{ fontSize: `${costF.textPx + 1}px`, lineHeight: 1.25 }}>
-                      <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
-                      {o.color && <span> · {o.color}</span>}
-                    </td>
-                    <td className="py-1.5 pr-2 text-right font-mono" style={{ ...moneyStyle, color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.material_cost)}{suspect ? ' *' : ''}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-black" style={moneyStyle}>{fmtBRL(c.labor_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-black" style={moneyStyle}>{fmtBRL(c.overhead_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono font-bold" style={{ ...moneyStyle, color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.total_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-black" style={moneyStyle}>{fmtBRL(c.revenue)}</td>
-                    <td
-                      className="py-1.5 text-right font-mono font-bold"
-                      style={{ ...moneyStyle, color: suspect ? '#B45309' : (c.margin < 0 ? '#E11D2E' : '#000') }}
-                    >
-                      {suspect ? '⚠ revisar' : fmtBRL(c.margin)}
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr style={{ borderTop: '1.5px solid #000' }}>
-                <td colSpan={2} className="py-2 pr-2 section-label" style={{ color: '#000' }}>Total</td>
-                {([totalsFinancial.material, totalsFinancial.labor, totalsFinancial.overhead, totalsFinancial.cost, totalsFinancial.revenue] as const).map((v, i) => (
-                  <td key={i} className="py-2 pr-2 text-right font-mono font-bold text-black" style={{ fontSize: `${costF.cellPx}px`, lineHeight: 1.25 }}>{fmtBRL(v)}</td>
-                ))}
-                <td
-                  className="py-2 text-right font-mono font-bold"
-                  style={{ fontSize: `${costF.cellPx}px`, lineHeight: 1.25, color: totalsFinancial.margin < 0 ? '#E11D2E' : '#000' }}
-                >
-                  {fmtBRL(totalsFinancial.margin)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          {orders.some(o => o.cost && o.cost.quantity > 0
-            && (o.cost.material_cost / o.cost.quantity > 200 || (o.cost.revenue > 0 && o.cost.total_cost > 3 * o.cost.revenue))) && (
-            <p className="mt-1.5 text-[8pt]" style={{ color: '#B45309' }}>
-              ⚠ Linhas com <strong>*</strong> têm custo suspeito (provável dado de ficha errado — consumo/largura/unidade do material).
-              A margem dessas OPs e o Total <strong>não são confiáveis</strong>: revise a ficha e recalcule os custos antes de usar.
-            </p>
-          )}
-        </section>
-  ) : (
-        <section className="keep-together mb-6 border-l-2 border-amber-600 pl-3">
-          <p className="section-label mb-1" style={{ color: '#a16207' }}>Custos não calculados</p>
-          <p className="text-[8pt] text-neutral-700 leading-snug">
-            Para incluir custos neste relatório, abra o PV no sistema e clique em
-            <strong> "Calcular Custos"</strong>. Em seguida, gere este relatório novamente.
-          </p>
-        </section>
-  );
+  // (Seção "Custos & Margem" — tabela material/MO/overhead/custo/receita/
+  //  margem + aviso "custos não calculados" — REMOVIDA em 2026-06-12 a
+  //  pedido do dono. O relatório é operacional: OPs, pares, prazos, status.)
 
   // ─────────────────────────────── FOOTER · ASSINATURAS ───────────────────────────────
   // Bloco atômico próprio no paginador (assinaturas nunca quebram no meio).
@@ -922,7 +794,6 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
     ...(silksBlock ? [silksBlock] : []),
     ...detalheBlocks,
     ...(timelineBlock ? [timelineBlock] : []),
-    custosBlock,
     footerBlock,
   ];
 
@@ -944,18 +815,18 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
   );
 }
 
+// (prop `accent: 'negative'` removida em 2026-06-12 junto com os KPIs
+//  financeiros — só os KPIs operacionais usam este bloco agora.)
 function KpiBlock({
   label,
   value,
   sub,
   bordered,
-  accent,
 }: {
   label: string;
   value: string;
   sub?: string;
   bordered?: boolean;
-  accent?: 'negative';
 }) {
   return (
     <div
@@ -979,16 +850,13 @@ function KpiBlock({
           fontSize: `${adaptiveFontSize(value, { maxWidthPx: 156, baseFontPx: 29, minFontPx: 13, charWidthRatio: 0.6 })}px`,
           letterSpacing: '-0.03em',
           overflowWrap: 'anywhere',
-          color: accent === 'negative' ? '#E11D2E' : '#000',
+          color: '#000',
         }}
       >
         {value}
       </p>
       {sub && (
-        <p
-          className="font-mono mt-1 text-[9pt] opacity-60"
-          style={{ color: accent === 'negative' ? '#E11D2E' : '#000' }}
-        >
+        <p className="font-mono mt-1 text-[9pt] opacity-60" style={{ color: '#000' }}>
           {sub}
         </p>
       )}

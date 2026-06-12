@@ -95,6 +95,15 @@ export interface SoleSilkGroup {
   sizeBand?: 'infantil' | 'adulto' | 'misto';
 }
 
+/** Facas de Corte de uma referência (Corte Cabedal, 2026-06-12). `ranges`
+ *  espelha technical_sheets.knife_size_ranges — `code` (código físico da
+ *  faca) é opcional (retrocompat com cadastros antigos sem o campo). */
+export interface KnifeRefSpec {
+  refCode: string;
+  refName: string;
+  ranges: Array<{ label: string; sizes: string[]; code?: string }>;
+}
+
 export type GroupedSector =
   | 'Silk'
   | 'Montagem'
@@ -117,6 +126,11 @@ interface Props {
   sizeBand?: 'infantil' | 'adulto' | 'misto';
   /** Rótulo da faixa de cabeçalho de página (PaginatedSheet). */
   sectorLabel?: string;
+  /** Facas de Corte por referência (SÓ Corte Cabedal, 2026-06-12): bloco
+   *  "Facas de Corte" logo após o header — qtd de facas do modelo + tabela
+   *  por faca (código em destaque + numerações cobertas + referência quando
+   *  o maço tem várias). */
+  knives?: KnifeRefSpec[];
 }
 
 // Simplificação 2026-06-12: KPIs, blocos de materiais (cabedal/forro),
@@ -200,7 +214,7 @@ const sortSizes = (sizes: string[]): string[] =>
  * numeração + alerta fachetado em 1 linha + tally. Silk adiciona o bloco
  * da LOGOMARCA a estampar (única por grupo, ou por cor quando divergem).
  */
-export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
+export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
 
@@ -385,6 +399,90 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
   );
+
+  // ── Facas de Corte (SÓ Corte Cabedal, pedido do dono 2026-06-12) ──
+  // Bloco logo após o header do maço: quantidade de facas + tabela por faca
+  // com CÓDIGO em destaque (Anton) e numerações cobertas. Quando o maço tem
+  // várias referências, a coluna "Referência" identifica de qual modelo é
+  // cada conjunto de facas. Retrocompat: faca sem `code` mostra "—".
+  const sortRanges = <T extends { label: string }>(ranges: T[]): T[] =>
+    [...ranges].sort((a, b) => {
+      const ia = KNIFE_ORDER.indexOf(a.label.toUpperCase());
+      const ib = KNIFE_ORDER.indexOf(b.label.toUpperCase());
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
+      return a.label.localeCompare(b.label);
+    });
+  const knivesBlock = sector === 'Corte Cabedal' && knives && knives.length > 0 ? (() => {
+    const multiRef = knives.length > 1;
+    const totalKnives = knives.reduce((s, k) => s + k.ranges.length, 0);
+    return (
+      <div className="keep-together mb-2 bg-white" style={{ border: '1.5px solid #000' }}>
+        <div className="px-3 py-1.5 flex items-baseline justify-between gap-3" style={{ borderBottom: '1.5px solid #000' }}>
+          <span className="section-label" style={{ color: '#000' }}>02 / Facas de Corte</span>
+          <span
+            className="text-black uppercase leading-none"
+            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '20px', letterSpacing: '-0.02em' }}
+          >
+            {totalKnives} <span className="text-[10px] font-mono tracking-widest">faca{totalKnives !== 1 ? 's' : ''}{multiRef ? ` · ${knives.length} referências` : ''}</span>
+          </span>
+        </div>
+        <table className="w-full text-left" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1.5px solid #000' }}>
+              {multiRef && (
+                <th className="section-label px-3 py-1" style={{ color: '#000' }}>Referência</th>
+              )}
+              <th className="section-label px-3 py-1" style={{ color: '#000', width: 64 }}>Faca</th>
+              <th className="section-label px-3 py-1" style={{ color: '#000', width: 140 }}>Código</th>
+              <th className="section-label px-3 py-1" style={{ color: '#000' }}>Numerações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {knives.flatMap((k) => {
+              const ordered = sortRanges(k.ranges);
+              return ordered.map((r, ri) => (
+                <tr
+                  key={`${k.refCode || k.refName}-${r.label}-${ri}`}
+                  style={{ borderBottom: '1px solid #000' }}
+                >
+                  {multiRef && (
+                    <td className="px-3 py-1 align-middle">
+                      {ri === 0 ? (
+                        <span
+                          className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-sm whitespace-nowrap uppercase"
+                          style={{ fontSize: '10px', letterSpacing: '0.04em' }}
+                        >
+                          {k.refName || k.refCode || '—'}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-[9px] text-black uppercase tracking-widest">″</span>
+                      )}
+                    </td>
+                  )}
+                  <td className="px-3 py-1 font-mono text-[11px] font-bold text-black uppercase tracking-wider align-middle">
+                    {r.label}
+                  </td>
+                  <td className="px-3 py-1 align-middle">
+                    <span
+                      className="text-black uppercase leading-none"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.01em' }}
+                    >
+                      {r.code || '—'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1 font-mono text-[11px] font-bold text-black align-middle">
+                    {(r.sizes || []).join(' · ') || '—'}
+                  </td>
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  })() : null;
 
   // ── Builder dos blocos de UM grupo (solado/referência) ──
   // Sub-header compacto (faixa fina — NÃO o header gigante) + logomarca +
@@ -791,6 +889,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // ── Maço contínuo do setor: header agregado + grupos em sequência ──
   const blocks: React.ReactNode[] = [
     headerBlock,
+    ...(knivesBlock ? [knivesBlock] : []),
     ...groups.flatMap((group, gi) => buildGroupBlocks(group, gi)),
   ];
 

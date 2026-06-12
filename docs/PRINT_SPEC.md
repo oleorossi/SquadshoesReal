@@ -219,6 +219,23 @@ unificados**: Expedição (1 ficha POR CLIENTE — romaneio loja-a-loja) e
 Relatório Gerencial (1 por PV). `SilkMontageWorkSheet` recebe `groups[]` e
 `OperatorWorkSheet` recebe `items[]` (cada um emite um único PaginatedSheet).
 
+**Agrupamento por solado = por MODELO (5º passe, 2026-06-12):** a chave dos
+grupos por solado é `products.group_id` do solado resolvido (helper
+`worksheet/soleGroupKey.ts`, testado). Antes era o `sole_product_id` — SKU
+por COR — e um PV com N cores de cabedal imprimia N grupos consecutivos
+todos com o MESMO título (o nome base sem cor), parecendo o setor duplicado
+(bug reportado pelo dono: "Corte de forração tá duplicado / vários setores
+repetindo"). Fallback textual (sole_material) continua POR FICHA (fichas
+distintas com label "01" não se fundem — decisão 2026-05-19).
+
+**Outros ajustes do 5º passe:** Corte Cabedal ganhou o bloco "Facas de
+Corte" (qtd de facas + código da faca em Anton + numerações cobertas, por
+referência quando o maço tem várias — fonte: `technical_sheets.
+knife_size_ranges[].code`, campo novo opcional no JSONB, sem migration);
+Relatório Gerencial perdeu a seção "Custos & Margem" (KPIs apenas
+operacionais) e a seção de Silks agora lista as referências que levam cada
+silk abaixo da imagem.
+
 ### Exceção: bloco maior que 1 página inteira
 
 Ganha página própria com `height: auto; min-height: 296mm` e **flui** — o

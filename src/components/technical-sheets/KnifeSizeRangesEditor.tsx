@@ -9,6 +9,10 @@ import { parseSizes } from '@/lib/labelUtils';
 export interface KnifeBucket {
   label: string;
   sizes: string[];
+  /** Código físico da faca (cadastro do dono, 2026-06-12) — sai na ficha de
+   *  Corte Cabedal (bloco "Facas de Corte"). Opcional: ranges antigos sem
+   *  code continuam válidos (a ficha mostra "—"). */
+  code?: string;
 }
 
 interface Props {
@@ -68,6 +72,15 @@ export function KnifeSizeRangesEditor({ sheetSizes, value, onChange }: Props) {
     updateBuckets(next);
   };
 
+  // Código físico da faca (2026-06-12). String vazia vira undefined pra
+  // manter o shape antigo do JSONB (ranges sem code seguem válidos).
+  const updateCode = (idx: number, newCode: string) => {
+    const sanitized = newCode.toUpperCase().slice(0, 20);
+    const next = [...buckets];
+    next[idx] = { ...next[idx], code: sanitized.trim() === '' ? undefined : sanitized };
+    updateBuckets(next);
+  };
+
   const toggleSize = (bucketIdx: number, size: string) => {
     const next = [...buckets];
     // Remove de qualquer outro bucket antes (size só em 1 faca).
@@ -111,6 +124,8 @@ export function KnifeSizeRangesEditor({ sheetSizes, value, onChange }: Props) {
               Define como as numerações são agrupadas por faca no relatório de Corte Cabedal.
               {' '}Ex: faca <strong>P</strong> = 34/35/36, faca <strong>M</strong> = 37/38, faca <strong>G</strong> = 39/40.
               {' '}Cada numeração só pode estar em 1 faca. Sem cadastro, a ficha mostra as numerações individuais.
+              {' '}O <strong>código da faca</strong> (opcional) identifica a faca física e sai em destaque no bloco
+              {' '}"Facas de Corte" da ficha do operador.
             </p>
           </div>
         </div>
@@ -145,6 +160,15 @@ export function KnifeSizeRangesEditor({ sheetSizes, value, onChange }: Props) {
                     className="h-8 text-sm font-mono font-bold uppercase w-24"
                     maxLength={4}
                     placeholder="P"
+                  />
+                  <Label className="text-xs shrink-0">Código da faca</Label>
+                  <Input
+                    value={bucket.code || ''}
+                    onChange={(e) => updateCode(idx, e.target.value)}
+                    className="h-8 text-sm font-mono uppercase w-32"
+                    maxLength={20}
+                    placeholder="FC-0123"
+                    title="Código físico da faca — sai no bloco 'Facas de Corte' da ficha de Corte Cabedal"
                   />
                   <span className="text-xs text-muted-foreground">
                     {bucket.sizes.length} numeraç{bucket.sizes.length === 1 ? 'ão' : 'ões'}
