@@ -87,6 +87,10 @@ export type SheetFormData = {
   // Technical fields
   upper_material: string;
   upper_thickness: string;
+  /** Corte a fio (2026-06-12): true = cabedal sem costura (borda crua do
+   *  corte) — NÃO gera ficha de operador 'Costura Cabedal'; false = cabedal
+   *  vai para costura. Só camada de impressão — não afeta fluxo/ondas. */
+  upper_corte_a_fio: boolean;
   lining_material: string;
   /** Grupo de material da forração de salto (fachete) — usado quando o solado
    *  é fachetado. Consumo por numeração vem do cadastro do solado. Segue o
@@ -161,6 +165,7 @@ export const emptySheetForm: SheetFormData = {
   cor_predominante_id: null, cor_solado_id: null, box_type_id: null,
   status_ficha: 'rascunho',
   upper_material: '', upper_thickness: '',
+  upper_corte_a_fio: false,
   lining_material: '',
   fachete_material: '',
   insole_material: '',

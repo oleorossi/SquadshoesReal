@@ -3,7 +3,6 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers } from '@phosphor-icons/react';
-import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -955,7 +954,6 @@ if (totalPairsAll !== palmTotal) {
                }}>
                 <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar Tudo ({cuttingOrders.length})
               </Button>
-            <WorkSheetSettingsButton />
             <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
                 const ordersToprint = cuttingOrders.filter(o => selectedOrders.has(o.id));
                 printSectorWorkSheets({

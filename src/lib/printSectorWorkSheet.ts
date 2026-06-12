@@ -5,8 +5,32 @@ import { supabase } from '@/integrations/supabase/client';
 import { escapeHtml } from './htmlUtils';
 import { generateBatchId } from '@/components/production/worksheet/batchId';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
-import type { WorkSheetLayoutSettings } from '@/components/production/WorkSheetSettingsDialog';
-import { loadWorkSheetSettings } from '@/components/production/WorkSheetSettingsDialog';
+// WorkSheetSettingsDialog removido em 2026-06-12 (settings ignoradas desde
+// 2026-06-11 — código morto). O layout agora é fixo nos defaults abaixo;
+// `layoutSettings` segue aceito como override programático.
+export interface WorkSheetLayoutSettings {
+  imageSize: 'small' | 'medium' | 'large';
+  fontSize: 'small' | 'medium' | 'large';
+  showChecklist: boolean;
+  showImage: boolean;
+  showStraps: boolean;
+  showObservation: boolean;
+  showSilk: boolean;
+  showSignature: boolean;
+  showSaleOrderInfo: boolean;
+}
+
+const DEFAULT_LAYOUT_SETTINGS: WorkSheetLayoutSettings = {
+  imageSize: 'medium',
+  fontSize: 'medium',
+  showChecklist: true,
+  showImage: true,
+  showStraps: true,
+  showObservation: true,
+  showSilk: true,
+  showSignature: true,
+  showSaleOrderInfo: true,
+};
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -389,7 +413,7 @@ type RenderCaches = {
    caches?: RenderCaches,
    _palmilhaGlobal?: { totalsBySize: Record<string, number>; totalPairs: number; activeSizes: string[] },
  ): Promise<string> {
-   const settings = layoutSettings || loadWorkSheetSettings();
+   const settings = layoutSettings || DEFAULT_LAYOUT_SETTINGS;
    const isGrouped = Boolean(groupData);
    const singleGradeData = isGrouped ? null : getScaledGrade(order);
  
@@ -679,7 +703,7 @@ function buildSolagemGroupCard(
   sectorEmoji: string,
   layoutSettings?: WorkSheetLayoutSettings,
 ): string {
-  const settings = layoutSettings || loadWorkSheetSettings();
+  const settings = layoutSettings || DEFAULT_LAYOUT_SETTINGS;
   const fontScale = settings.fontSize === 'small' ? 0.85 : settings.fontSize === 'large' ? 1.15 : 1;
   const headerFontSize = Math.round(20 * fontScale);
   const isPreto = (soleColor || '').toLowerCase().includes('pret') || (soleColor || '').toLowerCase().includes('black');
@@ -723,7 +747,7 @@ async function buildSectorWorkSheetsHtml(
   caches?: RenderCaches,
 ): Promise<{ html: string; preloadLinks: string; cardCount: number }> {
   const { sectorName, sectorEmoji, orders, references, saleOrders, getStrapsLabel, getSoleColor, getSoleReference, layoutSettings } = options;
-  const settings = layoutSettings || loadWorkSheetSettings();
+  const settings = layoutSettings || DEFAULT_LAYOUT_SETTINGS;
   if (orders.length === 0) return { html: '', preloadLinks: '', cardCount: 0 };
 
   const localCaches: RenderCaches = caches || {
@@ -895,7 +919,7 @@ async function buildSectorWorkSheetsHtml(
    layoutSettings?: WorkSheetLayoutSettings,
    opNumbers: string[] = [],
  ): Promise<string> {
-   const settings = layoutSettings || loadWorkSheetSettings();
+   const settings = layoutSettings || DEFAULT_LAYOUT_SETTINGS;
    const fontScale = settings.fontSize === 'small' ? 0.85 : settings.fontSize === 'large' ? 1.15 : 1;
    const headerFontSize = Math.round(20 * fontScale);
    // Auditoria mai/2026: batch_id determinístico pra rastreabilidade da

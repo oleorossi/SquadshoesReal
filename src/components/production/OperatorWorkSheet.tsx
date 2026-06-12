@@ -1,11 +1,13 @@
 import React, { useMemo } from 'react';
-import { QrCode, Scissors, Hammer, Footprints, Package, Stack as Layers, Wind, PaintBrush as Paintbrush, GridFour as LayoutGrid, Pen, Truck, Sparkle as Sparkles } from '@phosphor-icons/react';
+import { QrCode, Scissors, Hammer, Footprints, Stack as Layers, Wind, PaintBrush as Paintbrush, GridFour as LayoutGrid, Pen, Truck, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { getProductImage } from '@/utils/productUtils';
 import { thumbUrl } from '@/lib/imageThumb';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-import { adaptiveFontSize, adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
+import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
+import { gradeTableFont } from './worksheet/adaptiveFont';
 import { TallyBox } from './worksheet/TallyBox';
+import { CompletionFooter } from './worksheet/CompletionFooter';
 import { SignedImage } from '@/components/ui/signed-image';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
@@ -17,7 +19,6 @@ interface Props {
   silk?: { silk_name: string; silk_url: string | null };
   soleColor?: string | null;
   insoleColor?: string | null;
-  insoleHasLining?: boolean;
   insoleReadyMade?: boolean;
   /** Model 3 (tiras): no cabedal cut; passes through Mesa sector */
   hasStraps?: boolean;
@@ -26,10 +27,6 @@ interface Props {
    *  e o array tem ao menos 1 item. Cada entry: { id?, label, color,
    *  group_id, group_name }. */
   strapColors?: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }>;
-  /** Daily pair capacity at the Mesa sector (tiras model) */
-  mesaCapacity?: number;
-  /** Daily pair capacity for the current sector (drives the production rate banner) */
-  sectorCapacityPerDay?: number;
   /** OP numbers grouped into this worksheet (non-Acabamento multi-OP groups) */
   opNumbers?: string[];
   /** Razão social do(s) cliente(s) do(s) PV(s) — exibida no header ao lado do Pedido. */
@@ -71,12 +68,9 @@ const OperatorWorkSheet = ({
   silk,
   soleColor,
   insoleColor,
-  insoleHasLining,
   insoleReadyMade,
   hasStraps,
   strapColors,
-  mesaCapacity,
-  sectorCapacityPerDay = 0,
   opNumbers,
   clientName,
   clientInfo,
@@ -112,7 +106,6 @@ const OperatorWorkSheet = ({
   const isColagem         = sector === 'Colagem';
   // "Mesa" e "Aviamento" representam o MESMO setor (DB enum=mesa, label novo=Aviamento)
   const isAviamento       = sector === 'Aviamento' || sector === 'Mesa';
-  const isExpedicao       = sector === 'Expedição';
   // Palmilha pronta na cor: show notice instead of work instructions for cut/sew sectors
   const isInsoleSkippedSector = insoleReadyMade && (isCortePalmilha || isCorteForração || isCostura);
   const today = new Date().toLocaleDateString('pt-BR');
@@ -123,12 +116,6 @@ const OperatorWorkSheet = ({
     ? opNumbers
     : (order.op_number ? [order.op_number] : []);
   const batchId = generateBatchId(sector, batchOps);
-  // Effective daily capacity for this sector: prefer explicit sectorCapacityPerDay,
-  // Aviamento (DB column ainda chama mesa_daily_capacity) usa mesaCapacity como fallback.
-  const effectiveCapacity = sectorCapacityPerDay > 0
-    ? sectorCapacityPerDay
-    : (isAviamento && mesaCapacity && mesaCapacity > 0 ? mesaCapacity : 0);
-  const estimatedDays = effectiveCapacity > 0 ? Math.ceil(totalPairs / effectiveCapacity) : 0;
 
   const resolvedColorName = order.variant?.color_name || order.color || '—';
   const resolvedColorHex = order.variant?.color_hex || '#fff';
@@ -284,66 +271,8 @@ const OperatorWorkSheet = ({
         </div>
       </div>
 
-      {/* ── Produção diária / tempo estimado / por ficha / total — KPI band ── */}
-      {effectiveCapacity > 0 && (
-        <div className="grid grid-cols-4 gap-0 mb-1.5 border-y border-black">
-          <div className="py-1.5 px-3">
-            <span className="section-label block" style={{ color: '#000' }}>Produção / Dia</span>
-            <span
-              className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
-            >
-              {effectiveCapacity} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
-            </span>
-          </div>
-          <div className="py-1.5 px-3 border-l border-black">
-            <span className="section-label block" style={{ color: '#000' }}>Tempo Estimado</span>
-            <span
-              className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
-            >
-              {estimatedDays} <span className="text-[9px] font-mono tracking-widest uppercase">dia{estimatedDays !== 1 ? 's' : ''}</span>
-            </span>
-          </div>
-          {/* Por ficha fechada — quantos pares cabem em UMA ficha. Distinto
-              do total da OP (que pode ser N fichas multiplicadas).
-              Grades mistas: não existe UMA grade base — mostra aviso. */}
-          <div className="py-1.5 px-3 border-l border-black">
-            <span className="section-label block" style={{ color: '#000' }}>Por Ficha</span>
-            {mixedGrades ? (
-              <span className="font-mono text-[10px] tracking-widest uppercase text-black mt-1 block leading-tight">
-                Grades<br />mistas
-              </span>
-            ) : (
-              <>
-                <span
-                  className="text-black leading-none mt-1 block"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
-                >
-                  {gradeSum} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
-                </span>
-                {fichas > 1 && (
-                  <span
-                    className="font-mono tracking-widest uppercase text-black mt-0.5 block"
-                    style={{ fontSize: adaptiveLabelFontSize(fichas) - 1 }}
-                  >
-                    × {fichas} fichas
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-          <div className="py-1.5 px-3 border-l border-black">
-            <span className="section-label block" style={{ color: '#000' }}>Total da OP</span>
-            <span
-              className="text-black leading-none mt-1 block"
-              style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
-            >
-              {totalPairs} <span className="text-[9px] font-mono tracking-widest uppercase">pares</span>
-            </span>
-          </div>
-        </div>
-      )}
+      {/* KPI band (Produção/Dia · Tempo Estimado · Por Ficha · Total) removida
+          em 2026-06-12 — métrica gerencial, não pertence à ficha de operador. */}
 
       {/* ── Silk em destaque (Silk + Acabamento) — imagem do silk do solado
           ou do cliente (cascata resolvida em PrintWorkSheetsPage.getOrderSilk).
@@ -566,7 +495,11 @@ const OperatorWorkSheet = ({
         {/* flow-card: quebra só ENTRE chunks de tamanhos (cada tabela é
             atômica) e fecha a borda em cada fragmento de página. */}
         <div className="flow-card" style={{ border: '1.5px solid #000' }}>
-          {sizeChunks.map((chunk, ci) => (
+          {sizeChunks.map((chunk, ci) => {
+            // Fontes adaptativas pela qtd de colunas do chunk (2026-06-12) —
+            // grades densas cortavam células com fonte fixa.
+            const ft = gradeTableFont(chunk);
+            return (
             <table key={ci} className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ borderBottom: '1.5px solid #000' }}>
@@ -577,10 +510,12 @@ const OperatorWorkSheet = ({
                   {chunk.map((s, i) => (
                     <th
                       key={s}
-                      className="py-1 text-black font-bold"
+                      className="text-black font-bold"
                       style={{
-                        fontSize: '12px',
+                        fontSize: `${ft.headerPx}px`,
                         fontFamily: "'Fira Code', monospace",
+                        padding: `${ft.padY}px 1px`,
+                        lineHeight: 1.2,
                         borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                       }}
                     >
@@ -607,9 +542,11 @@ const OperatorWorkSheet = ({
                     {chunk.map((s, i) => (
                       <td
                         key={s}
-                        className="py-1 font-mono font-bold text-black"
+                        className="font-mono font-bold text-black"
                         style={{
-                          fontSize: '13px',
+                          fontSize: `${ft.cellPx + 1}px`,
+                          padding: `${ft.padY}px 1px`,
+                          lineHeight: 1.2,
                           borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                         }}
                       >
@@ -630,12 +567,13 @@ const OperatorWorkSheet = ({
                   {chunk.map((s, i) => (
                     <td
                       key={s}
-                      className="py-1.5 text-black"
+                      className="text-black"
                       style={{
                         fontFamily: "'Anton', Impact, sans-serif",
-                        fontSize: '22px',
+                        fontSize: `${ft.displayPx + 2}px`,
                         letterSpacing: '-0.02em',
-                        lineHeight: '1',
+                        lineHeight: '1.1',
+                        padding: `${ft.padY + 2}px 1px`,
                         borderRight: i < chunk.length - 1 ? '1px solid #000' : (ci === sizeChunks.length - 1 ? '1px solid #000' : 'none'),
                       }}
                     >
@@ -644,12 +582,13 @@ const OperatorWorkSheet = ({
                   ))}
                   {ci === sizeChunks.length - 1 && (
                     <td
-                      className="py-1.5 text-black"
+                      className="text-black"
                       style={{
                         fontFamily: "'Anton', Impact, sans-serif",
-                        fontSize: '22px',
+                        fontSize: `${ft.displayPx + 2}px`,
                         letterSpacing: '-0.02em',
-                        lineHeight: '1',
+                        lineHeight: '1.1',
+                        padding: `${ft.padY + 2}px 1px`,
                       }}
                     >
                       {totalPairs}
@@ -658,7 +597,8 @@ const OperatorWorkSheet = ({
                 </tr>
               </tbody>
             </table>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -688,26 +628,26 @@ const OperatorWorkSheet = ({
       )}
 
       {/* ── Sector-specific content — editorial B/W blocks ──
-          Fix 22/05/2026 (cenário raro): header "04 / Operação" ganhou
-          keep-with-next pra não virar órfão no rodapé da pg quando o
-          conteúdo da seção (checklist + materials + TallyBox) é longo
-          (>150mm). Sem isso, em Colagem/Acabamento com 25+ OPs (TallyBox
-          250mm+), o label do setor podia ficar sozinho no fim de uma pg
-          e o conteúdo aparecer na próxima — quebra visual feia. */}
+          Simplificação 2026-06-12 (pedido do user): checklists genéricos de
+          setor (5-12 itens "conferir X") e blocos de "Materiais"/"Resumo de
+          Materiais"/"Materiais de Base" removidos — o header + product info
+          row já trazem cor/solado/palmilha. Restam: aviso operacional de
+          palmilha pronta, campos fillable Frente/Traseiro do Aviamento e o
+          TallyBox (controle do operador). */}
       <div className="flex-1">
         <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <span className="section-label" style={{ color: '#000' }}>
             04 / Operação · {sector}
           </span>
           <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-            Checklist + materiais
+            Controle do operador
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
 
-        {/* Palmilha pronta na cor: sector not applicable */}
+        {/* Palmilha pronta na cor: aviso operacional — MANTIDO */}
         {isInsoleSkippedSector && (
-          <div className="col-span-2 bg-white p-2.5" style={{ border: '1.5px solid #000' }}>
+          <div className="bg-white p-2.5" style={{ border: '1.5px solid #000' }}>
             <span className="section-label block mb-1" style={{ color: '#000' }}>Aviso · Palmilha Pronta</span>
             <p
               className="text-black uppercase leading-none mb-1"
@@ -721,461 +661,40 @@ const OperatorWorkSheet = ({
           </div>
         )}
 
-        {/* CORTE PALMILHA */}
-        {isCortePalmilha && !isInsoleSkippedSector && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Corte Palmilha</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  'Palmilha base separada por numeração',
-                  'Molde/faca de palmilha conferida',
-                  'Corte executado por numeração',
-                  'Pares contados e agrupados por numeração',
-                  'Identificação de lote aplicada',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Informações</span>
-              <div className="border-t border-black pt-1.5 text-xs space-y-1.5">
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Segmento</span>
-                  <span className="font-bold text-black uppercase">{(order.master as any).shoe_category || '—'}</span>
-                </div>
-                <p className="text-[10px] text-black border-t border-black pt-1.5 font-mono uppercase tracking-wider leading-tight">
-                  Agrupamento por solado · cor não interfere no corte.
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* CORTE FORRAÇÃO */}
-        {isCorteForração && !isInsoleSkippedSector && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Corte Forração</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  `Palmilha ${resolvedInsoleColor} recebida`,
-                  'Material de forração separado',
-                  'Molde de forração conferido',
-                  'Corte por cor e numeração',
-                  'Peças contadas e identificadas por cor',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block mb-1" style={{ color: '#000' }}>Cor de Forração</span>
-              <span
-                className="uppercase leading-none block"
-                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em', color: '#C00000' }}
-              >
-                {resolvedInsoleColor}
-              </span>
-              {!insoleHasLining && (
-                <p className="text-[10px] text-black border-t border-black pt-1.5 mt-1.5 font-mono uppercase tracking-wider leading-tight">
-                  Palmilha sem forração · apenas revestimento externo
-                </p>
-              )}
-            </div>
-          </>
-        )}
-
-
-        {/* AVIAMENTO: tiras assembly + artisanal upper work (ex-Mesa) */}
+        {/* AVIAMENTO: campos fillable Frente / Traseiro — MANTIDOS */}
         {isAviamento && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>
-                Checklist · Aviamento {hasStraps ? '(Tiras)' : '(Cabedal)'}
-              </span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {(hasStraps ? [
-                  'Tiras conferidas (qtd + cor)',
-                  'Fivelas/ilhoses/aviamentos conferidos',
-                  'Palmilha forrada recebida',
-                  'Montagem das tiras na palmilha',
-                  'Alinhamento e espaçamento verificados',
-                  'Par completo identificado',
-                ] : [
-                  'Cabedal recebido do setor anterior',
-                  'Aviamentos separados por cor',
-                  'Palmilha forrada disponível',
-                  'Montagem inicial cabedal + palmilha',
-                  'Verificar alinhamento das peças',
-                  'Lote identificado e encaminhado',
-                ]).map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-2" style={{ border: '1px solid #000' }}>
-              <span className="section-label block" style={{ color: '#000' }}>Controle Aviamento</span>
-              {hasStraps && (
-                <div className="border-t border-black pt-1.5 flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Cor das Tiras</span>
-                  <span className="uppercase text-xs" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
+          <div className="bg-white p-2" style={{ border: '1px solid #000' }}>
+            <span className="section-label block mb-1" style={{ color: '#000' }}>Controle Aviamento</span>
+            <div className="grid grid-cols-2 gap-2 border-t border-black pt-2">
+              {['Frente', 'Traseiro'].map(part => (
+                <div key={part} className="bg-white p-1.5" style={{ border: '1px solid #000' }}>
+                  <span className="section-label block mb-1" style={{ color: '#000' }}>{part}</span>
+                  <div className="border-b-2 border-black h-5" />
+                  <p className="text-[8px] font-mono text-black mt-0.5 text-center tracking-widest uppercase">pares</p>
                 </div>
-              )}
-              {/* Frente / Traseiro fillable fields */}
-              <div className="grid grid-cols-2 gap-2 border-t border-black pt-2">
-                {['Frente', 'Traseiro'].map(part => (
-                  <div key={part} className="bg-white p-1.5" style={{ border: '1px solid #000' }}>
-                    <span className="section-label block mb-1" style={{ color: '#000' }}>{part}</span>
-                    <div className="border-b-2 border-black h-5" />
-                    <p className="text-[8px] font-mono text-black mt-0.5 text-center tracking-widest uppercase">pares</p>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-0.5 border-t border-black pt-1.5">
-                {['Seg', 'Ter', 'Qua', 'Qui', 'Sex'].map(d => (
-                  <div key={d} className="flex items-center gap-2 text-xs">
-                    <span className="section-label w-9" style={{ color: '#000' }}>{d}</span>
-                    <span className="font-mono border-b border-black flex-1 text-center text-black">____</span>
-                    <span className="text-[8px] font-mono text-black tracking-widest uppercase">pares</span>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
-          </>
+          </div>
         )}
 
-        {/* SILK: silk type */}
-        {isSilk && (
-          <>
-            <div className="col-span-2 bg-white p-2.5" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Arte do Silk</span>
-              {silk ? (
-                <div className="flex items-center gap-4 border-t border-black pt-2">
-                  {silk.silk_url && (
-                    <div className="w-20 h-20 bg-white overflow-hidden shrink-0" style={{ border: '1.5px solid #000' }}>
-                      <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="w-full h-full object-contain" />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p
-                      className="text-black uppercase leading-none"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
-                    >
-                      {silk.silk_name}
-                    </p>
-                    <p className="text-[10px] text-black mt-1.5 leading-tight">Verificar posicionamento e pressão antes de iniciar.</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-black italic">Sem silk registrado para esta referência/cor.</p>
-              )}
-            </div>
-            {/* TallyBox — controle de fichas (PR 2026-05-26):
-                operador de Silk marca uma caixinha por ficha conforme conclui.
-                Mesmo padrão de Colagem/Montagem/Acabamento. */}
-<div className="col-span-2 keep-with-next">
-              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
-            </div>
-          </>
+        {/* TallyBox — controle de fichas do operador (mantido nos setores
+            que já o tinham: Silk/Colagem/Montagem/Solagem + Acabamento em
+            caixas). keep-with-next: cola no bloco seguinte (observações/
+            rodapé) pra não virar órfão. */}
+        {(isSilk || isColagem || isMontagem || isSolagem) && (
+          <div className="keep-with-next">
+            <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
+          </div>
         )}
-
-        {/* COLAGEM: adhesive checklist */}
-        {isColagem && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Colagem</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  'Superfícies limpas e secas',
-                  `Solado ${resolvedSoleColor} separado`,
-                  'Cola aplicada uniformemente',
-                  'Tempo de secagem respeitado',
-                  'Prensagem aplicada',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block" style={{ color: '#000' }}>Materiais de Base</span>
-              <div className="border-t border-black pt-2 space-y-2">
-                <div>
-                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
-                  >
-                    {resolvedSoleColor}
-                  </span>
-                </div>
-                <div>
-                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
-                  >
-                    {resolvedInsoleColor}
-                  </span>
-                </div>
-              </div>
-            </div>
-<div className="col-span-2 keep-with-next">
-              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
-            </div>
-          </>
-        )}
-
-        {/* MONTAGEM: assembly instruction + materials */}
-        {isMontagem && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Montagem</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  `Solado ${resolvedSoleColor} conferido`,
-                  `Palmilha ${resolvedInsoleColor} conferida`,
-                  'Casco alinhado e montado',
-                  'Verificação visual do par',
-                  'Par limpo antes de embalar',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block" style={{ color: '#000' }}>Materiais de Base</span>
-              <div className="border-t border-black pt-2 space-y-2">
-                <div>
-                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
-                  >
-                    {resolvedSoleColor}
-                  </span>
-                </div>
-                <div>
-                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em', color: '#C00000' }}
-                  >
-                    {resolvedInsoleColor}
-                  </span>
-                  {insoleReadyMade && (
-                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
-                  )}
-                </div>
-              </div>
-              {(order.master as any).assembly_instructions && (
-                <div className="border-t border-black pt-2">
-                  <span className="section-label block mb-1" style={{ color: '#000' }}>Instrução de Montagem</span>
-                  <p className="text-[10px] text-black leading-tight">{(order.master as any).assembly_instructions}</p>
-                </div>
-              )}
-            </div>
-<div className="col-span-2 keep-with-next">
-              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
-            </div>
-          </>
-        )}
-
-        {/* SOLAGEM: sole grade breakdown */}
-        {isSolagem && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Solagem</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  `Solado ${resolvedSoleColor} conferido`,
-                  `Palmilha ${resolvedInsoleColor} conferida`,
-                  'Cola aplicada uniformemente',
-                  'Prensa aplicada · cura respeitada',
-                  'Solado centrado e alinhado',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block" style={{ color: '#000' }}>Materiais</span>
-              <div className="border-t border-black pt-2 space-y-2">
-                <div>
-                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em', color: '#C00000' }}
-                  >
-                    {resolvedSoleColor}
-                  </span>
-                </div>
-                <div>
-                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.02em', color: '#C00000' }}
-                  >
-                    {resolvedInsoleColor}
-                  </span>
-                  {insoleReadyMade && (
-                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
-                  )}
-                </div>
-              </div>
-            </div>
-<div className="col-span-2 keep-with-next">
-              <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} />
-            </div>
-          </>
-        )}
-
-        {/* ACABAMENTO: checklist + resumo de materiais + boxes */}
         {isAcabamento && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Acabamento</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  'Limpeza geral do par',
-                  'Verificação de costuras e silk',
-                  'Amarração / fivelas conferidas',
-                  'Etiqueta de tamanho aplicada',
-                  'Embalagem individual',
-                  'Caixa identificada com OP',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-2" style={{ border: '1px solid #000' }}>
-              <span className="section-label block" style={{ color: '#000' }}>Resumo de Materiais</span>
-              <div className="border-t border-black pt-1.5 space-y-1 text-xs">
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>{hasStraps ? 'Tiras' : 'Cabedal'}</span>
-                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Solado</span>
-                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedSoleColor}</span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Palmilha</span>
-                  <span className="font-bold text-black uppercase">
-                    <span style={{ color: '#C00000', fontWeight: 800 }}>{resolvedInsoleColor}</span>{insoleReadyMade ? ' · pronta' : ''}
-                  </span>
-                </div>
-                {silk && (
-                  <div className="flex justify-between items-baseline">
-                    <span className="section-label" style={{ color: '#000' }}>Silk</span>
-                    <span className="font-bold text-black uppercase">{silk.silk_name}</span>
-                  </div>
-                )}
-              </div>
-              {(order.master as any).packaging_notes && (
-                <p className="text-[10px] text-black border-t border-black pt-1.5 leading-tight">
-                  {(order.master as any).packaging_notes}
-                </p>
-              )}
-            </div>
-<div className="col-span-2 keep-with-next">
-              <TallyBox count={boxes} pairsPerCard={12} totalUnits={totalPairs} title={`Caixas · ${boxes} × 12 pares`} />
-            </div>
-          </>
-        )}
-
-        {/* EXPEDIÇÃO: dispatch checklist + client summary */}
-        {isExpedicao && (
-          <>
-            <div className="bg-white p-2 space-y-1" style={{ border: '1px solid #000' }}>
-              <span className="section-label block mb-1.5" style={{ color: '#000' }}>Checklist · Expedição</span>
-              <div className="border-t border-black pt-1.5 space-y-1">
-                {[
-                  'Par revisado e aprovado',
-                  'Etiqueta de cliente/loja conferida',
-                  'Embalagem individual + caixa mestre',
-                  'Quantidade confere com OP',
-                  'Romaneio de entrega gerado',
-                  'Lote separado por cliente',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px] py-0.5 text-black">
-                    <span className="w-4 h-4 shrink-0 inline-block mt-0.5" style={{ border: '1.5px solid #000' }} />
-                    <span className="leading-tight">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white p-2 space-y-2" style={{ border: '1.5px solid #000' }}>
-              <span className="section-label block" style={{ color: '#000' }}>Resumo do Pedido</span>
-              <div className="border-t border-black pt-1.5 space-y-1 text-xs">
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Modelo</span>
-                  <span className="font-bold text-black uppercase">{order.master?.name || (order as any).reference_name || '—'}</span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Cor</span>
-                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedColorName}</span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Solado</span>
-                  <span className="uppercase" style={{ color: '#C00000', fontWeight: 800 }}>{resolvedSoleColor}</span>
-                </div>
-                <div className="flex justify-between items-baseline border-t border-black pt-1.5 mt-1">
-                  <span className="section-label" style={{ color: '#000' }}>Total</span>
-                  <span
-                    className="text-black uppercase leading-none"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '19px', letterSpacing: '-0.02em' }}
-                  >
-                    {totalPairs} <span className="text-[10px] font-mono tracking-widest">pares</span>
-                  </span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                  <span className="section-label" style={{ color: '#000' }}>Entrega</span>
-                  <span className="font-bold text-black font-mono">{order.due_date ? new Date(order.due_date).toLocaleDateString('pt-BR') : '—'}</span>
-                </div>
-              </div>
-            </div>
-          </>
+          <div className="keep-with-next">
+            <TallyBox count={boxes} pairsPerCard={12} totalUnits={totalPairs} title={`Caixas · ${boxes} × 12 pares`} />
+          </div>
         )}
         </div>
 
-      {/* ── Footer: obs + signatures — editorial close ──
-          Fix 20/05/2026: era `mt-auto` que combinado com `flex flex-col` do
-          container raiz gerava página em branco extra no print (flex sem
-          altura definida empurra footer pra espaço fantasma na próxima
-          página). Trocado por margin top fixa.
-          Fix 21/05/2026: keep-together + keep-with-previous garantem que
-          o footer (a) não quebre no meio e (b) se ancore à seção anterior —
-          evita footer órfão em fichas longas.
-          Fix 22/05/2026: footer movido pra DENTRO do flex-1 pra virar irmão
-          direto do grid de checklist+caixas. Combinado com .keep-with-next
-          nos col-span-2 do TallyBox, forma sandwich forte que mantém caixas
-          + footer na mesma página A4 (era órfão em Acabamento com 30+ caixas). */}
-      {/* Fix 2026-06-11: rodapé (Início/Fim/Data/Turno + assinaturas)
-          removido das fichas de operador (pedido do user). Só sobra a
-          observação do PV, quando houver. */}
+      {/* Observação do PV, quando houver. (Rodapé de assinaturas saiu em
+          2026-06-11; KPIs/checklists/materiais saíram em 2026-06-12.) */}
       {order.notes && (
         <div className="mt-4 pt-2 keep-together keep-with-previous">
           <div className="border-t border-black pt-1">
@@ -1185,6 +704,9 @@ const OperatorWorkSheet = ({
         </div>
       )}
       </div>
+
+      {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
+      <CompletionFooter />
     </div>
   );
 };

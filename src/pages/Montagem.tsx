@@ -4,7 +4,6 @@ import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
-import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -266,7 +265,6 @@ export default function Montagem() {
               <SelectItem value="all">Todas</SelectItem>
             </SelectContent>
           </Select>
-          <WorkSheetSettingsButton />
           <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
             const ordersToPrint = montagemOrders.filter(o => selectedOrders.has(o.id));
             printSectorWorkSheets({

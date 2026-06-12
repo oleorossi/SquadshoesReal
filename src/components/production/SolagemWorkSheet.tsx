@@ -1,16 +1,13 @@
 import React from 'react';
 import { Footprints } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
+import { gradeTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
+import { CompletionFooter } from './worksheet/CompletionFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
-import { formatUnitLabel } from '@/lib/unitLabels';
-import {
-  filterConsumptionForSector,
-  type ConsumptionRow,
-} from '@/hooks/useBulkOrderConsumption';
 
 export interface SoleColorBand {
   soleColor: string;
@@ -31,8 +28,6 @@ export interface SoleColorBand {
   /** Números de OP / PV pra rastreabilidade. */
   opNumbers?: string[];
   pvNumbers?: string[];
-  /** Consumo previsto (manufacturing traveler) — enriquecido no PrintWorkSheetsPage. */
-  consumption?: ConsumptionRow[];
   /** Lot sizing (PR 2026-05-23): badge "LOTE X/N" quando OPs splitadas. */
   lotInfo?: { number: number; total: number };
 }
@@ -98,6 +93,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
     const bandSizes = allSizes.filter(s =>
       (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0
     );
+    // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades densas
+    // e chaves conjugadas ("33/34") cortavam com fonte fixa.
+    const ft = gradeTableFont(bandSizes);
     return (
       // flow-card (v6): banda pode fragmentar ENTRE seções (header/strip/
       // grade/consumo/tally — atômicas individualmente); borda fecha em
@@ -202,11 +200,13 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               {bandSizes.map((s) => (
                 <th
                   key={s}
-                  className="py-1 text-black font-bold"
+                  className="text-black font-bold"
                   style={{
-                    fontSize: '11px',
+                    fontSize: `${ft.headerPx}px`,
                     fontFamily: "'Fira Code', monospace",
                     borderRight: '1px solid #000',
+                    padding: `${ft.padY}px 1px`,
+                    lineHeight: 1.2,
                   }}
                 >
                   {s}
@@ -225,11 +225,11 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
                   Por Ficha<br />({band.baseGradeSum}p)
                 </td>
                 {bandSizes.map(s => (
-                  <td key={s} className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px', borderRight: '1px solid #000' }}>
+                  <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
                     {band.baseGrade?.[s] || '—'}
                   </td>
                 ))}
-                <td className="py-1 font-mono font-bold text-black" style={{ fontSize: '12px' }}>
+                <td className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
                   {band.baseGradeSum}
                 </td>
               </tr>
@@ -245,25 +245,27 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
               {bandSizes.map(s => (
                 <td
                   key={s}
-                  className="py-1.5 text-black"
+                  className="text-black"
                   style={{
                     fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '19px',
+                    fontSize: `${ft.displayPx}px`,
                     letterSpacing: '-0.02em',
-                    lineHeight: '1',
+                    lineHeight: '1.1',
                     borderRight: '1px solid #000',
+                    padding: `${ft.padY + 2}px 1px`,
                   }}
                 >
                   {band.grade[s] || 0}
                 </td>
               ))}
               <td
-                className="py-1.5 text-black"
+                className="text-black"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: '19px',
+                  fontSize: `${ft.displayPx}px`,
                   letterSpacing: '-0.02em',
-                  lineHeight: '1',
+                  lineHeight: '1.1',
+                  padding: `${ft.padY + 2}px 1px`,
                 }}
               >
                 {band.totalPairs}
@@ -272,37 +274,8 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           </tbody>
         </table>
 
-        {/* Consumo Previsto — solado + cola/adesivos pra essa banda de cor */}
-        {band.consumption && band.consumption.length > 0 && (() => {
-          const filtered = filterConsumptionForSector(band.consumption, sector);
-          if (filtered.length === 0) return null;
-          return (
-            <div className="mx-2 mt-2 px-2 py-1 keep-together" style={{ border: '1px solid #000' }}>
-              <div className="flex items-baseline justify-between mb-1">
-                <span className="section-label" style={{ color: '#000' }}>
-                  Consumo Previsto
-                </span>
-                <span className="font-mono text-[9px] text-black/60 tracking-widest uppercase">
-                  {filtered.length} item{filtered.length > 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="border-t border-black pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
-                {filtered.map(row => (
-                  <div key={row.product_id} className="text-[10px] text-black leading-tight flex items-baseline justify-between gap-2">
-                    <span className="truncate font-medium">{row.product_name}</span>
-                    <span className="font-mono shrink-0 text-black/80">
-                      {row.required >= 10 ? row.required.toFixed(1) : row.required.toFixed(2)}
-                      {' '}
-                      <span className="text-[8px] text-black/60 uppercase tracking-widest">
-                        {formatUnitLabel(row.unit, row.component === 'Solado' ? 'par' : 'un')}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+        {/* "Consumo Previsto" removido em 2026-06-12 — métrica de
+            planejamento, não pertence à ficha de operador. */}
 
         <div className="px-2 py-1.5 border-t border-black">
           <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} />
@@ -449,6 +422,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, date, grandTotal, pairsPerCa
           });
         })()}
       </div>
+
+      {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
+      <CompletionFooter />
     </div>
   );
 };

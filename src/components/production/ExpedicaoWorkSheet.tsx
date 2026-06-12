@@ -1,9 +1,11 @@
 import React from 'react';
 import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
+import { adaptiveTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
+import { CompletionFooter } from './worksheet/CompletionFooter';
 import { generateBatchId } from './worksheet/batchId';
 import { formatOpNumber } from './worksheet/stageOrder';
 
@@ -97,6 +99,23 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
     const na = parseFloat(a), nb = parseFloat(b);
     return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
   });
+
+  // Fontes/larguras adaptativas (2026-06-12): a tabela de itens tem 7 colunas
+  // fixas + 1 por numeração — com grade mista infantil+adulto passa de 20
+  // colunas e o CSS de print (table-layout: fixed + overflow: hidden) CORTAVA
+  // o conteúdo com fonte fixa. Fonte, padding e larguras encolhem juntos.
+  const longestSizeKey = allSizes.reduce((m, s) => Math.max(m, s.length), 0);
+  const ft = adaptiveTableFont(7 + allSizes.length, longestSizeKey);
+  const dense = allSizes.length > 12;
+  // Coluna de numeração precisa caber a CHAVE do header (conjugada "33/34"
+  // tem 5 chars) — antes era 22px fixo e clipava.
+  const sizeColWidth = Math.max(18, Math.ceil(longestSizeKey * ft.headerPx * 0.65) + 4);
+  const colW = {
+    op: dense ? 42 : 48,
+    cor: dense ? 48 : 56,
+    solado: dense ? 56 : 70,
+    total: dense ? 36 : 40,
+  };
 
   // Endereço completo formatado
   const enderecoLinha1 = [group.client_endereco, group.client_numero].filter(Boolean).join(', ');
@@ -258,20 +277,20 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                   (14+ numerações) as larguras antigas (40/60/70/90/26/50) deixavam
                   ~35px pra Referência e o nome quebrava letra a letra no papel. */}
               <th className="section-label py-1 px-1 text-center" style={{ color: '#000', width: 44, borderRight: '1px solid #000' }}>Foto</th>
-              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: 48, borderRight: '1px solid #000' }}>OP</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: colW.op, borderRight: '1px solid #000' }}>OP</th>
               <th className="section-label py-1 px-1 text-left" style={{ color: '#000', borderRight: '1px solid #000' }}>Referência</th>
-              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: 56, borderRight: '1px solid #000' }}>Cor</th>
-              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: 70, borderRight: '1px solid #000' }}>Solado</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: colW.cor, borderRight: '1px solid #000' }}>Cor</th>
+              <th className="section-label py-1 px-1 text-left" style={{ color: '#000', width: colW.solado, borderRight: '1px solid #000' }}>Solado</th>
               {allSizes.map(s => (
                 <th
                   key={s}
-                  className="py-1 text-black font-bold"
-                  style={{ width: 22, fontSize: '11px', fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000' }}
+                  className="text-black font-bold"
+                  style={{ width: sizeColWidth, fontSize: `${ft.headerPx}px`, fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}
                 >
                   {s}
                 </th>
               ))}
-              <th className="section-label py-1 px-1 text-right" style={{ color: '#000', width: 40, borderRight: '1px solid #000' }}>Total</th>
+              <th className="section-label py-1 px-1 text-right" style={{ color: '#000', width: colW.total, borderRight: '1px solid #000' }}>Total</th>
               <th className="section-label py-1 text-center" style={{ color: '#000', width: 24 }}>OK</th>
             </tr>
           </thead>
@@ -285,24 +304,26 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
                     <div className="w-9 h-9 bg-white inline-block" style={{ border: '1px solid #000' }} />
                   )}
                 </td>
-                <td className="py-1 px-1 font-mono text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.op_number || '—'}</td>
-                <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>
+                {/* Texto pode quebrar em 2 linhas (lineHeight 1.2, sem nowrap) —
+                    nunca cortar. Fonte adaptativa pela qtd de colunas. */}
+                <td className="px-1 font-mono text-black" style={{ borderRight: '1px solid #000', fontSize: `${ft.textPx}px`, padding: `${ft.padY}px 2px`, lineHeight: 1.2 }}>{o.op_number || '—'}</td>
+                <td className="px-1 text-black" style={{ borderRight: '1px solid #000', fontSize: `${ft.textPx}px`, padding: `${ft.padY}px 2px`, lineHeight: 1.2 }}>
                   <span className="font-bold uppercase">{o.reference_name || o.reference_code || '—'}</span>
                 </td>
-                <td className="py-1 px-1 text-[10px] uppercase" style={{ borderRight: '1px solid #000', color: '#C00000', fontWeight: 800 }}>{o.color || '—'}</td>
-                <td className="py-1 px-1 text-[10px] text-black" style={{ borderRight: '1px solid #000' }}>{o.sole_name || '—'}</td>
+                <td className="px-1 uppercase" style={{ borderRight: '1px solid #000', color: '#C00000', fontWeight: 800, fontSize: `${ft.textPx}px`, padding: `${ft.padY}px 2px`, lineHeight: 1.2 }}>{o.color || '—'}</td>
+                <td className="px-1 text-black" style={{ borderRight: '1px solid #000', fontSize: `${ft.textPx}px`, padding: `${ft.padY}px 2px`, lineHeight: 1.2 }}>{o.sole_name || '—'}</td>
                 {allSizes.map(s => (
                   <td
                     key={s}
-                    className="py-1 text-center font-mono text-[10px] font-bold text-black"
-                    style={{ borderRight: '1px solid #000' }}
+                    className="text-center font-mono font-bold text-black"
+                    style={{ borderRight: '1px solid #000', fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}
                   >
                     {o.grid?.[s] || ''}
                   </td>
                 ))}
                 <td
-                  className="py-1 px-1 text-right font-mono font-bold text-black"
-                  style={{ fontSize: '11px', borderRight: '1px solid #000' }}
+                  className="px-1 text-right font-mono font-bold text-black"
+                  style={{ fontSize: `${ft.cellPx + 1}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 2px`, lineHeight: 1.2 }}
                 >
                   {o.total_pairs || 0}
                 </td>
@@ -353,6 +374,9 @@ export const ExpedicaoWorkSheet = ({ group, date, sizeBand }: Props) => {
             ))}
           </div>
         </div>
+
+        {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
+        <CompletionFooter />
       </div>
     </div>
   );
