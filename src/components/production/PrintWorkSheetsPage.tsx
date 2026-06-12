@@ -423,7 +423,12 @@ interface PrintWorkSheetsPageProps {
 // (ao lado de Corte Palmilha + Corte Forração). Ficha de operador específica
 // vem em Phase 2 — por ora aceita seleção mas reusa o template do SilkMontage
 // para sole+color sectors (vide SOLE_COLOR_GROUPED_SECTORS abaixo).
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
+// 2026-06-12: o setor de FICHA 'Costura' virou DOIS — 'Costura Palmilha'
+// (roteiro 'Costura', layout compacto igual Corte Forração) e 'Costura
+// Cabedal' (roteiro 'Corte Cabedal' + upper_corte_a_fio=false). Camada SÓ de
+// impressão: o setor 'Costura' único continua intacto no fluxo de produção
+// (enum do banco, compute_wave_timeline, capacidades).
+const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // Rótulos de exibição (chip do seletor + título da região na tela). A CHAVE
 // interna 'Corte Palmilha' é mantida (capacidade/roteamento/batch dependem
@@ -581,20 +586,6 @@ function groupOrdersByRefColor(orders: any[]): Array<{
 }
 
 // ── Helpers de ficha técnica / conjugação ───────────────────────────────────
-
-/** Consumo médio por par (dm²): usa o escalar da ficha quando > 0; senão a
- *  média dos valores > 0 do JSONB `*_consumption_per_size`. (E1) */
-function avgConsumptionPerPair(scalar: unknown, perSize: unknown): number | undefined {
-  const s = Number(scalar);
-  if (Number.isFinite(s) && s > 0) return s;
-  if (perSize && typeof perSize === 'object' && !Array.isArray(perSize)) {
-    const vals = Object.values(perSize as Record<string, unknown>)
-      .map(Number)
-      .filter(v => Number.isFinite(v) && v > 0);
-    if (vals.length > 0) return vals.reduce((a, b) => a + b, 0) / vals.length;
-  }
-  return undefined;
-}
 
 /** Re-bucketiza uma chave de numeração pelo balde conjugado do solado
  *  (sole_size_conjugations). "34" cai em "33/34" quando o grupo do solado
@@ -969,43 +960,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     },
   });
 
-  // Cor da FORRAÇÃO por cabedal (mapping de cor). Usado na ficha de Corte
-  // Forração pra exibir qual cor de napa cortar — antes mostrava a cor do
-  // CABEDAL (ex: "OURO LIGHT") como proxy, mas o operador da forração não
-  // corta na cor do cabedal, corta na cor da FORRAÇÃO específica do modelo.
-  const { data: liningColorMappings = [] } = useQuery({
-    queryKey: ['ref_lining_colors', referenceIds],
-    enabled: referenceIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('technical_sheet_lining_colors')
-        .select('sheet_id, cabedal_color, lining_color')
-        .in('sheet_id', referenceIds);
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const liningColorLookup = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const x of liningColorMappings as any[]) {
-      const key = `${x.sheet_id}::${(x.cabedal_color || '').toLowerCase().trim()}`;
-      if (x.lining_color) m.set(key, x.lining_color);
-    }
-    return m;
-  }, [liningColorMappings]);
-
   const { data: sheetLiningFlags = [] } = useQuery({
-    queryKey: ['sheet_insole_lining_v2', referenceIds],
+    queryKey: ['sheet_insole_lining_v3', referenceIds],
     enabled: referenceIds.length > 0,
     queryFn: async () => {
       // sole_group_id + primary_sole_id: prioridades P0/P3 do resolveSoleForOrder
       // (A1). production_sectors: roteiro da ficha pro filtro por setor (B1).
-      // upper/lining_consumption(_per_size): consumo médio por par nas fichas
-      // de operador (E1).
+      // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, mesa_daily_capacity, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, aviamento_steps, upper_material, lining_material, insole_material, upper_consumption, upper_consumption_per_size, lining_consumption, lining_consumption_per_size, knife_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, shoe_category')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -1254,13 +1218,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [sheetLiningFlags]);
 
-  const mesaCapacityLookup = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const s of sheetLiningFlags) {
-      m.set((s as any).id, Number((s as any).mesa_daily_capacity) || 0);
-    }
-    return m;
-  }, [sheetLiningFlags]);
+  // (mesaCapacityLookup removido em 2026-06-12 junto com a faixa de KPIs da
+  //  ficha de operador — capacidade/dia é métrica gerencial.)
 
   // ATENÇÃO: variantsByRef e tsImageByRef ficam ANTES de palmilhaGroups e
   // silkMontageGroups porque ambos memos os referenciam dentro do callback.
@@ -1291,25 +1250,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [refTechnicalSheets]);
 
-  // Returns the capacity (pares/dia) for the given sector and sheet
-  const getSheetSectorCapacity = (sheetId: string, sector: string): number => {
-    const s = sheetLiningFlags.find((x: any) => x.id === sheetId) as any;
-    if (!s) return 0;
-    const map: Record<string, string> = {
-      'Corte Forração': 'cutting_capacity_per_day',
-      'Corte Palmilha': 'sewing_capacity_per_day',
-      'Costura':        'costura_capacity_per_day',
-      'Montagem':       'assembly_capacity_per_day',
-      'Acabamento':     'finishing_capacity_per_day',
-      'Aviamento':      'mesa_daily_capacity',  // DB column ainda chama mesa_daily_capacity
-      'Mesa':           'mesa_daily_capacity',  // alias legacy
-      'Silk':           'silk_capacity_per_day',
-      'Colagem':        'gluing_capacity_per_day',
-      'Solagem':        'soling_capacity_per_day',
-    };
-    const col = map[sector];
-    return col ? (Number(s[col]) || 0) : 0;
-  };
+  // (getSheetSectorCapacity removido em 2026-06-12 — alimentava só a faixa de
+  //  KPIs "Produção/Dia · Tempo Estimado" da ficha de operador, que saiu.)
 
   const getBaseName = (name: string) =>
     name.replace(/\s*-\s*(Preto|Caramelo|Branco|Nude|Vermelho|Azul|Rosa|Verde|Cinza|Ouro|Prata)$/i, '').trim();
@@ -1641,13 +1583,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // B2: pronta na cor EFETIVA (flag da ficha OR solado palmilha_pronta).
     const insoleReadyMade = isEffectiveReadyMade(sheetId, order.color);
     const hasStraps = hasStrapsLookup.get(sheetId) === true;
-    const mesaCapacity = mesaCapacityLookup.get(sheetId) ?? 0;
     let insoleColor: string | null = null;
     if (!insoleHasLining) {
       const palmilhaKey = `${sheetId}::${cabedelColor}`;
       insoleColor = palmilhaLookup.get(palmilhaKey) || palmilhaLookup.get(`${sheetId}::__default__`) || null;
     }
-    return { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity };
+    return { soleColor, insoleColor, insoleReadyMade, hasStraps };
   };
 
   // ── Palmilha groups (Corte Palmilha — consolidated by sole+insole) ───────────
@@ -1771,33 +1712,47 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // Antes era hardcoded — agora admin altera via SQL sem redeploy.
   //
   // 'sole_color': refs distintas com mesmo solado+cor compartilham 1 ficha
-  //               (operador foca no material — cortador, costureira, aviamento).
+  //               (operador foca no material — cortador, costureira).
   //               Renderizado via SilkMontageWorkSheet path (silkMontageGroups).
-  // 'ref_color':  refs distintas NUNCA se fundem. Silk/Montagem vão pelo
-  //               SilkMontageWorkSheet com chave ref+cor; Colagem/Acabamento
-  //               vão pelo OperatorWorkSheet legacy via groupedWorksheets
+  // 'ref_color':  refs distintas NUNCA se fundem. Montagem vai pelo
+  //               OperatorWorkSheet via groupedWorksheets
   //               (= groupOrdersByRefColor).
   //
-  // REF_COLOR_GROUPED_SECTORS foi removido (dead code) — o fluxo Ref+Cor é
-  // dirigido pelo memo `groupedWorksheets` que verifica `Colagem/Silk/Montagem`
-  // direto via includesSector.
+  // Overrides da CAMADA DE IMPRESSÃO (2026-06-12, pedidos do dono — a config
+  // do fluxo de produção não muda):
+  //  - Aviamento: por REFERÊNCIA (aviamentoGroups) — solado é irrelevante.
+  //  - Silk: por SOLADO+COR compacto com logomarca (entra no
+  //    silkMontageGroups mesmo com strategy 'ref_color' na config).
   const SOLE_COLOR_GROUPED_SECTORS = useMemo(
-    () => groupingConfig.getSectorsByStrategy('sole_color') as GroupedSector[],
+    () => {
+      // 2026-06-12: o setor de FICHA 'Costura' (config/DB) virou dois setores
+      // de impressão — 'Costura Palmilha' + 'Costura Cabedal'. A config
+      // (sector_grouping_config) continua com a linha única 'Costura' (é o
+      // setor do FLUXO de produção); expande aqui só pra camada de fichas.
+      const fromConfig = groupingConfig.getSectorsByStrategy('sole_color');
+      return fromConfig.flatMap(s =>
+        s === 'Costura' ? (['Costura Palmilha', 'Costura Cabedal'] as const) : [s],
+      ) as GroupedSector[];
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [groupingConfig.data],
   );
 
-  // ── Silk / Montagem / Corte Forração / Costura / Aviamento / Acabamento ────
+  // ── Silk / Corte Forração / Costura / Aviamento — builder compartilhado ───
   // (variantsByRef + tsImageByRef movidos pra antes de palmilhaGroups —
   //  ver comentário lá em cima sobre TDZ)
-  const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
-    // Renderiza se qualquer setor sole+cor estiver marcado.
-    const wantsAnySoleColorSector = SOLE_COLOR_GROUPED_SECTORS.some(s => activeSectors.has(s));
-    if (!wantsAnySoleColorSector) return null;
-    // Map: soleKey → { displayName, colorMap }. soleKey é a IDENTIDADE do
-    // solado (sole_product_id quando há mapping real; sheetId quando cai no
-    // fallback de sole_material textual). displayName é o NOME a exibir no
-    // header da ficha (getBaseName do produto ou do textual).
+  // 2026-06-12: extraído do antigo memo silkMontageGroups pra servir DOIS
+  // agrupamentos: por SOLADO (Corte Forração / Corte Cabedal / Costura* /
+  // Silk) e por REFERÊNCIA (Aviamento — o setor monta o cabedal; o solado é
+  // irrelevante pra eles, então 1 ficha por modelo com seções por cor).
+  const buildColorGroupedSheets = (groupBy: 'sole' | 'reference'): SoleSilkGroup[] => {
+    // Map: groupKey → { displayName, colorMap }.
+    //  - groupBy='sole': groupKey é a IDENTIDADE do solado (sole_product_id
+    //    quando há mapping real; sheetId quando cai no fallback de
+    //    sole_material textual). displayName = getBaseName do produto/textual.
+    //  - groupBy='reference': groupKey é a IDENTIDADE da referência (mesma
+    //    regra de fallback do groupOrdersByRefColor — refs distintas NUNCA
+    //    se fundem). displayName = nome do modelo.
     const soleMap = new Map<string, { displayName: string; colorMap: Map<string, SilkColorGroup> }>();
 
     // Assinatura ordenada das tiras de uma OP. Usada como sufixo na chave de
@@ -1859,8 +1814,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         ? `pid::${soleProductId}`
         : (fallbackSole ? `txt::${sheetId}` : 'none');
 
-      if (!soleMap.has(soleKey)) soleMap.set(soleKey, { displayName: soleName, colorMap: new Map() });
-      const soleEntry = soleMap.get(soleKey)!;
+      // Agrupamento por REFERÊNCIA (Aviamento, 2026-06-12): chave = identidade
+      // da ref com o MESMO fallback do groupOrdersByRefColor (reference_id →
+      // reference_name → id da própria OP), garantindo que refs distintas
+      // nunca se fundam mesmo com reference_id vazio.
+      const groupKey = groupBy === 'reference'
+        ? `ref::${String(
+            sheetId ?? (order as any).reference_name ?? `op-${(order as any).id ?? order.op_number ?? Math.random()}`,
+          ).trim()}`
+        : soleKey;
+      const groupTitle = groupBy === 'reference'
+        ? (order.reference_name || order.reference_code || 'Sem Referência')
+        : soleName;
+
+      if (!soleMap.has(groupKey)) soleMap.set(groupKey, { displayName: groupTitle, colorMap: new Map() });
+      const soleEntry = soleMap.get(groupKey)!;
       const colorMap = soleEntry.colorMap;
 
       // Flags pra filtrar setores de Corte — calculadas POR OP (a chave do
@@ -1872,9 +1840,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       //  - Corte Forração: cores cuja palmilha PRECISA ser forrada
       //    (insole_has_lining=true E não pronta na cor efetiva — B2)
       //  - Corte Cabedal: modelos SEM tiras (que têm cabedal a cortar)
+      //  - Costura Cabedal (2026-06-12): cabedal a cortar E ficha NÃO é
+      //    corte a fio (upper_corte_a_fio=false → cabedal passa por costura)
       const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
         && !isEffectiveReadyMade(sheetId, order.color);
       const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
+      const requiresUpperSewing = requiresUpperCut
+        && sheetById.get(sheetId)?.upper_corte_a_fio !== true;
 
       if (!colorMap.has(colorKey)) {
         // Sempre calcula silk + alerts (independente do sector). O componente
@@ -1910,18 +1882,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           color: s?.color || '—',
         }));
 
-        // E1: materiais + consumo médio por par da ficha técnica — a
-        // SilkMontageWorkSheet já renderiza esses campos (ficavam vazios).
-        const sheetRow = sheetById.get(sheetId);
-
         colorMap.set(colorKey, {
           color: colorName,
-          upperMaterial: sheetRow?.upper_material || undefined,
-          liningMaterial: sheetRow?.lining_material || undefined,
-          upperConsumptionPerPair: avgConsumptionPerPair(sheetRow?.upper_consumption, sheetRow?.upper_consumption_per_size),
-          liningConsumptionPerPair: avgConsumptionPerPair(sheetRow?.lining_consumption, sheetRow?.lining_consumption_per_size),
-          // Cor da forração pra essa cor de cabedal (usado em Corte Forração).
-          liningColor: liningColorLookup.get(`${sheetId}::${cabedelColorLower}`) || null,
           // Modelo com tiras não tem cabedal — no Corte Forração esconde a
           // referência ao cabedal (pedido user 09/06/2026).
           hasStraps: hasStrapsLookup.get(sheetId) === true,
@@ -1943,6 +1905,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           refs: [],
           requiresLiningCut,
           requiresUpperCut,
+          requiresUpperSewing,
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
@@ -1954,6 +1917,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // de grupos mistos — não some com quantidades).
       cg.requiresLiningCut = cg.requiresLiningCut === true || requiresLiningCut;
       cg.requiresUpperCut = cg.requiresUpperCut === true || requiresUpperCut;
+      cg.requiresUpperSewing = cg.requiresUpperSewing === true || requiresUpperSewing;
+      // OR do alerta de fachetado entre as OPs (2026-06-12): no agrupamento
+      // por REFERÊNCIA (Aviamento), solados DISTINTOS caem na mesma cor — se
+      // qualquer OP resolve solado fachetado, o alerta tem que aparecer
+      // (antes só a 1ª OP do colorKey definia os alerts).
+      if (resolvedSole?.isFachetado === true) {
+        const fachetadoText = 'Solado fachetado — duplicar corte de forração do salto';
+        if (!cg.alerts?.some(a => a.text === fachetadoText)) {
+          cg.alerts = [...(cg.alerts || []), { text: fachetadoText, variant: 'warning' }];
+        }
+      }
       cg.opNumbers.push(order.op_number);
       if (order.sale_order_number && !cg.pvNumbers.includes(order.sale_order_number)) {
         cg.pvNumbers.push(order.sale_order_number);
@@ -2027,11 +2001,35 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         // mixed-model sequencing (Lectra + literatura de footwear lean).
         const colorGroups = Array.from(colorMap.values()).sort((a, b) => compareColors(a.color, b.color));
         const totalPairs = colorGroups.reduce((s, g) => s + g.totalPairs, 0);
-        return { soleName: displayName, colorGroups, totalPairs };
+        return { soleName: displayName, colorGroups, totalPairs, groupKind: groupBy };
       })
       .sort((a, b) => a.soleName.localeCompare(b.soleName, 'pt-BR'));
+  };
+
+  // Setores que usam o agrupamento por SOLADO+COR. 'Aviamento' SAI (agora
+  // agrupa por referência — aviamentoGroups abaixo); 'Silk' ENTRA na camada
+  // de impressão (pedido do dono 2026-06-12: mesmo agrupamento do Corte
+  // Forração), independente da estratégia 'ref_color' em
+  // sector_grouping_config (que continua valendo pro fluxo de produção).
+  const silkMontageGroups = useMemo<SoleSilkGroup[] | null>(() => {
+    const soleSheetSectors: GroupedSector[] = [
+      ...SOLE_COLOR_GROUPED_SECTORS.filter(s => s !== 'Aviamento'),
+      ...(SOLE_COLOR_GROUPED_SECTORS.includes('Silk') ? [] : ['Silk' as GroupedSector]),
+    ];
+    if (!soleSheetSectors.some(s => activeSectors.has(s))) return null;
+    return buildColorGroupedSheets('sole');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, liningColorLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS]);
+
+  // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
+  // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
+  // irrelevante. 1 ficha por referência, com as cores (e assinatura de tiras
+  // + lote, herdadas do builder) como seções internas.
+  const aviamentoGroups = useMemo<SoleSilkGroup[] | null>(() => {
+    if (!activeSectors.has('Aviamento')) return null;
+    return buildColorGroupedSheets('reference');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
 
   // ── Solagem / Colagem: consolidated by sole color ────────────────────────────
   // B1 (2026-06-10): as bandas passam a ser calculadas POR SETOR — uma OP só
@@ -2348,10 +2346,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, nfeForExpedicao, saleOrdersTransport, activeSectors, variantsByRef, tsImageByRef, sheetById]);
 
-  // ── Ref+Cor groups: Colagem, Silk, Montagem (todos por Ref+Cor) ────────────
-  // Silk e Montagem mudaram de solado+cor pra ref+cor em 20/05/2026 (pedido user).
+  // ── Ref+Cor groups: Montagem ───────────────────────────────────────────────
+  // Histórico: Silk e Montagem mudaram pra ref+cor em 20/05/2026; em
+  // 2026-06-12 o Silk VOLTOU pro agrupamento solado+cor (silkMontageGroups,
+  // layout compacto com logomarca) — só Montagem permanece aqui. Colagem
+  // consolida por solado via solagemData.
   const groupedWorksheets = useMemo(() => {
-    if (!includesSector('Colagem') && !includesSector('Silk') && !includesSector('Montagem')) return null;
+    if (!includesSector('Montagem')) return null;
     return groupOrdersByRefColor(printOrders);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printOrders, activeSectors]);
@@ -2560,21 +2561,35 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       total += smGroups.filter(g =>
         g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração'))).length;
     }
-    // Costura/Aviamento: 1 ficha por solado COM o setor no roteiro
-    // (espelha filterGroupForSector — grupos 100% fora não imprimem).
-    for (const sec of ['Costura', 'Aviamento'] as const) {
-      if (activeSectors.has(sec)) {
-        total += smGroups.filter(g =>
-          g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, sec))).length;
-      }
+    // Costura Palmilha / Costura Cabedal: 1 ficha por solado COM o setor no
+    // roteiro (espelha filterGroupForSector — grupos 100% fora não imprimem).
+    // Mapeamento de roteiro: Costura Palmilha testa 'Costura'; Costura
+    // Cabedal testa 'Corte Cabedal' + requiresUpperSewing.
+    if (activeSectors.has('Costura Palmilha')) {
+      total += smGroups.filter(g =>
+        g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura'))).length;
     }
-    // Silk/Montagem: 1 ficha por grupo ref+cor no roteiro (groupedWorksheets).
-    // FALTAVAM na contagem — com só Silk/Montagem marcados o sheetCount ficava
-    // 0 e o botão Imprimir era desabilitado com fichas visíveis na tela.
-    for (const sec of ['Silk', 'Montagem'] as const) {
-      if (activeSectors.has(sec) && groupedWorksheets) {
-        total += groupedWorksheets.filter(g => orderInRoteiro(g.representative?.reference_id, sec)).length;
-      }
+    if (activeSectors.has('Costura Cabedal')) {
+      total += smGroups.filter(g =>
+        g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Corte Cabedal'))).length;
+    }
+    // Aviamento (2026-06-12): 1 ficha por REFERÊNCIA (aviamentoGroups) com
+    // pelo menos uma cor no roteiro do setor.
+    if (activeSectors.has('Aviamento')) {
+      total += (aviamentoGroups || []).filter(g =>
+        g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento'))).length;
+    }
+    // Silk (2026-06-12): 1 ficha por solado com pelo menos uma cor no roteiro
+    // (espelha o render via smGroups + filterGroupForSector).
+    if (activeSectors.has('Silk')) {
+      total += smGroups.filter(g =>
+        g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Silk'))).length;
+    }
+    // Montagem: 1 ficha por grupo ref+cor no roteiro (groupedWorksheets).
+    // FALTAVA na contagem — com só Montagem marcado o sheetCount ficava 0 e
+    // o botão Imprimir era desabilitado com fichas visíveis na tela.
+    if (activeSectors.has('Montagem') && groupedWorksheets) {
+      total += groupedWorksheets.filter(g => orderInRoteiro(g.representative?.reference_id, 'Montagem')).length;
     }
     // Colagem agora consolida por solado (1 ficha, igual à Solagem), não mais
     // 1 por ref+cor do cabedal.
@@ -2588,7 +2603,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
     // elas leem chegam via silkMontageGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
 
@@ -2766,7 +2781,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 <PalmilhaWorkSheet
                   groups={palmilhaGroups.map(g => ({
                     ...g,
-                    consumption: consumptionForOpNumbers(g.opNumbers, g.totalPairs),
                     clientNames: clientNamesForPvs(g.pvNumbers),
                   }))}
                   allSizes={palmilhaAllSizes}
@@ -2778,9 +2792,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           )
         )}
 
-        {/* ── Sole+Color sectors (Silk, Corte Forração, Corte Cabedal, Costura, Aviamento, Montagem) ── */}
+        {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Costura Palmilha,
+            Costura Cabedal, Aviamento por referência, Silk por solado) ── */}
         {(() => {
-          if (!silkMontageGroups || silkMontageGroups.length === 0) return null;
+          const smGroups = silkMontageGroups || [];
+          const aviGroups = aviamentoGroups || [];
+          if (smGroups.length === 0 && aviGroups.length === 0) return null;
 
           // Filtro por setor: cada setor precisa de critérios específicos.
           // Corte Forração: só cores cuja palmilha precisa de forração.
@@ -2789,6 +2806,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // Pedido em 15/05/2026: cada setor mostrar SÓ as quantidades que
           // se aplicam a ele — antes ambos exibiam todas as cores, inflando
           // os números pra cortador.
+          // Setor de FICHA → setor testado no roteiro (production_sectors).
+          // Os dois setores de Costura (2026-06-12) são camada de impressão:
+          // 'Costura Palmilha' testa o setor 'Costura' do fluxo; 'Costura
+          // Cabedal' testa 'Corte Cabedal' (+ upper_corte_a_fio=false via
+          // requiresUpperSewing abaixo).
+          const roteiroSectorFor = (sector: GroupedSector): string =>
+            sector === 'Costura Palmilha' ? 'Costura'
+            : sector === 'Costura Cabedal' ? 'Corte Cabedal'
+            : sector;
+
           const filterGroupForSector = (group: SoleSilkGroup, sector: GroupedSector): SoleSilkGroup | null => {
             // B1: exclui colorGroups cujas OPs NÃO têm o setor no roteiro
             // (production_sectors da ficha técnica). Vale pra TODOS os setores
@@ -2797,15 +2824,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             // critério requiresUpperCut abaixo.
             let filtered = sector === 'Corte Cabedal'
               ? group.colorGroups
-              : group.colorGroups.filter(cg => opsInRoteiro(cg.opNumbers, sector));
+              : group.colorGroups.filter(cg => opsInRoteiro(cg.opNumbers, roteiroSectorFor(sector)));
             if (sector === 'Corte Forração') {
               filtered = filtered.filter(cg => cg.requiresLiningCut === true);
             } else if (sector === 'Corte Cabedal') {
               filtered = filtered.filter(cg => cg.requiresUpperCut === true);
+            } else if (sector === 'Costura Cabedal') {
+              // Só modelos cujo cabedal passa por costura (corte a fio = não).
+              filtered = filtered.filter(cg => cg.requiresUpperSewing === true);
             }
             if (filtered.length === 0) return null;
             const totalPairs = filtered.reduce((s, g) => s + g.totalPairs, 0);
-            return { soleName: group.soleName, colorGroups: filtered, totalPairs };
+            // Spread preserva groupKind ('reference' do Aviamento) e clientNames.
+            return { ...group, colorGroups: filtered, totalPairs };
           };
 
           // Renderiza os setores sole+cor MARCADOS, em ordem de fluxo de fábrica.
@@ -2813,10 +2844,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // viram um relatório só na sequência — sub-etapas de Corte que rodam em
           // paralelo (regra confirmada pelo user em 15/05/2026: 'Corte Cabedal
           // deve estar no mesmo relatório que Corte Forração').
-          // Silk e Montagem REMOVIDOS desse fluxo em 20/05/2026 — agora agrupam
-          // por REF+COR (igual Colagem/Acabamento), renderizados abaixo via
-          // groupedWorksheets em vez de silkMontageGroups.
-          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura', 'Aviamento'];
+          // Silk VOLTOU pra esse fluxo em 2026-06-12 (pedido do dono): mesmo
+          // agrupamento solado+cor do Corte Forração, layout compacto com a
+          // logomarca resolvida (cliente → grupo econômico → solado → Squad).
+          // Montagem continua por REF+COR via groupedWorksheets abaixo.
+          // Aviamento (2026-06-12) renderiza de aviamentoGroups (1 ficha por
+          // REFERÊNCIA, seções por cor) — mantém a posição no fluxo.
+          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
 
           // 22/05/2026: pra Corte Cabedal, o cortador foca SÓ na cor que
@@ -2830,7 +2864,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal'];
           const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
             const colorMap = new Map<string, SilkColorGroup>();
-            for (const soleGroup of silkMontageGroups) {
+            for (const soleGroup of smGroups) {
               const filtered = filterGroupForSector(soleGroup, sector);
               if (!filtered) continue;
               for (const cg of filtered.colorGroups) {
@@ -2930,22 +2964,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const colorGroups = Array.from(byColor.values())
               .sort((a, b) => compareColors(a.color, b.color));
             return {
-              soleName: group.soleName,
+              ...group,
               colorGroups,
               totalPairs: colorGroups.reduce((s, g) => s + g.totalPairs, 0),
             };
           };
 
-          // Enriquece um SoleSilkGroup adicionando `consumption` em cada
-          // colorGroup. Padrão de manufacturing traveler — operadora vê
-          // "vai consumir X dm² de couro / Y un de fivela" por cor.
-          const withConsumption = (group: SoleSilkGroup): SoleSilkGroup => ({
+          // Enriquece um SoleSilkGroup com a razão social dos clientes dos
+          // PVs. (O "Consumo Previsto" saiu das fichas de operador em
+          // 2026-06-12 — só a ficha REDUZIDA ainda mostra consumo.)
+          const withClientNames = (group: SoleSilkGroup): SoleSilkGroup => ({
             ...group,
             clientNames: clientNamesForPvs(group.colorGroups.flatMap(cg => cg.pvNumbers || [])),
-            colorGroups: group.colorGroups.map(cg => ({
-              ...cg,
-              consumption: consumptionForOpNumbers(cg.opNumbers, cg.totalPairs),
-            })),
           });
 
           // Ficha REDUZIDA do SoleSilk: 1 por solado, POR COR (cada cor = total +
@@ -2981,7 +3011,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             if (CUTTING_AGGREGATE_BY_COLOR.includes(sectorName)) {
               const merged = mergeColorsAcrossSoles(sectorName);
               if (!merged) return [];
-              const enriched = withConsumption(merged);
+              const enriched = withClientNames(merged);
               if (reduced) return [reducedSilkNode(enriched, sectorName, `${sectorName}-red-todos`)];
               return [
                 <div key={`${sectorName}-todos-solados`} className="page-break">
@@ -2991,26 +3021,50 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 </div>,
               ];
             }
-            // Corte Forração: 1 ficha por solado, cores agrupadas por COR DA
-            // PALMILHA (forração) — não pela cor do cabedal nem por ref.
-            if (sectorName === 'Corte Forração') {
-              return silkMontageGroups
-                .map(group => mergeForracaoWithinSole(group))
-                .filter((g): g is SoleSilkGroup => g !== null)
-                .map(merged => (
+            // Aviamento (2026-06-12): 1 ficha por REFERÊNCIA (aviamentoGroups),
+            // seções por cor. O solado não aparece no header nem nos cards —
+            // o setor só monta o cabedal.
+            if (sectorName === 'Aviamento') {
+              return aviGroups
+                .map((group, gi) => ({ gi, filtered: filterGroupForSector(group, 'Aviamento') }))
+                .filter((x): x is { gi: number; filtered: SoleSilkGroup } => x.filtered !== null)
+                .map(({ gi, filtered }) => (
                   reduced
-                    ? reducedSilkNode(withConsumption(merged), sectorName, `${sectorName}-red-${merged.soleName}`)
+                    ? reducedSilkNode(withClientNames(filtered), 'Aviamento', `Aviamento-red-${gi}-${filtered.soleName}`)
                     : (
-                      <div key={`${sectorName}-${merged.soleName}`} className="page-break">
-                        <SectorRegion sectorLabel={`${sectorName} · ${merged.soleName}`}>
-                          <SilkMontageWorkSheet group={withConsumption(merged)} sector={sectorName} date={today} sizeBand={bandForOps(merged.colorGroups.flatMap(cg => cg.opNumbers || []))} />
+                      <div key={`Aviamento-${gi}-${filtered.soleName}`} className="page-break">
+                        <SectorRegion sectorLabel={`Aviamento · ${filtered.soleName}`}>
+                          <SilkMontageWorkSheet
+                            group={withClientNames(filtered)}
+                            sector="Aviamento"
+                            date={today}
+                            sizeBand={bandForOps(filtered.colorGroups.flatMap(cg => cg.opNumbers || []))}
+                          />
                         </SectorRegion>
                       </div>
                     )
                 ));
             }
-            // Costura/Aviamento: 1 ficha por solado (comportamento atual).
-            return silkMontageGroups
+            // Corte Forração: 1 ficha por solado, cores agrupadas por COR DA
+            // PALMILHA (forração) — não pela cor do cabedal nem por ref.
+            if (sectorName === 'Corte Forração') {
+              return smGroups
+                .map(group => mergeForracaoWithinSole(group))
+                .filter((g): g is SoleSilkGroup => g !== null)
+                .map(merged => (
+                  reduced
+                    ? reducedSilkNode(withClientNames(merged), sectorName, `${sectorName}-red-${merged.soleName}`)
+                    : (
+                      <div key={`${sectorName}-${merged.soleName}`} className="page-break">
+                        <SectorRegion sectorLabel={`${sectorName} · ${merged.soleName}`}>
+                          <SilkMontageWorkSheet group={withClientNames(merged)} sector={sectorName} date={today} sizeBand={bandForOps(merged.colorGroups.flatMap(cg => cg.opNumbers || []))} />
+                        </SectorRegion>
+                      </div>
+                    )
+                ));
+            }
+            // Costura* / Silk: 1 ficha por solado (comportamento atual).
+            return smGroups
               .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
               .filter(x => x.filtered !== null)
               .map(({ filtered }) => (
@@ -3020,7 +3074,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                     <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
                       <SectorRegion sectorLabel={`${sectorName} · ${filtered!.soleName}`}>
                         <SilkMontageWorkSheet
-                          group={withConsumption(filtered!)}
+                          group={withClientNames(filtered!)}
                           sector={sectorName}
                           date={today}
                           sizeBand={bandForOps(filtered!.colorGroups.flatMap(cg => cg.opNumbers || []))}
@@ -3076,10 +3130,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             <div className="page-break">
               <SectorRegion sectorLabel="Solagem">
                 <SolagemWorkSheet
-                  bands={data.bands.map(b => ({
-                    ...b,
-                    consumption: consumptionForOpNumbers(b.opNumbers, b.totalPairs),
-                  }))}
+                  bands={data.bands}
                   allSizes={data.allSizes}
                   date={today}
                   grandTotal={data.grandTotal}
@@ -3120,10 +3171,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               <SectorRegion sectorLabel="Colagem">
                 <SolagemWorkSheet
                   sector="Colagem"
-                  bands={data.bands.map(b => ({
-                    ...b,
-                    consumption: consumptionForOpNumbers(b.opNumbers, b.totalPairs),
-                  }))}
+                  bands={data.bands}
                   allSizes={data.allSizes}
                   date={today}
                   grandTotal={data.grandTotal}
@@ -3135,11 +3183,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           );
         })()}
 
-        {/* ── Setores agrupados por Ref + Cor: Silk, Montagem ──
+        {/* ── Setores agrupados por Ref + Cor: Montagem ──
             20/05/2026: Silk e Montagem por ref+cor (refs distintas nunca fundem).
             Colagem SAIU daqui em 2026-06-08 → consolida por solado (bloco acima).
-            Ordem de fluxo: Silk → Montagem. */}
-        {groupedWorksheets && (['Silk', 'Montagem'] as const).flatMap((sectorName) => {
+            Silk SAIU em 2026-06-12 → agrupamento solado+cor compacto com a
+            logomarca (silkMontageGroups, bloco de setores agrupados acima). */}
+        {groupedWorksheets && (['Montagem'] as const).flatMap((sectorName) => {
           if (!includesSector(sectorName)) return [];
           // B1: só imprime a ficha do setor pra grupos cuja ficha técnica tem
           // o setor no roteiro (production_sectors; null/[] = sem restrição).
@@ -3202,7 +3251,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             op_number: group.opNumbers[0],
           };
           const silk = getOrderSilk(representative);
-          const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(representative);
+          const { soleColor, insoleColor, insoleReadyMade, hasStraps } = getOrderColors(representative);
           // Sequência de tiras (TIRA 1, TIRA 2, ...) na ordem da ficha técnica.
           // Cada OP do grupo Ref+Cor pode ter tiras diferentes — pra Colagem
           // basta a do representative (todas as OPs do grupo têm a mesma ref+cor).
@@ -3224,12 +3273,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   silk={silk}
                   soleColor={soleColor}
                   insoleColor={insoleColor}
-                  insoleHasLining={insoleHasLining}
                   insoleReadyMade={insoleReadyMade}
                   hasStraps={hasStraps}
                   strapColors={strapColorsOrdered}
-                  mesaCapacity={mesaCapacity}
-                  sectorCapacityPerDay={getSheetSectorCapacity(representative.reference_id, sectorName)}
                   opNumbers={group.opNumbers}
                   sizeBand={bandForOps(group.opNumbers)}
                   clientName={clientNamesForPvs(group.pvNumbers).join(' · ') || undefined}
@@ -3291,7 +3337,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             },
           };
           const silk = getOrderSilk(order);
-          const { soleColor, insoleColor, insoleHasLining, insoleReadyMade, hasStraps, mesaCapacity } = getOrderColors(order);
+          const { soleColor, insoleColor, insoleReadyMade, hasStraps } = getOrderColors(order);
           const strapsRaw = Array.isArray((order as any).strap_colors)
             ? ((order as any).strap_colors as Array<any>)
             : [];
@@ -3314,12 +3360,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 silk={silk}
                 soleColor={soleColor}
                 insoleColor={insoleColor}
-                insoleHasLining={insoleHasLining}
                 insoleReadyMade={insoleReadyMade}
                 hasStraps={hasStraps}
                 strapColors={strapColorsOrdered}
-                mesaCapacity={mesaCapacity}
-                sectorCapacityPerDay={getSheetSectorCapacity(order.reference_id, 'Acabamento')}
                 opNumbers={[order.op_number].filter(Boolean)}
                 clientName={clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined}
                 lotInfo={

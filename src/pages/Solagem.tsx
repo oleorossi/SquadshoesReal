@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfMonth } from 'date-fns';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2, Footprints } from '@phosphor-icons/react';
-import { WorkSheetSettingsButton } from '@/components/production/WorkSheetSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -555,7 +554,6 @@ export default function Solagem() {
             <Button size="sm" onClick={printSoleList} disabled={soleData.length === 0}>
               <Printer className="h-4 w-4 mr-1" /> Imprimir
             </Button>
-            <WorkSheetSettingsButton />
             <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
               const ordersToPrint = solagemOrders.filter(o => selectedOrders.has(o.id));
               printSectorWorkSheets({

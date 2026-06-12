@@ -20613,6 +20613,7 @@ export type Database = {
           updated_at: string
           upper_consumption: number | null
           upper_consumption_per_size: Json | null
+          upper_corte_a_fio: boolean
           upper_material: string | null
           upper_thickness: string | null
           version: number
@@ -20732,6 +20733,7 @@ export type Database = {
           updated_at?: string
           upper_consumption?: number | null
           upper_consumption_per_size?: Json | null
+          upper_corte_a_fio?: boolean
           upper_material?: string | null
           upper_thickness?: string | null
           version?: number
@@ -20851,6 +20853,7 @@ export type Database = {
           updated_at?: string
           upper_consumption?: number | null
           upper_consumption_per_size?: Json | null
+          upper_corte_a_fio?: boolean
           upper_material?: string | null
           upper_thickness?: string | null
           version?: number

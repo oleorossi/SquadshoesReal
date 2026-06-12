@@ -2670,6 +2670,26 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </div>
                         );
                       })()}
+
+                      {/* Corte a fio (2026-06-12): cabedal sem costura — não
+                          gera a ficha de operador "Costura Cabedal". Só camada
+                          de impressão; não altera fluxo/ondas de produção. */}
+                      <div className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-muted/30">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="upper-corte-a-fio" className="text-sm font-medium">
+                            Corte a fio (cabedal sem costura)
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Quando ativo, o cabedal sai do corte com borda crua (sem costura) —
+                            a ficha de operador "Costura Cabedal" não é gerada para este modelo.
+                          </p>
+                        </div>
+                        <Switch
+                          id="upper-corte-a-fio"
+                          checked={!!(form as any).upper_corte_a_fio}
+                          onCheckedChange={v => updateField('upper_corte_a_fio' as any, !!v)}
+                        />
+                      </div>
                     </div>
 
                     {/* Acessórios alternativos de cabedal removidos da UI conforme decisão

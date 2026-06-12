@@ -12,6 +12,10 @@ export const CANONICAL_STAGE_ORDER: Readonly<Record<string, number>> = {
   'Corte Forracao': 2,
   'Corte Cabedal':  2,
   'Costura':        3,
+  // Setores de FICHA (2026-06-12): a camada de impressão divide 'Costura'
+  // em dois. O setor 'Costura' do fluxo de produção (enum/DB) segue único.
+  'Costura Palmilha': 3,
+  'Costura Cabedal':  3,
   'Aviamento':      4,
   'Mesa':           4,
   'Silk':           5,

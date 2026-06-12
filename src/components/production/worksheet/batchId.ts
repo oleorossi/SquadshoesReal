@@ -20,6 +20,9 @@ const SECTOR_CODES: Record<string, string> = {
   'Corte Cabedal': 'CCA',
   'Silk': 'SIL',
   'Costura': 'COS',
+  // Setores de FICHA (2026-06-12): split da camada de impressão de 'Costura'.
+  'Costura Palmilha': 'CSP',
+  'Costura Cabedal': 'CSC',
   'Aviamento': 'AVI',
   'Colagem': 'COL',
   'Montagem': 'MON',

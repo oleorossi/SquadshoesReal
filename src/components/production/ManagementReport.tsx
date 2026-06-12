@@ -1,6 +1,7 @@
 import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
+import { adaptiveTableFont } from './worksheet/adaptiveFont';
 
 export interface ReportStage {
   stage_name: string;
@@ -210,6 +211,17 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
   let sectionNo = 0;
   const nextSection = () => String(++sectionNo).padStart(2, '0');
 
+  // ── Fontes adaptativas (2026-06-12) ────────────────────────────────────────
+  // O CSS de print força table-layout:fixed + overflow:hidden nas células —
+  // fonte fixa CORTAVA linhas quando havia muitas colunas (status por setor)
+  // ou conteúdo longo (valores monetários). Cada tabela dimensiona a fonte
+  // pela própria densidade via adaptiveTableFont.
+  // Status por setor: 4 colunas fixas + 1 por setor presente.
+  const stF = adaptiveTableFont(4 + sectorsOrdered.length);
+  const sectorColWidth = sectorsOrdered.length > 8 ? 28 : 34;
+  // Custos: 8 colunas, conteúdo longo ("R$ 123.456,78" ≈ 13 chars).
+  const costF = adaptiveTableFont(8, 13);
+
   return (
     <div
       className="w-[210mm] p-[6mm] print:w-full print:p-[5mm] bg-white text-black m-auto editorial-stagger"
@@ -356,20 +368,33 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
           <div className="flex-1 h-px bg-black" />
         </div>
 
-        <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '8.5pt' }}>
+        <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               <th className="text-left py-2 pr-2 section-label" style={{ width: 56, color: '#000' }}>OP</th>
               <th className="text-left py-2 pr-2 section-label" style={{ color: '#000' }}>Ref · Cor</th>
-              <th className="text-left py-2 pr-2 section-label" style={{ width: 90, color: '#000' }}>Solado</th>
-              <th className="text-right py-2 pr-2 section-label" style={{ width: 44, color: '#000' }}>Pares</th>
+              <th className="text-left py-2 pr-2 section-label" style={{ width: 84, color: '#000' }}>Solado</th>
+              <th className="text-right py-2 pr-2 section-label" style={{ width: 40, color: '#000' }}>Pares</th>
               {sectorsOrdered.map(s => (
                 <th
                   key={s}
-                  className="py-2 section-label"
-                  style={{ width: 32, color: '#000', textAlign: 'center' }}
+                  className="py-2 font-mono text-black uppercase"
+                  // Sem .section-label aqui: o override de print (7pt
+                  // !important + tracking 0.16em) estourava os ~32px da
+                  // coluna e o overflow:hidden CORTAVA o nome do setor.
+                  // Fonte própria menor + quebra em 2 linhas permitida.
+                  style={{
+                    width: sectorColWidth,
+                    textAlign: 'center',
+                    fontSize: '7px',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
+                    lineHeight: 1.25,
+                    whiteSpace: 'normal',
+                    overflowWrap: 'anywhere',
+                  }}
                 >
-                  {s.replace('Corte ', 'C.').replace('Aviamento','Aviam.').replace('Acabamento','Acab.').replace('Expedição','Exped.')}
+                  {s.replace('Corte ', 'C. ').replace('Aviamento','Aviam.').replace('Acabamento','Acab.').replace('Expedição','Exped.')}
                 </th>
               ))}
             </tr>
@@ -384,13 +409,13 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               );
               return (
                 <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
-                  <td className="py-2 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
-                  <td className="py-2 pr-2 text-[9pt] text-black">
+                  <td className="py-1.5 pr-2 font-mono text-black" style={{ fontSize: `${stF.cellPx}px`, lineHeight: 1.25 }}>{o.op_number || '—'}</td>
+                  <td className="py-1.5 pr-2 text-black" style={{ fontSize: `${stF.textPx + 1}px`, lineHeight: 1.25 }}>
                     <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
                     {o.color && <span className="text-black"> · {o.color}</span>}
                   </td>
-                  <td className="py-2 pr-2 text-[9pt] text-neutral-700">{o.sole_name || '—'}</td>
-                  <td className="py-2 pr-2 text-right font-mono font-bold text-[10pt] text-black">{o.total_pairs}</td>
+                  <td className="py-1.5 pr-2 text-neutral-700" style={{ fontSize: `${stF.textPx}px`, lineHeight: 1.25 }}>{o.sole_name || '—'}</td>
+                  <td className="py-1.5 pr-2 text-right font-mono font-bold text-black" style={{ fontSize: `${stF.cellPx + 1}px`, lineHeight: 1.25 }}>{o.total_pairs}</td>
                   {sectorsOrdered.map(s => {
                     // s já é canônico (Aviamento/Costura/etc). Mapa usa chaves normalizadas.
                     const stage = stageByName.get(s) || null;
@@ -400,8 +425,8 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                     return (
                       <td
                         key={s}
-                        className="py-2 text-center font-mono"
-                        style={{ color, fontSize: '11pt', lineHeight: 1 }}
+                        className="py-1.5 text-center font-mono"
+                        style={{ color, fontSize: `${Math.max(12, stF.displayPx)}px`, lineHeight: 1 }}
                       >
                         {symbol}
                       </td>
@@ -597,17 +622,22 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                   </p>
                 )}
 
-                {gradeEntries.length > 0 && (
+                {gradeEntries.length > 0 && (() => {
+                  // Fonte/largura adaptativas: grade mista (16+ numerações)
+                  // estourava a largura A4 com 26px fixos por célula.
+                  const gF = adaptiveTableFont(gradeEntries.length);
+                  const cellW = gradeEntries.length > 16 ? 20 : 26;
+                  return (
                   <div className="mb-1.5">
                     <p className="section-label mb-1" style={{ color: '#666' }}>Grade</p>
-                    <table style={{ borderCollapse: 'collapse' }} className="text-[8pt]">
+                    <table style={{ borderCollapse: 'collapse' }}>
                       <tbody>
                         <tr>
                           {gradeEntries.map(([size]) => (
                             <td
                               key={`s-${size}`}
-                              className="px-2 py-0.5 border border-neutral-400 font-mono text-center text-neutral-700"
-                              style={{ minWidth: 26 }}
+                              className="border border-neutral-400 font-mono text-center text-neutral-700"
+                              style={{ minWidth: cellW, fontSize: `${gF.cellPx}px`, padding: `${gF.padY}px ${gF.padX}px`, lineHeight: 1.2 }}
                             >
                               {size}
                             </td>
@@ -617,8 +647,8 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                           {gradeEntries.map(([size, qty]) => (
                             <td
                               key={`q-${size}`}
-                              className="px-2 py-0.5 border border-neutral-400 font-mono font-bold text-center text-black"
-                              style={{ minWidth: 26 }}
+                              className="border border-neutral-400 font-mono font-bold text-center text-black"
+                              style={{ minWidth: cellW, fontSize: `${gF.cellPx}px`, padding: `${gF.padY}px ${gF.padX}px`, lineHeight: 1.2 }}
                             >
                               {qty}
                             </td>
@@ -627,7 +657,8 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                       </tbody>
                     </table>
                   </div>
-                )}
+                  );
+                })()}
 
                 {hasStraps && (
                   <div className="mb-1.5">
@@ -702,9 +733,11 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               <tr style={{ borderBottom: '1.5px solid #000' }}>
                 <th className="text-left py-1.5 pr-2 section-label" style={{ width: 56, color: '#000' }}>OP</th>
                 <th className="text-left py-1.5 pr-2 section-label" style={{ color: '#000' }}>Setor</th>
-                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 100, color: '#000' }}>Início</th>
-                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 100, color: '#000' }}>Conclusão</th>
-                <th className="text-left py-1.5 section-label" style={{ width: 80, color: '#000' }}>Status</th>
+                {/* 108px: "12/05/2026, 14:30" (17 chars) em 8pt mono ocupa
+                    ~106px — os 100px antigos cortavam o minuto no papel. */}
+                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 108, color: '#000' }}>Início</th>
+                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 108, color: '#000' }}>Conclusão</th>
+                <th className="text-left py-1.5 section-label" style={{ width: 76, color: '#000' }}>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -755,26 +788,30 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               accent={marginPct < 0 ? 'negative' : undefined} />
           </div>
 
-          <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+          {/* Larguras das colunas monetárias dimensionadas pro pior caso
+              ("R$ 123.456,78") na fonte adaptativa — antes 60-70px fixos com
+              9pt mono cortavam/quebravam o valor letra a letra no papel. */}
+          <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <thead>
               <tr style={{ borderBottom: '1.5px solid #000' }}>
-                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 56, color: '#000' }}>OP</th>
+                <th className="text-left py-1.5 pr-2 section-label" style={{ width: 50, color: '#000' }}>OP</th>
                 <th className="text-left py-1.5 pr-2 section-label" style={{ color: '#000' }}>Ref · Cor</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 70, color: '#000' }}>Material</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 60, color: '#000' }}>MO</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 60, color: '#000' }}>Overhead</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 70, color: '#000' }}>Custo</th>
-                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 70, color: '#000' }}>Receita</th>
-                <th className="text-right py-1.5 section-label" style={{ width: 70, color: '#000' }}>Margem</th>
+                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 78, color: '#000' }}>Material</th>
+                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 64, color: '#000' }}>MO</th>
+                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 64, color: '#000' }}>Overhead</th>
+                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 78, color: '#000' }}>Custo</th>
+                <th className="text-right py-1.5 pr-2 section-label" style={{ width: 78, color: '#000' }}>Receita</th>
+                <th className="text-right py-1.5 section-label" style={{ width: 78, color: '#000' }}>Margem</th>
               </tr>
             </thead>
             <tbody>
               {orders.map(o => {
                 const c = o.cost;
+                const moneyStyle: React.CSSProperties = { fontSize: `${costF.cellPx}px`, lineHeight: 1.25 };
                 if (!c) return (
                   <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
-                    <td className="py-1.5 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
-                    <td className="py-1.5 pr-2 text-[9pt] text-black">
+                    <td className="py-1.5 pr-2 font-mono text-black" style={moneyStyle}>{o.op_number || '—'}</td>
+                    <td className="py-1.5 pr-2 text-black" style={{ fontSize: `${costF.textPx + 1}px`, lineHeight: 1.25 }}>
                       <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
                       {o.color && <span> · {o.color}</span>}
                     </td>
@@ -790,19 +827,19 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
                   && (c.material_cost / c.quantity > 200 || (c.revenue > 0 && c.total_cost > 3 * c.revenue));
                 return (
                   <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
-                    <td className="py-1.5 pr-2 font-mono text-[9pt] text-black">{o.op_number || '—'}</td>
-                    <td className="py-1.5 pr-2 text-[9pt] text-black">
+                    <td className="py-1.5 pr-2 font-mono text-black" style={moneyStyle}>{o.op_number || '—'}</td>
+                    <td className="py-1.5 pr-2 text-black" style={{ fontSize: `${costF.textPx + 1}px`, lineHeight: 1.25 }}>
                       <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
                       {o.color && <span> · {o.color}</span>}
                     </td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt]" style={{ color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.material_cost)}{suspect ? ' *' : ''}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.labor_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.overhead_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] font-bold" style={{ color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.total_cost)}</td>
-                    <td className="py-1.5 pr-2 text-right font-mono text-[9pt] text-black">{fmtBRL(c.revenue)}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono" style={{ ...moneyStyle, color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.material_cost)}{suspect ? ' *' : ''}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono text-black" style={moneyStyle}>{fmtBRL(c.labor_cost)}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono text-black" style={moneyStyle}>{fmtBRL(c.overhead_cost)}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono font-bold" style={{ ...moneyStyle, color: suspect ? '#B45309' : '#000' }}>{fmtBRL(c.total_cost)}</td>
+                    <td className="py-1.5 pr-2 text-right font-mono text-black" style={moneyStyle}>{fmtBRL(c.revenue)}</td>
                     <td
-                      className="py-1.5 text-right font-mono text-[9pt] font-bold"
-                      style={{ color: suspect ? '#B45309' : (c.margin < 0 ? '#E11D2E' : '#000') }}
+                      className="py-1.5 text-right font-mono font-bold"
+                      style={{ ...moneyStyle, color: suspect ? '#B45309' : (c.margin < 0 ? '#E11D2E' : '#000') }}
                     >
                       {suspect ? '⚠ revisar' : fmtBRL(c.margin)}
                     </td>
@@ -811,14 +848,12 @@ export const ManagementReport = ({ saleOrder, orders, date }: Props) => {
               })}
               <tr style={{ borderTop: '1.5px solid #000' }}>
                 <td colSpan={2} className="py-2 pr-2 section-label" style={{ color: '#000' }}>Total</td>
-                <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtBRL(totalsFinancial.material)}</td>
-                <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtBRL(totalsFinancial.labor)}</td>
-                <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtBRL(totalsFinancial.overhead)}</td>
-                <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtBRL(totalsFinancial.cost)}</td>
-                <td className="py-2 pr-2 text-right font-mono font-bold text-[9pt] text-black">{fmtBRL(totalsFinancial.revenue)}</td>
+                {([totalsFinancial.material, totalsFinancial.labor, totalsFinancial.overhead, totalsFinancial.cost, totalsFinancial.revenue] as const).map((v, i) => (
+                  <td key={i} className="py-2 pr-2 text-right font-mono font-bold text-black" style={{ fontSize: `${costF.cellPx}px`, lineHeight: 1.25 }}>{fmtBRL(v)}</td>
+                ))}
                 <td
-                  className="py-2 text-right font-mono font-bold text-[9pt]"
-                  style={{ color: totalsFinancial.margin < 0 ? '#E11D2E' : '#000' }}
+                  className="py-2 text-right font-mono font-bold"
+                  style={{ fontSize: `${costF.cellPx}px`, lineHeight: 1.25, color: totalsFinancial.margin < 0 ? '#E11D2E' : '#000' }}
                 >
                   {fmtBRL(totalsFinancial.margin)}
                 </td>
