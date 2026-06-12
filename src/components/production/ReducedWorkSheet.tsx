@@ -79,7 +79,7 @@ export function ReducedWorkSheet({
           <h1 className="uppercase truncate" style={{ ...DISPLAY, fontSize: 22, lineHeight: 0.9, letterSpacing: '0.01em', marginTop: 1 }} title={sectorLabel}>
             {sectorLabel}
           </h1>
-          <span className="uppercase truncate block" style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.02em', marginTop: 1 }} title={title}>
+          <span className="uppercase truncate block" style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.02em', marginTop: 1, color: '#C00000' }} title={title}>
             {title}
           </span>
         </div>
