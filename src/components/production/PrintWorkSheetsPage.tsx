@@ -56,6 +56,60 @@ const printStyles = `
     margin-bottom: 10px;
   }
 
+  /* ── WYSIWYG (2026-06-12): tela = papel ──
+     O PaginatedSheet MEDE os blocos no layout de TELA e empacota páginas
+     físicas com essas alturas. Logo, TODA regra que altera altura de
+     conteúdo precisa valer TAMBÉM em tela — quando ficavam só dentro de
+     @media print, o papel renderizava DIFERENTE da medição (table-layout
+     fixed quebrando célula em 2 linhas, espaçamentos comprimidos, fonte
+     8pt) e o excedente derramava invisível na folha seguinte: cada página
+     lógica virava 2 físicas, metade em branco (PDF "mesmo erro" de
+     2026-06-12, 20 lógicas → 40 físicas). NÃO devolver estas regras pro
+     @media print. */
+  .print-area {
+    font-size: 8pt;
+    line-height: 1.12;
+  }
+
+  /* Tabelas nunca devem estourar o container — quebra texto se preciso
+     (evita que célula com texto longo empurre a coluna pra fora). */
+  .print-area table {
+    max-width: 100% !important;
+    table-layout: fixed !important;
+  }
+  .print-area th, .print-area td {
+    overflow: hidden !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  /* Comprime spacing utilities do Tailwind dentro da print-area pra
+     eliminar folga vertical desnecessária. Mantém hierarquia visual
+     (gap-4 ainda > gap-3 > gap-2). */
+  .print-area .gap-2  { gap: 0.375rem !important; }
+  .print-area .gap-3  { gap: 0.5rem   !important; }
+  .print-area .gap-4  { gap: 0.625rem !important; }
+  .print-area .p-2    { padding: 0.375rem !important; }
+  .print-area .p-3    { padding: 0.5rem   !important; }
+  .print-area .p-4    { padding: 0.625rem !important; }
+  .print-area .py-2   { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+  .print-area .py-3   { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+  .print-area .py-4   { padding-top: 0.5rem !important;  padding-bottom: 0.5rem !important; }
+  .print-area .px-3   { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+  .print-area .px-4   { padding-left: 0.625rem !important; padding-right: 0.625rem !important; }
+  .print-area .mb-2   { margin-bottom: 0.375rem !important; }
+  .print-area .mb-3   { margin-bottom: 0.5rem   !important; }
+  .print-area .mb-4   { margin-bottom: 0.625rem !important; }
+  .print-area .mt-2   { margin-top: 0.375rem !important; }
+  .print-area .mt-3   { margin-top: 0.5rem   !important; }
+  .print-area .mt-4   { margin-top: 0.625rem !important; }
+  .print-area .my-3   { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+  .print-area .my-4   { margin-top: 0.625rem !important; margin-bottom: 0.625rem !important; }
+  .print-area .space-y-1 > * + * { margin-top: 0.2rem  !important; }
+  .print-area .space-y-2 > * + * { margin-top: 0.375rem !important; }
+  .print-area .space-y-3 > * + * { margin-top: 0.5rem   !important; }
+  .print-area .space-y-4 > * + * { margin-top: 0.625rem !important; }
+
   @page {
     size: A4 portrait;
     /* margin: 0 — ÚNICA forma programática de suprimir o header/footer do
@@ -146,10 +200,17 @@ const printStyles = `
        e só re-ativa visibilidade no que está dentro da print-area */
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; }
+    /* !important obrigatório: o root da página tem space-y-6, cujo seletor
+       Tailwind (:not([hidden]) ~ :not([hidden])) tem especificidade MAIOR
+       que .print-area — sem !important a print-area ganhava margin-top de
+       24px (o <style> é irmão anterior) e, somado ao p-6 do root, empurrava
+       a 1ª folha ~13mm pra baixo: a primeira página SEMPRE vazava (faixa de
+       cabeçalho a 24mm do topo no PDF de 2026-06-12 vs 10.7mm nas demais).
+       Reforçado pelos modifiers print:p-0 print:space-y-0 no root. */
     .print-area {
       width: 100%;
-      margin: 0;
-      padding: 0;
+      margin: 0 !important;
+      padding: 0 !important;
     }
 
     /* Cada ficha tem w-[210mm] p-[8mm] no <div> raiz (tamanho real pra
@@ -161,17 +222,9 @@ const printStyles = `
        em conjunto com flex+mt-auto da ManagementReport o resultado saía em
        branco — modifier Tailwind por componente é mais previsível. */
 
-    /* Tabelas nunca devem estourar o container — quebra texto se preciso
-       (evita que célula com texto longo empurre a coluna pra fora). */
-    .print-area table {
-      max-width: 100% !important;
-      table-layout: fixed !important;
-    }
-    .print-area th, .print-area td {
-      overflow: hidden !important;
-      word-wrap: break-word !important;
-      word-break: break-word !important;
-    }
+    /* (Regras de tabela — table-layout fixed + word-break — moveram pro
+       bloco WYSIWYG sempre-ativo no topo deste arquivo: alteram ALTURA e
+       precisam valer na medição em tela do PaginatedSheet.) */
 
     /* Quebras de página entre fichas distintas.
        v4 (24/05/2026): user prefere ficha grande ocupando múltiplas A4 a
@@ -234,25 +287,25 @@ const printStyles = `
     }
 
     /* ── Páginas explícitas do PaginatedSheet (2026-06-12) ──
-       Cada .pagi-page é UMA folha física: caixa de 296mm (1mm aquém dos
-       297mm pra arredondamento sub-pixel não derramar numa página em
-       branco) + break-after. O padding interno substitui a margem do
-       @page (que é 0 pra suprimir o header/footer do navegador).
-       As regras vêm DEPOIS do reset universal (body * / .page-break > div)
-       e têm especificidade maior — vencem o height:auto/min-height:0. */
+       Cada .pagi-page é UMA folha física: break-after força a próxima
+       página lógica numa folha nova. Em PRINT a caixa é height:AUTO —
+       a altura fixa de 294mm vale só no preview em tela (parecer papel).
+       Motivo: o Chrome trata A4 como 296.9mm; caixa fixa de 296mm deixava
+       folga < 1mm e qualquer sub-pixel derramava o PÉ DA CAIXA (padding
+       vazio) numa folha em branco. Com height:auto a caixa termina no
+       conteúdo (sempre ≤ capacidade de empacotamento, que tem ~3mm de
+       folga) e nunca cruza o limite físico. O padding interno substitui
+       a margem do @page (que é 0 pra suprimir o header/footer do
+       navegador). As regras vêm DEPOIS do reset universal e têm
+       especificidade maior. */
     .print-area .pagi-page {
       width: 100% !important;
-      height: 296mm !important;
+      height: auto !important;
+      min-height: 0 !important;
       margin: 0 !important;
       box-shadow: none !important;
       break-after: page !important;
       page-break-after: always !important;
-    }
-    /* Bloco maior que 1 página (exceção): altura livre, browser fragmenta
-       por dentro (keep-together continua protegendo as sub-seções). */
-    .print-area .pagi-page--flow {
-      height: auto !important;
-      min-height: 296mm !important;
     }
     /* Última página da ficha não força break próprio — o .page-break pai
        já garante "mudança de setor/ficha = nova página" (evita breaks
@@ -346,46 +399,11 @@ const printStyles = `
        foram substituídos em 2026-06-12 pela faixa de cabeçalho in-flow do
        PaginatedSheet — presente no TOPO de TODAS as páginas, incluindo a 1ª.) */
 
-    /* Tipografia comprimida (~282mm úteis na página explícita de 296mm
-       após padding 6/8mm + faixa de cabeçalho do PaginatedSheet).
-       Histórico: 9pt/1.25 → 8.5pt/1.18 → 8pt/1.12.
-       Fix 2026-06-11: reduzido de novo (pedido do user) pra puxar o
-       "filete" de fichas cheias de volta pra mesma folha em vez de
-       desperdiçar uma 2ª página quase vazia.
-       Nota v7: o PaginatedSheet MEDE no layout de TELA (fonte cheia) e o
-       print encolhe pra 8pt — viés seguro: páginas nunca estouram, no
-       máximo sobra branco no pé. */
-    body {
-      font-size: 8pt;
-      line-height: 1.12;
-    }
-
-    /* Comprime spacing utilities do Tailwind dentro da print-area pra
-       eliminar folga vertical desnecessária. Mantém hierarquia visual
-       (gap-4 ainda > gap-3 > gap-2). */
-    .print-area .gap-2  { gap: 0.375rem !important; }
-    .print-area .gap-3  { gap: 0.5rem   !important; }
-    .print-area .gap-4  { gap: 0.625rem !important; }
-    .print-area .p-2    { padding: 0.375rem !important; }
-    .print-area .p-3    { padding: 0.5rem   !important; }
-    .print-area .p-4    { padding: 0.625rem !important; }
-    .print-area .py-2   { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
-    .print-area .py-3   { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
-    .print-area .py-4   { padding-top: 0.5rem !important;  padding-bottom: 0.5rem !important; }
-    .print-area .px-3   { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    .print-area .px-4   { padding-left: 0.625rem !important; padding-right: 0.625rem !important; }
-    .print-area .mb-2   { margin-bottom: 0.375rem !important; }
-    .print-area .mb-3   { margin-bottom: 0.5rem   !important; }
-    .print-area .mb-4   { margin-bottom: 0.625rem !important; }
-    .print-area .mt-2   { margin-top: 0.375rem !important; }
-    .print-area .mt-3   { margin-top: 0.5rem   !important; }
-    .print-area .mt-4   { margin-top: 0.625rem !important; }
-    .print-area .my-3   { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
-    .print-area .my-4   { margin-top: 0.625rem !important; margin-bottom: 0.625rem !important; }
-    .print-area .space-y-1 > * + * { margin-top: 0.2rem  !important; }
-    .print-area .space-y-2 > * + * { margin-top: 0.375rem !important; }
-    .print-area .space-y-3 > * + * { margin-top: 0.5rem   !important; }
-    .print-area .space-y-4 > * + * { margin-top: 0.625rem !important; }
+    /* (Tipografia 8pt/1.12 + compressão de spacing utilities moveram pro
+       bloco WYSIWYG sempre-ativo no topo deste arquivo — histórico
+       9pt/1.25 → 8.5pt/1.18 → 8pt/1.12. Quando viviam SÓ aqui, a medição
+       em tela do PaginatedSheet usava outra régua e o papel saía diferente
+       do empacotado. Tela = papel ⇒ medição = verdade.) */
 
     /* Containers internos da print-area podem quebrar livremente */
     .print-area > div {
@@ -2537,7 +2555,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   const today = new Date().toLocaleDateString('pt-BR');
 
   return (
-    <div className="p-6 space-y-6">
+    /* print:p-0 print:space-y-0 — sem isso o p-6 (24px) + a margem do
+       space-y-6 na .print-area (o <style> é irmão anterior) somavam ~13mm
+       de deslocamento ACIMA da primeira folha em print (visibility:hidden
+       preserva layout; o reset de @media print só alcança body>div/main>div)
+       → a 1ª página de TODO maço vazava o pé pra uma folha em branco. */
+    <div className="p-6 space-y-6 print:p-0 print:space-y-0">
       <style>{printStyles}</style>
 
       {/* ── Toolbar (no-print) ── */}

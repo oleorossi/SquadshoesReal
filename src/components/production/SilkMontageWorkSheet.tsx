@@ -890,7 +890,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   });
 
     return [
-      subHeaderBlock,
+      // Sub-header do grupo — keepWithNext: nunca fecha página sozinho
+      // (título "Solado N/M" órfão no pé da folha, conteúdo na seguinte).
+      { node: subHeaderBlock, keepWithNext: true },
       ...(silkSingleBlock ? [silkSingleBlock] : []),
       ...(silksGridBlock ? [silksGridBlock] : []),
       ...colorBlocks,

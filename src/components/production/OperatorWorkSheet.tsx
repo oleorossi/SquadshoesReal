@@ -630,7 +630,9 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     );
 
     return [
-      subHeaderBlock,
+      // Sub-header do grupo — keepWithNext: nunca fecha página sozinho
+      // (título "Pedido N/M" órfão no pé da folha, conteúdo na seguinte).
+      { node: subHeaderBlock, keepWithNext: true },
       ...(silkBlock ? [silkBlock] : []),
       productInfoBlock,
       ...(strapsBlock ? [strapsBlock] : []),

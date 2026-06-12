@@ -170,18 +170,33 @@ fragmentação por um paginador determinístico.
    SilkMontageWorkSheet (compacto + completo), SolagemWorkSheet,
    OperatorWorkSheet, ExpedicaoWorkSheet e ManagementReport.
 2. **Medição real**: cada bloco é envolto num wrapper `display: flow-root`
-   (margens internas ficam contidas → `offsetHeight` mede a altura real).
-   Re-medição via `ResizeObserver` por bloco (cobre imagem chegando
-   tarde), `beforeprint` (com `flushSync` pro snapshot do print pegar o
-   DOM repaginado), `matchMedia('print')` e `resize`.
+   (margens internas ficam contidas; `Math.ceil(getBoundingClientRect().height)`
+   mede a altura real sub-pixel — `offsetHeight` arredondava pra baixo e o
+   erro acumulado derramava no print). Re-medição via `ResizeObserver` por
+   bloco (cobre imagem chegando tarde), `beforeprint` (com `flushSync` pro
+   snapshot do print pegar o DOM repaginado), `matchMedia('print')` e
+   `resize`.
+   ⚠ **REGRA WYSIWYG (2026-06-12)**: a medição acontece no layout de TELA.
+   Logo, NENHUMA regra que altere ALTURA de conteúdo pode viver só dentro
+   de `@media print` — tipografia 8pt/1.12, compressão de spacing
+   utilities e `table-layout: fixed` + `word-break` de células valem
+   SEMPRE dentro da `.print-area` (bloco no topo do `printStyles`).
+   Quando eram print-only, o papel renderizava diferente da medição e
+   cada página lógica derramava numa folha em branco (PDF "mesmo erro",
+   2026-06-12: 20 páginas lógicas → 40 físicas).
 3. **Empacotamento** (`packBlocks`, puro/testado): first-fit sequencial,
    sem reordenar. Se o próximo bloco não cabe no espaço restante → fecha
    a página (**resto fica em branco**) e o bloco abre inteiro a próxima.
-4. **Páginas explícitas**: divs `210mm × 296mm` (1mm aquém dos 297mm
-   físicos pra arredondamento sub-pixel não derramar numa folha em
-   branco), `box-sizing: border-box`, padding **6mm topo / 8mm laterais /
-   8mm base** (substitui a margem do @page) e `page-break-after` entre
-   elas. Em tela aparecem como cartões A4 empilhados (preview fiel).
+   Flags por bloco: `keepWithPrev` (rodapés — nunca ABREM página sozinhos,
+   puxam o bloco anterior) e `keepWithNext` (sub-headers de grupo — nunca
+   FECHAM página, viajam junto com o bloco seguinte).
+4. **Páginas explícitas**: divs `210mm × 294mm` em TELA (o Chrome trata A4
+   como 296.9mm; com 296mm a folga real era < 1mm e qualquer sub-pixel
+   derramava — 294 dá ~3mm de folga ao empacotador). Em PRINT a caixa vira
+   `height: auto` (termina no conteúdo, nunca cruza o limite físico) +
+   `break-after: page`. `box-sizing: border-box`, padding **6mm topo /
+   8mm laterais / 8mm base** (substitui a margem do @page). Em tela
+   aparecem como cartões A4 empilhados (preview fiel).
 5. **Faixa de cabeçalho em TODA página, inclusive a 1ª**: 6mm de altura,
    hairline preto inferior, Fira Code mono uppercase — nome do setor à
    esquerda + **"N/TOTAL"** (ex.: 3/8) à direita. A contagem é **dentro
@@ -292,7 +307,7 @@ silk abaixo da imagem.
 
 ### Exceção: bloco maior que 1 página inteira
 
-Ganha página própria com `height: auto; min-height: 296mm` e **flui** — o
+Ganha página própria com `height: auto; min-height: 294mm` (tela) e **flui** — o
 browser fragmenta por dentro (`.keep-together`/`tr` continuam protegendo
 as sub-seções; `.flow-card` fecha a borda em cada fragmento via
 `box-decoration-break: clone`). As páginas extras entram no TOTAL via
@@ -328,8 +343,10 @@ página fica fora da zona não-imprimível.
 
 ```css
 @media print {
-  .print-area .pagi-page       { height: 296mm !important; break-after: page !important; }
-  .print-area .pagi-page--flow { height: auto !important; min-height: 296mm !important; }
+  /* height AUTO em print (2026-06-12): a caixa termina no conteúdo e nunca
+     cruza o limite físico da folha (296.9mm no Chrome). A altura fixa de
+     294mm existe só no preview em tela. */
+  .print-area .pagi-page            { height: auto !important; min-height: 0 !important; break-after: page !important; }
   .print-area .pagi-page:last-child { break-after: auto !important; }
 }
 ```
@@ -579,6 +596,7 @@ Imagens (silks, produtos) com altura > 281mm causam overflow não-mitigável. Ho
 | `b8bbbdf` | 2026-05-24 | v3.2: padrão universal — A4Layout primitives + EspelhoPonto + GroupedReportSummary |
 | — | 2026-06-11 | v6: `.flow-card` (fragmenta só entre sub-seções, box-decoration-break: clone) |
 | — | 2026-06-12 | **v7: paginação explícita** — `PaginatedSheet` (blocos medidos → páginas 296mm), `@page margin: 0` (mata header/footer do navegador), faixa de cabeçalho "Setor + N/TOTAL" em TODA página, card inteiro ou nada; `SectorRegion` removido |
+| — | 2026-06-12 | **v7.1: WYSIWYG + caixa auto em print** — fix do PDF "mesmo erro" (toda página lógica virava 2 físicas): regras de altura (8pt, spacing, table-layout fixed) saíram do `@media print` e valem sempre na `.print-area`; caixa 294mm em tela / `height:auto` em print; `print:p-0 print:space-y-0` no root (fantasma de ~13mm acima da 1ª folha); medição `ceil(getBoundingClientRect)`; `keepWithNext` pro sub-header de grupo não fechar página órfão |
 
 ---
 

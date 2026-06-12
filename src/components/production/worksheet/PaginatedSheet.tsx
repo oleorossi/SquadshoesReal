@@ -38,8 +38,13 @@ import { flushSync } from 'react-dom';
  */
 
 export const MM_TO_PX = 96 / 25.4;
-/** Altura da caixa de página: 297mm físicos − 1mm de folga anti-derrame. */
-export const PAGE_HEIGHT_MM = 296;
+/** Altura da caixa de página. O Chrome trata A4 como 841.8pt ≈ 296.9mm —
+ *  com 296 a folga real era < 1mm e QUALQUER arredondamento sub-pixel
+ *  derramava o pé da página numa folha em branco (PDF de 2026-06-12:
+ *  20 páginas lógicas viraram 40 físicas). 294 dá ~3mm de folga real.
+ *  Em PRINT a caixa vira height:auto (CSS da PrintWorkSheetsPage) — a
+ *  altura fixa existe só pro preview em tela parecer papel. */
+export const PAGE_HEIGHT_MM = 294;
 export const PAGE_PAD_TOP_MM = 6;
 export const PAGE_PAD_X_MM = 8;
 export const PAGE_PAD_BOTTOM_MM = 8;
@@ -71,12 +76,18 @@ export interface PackedPage {
  * "Executado por" / "Total Geral"): se não couber no restante, puxa o bloco
  * anterior junto pra próxima página — senão a última folha do maço sai quase
  * vazia, só com o rodapé (defeito reportado pelo dono em 2026-06-12).
+ *
+ * `keepWithNext[i]` = bloco i não pode FECHAR página (sub-headers de grupo
+ * "Pedido N/M" / "Referência N/M"): se o bloco seguinte não couber no
+ * restante, o sub-header viaja junto pra próxima página — senão o título
+ * fica órfão no pé da folha com o conteúdo dele na folha seguinte.
  */
 export function packBlocks(
   heights: number[],
   capacity: number = PAGE_CAPACITY_PX,
   gap: number = BLOCK_GAP_PX,
   keepWithPrev?: boolean[],
+  keepWithNext?: boolean[],
 ): PackedPage[] {
   const pages: PackedPage[] = [];
   let cur: number[] = [];
@@ -111,10 +122,21 @@ export function packBlocks(
           return;
         }
       }
+      // keep-with-next: sub-headers no fim da página atual viajam junto com
+      // o bloco que não coube (senão o título do grupo fica órfão no pé da
+      // folha). Carrega quantos couberem na página nova junto com o bloco i.
+      const carry: number[] = [];
+      let carryUsed = h;
+      while (cur.length > 0 && keepWithNext?.[cur[cur.length - 1]]) {
+        const cand = cur[cur.length - 1];
+        if (heights[cand] + gap + carryUsed > capacity) break;
+        carry.unshift(cur.pop()!);
+        carryUsed += heights[cand] + gap;
+      }
       // Não cabe no restante → resto da página fica EM BRANCO, bloco abre a próxima.
       flush();
-      cur = [i];
-      used = h;
+      cur = [...carry, i];
+      used = carryUsed;
     } else {
       cur.push(i);
       used += needed;
@@ -133,11 +155,11 @@ export function packBlocks(
 /** Bloco da ficha: nó cru, ou envelopado com flags de empacotamento. */
 export type SheetBlock =
   | React.ReactNode
-  | { node: React.ReactNode; keepWithPrev?: boolean };
+  | { node: React.ReactNode; keepWithPrev?: boolean; keepWithNext?: boolean };
 
 const isWrappedBlock = (
   b: SheetBlock,
-): b is { node: React.ReactNode; keepWithPrev?: boolean } =>
+): b is { node: React.ReactNode; keepWithPrev?: boolean; keepWithNext?: boolean } =>
   typeof b === 'object' && b !== null && !React.isValidElement(b) && !Array.isArray(b) && 'node' in b;
 
 interface PaginatedSheetProps {
@@ -152,6 +174,7 @@ interface PaginatedSheetProps {
 export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedSheetProps) => {
   const nodes = blocks.map(b => (isWrappedBlock(b) ? b.node : b));
   const keepFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithPrev : false));
+  const keepNextFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithNext : false));
   const [heights, setHeights] = useState<number[]>([]);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
@@ -161,7 +184,9 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
     for (let i = 0; i < blocks.length; i++) {
       const el = wrapperEls.current.get(i);
       if (!el) return; // render incompleto — espera o próximo ciclo
-      next[i] = el.offsetHeight;
+      // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
+      // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
+      next[i] = Math.ceil(el.getBoundingClientRect().height);
     }
     setHeights(prev => {
       if (prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 1)) return prev;
@@ -219,7 +244,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
       // pelo useLayoutEffect antes do paint.
       return [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }];
     }
-    return packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags);
+    return packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, heights, blocks.length]);
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);

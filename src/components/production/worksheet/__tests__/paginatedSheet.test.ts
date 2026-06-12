@@ -96,8 +96,48 @@ describe('packBlocks — paginação explícita das fichas', () => {
     expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1], [2]]);
   });
 
+  it('keepWithNext: sub-header no fim da página viaja junto com o bloco seguinte', () => {
+    // Página 1: [0, 1] (800 + 10 + 60 = 870). Bloco 2 (500) não cabe —
+    // como 1 é keepWithNext (sub-header), vai junto: página 2 = [1, 2].
+    const pages = packBlocks([800, 60, 500], CAP, GAP, undefined, [false, true, false]);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1, 2]]);
+  });
+
+  it('keepWithNext: sem o flag, o sub-header ficaria órfão no pé da página (regressão)', () => {
+    const pages = packBlocks([800, 60, 500], CAP, GAP);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0, 1], [2]]);
+  });
+
+  it('keepWithNext: quando o bloco seguinte CABE no restante, nada muda', () => {
+    const pages = packBlocks([300, 60, 500], CAP, GAP, undefined, [false, true, false]);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0, 1, 2]]);
+  });
+
+  it('keepWithNext: cadeia de sub-headers no fim da página viaja inteira', () => {
+    // [0]=700, [1]=60 (kwn), [2]=60 (kwn), [3]=500 → 1+2+3 vão juntos.
+    const pages = packBlocks([700, 60, 60, 500], CAP, GAP, undefined, [false, true, true, false]);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1, 2, 3]]);
+  });
+
+  it('keepWithNext: sub-header + bloco maiores que a página → fallback (órfão aceito)', () => {
+    // 60 + 10 + 980 = 1050 > 1000: não dá pra manter juntos.
+    const pages = packBlocks([800, 60, 980], CAP, GAP, undefined, [false, true, false]);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0, 1], [2]]);
+  });
+
+  it('keepWithNext + keepWithPrev compõem: header não fecha página, rodapé não abre', () => {
+    // [0]=800, [1]=60 sub-header (kwn), [2]=400 card, [3]=80 rodapé (kwp).
+    // Pg1=[0]; pg2=[1,2,3] (60+10+400+10+80 = 560 ≤ 1000).
+    const pages = packBlocks(
+      [800, 60, 400, 80], CAP, GAP,
+      [false, false, false, true],
+      [false, true, false, false],
+    );
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1, 2, 3]]);
+  });
+
   it('constantes reais: capacidade A4 com margens internas é plausível', () => {
-    // 296mm − 6 − 8 − 8 (faixa) = 274mm ≈ 1035px @96dpi
+    // 294mm − 6 − 8 − 8 (faixa) = 272mm ≈ 1028px @96dpi
     expect(PAGE_CAPACITY_PX).toBeGreaterThan(1000);
     expect(PAGE_CAPACITY_PX).toBeLessThan(1100);
     expect(BLOCK_GAP_PX).toBeGreaterThan(0);
