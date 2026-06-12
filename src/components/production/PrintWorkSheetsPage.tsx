@@ -258,11 +258,11 @@ const printStyles = `
       break-after: auto !important;
       page-break-after: auto !important;
       border-bottom: 1.5px dashed #999 !important;
-      padding-top: 5mm !important;
-      padding-bottom: 5mm !important;
-      margin-bottom: 5mm !important;
-      margin-left: 8mm !important;
-      margin-right: 8mm !important;
+      padding-top: 3mm !important;
+      padding-bottom: 3mm !important;
+      margin-bottom: 3mm !important;
+      margin-left: 6mm !important;
+      margin-right: 6mm !important;
     }
     .reduced-card:last-child {
       border-bottom: none !important;
