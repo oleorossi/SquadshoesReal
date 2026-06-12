@@ -8,7 +8,7 @@ import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont } from './worksheet/adaptiveFont';
 import { TallyBox } from './worksheet/TallyBox';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { PaginatedSheet } from './worksheet/PaginatedSheet';
+import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
@@ -125,7 +125,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
   );
 
   // ── Blocos de UM grupo/OP (sub-header fino + conteúdo + rodapé) ──
-  const buildItemBlocks = (item: OperatorWorkSheetItem, gi: number): React.ReactNode[] => {
+  const buildItemBlocks = (item: OperatorWorkSheetItem, gi: number): SheetBlock[] => {
     const {
       order, silk, soleColor, insoleColor, insoleReadyMade,
       hasStraps, strapColors, opNumbers, clientName, lotInfo, mixedGrades,
@@ -607,13 +607,13 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       gradeBlock,
       ...(groupedOpsBlock ? [groupedOpsBlock] : []),
       operacaoBlock,
-      // Rodapé de conclusão do GRUPO — Executado por / Data / Visto
-      <CompletionFooter />,
+      // Rodapé de conclusão do GRUPO — keepWithPrev: nunca abre página sozinho.
+      { node: <CompletionFooter />, keepWithPrev: true },
     ];
   };
 
   // ── Maço contínuo do setor: header agregado + grupos em sequência ──
-  const blocks: React.ReactNode[] = [
+  const blocks: SheetBlock[] = [
     headerBlock,
     ...items.flatMap((item, gi) => buildItemBlocks(item, gi)),
   ];

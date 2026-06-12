@@ -8,7 +8,7 @@ import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { PaginatedSheet } from './worksheet/PaginatedSheet';
+import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface PalmilhaGroup {
@@ -359,7 +359,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
     </div>
   );
 
-  const blocks: React.ReactNode[] = [
+  const blocks: SheetBlock[] = [
     headerBlock,
     ...(groups.length === 0
       ? [(
@@ -367,9 +367,9 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             Nenhuma palmilha para cortar neste lote.
           </div>
         )]
-      : [...groupBlocks, trailingBlock]),
-    // Rodapé de conclusão — Executado por / Data / Visto (2026-06-12)
-    <CompletionFooter />,
+      // Total Geral + rodapé com keepWithPrev: nunca abrem página sozinhos.
+      : [...groupBlocks, { node: trailingBlock, keepWithPrev: true }]),
+    { node: <CompletionFooter />, keepWithPrev: true },
   ];
 
   return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} />;

@@ -7,7 +7,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { PaginatedSheet } from './worksheet/PaginatedSheet';
+import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface SoleColorBand {
@@ -355,7 +355,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
     </div>
   );
 
-  const blocks: React.ReactNode[] = [
+  const blocks: SheetBlock[] = [
     headerBlock,
     ...(bands.length === 0
       ? [(
@@ -363,9 +363,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             Nenhum dado de solagem para exibir.
           </div>
         )]
-      : [...bandBlocks, trailingBlock]),
-    // Rodapé de conclusão — Executado por / Data / Visto (2026-06-12)
-    <CompletionFooter />,
+      // Total Geral + rodapé com keepWithPrev: nunca abrem página sozinhos.
+      : [...bandBlocks, { node: trailingBlock, keepWithPrev: true }]),
+    { node: <CompletionFooter />, keepWithPrev: true },
   ];
 
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} />;
