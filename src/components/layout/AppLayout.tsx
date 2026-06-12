@@ -19,7 +19,7 @@ import PageHeader from './PageHeader';
 import { TabBar } from './TabBar';
 import { BottomNav } from './BottomNav';
 import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
-import { useNavOrder, reorderKeys } from '@/hooks/useNavOrder';
+import { useNavOrder, reorderKeys, insertKey } from '@/hooks/useNavOrder';
 import { NavigationAuditWatcher } from './NavigationAuditWatcher';
 import { DiagnosticsFab } from '@/components/DiagnosticsFab';
 
@@ -134,7 +134,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // Ordem customizada (arrastar-e-soltar) — aplica a preferência salva sobre
   // os grupos já filtrados por acesso. Usado tanto no modo expandido quanto
   // no colapsado pra a ordem ficar consistente.
-  const { applyNavOrder, setGroupOrder, setItemOrder, resetOrder, hasCustomOrder } = useNavOrder();
+  const { applyNavOrder, setGroupOrder, setItemOrder, setItemGroup, resetOrder, hasCustomOrder } = useNavOrder();
   const orderedGroups = React.useMemo(
     () => applyNavOrder(filteredMenuGroups),
     [applyNavOrder, filteredMenuGroups]
@@ -142,9 +142,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
   // Drag & drop state: `dragInfo` (ref, não re-renderiza no início do arraste)
   // guarda o que está sendo arrastado; `dropTarget` (state) dirige o indicador
-  // visual de onde vai cair (linha vermelha antes/depois do alvo).
+  // visual de onde vai cair. `group`/`item` = linha antes/depois do alvo;
+  // `group-append` = item vai cair DENTRO do grupo (anexa no fim) — destaca o
+  // bloco inteiro, útil pra grupo recolhido ou área vazia.
   const dragInfo = React.useRef<{ kind: 'group' | 'item'; group: string; path?: string } | null>(null);
-  const [dropTarget, setDropTarget] = React.useState<{ kind: 'group' | 'item'; key: string; pos: 'before' | 'after' } | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{ kind: 'group' | 'item' | 'group-append'; key: string; pos: 'before' | 'after' } | null>(null);
 
   const filteredSystemItems = isAdmin ? systemItems : [];
   const { prefetch, cancel: cancelPrefetch } = usePrefetchRoute();
@@ -178,9 +180,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
   };
 
   // ── Drag & drop: reordenar grupos e itens (desktop, mouse) ───────────────
-  // API nativa de DnD do navegador (sem dependência). v1: grupos entre si +
-  // itens DENTRO do próprio grupo (mover item entre grupos diferentes fica
-  // pra depois). Ordem persistida via useNavOrder.
+  // API nativa de DnD do navegador (sem dependência). Suporta: reordenar grupos
+  // entre si; reordenar itens dentro do grupo; e MOVER item de um grupo pra
+  // outro (soltando preciso sobre um item, ou no cabeçalho/área do grupo pra
+  // anexar no fim). Ordem + associação de grupo persistidas via useNavOrder.
   const clearDrag = () => { dragInfo.current = null; setDropTarget(null); };
 
   // antes/depois conforme o mouse cair na metade de cima ou de baixo do alvo
@@ -189,26 +192,69 @@ export default function AppLayout({ children, printMode = false }: { children: R
     return e.clientY - rect.top > rect.height / 2 ? 'after' : 'before';
   };
 
+  // grupo "natural" do item na definição estática (pra limpar o override
+  // quando o item volta pra casa)
+  const originalGroupForPath = (path: string): string | null => {
+    for (const g of menuGroups) if (g.items.some(i => i.path === path)) return g.label;
+    return null;
+  };
+
+  // Move/reordena item caindo PRECISO antes/depois de `destPath`. Mesmo grupo =
+  // só reordena; grupos diferentes = muda associação + ordena no destino +
+  // limpa a entrada órfã na origem.
+  const moveItemPrecise = (srcGroup: string, srcPath: string, destGroup: string, destPath: string, pos: 'before' | 'after') => {
+    const destObj = orderedGroups.find(g => g.label === destGroup);
+    if (!destObj) return;
+    setItemOrder(destGroup, insertKey(destObj.items.map(i => i.path), srcPath, destPath, pos));
+    if (srcGroup === destGroup) return;
+    setItemGroup(srcPath, originalGroupForPath(srcPath) === destGroup ? null : destGroup);
+    const srcObj = orderedGroups.find(g => g.label === srcGroup);
+    if (srcObj) setItemOrder(srcGroup, srcObj.items.filter(i => i.path !== srcPath).map(i => i.path));
+  };
+
+  // Anexa o item no FIM de um grupo (drop no cabeçalho / área vazia / grupo
+  // recolhido). Mesmo grupo = manda pro fim; grupo diferente = muda associação.
+  const moveItemToGroupEnd = (srcGroup: string, srcPath: string, destGroup: string) => {
+    const destObj = orderedGroups.find(g => g.label === destGroup);
+    const destPaths = destObj ? destObj.items.map(i => i.path) : [];
+    setItemOrder(destGroup, [...destPaths.filter(p => p !== srcPath), srcPath]);
+    if (srcGroup === destGroup) return;
+    setItemGroup(srcPath, originalGroupForPath(srcPath) === destGroup ? null : destGroup);
+    const srcObj = orderedGroups.find(g => g.label === srcGroup);
+    if (srcObj) setItemOrder(srcGroup, srcObj.items.filter(i => i.path !== srcPath).map(i => i.path));
+  };
+
   const handleGroupDragStart = (label: string) => (e: React.DragEvent) => {
     dragInfo.current = { kind: 'group', group: label };
     e.dataTransfer.effectAllowed = 'move';
     try { e.dataTransfer.setData('text/plain', label); } catch { /* firefox precisa de algum dado */ }
   };
 
-  // Container do grupo é zona de drop pra arraste de GRUPO (zona grande). Itens
-  // que não dão stopPropagation deixam o evento subir até aqui.
+  // Container do grupo é zona de drop pra: arraste de GRUPO (reordenar) OU
+  // arraste de ITEM solto fora de um item específico (anexar no grupo). Itens
+  // dão stopPropagation no hover preciso, então não chegam aqui nesse caso.
   const handleGroupDragOver = (label: string) => (e: React.DragEvent) => {
-    if (dragInfo.current?.kind !== 'group') return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropTarget({ kind: 'group', key: label, pos: dropPos(e) });
+    const drag = dragInfo.current;
+    if (drag?.kind === 'group') {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget({ kind: 'group', key: label, pos: dropPos(e) });
+    } else if (drag?.kind === 'item') {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget({ kind: 'group-append', key: label, pos: 'after' });
+    }
   };
 
   const handleGroupDrop = (label: string) => (e: React.DragEvent) => {
     const drag = dragInfo.current;
-    if (drag?.kind !== 'group') return;
-    e.preventDefault();
-    setGroupOrder(reorderKeys(orderedGroups.map(g => g.label), drag.group, label, dropPos(e)));
+    if (drag?.kind === 'group') {
+      e.preventDefault();
+      setGroupOrder(reorderKeys(orderedGroups.map(g => g.label), drag.group, label, dropPos(e)));
+    } else if (drag?.kind === 'item' && drag.path) {
+      e.preventDefault();
+      moveItemToGroupEnd(drag.group, drag.path, label);
+    }
     clearDrag();
   };
 
@@ -218,11 +264,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
     try { e.dataTransfer.setData('text/plain', path); } catch { /* idem */ }
   };
 
-  const handleItemDragOver = (group: string, path: string) => (e: React.DragEvent) => {
-    const drag = dragInfo.current;
-    // só permite soltar DENTRO do mesmo grupo; senão deixa o evento subir pro
-    // container (caso seja arraste de grupo).
-    if (drag?.kind !== 'item' || drag.group !== group) return;
+  const handleItemDragOver = (_group: string, path: string) => (e: React.DragEvent) => {
+    // qualquer grupo (move entre grupos). stopPropagation pra o drop preciso no
+    // item ter prioridade sobre o "anexar no grupo" do container.
+    if (dragInfo.current?.kind !== 'item') return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -231,20 +276,24 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
   const handleItemDrop = (group: string, path: string) => (e: React.DragEvent) => {
     const drag = dragInfo.current;
-    if (drag?.kind !== 'item' || drag.group !== group) return;
+    if (drag?.kind !== 'item' || !drag.path) return;
     e.preventDefault();
     e.stopPropagation();
-    const groupObj = orderedGroups.find(g => g.label === group);
-    if (!groupObj) { clearDrag(); return; }
-    setItemOrder(group, reorderKeys(groupObj.items.map(i => i.path), drag.path, path, dropPos(e)));
+    moveItemPrecise(drag.group, drag.path, group, path, dropPos(e));
     clearDrag();
   };
 
-  // Indicador visual (linha vermelha inset, sem deslocar layout)
-  const groupDropStyle = (label: string): React.CSSProperties | undefined =>
-    dropTarget?.kind === 'group' && dropTarget.key === label
-      ? { boxShadow: dropTarget.pos === 'before' ? 'inset 0 3px 0 0 hsl(var(--primary))' : 'inset 0 -3px 0 0 hsl(var(--primary))', borderRadius: '2px' }
-      : undefined;
+  // Indicador visual (linha/anel vermelho inset, sem deslocar layout)
+  const groupDropStyle = (label: string): React.CSSProperties | undefined => {
+    if (dropTarget?.key !== label) return undefined;
+    if (dropTarget.kind === 'group') {
+      return { boxShadow: dropTarget.pos === 'before' ? 'inset 0 3px 0 0 hsl(var(--primary))' : 'inset 0 -3px 0 0 hsl(var(--primary))', borderRadius: '2px' };
+    }
+    if (dropTarget.kind === 'group-append') {
+      return { boxShadow: 'inset 0 0 0 2px hsl(var(--primary))', borderRadius: '4px' };
+    }
+    return undefined;
+  };
   const itemDropStyle = (path: string): React.CSSProperties | undefined =>
     dropTarget?.kind === 'item' && dropTarget.key === path
       ? { boxShadow: dropTarget.pos === 'before' ? 'inset 0 2px 0 0 hsl(var(--primary))' : 'inset 0 -2px 0 0 hsl(var(--primary))' }

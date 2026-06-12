@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reorderKeys, orderNav } from '../useNavOrder';
+import { reorderKeys, insertKey, orderNav } from '../useNavOrder';
 
 const sample = () => [
   { label: 'A', icon: 'iconA', items: [{ path: '/a1' }, { path: '/a2' }, { path: '/a3' }] },
@@ -41,6 +41,32 @@ describe('reorderKeys', () => {
   });
 });
 
+describe('insertKey', () => {
+  it('insere de FORA antes do alvo (move entre grupos)', () => {
+    expect(insertKey(['x', 'y', 'z'], 'novo', 'y', 'before')).toEqual(['x', 'novo', 'y', 'z']);
+  });
+
+  it('insere de fora depois do último', () => {
+    expect(insertKey(['x', 'y'], 'novo', 'y', 'after')).toEqual(['x', 'y', 'novo']);
+  });
+
+  it('reordena quando a chave já está na lista (= reorderKeys)', () => {
+    expect(insertKey(['a', 'b', 'c'], 'a', 'c', 'before')).toEqual(['b', 'a', 'c']);
+  });
+
+  it('remove duplicata prévia antes de inserir', () => {
+    expect(insertKey(['a', 'b', 'c'], 'c', 'a', 'before')).toEqual(['c', 'a', 'b']);
+  });
+
+  it('soltar em si mesmo = no-op', () => {
+    expect(insertKey(['a', 'b'], 'a', 'a', 'before')).toEqual(['a', 'b']);
+  });
+
+  it('alvo inexistente = lista intacta', () => {
+    expect(insertKey(['a', 'b'], 'novo', 'z', 'before')).toEqual(['a', 'b']);
+  });
+});
+
 describe('orderNav', () => {
   it('sem ordem salva = ordem original', () => {
     const out = orderNav(sample(), [], {});
@@ -79,5 +105,30 @@ describe('orderNav', () => {
   it('label desconhecido na ordem salva é ignorado sem quebrar', () => {
     const out = orderNav(sample(), ['Z', 'C', 'A', 'B'], {});
     expect(out.map(g => g.label)).toEqual(['C', 'A', 'B']);
+  });
+
+  // ── mover item entre grupos (itemGroup override) ──
+  it('move item de um grupo pra outro (override de associação)', () => {
+    const out = orderNav(sample(), [], {}, { '/a3': 'B' });
+    expect(out.find(g => g.label === 'A')!.items.map(i => i.path)).toEqual(['/a1', '/a2']);
+    // sem itemOrder no destino, o movido entra na ordem de iteração (A vem antes de B)
+    expect(out.find(g => g.label === 'B')!.items.map(i => i.path)).toEqual(['/a3', '/b1', '/b2']);
+  });
+
+  it('item movido respeita a ordem salva do grupo destino (drop preciso)', () => {
+    // simula soltar /a3 ANTES de /b2 dentro de B
+    const out = orderNav(
+      sample(),
+      [],
+      { B: ['/b1', '/a3', '/b2'], A: ['/a1', '/a2'] },
+      { '/a3': 'B' }
+    );
+    expect(out.find(g => g.label === 'A')!.items.map(i => i.path)).toEqual(['/a1', '/a2']);
+    expect(out.find(g => g.label === 'B')!.items.map(i => i.path)).toEqual(['/b1', '/a3', '/b2']);
+  });
+
+  it('override pra grupo inexistente é ignorado (item fica em casa)', () => {
+    const out = orderNav(sample(), [], {}, { '/a3': 'GRUPO_QUE_NAO_EXISTE' });
+    expect(out.find(g => g.label === 'A')!.items.map(i => i.path)).toEqual(['/a1', '/a2', '/a3']);
   });
 });
