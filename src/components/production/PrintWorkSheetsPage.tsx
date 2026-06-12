@@ -20,7 +20,6 @@ import {
   bulkConsumptionKey,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
-import { SectorRegion } from '@/components/production/worksheet/SectorRegion';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
@@ -47,22 +46,25 @@ const printStyles = `
     }
   }
 
-  /* Markers "Setor · Pg N/Total" do SectorRegion existem só pro papel.
-     A regra precisa viver FORA do @media print — antes ela ficava dentro
-     dele e em tela não havia nada escondendo os markers, que apareciam
-     soltos (absolutos a 273mm/554mm…) por cima do preview das fichas. */
-  .sector-page-marker {
-    display: none;
+  /* Preview em tela das páginas explícitas do PaginatedSheet: cartões A4
+     empilhados com contorno + respiro. Em print as regras do @media print
+     abaixo zeram margem/sombra. */
+  .pagi-page {
+    box-shadow: 0 0 0 1px #d4d4d4;
+    margin-bottom: 10px;
   }
 
   @page {
     size: A4 portrait;
-    /* BUG ANTIGO: margin: 0 fazia o conteúdo (w-[210mm]) colar nas bordas
-       absolutas do A4. Quase nenhuma impressora consegue imprimir até a borda
-       física (têm ~4-7mm de área não-imprimível), então o lado direito das
-       tabelas (e o pé da página) saía cortado. FIX: 8mm de margem segura
-       em todos os lados — área imprimível resultante = 194mm × 281mm. */
-    margin: 8mm;
+    /* margin: 0 — ÚNICA forma programática de suprimir o header/footer do
+       NAVEGADOR (URL + data + "Página 1 de 83"): o browser só imprime essas
+       linhas quando há margem vertical reservada no @page. A área segura
+       (impressoras têm ~4-7mm não-imprimíveis) agora é garantida POR PÁGINA
+       pelo padding interno das páginas explícitas do PaginatedSheet
+       (6mm topo / 8mm laterais / 8mm base). Histórico: já foi 0 → 8mm
+       (quando o conteúdo era um fluxo único sem padding por página) → 0
+       de novo em 2026-06-12 com a paginação explícita. */
+    margin: 0;
   }
   @media print {
     /* BUG ANTIGO 1: usávamos position:absolute na print-area pra tirar o app
@@ -190,15 +192,22 @@ const printStyles = `
     /* Ficha REDUZIDA: NÃO força 1 por página. Fichas pequenas FLUEM e empacotam
        VÁRIAS por A4 — no lugar do branco já começa a próxima. Cada ficha fica
        INTEIRA (break-inside: avoid) e tem um traço pontilhado de corte entre elas.
-       Só quebra de página quando a próxima não cabe mais no resto da folha. */
+       Só quebra de página quando a próxima não cabe mais no resto da folha.
+       Com @page margin 0 (2026-06-12), o card compensa a margem por conta
+       própria: 8mm nas laterais + 5mm de padding-top (o card que abre cada
+       página fica fora da zona não-imprimível da impressora). O fluxo
+       reduzido continua no fragmentador do browser — não usa PaginatedSheet. */
     .reduced-card {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
       break-after: auto !important;
       page-break-after: auto !important;
       border-bottom: 1.5px dashed #999 !important;
+      padding-top: 5mm !important;
       padding-bottom: 5mm !important;
       margin-bottom: 5mm !important;
+      margin-left: 8mm !important;
+      margin-right: 8mm !important;
     }
     .reduced-card:last-child {
       border-bottom: none !important;
@@ -221,15 +230,34 @@ const printStyles = `
       height: auto !important;
       display: block !important;
     }
-    /* Com o wrapper SectorRegion, o root flex da ficha virou NETO do
-       .page-break (.page-break > .sector-region > ficha) e deixava de
-       receber o display:block acima — o bug de clipping da pg 2+ voltava
-       nas fichas multipágina. Aplica o mesmo fix um nível abaixo. */
-    .page-break .sector-region > div:not(.sector-page-marker) {
+
+    /* ── Páginas explícitas do PaginatedSheet (2026-06-12) ──
+       Cada .pagi-page é UMA folha física: caixa de 296mm (1mm aquém dos
+       297mm pra arredondamento sub-pixel não derramar numa página em
+       branco) + break-after. O padding interno substitui a margem do
+       @page (que é 0 pra suprimir o header/footer do navegador).
+       As regras vêm DEPOIS do reset universal (body * / .page-break > div)
+       e têm especificidade maior — vencem o height:auto/min-height:0. */
+    .print-area .pagi-page {
       width: 100% !important;
-      min-height: 0 !important;
+      height: 296mm !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      break-after: page !important;
+      page-break-after: always !important;
+    }
+    /* Bloco maior que 1 página (exceção): altura livre, browser fragmenta
+       por dentro (keep-together continua protegendo as sub-seções). */
+    .print-area .pagi-page--flow {
       height: auto !important;
-      display: block !important;
+      min-height: 296mm !important;
+    }
+    /* Última página da ficha não força break próprio — o .page-break pai
+       já garante "mudança de setor/ficha = nova página" (evita breaks
+       duplos consecutivos virarem folha em branco). */
+    .print-area .pagi-page:last-child {
+      break-after: auto !important;
+      page-break-after: auto !important;
     }
     .store-divider {
       page-break-before: always;
@@ -312,66 +340,19 @@ const printStyles = `
       print-color-adjust: exact !important;
     }
 
-    /* Sector page markers — auditoria mai/2026. Cada setor mostra
-       "Setor · Pg N / Total" no rodapé de cada A4 que ocupa. Visível
-       só em print (em screen fica oculto). Posicionados absolutamente
-       relativos ao wrapper .sector-region.
+    /* (Os antigos markers absolutos "Setor · Pg N/Total" do SectorRegion
+       foram substituídos em 2026-06-12 pela faixa de cabeçalho in-flow do
+       PaginatedSheet — presente no TOPO de TODAS as páginas, incluindo a 1ª.) */
 
-       Posição: top calculado por JS em SectorRegion.tsx baseado em
-       281mm × pageIndex + 273mm (= 8mm acima da borda inferior).
-
-       z-index alto pra não ser coberto por TallyBox / footer.
-       O display:none de tela vive FORA do @media print (regra global
-       acima do @page). */
-    .sector-page-marker {
-      display: block !important;
-      font-family: 'Fira Code', ui-monospace, monospace;
-      font-size: 8px;
-      line-height: 1;
-      color: #000;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      background: #fff;
-      padding: 2px 6px;
-      border: 1px solid #000;
-      z-index: 100;
-      white-space: nowrap;
-    }
-    .sector-page-marker-label {
-      font-weight: 700;
-    }
-    .sector-page-marker-sep {
-      color: #666;
-    }
-    .sector-page-marker-page {
-      font-weight: 600;
-    }
-    /* Variante topo (full-width, double hairline preto). Aparece SOMENTE
-       nas páginas 2+ pra reidentificar setor sem conflitar com o
-       WorksheetHeader gigante da página 1. Padrão de continuation
-       header de manufacturing traveler. */
-    .sector-page-marker-top {
-      font-size: 9px !important;
-      padding: 3px 8px !important;
-      border-width: 1px 0 1px 0 !important;
-      border-color: #000 !important;
-      border-style: solid !important;
-      text-align: left;
-      background: #fff !important;
-      display: flex !important;
-      align-items: baseline;
-      gap: 4px;
-      white-space: nowrap;
-      overflow: hidden !important;
-      text-overflow: ellipsis;
-    }
-
-    /* Tipografia comprimida pra caber 1 ficha por A4 (281mm úteis após
-       margin de 8mm). Histórico: 9pt/1.25 → 8.5pt/1.18 → 8pt/1.12.
+    /* Tipografia comprimida (~282mm úteis na página explícita de 296mm
+       após padding 6/8mm + faixa de cabeçalho do PaginatedSheet).
+       Histórico: 9pt/1.25 → 8.5pt/1.18 → 8pt/1.12.
        Fix 2026-06-11: reduzido de novo (pedido do user) pra puxar o
        "filete" de fichas cheias de volta pra mesma folha em vez de
-       desperdiçar uma 2ª página quase vazia. Fichas genuinamente grandes
-       continuam fluindo em múltiplas A4 (decisão 24/05 preservada). */
+       desperdiçar uma 2ª página quase vazia.
+       Nota v7: o PaginatedSheet MEDE no layout de TELA (fonte cheia) e o
+       print encolhe pra 8pt — viés seguro: páginas nunca estouram, no
+       máximo sobra branco no pé. */
     body {
       font-size: 8pt;
       line-height: 1.12;
@@ -2555,47 +2536,28 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const smGroups = silkMontageGroups || [];
     if (activeSectors.has('Corte Cabedal') && smGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresUpperCut === true))) total += 1;
-    // Corte Forração: 1 ficha POR SOLADO com pelo menos uma cor de forração
-    // no roteiro (espelha mergeForracaoWithinSole).
-    if (activeSectors.has('Corte Forração')) {
-      total += smGroups.filter(g =>
-        g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração'))).length;
-    }
-    // Costura Palmilha / Costura Cabedal: 1 ficha por solado COM o setor no
-    // roteiro (espelha filterGroupForSector — grupos 100% fora não imprimem).
+    // Fluxo contínuo por setor (2026-06-12): Corte Forração, Costura*, Silk,
+    // Aviamento, Montagem e Acabamento agora imprimem UM maço por setor
+    // (header agregado + sub-header por grupo) — cada um conta 1 ficha
+    // quando tem ao menos um grupo válido.
+    if (activeSectors.has('Corte Forração') && smGroups.some(g =>
+      g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração')))) total += 1;
     // Mapeamento de roteiro: Costura Palmilha testa 'Costura'; Costura
     // Cabedal testa 'Corte Cabedal' + requiresUpperSewing.
-    if (activeSectors.has('Costura Palmilha')) {
-      total += smGroups.filter(g =>
-        g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura'))).length;
-    }
-    if (activeSectors.has('Costura Cabedal')) {
-      total += smGroups.filter(g =>
-        g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Corte Cabedal'))).length;
-    }
-    // Aviamento (2026-06-12): 1 ficha por REFERÊNCIA (aviamentoGroups) com
-    // pelo menos uma cor no roteiro do setor.
-    if (activeSectors.has('Aviamento')) {
-      total += (aviamentoGroups || []).filter(g =>
-        g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento'))).length;
-    }
-    // Silk (2026-06-12): 1 ficha por solado com pelo menos uma cor no roteiro
-    // (espelha o render via smGroups + filterGroupForSector).
-    if (activeSectors.has('Silk')) {
-      total += smGroups.filter(g =>
-        g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Silk'))).length;
-    }
-    // Montagem: 1 ficha por grupo ref+cor no roteiro (groupedWorksheets).
-    // FALTAVA na contagem — com só Montagem marcado o sheetCount ficava 0 e
-    // o botão Imprimir era desabilitado com fichas visíveis na tela.
-    if (activeSectors.has('Montagem') && groupedWorksheets) {
-      total += groupedWorksheets.filter(g => orderInRoteiro(g.representative?.reference_id, 'Montagem')).length;
-    }
-    // Colagem agora consolida por solado (1 ficha, igual à Solagem), não mais
-    // 1 por ref+cor do cabedal.
+    if (activeSectors.has('Costura Palmilha') && smGroups.some(g =>
+      g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
+    if (activeSectors.has('Costura Cabedal') && smGroups.some(g =>
+      g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Corte Cabedal')))) total += 1;
+    if (activeSectors.has('Aviamento') && (aviamentoGroups || []).some(g =>
+      g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento')))) total += 1;
+    if (activeSectors.has('Silk') && smGroups.some(g =>
+      g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Silk')))) total += 1;
+    if (activeSectors.has('Montagem') && groupedWorksheets
+      && groupedWorksheets.some(g => orderInRoteiro(g.representative?.reference_id, 'Montagem'))) total += 1;
+    // Colagem consolida por solado (1 ficha, igual à Solagem).
     if (activeSectors.has('Colagem') && solagemData?.colagem && solagemData.colagem.bands.length > 0) total += 1;
-    // Acabamento: só OPs com o setor no roteiro (B1).
-    if (activeSectors.has('Acabamento')) total += acabamentoOrders.length;
+    // Acabamento: 1 maço com sub-header por OP (B1: só OPs no roteiro).
+    if (activeSectors.has('Acabamento') && acabamentoOrders.length > 0) total += 1;
     if (activeSectors.has('Expedição') && expedicaoGroups) total += expedicaoGroups.length;
     if (activeSectors.has('Relatório Gerencial') && reportGroups) total += reportGroups.length;
     return total;
@@ -2777,17 +2739,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             ))
           ) : (
             <div className="page-break">
-              <SectorRegion sectorLabel="Corte de Placa de Fibra">
-                <PalmilhaWorkSheet
-                  groups={palmilhaGroups.map(g => ({
-                    ...g,
-                    clientNames: clientNamesForPvs(g.pvNumbers),
-                  }))}
-                  allSizes={palmilhaAllSizes}
-                  date={today}
-                  sizeBand={bandForOps(palmilhaGroups.flatMap(g => g.opNumbers || []))}
-                />
-              </SectorRegion>
+              <PalmilhaWorkSheet
+                sectorLabel="Corte de Placa de Fibra"
+                groups={palmilhaGroups.map(g => ({
+                  ...g,
+                  clientNames: clientNamesForPvs(g.pvNumbers),
+                }))}
+                allSizes={palmilhaAllSizes}
+                sizeBand={bandForOps(palmilhaGroups.flatMap(g => g.opNumbers || []))}
+              />
             </div>
           )
         )}
@@ -3007,82 +2967,58 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             );
           };
 
+          // ── Fluxo contínuo por setor (2026-06-12, pedido do dono) ──
+          // Em vez de 1 ficha (.page-break + header gigante) POR GRUPO, cada
+          // setor vira UM PaginatedSheet com TODOS os grupos em sequência:
+          // header agregado 1× + sub-header fino por grupo + cards + rodapé
+          // por grupo. A faixa "N/TOTAL" do PaginatedSheet conta o maço
+          // inteiro do setor; o sectorLabel é só o nome do setor.
           return sectorsToRender.flatMap(sectorName => {
+            // Monta a lista de grupos do setor (mesmos filtros de antes).
+            let groupsForSector: SoleSilkGroup[];
             if (CUTTING_AGGREGATE_BY_COLOR.includes(sectorName)) {
+              // Corte Cabedal: cores agregadas entre solados → 1 grupo único.
               const merged = mergeColorsAcrossSoles(sectorName);
-              if (!merged) return [];
-              const enriched = withClientNames(merged);
-              if (reduced) return [reducedSilkNode(enriched, sectorName, `${sectorName}-red-todos`)];
-              return [
-                <div key={`${sectorName}-todos-solados`} className="page-break">
-                  <SectorRegion sectorLabel={sectorName}>
-                    <SilkMontageWorkSheet group={enriched} sector={sectorName} date={today} sizeBand={bandForOps(enriched.colorGroups.flatMap(cg => cg.opNumbers || []))} />
-                  </SectorRegion>
-                </div>,
-              ];
-            }
-            // Aviamento (2026-06-12): 1 ficha por REFERÊNCIA (aviamentoGroups),
-            // seções por cor. O solado não aparece no header nem nos cards —
-            // o setor só monta o cabedal.
-            if (sectorName === 'Aviamento') {
-              return aviGroups
-                .map((group, gi) => ({ gi, filtered: filterGroupForSector(group, 'Aviamento') }))
-                .filter((x): x is { gi: number; filtered: SoleSilkGroup } => x.filtered !== null)
-                .map(({ gi, filtered }) => (
-                  reduced
-                    ? reducedSilkNode(withClientNames(filtered), 'Aviamento', `Aviamento-red-${gi}-${filtered.soleName}`)
-                    : (
-                      <div key={`Aviamento-${gi}-${filtered.soleName}`} className="page-break">
-                        <SectorRegion sectorLabel={`Aviamento · ${filtered.soleName}`}>
-                          <SilkMontageWorkSheet
-                            group={withClientNames(filtered)}
-                            sector="Aviamento"
-                            date={today}
-                            sizeBand={bandForOps(filtered.colorGroups.flatMap(cg => cg.opNumbers || []))}
-                          />
-                        </SectorRegion>
-                      </div>
-                    )
-                ));
-            }
-            // Corte Forração: 1 ficha por solado, cores agrupadas por COR DA
-            // PALMILHA (forração) — não pela cor do cabedal nem por ref.
-            if (sectorName === 'Corte Forração') {
-              return smGroups
+              groupsForSector = merged ? [merged] : [];
+            } else if (sectorName === 'Aviamento') {
+              // Aviamento: grupos por REFERÊNCIA (sub-header por referência;
+              // a foto do produto sai no 1º card de cada cor).
+              groupsForSector = aviGroups
+                .map(group => filterGroupForSector(group, 'Aviamento'))
+                .filter((g): g is SoleSilkGroup => g !== null);
+            } else if (sectorName === 'Corte Forração') {
+              // Corte Forração: grupos por solado, cores fundidas pela COR
+              // BASE do calçado (= cor em que a forração é cortada).
+              groupsForSector = smGroups
                 .map(group => mergeForracaoWithinSole(group))
-                .filter((g): g is SoleSilkGroup => g !== null)
-                .map(merged => (
-                  reduced
-                    ? reducedSilkNode(withClientNames(merged), sectorName, `${sectorName}-red-${merged.soleName}`)
-                    : (
-                      <div key={`${sectorName}-${merged.soleName}`} className="page-break">
-                        <SectorRegion sectorLabel={`${sectorName} · ${merged.soleName}`}>
-                          <SilkMontageWorkSheet group={withClientNames(merged)} sector={sectorName} date={today} sizeBand={bandForOps(merged.colorGroups.flatMap(cg => cg.opNumbers || []))} />
-                        </SectorRegion>
-                      </div>
-                    )
-                ));
+                .filter((g): g is SoleSilkGroup => g !== null);
+            } else {
+              // Costura* / Silk: grupos por solado.
+              groupsForSector = smGroups
+                .map(group => filterGroupForSector(group, sectorName))
+                .filter((g): g is SoleSilkGroup => g !== null);
             }
-            // Costura* / Silk: 1 ficha por solado (comportamento atual).
-            return smGroups
-              .map(group => ({ group, filtered: filterGroupForSector(group, sectorName) }))
-              .filter(x => x.filtered !== null)
-              .map(({ filtered }) => (
-                reduced
-                  ? reducedSilkNode(filtered!, sectorName, `${sectorName}-red-${filtered!.soleName}`)
-                  : (
-                    <div key={`${sectorName}-${filtered!.soleName}`} className="page-break">
-                      <SectorRegion sectorLabel={`${sectorName} · ${filtered!.soleName}`}>
-                        <SilkMontageWorkSheet
-                          group={withClientNames(filtered!)}
-                          sector={sectorName}
-                          date={today}
-                          sizeBand={bandForOps(filtered!.colorGroups.flatMap(cg => cg.opNumbers || []))}
-                        />
-                      </SectorRegion>
-                    </div>
-                  )
-              ));
+            if (groupsForSector.length === 0) return [];
+            if (reduced) {
+              return groupsForSector.map((g, gi) =>
+                reducedSilkNode(withClientNames(g), sectorName, `${sectorName}-red-${gi}-${g.soleName}`));
+            }
+            // Enriquecimento por grupo: clientes + faixa etária (selo do
+            // sub-header). Faixa agregada do setor vai no header.
+            const enriched = groupsForSector.map(g => ({
+              ...withClientNames(g),
+              sizeBand: bandForOps(g.colorGroups.flatMap(cg => cg.opNumbers || [])),
+            }));
+            return [
+              <div key={`${sectorName}-maco`} className="page-break">
+                <SilkMontageWorkSheet
+                  sectorLabel={sectorName}
+                  groups={enriched}
+                  sector={sectorName}
+                  sizeBand={bandForOps(enriched.flatMap(g => g.colorGroups.flatMap(cg => cg.opNumbers || [])))}
+                />
+              </div>,
+            ];
           });
         })()}
 
@@ -3128,16 +3064,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             ))
           ) : (
             <div className="page-break">
-              <SectorRegion sectorLabel="Solagem">
-                <SolagemWorkSheet
-                  bands={data.bands}
-                  allSizes={data.allSizes}
-                  date={today}
-                  grandTotal={data.grandTotal}
-                  sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
-                  clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
-                />
-              </SectorRegion>
+              <SolagemWorkSheet
+                bands={data.bands}
+                allSizes={data.allSizes}
+                grandTotal={data.grandTotal}
+                sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
+                clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
+              />
             </div>
           );
         })()}
@@ -3168,17 +3101,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             ))
           ) : (
             <div className="page-break">
-              <SectorRegion sectorLabel="Colagem">
-                <SolagemWorkSheet
-                  sector="Colagem"
-                  bands={data.bands}
-                  allSizes={data.allSizes}
-                  date={today}
-                  grandTotal={data.grandTotal}
-                  sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
-                  clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
-                />
-              </SectorRegion>
+              <SolagemWorkSheet
+                sector="Colagem"
+                bands={data.bands}
+                allSizes={data.allSizes}
+                grandTotal={data.grandTotal}
+                sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
+                clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
+              />
             </div>
           );
         })()}
@@ -3192,197 +3122,219 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           if (!includesSector(sectorName)) return [];
           // B1: só imprime a ficha do setor pra grupos cuja ficha técnica tem
           // o setor no roteiro (production_sectors; null/[] = sem restrição).
-          return groupedWorksheets
-            .filter((group) => orderInRoteiro(group.representative?.reference_id, sectorName))
-            .map((group) => {
-          const { representative } = group;
-          // Resolve foto via cascata: variante exata > variante "Preto" > images[0] master.
-          const repColorLower = (representative.color || '').toLowerCase();
-          const variantsList = variantsByRef.get(representative.reference_id) || [];
-          const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
-          const pretoVariant = !exactVariant?.image_url
-            ? variantsList.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))
-            : null;
-          const tsImage = tsImageByRef.get(representative.reference_id) || null;
-          const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
-          if (reduced) {
-            const baseSum = Object.values(group.baseGrid || {}).reduce((s, v) => s + (Number(v) || 0), 0);
-            // Grades mistas: a base da 1ª OP não representa o grupo — usa a
-            // grade combinada (já escalada por OP com largest remainder).
-            const g = group.mixedGrades
-              ? group.combinedGrid
-              : scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
-            return (
-              <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel={sectorName}
-                  title={`${representative.reference_name || representative.reference_code || '—'}${representative.color ? ' · ' + representative.color : ''}`}
-                  imageUrl={resolvedImageUrl}
-                  grade={g}
-                  allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
-                  totalPairs={group.totalPairs}
-                  consumption={consumptionForOpNumbers(group.opNumbers, group.totalPairs)}
-                  consumptionSector={sectorName}
-                />
-              </div>
-            );
-          }
-          const syntheticOrder = {
-            ...representative,
-            // Sobrescreve variant.variant_image_url pra getProductImage usar
-            variant: {
-              ...(representative.variant || {}),
-              variant_image_url: resolvedImageUrl || (representative.variant?.variant_image_url ?? null),
-            },
-            master: {
-              ...(representative.master || {}),
-              main_image_url: tsImage || (representative.master?.main_image_url ?? null),
-            },
-            // grid: passa a BASE (12p de 1 ficha) e o total real em total_pairs;
-            // OperatorWorkSheet escala internamente e calcula fichas corretamente.
-            // Antes passava combinedGrid (já escalado) → multiplier=1, fichas=1,
-            // e a linha "Por Ficha (12p)" sumia.
-            // EXCEÇÃO grades mistas: a base da 1ª OP não representa o grupo
-            // (infantil+adulta na mesma ref+cor) — passa a combinada e a
-            // worksheet omite "Por Ficha" via prop mixedGrades.
-            grid: group.mixedGrades ? group.combinedGrid : group.baseGrid,
-            total_pairs: group.totalPairs,
-            due_date: group.latestDueDate || representative.due_date,
-            op_number: group.opNumbers[0],
+          const sectorGroups = groupedWorksheets
+            .filter((group) => orderInRoteiro(group.representative?.reference_id, sectorName));
+          if (sectorGroups.length === 0) return [];
+          // Foto via cascata: variante exata > variante "Preto" > images[0] master.
+          const resolveGroupImage = (representative: any) => {
+            const repColorLower = (representative.color || '').toLowerCase();
+            const variantsList = variantsByRef.get(representative.reference_id) || [];
+            const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
+            const pretoVariant = !exactVariant?.image_url
+              ? variantsList.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))
+              : null;
+            const tsImage = tsImageByRef.get(representative.reference_id) || null;
+            return { resolvedImageUrl: exactVariant?.image_url || pretoVariant?.image_url || tsImage, tsImage };
           };
-          const silk = getOrderSilk(representative);
-          const { soleColor, insoleColor, insoleReadyMade, hasStraps } = getOrderColors(representative);
-          // Sequência de tiras (TIRA 1, TIRA 2, ...) na ordem da ficha técnica.
-          // Cada OP do grupo Ref+Cor pode ter tiras diferentes — pra Colagem
-          // basta a do representative (todas as OPs do grupo têm a mesma ref+cor).
-          const strapsRaw = Array.isArray((representative as any).strap_colors)
-            ? ((representative as any).strap_colors as Array<any>)
-            : [];
-          const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-            const ka = parseInt(a?.id, 10);
-            const kb = parseInt(b?.id, 10);
-            if (isFinite(ka) && isFinite(kb)) return ka - kb;
-            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          if (reduced) {
+            return sectorGroups.map((group) => {
+              const { representative } = group;
+              const { resolvedImageUrl } = resolveGroupImage(representative);
+              const baseSum = Object.values(group.baseGrid || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+              // Grades mistas: a base da 1ª OP não representa o grupo — usa a
+              // grade combinada (já escalada por OP com largest remainder).
+              const g = group.mixedGrades
+                ? group.combinedGrid
+                : scaleGradeWithLargestRemainder(group.baseGrid, baseSum > 0 ? group.totalPairs / baseSum : 1, group.totalPairs);
+              return (
+                <div key={`${sectorName.toLowerCase()}-red-${representative.reference_id}::${representative.color}`} className="reduced-card">
+                  <ReducedWorkSheet
+                    sectorLabel={sectorName}
+                    title={`${representative.reference_name || representative.reference_code || '—'}${representative.color ? ' · ' + representative.color : ''}`}
+                    imageUrl={resolvedImageUrl}
+                    grade={g}
+                    allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
+                    totalPairs={group.totalPairs}
+                    consumption={consumptionForOpNumbers(group.opNumbers, group.totalPairs)}
+                    consumptionSector={sectorName}
+                  />
+                </div>
+              );
+            });
+          }
+          // ── Maço contínuo (2026-06-12): UM OperatorWorkSheet pro setor
+          // inteiro — header agregado 1× + sub-header por grupo ref+cor. ──
+          const items = sectorGroups.map((group) => {
+            const { representative } = group;
+            const { resolvedImageUrl, tsImage } = resolveGroupImage(representative);
+            const syntheticOrder = {
+              ...representative,
+              // Sobrescreve variant.variant_image_url pra getProductImage usar
+              variant: {
+                ...(representative.variant || {}),
+                variant_image_url: resolvedImageUrl || (representative.variant?.variant_image_url ?? null),
+              },
+              master: {
+                ...(representative.master || {}),
+                main_image_url: tsImage || (representative.master?.main_image_url ?? null),
+              },
+              // grid: passa a BASE (12p de 1 ficha) e o total real em total_pairs;
+              // OperatorWorkSheet escala internamente e calcula fichas corretamente.
+              // EXCEÇÃO grades mistas: a base da 1ª OP não representa o grupo
+              // (infantil+adulta na mesma ref+cor) — passa a combinada e a
+              // worksheet omite "Por Ficha" via prop mixedGrades.
+              grid: group.mixedGrades ? group.combinedGrid : group.baseGrid,
+              total_pairs: group.totalPairs,
+              due_date: group.latestDueDate || representative.due_date,
+              op_number: group.opNumbers[0],
+            };
+            const silk = getOrderSilk(representative);
+            const { soleColor, insoleColor, insoleReadyMade, hasStraps } = getOrderColors(representative);
+            // Sequência de tiras (TIRA 1, TIRA 2, ...) na ordem da ficha técnica.
+            const strapsRaw = Array.isArray((representative as any).strap_colors)
+              ? ((representative as any).strap_colors as Array<any>)
+              : [];
+            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
+              const ka = parseInt(a?.id, 10);
+              const kb = parseInt(b?.id, 10);
+              if (isFinite(ka) && isFinite(kb)) return ka - kb;
+              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+            });
+            return {
+              order: syntheticOrder,
+              silk,
+              soleColor,
+              insoleColor,
+              insoleReadyMade,
+              hasStraps,
+              strapColors: strapColorsOrdered,
+              opNumbers: group.opNumbers,
+              sizeBand: bandForOps(group.opNumbers),
+              clientName: clientNamesForPvs(group.pvNumbers).join(' · ') || undefined,
+              mixedGrades: group.mixedGrades,
+            };
           });
-          return (
-            <div key={`${sectorName.toLowerCase()}-${representative.reference_id}::${representative.color}`} className="page-break">
-              <SectorRegion sectorLabel={`${sectorName} · ${representative.reference_name || representative.reference_code || '—'} ${representative.color || ''}`}>
-                <OperatorWorkSheet
-                  order={syntheticOrder}
-                  sector={sectorName}
-                  silk={silk}
-                  soleColor={soleColor}
-                  insoleColor={insoleColor}
-                  insoleReadyMade={insoleReadyMade}
-                  hasStraps={hasStraps}
-                  strapColors={strapColorsOrdered}
-                  opNumbers={group.opNumbers}
-                  sizeBand={bandForOps(group.opNumbers)}
-                  clientName={clientNamesForPvs(group.pvNumbers).join(' · ') || undefined}
-                  mixedGrades={group.mixedGrades}
-                />
-              </SectorRegion>
-            </div>
-          );
-        });
+          const allPvs = Array.from(new Set(sectorGroups.flatMap(g => g.pvNumbers || []).filter(Boolean)))
+            .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+          return [
+            <div key={`${sectorName.toLowerCase()}-maco`} className="page-break">
+              <OperatorWorkSheet
+                sectorLabel={sectorName}
+                sector={sectorName}
+                items={items}
+                pvNumbers={allPvs}
+                clientNames={clientNamesForPvs(allPvs)}
+                sizeBand={bandForOps(sectorGroups.flatMap(g => g.opNumbers || []))}
+              />
+            </div>,
+          ];
         })}
 
-        {/* ── Acabamento: individual cliente-a-cliente (1 OP por card) ── */}
-        {/* User pediu em 2026-05: 'Setor de acabamento não tem agrupamento
-            nenhum, é o pedido individual cliente a cliente'. Antes era
-            agregado em silkMontageGroups por solado+cor. Agora itera OP a OP
-            e renderiza OperatorWorkSheet (mesma estrutura da Colagem).
-            Lot sizing (PR 2026-05-23): usa expandedOrders pra que OPs
-            splitadas virem N fichas (1 por lote) em Acabamento também.
-            B1 (2026-06-10): acabamentoOrders = expandedOrders filtradas pelo
-            roteiro (production_sectors) — OP sem Acabamento não imprime. */}
-        {includesSector('Acabamento') && acabamentoOrders.map((order) => {
-          const repColorLower = (order.color || '').toLowerCase();
-          const variantsList = variantsByRef.get(order.reference_id) || [];
-          const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
-          const pretoVariant = !exactVariant?.image_url
-            ? variantsList.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))
-            : null;
-          const tsImage = tsImageByRef.get(order.reference_id) || null;
-          const resolvedImageUrl = exactVariant?.image_url || pretoVariant?.image_url || tsImage;
-          if (reduced) {
-            const tot = Number((order as any).total_pairs) || 0;
-            const baseG = ((order as any).grid || {}) as Record<string, number>;
-            const baseSum = Object.values(baseG).reduce((s, v) => s + (Number(v) || 0), 0);
-            const g = scaleGradeWithLargestRemainder(baseG, baseSum > 0 ? tot / baseSum : 1, tot);
-            return (
-              <div key={`acab-red-${order.id}`} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel="Acabamento"
-                  title={`${order.reference_name || order.reference_code || '—'}${order.color ? ' · ' + order.color : ''}`}
-                  imageUrl={resolvedImageUrl}
-                  grade={g}
-                  allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
-                  totalPairs={tot}
-                  consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean), tot)}
-                  consumptionSector="Acabamento"
-                />
-              </div>
-            );
-          }
-          const syntheticOrder = {
-            ...order,
-            variant: {
-              ...(order.variant || {}),
-              variant_image_url: resolvedImageUrl || (order.variant?.variant_image_url ?? null),
-            },
-            master: {
-              ...(order.master || {}),
-              main_image_url: tsImage || (order.master?.main_image_url ?? null),
-            },
+        {/* ── Acabamento: pedido individual cliente-a-cliente, em maço único ──
+            User pediu em 2026-05: 'Setor de acabamento não tem agrupamento
+            nenhum, é o pedido individual cliente a cliente' — cada OP segue
+            sendo um GRUPO próprio (sub-header por OP), mas desde 2026-06-12
+            todas fluem CONTÍNUAS no mesmo maço do setor (sem ficha nova com
+            header gigante por OP). Lot sizing: expandedOrders → OPs splitadas
+            viram N grupos (1 por lote). B1: acabamentoOrders já filtradas
+            pelo roteiro (production_sectors). */}
+        {includesSector('Acabamento') && (() => {
+          if (acabamentoOrders.length === 0) return null;
+          const resolveOrderImage = (order: any) => {
+            const repColorLower = (order.color || '').toLowerCase();
+            const variantsList = variantsByRef.get(order.reference_id) || [];
+            const exactVariant = variantsList.find(v => (v.color || '').toLowerCase() === repColorLower);
+            const pretoVariant = !exactVariant?.image_url
+              ? variantsList.find(v => v.image_url && /^preto$/i.test((v.color || '').trim()))
+              : null;
+            const tsImage = tsImageByRef.get(order.reference_id) || null;
+            return { resolvedImageUrl: exactVariant?.image_url || pretoVariant?.image_url || tsImage, tsImage };
           };
-          const silk = getOrderSilk(order);
-          const { soleColor, insoleColor, insoleReadyMade, hasStraps } = getOrderColors(order);
-          const strapsRaw = Array.isArray((order as any).strap_colors)
-            ? ((order as any).strap_colors as Array<any>)
-            : [];
-          const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-            const ka = parseInt(a?.id, 10);
-            const kb = parseInt(b?.id, 10);
-            if (isFinite(ka) && isFinite(kb)) return ka - kb;
-            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+          if (reduced) {
+            return acabamentoOrders.map((order) => {
+              const { resolvedImageUrl } = resolveOrderImage(order);
+              const tot = Number((order as any).total_pairs) || 0;
+              const baseG = ((order as any).grid || {}) as Record<string, number>;
+              const baseSum = Object.values(baseG).reduce((s, v) => s + (Number(v) || 0), 0);
+              const g = scaleGradeWithLargestRemainder(baseG, baseSum > 0 ? tot / baseSum : 1, tot);
+              return (
+                <div key={`acab-red-${order.id}`} className="reduced-card">
+                  <ReducedWorkSheet
+                    sectorLabel="Acabamento"
+                    title={`${order.reference_name || order.reference_code || '—'}${order.color ? ' · ' + order.color : ''}`}
+                    imageUrl={resolvedImageUrl}
+                    grade={g}
+                    allSizes={Object.keys(g).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))}
+                    totalPairs={tot}
+                    consumption={consumptionForOpNumbers([(order as any).op_number].filter(Boolean), tot)}
+                    consumptionSector="Acabamento"
+                  />
+                </div>
+              );
+            });
+          }
+          const items = acabamentoOrders.map((order) => {
+            const { resolvedImageUrl, tsImage } = resolveOrderImage(order);
+            const syntheticOrder = {
+              ...order,
+              variant: {
+                ...(order.variant || {}),
+                variant_image_url: resolvedImageUrl || (order.variant?.variant_image_url ?? null),
+              },
+              master: {
+                ...(order.master || {}),
+                main_image_url: tsImage || (order.master?.main_image_url ?? null),
+              },
+            };
+            const silk = getOrderSilk(order);
+            const { soleColor, insoleColor, insoleReadyMade, hasStraps } = getOrderColors(order);
+            const strapsRaw = Array.isArray((order as any).strap_colors)
+              ? ((order as any).strap_colors as Array<any>)
+              : [];
+            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
+              const ka = parseInt(a?.id, 10);
+              const kb = parseInt(b?.id, 10);
+              if (isFinite(ka) && isFinite(kb)) return ka - kb;
+              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+            });
+            return {
+              order: syntheticOrder,
+              silk,
+              soleColor,
+              insoleColor,
+              insoleReadyMade,
+              hasStraps,
+              strapColors: strapColorsOrdered,
+              opNumbers: [order.op_number].filter(Boolean),
+              clientName: clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined,
+              lotInfo:
+                (order as any)._total_lots && (order as any)._total_lots > 1
+                  ? { number: (order as any)._lot_number, total: (order as any)._total_lots }
+                  : undefined,
+              sizeBand: bandForGrid((order as any).grid),
+            };
           });
+          const allPvs = Array.from(new Set(
+            acabamentoOrders.map((o: any) => o.sale_order_number).filter(Boolean),
+          )).sort((a, b) => String(b).localeCompare(String(a), undefined, { numeric: true })) as string[];
           return (
-            // SectorRegion (igual aos demais setores): sem ele, as páginas de
-            // continuação de uma ficha multipágina de Acabamento saíam sem o
-            // marker "Setor · Pg N/Total" — no maço impresso o operador
-            // atribuía a página órfã ao setor anterior.
-            <div key={`acab-${order.id}`} className="page-break">
-              <SectorRegion sectorLabel={`Acabamento · ${order.reference_name || order.reference_code || '—'} ${order.color || ''}`}>
+            <div key="acab-maco" className="page-break">
               <OperatorWorkSheet
-                order={syntheticOrder}
+                sectorLabel="Acabamento"
                 sector="Acabamento"
-                silk={silk}
-                soleColor={soleColor}
-                insoleColor={insoleColor}
-                insoleReadyMade={insoleReadyMade}
-                hasStraps={hasStraps}
-                strapColors={strapColorsOrdered}
-                opNumbers={[order.op_number].filter(Boolean)}
-                clientName={clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined}
-                lotInfo={
-                  (order as any)._total_lots && (order as any)._total_lots > 1
-                    ? { number: (order as any)._lot_number, total: (order as any)._total_lots }
-                    : undefined
-                }
-                sizeBand={bandForGrid((order as any).grid)}
+                items={items}
+                pvNumbers={allPvs}
+                clientNames={clientNamesForPvs(allPvs)}
+                sizeBand={bandForOps(acabamentoOrders.map((o: any) => o.op_number).filter(Boolean))}
               />
-              </SectorRegion>
             </div>
           );
-        })}
+        })()}
 
         {/* ── Expedição: 1 ficha por cliente/CNPJ ── */}
         {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
-            <SectorRegion sectorLabel={`Expedição · ${group.client_name}`}>
-              <ExpedicaoWorkSheet group={group} date={today} sizeBand={bandForOps(group.orders.map((o: any) => o.op_number).filter(Boolean))} />
-            </SectorRegion>
+            <ExpedicaoWorkSheet sectorLabel={`Expedição · ${group.client_name}`} group={group} sizeBand={bandForOps(group.orders.map((o: any) => o.op_number).filter(Boolean))} />
           </div>
         ))}
 
@@ -3393,7 +3345,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             que cada bloco fica inteiro na sua página. */}
         {includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
           <div key={`report-${rg.saleOrder.id}`} className="page-break">
-            <ManagementReport saleOrder={rg.saleOrder} orders={rg.reportOrders} date={today} />
+            <ManagementReport
+              sectorLabel={`Relatório Gerencial · ${rg.saleOrder.order_number || 'PV —'}`}
+              saleOrder={rg.saleOrder}
+              orders={rg.reportOrders}
+              date={today}
+            />
           </div>
         ))}
       </div>

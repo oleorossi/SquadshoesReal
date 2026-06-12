@@ -5,9 +5,10 @@ import { gradeTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
+import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { generateBatchId } from './worksheet/batchId';
+import { PaginatedSheet } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface PalmilhaGroup {
@@ -41,11 +42,12 @@ export interface PalmilhaGroup {
 interface Props {
   groups: PalmilhaGroup[];
   allSizes: string[];
-  date?: string;
   /** Pares por ficha — vem do tipo_caixa do solado. Default 12. */
   pairsPerCard?: number;
   /** Faixa etária (por numeração) — selo INFANTIL/ADULTO no header. */
   sizeBand?: 'infantil' | 'adulto' | 'misto';
+  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet). */
+  sectorLabel?: string;
 }
 
 /**
@@ -55,17 +57,13 @@ interface Props {
  * quando 100% das OPs daquele solado vêm prontas (suprime tally e mostra
  * alerta); qualquer OP "cortar" rebaixa o grupo pro fluxo normal de corte.
  */
-export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, sizeBand }: Props) => {
+export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
-  // Batch ID determinístico (genealogia da consolidação).
-  const allOpNumbers = groups.flatMap(g => g.opNumbers || []);
-  const batchId = generateBatchId('Corte Palmilha', allOpNumbers, date);
 
-  return (
-    <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 bg-white shadow-none print:shadow-none m-auto flex flex-col gap-0"
-      style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
-    >
+  // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
+  // Header da ficha → 1 card por solado → Total Geral → rodapé de conclusão.
+  // O paginador garante "card inteiro ou nada" por página.
+  const headerBlock = (
       <WorksheetHeader
         sector="Corte de Placa de Fibra"
         icon={Scissors}
@@ -73,63 +71,32 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
         identification={(() => {
           const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
           const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));
-          const pvDisplay = pvs.length === 0 ? null
-            : pvs.length === 1 ? pvs[0]
-            : `${pvs[0]} +${pvs.length - 1}`;
           return (
-            <div className="flex items-start gap-4 min-w-0">
-              {pvDisplay && (
-                <div className="shrink-0">
-                  <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
-                  <p
-                    className="text-black leading-none mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
-                  >
-                    {pvDisplay}
-                  </p>
-                </div>
-              )}
-              <div className={`min-w-0 flex-1 ${pvDisplay ? 'border-l border-black pl-4' : ''}`}>
-                <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
-                <p
-                  className="text-black uppercase leading-none mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
-                >
-                  {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
-                </p>
-                {clientNames.length > 0 && (
-                  <p className="font-mono text-[10px] text-black tracking-wider uppercase mt-1 leading-tight">
-                    <span className="text-black/60">Cliente · </span>
-                    <span className="font-bold">{clientNames.join(' · ')}</span>
-                  </p>
-                )}
-                <div className="flex items-baseline gap-3 mt-1 flex-wrap">
-                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    {groups.length} grupo{groups.length !== 1 ? 's' : ''}
-                  </span>
-                  <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-                    Corte por solado · cor da palmilha indiferente
-                  </span>
-                </div>
+            <HeaderIdentification pvNumbers={pvs} clientNames={clientNames}>
+              <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
+              <p
+                className="text-black uppercase leading-none mt-0.5"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', letterSpacing: '-0.025em' }}
+              >
+                {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+              </p>
+              <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+                <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                  {groups.length} grupo{groups.length !== 1 ? 's' : ''}
+                </span>
+                <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+                  Corte por solado · cor da palmilha indiferente
+                </span>
               </div>
-            </div>
+            </HeaderIdentification>
           );
         })()}
         qrLabel="PLACA FIBRA"
-        date={date}
-        batchId={batchId}
         index={`OP ${formatOpNumber('Corte Palmilha')} / CORTE DE PLACA DE FIBRA`}
       />
+  );
 
-      {groups.length === 0 ? (
-        <>
-          <div className="text-center py-10 text-black italic text-xs">
-            Nenhuma palmilha para cortar neste lote.
-          </div>
-        </>
-      ) : (
-        <div className="space-y-2">
-          {groups.map((group, idx) => {
+  const groupBlocks = groups.map((group, idx) => {
             // FIX 2026-06-11: tally de FICHAS. Grade base uniforme → 1 caixinha
             // = 1 ficha de baseGradeSum pares (bate com "Por Ficha (Np) × M
             // fichas"); grade mista cai no box genérico (pairsPerCard).
@@ -142,7 +109,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
             if (group.readyMade) {
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
             }
-            const isLast = idx === groups.length - 1;
             // Fix 22/05/2026: tabela mostra só o range do solado (não
             // todos os tamanhos de allSizes). Usa union de baseGrade +
             // grade — qualquer tamanho com valor > 0 em pelo menos um
@@ -376,41 +342,35 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, date, pairsPerCard = 12, s
               </div>
             );
 
-            // Fix 2026-06-11: KIT handoff + rodapé (assinaturas) removidos.
-            // Trailing agora é só o "Total Geral" da ficha.
-            const trailingBlock = (
-              <div className="keep-together keep-with-next flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-                <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
-                <span
-                  className="text-black uppercase leading-none py-1"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
-                >
-                  {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
-                </span>
-              </div>
-            );
-
-            if (isLast) {
-              // Trailing (total geral + kit checklist + footer): cada bloco
-              // é atômico POR SI e ancorado ao anterior — enchem a página
-              // um a um em vez de pular juntos como blocão (que deixava
-              // meia página em branco quando não cabia inteiro).
-              return (
-                <div key={idx}>
-                  {groupBlock}
-                  <div className="keep-with-previous">
-                    {trailingBlock}
-                  </div>
-                </div>
-              );
-            }
             return <React.Fragment key={idx}>{groupBlock}</React.Fragment>;
-          })}
-        </div>
-      )}
+  });
 
-      {/* Rodapé de conclusão — Executado por / Data / Visto (2026-06-12) */}
-      <CompletionFooter />
+  // Trailing — só o "Total Geral" da ficha (KIT handoff + assinaturas
+  // saíram em 2026-06-11). Bloco atômico próprio no paginador.
+  const trailingBlock = (
+    <div className="keep-together flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+      <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+      <span
+        className="text-black uppercase leading-none py-1"
+        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+      >
+        {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+      </span>
     </div>
   );
+
+  const blocks: React.ReactNode[] = [
+    headerBlock,
+    ...(groups.length === 0
+      ? [(
+          <div className="text-center py-10 text-black italic text-xs">
+            Nenhuma palmilha para cortar neste lote.
+          </div>
+        )]
+      : [...groupBlocks, trailingBlock]),
+    // Rodapé de conclusão — Executado por / Data / Visto (2026-06-12)
+    <CompletionFooter />,
+  ];
+
+  return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} />;
 };

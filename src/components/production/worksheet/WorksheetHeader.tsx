@@ -22,19 +22,12 @@ interface Props {
   qrLabel?: string;
   /** Slot extra abaixo do header (alertas). */
   alerts?: React.ReactNode;
-  date?: string;
   /** Index editorial pré-formatado (ex: "01 / SILK"). Se omitido, é derivado de `sector`. */
   index?: string;
   /** Quando a OP está splitada em lotes (PR lot-sizing 2026-05): mostra
    *  badge editorial proeminente "LOTE X / N" no topo da ficha pra avisar
    *  o operador que está produzindo um pedaço, não a OP inteira. */
   lotInfo?: { number: number; total: number };
-  /** Batch ID determinístico (${SECTOR}-${YYMMDD}-${HASH4}) — anchora a
-   *  genealogia da ficha consolidada. Original PR eb67425 (mai/22); commit
-   *  834641d (mai/23) removeu sem querer do destructuring ao adicionar
-   *  lotInfo, deixando os 2 usos JSX órfãos → ReferenceError em prod
-   *  (tsconfig permissivo não captou). Restaurado 29/05/2026. */
-  batchId?: string;
   /** Faixa etária da ficha (por numeração: < 33 = infantil). Renderiza selo
    *  "INFANTIL" e/ou "ADULTO" no header. 'misto' mostra os dois. */
   sizeBand?: SizeBand;
@@ -54,7 +47,7 @@ interface Props {
  */
 export const WorksheetHeader = ({
   sector, icon: Icon,
-  imageSlot, identification, qrLabel, alerts, date, index, lotInfo, batchId, sizeBand,
+  imageSlot, identification, qrLabel, alerts, index, lotInfo, sizeBand,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
@@ -91,21 +84,12 @@ export const WorksheetHeader = ({
         )}
       </div>
 
-      {/* Editorial index strip */}
+      {/* Editorial index strip — batch ID + data removidos em 2026-06-12
+          (pedido do dono: informação desnecessária na ficha). */}
       <div className="flex items-baseline justify-between mb-0.5 gap-3">
         <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
           {editorialIndex}
         </span>
-        <div className="flex items-baseline gap-3 shrink-0">
-          {batchId && (
-            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-              <span className="text-black/60">Batch · </span>{batchId}
-            </span>
-          )}
-          {date && (
-            <span className="font-mono text-[10px] text-black tracking-widest uppercase">{date}</span>
-          )}
-        </div>
       </div>
 
       {/* Hero row — top hairline rules, no fills */}
