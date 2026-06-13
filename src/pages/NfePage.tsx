@@ -28,7 +28,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -448,15 +448,16 @@ export default function NfePage() {
   const filtered = allNfe.filter((n: any) => {
     if (obsoleteRejectionIds.has(n.id)) return false;
     if (!searchText) return true;
-    const q = normalizeForSearch(searchText);
-    return (
-      normalizeForSearch(n.sale_orders?.order_number).includes(q) ||
-      normalizeForSearch(n.sale_orders?.client_name).includes(q) ||
-      normalizeForSearch(n.nome_destinatario).includes(q) ||
-      n.cnpj_destinatario?.includes(q) ||
-      normalizeForSearch(n.numero).includes(q) ||
-      normalizeForSearch(n.chave_acesso).includes(q) ||
-      n.cnpj_emitente?.includes(q)
+    // "/" = refinamento AND (ex.: "stx / alcineu")
+    return searchMatchesAllTerms(
+      searchText,
+      n.sale_orders?.order_number,
+      n.sale_orders?.client_name,
+      n.nome_destinatario,
+      n.cnpj_destinatario,
+      n.numero,
+      n.chave_acesso,
+      n.cnpj_emitente,
     );
   });
 

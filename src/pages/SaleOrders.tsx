@@ -54,7 +54,7 @@ import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, splitSearchTerms } from '@/lib/searchUtils';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
 // Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
@@ -439,9 +439,8 @@ export default function SaleOrders() {
 
         const client = clientByName[(order.client_name || '').toLowerCase()];
         const cnpjDigits = (client?.cnpj || (order as any).client_cnpj || '').replace(/\D/g, '');
-        const qDigits = q.replace(/\D/g, '');
         const itemTokens = itemsBySaleOrder[order.id];
-        const candidates = [
+        const normCandidates = [
           order.order_number,
           order.client_name,
           order.client_order_number,
@@ -456,16 +455,22 @@ export default function SaleOrders() {
           (order as any).client_number,
           client?.client_number,
           client?.nome_fantasia,
-        ];
-        // Normaliza: remove espaços/hifens/acentos pra "SP 10"/"sp-10"/"SP10"
-        // serem equivalentes (pedido user 19/05/2026). qDigits continua sendo
-        // checagem extra pra CNPJ. Mantém q lower-case original como fallback
-        // pra casos onde a query é só dígitos longos (ex: nº de pedido).
-        const qNorm = normalizeForSearch(q);
-        const matchesText = candidates.some(v => normalizeForSearch(v).includes(qNorm));
-        const matchesCnpj = qDigits.length >= 3 && cnpjDigits.includes(qDigits);
-        const matchesItem = itemTokens && Array.from(itemTokens).some(t => normalizeForSearch(t).includes(qNorm));
-        if (!matchesText && !matchesCnpj && !matchesItem) return false;
+        ].map(normalizeForSearch);
+        const tokenArr = itemTokens ? Array.from(itemTokens).map(normalizeForSearch) : [];
+        // "/" separa termos AND (refinamento): "stx / alcineu" exige um campo
+        // com "stx" E um campo com "alcineu" (referência + cliente, em qualquer
+        // ordem). Sem "/", é só 1 termo = comportamento de antes. Normaliza
+        // (remove espaço/hífen/acento) por termo; qDigits cobre CNPJ.
+        const terms = splitSearchTerms(q);
+        const matchTerm = (term: string) => {
+          const tNorm = normalizeForSearch(term);
+          if (!tNorm) return true;
+          const tDigits = term.replace(/\D/g, '');
+          return normCandidates.some(v => v.includes(tNorm))
+            || (tDigits.length >= 3 && cnpjDigits.includes(tDigits))
+            || tokenArr.some(t => t.includes(tNorm));
+        };
+        if (!terms.every(matchTerm)) return false;
       }
       return true;
     });

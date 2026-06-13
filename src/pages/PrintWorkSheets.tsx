@@ -132,7 +132,8 @@ export default function PrintWorkSheets() {
       result = result.filter(r => r.sale_orders?.order_number === pvFilter);
     }
     if (search.trim()) {
-      const tokens = search.split(',').map(t => normalizeForSearch(t)).filter(Boolean);
+      // separadores de refinamento AND: vírgula OU "/" (ex.: "stx / alcineu")
+      const tokens = search.split(/[,/]/).map(t => normalizeForSearch(t)).filter(Boolean);
       result = result.filter(r => {
         const hay = normalizeForSearch([
           r.order_number,

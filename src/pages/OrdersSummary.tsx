@@ -19,7 +19,7 @@ import { format, parseISO, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { printHtml } from '@/lib/printOrder';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -58,11 +58,8 @@ export default function OrdersSummary() {
     const effectiveStatus = statusFilter;
     return orders.filter(order => {
       if (searchTerm) {
-        const search = normalizeForSearch(searchTerm);
-        const matchesNumber = normalizeForSearch((order as any).order_number).includes(search);
-        const matchesRef = normalizeForSearch((order as any).technical_sheets?.name).includes(search);
-        const matchesColor = normalizeForSearch((order as any).color).includes(search);
-        if (!matchesNumber && !matchesRef && !matchesColor) return false;
+        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
+        if (!searchMatchesAllTerms(searchTerm, (order as any).order_number, (order as any).technical_sheets?.name, (order as any).color)) return false;
       }
       if (effectiveStatus !== 'all' && order.status !== effectiveStatus) return false;
       if (referenceFilter !== 'all' && order.reference_id !== referenceFilter) return false;
