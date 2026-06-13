@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { ClipboardText as ClipboardCheck, Plus, ArrowLeft, Scan as ScanLine, CircleNotch as Loader2, CheckCircle as CheckCircle2, Trash as Trash2, Warning as AlertTriangle, Play, X, CaretRight as ChevronRight } from '@phosphor-icons/react';
+import { ClipboardText as ClipboardCheck, Plus, ArrowLeft, Scan as ScanLine, CircleNotch as Loader2, CheckCircle as CheckCircle2, Trash as Trash2, Warning as AlertTriangle, Play, X, CaretRight as ChevronRight, Package } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -143,8 +143,13 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('picking_items')
-        .select('*, products(name, code, ean), technical_sheets:reference_id(name, code)')
+        // products NÃO tem code/ean nesse schema (EAN mora em technical_sheets);
+        // o select antigo errava em runtime. Usa colunas reais (sku/location).
+        .select('*, products(name, sku, color, unit, location), technical_sheets:reference_id(name)')
         .eq('picking_session_id', id)
+        // Coleta ordenada por endereço de prateleira (bin) pra rota curta;
+        // itens sem bin caem pro fim.
+        .order('bin_location', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true });
       if (error) throw error;
       return data || [];
@@ -171,6 +176,50 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Separar tudo por botão (sem leitor): marca picked_qty = expected_qty em
+  // todos os itens ainda pendentes. Depois é só "Dar baixa no estoque".
+  const bulkFill = useMutation({
+    mutationFn: async () => {
+      const pend = items.filter((it: any) => Number(it.picked_qty) < Number(it.expected_qty));
+      for (const it of pend) {
+        const { error } = await (supabase as any)
+          .from('picking_items')
+          .update({ picked_qty: it.expected_qty, picked_at: new Date().toISOString(), status: 'separado' })
+          .eq('id', it.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['picking_items', id] });
+      toast.success('Tudo marcado como separado.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Baixa de estoque real (idempotente, por delta) via RPC.
+  const commitStock = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (supabase as any).rpc('commit_picking_session', { p_session_id: id });
+      if (error) throw new Error(error.message);
+      return data as { committed_count: number; skipped_count: number; insufficient: string[] };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['picking_items', id] });
+      qc.invalidateQueries({ queryKey: ['picking_session', id] });
+      qc.invalidateQueries({ queryKey: ['picking_sessions'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['material_reservations'] });
+      qc.invalidateQueries({ queryKey: ['picking_active_sale_orders'] });
+      const c = res?.committed_count ?? 0;
+      const s = res?.skipped_count ?? 0;
+      if (c === 0 && s === 0) toast.info('Nada novo pra dar baixa.');
+      else if (s > 0) toast.warning(`Baixa parcial: ${c} item(ns) debitado(s), ${s} sem estoque suficiente.`, { duration: 10000 });
+      else toast.success(`Baixa concluída — ${c} item(ns) debitado(s) do estoque.`);
+    },
+    onError: (e: Error) => toast.error(`Erro na baixa: ${e.message}`),
+  });
+
   if (!session) return <p className="p-6 text-sm text-muted-foreground">Carregando…</p>;
 
   const totalExpected = items.reduce((acc: number, it: any) => acc + Number(it.expected_qty), 0);
@@ -178,6 +227,11 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
   const totalConferred = items.reduce((acc: number, it: any) => acc + Number(it.conferred_qty), 0);
   const pickProgress = totalExpected > 0 ? (totalPicked / totalExpected) * 100 : 0;
   const confProgress = totalPicked > 0 ? (totalConferred / totalPicked) * 100 : 0;
+
+  const committed = !!session.stock_committed_at;
+  const hasPendingPick = items.some((it: any) => Number(it.picked_qty) < Number(it.expected_qty));
+  // Algo separado mas ainda não debitado do estoque.
+  const hasUncommitted = items.some((it: any) => Number(it.picked_qty) > Number(it.committed_qty ?? 0));
 
   return (
     <div className="space-y-4">
@@ -194,10 +248,27 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
             <p className="text-xs text-muted-foreground">
               {session.sale_orders?.order_number ? `${session.sale_orders.order_number} · ${session.sale_orders.client_name}` : 'Sem PV vinculado'}
               {session.started_at && ` · iniciada ${format(new Date(session.started_at), 'dd/MM HH:mm')}`}
+              {committed && ` · baixa dada ${format(new Date(session.stock_committed_at), 'dd/MM HH:mm')}`}
             </p>
           </div>
         </div>
         <div className="flex gap-1.5">
+          {session.status === 'em_separacao' && hasPendingPick && (
+            <Button size="sm" variant="outline" className="gap-1.5"
+              onClick={() => bulkFill.mutate()} disabled={bulkFill.isPending}>
+              {bulkFill.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Separar tudo
+            </Button>
+          )}
+          {!['concluida', 'cancelada'].includes(session.status) && hasUncommitted && (
+            <Button size="sm" className="gap-1.5"
+              onClick={() => {
+                if (!confirm('Dar baixa no estoque dos itens separados? Isso debita o estoque real e não estorna automaticamente.')) return;
+                commitStock.mutate();
+              }}
+              disabled={commitStock.isPending}>
+              {commitStock.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-3.5 w-3.5" />} Dar baixa no estoque
+            </Button>
+          )}
           {session.status === 'aberta' && (
             <Button size="sm" className="gap-1.5" onClick={() => updateStatus.mutate('em_separacao')}>
               <Play className="h-3.5 w-3.5" /> Iniciar separação
@@ -304,11 +375,12 @@ function ScannerBar({ sessionId, items }: { sessionId: string; items: any[] }) {
   const handleScan = async () => {
     const c = code.trim();
     if (!c) return;
-    // Tenta achar item por EAN do produto OU por código de produto
+    // Match por SKU do produto ou por código já bipado antes. (EAN por
+    // numeração mora em technical_sheets.ean_by_size — fica pra quando houver
+    // leitor; hoje o fluxo principal é baixa por botão.)
     const matching = items.find((it: any) => {
-      const ean = it.products?.ean;
-      const codeStr = it.products?.code;
-      return (ean && String(ean) === c) || (codeStr && String(codeStr) === c) || it.ean_scanned === c;
+      const sku = it.products?.sku;
+      return (sku && String(sku) === c) || it.ean_scanned === c;
     });
     if (!matching) {
       setLastMatch({ ok: false, msg: `Código "${c}" não bate com nenhum item desta sessão.` });
@@ -435,8 +507,8 @@ function PickingItemsTable({
                       <td className="p-2">
                         <p className="font-medium">{it.products?.name || it.technical_sheets?.name || '—'}</p>
                         <p className="text-xs text-muted-foreground font-mono">
-                          {it.products?.code || it.technical_sheets?.code || it.product_id?.slice(0, 8)}
-                          {it.products?.ean && ` · EAN ${it.products.ean}`}
+                          {it.products?.sku || it.technical_sheets?.name || it.product_id?.slice(0, 8)}
+                          {Number(it.committed_qty ?? 0) > 0 && ` · baixado ${it.committed_qty}`}
                         </p>
                       </td>
                       <td className="p-2">
@@ -652,12 +724,22 @@ function NewSessionDialog({
         })
         .select('id').single();
       if (error) throw error;
-      return data.id as string;
+      const newId = data.id as string;
+      // Sessão de PV: puxa os itens das reservas do pedido automaticamente.
+      if (pickingType === 'pedido' && saleOrderId) {
+        const { data: pop, error: popErr } = await (supabase as any)
+          .rpc('populate_picking_session_from_sale_order', { p_session_id: newId });
+        if (popErr) throw new Error(`Sessão criada, mas falhou ao puxar itens do PV: ${popErr.message}`);
+        return { id: newId, inserted: (pop?.inserted as number) ?? 0 };
+      }
+      return { id: newId, inserted: 0 };
     },
-    onSuccess: (id) => {
-      toast.success('Sessão criada.');
+    onSuccess: (res) => {
+      toast.success(res.inserted > 0
+        ? `Sessão criada — ${res.inserted} item(ns) puxado(s) do pedido.`
+        : 'Sessão criada.');
       setPickingType('pedido'); setSaleOrderId(''); setNotes('');
-      onCreated(id);
+      onCreated(res.id);
     },
     onError: (e: Error) => toast.error(e.message),
   });
