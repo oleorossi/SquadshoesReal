@@ -343,7 +343,10 @@ export function LabelProductionTab() {
         return { ...so, nfe: resolvedNfe };
       });
     },
-    staleTime: 2 * 60 * 1000,
+    // Etiqueta deve refletir QUALQUER edição de PV (cliente/NF/endereço): sempre
+    // fresh ao montar/focar a tela (refetchOnWindowFocus já é true global).
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // Endereço da fábrica vem de system_settings (key='company_address').
@@ -381,7 +384,8 @@ export function LabelProductionTab() {
       }
       return set;
     },
-    staleTime: 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // Map CNPJ → client completo. Fallback pra PVs antigos que têm o CNPJ
@@ -399,7 +403,8 @@ export function LabelProductionTab() {
       }
       return map;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // Fetch sale_order_items with strap_colors to build strap lookup for grouping
@@ -450,17 +455,42 @@ export function LabelProductionTab() {
       }
       return map;
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
+  // Frescor das etiquetas: QUALQUER alteração em Estoque/OP/PV tem que refletir aqui.
+  // (1) Ao MONTAR a tela, invalida tudo que alimenta as etiquetas pra puxar o
+  //     estado mais recente — inclui `orders` (useOrders tem staleTime 2min e é
+  //     compartilhado, então forçamos o refetch só ao entrar nas etiquetas).
+  // (2) Realtime enquanto a tela está aberta: mudanças em orders / sale_orders /
+  //     sale_order_items invalidam as queries CERTAS.
+  // ⚠ Bug corrigido: o handler de sale_orders invalidava 'sale_orders_for_labels'
+  //   mas a query é 'sale_orders_for_labels_v2' (com _v2) → edição de PV nunca
+  //   refletia. Faltava ainda escutar sale_order_items (cor/grade/qtd/tiras do PV).
   useEffect(() => {
+    const labelKeys = [
+      ['orders'],
+      ['sale_orders_for_labels_v2'],
+      ['sale_order_items_strap_lookup'],
+      ['sale_orders_in_waves_for_labels'],
+      ['clients_by_cnpj_for_labels'],
+    ];
+    // (1) fresh ao entrar na tela
+    for (const k of labelKeys) queryClient.invalidateQueries({ queryKey: k });
+    // (2) realtime enquanto aberta
     const channel = supabase
       .channel('labels-tab-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels'] });
+        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_order_items' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
+        queryClient.invalidateQueries({ queryKey: ['sale_order_items_strap_lookup'] });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') { /* realtime error — subscription will retry */ }
