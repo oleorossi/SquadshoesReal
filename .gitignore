@@ -40,3 +40,6 @@ supabase/.temp/
 .env.production
 .env.development
 .vercel
+
+# Scratch/saída de typecheck e auditoria (não versionar)
+*_audit_out.txt
