@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 // continua ativa no backend.
 import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
+import { formatCurrency } from '@/lib/utils';
 import type { SoleProduct } from './types';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
@@ -49,6 +50,10 @@ export default function SolesCadastroTab({ sole }: Props) {
   const classification = (sole.sole_classification as SoleClassification | null) || 'tradicional';
   const isFachetado = (sole as any).is_fachetado ?? false;
   const rangeInvalid = Number(form.size_from) > Number(form.size_to);
+  // Valor em estoque desta variante = pares em estoque × custo por par.
+  // Atualiza ao vivo conforme o usuário edita o "Valor do solado".
+  const stockTotalPairs = Number(sole.quantity) || 0;
+  const stockValue = stockTotalPairs * (Number(form.unit_price) || 0);
   const isDirty =
     form.name !== initialForm.name ||
     form.sku !== initialForm.sku ||
@@ -552,6 +557,13 @@ export default function SolesCadastroTab({ sole }: Props) {
               <p className="text-xs text-muted-foreground leading-tight">
                 Custo de compra por par. Entra no <strong>valor de estoque</strong> e no <strong>custeio do calçado</strong>.
               </p>
+              <div className="mt-1 flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5">
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Valor em estoque</span>
+                <span className="text-sm font-mono font-bold tabular-nums">
+                  {formatCurrency(stockValue)}
+                  <span className="text-xs text-muted-foreground font-normal ml-1.5">· {stockTotalPairs} pares</span>
+                </span>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
