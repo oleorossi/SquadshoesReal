@@ -2366,6 +2366,24 @@ export type Database = {
         }
         Relationships: []
       }
+      sector_labor_rates: {
+        Row: {
+          hourly_rate: number
+          sector_key: string
+          updated_at: string
+        }
+        Insert: {
+          hourly_rate?: number
+          sector_key: string
+          updated_at?: string
+        }
+        Update: {
+          hourly_rate?: number
+          sector_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cost_parameters: {
         Row: {
           description: string | null
