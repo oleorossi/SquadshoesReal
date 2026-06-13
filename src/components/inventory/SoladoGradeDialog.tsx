@@ -13,7 +13,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProducts } from '@/hooks/useProducts';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
-import { getSoleModelName } from '@/lib/utils';
+import { getSoleModelName, formatCurrency } from '@/lib/utils';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { toast } from 'sonner';
 import { MagnifyingGlass as Search, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -59,6 +60,7 @@ function ColorGradeEditor({
   sizes,
   sizeKeys,
   onGradeChange,
+  onPriceChange,
 }: {
   product: Product;
   /** Number-based sizes, used when no conjugations are configured */
@@ -66,8 +68,13 @@ function ColorGradeEditor({
   /** String-based size keys, used when conjugations are active (overrides sizes) */
   sizeKeys?: string[];
   onGradeChange: (productId: string, grade: Record<string, number>, total: number) => void;
+  /** Custo por par editado na hora da entrada — persistido em products.unit_price. */
+  onPriceChange: (productId: string, price: number) => void;
 }) {
   const [grade, setGrade] = useState<Record<string, number>>({});
+  // Custo por par (products.unit_price). Editável aqui pra "dar entrada" já
+  // valorizada — o valor total em estoque é total × custo.
+  const [price, setPrice] = useState<number>(Number(product.unit_price ?? 0));
 
   // Resolved list of display keys: either the conjugated string keys or the numeric sizes
   const effectiveKeys: string[] = useMemo(
@@ -89,6 +96,7 @@ function ColorGradeEditor({
     } else {
       setGrade({});
     }
+    setPrice(Number(product.unit_price ?? 0));
   }, [product]);
 
   // Sum only keys that are currently visible (effectiveKeys). The full grade
@@ -175,6 +183,26 @@ function ColorGradeEditor({
           </p>
         </div>
         <span className="display text-2xl tabular-nums font-mono">{total}</span>
+      </div>
+
+      {/* Custo por par + valor total em estoque (valorização da entrada) */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs font-semibold">Custo por par (R$)</Label>
+          <div className="mt-1.5">
+            <CurrencyInput
+              value={price}
+              onChange={v => { setPrice(v); onPriceChange(product.id, v); }}
+              className="h-9 text-sm"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col">
+          <Label className="text-xs font-semibold text-muted-foreground">Valor total em estoque</Label>
+          <div className="mt-1.5 h-9 flex items-center justify-end px-3 rounded-md border bg-muted/30 font-mono tabular-nums text-sm font-semibold">
+            {formatCurrency(total * price)}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -345,6 +373,9 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('');
   const [pendingChanges, setPendingChanges] = useState<Record<string, { grade: Record<string, number>; total: number }>>({});
+  // Custo por par alterado por variante (id → preço). Persistido em
+  // products.unit_price ANTES do adjust_stock (trigger captura o preço atual).
+  const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
 
   // Load conjugations for this sole's group — enables conjugated size keys when configured
   const { data: conjugations = [] } = useSoleConjugations(product?.group_id ?? null);
@@ -433,11 +464,16 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
         lastProductIdRef.current = product.id;
       }
       setPendingChanges({});
+      setPendingPrices({});
     }
   }, [product?.id, open]);
 
   const handleGradeChange = (productId: string, grade: Record<string, number>, total: number) => {
     setPendingChanges(prev => ({ ...prev, [productId]: { grade, total } }));
+  };
+
+  const handlePriceChange = (productId: string, price: number) => {
+    setPendingPrices(prev => ({ ...prev, [productId]: price }));
   };
 
   const handleSave = async () => {
@@ -515,9 +551,23 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
         //     diferente, mas mesma classe.
       }
 
-      if (updates.length === 0) {
+      // Custo por par alterado por variante. Só persiste o que de fato mudou
+      // vs. o unit_price atual. Aplicado ANTES do adjust_stock pra o trigger
+      // unit_price_at_movement gravar o preço novo no movimento de entrada.
+      const priceUpdates = Object.entries(pendingPrices).filter(([id, p]) => {
+        const v = colorVariants.find(cv => cv.id === id);
+        const np = Number(p);
+        return v && Number.isFinite(np) && np >= 0 && np !== Number(v.unit_price ?? 0);
+      });
+
+      if (updates.length === 0 && priceUpdates.length === 0) {
         toast.info('Nenhuma alteração para salvar');
         return;
+      }
+
+      for (const [id, p] of priceUpdates) {
+        const { error } = await supabase.from('products').update({ unit_price: Number(p) }).eq('id', id);
+        if (error) throw error;
       }
 
       for (const { id, grade, total } of updates) {
@@ -554,9 +604,18 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
       const updatedNames = updates
         .map(u => colorVariants.find(v => v.id === u.id)?.color || '')
         .filter(Boolean);
-      const msg = updates.length === 1
-        ? `Grade da cor "${updatedNames[0] || 'solado'}" atualizada!`
-        : `Grade atualizada em ${updates.length} cores: ${updatedNames.join(', ')}`;
+      let msg: string;
+      if (updates.length === 0) {
+        // Só o custo mudou (sem alteração de grade).
+        msg = priceUpdates.length === 1
+          ? 'Custo por par atualizado.'
+          : `Custo por par atualizado em ${priceUpdates.length} cores.`;
+      } else {
+        const base = updates.length === 1
+          ? `Grade da cor "${updatedNames[0] || 'solado'}" atualizada!`
+          : `Grade atualizada em ${updates.length} cores: ${updatedNames.join(', ')}`;
+        msg = priceUpdates.length > 0 ? `${base} Custo também atualizado.` : base;
+      }
       toast.success(msg);
       onOpenChange(false);
     } catch (err: any) {
@@ -633,6 +692,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
                       sizes={sizes}
                       sizeKeys={effectiveSizeKeys.length > 0 ? effectiveSizeKeys : undefined}
                       onGradeChange={handleGradeChange}
+                      onPriceChange={handlePriceChange}
                     />
                   </TabsContent>
                 ))}
@@ -643,6 +703,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
                 sizes={sizes}
                 sizeKeys={effectiveSizeKeys.length > 0 ? effectiveSizeKeys : undefined}
                 onGradeChange={handleGradeChange}
+                onPriceChange={handlePriceChange}
               />
             )}
           </div>

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Stack as Boxes, PencilSimple as Edit3, Warning as AlertTriangle, WarningCircle as AlertCircle, Link as Link2 } from '@phosphor-icons/react';
 import { SoladoGradeDialog } from '@/components/inventory/SoladoGradeDialog';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
+import { formatCurrency } from '@/lib/utils';
 import type { Product } from '@/types/inventory';
 import type { SoleProduct } from './types';
 
@@ -95,6 +96,9 @@ export default function SolesEstoqueTab({ sole }: Props) {
   const minTotal = sole.min_stock || 0;
   const isLow = total < minTotal;
   const isZero = total === 0;
+  // Valor em estoque = total de pares × custo por par (products.unit_price).
+  const unitPrice = Number((fullProduct as any)?.unit_price ?? 0);
+  const stockValue = total * unitPrice;
 
   return (
     <div className="space-y-4">
@@ -145,6 +149,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Total: <span className="font-mono font-bold">{total}</span> pares
+              {unitPrice > 0 && <> · Valor: <span className="font-mono font-bold">{formatCurrency(stockValue)}</span></>}
               {minTotal > 0 && <> · Mínimo: <span className="font-mono">{minTotal}</span></>}
               {isZero && <Badge variant="destructive" className="ml-2 text-xs">Zerado</Badge>}
               {isLow && !isZero && <Badge className="ml-2 text-xs bg-amber-500/15 text-amber-700 border-amber-300">Abaixo do mínimo</Badge>}
