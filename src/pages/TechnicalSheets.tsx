@@ -171,6 +171,7 @@ import { TechnicalReferencePanel } from '@/components/technical-sheets/Technical
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
+import { GradingCadTab } from '@/components/technical-sheets/GradingCadTab';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
  import { usePalmilhaColorMappings, useUpsertPalmilhaColorMapping, PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
@@ -182,7 +183,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, CaretUpDown as ChevronsUpDown } from '@phosphor-icons/react';
+import { Check, CaretUpDown as ChevronsUpDown, Ruler } from '@phosphor-icons/react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
@@ -1971,6 +1972,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </Badge>
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="escalonamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <Ruler className="h-3.5 w-3.5" /> Escalonamento
+          </TabsTrigger>
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Factory className="h-3.5 w-3.5" /> Produção
             {form.sole_group_id ? (
@@ -3340,6 +3345,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsContent>
 
          {/* TAB: Produção & Embalagens */}
+        <TabsContent value="escalonamento" className="mt-4 space-y-4">
+          <GradingCadTab form={form} updateField={updateField} sizes={soleSizeKeysNumeric} />
+        </TabsContent>
+
          <TabsContent value="production" className="mt-4 space-y-4">
            {/* Header explicativo — orienta o usuário do que essa aba faz */}
            <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">

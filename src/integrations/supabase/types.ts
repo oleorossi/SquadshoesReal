@@ -20589,6 +20589,7 @@ export type Database = {
           fit_type_detail: string | null
           gestaoclick_id: string | null
           gluing_capacity_per_day: number | null
+          grading_config: Json
           has_colored_lining: boolean
           has_straps: boolean | null
           heel_height: string | null
@@ -20709,6 +20710,7 @@ export type Database = {
           fit_type_detail?: string | null
           gestaoclick_id?: string | null
           gluing_capacity_per_day?: number | null
+          grading_config?: Json
           has_colored_lining?: boolean
           has_straps?: boolean | null
           heel_height?: string | null
@@ -20829,6 +20831,7 @@ export type Database = {
           fit_type_detail?: string | null
           gestaoclick_id?: string | null
           gluing_capacity_per_day?: number | null
+          grading_config?: Json
           has_colored_lining?: boolean
           has_straps?: boolean | null
           heel_height?: string | null
