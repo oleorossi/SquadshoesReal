@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { READY_TO_SHIP_STATUSES } from '@/lib/logistics/routeManagement';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -186,11 +186,8 @@ export default function OrderPickingPage() {
   // ── Filtered list ───────────────────────────────────────────────────────────
   const searchFiltered = useMemo(() => {
     if (!search.trim()) return orders;
-    const q = normalizeForSearch(search);
-    return orders.filter(o =>
-      normalizeForSearch(o.order_number).includes(q) ||
-      normalizeForSearch(o.client_name).includes(q),
-    );
+    // "/" = refinamento AND (ex.: "stx / alcineu")
+    return orders.filter(o => searchMatchesAllTerms(search, o.order_number, o.client_name));
   }, [orders, search]);
 
   // ── Agrupamento por janela de pickup (semana ISO + Ter/Sex) ────────────────

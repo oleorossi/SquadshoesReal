@@ -31,9 +31,10 @@ export interface ReducedWorkSheetProps {
   title: string;
   /** Metadados curtos no topo direito (Lote / OPs / Solado). */
   meta?: Array<{ label: string; value: string }>;
-  /** URL da foto do produto (Supabase). Só renderiza quando `showImage=true`. */
+  /** URL da foto do produto (Supabase). Quando presente, a foto é exibida ao
+   *  lado da grade — mesmos setores que mostram foto na ficha completa. */
   imageUrl?: string | null;
-  /** Exibe a foto do produto ao lado da grade. Padrão: false. */
+  /** @deprecated a foto agora aparece sempre que houver `imageUrl`. */
   showImage?: boolean;
   /** Grade do grupo: numeração → pares. */
   grade: Record<string, number>;
@@ -55,12 +56,14 @@ export interface ReducedWorkSheetProps {
 }
 
 export function ReducedWorkSheet({
-  sectorLabel, title, meta, imageUrl, showImage, grade, allSizes, totalPairs,
+  sectorLabel, title, meta, imageUrl, grade, allSizes, totalPairs,
   colors, totalNote, fichas, pairsPerFicha,
 }: ReducedWorkSheetProps) {
   const sizes = allSizes;
   const byColor = !!(colors && colors.length > 0);
-  const withPhoto = !!(showImage && imageUrl);
+  // Foto aparece sempre que houver imageUrl — espelha a ficha completa, que
+  // mostra foto em todos os setores. Sem imageUrl ⇒ no-op (layout compacto).
+  const withPhoto = !!imageUrl;
 
   const tallyPerCard = pairsPerFicha && pairsPerFicha > 0 ? pairsPerFicha : 12;
   const tallyCount = fichas && fichas > 0

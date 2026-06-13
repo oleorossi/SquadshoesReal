@@ -75,7 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface KanbanOrder {
   id: string;
@@ -310,15 +310,8 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
 
   // Predicado de busca textual aplicado a cada OP
   const matchesSearch = useCallback((o: KanbanOrder) => {
-    const q = normalizeForSearch(search);
-    if (!q) return true;
-    return (
-      normalizeForSearch(o.order_number).includes(q) ||
-      normalizeForSearch(o.client_order_number).includes(q) ||
-      normalizeForSearch(o.client_name).includes(q) ||
-      normalizeForSearch(o.reference_name).includes(q) ||
-      normalizeForSearch(o.color).includes(q)
-    );
+    // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
+    return searchMatchesAllTerms(search, o.order_number, o.client_order_number, o.client_name, o.reference_name, o.color);
   }, [search]);
 
   // Sugestões dedupadas para SmartSearch (memoizadas em índices)

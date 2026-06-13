@@ -39,7 +39,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 
 const LABEL_SIZES = [
@@ -637,10 +637,10 @@ export function LabelProductionTab() {
   }, [currentOrders, periodFilter, billingWeekFilter, saleOrdersMap]);
 
   const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup);
-  const filtered = groupedRefs.filter((g) => {
-    const q = normalizeForSearch(search);
-    return !search || normalizeForSearch(g.refName).includes(q) || normalizeForSearch(g.refCode).includes(q) || normalizeForSearch(g.clientName).includes(q) || normalizeForSearch(g.economicGroupName).includes(q) || normalizeForSearch(g.saleOrderNumber).includes(q);
-  });
+  const filtered = groupedRefs.filter((g) =>
+    // "/" = refinamento AND (ex.: "stx / alcineu")
+    searchMatchesAllTerms(search, g.refName, g.refCode, g.clientName, g.economicGroupName, g.saleOrderNumber)
+  );
 
   const groupedByEconomicGroup = useMemo(() => {
     const map = new Map<string, GroupedReference[]>();

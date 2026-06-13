@@ -14,7 +14,7 @@ import { CircleNotch as Loader2, Scissors, Hammer, Sparkle as Sparkles, Shopping
 import { format, parseISO, isBefore, isToday, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface ScheduleRow {
   order_id: string;
@@ -452,13 +452,9 @@ export function ProductionScheduleTimeline() {
   });
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search.trim());
-    if (!q) return rows;
-    return rows.filter(
-      r =>
-        normalizeForSearch(r.pedido_ref).includes(q) ||
-        normalizeForSearch(r.referencia_nome).includes(q),
-    );
+    if (!search.trim()) return rows;
+    // "/" = refinamento AND (ex.: "stx / alcineu")
+    return rows.filter(r => searchMatchesAllTerms(search, r.pedido_ref, r.referencia_nome));
   }, [rows, search]);
 
   // Agrupa por sale_order_id mantendo a ordem de entrega.

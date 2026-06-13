@@ -14,7 +14,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type StepStatus = 'ok' | 'warning' | 'error' | 'pending';
 
@@ -434,11 +434,8 @@ export default function OrderFlowAudit() {
   const filtered = useMemo(() => {
     let list = audits;
     if (search) {
-      const q = normalizeForSearch(search);
-      list = list.filter(a =>
-        normalizeForSearch(a.orderNumber).includes(q) ||
-        normalizeForSearch(a.clientName).includes(q)
-      );
+      // "/" = refinamento AND (ex.: "stx / alcineu")
+      list = list.filter(a => searchMatchesAllTerms(search, a.orderNumber, a.clientName));
     }
     if (statusFilter === 'errors') list = list.filter(a => a.overallStatus === 'error');
     if (statusFilter === 'warnings') list = list.filter(a => a.overallStatus === 'warning' || a.overallStatus === 'error');
