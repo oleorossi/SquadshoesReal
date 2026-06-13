@@ -22,13 +22,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UploadSimple, Ruler, Path, CircleNotch as Loader2, Check } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { computeDxfAreas, type DxfAreaResult, type DxfLengthUnit } from '@/lib/dxfArea';
-import { scaleConsumptionBySize, type ScaleMode } from '@/lib/gradeScaling';
+import { scaleConsumptionBySize, isNonFlatProgression, type ScaleMode } from '@/lib/gradeScaling';
+import { resolveGroupUnit, isAreaUnit } from '@/lib/materialUnit';
+import { useSoleSizeMetric } from '@/hooks/useSoleSizeMetric';
 
 interface GradingCadTabProps {
   form: any;
   updateField: (key: any, value: any) => void;
   /** Numerações da ficha (parseSizesFromRange no parent). */
   sizes: number[];
+  /** Grupos de produto (pra resolver a unidade do cabedal). */
+  groups: any[];
+  /** Produtos (pra resolver a unidade do cabedal). */
+  products: any[];
 }
 
 const fmt = (v: number, d = 4) => (Number(v) || 0).toFixed(d);
@@ -37,9 +43,23 @@ const avg = (obj: Record<string, number>) => {
   return vals.length ? vals.reduce((a, b) => a + Number(b), 0) / vals.length : 0;
 };
 
-export function GradingCadTab({ form, updateField, sizes }: GradingCadTabProps) {
+export function GradingCadTab({ form, updateField, sizes, groups, products }: GradingCadTabProps) {
   const sortedSizes = useMemo(() => [...sizes].sort((a, b) => a - b), [sizes]);
   const defaultBaseSize = sortedSizes.includes(37) ? 37 : sortedSizes[Math.floor(sortedSizes.length / 2)] ?? 37;
+
+  // Unidade do cabedal: napa/couro (área de bobina) → 'dm²' (o DXF mapeia direto).
+  const upperUnit = useMemo(
+    () => resolveGroupUnit(form?.upper_material, groups, products),
+    [form?.upper_material, groups, products],
+  );
+  const unitIsArea = isAreaUnit(upperUnit);
+
+  // Razão real do solado (dm² por número). Chapado → ignorado (grade padrão).
+  const { data: soleMetric = {} } = useSoleSizeMetric(form?.sole_group_id);
+  const usingSoleRatio = useMemo(
+    () => isNonFlatProgression(soleMetric, sortedSizes),
+    [soleMetric, sortedSizes],
+  );
 
   const [baseSize, setBaseSize] = useState<number>(defaultBaseSize);
   const [mode, setMode] = useState<ScaleMode>('area');
@@ -90,8 +110,8 @@ export function GradingCadTab({ form, updateField, sizes }: GradingCadTabProps) 
   };
 
   const previewCurve = useMemo(
-    () => scaleConsumptionBySize({ base: baseValue, baseSize, sizes: sortedSizes, mode }),
-    [baseValue, baseSize, sortedSizes, mode],
+    () => scaleConsumptionBySize({ base: baseValue, baseSize, sizes: sortedSizes, mode, soleMetricPerSize: soleMetric }),
+    [baseValue, baseSize, sortedSizes, mode, soleMetric],
   );
 
   const applyUpper = () => {
@@ -102,7 +122,8 @@ export function GradingCadTab({ form, updateField, sizes }: GradingCadTabProps) 
     updateField('grading_config', {
       ...(form?.grading_config ?? {}),
       upper: {
-        baseSize, baseValue, mode, unit,
+        baseSize, baseValue, mode, unit, upperUnit,
+        scaleSource: usingSoleRatio ? 'sole_ratio' : 'standard_grade',
         dxfFileName: dxfName || null,
         pieces: dxf?.pieces?.map((p) => ({ layer: p.layer, areaDm2: Number(p.areaDm2.toFixed(4)) })) ?? null,
         sizes: sortedSizes,
@@ -118,7 +139,7 @@ export function GradingCadTab({ form, updateField, sizes }: GradingCadTabProps) 
   const applyStrap = (idx: number) => {
     const baseCm = Number(strapBase[idx]) || 0;
     if (!(baseCm > 0)) { toast.error('Defina o comprimento base (cm) da tira'); return; }
-    const curve = scaleConsumptionBySize({ base: baseCm, baseSize, sizes: sortedSizes, mode: 'linear', decimals: 2 });
+    const curve = scaleConsumptionBySize({ base: baseCm, baseSize, sizes: sortedSizes, mode: 'linear', decimals: 2, soleMetricPerSize: soleMetric });
     const next = straps.map((s, i) =>
       i === idx ? { ...s, consumption_per_size: curve, consumption: Math.round(avg(curve) * 100) / 100 } : s,
     );
@@ -211,7 +232,7 @@ export function GradingCadTab({ form, updateField, sizes }: GradingCadTabProps) 
               <Label className="text-xs font-medium">Consumo base</Label>
               <div className="flex items-center gap-1">
                 <NumberInput value={baseValue} onChange={(v) => setBaseValue(Number(v) || 0)} step="0.01" min={0} decimals={4} className="h-9 w-28 text-right" />
-                <span className="text-xs text-muted-foreground">/par</span>
+                <span className="text-xs text-muted-foreground font-mono">{upperUnit || 'dm²'}/par</span>
               </div>
             </div>
             <div className="space-y-1">
@@ -252,10 +273,34 @@ export function GradingCadTab({ form, updateField, sizes }: GradingCadTabProps) 
               </table>
             </div>
           )}
-          <p className="text-[11px] text-muted-foreground">
-            O DXF fornece a área em <span className="font-mono">dm²</span>. Se o cabedal é medido em unidade linear (m), ajuste o valor base
-            na unidade do grid de BOM. O escalonamento mantém a proporção entre as numerações.
-          </p>
+          {/* Fonte da escala */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            {usingSoleRatio ? (
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-400">
+                Escala pela medida real do solado
+              </span>
+            ) : (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                Escala pela grade padrão (solado sem progressão por número)
+              </span>
+            )}
+          </div>
+
+          {/* Aviso de unidade: o cabedal de área grava dm²/par e o DXF dá dm² → mapeia direto.
+              Se a unidade não é de área (ex.: 'un'), o DXF não se aplica e o valor base deve
+              ser informado na unidade do material (sem conversão automática — evita inflar 100×). */}
+          {unitIsArea ? (
+            <p className="text-[11px] text-muted-foreground">
+              O cabedal é de <span className="font-mono">{upperUnit}</span> (área de bobina) e o DXF também dá{' '}
+              <span className="font-mono">dm²</span> — a área importada vira o consumo base direto. A conversão para metro
+              acontece no cálculo, pela largura da ficha de componente.
+            </p>
+          ) : (
+            <p className="text-[11px] text-amber-600">
+              ⚠ A unidade do cabedal é <span className="font-mono">{upperUnit || 'un'}</span>, não área — o DXF (dm²) não
+              mapeia direto. Informe o consumo base em <span className="font-mono">{upperUnit || 'un'}/par</span> na mão.
+            </p>
+          )}
         </CardContent>
       </Card>
 

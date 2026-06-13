@@ -3346,7 +3346,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
          {/* TAB: Produção & Embalagens */}
         <TabsContent value="escalonamento" className="mt-4 space-y-4">
-          <GradingCadTab form={form} updateField={updateField} sizes={soleSizeKeysNumeric} />
+          <GradingCadTab form={form} updateField={updateField} sizes={soleSizeKeysNumeric} groups={groups} products={products} />
         </TabsContent>
 
          <TabsContent value="production" className="mt-4 space-y-4">
