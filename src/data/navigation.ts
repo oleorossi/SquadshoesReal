@@ -24,6 +24,13 @@ export const topItem = {
 
 export const menuGroups = [
   {
+    label: "Etiquetas",
+    icon: Tag,
+    items: [
+      { name: "Sistema de Etiquetas", icon: Tag, path: "/label-system" },
+    ],
+  },
+  {
     label: "Comercial",
     icon: ShoppingCart,
     items: [
@@ -89,7 +96,6 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: Package,        path: "/expedicao" },
-      { name: "Etiquetas",        icon: Tag,            path: "/label-system" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
@@ -153,7 +159,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
   { name: "Sessões de Picking",   icon: ClipboardCheck,   path: "/picking-sessions",       group: "Logística" },
   { name: "Rastreamento",         icon: Activity,         path: "/delivery-tracking",      group: "Logística" },
-  // "Etiquetas" (/label-system) foi promovida pro menu visível (grupo Logística).
+  // "Etiquetas" (/label-system) tem grupo próprio "Etiquetas" no topo do menu.
   // Financeiro
   { name: "Markup / Pricing",     icon: Calculator,       path: "/pricing-calculator",     group: "Financeiro" },
   { name: "CT-e",                 icon: Truck,            path: "/cte",                    group: "Financeiro" },
@@ -182,7 +188,8 @@ export function getSecondaryRoutesForGroup(group: string) {
 //              /producao/visao-agregada /centro-controle
 //              /imprimir-fichas /picking → tabs dentro de /pcp
 //   Logística: /embalagens /picking-sessions /delivery-tracking
-//              /label-system → tabs dentro de /expedicao
+//              → tabs dentro de /expedicao
+//              (/label-system tem grupo próprio "Etiquetas" no topo)
 //   Financeiro: /pricing-calculator /cte /mdfe /cnab → tabs dentro
 //               de /financeiro
 //   Sistema:    /audit-logs /lgpd /system-monitor /system-diagnostics
