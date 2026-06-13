@@ -3098,7 +3098,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               <div key={`sol-red-${b.soleColor}-${i}`} className="reduced-card">
                 <ReducedWorkSheet
                   sectorLabel="Solagem"
-                  title={b.soleColor || 'Solagem'}
+                  // Referência do solado (modelo) + cor, ambos no título vermelho.
+                  // Operador da Solagem precisa identificar QUAL solado, não só a cor.
+                  title={b.soleType ? `${b.soleType} · ${b.soleColor}` : (b.soleColor || 'Solagem')}
                   imageUrl={b.refs?.[0]?.image_url}
                   grade={b.grade}
                   allSizes={data.allSizes}
