@@ -71,3 +71,29 @@ export function searchMatchesAllTerms(query: string | null | undefined, ...hayst
     return t === '' || normHaystacks.some(h => h.includes(t));
   });
 }
+
+/**
+ * Monta o fragmento de filtro `.or()` do PostgREST para casar contra uma coluna
+ * `search_norm` gerada no banco (mesma transformação do normalizeForSearch:
+ * lower + sem acento + só alfanumérico — ver migration
+ * 20260613120000_accent-insensitive-search).
+ *
+ * Tokeniza por "/" E espaço, normaliza cada token e exige AND entre eles
+ * (`and(col.ilike.%a%,col.ilike.%b%)`); 1 token → `col.ilike.%a%`. Assim
+ * "napa tamara" e "tamara / napa" casam um registro que contém AMBAS as palavras,
+ * e acento/caixa/espaço/pontuação são ignorados ("tamara" casa "TÂMARA", "sp10"
+ * casa "SP 10"). Como normalizeForSearch só deixa [a-z0-9], os tokens não contêm
+ * caractere especial do PostgREST (`,%()\\`) — seguro interpolar.
+ *
+ * Retorna '' quando a query normaliza pra vazio — o caller deve pular/tratar
+ * (filtrar com `.filter(Boolean)` antes de `.or(parts.join(','))`).
+ */
+export function searchNormOrFilter(query: string | null | undefined, column = 'search_norm'): string {
+  const tokens = (query ?? '')
+    .split(/[/\s]+/)
+    .map(normalizeForSearch)
+    .filter(Boolean);
+  if (tokens.length === 0) return '';
+  if (tokens.length === 1) return `${column}.ilike.%${tokens[0]}%`;
+  return `and(${tokens.map(t => `${column}.ilike.%${t}%`).join(',')})`;
+}

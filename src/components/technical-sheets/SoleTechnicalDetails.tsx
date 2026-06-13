@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, Stack as Layers, Shield, Plus, X, Copy, Info, MagnifyingGlass as Search, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown, Calculator } from '@phosphor-icons/react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { searchMatchesAny } from "@/lib/searchUtils";
 import { SoleConjugationPanel } from "@/components/inventory/SoleConjugationPanel";
 import { CopyFromAnySoleDialog } from "./CopyFromAnySoleDialog";
 import { useSoleConjugations } from "@/hooks/useSoleConjugations";
@@ -874,7 +875,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     </div>
                     <SelectItem value="none">Nenhum (usar grupo)</SelectItem>
                     {products
-                      .filter(p => !liningSearch || p.name.toLowerCase().includes(liningSearch.toLowerCase()) || p.category?.toLowerCase().includes(liningSearch.toLowerCase()))
+                      .filter(p => searchMatchesAny(liningSearch, p.name, p.category))
                       .slice(0, 100)
                       .map((p) => (
                         <SelectItem key={p.id} value={p.id}>
@@ -927,7 +928,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                     </div>
                     <SelectItem value="none">Nenhum (usar grupo)</SelectItem>
                     {products
-                      .filter(p => !insoleSearch || p.name.toLowerCase().includes(insoleSearch.toLowerCase()) || p.category?.toLowerCase().includes(insoleSearch.toLowerCase()))
+                      .filter(p => searchMatchesAny(insoleSearch, p.name, p.category))
                       .slice(0, 100)
                       .map((p) => (
                         <SelectItem key={p.id} value={p.id}>

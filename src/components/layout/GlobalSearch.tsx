@@ -12,7 +12,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchNormOrFilter } from '@/lib/searchUtils';
 
 type QueryType = 'cnpj' | 'barcode' | 'invoice' | 'order_number' | 'group' | 'general';
 type Scope = 'all' | 'orders' | 'sales' | 'clients' | 'products' | 'references' | 'suppliers';
@@ -185,7 +185,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
-          const orParts = [multiWordOr(['razao_social', 'nome_fantasia', 'cnpj', 'client_number'], searchTerm)];
+          // search_norm (banco) cobre razao_social+nome_fantasia+client_number sem
+          // acento/caixa; cnpj por dígitos continua casando a coluna crua.
+          const orParts = [searchNormOrFilter(searchTerm)].filter(Boolean);
           if (cnpjDigits.length >= 4) orParts.push(`cnpj.ilike.%${cnpjDigits}%`);
           const { data, error } = await supabase
             .from('clients')
@@ -203,10 +205,12 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
+          // search_norm cobre name+sku+color+technical_name sem acento/caixa
+          // (ex.: "tamara" casa "NAPA SOFT TÂMARA").
           const { data, error } = await supabase
             .from('products')
             .select('id, name, sku, color, quantity, unit')
-            .or(multiWordOr(['name', 'sku', 'color'], searchTerm))
+            .or(searchNormOrFilter(searchTerm))
             .order('updated_at', { ascending: false })
             .limit(6);
           if (error) throw error;
@@ -219,7 +223,12 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
-          const orParts = [multiWordOr(['order_number', 'client_name', 'client_cnpj'], searchTerm)];
+          // client_name via search_norm (sem acento/caixa); order_number e cnpj
+          // (dígitos) continuam casando as colunas cruas.
+          const orParts = [
+            searchNormOrFilter(searchTerm),
+            `order_number.ilike.%${searchTerm}%`,
+          ].filter(Boolean);
           if (cnpjDigits.length >= 4) orParts.push(`client_cnpj.ilike.%${cnpjDigits}%`);
           const { data, error } = await supabase
             .from('sale_orders')
@@ -243,7 +252,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
             supabase.from('product_references').select('id, name, shoe_category')
               .or(multiWordOr(['name'], searchTerm)).order('updated_at', { ascending: false }).limit(6),
             supabase.from('technical_sheets').select('id, name, shoe_category')
-              .or(multiWordOr(['name'], searchTerm)).order('updated_at', { ascending: false }).limit(6),
+              .or(searchNormOrFilter(searchTerm)).order('updated_at', { ascending: false }).limit(6),
           ]);
           const fromRefs = (refRes.data ?? []).map(r => ({ id: r.id, name: r.name, category: r.shoe_category, source: 'product_references' as const }));
           const fromSheets = (sheetRes.data ?? []).map((r: any) => ({ id: r.id, name: r.name, category: r.shoe_category, source: 'technical_sheets' as const }));
@@ -261,10 +270,14 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
+          // search_norm cobre name+trade_name sem acento/caixa; cnpj por dígitos
+          // continua casando a coluna crua.
+          const orParts = [searchNormOrFilter(searchTerm)].filter(Boolean);
+          if (cnpjDigits.length >= 4) orParts.push(`cnpj.ilike.%${cnpjDigits}%`);
           const { data, error } = await supabase
             .from('suppliers')
             .select('id, name, trade_name, cnpj, active')
-            .or(multiWordOr(['name', 'trade_name', 'cnpj'], searchTerm))
+            .or(orParts.join(','))
             .order('name')
             .limit(6);
           if (error) throw error;
@@ -284,7 +297,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           const { data: groups, error: gErr } = await supabase
             .from('economic_groups')
             .select('id, name, group_number')
-            .or(multiWordOr(['name'], groupTerm))
+            .or(searchNormOrFilter(groupTerm))
             .limit(5);
           if (gErr) throw gErr;
           if (!groups || groups.length === 0) return empty;
