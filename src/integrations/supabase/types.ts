@@ -2384,6 +2384,33 @@ export type Database = {
         }
         Relationships: []
       }
+      labor_cost_results: {
+        Row: {
+          created_at: string
+          id: string
+          lines: Json
+          reference: string
+          total_cost: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference?: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cost_parameters: {
         Row: {
           description: string | null
