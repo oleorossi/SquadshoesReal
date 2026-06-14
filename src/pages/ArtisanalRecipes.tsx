@@ -34,6 +34,7 @@ const emptyRecipe: Partial<ArtisanalRecipe> = {
   yield_per_meter: 1,
   labor_cost_per_meter: 0,
   base_time_minutes: 0,
+  cut_width_mm: null,
   default_contractor_id: null,
   notes: '',
   active: true,
@@ -111,10 +112,12 @@ export default function ArtisanalRecipes() {
     ) {
       return;
     }
+    const cutWidth = Number(editing.cut_width_mm);
     const payload = {
       ...editing,
       yield_per_meter: Number(editing.yield_per_meter) || 1,
       labor_cost_per_meter: Number(editing.labor_cost_per_meter) || 0,
+      cut_width_mm: Number.isFinite(cutWidth) && cutWidth > 0 ? Math.round(cutWidth) : null,
     };
     if (isEditing && editing.id) {
       update.mutate(payload as ArtisanalRecipe, { onSuccess: () => setDialog(false) });
@@ -431,6 +434,36 @@ export default function ArtisanalRecipes() {
                 }
                 className="h-9 font-mono"
               />
+            </div>
+
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
+                Largura de corte da tira (mm)
+              </Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="1"
+                  min={1}
+                  placeholder="Ex: 150"
+                  value={editing.cut_width_mm ?? ''}
+                  onChange={(e) =>
+                    setEditing((p) => ({
+                      ...p,
+                      cut_width_mm:
+                        e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
+                    }))
+                  }
+                  className="h-9 font-mono pr-10"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  mm
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Largura da tira para o cálculo de <strong>corte do rolo</strong> no PV
+                (rolo padrão 40 m × 1370 mm). Deixe vazio se a tira não é cortada de rolo.
+              </p>
             </div>
 
             <div className="col-span-2 space-y-1.5">
