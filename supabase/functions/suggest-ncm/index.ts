@@ -135,7 +135,17 @@ Se não conseguir determinar com certeza, sugira o mais provável e indique conf
       const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
       const result = JSON.parse(cleaned);
       if (result?.ncm) {
-        return new Response(JSON.stringify(result), {
+        // Valida 8 dígitos antes de devolver — a IA às vezes retorna NCM com
+        // posição (ex.: "6402.99.00") ou incompleto. emit-nfe exige 8 dígitos;
+        // normalizar/validar aqui evita sugerir um NCM que falharia na emissão.
+        // Auditoria 2026-06-14, Área 4.
+        const digits = String(result.ncm).replace(/\D/g, "");
+        if (digits.length !== 8) {
+          return new Response(JSON.stringify({
+            error: `NCM sugerido pela IA inválido ("${result.ncm}" → ${digits.length} dígitos; precisa 8). Tente novamente ou informe manualmente.`,
+          }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ ...result, ncm: digits }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
