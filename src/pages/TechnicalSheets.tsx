@@ -186,6 +186,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Check, CaretUpDown as ChevronsUpDown, Ruler } from '@phosphor-icons/react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
+import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -5432,10 +5433,11 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
   const getCostPerPair = (m: any) => {
     const prod = (m as any).products;
     const unitPrice = Number(prod?.unit_price || 0);
-    const cs = componentSheetMap[m.product_id];
-    const wastePct = cs ? (cs.waste_pct || 0) : 0;
-    const rawCost = Number(m.quantity_per_unit) * unitPrice;
-    return rawCost * (1 + wastePct / 100);
+    const cs = componentSheetMap[m.product_id] || null;
+    // Regra canônica: material de área (dm²/par) com produto em unidade física
+    // (m/cm/placa) é convertido pela largura/área da ficha ANTES de × preço
+    // (senão infla ~100×). Itens diretos (cola/caixa/tira) seguem qty × preço × perda.
+    return bomMaterialCostPerPair(Number(m.quantity_per_unit), unitPrice, prod?.unit, cs).cost;
   };
 
   const handleAdd = async (e?: React.FormEvent) => {

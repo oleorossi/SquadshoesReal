@@ -200,7 +200,9 @@ export default function PricingCalculatorPanel() {
     const commissionValue = suggestedPrice * (numCommission / 100);
 
     // Preço à vista (7 dias)
-    const factoringVistaP = (numFactoring / 30) * 7;
+    // À vista = "paga em até 7 dias", mas nunca MAIS dias de factoring que o prazo
+    // (senão o preço à vista fica > a prazo quando o prazo é < 7 dias). Auditoria 2026-06-14.
+    const factoringVistaP = (numFactoring / 30) * Math.min(7, numDays);
     const markupVistaPct = numTax + numProfit + factoringVistaP + numCommission;
     const markupVistaDivisor = 1 - (markupVistaPct / 100);
     const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;
@@ -235,10 +237,14 @@ export default function PricingCalculatorPanel() {
     const markupPct = totalCost > 0 ? ((numSold - totalCost) / totalCost) * 100 : 0;
 
     // Preço à vista (7 dias)
-    const factoringVistaP = (numFactoring / 30) * 7;
+    // À vista = "paga em até 7 dias", mas nunca MAIS dias de factoring que o prazo
+    // (senão o preço à vista fica > a prazo quando o prazo é < 7 dias). Auditoria 2026-06-14.
+    const factoringVistaP = (numFactoring / 30) * Math.min(7, numDays);
     const cashMarkupPct = numTax + factoringVistaP + numCommission;
     const cashDivisor = 1 - (cashMarkupPct / 100);
-    const cashPrice = cashDivisor > 0 ? ((totalCost + realProfit) / cashDivisor) : 0;
+    // Em venda com prejuízo grande (realProfit < -totalCost) o numerador fica
+    // negativo; um "preço à vista" negativo é nonsense → clampa em 0. Auditoria 2026-06-14.
+    const cashPrice = cashDivisor > 0 ? Math.max(0, (totalCost + realProfit) / cashDivisor) : 0;
 
     // Preço sugerido (markup divisor com margem real encontrada)
     // totalMarkupPct reflete a margem real; suggestedMarkupPct clamp ≥ 0 para o divisor

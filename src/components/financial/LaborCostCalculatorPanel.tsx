@@ -26,6 +26,7 @@ import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
 import { useSectorLaborRates, useUpsertSectorLaborRate, hourlyFromSalary } from '@/hooks/useSectorLaborRates';
 import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
+import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
   useLaborCostResults, useSaveLaborCostResult, useDeleteLaborCostResult,
   type LaborCostResult, type LaborCostResultLine,
@@ -41,11 +42,10 @@ function fmtBRL(v: number): string {
   return `R$ ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** Aceita vírgula OU ponto como separador decimal. Vazio/inválido → 0. */
-function parseNum(s: string | undefined): number {
-  const n = parseFloat(String(s ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
+/** Número no formato pt-BR (trata milhar "2.500,00" → 2500), nunca negativo.
+ *  Bug corrigido na auditoria 2026-06-14: o replace(',','.') anterior corrompia
+ *  salário com separador de milhar (2.500,00 → 2,5). Ver parseBrlNumber. */
+const parseNum = parseBrlNumberNonNeg;
 
 function sectorLabel(key: string): string {
   return SECTOR_LABELS[key as SectorKey] ?? key;

@@ -264,6 +264,60 @@ export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSh
 };
 
 /**
+ * Custo de UM material do BOM por par, aplicando a REGRA CANÔNICA de consumo
+ * (CLAUDE.md / este arquivo): material de ÁREA (consumo em dm²/par) cujo produto é
+ * vendido em unidade FÍSICA (linear m/cm ou placa) precisa ser convertido pela
+ * largura/área da ficha de componente ANTES de multiplicar pelo preço — senão
+ * `quantity_per_unit(dm²) × unit_price(R$/m)` infla o custo ~100× (largura em dm).
+ *
+ * Itens DIRETOS (cola em kg, caixa em un, tira/elástico em m SEM ficha de largura)
+ * já têm quantity_per_unit na mesma unidade do preço → custo = qty × preço × (1+perda).
+ *
+ * ⚠ Os conversores dm²→físico JÁ aplicam a perda da ficha; por isso o ramo de
+ * área NÃO re-multiplica waste. Quando a unidade é física mas a ficha não tem
+ * largura/área cadastrada, mantém o cálculo direto (sem mudar o valor atual) e
+ * marca `widthMissing` pra UI avisar (custo pode estar inflado) — igual ao modal
+ * de Consumo de Materiais.
+ */
+export function bomMaterialCostPerPair(
+  quantityPerUnit: number | null | undefined,
+  unitPrice: number | null | undefined,
+  productUnit: string | null | undefined,
+  componentSheet: ComponentSheetCandidate | null,
+): { cost: number; converted: boolean; widthMissing: boolean } {
+  const qty = Number(quantityPerUnit) || 0;
+  const price = Number(unitPrice) || 0;
+  const unit = normalizeText(productUnit);
+  const wastePct = Number(componentSheet?.waste_pct) || 0;
+  const direct = () => ({ cost: qty * price * (1 + wastePct / 100), converted: false, widthMissing: false });
+
+  if (qty <= 0 || price <= 0) return direct();
+
+  if (LINEAR_UNITS.has(unit)) {
+    const widthMm = getLinearWidthMm(componentSheet);
+    if (widthMm > 0) {
+      // dm²/par → metros/par (já com perda) → × R$/m
+      return { cost: convertDm2ToLinearMeters(qty, componentSheet) * price, converted: true, widthMissing: false };
+    }
+    // unidade linear sem largura na ficha: pode ser item direto (tira) OU área sem
+    // largura cadastrada. Mantém o valor atual e só sinaliza quando HÁ ficha (= é
+    // material de área mal cadastrado); tira normalmente nem tem ficha → não avisa.
+    return { ...direct(), widthMissing: componentSheet != null };
+  }
+
+  if (PLATE_UNITS.has(unit)) {
+    const plateAreaDm2 = getPlateAreaDm2(componentSheet);
+    if (plateAreaDm2 > 0) {
+      return { cost: convertDm2ToPlates(qty, componentSheet) * price, converted: true, widthMissing: false };
+    }
+    return { ...direct(), widthMissing: componentSheet != null };
+  }
+
+  // contagem (un/par), massa (kg/g), volume (L/ml) — qty já na unidade do preço.
+  return direct();
+}
+
+/**
  * Unit-aware consumption calculation.
  * If the component sheet's product unit is linear (metro, cm, m),
  * the yield_per_size values are already in that unit — only apply waste%.
