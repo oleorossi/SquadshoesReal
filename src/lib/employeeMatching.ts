@@ -40,7 +40,12 @@ export function namesMatch(left: string, right: string): boolean {
     return true;
   }
 
-  return lp.some((token) => token.length >= 5 && rp.includes(token));
+  // Fallback final: exige ≥2 tokens significativos (≥4 chars) em comum.
+  // Antes bastava 1 token ≥5 chars → sobrenome comum (SANTOS, SILVA, PEREIRA)
+  // casava pessoas DIFERENTES (ex.: "João Santos" × "Maria Santos"), misturando
+  // ponto/folha de gente distinta. Auditoria 2026-06-14, Área 7 (🟡).
+  const shared = new Set(lp.filter((token) => token.length >= 4 && rp.includes(token)));
+  return shared.size >= 2;
 }
 
 /**
