@@ -38,7 +38,7 @@ import { formatCurrency, cn } from '@/lib/utils';
  *  4. Re-invalida caches relevantes
  *
  * Substitui o form bugado em Contractors.tsx (que gravava total_value=unit_price
- * sem multiplicar pela quantidade) e é reusável em /terceiros-na-rua.
+ * sem multiplicar pela quantidade) e é reusável no hub /terceiros (aba Na Rua).
  *
  * Edit mode pode ser implementado depois — MVP foca em CREATE.
  */

@@ -564,7 +564,7 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
   }
 
   return (
-    <div className="space-y-5 page-enter">
+    <div className={cn('space-y-5', !embedded && 'page-enter')}>
       {embedded ? (
         // No hub /terceiros: header vem do hub; aqui só a ação crítica "Nova OS"
         // (o link "Relatórios" virou aba do hub).
@@ -576,7 +576,7 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
         </div>
       ) : (
         <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · TERCEIROS"
+          sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO · NA RUA"
           title="Terceiros na Rua"
           description="Tudo o que está fora da fábrica agora — OSs de gargalo + OPs inteiras terceirizadas. Acompanhe prazo, atraso e recebimento num único lugar."
           actions={

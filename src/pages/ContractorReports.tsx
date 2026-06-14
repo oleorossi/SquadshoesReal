@@ -155,7 +155,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
   }
 
   return (
-    <div className="space-y-5 page-enter">
+    <div className={cn('space-y-5', !embedded && 'page-enter')}>
       {!embedded && (
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · RELATÓRIOS · TERCEIROS"
