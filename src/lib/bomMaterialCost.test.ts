@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bomMaterialCostPerPair } from './materialConsumption';
+import { bomMaterialCostPerPair, areaToStockDivisor } from './materialConsumption';
 
 // Ficha de componente mínima (só o que o custo usa).
 const sheet = (width: number | null, wastePct = 0, unit = 'mm') => ({
@@ -55,5 +55,29 @@ describe('bomMaterialCostPerPair — regra canônica de consumo no custo', () =>
   it('qty ou preço zero → custo 0, sem erro', () => {
     expect(bomMaterialCostPerPair(0, 10, 'm', sheet(1370)).cost).toBe(0);
     expect(bomMaterialCostPerPair(5, 0, 'm', sheet(1370)).cost).toBe(0);
+  });
+});
+
+describe('areaToStockDivisor — divisor dm²→unidade física (planejamento de compras)', () => {
+  it('produto LINEAR (m) com largura → divisor = largura_mm/10 (dm² por metro)', () => {
+    // largura 1370mm → 137 dm² por metro → 4309 dm² ÷ 137 ≈ 31,4 m (corrige o ~100×)
+    expect(areaToStockDivisor('m', sheet(1370))).toBeCloseTo(137, 5);
+    expect(4309 / (areaToStockDivisor('m', sheet(1370)) as number)).toBeCloseTo(31.45, 1);
+  });
+
+  it('produto LINEAR sem largura → null (não dá pra converter; caller sinaliza widthMissing)', () => {
+    expect(areaToStockDivisor('m', sheet(0))).toBeNull();
+    expect(areaToStockDivisor('m', null)).toBeNull();
+  });
+
+  it('produto PLACA com área → divisor = área da placa (dm²)', () => {
+    const placa = { dimensions_width: 100, dimensions_length: 150, dimensions_unit: 'cm', waste_pct: 0 } as any;
+    expect(areaToStockDivisor('placa', placa)).toBeGreaterThan(0);
+  });
+
+  it('unidade NÃO física (kg/un/par) → null (não é caso de conversão de área)', () => {
+    expect(areaToStockDivisor('kg', sheet(1370))).toBeNull();
+    expect(areaToStockDivisor('un', sheet(1370))).toBeNull();
+    expect(areaToStockDivisor('par', sheet(1370))).toBeNull();
   });
 });

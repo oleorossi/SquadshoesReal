@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { resolveConversionFactors } from '@/lib/unitConversion';
+import { resolveConversionFactors, areSameUnit } from '@/lib/unitConversion';
+import { areaToStockDivisor } from '@/lib/materialConsumption';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ interface MaterialLine {
   unit: string; // consumption unit
   purchase_unit: string; // purchase_order_unit for display
   conversion_rate: number;
+  width_missing?: boolean; // área sem largura na ficha → conversão dm²→física indefinida
 }
 
 interface WeeklyMaterialSummary {
@@ -67,6 +69,7 @@ interface AggregatedMaterial {
   supplier_id?: string; // FK suppliers — gravado na OC
   orders: string[];
   product_id?: string; // representative product id for PO item creation
+  width_missing?: boolean; // alguma linha de área sem largura → quantidade não confiável
 }
 
 const STEPS = [
@@ -124,8 +127,8 @@ export default function PurchasePlanningWizard() {
         return;
       }
 
-      // 3. Fetch technical sheets, products, groups, and recent PO items
-      const [sheetsRes, productsRes, groupsRes, poItemsRes] = await Promise.all([
+      // 3. Fetch technical sheets, products, groups, recent PO items, component sheets
+      const [sheetsRes, productsRes, groupsRes, poItemsRes, compSheetsRes] = await Promise.all([
         supabase
           .from('technical_sheets')
           .select(`
@@ -165,6 +168,12 @@ export default function PurchasePlanningWizard() {
           .from('purchase_order_items')
           .select('product_id, unit, created_at')
           .order('created_at', { ascending: false }),
+        // Component sheets — largura/área da ficha p/ converter material de área
+        // (dm²/par) → unidade física (m/placa). A conversão dm²→m NÃO mora em
+        // conversion_rate (mora aqui). Sem isto o Wizard inflava ~100×.
+        supabase
+          .from('component_sheets')
+          .select('product_id, group_id, dimensions_width, dimensions_length, dimensions_unit, waste_pct'),
       ]);
 
       if (sheetsRes.error) throw sheetsRes.error;
@@ -198,6 +207,17 @@ export default function PurchasePlanningWizard() {
 
       const pMap = new Map(productRows.map(p => [p.id, p]));
       setProductsMap(pMap);
+
+      // Ficha de componente por produto e por grupo (pra converter dm²→unidade
+      // física pela largura/área — mesma fonte do modal de consumo e da view).
+      const csByProduct = new Map<string, any>();
+      const csByGroup = new Map<string, any>();
+      for (const cs of (compSheetsRes.data ?? []) as any[]) {
+        if (cs.product_id && !csByProduct.has(cs.product_id)) csByProduct.set(cs.product_id, cs);
+        if (cs.group_id && !csByGroup.has(cs.group_id)) csByGroup.set(cs.group_id, cs);
+      }
+      const componentSheetFor = (productId?: string | null, groupId?: string | null): any =>
+        (productId && csByProduct.get(productId)) || (groupId && csByGroup.get(groupId)) || null;
 
       // Build group name → group id lookup
       const groupNameMap = new Map<string, string>();
@@ -351,12 +371,26 @@ export default function PurchasePlanningWizard() {
           const convRate = resolved.conversion_rate || 1;
           const purchaseUnit = resolved.purchase_unit || rawUnit;
           // Use unified conversion logic to handle both area→linear and stock→package cases
-          const { needToStockDivisor, stockToPurchaseDivisor } = resolveConversionFactors(
+          let { needToStockDivisor } = resolveConversionFactors(
             rawUnit,                    // consumption unit (e.g. dm², kg, par)
             resolved.stock_unit,        // stock unit (e.g. m, kg, par)
             purchaseUnit,               // purchase unit (e.g. metro, un, par)
             convRate,
           );
+          const { stockToPurchaseDivisor } = resolveConversionFactors(rawUnit, resolved.stock_unit, purchaseUnit, convRate);
+          // CORREÇÃO dm² (auditoria 2026-06-14): material de ÁREA (dm²/par) com produto
+          // em unidade física (m/cm/placa) converte pela LARGURA da ficha de componente,
+          // NÃO pelo conversion_rate (que costuma ser 1 nesses casos → resolveConversionFactors
+          // devolvia 1:1 e inflava a quantidade ~100×). Ver areaToStockDivisor / CLAUDE.md.
+          let widthMissing = false;
+          const rawIsArea = ['dm²', 'dm2', 'cm²', 'cm2', 'm²', 'm2'].includes((rawUnit || '').toLowerCase().trim());
+          if (rawIsArea && !areSameUnit(rawUnit, resolved.stock_unit)) {
+            const prodRow = resolved.product_id ? pMap.get(resolved.product_id) : null;
+            const cs = componentSheetFor(resolved.product_id, prodRow?.group_id);
+            const div = areaToStockDivisor(resolved.stock_unit, cs);
+            if (div && div > 0) needToStockDivisor = div;      // dm² → m/placa pela ficha
+            else widthMissing = true;                          // sem largura: não dá pra converter
+          }
           const needInStock = totalNeededRaw / needToStockDivisor;
           const totalNeededConverted = needInStock / stockToPurchaseDivisor;
           const stockInPurchaseUnit = resolved.stock / stockToPurchaseDivisor;
@@ -376,6 +410,7 @@ export default function PurchasePlanningWizard() {
             unit: rawUnit,
             purchase_unit: purchaseUnit,
             conversion_rate: convRate,
+            width_missing: widthMissing,
             _stock: stockInPurchaseUnit,
             _price: priceInPurchaseUnit,
             _supplier: resolved.supplier,
@@ -499,11 +534,13 @@ export default function PurchasePlanningWizard() {
             supplier_id: matAny._supplier_id || undefined,
             orders: [],
             product_id: matAny._product_id || undefined,
+            width_missing: matAny.width_missing || false,
           });
         }
         const agg = week.materials.get(key)!;
         // Use converted quantity (in purchase unit) for comparison with stock
         agg.total_needed += mat.total_needed_converted;
+        if (matAny.width_missing) agg.width_missing = true;
         agg.orders.push(order.order_number);
       }
     }
@@ -537,6 +574,7 @@ export default function PurchasePlanningWizard() {
         } else {
           const existing = merged.get(key)!;
           existing.total_needed += mat.total_needed;
+          if (mat.width_missing) existing.width_missing = true;
           existing.orders = Array.from(new Set([...existing.orders, ...mat.orders]));
           existing.stock_after = existing.current_stock - existing.total_needed;
           const deficit = Math.max(0, existing.total_needed - existing.current_stock);
@@ -572,7 +610,17 @@ export default function PurchasePlanningWizard() {
     if (creating) return; // guard contra double-click (fix A3.3a)
     setCreating(true);
     try {
-      const active = selectedMaterials.filter(m => m.selected && m.stock_after < 0);
+      const eligible = selectedMaterials.filter(m => m.selected && m.stock_after < 0);
+      // Material de ÁREA sem largura na ficha → conversão dm²→física indefinida →
+      // quantidade inflada (~100×). NÃO gera OC pra esses (evita pedido absurdo);
+      // avisa pra cadastrar a largura. Auditoria 2026-06-14.
+      const blocked = eligible.filter(m => m.width_missing);
+      const active = eligible.filter(m => !m.width_missing);
+      if (blocked.length > 0) {
+        toast.warning(
+          `${blocked.length} material(is) de área sem largura na ficha (${blocked.slice(0, 3).map(m => m.name).join(', ')}${blocked.length > 3 ? '…' : ''}) ficaram FORA da OC — a quantidade não é confiável. Cadastre a largura em Materiais → Ficha de Componente → Dimensões.`,
+        );
+      }
       const bySupplier = new Map<string, AggregatedMaterial[]>();
       active.forEach(m => {
         const key = m.supplier_name || 'Sem Fornecedor';

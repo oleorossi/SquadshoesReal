@@ -318,6 +318,37 @@ export function bomMaterialCostPerPair(
 }
 
 /**
+ * Divisor pra converter QUANTIDADE de material de área (dm²/par) → unidade física de
+ * ESTOQUE do produto (metro linear ou placa), usando a largura/área da ficha de
+ * componente. PURO geométrico (NÃO aplica perda — o caller controla a perda dele).
+ *
+ *   need_em_estoque = total_dm2 / areaToStockDivisor(stockUnit, ficha)
+ *
+ * - linear (m/cm): divisor = largura_mm / 10  (= dm² por metro)
+ * - placa: divisor = área_da_placa_dm²
+ * - retorna null quando NÃO se aplica (unidade não é linear/placa) OU quando falta a
+ *   largura/área na ficha (caller deve sinalizar widthMissing e NÃO inflar ~100×).
+ *
+ * Usado no planejamento de compras (PurchasePlanningWizard) — a conversão dm²→físico
+ * NÃO mora em products.conversion_rate (mora aqui, na ficha). Ver CLAUDE.md.
+ */
+export function areaToStockDivisor(
+  stockUnit: string | null | undefined,
+  componentSheet: ComponentSheetCandidate | null,
+): number | null {
+  const unit = normalizeText(stockUnit);
+  if (LINEAR_UNITS.has(unit)) {
+    const w = getLinearWidthMm(componentSheet);
+    return w > 0 ? w / 10 : null;
+  }
+  if (PLATE_UNITS.has(unit)) {
+    const a = getPlateAreaDm2(componentSheet);
+    return a > 0 ? a : null;
+  }
+  return null;
+}
+
+/**
  * Unit-aware consumption calculation.
  * If the component sheet's product unit is linear (metro, cm, m),
  * the yield_per_size values are already in that unit — only apply waste%.
