@@ -78,8 +78,8 @@ export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalSt
                           <Warning className="h-3.5 w-3.5" /> {cut.warning}
                         </span>
                         {cut.widthMissing && (
-                          <Link to="/estoque" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
-                            Cadastrar largura da tira →
+                          <Link to="/artisanal-recipes" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
+                            Cadastrar largura em Receitas → Produtos artesanais →
                           </Link>
                         )}
                       </div>
