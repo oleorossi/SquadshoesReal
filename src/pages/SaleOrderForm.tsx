@@ -384,6 +384,10 @@ export default function SaleOrderForm() {
             fichas,
             strap_colors: (i.strap_colors as any[]) || [],
             observation: (i as any).observation || null,
+            // Sem copiar na carga, editar o PV gravava null (o payload de update e o
+            // RPC update_sale_order_atomic JÁ persistem a coluna) → perda silenciosa
+            // da variante de cor a cada edição. Auditoria 2026-06-14, Top10 #9.
+            material_variant_id: (i as any).material_variant_id ?? null,
           };
         });
         // Sort items so that the same reference (and color) always appears together in editing
