@@ -19,12 +19,13 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UploadSimple, Ruler, Path, CircleNotch as Loader2, Check } from '@phosphor-icons/react';
+import { UploadSimple, Ruler, Path, CircleNotch as Loader2, Check, Scan } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { computeDxfAreas, type DxfAreaResult, type DxfLengthUnit } from '@/lib/dxfArea';
 import { scaleConsumptionBySize, isNonFlatProgression, type ScaleMode } from '@/lib/gradeScaling';
 import { resolveGroupUnit, isAreaUnit } from '@/lib/materialUnit';
 import { useSoleSizeMetric } from '@/hooks/useSoleSizeMetric';
+import { MoldeCadEditor } from './MoldeCadEditor';
 
 interface GradingCadTabProps {
   form: any;
@@ -67,6 +68,20 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
   const [dxf, setDxf] = useState<DxfAreaResult | null>(null);
   const [dxfName, setDxfName] = useState<string>('');
   const [reading, setReading] = useState(false);
+  const [cadOpen, setCadOpen] = useState(false);
+
+  // Resultado do CAD de moldes (scanner) → vira o consumo base (dm²).
+  const onCadApply = (r: { totalDm2: number; dpi: number; pieces: { areaDm2: number }[]; dxfText: string }) => {
+    setDxf({
+      unit: 'mm',
+      unitFromHeader: false,
+      pieces: r.pieces.map((p, i) => ({ layer: `Peça ${i + 1}`, type: 'CAD', areaDm2: p.areaDm2, vertices: 0 })),
+      totalDm2: r.totalDm2,
+    });
+    setDxfName(`CAD · ${r.dpi} DPI`);
+    if (r.totalDm2 > 0) setBaseValue(Number(r.totalDm2.toFixed(4)));
+    toast.success(`${r.pieces.length} peça(s) · ${r.totalDm2.toFixed(2)} dm² do CAD`);
+  };
 
   // Valor base do cabedal (na unidade do grid). Pré-preenche do que já existe na
   // ficha pra aquele número, senão fica vazio até importar/digitar.
@@ -153,14 +168,19 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <UploadSimple className="h-4 w-4 text-muted-foreground" /> Importar CAD (DXF)
+            <Scan className="h-4 w-4 text-muted-foreground" /> Origem da área (CAD)
           </CardTitle>
           <CardDescription>
-            DXF do Shoemaster/AutoCAD no tamanho base. O sistema lê os contornos fechados e soma a área das peças (dm²).
+            Escaneie o molde na impressora e trace as peças no CAD (calcula a área e gera o DXF), ou importe um DXF pronto do
+            Shoemaster/AutoCAD. A área no tamanho base alimenta o escalonamento abaixo.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" className="h-9 gap-1.5" onClick={() => setCadOpen(true)}>
+              <Scan className="h-4 w-4" /> Escanear molde (CAD)
+            </Button>
+            <span className="text-xs text-muted-foreground">ou</span>
             <label className="inline-flex">
               <input
                 type="file"
@@ -170,7 +190,7 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
               />
               <span className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 text-sm hover:bg-muted/40">
                 {reading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadSimple className="h-4 w-4" />}
-                Escolher DXF
+                Importar DXF
               </span>
             </label>
             {dxfName && <span className="text-xs text-muted-foreground truncate max-w-[220px]">{dxfName}</span>}
@@ -333,6 +353,14 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
           </CardContent>
         </Card>
       )}
+
+      <MoldeCadEditor
+        open={cadOpen}
+        onOpenChange={setCadOpen}
+        initialDpi={300}
+        fileBaseName={form?.code || form?.name || 'molde'}
+        onApply={onCadApply}
+      />
     </div>
   );
 }
