@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { printHtml } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
 import { escapeHtml } from '@/lib/htmlUtils';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -157,7 +158,10 @@ function buildSolagemHtml(ops: OrderWithRef[]): string {
     const gradeSum = Object.values(grade).reduce((s, v) => s + Number(v), 0);
     const totalPairs = order.quantity || gradeSum;
     const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
-    const gradeStr = activeSizes.map(s => `${s}:${Math.round((Number(grade[s]) || 0) * multiplier)}`).join(' | ');
+    // Hamilton (largest-remainder) garante Σcélulas === totalPairs; o Math.round
+    // por célula divergia do total quando multiplier≠1. Auditoria 2026-06-14, Área 3.
+    const scaledGrade = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
+    const gradeStr = activeSizes.map(s => `${s}:${scaledGrade[s] || 0}`).join(' | ');
     detailHtml += `<p style="font-size:10px;margin:2px 0;"><strong>${escapeHtml(order.order_number)}</strong> — ${escapeHtml(order.technical_sheets?.code || '')} ${escapeHtml(order.technical_sheets?.name || '')} — Cor: ${escapeHtml(order.color || '—')} — ${gradeStr} = <strong>${totalPairs} pares</strong></p>`;
   });
 
