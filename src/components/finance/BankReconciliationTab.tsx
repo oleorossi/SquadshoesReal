@@ -230,10 +230,28 @@ export default function BankReconciliationTab() {
     const stmt = lineMatches[lineIdx]?.line;
     const paymentDate = stmt?.date || format(new Date(), 'yyyy-MM-dd');
     try {
+      // match.amount é o SALDO restante (amount − já pago/recebido). SOMAR ao
+      // existente — antes sobrescrevia amount_paid/received com só o saldo,
+      // apagando um pagamento parcial anterior e corrompendo os totais.
+      // Marca 'paid'/'received' só quando quita; senão 'parcial'.
+      // Auditoria 2026-06-14, Área 5 (🟠).
+      const EPS = 0.005;
       if (match.type === 'payable') {
+        const { data: cur, error: curErr } = await supabase
+          .from('accounts_payable')
+          .select('amount, amount_paid, status')
+          .eq('id', match.id)
+          .single();
+        if (curErr) throw curErr;
+        if (cur.status === 'paid' || cur.status === 'cancelled') {
+          toast.warning(`Conta a pagar ${match.id.slice(0, 8)} já estava paga ou cancelada.`);
+          return;
+        }
+        const newPaid = Number(cur.amount_paid || 0) + match.amount;
+        const fullyPaid = newPaid >= Number(cur.amount || 0) - EPS;
         const { data: claimed, error } = await supabase
           .from('accounts_payable')
-          .update({ status: 'paid', amount_paid: match.amount, payment_date: paymentDate })
+          .update({ status: fullyPaid ? 'paid' : 'parcial', amount_paid: newPaid, payment_date: paymentDate })
           .eq('id', match.id)
           .not('status', 'in', '(paid,cancelled)')
           .select('id');
@@ -243,9 +261,21 @@ export default function BankReconciliationTab() {
           return;
         }
       } else {
+        const { data: cur, error: curErr } = await supabase
+          .from('accounts_receivable')
+          .select('amount, amount_received, status')
+          .eq('id', match.id)
+          .single();
+        if (curErr) throw curErr;
+        if (cur.status === 'received' || cur.status === 'cancelled') {
+          toast.warning(`Conta a receber ${match.id.slice(0, 8)} já estava recebida ou cancelada.`);
+          return;
+        }
+        const newReceived = Number(cur.amount_received || 0) + match.amount;
+        const fullyReceived = newReceived >= Number(cur.amount || 0) - EPS;
         const { data: claimed, error } = await supabase
           .from('accounts_receivable')
-          .update({ status: 'received', amount_received: match.amount, payment_date: paymentDate })
+          .update({ status: fullyReceived ? 'received' : 'parcial', amount_received: newReceived, payment_date: paymentDate })
           .eq('id', match.id)
           .not('status', 'in', '(received,cancelled)')
           .select('id');
