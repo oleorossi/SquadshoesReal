@@ -78,7 +78,13 @@ serve(async (req) => {
     }
 
     // --- SSRF protection: only allow HTTPS from trusted hosts ---
-    const ALLOWED_HOSTS = ["qrdvwoijghmgugejponz.supabase.co"];
+    // Deriva do SUPABASE_URL do ambiente — antes estava hardcoded no PROJETO
+    // MORTO (qrdvwoijghmgugejponz), então toda imagem do projeto atual era
+    // rejeitada e a recolorização ficava quebrada. Auditoria 2026-06-14, Área 8.
+    const ALLOWED_HOSTS = (() => {
+      try { return [new URL(supabaseUrl).hostname]; }
+      catch { return [] as string[]; }
+    })();
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(imageUrl);
