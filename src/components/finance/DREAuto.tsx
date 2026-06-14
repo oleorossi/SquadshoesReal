@@ -121,7 +121,7 @@ export function DREAuto() {
             <div className="text-xs text-muted-foreground max-w-sm leading-relaxed">
               <p className="font-mono text-[10px] mb-1">FÓRMULA (regime caixa)</p>
               <p>
-                Receita recebida − CMV (material/MOD/frete) − Despesas Operacionais − Impostos − Juros Factoring
+                Receita recebida − CMV reconhecido (proporcional ao recebimento) − Despesas Operacionais − Impostos − Juros Factoring
               </p>
               <p className="mt-1 text-[10px]">
                 Benchmark indústria: ≥15% saudável · 8–15% ok · &lt;8% atenção
@@ -194,7 +194,7 @@ export function DREAuto() {
                     <TableHead className="text-right">(+) Compras</TableHead>
                     <TableHead className="text-right">(−) Estoque Final</TableHead>
                     <TableHead className="text-right font-semibold">(=) CMV Calculado</TableHead>
-                    <TableHead className="text-right text-muted-foreground">CMV Despesas</TableHead>
+                    <TableHead className="text-right text-muted-foreground">CMV Reconhecido (caixa)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -218,10 +218,12 @@ export function DREAuto() {
             </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-            <strong>CMV Calculado</strong> usa a fórmula contábil correta: Estoque Inicial + Compras recebidas no período
-            − Estoque Final. Os estoques são estimados com base nos movimentos de estoque e no preço unitário atual de cada produto.
-            <strong> CMV Despesas</strong> é calculado pela soma de lançamentos de contas a pagar categorizados como
-            material, mão de obra ou frete.
+            <strong>CMV Calculado</strong> (referência, competência) usa a fórmula contábil de variação de estoque:
+            Estoque Inicial + Compras recebidas no período − Estoque Final. Os estoques são estimados com base nos
+            movimentos de estoque e no preço unitário atual de cada produto.
+            <strong> CMV Reconhecido (caixa)</strong> é o que a DRE principal usa: o CMV de cada venda
+            (order_costs → sale_order_cmv) reconhecido proporcional ao recebimento do cliente (cash matching) na
+            data do recebimento.
           </p>
         </CardContent>
       </Card>

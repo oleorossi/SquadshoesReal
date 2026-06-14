@@ -177,7 +177,7 @@ export function useDREAuto(monthsBack: number = 6) {
       const startDate = format(startOfMonth(subMonths(now, monthsBack - 1)), 'yyyy-MM-dd');
       const endDate = format(endOfMonth(now), 'yyyy-MM-dd');
 
-      const [recRes, payRes, factRes, companyRes] = await Promise.all([
+      const [recRes, payRes, factRes, cmvRes, companyRes] = await Promise.all([
         // Receita por CAIXA: linhas com recebimento na janela (payment_date).
         supabase
           .from('accounts_receivable')
@@ -202,6 +202,15 @@ export function useDREAuto(monthsBack: number = 6) {
           .eq('type', 'despesa')
           .gte('entry_date', startDate)
           .lte('entry_date', endDate),
+        // CMV RECONHECIDO por caixa (cash matching) — sale_order_cmv_recognized
+        // distribui o CMV total proporcional ao recebimento. Reconhecido na data
+        // recognized_date (= payment_date da parcela). Substitui o CMV por compra
+        // (material/MOD/frete de AP), que era regime de competência/compra.
+        (supabase as any)
+          .from('sale_order_cmv_recognized')
+          .select('recognized_date, recognized_amount')
+          .gte('recognized_date', startDate)
+          .lte('recognized_date', endDate),
         // Regime tributário da empresa primária pra ajustar DRE:
         // regime_tributario='1' = Simples Nacional → impostos vão no DAS,
         // não devem somar separadamente em "impostos" no DRE.
@@ -214,6 +223,7 @@ export function useDREAuto(monthsBack: number = 6) {
       if (recRes.error) throw recRes.error;
       if (payRes.error) throw payRes.error;
       if (factRes.error) throw factRes.error;
+      if (cmvRes?.error) throw cmvRes.error;
       const isSimplesNacional = String(companyRes?.data?.regime_tributario || '') === '1';
 
       const months: Record<string, DREMonth> = {};
@@ -242,17 +252,29 @@ export function useDREAuto(monthsBack: number = 6) {
         if (months[m]) months[m].receita += Number(r.amount_received || 0);
       });
 
+      // CMV reconhecido por caixa (cash matching) — proporcional ao recebimento.
+      (cmvRes?.data || []).forEach((c: any) => {
+        if (!c.recognized_date) return;
+        const m = String(c.recognized_date).substring(0, 7);
+        if (months[m]) months[m].cmv += Number(c.recognized_amount || 0);
+      });
+
       // Despesas por categoria — caixa pago (amount_paid) na data payment_date.
-      // Auditoria mai/2026: 'frete' compõe CMV (frete sobre compras é custo do
-      // produto). Antes ia pra "desp. operacional" e inflava o EBITDA.
+      // ⚠ Categorias de CUSTO DE PRODUTO (material, mao_de_obra, frete, overhead)
+      // são EXCLUÍDAS aqui: elas já estão representadas via CMV reconhecido
+      // (order_costs → sale_order_cmv → sale_order_cmv_recognized). Somá-las
+      // também como despesa = double-count. Compra de material é formação de
+      // estoque (balanço), reconhecida como CMV só quando o produto é vendido E
+      // o recebimento entra. Aqui ficam só despesas operacionais/SG&A e impostos.
       (payRes.data || []).forEach((p) => {
         if (!p.payment_date) return;
         const m = p.payment_date.substring(0, 7);
         if (!months[m]) return;
         const v = Number(p.amount_paid || 0);
         const cat = p.category;
-        if (cat === 'material' || cat === 'mao_de_obra' || cat === 'frete') {
-          months[m].cmv += v;
+        if (cat === 'material' || cat === 'mao_de_obra' || cat === 'frete' || cat === 'overhead') {
+          // já contabilizado no CMV reconhecido — não somar de novo.
+          return;
         } else if (cat === 'imposto') {
           // Simples Nacional: PIS/COFINS/ICMS/IRPJ/CSLL/ISS são consolidados em DAS único.
           // Lançar como "imposto" separadamente distorce o DRE — DAS já é despesa
