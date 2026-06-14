@@ -724,6 +724,11 @@ export type SaleOrderFormData = {
    *  caso external_nfe_number guarda o número informado manualmente. */
   nfe_external?: boolean;
   external_nfe_number?: string;
+  /** Terceirização planejada por setor (Fase A): manda o setor escolhido deste PV
+   *  pra fora (prestador), mesmo que desse pra fazer na fábrica — evita gargalo.
+   *  Ao virar OP, o trigger trg_apply_pv_outsourcing_to_op marca a OP. */
+  outsource_to_contractor_id?: string | null;
+  outsource_to_sector?: string | null;
 };
 
 /** Tipos de pedido (paridade Tutor32) — os `value` batem EXATAMENTE com o CHECK
@@ -2101,6 +2106,20 @@ export function useUpdateSaleOrder() {
         p_items: itemsPayload,
       });
       if (rpcErr) throw rpcErr;
+
+      // Terceirização planejada (Fase A): o RPC update_sale_order_atomic NÃO lista
+      // estas 2 colunas no UPDATE, então não as toca — um update direcionado é
+      // seguro (sem clobbering, diferente do caso strap_colors). O create persiste
+      // via spread; aqui cobrimos a edição.
+      {
+        const oc = (order as any).outsource_to_contractor_id || null;
+        const { error: outErr } = await supabase.from('sale_orders').update({
+          outsource_to_contractor_id: oc,
+          outsource_to_sector: oc ? ((order as any).outsource_to_sector || null) : null,
+        }).eq('id', id);
+        if (outErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização do PV:', outErr.message);
+      }
+
       const insertedIds: string[] = ((rpcOut as any)?.inserted_item_ids as string[] | undefined) || [];
       // Re-hydrate the same shape the older code returned so downstream MRP loop matches by index.
       const insertedItems: { id: string; reference_id: string; color: string | null; quantity: number | null }[] =

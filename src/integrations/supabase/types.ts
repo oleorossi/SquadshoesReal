@@ -16317,6 +16317,8 @@ export type Database = {
           notes: string | null
           order_number: string
           order_type: string
+          outsource_to_contractor_id: string | null
+          outsource_to_sector: string | null
           original_min_billing_date: string | null
           own_delivery: boolean
           packaging_mode: string | null
@@ -16378,6 +16380,8 @@ export type Database = {
           notes?: string | null
           order_number?: string
           order_type?: string
+          outsource_to_contractor_id?: string | null
+          outsource_to_sector?: string | null
           original_min_billing_date?: string | null
           own_delivery?: boolean
           packaging_mode?: string | null
@@ -16439,6 +16443,8 @@ export type Database = {
           notes?: string | null
           order_number?: string
           order_type?: string
+          outsource_to_contractor_id?: string | null
+          outsource_to_sector?: string | null
           original_min_billing_date?: string | null
           own_delivery?: boolean
           packaging_mode?: string | null
