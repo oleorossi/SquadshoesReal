@@ -2377,6 +2377,12 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      // Editar o PV recria OPs e remexe a alocação de setores/ondas → invalidar
+      // os quadros de produção pra não mostrar OP/onda obsoleta. Auditoria 2026-06-14.
+      qc.invalidateQueries({ queryKey: ['waves'] });
+      qc.invalidateQueries({ queryKey: ['production_waves'] });
+      qc.invalidateQueries({ queryKey: ['sector-board'] });
+      qc.invalidateQueries({ queryKey: ['sector_distribution_plan'] });
       // Editar o PV muda a demanda do MRP — invalida as necessidades/sugestões.
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
       qc.invalidateQueries({ queryKey: ['material-needs-report'] });
