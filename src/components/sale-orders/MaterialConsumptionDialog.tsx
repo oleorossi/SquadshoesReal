@@ -17,6 +17,13 @@ import {
   type ConsumptionItem,
   type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
+import {
+  computeStrapRollCut,
+  isArtisanalStrap,
+  normalizeWidthToMm,
+  type ArtisanalStrapCutRow,
+} from '@/lib/strapRollCut';
+import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 
 type Props = {
   open: boolean;
@@ -253,6 +260,11 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
+  // Bloco SEPARADO (vermelho) das tiras artesanais cortadas do rolo. Derivado
+  // das linhas 'Tiras' já agregadas (grupo+cor, em metros) — mesma detecção e
+  // mesma matemática (strapRollCut) usadas no Resumo Consolidado e na Lista de
+  // Separação. Sem isto, o modal por-PV mostrava as tiras só no preto.
+  const [artisanalStrapRows, setArtisanalStrapRows] = useState<ArtisanalStrapCutRow[]>([]);
 
   // ── Corte de Cabedal — terceirização ────────────────────────────────────
   const { data: contractors = [] } = useContractors();
@@ -317,6 +329,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       if (itemsError) throw itemsError;
       if (!items || items.length === 0) {
         setRows([]);
+        setArtisanalStrapRows([]);
         setUpperCutGroups([]);
         setExistingOsByKey({});
         setContractorByKey({});
@@ -385,12 +398,28 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
 
       // Receitas artesanais (Materiais Artesanais): cada uma liga um produto
       // artesanal (ex.: tira) a um material-base (napa) com yield_per_meter
-      // (metros de saída por 1 m de base). Usado pra mostrar, ao lado do consumo
-      // da tira, quanto de napa-base sairia se feita artesanalmente.
-      const { data: recipesData } = await supabase
-        .from('artisanal_recipes')
-        .select('artisanal_product_name, base_product_name, yield_per_meter')
-        .eq('active', true);
+      // (metros de saída por 1 m de base). Usado pra (a) mostrar, ao lado do
+      // consumo da tira, quanto de napa-base sairia se feita artesanalmente; e
+      // (b) DETECTAR que a tira é artesanal cortada do rolo (grupo de RESULTADO
+      // `artisanal_product_name`) + largura de corte (`cut_width_mm`, mm).
+      // Query DEFENSIVA em cut_width_mm: se a coluna ainda não foi migrada, o
+      // PostgREST erra e refazemos sem ela (não quebra o modal).
+      let recipesData: any[] | null = null;
+      {
+        const withWidth = await supabase
+          .from('artisanal_recipes')
+          .select('artisanal_product_name, base_product_name, yield_per_meter, cut_width_mm' as any)
+          .eq('active', true);
+        if (!withWidth.error) {
+          recipesData = withWidth.data as any[];
+        } else {
+          const fallback = await supabase
+            .from('artisanal_recipes')
+            .select('artisanal_product_name, base_product_name, yield_per_meter')
+            .eq('active', true);
+          recipesData = (fallback.data as any[]) || null;
+        }
+      }
 
       // Motor CANÔNICO (mesmo de @/lib/orderConsumption usado pela ficha do
       // operador, por OP). Aqui calculamos por PEDIDO: agrega todos os itens do
@@ -465,6 +494,45 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       }
       const LINEAR = new Set(['m', 'metro', 'metros', 'mt']);
 
+      // ── Tiras artesanais (corte do rolo): detecção + largura de corte ───────
+      // Detecção AUTORITATIVA = grupo da tira é o RESULTADO de uma receita ativa
+      // (`artisanal_product_name`). Inclui receitas com yield 0 (recipeMap acima
+      // exige yield > 0; aqui basta o nome). Largura prioriza `cut_width_mm` da
+      // receita → largura do grupo (`product_groups.dimensions_width`).
+      const recipeOutputNorms = new Set<string>();
+      const recipeWidth = new Map<string, number>();
+      for (const r of (recipesData || []) as any[]) {
+        const norm = normTxt(r.artisanal_product_name || '');
+        if (!norm) continue;
+        recipeOutputNorms.add(norm);
+        const w = Number(r.cut_width_mm) || 0;
+        if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+      }
+      const groupWidthByNorm = new Map<string, number>();
+      const groupNameByNorm = new Map<string, string>();
+      for (const g of (ctx.productGroups || []) as any[]) {
+        const norm = normTxt(g.name);
+        if (!norm) continue;
+        if (!groupNameByNorm.has(norm)) groupNameByNorm.set(norm, g.name);
+        const w = normalizeWidthToMm(g.dimensions_width, g.dimensions_unit);
+        if (w > (groupWidthByNorm.get(norm) || 0)) groupWidthByNorm.set(norm, w);
+      }
+      // Flag `is_artisanal_strap` no grupo — sinal secundário (recipe vence).
+      // Query DEFENSIVA: coluna pode não estar migrada → seguimos sem ela.
+      const groupArtisanalFlag = new Map<string, boolean>();
+      {
+        const { data: flagged, error: flagErr } = await supabase
+          .from('product_groups')
+          .select('name, is_artisanal_strap' as any);
+        if (!flagErr && Array.isArray(flagged)) {
+          for (const g of flagged as any[]) {
+            if ((g as any)?.is_artisanal_strap) groupArtisanalFlag.set(normTxt(g.name), true);
+          }
+        }
+      }
+      const strapWidthForNorm = (norm: string) =>
+        recipeWidth.get(norm) || groupWidthByNorm.get(norm) || 0;
+
       for (const row of rows) {
         if (row.componentType === 'Solado') {
           row.soleSizeStock = row.soleProductId
@@ -495,12 +563,42 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         return a.color.localeCompare(b.color, 'pt-BR');
       });
 
+      // Linhas do bloco vermelho: uma por (grupo+cor) de tira artesanal. As
+      // linhas 'Tiras' já vêm agregadas por grupo+cor em METROS (motor canônico),
+      // então `totalQuantity` é exatamente os metros_necessarios do corte do rolo
+      // — o "Total de tiras (m)" do bloco bate com a seção Tiras.
+      const artisanalCut: ArtisanalStrapCutRow[] = [];
+      for (const row of sortedRows) {
+        if (row.componentType !== 'Tiras' || !(row.totalQuantity > 0)) continue;
+        const norm = normTxt(row.groupName);
+        const detected = isArtisanalStrap({
+          recipeFlag: recipeOutputNorms.has(norm),
+          groupFlag: groupArtisanalFlag.get(norm),
+          name: `${row.groupName} ${row.materialName || ''}`,
+        });
+        if (!detected) continue;
+        const largura_mm = strapWidthForNorm(norm);
+        const color = (row.color || '—').toString().trim() || '—';
+        artisanalCut.push({
+          key: `${norm}||${color.toLowerCase()}`,
+          groupName: groupNameByNorm.get(norm) || row.groupName,
+          color,
+          largura_mm,
+          metros_necessarios: row.totalQuantity,
+          cut: computeStrapRollCut({ largura_mm, metros_necessarios: row.totalQuantity }),
+        });
+      }
+      artisanalCut.sort((a, b) =>
+        a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
+
       if (isCancelled()) return;
       setRows(sortedRows);
+      setArtisanalStrapRows(artisanalCut);
     } catch (err) {
       if (isCancelled()) return;
       console.error('Erro ao carregar consumo:', err);
       setRows([]);
+      setArtisanalStrapRows([]);
     } finally {
       if (!isCancelled()) setLoading(false);
     }
@@ -736,6 +834,35 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       </span>`
     ).join('');
 
+    // Bloco vermelho: tiras artesanais — corte do rolo (mesmo conteúdo da tela).
+    const strapCutHtml = artisanalStrapRows.length === 0 ? '' : `
+        <div style="break-inside:avoid;margin-top:10px">
+          <div style="background:#fef2f2;color:#dc2626;padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;border-radius:4px">✂️ Tiras artesanais — corte do rolo (40m × 1370mm)</div>
+          <p style="font-size:8.5pt;color:#dc2626;margin:4px 0">Cortar do rolo — não é consumo direto de estoque.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:9.5pt;border:1px solid #fca5a5">
+            <thead><tr style="color:#dc2626;background:#fef2f2">
+              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira (cor)</th>
+              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Largura corte (mm)</th>
+              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Total de tiras (m)</th>
+              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Rend. útil (m/rolo)</th>
+              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Cortar do rolo (cm)</th>
+            </tr></thead>
+            <tbody>${artisanalStrapRows.map((r) => {
+              const { cut } = r;
+              const cortar = cut.valid
+                ? `<span style="font-weight:700;font-size:11pt">${cut.cm_a_cortar.toFixed(1)} cm</span>`
+                : `<span style="font-size:8.5pt">⚠ ${cut.warning || 'sem largura'}</span>`;
+              return `<tr style="color:#dc2626">
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${r.groupName}${r.color && r.color !== '—' ? ` · ${r.color}` : ''}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cut.widthMissing ? '—' : r.largura_mm.toFixed(0)}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${r.metros_necessarios.toFixed(2)}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cut.valid ? cut.metros_uteis_rolo.toFixed(1) : '—'}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>`;
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais — ${orderNumber}</title>
       <style>
         /* Margem 8mm (não 6mm) + box-sizing global p/ as bordas não serem
@@ -761,6 +888,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         <p class="sub">${rows.length} item${rows.length !== 1 ? 'ns' : ''} · ${grouped.size} componente${grouped.size !== 1 ? 's' : ''} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
         <div class="totals-strip">${totalsHtml}</div>
         <div class="grid">${cards.join('')}</div>
+        ${strapCutHtml}
       </body></html>`;
 
     const printWindow = window.open('', '_blank');
@@ -770,7 +898,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       printWindow.focus();
       setTimeout(() => printWindow.print(), 400);
     }
-  }, [grouped, totalsByUnit, orderNumber, rows.length]);
+  }, [grouped, totalsByUnit, orderNumber, rows.length, artisanalStrapRows]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -913,6 +1041,9 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                 )}
               </div>
             ))}
+
+            {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
+            <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
           </div>
         )}
 
