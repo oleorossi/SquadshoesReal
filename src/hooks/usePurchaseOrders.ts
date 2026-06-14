@@ -34,8 +34,11 @@ export type PurchaseOrderItem = {
   grade?: Record<string, number> | null;
   color?: string | null;
   /** Timestamp do crédito de estoque deste item (M6 — idempotência por item no
-   *  retry de recebimento). NULL = ainda não creditado. */
+   *  retry de recebimento). NULL = ainda não creditado por completo. */
   received_at?: string | null;
+  /** Quantidade já recebida (acumulada), na mesma unidade de `quantity`. Suporta
+   *  recebimento parcial ("receber 8 de 10"). Fase C. */
+  received_quantity?: number | null;
   product?: { name: string; sku: string; category: string; color?: string | null; stock_grade?: Record<string, any> | null };
 };
 

@@ -6,17 +6,18 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { usePurchaseOrders, usePurchaseOrderItems, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder } from '@/hooks/usePurchaseOrders';
+import { usePurchaseOrders, usePurchaseOrderItems, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder, type PurchaseOrderItem } from '@/hooks/usePurchaseOrders';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown } from '@phosphor-icons/react';
+import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown, Package } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SolePurchaseTab from '@/components/purchase/SolePurchaseTab';
 import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchaseOrder';
@@ -31,6 +32,7 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
   pending: { label: 'Pendente', variant: 'outline' },
   approved: { label: 'Aprovada', variant: 'default' },
   sent: { label: 'Enviada', variant: 'secondary' },
+  parcial: { label: 'Parcial', variant: 'secondary' },
   received: { label: 'Recebida', variant: 'default' },
   cancelled: { label: 'Cancelada', variant: 'destructive' },
 };
@@ -78,7 +80,7 @@ function mergeReceivedGrade(
   return merged;
 }
 
-const VALID_PO_STATUS_FILTERS = ['all', 'pending', 'approved', 'sent', 'received', 'cancelled'];
+const VALID_PO_STATUS_FILTERS = ['all', 'pending', 'approved', 'sent', 'parcial', 'received', 'cancelled'];
 
 export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = usePurchaseOrders();
@@ -258,6 +260,7 @@ export default function PurchaseOrders() {
                   <SelectItem value="pending">Pendente</SelectItem>
                   <SelectItem value="approved">Aprovada</SelectItem>
                   <SelectItem value="sent">Enviada</SelectItem>
+                  <SelectItem value="parcial">Parcial</SelectItem>
                   <SelectItem value="received">Recebida</SelectItem>
                   <SelectItem value="cancelled">Cancelada</SelectItem>
                 </SelectContent>
@@ -466,6 +469,10 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const [editingItems, setEditingItems] = useState<Record<string, { quantity: number; unit_price: number }>>({});
   const [receiving, setReceiving] = useState(false);
   const [gradeEditorItemId, setGradeEditorItemId] = useState<string | null>(null);
+  // Recebimento parcial por item (Fase C)
+  const [partialItem, setPartialItem] = useState<PurchaseOrderItem | null>(null);
+  const [partialQtyInput, setPartialQtyInput] = useState('');
+  const [partialBusy, setPartialBusy] = useState(false);
 
   const linkedSoIds = orders.find(o => o.id === orderId)?.linked_sale_order_ids ?? [];
   const { data: linkedSOs = [] } = useQuery({
@@ -484,6 +491,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   if (!order) return null;
 
   const isEditable = order.status === 'pending' || order.status === 'approved';
+  // OC em estado em que dá pra receber (inclui 'parcial' p/ continuar de onde parou).
+  const isReceivable = order.status === 'sent' || order.status === 'approved' || order.status === 'parcial';
 
   const handleItemChange = (itemId: string, field: 'quantity' | 'unit_price', value: number) => {
     setEditingItems(prev => ({
@@ -622,7 +631,11 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       for (const item of items) {
         // M6: idempotência por item — retry após falha parcial pula itens cujo
         // estoque já foi creditado (received_at é marcado logo após o crédito).
-        if (item.received_at) continue;
+        // Fase C: respeita recebimento parcial — credita só o que falta
+        // (quantity − received_quantity).
+        const alreadyRecv = Number(item.received_quantity ?? 0);
+        const remainingToReceive = Number(item.quantity) - alreadyRecv;
+        if (item.received_at || remainingToReceive <= 0.0001) continue;
         const { data: prod } = await supabase
           .from('products')
           .select('name, quantity, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
@@ -641,7 +654,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
           );
         }
-        const receivedQty = item.quantity * factor;
+        const receivedQty = remainingToReceive * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedQty;
         // M3: solado com grade — soma a grade recebida ao stock_grade na MESMA
@@ -666,7 +679,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         // abortar deixaria itens seguintes sem crédito e ESTE re-creditável).
         const { error: markErr } = await supabase
           .from('purchase_order_items')
-          .update({ received_at: new Date().toISOString() })
+          .update({ received_at: new Date().toISOString(), received_quantity: item.quantity })
           .eq('id', item.id);
         if (markErr) console.error(`[PO finalize] Falha ao marcar received_at do item ${item.id}:`, markErr);
         if (order.supplier_id && !(prod as any)?.supplier_id) {
@@ -739,7 +752,11 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       for (const item of items) {
         // M6: idempotência por item — retry após falha parcial pula itens cujo
         // estoque já foi creditado (received_at é marcado logo após o crédito).
-        if (item.received_at) continue;
+        // Fase C: respeita recebimento parcial — credita só o que falta
+        // (quantity − received_quantity).
+        const alreadyRecv = Number(item.received_quantity ?? 0);
+        const remainingToReceive = Number(item.quantity) - alreadyRecv;
+        if (item.received_at || remainingToReceive <= 0.0001) continue;
         const { data: prod } = await supabase
           .from('products')
           .select('name, quantity, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
@@ -758,7 +775,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
           );
         }
-        const receivedInStockUnit = item.quantity * factor;
+        const receivedInStockUnit = remainingToReceive * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedInStockUnit;
         // M3: solado com grade — soma a grade recebida ao stock_grade na MESMA
@@ -783,7 +800,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         // abortar deixaria itens seguintes sem crédito e ESTE re-creditável).
         const { error: markErr } = await supabase
           .from('purchase_order_items')
-          .update({ received_at: new Date().toISOString() })
+          .update({ received_at: new Date().toISOString(), received_quantity: item.quantity })
           .eq('id', item.id);
         if (markErr) console.error(`[PO receive] Falha ao marcar received_at do item ${item.id}:`, markErr);
         if (order.supplier_id && !(prod as any)?.supplier_id) {
@@ -821,6 +838,93 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       toast.error(err.message);
     } finally {
       setReceiving(false);
+    }
+  };
+
+  // ── Recebimento PARCIAL de UM item (Fase C) ────────────────────────────────
+  // Credita só o que chegou, acumula received_quantity, marca received_at ao
+  // fechar e move a OC pra 'parcial' (ou 'received' quando todos os itens
+  // fecharem). Só estoque — o financeiro segue no "Finalizar OC"/"Aprovar".
+  // Restrito a itens SEM grade (a grade por numeração de solado seria distribuída
+  // errada num recebimento parcial); solados continuam no recebimento completo.
+  const handlePartialReceive = async () => {
+    if (!partialItem || partialBusy) return;
+    const item = partialItem;
+    const already = Number(item.received_quantity ?? 0);
+    const remaining = Number(item.quantity) - already;
+    const qty = Number(String(partialQtyInput).replace(',', '.'));
+    if (!Number.isFinite(qty) || qty <= 0) { toast.error('Informe uma quantidade maior que zero.'); return; }
+    if (qty > remaining + 0.0001) { toast.error(`Máximo a receber agora: ${remaining} ${item.unit}.`); return; }
+    setPartialBusy(true);
+    try {
+      const { data: prod } = await supabase
+        .from('products')
+        .select('name, quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
+        .eq('id', item.product_id)
+        .single();
+      const factor = effectiveConversionFactorStrict({
+        unit: (prod as any)?.unit || 'un',
+        purchase_unit: (prod as any)?.purchase_unit,
+        conversion_rate: (prod as any)?.conversion_rate,
+        dimensions_width: (prod as any)?.dimensions_width,
+      });
+      if (factor == null) {
+        throw new Error(
+          `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
+        );
+      }
+      const prev = Number(prod?.quantity ?? 0);
+      const newQty = prev + qty * factor;
+      // Concorrência: adjustStockSafe valida expectedPrevious — dois recebimentos
+      // simultâneos do mesmo produto fazem o 2º falhar com erro de concorrência.
+      const result = await adjustStockSafe({
+        productId: item.product_id,
+        expectedPrevious: prev,
+        newQty,
+        reason: `Recebimento parcial OC ${order.order_number} — ${order.supplier_name}`,
+        newGrade: null,
+      });
+      if (!result.success) throw new Error(result.errorMessage);
+      const newReceived = already + qty;
+      const fullyReceived = newReceived >= Number(item.quantity) - 0.0001;
+      const { error: itemErr } = await supabase
+        .from('purchase_order_items')
+        .update({ received_quantity: newReceived, received_at: fullyReceived ? new Date().toISOString() : null })
+        .eq('id', item.id);
+      if (itemErr) throw new Error(itemErr.message);
+      if (order.supplier_id && !(prod as any)?.supplier_id) {
+        await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
+      }
+      // Status da OC: todos os itens fechados → 'received', senão 'parcial'.
+      const allReceived = items.every(it =>
+        it.id === item.id
+          ? fullyReceived
+          : (!!it.received_at || Number(it.received_quantity ?? 0) >= Number(it.quantity) - 0.0001),
+      );
+      const todayStr = new Date().toISOString().slice(0, 10);
+      await supabase
+        .from('purchase_orders')
+        .update(allReceived ? { status: 'received', received_date: todayStr } : { status: 'parcial' })
+        .eq('id', orderId)
+        .neq('status', 'received')
+        .neq('status', 'cancelled')
+        .neq('status', 'receiving');
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      const restante = remaining - qty;
+      toast.success(fullyReceived
+        ? `Item recebido por completo${allReceived ? ' — OC recebida.' : '.'}`
+        : `Recebido ${qty} ${item.unit} — faltam ${Number(restante.toFixed(3))} ${item.unit}.`);
+      setPartialItem(null);
+      setPartialQtyInput('');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setPartialBusy(false);
     }
   };
 
@@ -984,6 +1088,34 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                         ) : (
                           <span className="font-semibold">{qty}</span>
                         )}
+                        {(() => {
+                          const recv = Number(item.received_quantity ?? 0);
+                          const remaining = Number(item.quantity) - recv;
+                          const hasGrade = !!item.grade && Object.keys(item.grade as any).filter(k => !k.startsWith('_')).length > 0;
+                          const fullyReceived = !!item.received_at || remaining <= 0.0001;
+                          const canPartial = isReceivable && !hasGrade && !fullyReceived && remaining > 0.0001;
+                          return (
+                            <>
+                              {(recv > 0 || fullyReceived) && (
+                                <div className={cn('mt-1 text-xs flex items-center justify-center gap-1',
+                                  fullyReceived ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400')}>
+                                  {fullyReceived ? <CheckCircle2 className="h-3 w-3" /> : <Package className="h-3 w-3" />}
+                                  Recebido {Number(recv.toFixed(3))}/{item.quantity}
+                                </div>
+                              )}
+                              {canPartial && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 mt-1 text-xs gap-1"
+                                  onClick={() => { setPartialItem(item); setPartialQtyInput(String(Number(remaining.toFixed(3)))); }}
+                                >
+                                  <Package className="h-3 w-3" /> {recv > 0 ? 'Receber mais' : 'Receber parcial'}
+                                </Button>
+                              )}
+                            </>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-right">
                         {isEditable ? (
@@ -1119,12 +1251,12 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               <CheckCircle2 className="h-4 w-4" /> Aprovar e Lançar Financeiro
             </Button>
           )}
-          {(order.status === 'sent' || order.status === 'approved') && (
+          {isReceivable && (
             <>
               <Button variant="outline" className="gap-1" onClick={handleMarkReceived} disabled={receiving}>
                 {receiving
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando...</>
-                  : <><CheckCircle2 className="h-4 w-4" /> Receber (só estoque)</>}
+                  : <><CheckCircle2 className="h-4 w-4" /> {order.status === 'parcial' ? 'Receber restante (só estoque)' : 'Receber (só estoque)'}</>}
               </Button>
               <Button variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleFinalize} disabled={receiving}>
                 {receiving
@@ -1157,6 +1289,52 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               availableSizes={sizes}
               currentGrade={(target.grade as Record<string, number>) || null}
             />
+          );
+        })()}
+
+        {/* Recebimento parcial de um item (Fase C) */}
+        {partialItem && (() => {
+          const recv = Number(partialItem.received_quantity ?? 0);
+          const remaining = Number(partialItem.quantity) - recv;
+          return (
+            <Dialog open onOpenChange={(o) => { if (!o) { setPartialItem(null); setPartialQtyInput(''); } }}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Receber parcial</DialogTitle>
+                  <DialogDescription>
+                    {partialItem.product?.name} — pedido {partialItem.quantity} {partialItem.unit}
+                    {recv > 0 ? `, já recebido ${Number(recv.toFixed(3))} ${partialItem.unit}` : ''}.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="partial-qty">Quantidade recebida agora ({partialItem.unit})</Label>
+                  <Input
+                    id="partial-qty"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={remaining}
+                    value={partialQtyInput}
+                    onChange={e => setPartialQtyInput(e.target.value)}
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Falta receber: {Number(remaining.toFixed(3))} {partialItem.unit}. Credita só o estoque —
+                    o financeiro segue no “Finalizar OC”.
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setPartialItem(null); setPartialQtyInput(''); }} disabled={partialBusy}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handlePartialReceive} disabled={partialBusy} className="gap-1">
+                    {partialBusy
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Recebendo...</>
+                      : <><CheckCircle2 className="h-4 w-4" /> Confirmar</>}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           );
         })()}
       </DialogContent>
