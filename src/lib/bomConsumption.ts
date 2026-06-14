@@ -280,12 +280,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       });
     }
 
-    // Solado
-    const soleColor = (() => {
-      const c = (orderColor || '').toLowerCase();
-      if (c.includes('preto') || c.includes('black') || c.includes('pb')) return 'Preto';
-      return 'Caramelo';
-    })();
+    // Solado — cor REAL do solado resolvido (soleColorMap, espelha resolve_sole_color
+    // do débito) em vez de chutar Preto/Caramelo por heurística de string (auditoria
+    // 2026-06-14, Área 2). Fallback pra cor do pedido; só por último um rótulo neutro.
+    const soleColor = ((insoleSoleProd as any)?.color || orderColor || '—').trim() || '—';
     const solePerPair = sheet?.sole_material ? 1 : 0;
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado', groupName: sheet?.sole_material || '', materialName: 'Solado',
