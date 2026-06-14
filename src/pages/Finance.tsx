@@ -464,6 +464,11 @@ function CashFlowTab() {
     const AUTO_PV_REFS = new Set([
       'sale_order', 'sale_order_factoring', 'sale_order_devolucao',
       'sale_order_frete', 'sale_order_cancel_nfe',
+      // CMV (sale_order_cmv / cogs) é ALOCAÇÃO contábil NÃO-CAIXA — o custo real
+      // já entra no fluxo via accounts_payable quando os materiais foram comprados.
+      // Sem filtrar, o CMV automático entrava como despesa no fluxo de caixa →
+      // double-count + poluição com item não-caixa. Auditoria 2026-06-14, Top10 #2.
+      'sale_order_cmv', 'cogs',
     ]);
     const cancelledStatuses = new Set(['cancelado', 'cancelled', 'estornado']);
     const entriesByDay = new Map<string, { receitas: number; despesas: number }>();
