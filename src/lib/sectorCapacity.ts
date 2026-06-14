@@ -80,7 +80,7 @@ export async function loadHolidayCache(force = false): Promise<Set<string>> {
   return _holidayCache;
 }
 
-function isBusinessDay(d: Date, holidays?: Set<string>): boolean {
+export function isBusinessDay(d: Date, holidays?: Set<string>): boolean {
   const dow = d.getDay();
   if (dow === 0 || dow === 6) return false;
   const set = holidays ?? _holidayCache;
@@ -99,7 +99,7 @@ export function addBusinessDays(date: Date, days: number, holidays?: Set<string>
   return d;
 }
 
-function businessDaysBetween(start: Date, end: Date, holidays?: Set<string>): number {
+export function businessDaysBetween(start: Date, end: Date, holidays?: Set<string>): number {
   if (end <= start) return 0;
   let count = 0;
   const cur = new Date(start);

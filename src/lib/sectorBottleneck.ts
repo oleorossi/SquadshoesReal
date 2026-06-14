@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { loadHolidayCache, businessDaysBetween as businessDaysBetweenHolidayAware } from '@/lib/sectorCapacity';
 
 /**
  * Detector de gargalos no sequenciamento de setores.
@@ -41,21 +42,20 @@ export interface NextStageEstimate {
   reason: string;
 }
 
-const DAY_MS = 86_400_000;
-
+/**
+ * Dias úteis entre duas datas (zeradas à meia-noite), feriado-aware.
+ * Reusa o cache de feriados de sectorCapacity — populado por loadHolidayCache()
+ * no início de loadBottlenecksForOrders. Antes só pulava fim de semana, o que
+ * superestimava o "elapsed" em semanas com feriado → gargalo falso (auditoria
+ * 2026-06-14, Área 1).
+ */
 function businessDaysBetween(start: Date, end: Date): number {
-  if (end <= start) return 0;
-  let count = 0;
-  const cur = new Date(start);
-  cur.setHours(0, 0, 0, 0);
-  const stop = new Date(end);
-  stop.setHours(0, 0, 0, 0);
-  while (cur < stop) {
-    const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++;
-    cur.setTime(cur.getTime() + DAY_MS);
-  }
-  return count;
+  const a = new Date(start);
+  a.setHours(0, 0, 0, 0);
+  const b = new Date(end);
+  b.setHours(0, 0, 0, 0);
+  if (b <= a) return 0;
+  return businessDaysBetweenHolidayAware(a, b);
 }
 
 /**
@@ -136,6 +136,9 @@ export async function loadBottlenecksForOrders(
   const out = new Map<string, BottleneckInfo>();
   if (orderIds.length === 0) return out;
 
+  // Feriados → dias úteis alinhados ao SQL is_business_day (idem sectorCapacity).
+  await loadHolidayCache();
+
   const { data: ordersRaw } = await supabase
     .from('orders')
     .select('id, quantity, reference_id')
@@ -150,7 +153,9 @@ export async function loadBottlenecksForOrders(
     const { data: sheets } = await supabase
       .from('technical_sheets')
       .select(
-        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day',
+        // costura_capacity_per_day incluído (auditoria 2026-06-14): sem ele o
+        // setor Costura mapeava p/ coluna ausente → cap=0 → nunca era gargalo.
+        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, costura_capacity_per_day',
       )
       .in('id', refIds);
     (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
