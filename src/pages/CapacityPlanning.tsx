@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, addDays, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { computeParallelWindows, setHolidayCache } from '@/lib/sectorCapacity';
+import { computeParallelWindows, setHolidayCache, isBusinessDay } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
@@ -41,12 +41,16 @@ const SECTORS = [
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
+// Feriado-aware: isBusinessDay lê o cache de feriados populado via setHolidayCache
+// (useMemo abaixo). Antes só pulava fim de semana → carga diária subestimada em
+// semanas com feriado, divergindo das bordas das janelas (computeParallelWindows,
+// que já são feriado-aware). Auditoria 2026-06-14, Área 1.
 function bizDaysBetween(a: Date, b: Date): number {
   if (b <= a) return 1;
   const d = new Date(a);
   let c = 0;
   while (d <= b) {
-    if (d.getDay() !== 0 && d.getDay() !== 6) c++;
+    if (isBusinessDay(d)) c++;
     d.setDate(d.getDate() + 1);
   }
   return Math.max(1, c);
@@ -236,7 +240,7 @@ export default function CapacityPlanning() {
 
     for (let i = -7; i < horizon * 7 + 7; i++) {
       const d = addDays(today, i);
-      if (d.getDay() === 0 || d.getDay() === 6) continue;
+      if (!isBusinessDay(d)) continue;
       dayMap.set(format(d, 'yyyy-MM-dd'), zeroEntry());
     }
 
@@ -268,7 +272,7 @@ export default function CapacityPlanning() {
         const perDay = qty / days;
         const cur = new Date(w.start);
         while (cur < w.end) {
-          if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+          if (isBusinessDay(cur)) {
             const k = format(cur, 'yyyy-MM-dd');
             const e = dayMap.get(k);
             if (e) e[w.key] += perDay;
