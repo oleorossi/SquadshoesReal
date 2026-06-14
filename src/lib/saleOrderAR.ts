@@ -47,7 +47,9 @@ function parseISODate(iso: string): Date {
 
 export function computeARSchedule(input: ComputeScheduleInput): InstallmentSchedule[] {
   const total = Number(input.total) || 0;
-  const now = input.now ?? new Date();
+  // Clona antes de mutar — setHours direto no input.now corrompia o Date do
+  // chamador (efeito colateral silencioso). Auditoria 2026-06-14, Área 5 (🟡).
+  const now = new Date(input.now ?? new Date());
   now.setHours(0, 0, 0, 0);
   const todayISO = isoFromDate(now);
 
