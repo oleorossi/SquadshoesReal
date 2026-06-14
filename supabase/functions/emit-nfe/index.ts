@@ -1409,23 +1409,27 @@ Deno.serve(async (req) => {
       }), { status: 500, headers: corsHeaders });
     }
 
-    // Audit Phase 3 fix: NF autorizada → advance SO para 'Faturado' pra disparar
-    // syncFinancialRecords (cria AR + financial_entries). Antes ficava órfão se o
-    // operador NF emitia mas ninguém ajustava o status manualmente.
+    // Faturamento MANUAL (pedido do usuário, 2026-06-13): a NF costuma ser emitida
+    // DIAS ANTES da entrega, então emitir a NF NÃO deve avançar o PV pra 'Faturado'
+    // automaticamente. Aqui só registramos o NÚMERO da NF no PV (rastreabilidade);
+    // o status 'Faturado' — e, com ele, o reconhecimento de receita via
+    // syncFinancialRecords (que exige Faturado + NF autorizada) — fica para o
+    // usuário acionar manualmente quando faturar de fato (dropdown de status do PV
+    // em Pedidos de Venda: 'Em Produção' → 'Faturado').
+    // (Antes, o auto-avanço também escondia OPs ainda em produção do picking.)
     let arSyncWarning: string | null = null;
     if (finalStatus === "autorizada" && order.status !== "Faturado" && order.status !== "Cancelado") {
       const numeroNfe = nfe?.numero || (await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`)).json?.data?.numero_nf || null;
-      const { error: soUpdErr } = await adminClient
-        .from("sale_orders")
-        .update({
-          status: "Faturado",
-          nfe: numeroNfe ? String(numeroNfe) : order.nfe,
-        })
-        .eq("id", sale_order_id)
-        .neq("status", "Cancelado");
-      if (soUpdErr) {
-        arSyncWarning = `NF autorizada mas falhou ao avançar PV pra Faturado: ${soUpdErr.message}. Ajuste o status manualmente pra gerar AR.`;
-        console.warn("emit-nfe SO status update failed:", soUpdErr);
+      if (numeroNfe) {
+        const { error: soUpdErr } = await adminClient
+          .from("sale_orders")
+          .update({ nfe: String(numeroNfe) }) // só o nº da NF; status NÃO muda
+          .eq("id", sale_order_id)
+          .neq("status", "Cancelado");
+        if (soUpdErr) {
+          arSyncWarning = `NF autorizada mas falhou ao registrar o número no PV: ${soUpdErr.message}.`;
+          console.warn("emit-nfe SO nfe-number update failed:", soUpdErr);
+        }
       }
     }
 
