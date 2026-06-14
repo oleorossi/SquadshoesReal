@@ -342,7 +342,7 @@ function GradeBreakdown({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function OutsourcedInFieldPage() {
+export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean } = {}) {
   const { data: items = [], isLoading } = useOutsourcedInField();
   const { data: contractors = [] } = useContractors();
   const receiveItem = useReceiveOutsourcedItem();
@@ -565,25 +565,36 @@ export default function OutsourcedInFieldPage() {
 
   return (
     <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · TERCEIROS"
-        title="Terceiros na Rua"
-        description="Tudo o que está fora da fábrica agora — OSs de gargalo + OPs inteiras terceirizadas. Acompanhe prazo, atraso e recebimento num único lugar."
-        actions={
-          <>
-            <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
-              <Link to="/terceiros/relatorios">
-                <BarChart3 className="h-3.5 w-3.5" />
-                Relatórios
-              </Link>
-            </Button>
-            <Button onClick={() => openCreate()} size="sm" className="h-9 gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Nova OS
-            </Button>
-          </>
-        }
-      />
+      {embedded ? (
+        // No hub /terceiros: header vem do hub; aqui só a ação crítica "Nova OS"
+        // (o link "Relatórios" virou aba do hub).
+        <div className="flex justify-end">
+          <Button onClick={() => openCreate()} size="sm" className="h-9 gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Nova OS
+          </Button>
+        </div>
+      ) : (
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · TERCEIROS"
+          title="Terceiros na Rua"
+          description="Tudo o que está fora da fábrica agora — OSs de gargalo + OPs inteiras terceirizadas. Acompanhe prazo, atraso e recebimento num único lugar."
+          actions={
+            <>
+              <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
+                <Link to="/terceiros?tab=relatorio">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Relatórios
+                </Link>
+              </Button>
+              <Button onClick={() => openCreate()} size="sm" className="h-9 gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Nova OS
+              </Button>
+            </>
+          }
+        />
+      )}
 
       {/* KPIs */}
       <StatGrid>

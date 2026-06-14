@@ -52,7 +52,7 @@ export const menuGroups = [
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
-      { name: "Terceiros na Rua", icon: Truck,             path: "/terceiros-na-rua" },
+      { name: "Terceiros",        icon: Truck,             path: "/terceiros" },
     ],
   },
   {
@@ -130,7 +130,6 @@ export const menuGroups = [
     items: [
       { name: "Ponto & Folha",      icon: LayoutDashboard,path: "/rh" },
       { name: "Terceirizados",      icon: UserCheck,      path: "/contractors" },
-      { name: "Relatório Terceiros",icon: BarChart3,      path: "/terceiros/relatorios" },
     ],
   },
 ];

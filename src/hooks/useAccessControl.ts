@@ -79,8 +79,9 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/optimized-production': 'producao',
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
-  '/terceiros-na-rua': 'producao',
-  '/terceiros/relatorios': 'producao',
+  '/terceiros': 'producao',            // hub Na Rua + Relatório (ambos producao)
+  '/terceiros-na-rua': 'producao',     // legado → redireciona pro hub
+  '/terceiros/relatorios': 'producao', // legado → redireciona pro hub
   '/rh/pendencias-ponto': 'rh',
   '/rh/fechamento-semanal': 'rh',
   '/rh/ausencias': 'rh',
