@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { isDiscretePurchaseUnit } from '@/lib/unitConversion';
 
 export interface MaterialShortage {
   product_id: string;
@@ -260,9 +261,14 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
     const consumptionUnit = product.unit || 'un';
     const purchaseUnit = product.purchase_order_unit || product.purchase_unit || consumptionUnit;
     const conversionRate = Number(product.conversion_rate) > 0 ? Number(product.conversion_rate) : 1;
-    const suggestedPurchaseQty = conversionRate > 1
-      ? Math.ceil(suggested / conversionRate)
-      : suggested;
+    const rawPurchaseQty = conversionRate > 1 ? suggested / conversionRate : suggested;
+    // CEIL sempre que a unidade de compra é DISCRETA (placa/un/par/cx/rolo…) —
+    // antes só arredondava quando conversion_rate>1, então rate=1 deixava
+    // fração de placa/un/par. Unidades contínuas (m/kg/L) seguem fracionárias.
+    // Auditoria 2026-06-14, Área 6 (🟠).
+    const suggestedPurchaseQty = isDiscretePurchaseUnit(purchaseUnit)
+      ? Math.ceil(rawPurchaseQty)
+      : rawPurchaseQty;
 
     // Escala a grade pra refletir a QUANTIDADE comprada (pode ser < required quando
     // tem estoque parcial). Mantém a proporção original do PV. Usa largest-remainder

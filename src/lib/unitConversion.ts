@@ -67,6 +67,21 @@ export function areSameUnit(a: string | null | undefined, b: string | null | und
   return normalizeUnit(a) === normalizeUnit(b);
 }
 
+/**
+ * Unidades de COMPRA discretas (não dá pra comprar fração): contagem, caixa,
+ * rolo, chapa/placa, par, etc. Quantidade de compra nessas unidades sempre
+ * arredonda pra cima (CEIL). Lista CANÔNICA — antes cada motor tinha a sua
+ * (inventoryIntelligence/purchaseCalculation faltavam 'placa'). Auditoria 2026-06-14.
+ */
+const DISCRETE_PURCHASE_UNITS = new Set([
+  'un', 'und', 'unid', 'unidade', 'par', 'pares', 'cx', 'caixa',
+  'pc', 'pct', 'pacote', 'pç', 'peca', 'peça', 'rolo', 'rl',
+  'chapa', 'placa', 'placas', 'folha', 'fh', 'jogo', 'jg', 'saco', 'sc',
+]);
+export function isDiscretePurchaseUnit(unit?: string | null): boolean {
+  return DISCRETE_PURCHASE_UNITS.has(String(unit || '').trim().toLowerCase());
+}
+
 const AREA_UNITS = new Set(['dm²', 'cm²', 'm²']);
 const LINEAR_UNITS = new Set(['m', 'cm', 'mm']);
 const WEIGHT_UNITS = new Set(['kg', 'g', 'mg']);

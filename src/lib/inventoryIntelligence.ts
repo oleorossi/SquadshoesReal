@@ -17,7 +17,7 @@ export function getAvailableToPromise(status: StockStatus): number {
   return Math.max(0, status.physical - status.reserved - status.safety);
 }
 
-import { resolveConversionFactors } from '@/lib/unitConversion';
+import { resolveConversionFactors, isDiscretePurchaseUnit } from '@/lib/unitConversion';
 
 export interface ProductStock {
   quantity: number;         // physical stock
@@ -80,9 +80,8 @@ export function validateMaterialAvailability(
   if (purchaseQty > 0 && purchaseQty < moq) {
     purchaseQty = moq;
   }
-  // Round up for discrete units
-  const discreteUnits = ['chapa', 'rolo', 'un', 'par', 'cx', 'pc'];
-  if (discreteUnits.includes(product.purchase_order_unit)) {
+  // Round up for discrete units (lista canônica — antes faltava 'placa').
+  if (isDiscretePurchaseUnit(product.purchase_order_unit)) {
     purchaseQty = Math.ceil(purchaseQty);
   }
 
