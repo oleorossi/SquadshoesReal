@@ -113,7 +113,11 @@ Deno.serve(async (req) => {
     }
     {
       const raw = String(dataEmissaoForCheck);
-      const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "Z";
+      // Sem timezone explícito, normaliza como horário de Brasília (−03:00),
+      // IDÊNTICO ao que emit-nfe grava (t + "-03:00"). Antes anexava "Z" (UTC) →
+      // a data lida ficava 3h "mais cedo", inflando hoursSince e podendo bloquear
+      // indevidamente um cancelamento ainda dentro das 24h. Auditoria 2026-06-14, #10.
+      const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "-03:00";
       const emittedAt = new Date(normalized).getTime();
       if (Number.isNaN(emittedAt)) {
         return new Response(JSON.stringify({
@@ -181,11 +185,25 @@ Deno.serve(async (req) => {
       // AR fica intacta (status pendente original) e operador pode tentar de
       // novo sem ficar com AR cancelada + receita órfã. Estorno bem-sucedido
       // pode coexistir com AR cancelada ou pendente — ambos resolvíveis.
+      // Idempotência do estorno: se já existe estorno desta NF
+      // (reference_type='sale_order_cancel_nfe', reference_id=nfe_id), NÃO insere
+      // de novo — senão um retry geraria receita negativa em DOBRO. O pré-check é
+      // seguro contra corrida porque o claim status='cancelando' (acima) já
+      // serializa o cancelamento. Auditoria 2026-06-14, #10.
+      const { data: existingReversals } = await adminClient.from("financial_entries")
+        .select("id")
+        .eq("reference_id", nfe_id)
+        .eq("reference_type", "sale_order_cancel_nfe")
+        .limit(1);
+      const alreadyReversed = !!(existingReversals && existingReversals.length > 0);
+
       const { data: feToReverse, error: feFetchErr } = await adminClient.from("financial_entries")
         .select("id, amount, type, description, account_id, entry_date, due_date, status")
         .eq("reference_id", nfe.sale_order_id)
         .eq("reference_type", "sale_order");
-      if (feFetchErr) {
+      if (alreadyReversed) {
+        cleanupWarnings.push("Estorno da NF-e já havia sido lançado anteriormente — pulado (idempotência).");
+      } else if (feFetchErr) {
         cleanupWarnings.push(`Lançamento financeiro não localizado: ${feFetchErr.message}`);
       } else if (feToReverse && feToReverse.length > 0) {
         const protectedStatuses = new Set(["posted", "reconciled", "paid", "confirmed"]);
