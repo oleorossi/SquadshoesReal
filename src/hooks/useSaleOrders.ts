@@ -299,7 +299,19 @@ export async function syncFinancialRecords(saleOrderId: string) {
       }
     }
 
-    const arTotal = so.is_factoring ? factoringDiscountedTotal : total;
+    // Decisão Leonardo 2026-06-14 (regime caixa + factoring 1A): a AR é gravada
+    // SEMPRE pelo valor BRUTO da venda (total). O custo do factoring (juros de
+    // antecipação) NÃO é descontado da AR — vira uma despesa financeira separada
+    // (financial_entries reference_type='sale_order_factoring', criada abaixo).
+    //
+    // Antes a AR era LÍQUIDA (factoringDiscountedTotal) E existia a linha de
+    // despesa separada → o desconto entrava 2× na DRE (embutido na AR líquida +
+    // na linha de despesa). Agora: AR bruta (= total) + 1 linha de despesa ⇒
+    // factoring debitado UMA única vez. O factoringDiscountedTotal segue calculado
+    // só pra derivar o valor do juros (factoringDiscount); o cronograma de
+    // vencimentos ainda usa factoringReceivingDays pra empurrar o due_date (timing
+    // de quando a factoring repassa o líquido), independente do valor bruto da AR.
+    const arTotal = total;
     const factoringDiscount = so.is_factoring ? (total - factoringDiscountedTotal) : 0;
 
     if (arTotal <= 0) {
