@@ -30,10 +30,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import {
-  useContractors, useServiceOrders, useCreateContractor, useUpdateContractor, useDeleteContractor,
+  useContractors, useServiceOrders, useServiceOrderOverview, useCreateContractor, useUpdateContractor, useDeleteContractor,
   useCreateServiceOrder, useUpdateServiceOrder, useDeleteServiceOrder,
-  Contractor, ServiceOrder, MaterialSent,
+  Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
+import {
+  OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES,
+  isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
+} from '@/lib/osStatusMachine';
 import {
   useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe, useDeleteArtisanalRecipe,
   ArtisanalRecipe, calcArtisanalRequirement,
@@ -72,17 +76,9 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   artisanal_stock_entry_done: false,
 };
 
-// ── Vocabulário canônico de status de OS ─────────────────────────────────────
-// O DB mistura grafias ('Concluído' do form, 'received' do fluxo de gargalos,
-// 'cancelled' legacy). Centralizar aqui evita filtro/ação divergente por grafia.
-const OS_DONE_STATUSES = ['Concluído', 'Concluido', 'concluido', 'received', 'finalizado', 'Finalizado'];
-const OS_CANCELLED_STATUSES = ['Cancelado', 'cancelled', 'cancelado'];
-// pending_quote/quoted_unconfirmed/quoted = fluxo de gargalos pré-execução →
-// contam como "Pendente" nos chips (e como ativas).
-const OS_PENDING_STATUSES = ['Pendente', 'pending_quote', 'quoted_unconfirmed', 'quoted'];
-const isOsDone = (s: string) => OS_DONE_STATUSES.includes(s);
-const isOsCancelled = (s: string) => OS_CANCELLED_STATUSES.includes(s);
-const isOsActive = (s: string) => !isOsDone(s) && !isOsCancelled(s);
+// Vocabulário canônico de status de OS centralizado em src/lib/osStatusMachine.ts
+// (OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, isOsDone/Cancelled/Active,
+//  osStatusLabel, osStatusBadgeVariant) — importado acima.
 
 // Chips de filtro da lista de OSs. Labels seguem a linguagem do dono:
 // 'Em Andamento' (DB) → "Em Processamento", 'Concluído' (DB) → "Entregue".
@@ -111,6 +107,47 @@ function getMaterials(order: ServiceOrder): MaterialSent[] {
   if (order.materials_sent && Array.isArray(order.materials_sent) && order.materials_sent.length > 0) return order.materials_sent;
   if (order.material_name || Number(order.material_meters) > 0) return [{ material: order.material_name || '', color: order.material_color || '', meters: Number(order.material_meters) || 0 }];
   return [];
+}
+
+// ── Indicador de pagamento da OS (vem da view v_service_order_overview) ───────
+// Mostra Pago/A pagar + vencimento da conta a pagar gerada na finalização da OS.
+function OsPaymentBadge({ ov }: { ov?: ServiceOrderOverview }) {
+  if (!ov || !ov.has_payable) return null;
+  if (ov.is_paid) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+        <CheckCircle2 className="h-3 w-3" />
+        Pago{ov.payment_date ? ` · ${format(new Date(ov.payment_date + 'T12:00:00'), 'dd/MM')}` : ''}
+      </span>
+    );
+  }
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const overdue = !!ov.payment_due_date && ov.payment_due_date < todayIso;
+  return (
+    <span className={cn('inline-flex items-center gap-1 text-xs', overdue ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400')}>
+      <DollarSign className="h-3 w-3" />
+      A pagar{ov.payment_due_date ? ` · vence ${format(new Date(ov.payment_due_date + 'T12:00:00'), 'dd/MM')}` : ''}
+    </span>
+  );
+}
+
+// ── Saldo de recebimento parcial (Enviado / Devolvido bom / Na rua) ──────────
+// Só aparece quando houve algum retorno mas ainda há pares na rua (parcial).
+function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
+  if (!ov) return null;
+  const sent = Number(ov.qty_sent ?? 0);
+  const good = Number(ov.qty_returned_good ?? 0);
+  const defect = Number(ov.qty_returned_defect ?? 0);
+  const loss = Number(ov.qty_loss ?? 0);
+  const inField = Number(ov.qty_in_field ?? 0);
+  const returned = good + defect + loss;
+  if (sent <= 0 || returned <= 0 || inField <= 0) return null; // sem parcial em aberto
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400" title={`Bons ${good} · Defeito ${defect} · Perda ${loss}`}>
+      <Package className="h-3 w-3" />
+      Devolvido {returned}/{sent} · {inField} na rua
+    </span>
+  );
 }
 
 function printReceipt(order: ServiceOrder, contractor: Contractor | undefined) {
@@ -214,6 +251,7 @@ export default function Contractors() {
   const navigate = useNavigate();
   const { data: contractors = [], isLoading: loadingC } = useContractors();
   const { data: orders = [], isLoading: loadingO } = useServiceOrders();
+  const { data: osOverview } = useServiceOrderOverview(); // Map por service_order_id: pagamento (AP) + saldo de recebimento
   const { data: products = [], isLoading: loadingP } = useProducts();
   const { data: saleOrders = [] } = useSaleOrders();
   const { data: artisanalRecipes = [] } = useArtisanalRecipes({ onlyActive: true });
@@ -524,7 +562,7 @@ export default function Contractors() {
     const { error: flagErr } = await supabase.from('service_orders').update({ artisanal_stock_entry_done: false }).eq('id', osId);
     if (flagErr) { toast.error(`Erro ao resetar flag da OS: ${flagErr.message} — cancele manualmente.`); return; }
 
-    queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+    queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
     queryClient.invalidateQueries({ queryKey: ['products'] });
     queryClient.invalidateQueries({ queryKey: ['service_orders'] });
     toast.success('OS cancelada: conta a pagar cancelada e entradas de estoque revertidas.');
@@ -916,7 +954,7 @@ export default function Contractors() {
           setOrderDialog(false);
           if (justCompleted) {
             // Conta a pagar: gerada pelo banco na transição de status.
-            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
             if (payload.artisanal_recipe_id) {
               try {
                 await produceArtisanalOutput(payload, originalOrder?.order_number || '', osId);
@@ -991,7 +1029,7 @@ export default function Contractors() {
           }
           if (editingOrder.status === 'Concluído') {
             // Conta a pagar: gerada pelo banco na transição de status.
-            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
             if (payload.artisanal_recipe_id) {
               try {
                 await produceArtisanalOutput(payload, data?.order_number, data?.id);
@@ -1040,25 +1078,9 @@ export default function Contractors() {
     setEditingOrder(prev => { const mats = (prev.materials_sent || []).filter((_, i) => i !== index); return { ...prev, materials_sent: mats.length > 0 ? mats : [{ ...emptyMaterial }] }; });
   };
 
-  const statusColor = (s: string) => {
-    if (s === 'Concluído') return 'default';
-    if (s === 'Em Andamento') return 'secondary';
-    if (s === 'Cancelado') return 'destructive';
-    // pending_quote / quoted_unconfirmed = aguardando prazo (fluxo /gargalos)
-    return 'outline';
-  };
-
-  // Labels amigáveis: fluxo de gargalos (underscore) + vocabulário do dono
-  // ('Em Andamento'→Em Processamento, 'Concluído'/'received'→Entregue).
-  const statusLabel = (s: string) => {
-    if (s === 'pending_quote') return 'Aguardando prazo';
-    if (s === 'quoted_unconfirmed') return 'Aguardando prazo';
-    if (s === 'quoted') return 'Prazo confirmado';
-    if (s === 'Em Andamento') return 'Em Processamento';
-    if (isOsDone(s)) return 'Entregue';
-    if (isOsCancelled(s)) return 'Cancelada';
-    return s;
-  };
+  // Cor e label do status delegadas à state machine canônica (osStatusMachine.ts).
+  const statusColor = osStatusBadgeVariant;
+  const statusLabel = osStatusLabel;
 
   const handleSaveRecipe = () => {
     if (!editingRecipe.name?.trim() || !editingRecipe.artisanal_product_name?.trim() || !editingRecipe.base_product_name?.trim()) return;
@@ -1220,7 +1242,7 @@ export default function Contractors() {
                                             toast.success('Todos os itens concluídos! OS marcada como Concluída.');
                                             queryClient.invalidateQueries({ queryKey: ['service_orders'] });
                                             // Conta a pagar: gerada pelo banco na transição de status.
-                                            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+                                            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
                                             const freshOs = claimed[0] as any;
                                             if ((o as any).artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
                                               // Pass freshOs flag so the early-return inside produceArtisanalOutput
@@ -1244,7 +1266,10 @@ export default function Contractors() {
                               ) : '—'}
                             </TableCell>
                             <TableCell className="text-sm tabular-nums">{o.service_date ? format(new Date(o.service_date + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</TableCell>
-                            <TableCell className="text-sm text-right font-mono font-semibold">{formatCurrency(Number(o.total_value))}</TableCell>
+                            <TableCell className="text-sm text-right font-mono font-semibold">
+                              <div>{formatCurrency(Number(o.total_value))}</div>
+                              <div className="flex justify-end mt-0.5"><OsPaymentBadge ov={osOverview?.get(o.id)} /></div>
+                            </TableCell>
                             <TableCell className="text-xs">
                               {(() => {
                                 const isBottleneckOS = !!o.target_sector;
@@ -1282,6 +1307,7 @@ export default function Contractors() {
                             <TableCell>
                               <div className="flex flex-col gap-1">
                                 <Badge variant={statusColor(o.status)} className="text-xs w-fit">{statusLabel(o.status)}</Badge>
+                                <OsBalanceLine ov={osOverview?.get(o.id)} />
                                 {/* Botão "Marcar recebido" só aparece em OS de gargalo ainda não recebidas */}
                                 {!!o.target_sector && isOsActive(o.status) && (
                                   <Button

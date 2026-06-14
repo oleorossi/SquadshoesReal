@@ -108,6 +108,43 @@ export function useServiceOrders() {
   });
 }
 
+/** Visão geral por OS (view v_service_order_overview): pagamento (AP) + saldo de
+ *  recebimento parcial. Devolve um Map keyed por service_order_id pra merge O(1)
+ *  na lista de OS sem mexer no query principal (useServiceOrders). */
+export interface ServiceOrderOverview {
+  service_order_id: string;
+  accounts_payable_id: string | null;
+  payment_status: string | null; // 'pending' | 'paid' | null (sem AP)
+  payable_amount: number | null;
+  payment_due_date: string | null;
+  payment_date: string | null;
+  has_payable: boolean;
+  is_paid: boolean;
+  qty_sent: number | null;
+  qty_returned_good: number | null;
+  qty_returned_defect: number | null;
+  qty_loss: number | null;
+  qty_in_field: number | null;
+  last_return_at: string | null;
+}
+
+export function useServiceOrderOverview() {
+  return useQuery({
+    queryKey: ['service_order_overview'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_service_order_overview' as any)
+        .select('*');
+      if (error) throw error;
+      const map = new Map<string, ServiceOrderOverview>();
+      for (const row of (data as unknown as ServiceOrderOverview[])) {
+        map.set(row.service_order_id, row);
+      }
+      return map;
+    },
+  });
+}
+
 export function useCreateContractor() {
   const qc = useQueryClient();
   return useMutation({
@@ -200,7 +237,7 @@ export function useUpsertOpenServiceOrder() {
       return soId as string;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       toast.success('OS atualizada/criada — pedido vinculado.');
     },
     onError: (e: any) => toast.error(e.message),
@@ -217,7 +254,7 @@ export function useCreateServiceOrder() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); toast.success('Ordem de serviço criada!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço criada!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -256,7 +293,7 @@ export function useUpdateServiceOrder() {
         throw new Error('OS já concluída ou cancelada — recarregue a página.');
       }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); toast.success('Ordem de serviço atualizada!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço atualizada!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
@@ -298,7 +335,7 @@ export function useDeleteServiceOrder() {
       const { error } = await supabase.from('service_orders').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); toast.success('Ordem de serviço removida!'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço removida!'); },
     onError: (e: any) => toast.error(e.message),
   });
 }
