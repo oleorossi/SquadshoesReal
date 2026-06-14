@@ -18,11 +18,14 @@ import { cn } from '@/lib/utils';
 import {
   calculateBomForOrders,
   calculateSoleBreakdownByGrade,
+  calculateArtisanalStrapRollCut,
   type ConsumptionRow,
   type SoleBreakdownResult,
   COMPONENT_ORDER,
   formatUnit,
 } from '@/lib/bomConsumption';
+import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM } from '@/lib/strapRollCut';
+import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { todayISO, todayPlusDaysISO, safeParseISO, safeFormatBR } from '@/lib/date';
@@ -96,6 +99,7 @@ export default function PickingListPage() {
 
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [soleBreakdown, setSoleBreakdown] = useState<SoleBreakdownResult>({ rows: [], allSizes: [], grandTotal: 0 });
+  const [strapCut, setStrapCut] = useState<ArtisanalStrapCutRow[]>([]);
   const [reportTitle, setReportTitle] = useState('');
   const [reportOrderCount, setReportOrderCount] = useState(0);
   // Números dos pedidos (PV ou OP) que compõem o relatório atual — exibidos no
@@ -214,6 +218,7 @@ export default function PickingListPage() {
     if (orderIds.length === 0) {
       setRows([]);
       setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
+      setStrapCut([]);
       setReportTitle(title);
       setReportOrderCount(0);
       setReportOrderNumbers(orderNumbers);
@@ -221,12 +226,14 @@ export default function PickingListPage() {
     }
     setIsCalculating(true);
     try {
-      const [bomResult, soleResult] = await Promise.all([
+      const [bomResult, soleResult, strapCutResult] = await Promise.all([
         calculateBomForOrders(orderIds),
         calculateSoleBreakdownByGrade(orderIds),
+        calculateArtisanalStrapRollCut(orderIds),
       ]);
       setRows(bomResult);
       setSoleBreakdown(soleResult);
+      setStrapCut(strapCutResult);
       setReportTitle(title);
       setReportOrderCount(orderIds.length);
       setReportOrderNumbers(orderNumbers);
@@ -234,6 +241,7 @@ export default function PickingListPage() {
       toast.error('Erro ao calcular consumo', { description: err?.message });
       setRows([]);
       setSoleBreakdown({ rows: [], allSizes: [], grandTotal: 0 });
+      setStrapCut([]);
     } finally {
       setIsCalculating(false);
     }
@@ -402,6 +410,37 @@ export default function PickingListPage() {
       `;
     }
 
+    // Bloco vermelho: tiras artesanais — corte do rolo
+    let strapCutHtml = '';
+    if (strapCut.length > 0) {
+      const strapRows = strapCut.map(r => {
+        const { cut } = r;
+        const cortar = cut.valid
+          ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
+          : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
+        return `<tr style="color:#dc2626">
+          <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cut.widthMissing ? '—' : r.largura_mm.toFixed(0)}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${r.metros_necessarios.toFixed(2)}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cut.valid ? cut.metros_uteis_rolo.toFixed(1) : '—'}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}</td>
+        </tr>`;
+      }).join('');
+      strapCutHtml = `
+        <h2 style="font-size:13px;margin:18px 0 4px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px">✂️ Tiras artesanais — corte do rolo (${ROLO_COMPRIMENTO_M}m × ${ROLO_LARGURA_MM}mm)</h2>
+        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Cortar do rolo — não é consumo direto de estoque.</p>
+        <table style="border:1px solid #fca5a5">
+          <thead><tr style="color:#dc2626">
+            <th style="background:#fef2f2">Tira (cor)</th>
+            <th style="background:#fef2f2;text-align:right">Largura corte (mm)</th>
+            <th style="background:#fef2f2;text-align:right">Total de tiras (m)</th>
+            <th style="background:#fef2f2;text-align:right">Rendimento útil (m/rolo)</th>
+            <th style="background:#fef2f2;text-align:right">Cortar do rolo (cm)</th>
+          </tr></thead>
+          <tbody>${strapRows}</tbody>
+        </table>`;
+    }
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Lista de Separação — ${reportTitle}</title>
       <style>
@@ -428,6 +467,7 @@ export default function PickingListPage() {
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
+      ${strapCutHtml}
       <p style="margin-top:24px;font-size:11px;border-top:1px solid #ccc;padding-top:8px">
         Responsável pela separação: ___________________________ &nbsp;&nbsp; Data: ___/___/______
       </p>
@@ -435,7 +475,7 @@ export default function PickingListPage() {
 
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300); }
-  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, reportKind, soleBreakdown]);
+  }, [rows, pickedSet, totalsByUnit, reportTitle, totalItems, reportOrderCount, reportOrderNumbers, reportKind, soleBreakdown, strapCut]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -919,6 +959,9 @@ export default function PickingListPage() {
               </Panel>
             );
           })}
+
+          {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
+          <ArtisanalStrapRollCutBlock rows={strapCut} />
         </div>
       )}
     </div>

@@ -11015,6 +11015,7 @@ export type Database = {
           dimensions_width: number | null
           id: string
           insole_included: boolean | null
+          is_artisanal_strap: boolean
           is_bom_color_source: boolean
           metros_fitilho_per_amarrado: number | null
           name: string
@@ -11047,6 +11048,7 @@ export type Database = {
           dimensions_width?: number | null
           id?: string
           insole_included?: boolean | null
+          is_artisanal_strap?: boolean
           is_bom_color_source?: boolean
           metros_fitilho_per_amarrado?: number | null
           name: string
@@ -11079,6 +11081,7 @@ export type Database = {
           dimensions_width?: number | null
           id?: string
           insole_included?: boolean | null
+          is_artisanal_strap?: boolean
           is_bom_color_source?: boolean
           metros_fitilho_per_amarrado?: number | null
           name?: string
