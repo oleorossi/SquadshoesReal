@@ -127,6 +127,29 @@ export default function PurchasePlanningWizard() {
         return;
       }
 
+      // 2b. Data-LIMITE de compra por OP (auditoria 2026-06-14, Top10 #3).
+      // Antes o Wizard agrupava as necessidades pela semana de ENTREGA do cliente
+      // → sugeria comprar TARDE (o oposto da função do MRP). A view
+      // purchase_projection_timeline já calcula data_limite_compra por OP×material
+      // (cadeia de lead time produção + buffer fornecedor, server-side). Usamos a
+      // data-limite MAIS CEDO entre os materiais da OP (deadline vinculante);
+      // fallback pra entrega quando a view não cobre o material.
+      const orderIds = Array.from(new Set((orders as any[]).map(o => o.id).filter(Boolean)));
+      const purchaseDeadlineByOrder = new Map<string, string>();
+      if (orderIds.length > 0) {
+        const { data: timelineRows } = await (supabase as any)
+          .from('purchase_projection_timeline')
+          .select('order_id, data_limite_compra')
+          .in('order_id', orderIds);
+        for (const row of (timelineRows || []) as any[]) {
+          if (!row.order_id || !row.data_limite_compra) continue;
+          const prev = purchaseDeadlineByOrder.get(row.order_id);
+          if (!prev || row.data_limite_compra < prev) {
+            purchaseDeadlineByOrder.set(row.order_id, row.data_limite_compra);
+          }
+        }
+      }
+
       // 3. Fetch technical sheets, products, groups, recent PO items, component sheets
       const [sheetsRes, productsRes, groupsRes, poItemsRes, compSheetsRes] = await Promise.all([
         supabase
@@ -337,9 +360,14 @@ export default function PurchasePlanningWizard() {
 
         const saleOrder = Array.isArray(order.sale_orders) ? order.sale_orders[0] : order.sale_orders;
         const deliveryDate = order.planned_delivery || saleOrder?.delivery_deadline || null;
-        const deliveryDateObj = parseDateValue(deliveryDate) ?? addWeeks(today, 4);
-        const weekStart = startOfWeek(deliveryDateObj, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(deliveryDateObj, { weekStartsOn: 1 });
+        // Agrupa pela DATA-LIMITE DE COMPRA (quando comprar) e não pela entrega
+        // (quando entregar) — ver bloco 2b. Fallback pra entrega quando a view não
+        // cobre a OP. Auditoria 2026-06-14, Top10 #3.
+        const purchaseDeadline = purchaseDeadlineByOrder.get(order.id) || null;
+        const schedulingDate = purchaseDeadline || deliveryDate;
+        const schedulingDateObj = parseDateValue(schedulingDate) ?? addWeeks(today, 4);
+        const weekStart = startOfWeek(schedulingDateObj, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(schedulingDateObj, { weekStartsOn: 1 });
         const weekLabel = `${format(weekStart, 'dd/MM', { locale: ptBR })} - ${format(weekEnd, 'dd/MM', { locale: ptBR })}`;
 
         const qty = Number(order.quantity) || 0;
@@ -636,6 +664,18 @@ export default function PurchasePlanningWizard() {
         // FK do fornecedor quando algum produto do grupo tem (fix A3.3b) —
         // sem ele a OC caía no default de prazo de pagamento.
         const supplierId = items.find(i => i.supplier_id)?.supplier_id ?? null;
+        // Idempotência DETERMINÍSTICA (auditoria 2026-06-14, Área 6): o trigger
+        // tg_purchase_order_idempotency rejeita a MESMA key em 30s, mas
+        // crypto.randomUUID() gerava key nova a cada submit → o trigger nunca
+        // via repetição (dois cliques = 2 OCs). Agora a key é hash do payload
+        // (fornecedor + itens ordenados com déficit) — double-click colide e a
+        // 2ª OC é rejeitada; após 30s um re-pedido idêntico é liberado.
+        const idempSig = items
+          .filter(i => i.product_id)
+          .map(i => `${i.product_id}:${Math.ceil(Math.max(0, i.total_needed - i.current_stock))}`)
+          .sort()
+          .join('|');
+        const idempKey = `wizard|${supplierId || supplierName}|${idempSig}`;
         const { data: po, error: poErr } = await supabase
           .from('purchase_orders')
           .insert({
@@ -645,9 +685,7 @@ export default function PurchasePlanningWizard() {
             notes: `Plano de compras baseado em pedidos`,
             auto_generated: true,
             status: 'pending',
-            // trigger tg_purchase_order_idempotency (20260523130000) rejeita
-            // key repetida em 30s — protege contra double-click/retry
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key: idempKey,
           })
           .select('id')
           .single();
