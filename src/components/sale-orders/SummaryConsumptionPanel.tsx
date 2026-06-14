@@ -270,7 +270,39 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const w = normalizeWidthToMm(p.dimensions_width, p.dimensions_unit);
         if (w > (strapProdWidth.get(norm) || 0)) strapProdWidth.set(norm, w);
       }
-      const strapWidthForNorm = (norm: string) => (strapOwnWidth.get(norm) || strapProdWidth.get(norm) || 0);
+
+      // Receitas artesanais ("Receitas → Produtos artesanais") — FONTE da verdade
+      // de "tira artesanal": o grupo de RESULTADO (`artisanal_product_name`) de uma
+      // receita ativa é cortado do rolo. A largura cadastrada na receita
+      // (`cut_width_mm`, mm) tem prioridade sobre a largura do grupo/produto.
+      // Query DEFENSIVA em `cut_width_mm` (coluna pode ainda não estar migrada).
+      const recipeOutputNorms = new Set<string>();
+      const recipeWidth = new Map<string, number>();
+      {
+        let recipeRows: any[] | null = null;
+        const withWidth = await supabase
+          .from('artisanal_recipes')
+          .select('artisanal_product_name, cut_width_mm' as any)
+          .eq('active', true);
+        if (!withWidth.error) {
+          recipeRows = withWidth.data as any[];
+        } else {
+          const fallback = await supabase
+            .from('artisanal_recipes')
+            .select('artisanal_product_name')
+            .eq('active', true);
+          if (!fallback.error) recipeRows = fallback.data as any[];
+        }
+        for (const r of recipeRows || []) {
+          const norm = normalizeText(r.artisanal_product_name);
+          if (!norm) continue;
+          recipeOutputNorms.add(norm);
+          const w = Number(r.cut_width_mm) || 0;
+          if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+        }
+      }
+      const strapWidthForNorm = (norm: string) =>
+        (recipeWidth.get(norm) || strapOwnWidth.get(norm) || strapProdWidth.get(norm) || 0);
 
       // Flag `is_artisanal_strap` no grupo — query DEFENSIVA (coluna pode ainda
       // não estar migrada; nesse caso seguimos só com flag-por-tira + heurístico).
@@ -416,6 +448,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           const metros = strapConsumptionCm / 100;
           if (metros > 0 && isArtisanalStrap({
             strapFlag: (strap as any).is_artisanal_strap,
+            recipeFlag: recipeOutputNorms.has(strapNorm),
             groupFlag: strapGroupFlag.get(strapNorm),
             name: `${strapGroupName} ${strap.label || ''}`,
           })) {

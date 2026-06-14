@@ -132,6 +132,13 @@ const ARTESANAL_RE = /artesanal/i;
 export interface ArtisanalDetectionInput {
   /** Flag explícita no objeto da tira (strap_colors JSONB). Prefere esta. */
   strapFlag?: boolean | null;
+  /**
+   * Grupo da tira é o RESULTADO (`artisanal_product_name`) de uma receita ativa
+   * em "Receitas → Produtos artesanais" (`artisanal_recipes`). Fonte AUTORITATIVA:
+   * se o Leonardo cadastrou a transformação artesanal, a tira é artesanal — não
+   * importa o nome. Vence a flag de grupo e o heurístico.
+   */
+  recipeFlag?: boolean | null;
   /** Flag de cadastro no grupo do produto (product_groups.is_artisanal_strap). */
   groupFlag?: boolean | null;
   /** Nome/rótulo/categoria combinados para o heurístico de fallback. */
@@ -143,13 +150,21 @@ export interface ArtisanalDetectionInput {
  *
  * Prioridade (conservadora):
  *   1. flag explícita por tira (`is_artisanal_strap` no JSONB) — `false` opta por fora.
- *   2. flag de cadastro no grupo (`product_groups.is_artisanal_strap`).
- *   3. heurístico: nome casa /tira/ E não casa com itens comprados prontos
+ *   2. grupo é resultado de uma receita artesanal cadastrada (`recipeFlag`) — a
+ *      FONTE da verdade do Leonardo (tela "Receitas → Produtos artesanais").
+ *   3. flag de cadastro no grupo (`product_groups.is_artisanal_strap`).
+ *   4. heurístico: nome casa /tira/ E não casa com itens comprados prontos
  *      (strass, elástico, trança, etc.). Casa também explicitamente "tira artesanal".
+ *
+ * ⚠ O heurístico, sozinho, é frágil: ele NÃO pega tiras cujo grupo não tenha
+ * "tira" no nome e ainda EXCLUI "trançado" (que é uma transformação artesanal
+ * legítima — colide com a regex de comprados-prontos). Por isso o `recipeFlag`,
+ * vindo do cadastro de receitas, é o caminho correto e prevalece.
  */
-export function isArtisanalStrap({ strapFlag, groupFlag, name }: ArtisanalDetectionInput): boolean {
+export function isArtisanalStrap({ strapFlag, recipeFlag, groupFlag, name }: ArtisanalDetectionInput): boolean {
   if (strapFlag === true) return true;
   if (strapFlag === false) return false;
+  if (recipeFlag === true) return true;
   if (groupFlag === true) return true;
   const n = (name || '').toString().toLowerCase();
   if (!n) return false;

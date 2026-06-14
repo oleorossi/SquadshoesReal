@@ -590,7 +590,40 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
     const w = normalizeWidthToMm(p.dimensions_width, p.dimensions_unit);
     if (w > (prodWidth.get(norm) || 0)) prodWidth.set(norm, w);
   }
-  const widthForNorm = (norm: string): number => (ownWidth.get(norm) || prodWidth.get(norm) || 0);
+
+  // Receitas artesanais (tela "Receitas → Produtos artesanais") — FONTE da verdade
+  // de "tira artesanal": o grupo de RESULTADO (`artisanal_product_name`) de uma
+  // receita ativa é uma tira cortada do rolo, independentemente do nome. A largura
+  // de corte cadastrada na própria receita (`cut_width_mm`, mm) tem prioridade
+  // sobre a largura do grupo/produto. Query DEFENSIVA em `cut_width_mm`: se a coluna
+  // ainda não foi migrada, refaz sem ela (não quebra o painel).
+  const recipeOutputNorms = new Set<string>();
+  const recipeWidth = new Map<string, number>();
+  {
+    let rows: any[] | null = null;
+    const withWidth = await supabase
+      .from('artisanal_recipes')
+      .select('artisanal_product_name, cut_width_mm' as any)
+      .eq('active', true);
+    if (!withWidth.error) {
+      rows = withWidth.data as any[];
+    } else {
+      const fallback = await supabase
+        .from('artisanal_recipes')
+        .select('artisanal_product_name')
+        .eq('active', true);
+      if (!fallback.error) rows = fallback.data as any[];
+    }
+    for (const r of rows || []) {
+      const norm = normalizeText(r.artisanal_product_name);
+      if (!norm) continue;
+      recipeOutputNorms.add(norm);
+      const w = Number(r.cut_width_mm) || 0;
+      if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+    }
+  }
+  const widthForNorm = (norm: string): number =>
+    (recipeWidth.get(norm) || ownWidth.get(norm) || prodWidth.get(norm) || 0);
 
   // Flag de cadastro `is_artisanal_strap` no grupo — query DEFENSIVA: se a coluna
   // ainda não foi migrada no banco, o PostgREST retorna erro e seguimos só com
@@ -625,6 +658,7 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
       const norm = normalizeText(groupName);
       const artisanal = isArtisanalStrap({
         strapFlag: (strap as any).is_artisanal_strap,
+        recipeFlag: recipeOutputNorms.has(norm),
         groupFlag: groupArtisanalFlag.get(norm),
         name: `${groupName} ${strap.label || ''}`,
       });

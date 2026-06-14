@@ -154,6 +154,17 @@ describe('isArtisanalStrap — detecção', () => {
   it('flag por tira false opta por fora (mesmo com nome de tira)', () => {
     expect(isArtisanalStrap({ strapFlag: false, name: 'TIRA NAPA', groupFlag: true })).toBe(false);
   });
+  it('receita artesanal detecta mesmo com nome que o heurístico excluiria', () => {
+    // "Tira Trançada" colide com a regex de comprados-prontos (tranç) e o
+    // heurístico a marcaria como NÃO-artesanal. Mas se o grupo é resultado de
+    // uma receita cadastrada, ela É artesanal — a receita vence o heurístico.
+    expect(isArtisanalStrap({ recipeFlag: true, name: 'Tira Trançada' })).toBe(true);
+    expect(isArtisanalStrap({ recipeFlag: true, name: 'OVERLOCK 5MM' })).toBe(true);
+  });
+  it('receita vence o opt-out por grupo, mas não o opt-out explícito por tira', () => {
+    expect(isArtisanalStrap({ recipeFlag: true, groupFlag: false, name: 'x' })).toBe(true);
+    expect(isArtisanalStrap({ strapFlag: false, recipeFlag: true, name: 'TIRA NAPA' })).toBe(false);
+  });
   it('flag de grupo true detecta', () => {
     expect(isArtisanalStrap({ groupFlag: true, name: 'qualquer coisa' })).toBe(true);
   });
