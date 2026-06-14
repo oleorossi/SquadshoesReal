@@ -83,6 +83,7 @@ export const menuGroups = [
     icon: ShoppingBag,
     items: [
       { name: "Planejamento",     icon: Calendar,        path: "/purchase-planning" },
+      { name: "MRP (Necessidades)", icon: Boxes,         path: "/mrp-advanced" },
       { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
       { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },

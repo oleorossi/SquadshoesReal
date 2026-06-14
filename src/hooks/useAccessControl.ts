@@ -48,6 +48,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/payroll': 'rh_folha',
   '/purchase-orders': 'financeiro',
   '/purchase-planning': 'financeiro',
+  '/mrp-advanced': 'financeiro',
   '/pricing-calculator': 'financeiro',
   '/weekly-purchasing-plan': 'financeiro',
   '/comercial': 'vendas',

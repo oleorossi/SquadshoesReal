@@ -74,6 +74,7 @@ const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
 const PCPDashboard = lazy(() => import("./pages/PCPDashboard"));
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
 const MrpPage = lazy(() => import("./pages/MrpPage"));
+const MrpAdvancedPage = lazy(() => import("./pages/MrpAdvancedPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
 const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
@@ -823,6 +824,13 @@ const router = createBrowserRouter([
       {
         path: "purchase-planning",
         element: <PurchasePlanning />,
+      },
+      {
+        // Motor de MRP net-correto (v_mrp_needs): demanda projetada − estoque
+        // disponível − reservas − OCs em aberto, com CEIL e "Gerar OC". Antes a
+        // página existia mas não tinha rota (motor morto). Auditoria 2026-06-14, #6.
+        path: "mrp-advanced",
+        element: <MrpAdvancedPage />,
       },
       {
         path: "pricing-calculator",
