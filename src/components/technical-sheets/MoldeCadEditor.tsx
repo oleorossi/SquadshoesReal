@@ -45,6 +45,12 @@ export function MoldeCadEditor({ open, onOpenChange, initialDpi = 300, fileBaseN
 
   const reset = () => { setPolygons([]); setCurrent([]); };
 
+  // O Radix Dialog NÃO desmonta o conteúdo ao fechar → sem isto, imagem/traços/DPI
+  // da sessão anterior reapareceriam. Reseta tudo a cada abertura (sessão limpa).
+  useEffect(() => {
+    if (open) { setImg(null); setPolygons([]); setCurrent([]); setDpi(initialDpi); }
+  }, [open, initialDpi]);
+
   const onPickImage = (file: File | null) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -106,17 +112,21 @@ export function MoldeCadEditor({ open, onOpenChange, initialDpi = 300, fileBaseN
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!img) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const dx = e.clientX - rect.left;
-    const dy = e.clientY - rect.top;
-    // fecha se clicar perto do 1º ponto
+    if (rect.width <= 0 || rect.height <= 0) return;
+    // Mapeia o clique pelo tamanho REALMENTE renderizado do canvas (que pode estar
+    // comprimido por CSS em telas estreitas) → pixels da imagem. Robusto a
+    // displayScale/retina: usa a razão natural÷renderizado, não a escala assumida.
+    const sx = img.naturalWidth / rect.width;
+    const sy = img.naturalHeight / rect.height;
+    const ix = (e.clientX - rect.left) * sx;
+    const iy = (e.clientY - rect.top) * sy;
+    // fecha se clicar perto do 1º ponto (tolerância convertida pra px da imagem)
     if (current.length >= 3) {
       const first = current[0];
-      const fdx = first.x * displayScale - dx;
-      const fdy = first.y * displayScale - dy;
-      if (Math.hypot(fdx, fdy) <= CLOSE_SNAP_PX) { closeCurrent(); return; }
+      const tolPx = CLOSE_SNAP_PX * sx;
+      if (Math.hypot(first.x - ix, first.y - iy) <= tolPx) { closeCurrent(); return; }
     }
-    const pt = { x: dx / displayScale, y: dy / displayScale };
-    setCurrent((c) => [...c, pt]);
+    setCurrent((c) => [...c, { x: ix, y: iy }]);
   };
 
   const undoPoint = () => {
@@ -129,7 +139,7 @@ export function MoldeCadEditor({ open, onOpenChange, initialDpi = 300, fileBaseN
   const totalDm2 = useMemo(() => totalAreaDm2(polygons, dpi), [polygons, dpi]);
 
   const buildDxf = useCallback((): string => {
-    if (!img) return '';
+    if (!img || !(img.naturalHeight > 0) || !(dpi > 0)) return '';
     const polys: DxfPolygonMm[] = polygons.map((poly, i) => ({
       layer: `MOLDE_${i + 1}`,
       points: poly.map((p) => pxToMm(p, dpi, img.naturalHeight)), // Y invertido p/ CAD
@@ -139,12 +149,16 @@ export function MoldeCadEditor({ open, onOpenChange, initialDpi = 300, fileBaseN
 
   const handleDownload = () => {
     if (polygons.length === 0) { toast.error('Trace ao menos uma peça'); return; }
-    downloadDxf(buildDxf(), fileBaseName);
+    if (!(dpi > 0)) { toast.error('Informe um DPI válido (maior que 0)'); return; }
+    const dxf = buildDxf();
+    if (!dxf) { toast.error('Não consegui gerar o DXF (imagem/DPI inválidos)'); return; }
+    downloadDxf(dxf, fileBaseName);
     toast.success('DXF gerado');
   };
 
   const handleApply = () => {
     if (polygons.length === 0) { toast.error('Trace ao menos uma peça'); return; }
+    if (!(dpi > 0)) { toast.error('Informe um DPI válido (maior que 0)'); return; }
     onApply({ totalDm2, dpi, pieces: pieceAreas.map((a) => ({ areaDm2: a })), dxfText: buildDxf() });
     onOpenChange(false);
   };
@@ -170,6 +184,7 @@ export function MoldeCadEditor({ open, onOpenChange, initialDpi = 300, fileBaseN
           <div className="flex items-center gap-1.5">
             <Label className="text-xs text-muted-foreground">DPI do scanner</Label>
             <NumberInput value={dpi} onChange={(v) => setDpi(Number(v) || 0)} step="1" min={1} decimals={0} className="h-9 w-20 text-right" />
+            <span className="text-[11px] text-muted-foreground">comum: 150/300/600</span>
           </div>
           {img && (
             <>
@@ -222,7 +237,8 @@ export function MoldeCadEditor({ open, onOpenChange, initialDpi = 300, fileBaseN
         {img && (
           <p className="text-[11px] text-muted-foreground">
             Clique pra marcar o contorno; feche clicando no 1º ponto ou em <span className="font-medium">Fechar peça</span>.
-            Trace uma peça por contorno (várias peças somam na área total).
+            Trace o contorno <span className="font-medium">externo</span> de cada peça (furos não são subtraídos); várias peças somam na área total.
+            Confira o <span className="font-medium">DPI</span> antes — ele define a escala.
           </p>
         )}
 

@@ -30,6 +30,15 @@ describe('polygonsToDxf', () => {
     expect(res.totalDm2).toBeCloseTo(0.5, 4); // 100×50 mm² = 5000 mm² = 0,5 dm²
   });
 
+  it('emite as coordenadas dos vértices (não só área)', () => {
+    const dxf = polygonsToDxf([{ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }] }]);
+    const lines = dxf.split('\n');
+    // grupo 10 (x) seguido do valor; confere que 100 e 50 aparecem como coordenada
+    const coords = lines.filter((l, i) => (lines[i - 1] === '10' || lines[i - 1] === '20')).map(Number);
+    expect(coords).toContain(100);
+    expect(coords).toContain(50);
+  });
+
   it('round-trip: duas peças somam', () => {
     const dxf = polygonsToDxf([rectMm(100, 50), rectMm(100, 100)]);
     const res = computeDxfAreas(dxf);

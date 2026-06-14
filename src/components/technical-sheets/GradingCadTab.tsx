@@ -12,7 +12,7 @@
  * padrão (ponto francês: cabedal ~área², tira linear). Quando o solado tiver
  * progressão real, gradeScaling passa a usar a razão dele (já suportado).
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -87,6 +87,12 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
   // ficha pra aquele número, senão fica vazio até importar/digitar.
   const existingUpper = (form?.upper_consumption_per_size ?? {}) as Record<string, number>;
   const [baseValue, setBaseValue] = useState<number>(Number(existingUpper[String(defaultBaseSize)]) || 0);
+
+  // Se a faixa de numeração mudar (usuário troca a grade da ficha), o tamanho base
+  // pode sair da faixa — realinha pro default em vez de escalar sobre um nº inexistente.
+  useEffect(() => {
+    if (sortedSizes.length > 0 && !sortedSizes.includes(baseSize)) setBaseSize(defaultBaseSize);
+  }, [sortedSizes, baseSize, defaultBaseSize]);
 
   const onPickDxf = async (file: File | null) => {
     if (!file) return;

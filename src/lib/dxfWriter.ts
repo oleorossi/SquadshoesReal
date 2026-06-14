@@ -1,11 +1,10 @@
 /**
- * Gera um arquivo DXF (R12 ASCII, mínimo) a partir de polígonos das peças.
+ * Gera um arquivo DXF (ASCII, mínimo) a partir de polígonos das peças.
  *
  * Coordenadas em MILÍMETROS. Cada peça vira uma LWPOLYLINE fechada. Header com
- * `$INSUNITS = 4` (mm) pra abrir corretamente no AutoCAD/Shoemaster e pra ser
- * relido por `computeDxfAreas` (dxfArea.ts) com a mesma área.
- *
- * R12 ASCII é o "mais básico" dos DXF — aceito por praticamente todo CAD.
+ * `$ACADVER = AC1015` (DXF 2000 — versão que introduziu LWPOLYLINE) e
+ * `$INSUNITS = 4` (mm), pra abrir no AutoCAD/Shoemaster e ser relido por
+ * `computeDxfAreas` (dxfArea.ts) com a mesma área.
  */
 
 export interface DxfPolygonMm {
@@ -33,7 +32,7 @@ export function polygonsToDxf(polygons: DxfPolygonMm[], opts: DxfWriteOptions = 
   line(out, 0, 'SECTION');
   line(out, 2, 'HEADER');
   line(out, 9, '$ACADVER');
-  line(out, 1, 'AC1009'); // R12
+  line(out, 1, 'AC1015'); // DXF 2000 — versão que introduziu LWPOLYLINE (coerente com as entidades emitidas)
   line(out, 9, '$INSUNITS');
   line(out, 70, insunits);
   line(out, 0, 'ENDSEC');
