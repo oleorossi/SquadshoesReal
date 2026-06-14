@@ -2369,16 +2369,19 @@ export type Database = {
       sector_labor_rates: {
         Row: {
           hourly_rate: number
+          monthly_salary: number
           sector_key: string
           updated_at: string
         }
         Insert: {
           hourly_rate?: number
+          monthly_salary?: number
           sector_key: string
           updated_at?: string
         }
         Update: {
           hourly_rate?: number
+          monthly_salary?: number
           sector_key?: string
           updated_at?: string
         }

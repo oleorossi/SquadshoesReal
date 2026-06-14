@@ -10,7 +10,8 @@ import { supabase } from '@/integrations/supabase/client';
 export interface LaborCostResultLine {
   sector_key: string;
   hours: number;
-  hourly_rate: number; // snapshot no momento de salvar
+  hourly_rate: number;     // snapshot do custo-hora (= salário ÷ 220) no momento de salvar
+  monthly_salary?: number; // snapshot do salário do setor (base do custo-hora)
   cost: number;
 }
 

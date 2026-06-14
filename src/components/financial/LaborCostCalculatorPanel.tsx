@@ -1,14 +1,18 @@
 /**
  * Calculadora MANUAL de custo de mão de obra por referência.
  *
- * Fluxo (pedido do usuário): preenche a referência → escolhe o setor em cada
- * linha → a aba PUXA o valor-hora do setor (tabela sector_labor_rates, editável
- * aqui) → preenche o tempo em HORAS → custo = valor-hora × horas. Soma = custo
- * de MO/par. O usuário pode SALVAR o resultado, BUSCAR e CARREGAR salvos.
+ * Fórmula (padrão calçadista, base salário, SEM encargos):
+ *   custo-hora do setor = SALÁRIO do setor ÷ 220   (mesma base da folha)
+ *   custo de MO da ref. = Σ (custo-hora × tempo em horas)
  *
- * O resultado salvo guarda um SNAPSHOT do valor-hora de cada linha (tabela
- * labor_cost_results) — o total salvo não muda se o valor-hora do setor mudar
- * depois. Independente do custeio por operação (labor_costs/BOM) e da folha.
+ * Fluxo: cadastra o SALÁRIO MENSAL de cada setor (tabela sector_labor_rates) →
+ * a aba deriva o custo-hora (salário ÷ 220) → preenche a referência → escolhe o
+ * setor por linha → preenche o tempo em HORAS → custo = custo-hora × horas. Soma
+ * = custo de MO/par. Pode SALVAR, BUSCAR e CARREGAR salvos.
+ *
+ * O resultado salvo guarda um SNAPSHOT (salário + custo-hora + custo) de cada
+ * linha (labor_cost_results) — o total salvo não muda se o salário do setor
+ * mudar depois. Independente do custeio por operação (labor_costs/BOM) e da folha.
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,7 +24,8 @@ import { Plus, Trash, Calculator, Clock, FloppyDisk, MagnifyingGlass, FolderOpen
 import { toast } from 'sonner';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
-import { useSectorLaborRates, useUpsertSectorLaborRate } from '@/hooks/useSectorLaborRates';
+import { useSectorLaborRates, useUpsertSectorLaborRate, hourlyFromSalary } from '@/hooks/useSectorLaborRates';
+import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import {
   useLaborCostResults, useSaveLaborCostResult, useDeleteLaborCostResult,
   type LaborCostResult, type LaborCostResultLine,
@@ -59,14 +64,14 @@ export default function LaborCostCalculatorPanel() {
   const save = useSaveLaborCostResult();
   const del = useDeleteLaborCostResult();
 
-  // Draft editável do valor-hora por setor (sincroniza do banco sem sobrescrever
+  // Draft editável do SALÁRIO por setor (sincroniza do banco sem sobrescrever
   // edição em andamento — só preenche chaves ainda não tocadas).
   const [draft, setDraft] = useState<Record<string, string>>({});
   useEffect(() => {
     setDraft((prev) => {
       const next = { ...prev };
       for (const { key } of RATE_SECTORS) {
-        if (next[key] === undefined) next[key] = rateMap[key] != null ? String(rateMap[key]) : '';
+        if (next[key] === undefined) next[key] = rateMap[key]?.monthly_salary ? String(rateMap[key]!.monthly_salary) : '';
       }
       return next;
     });
@@ -74,7 +79,7 @@ export default function LaborCostCalculatorPanel() {
 
   const saveRate = (key: string) => {
     const v = parseNum(draft[key]);
-    if (v !== (rateMap[key] ?? 0)) upsert.mutate({ sectorKey: key, hourlyRate: v });
+    if (v !== (rateMap[key]?.monthly_salary ?? 0)) upsert.mutate({ sectorKey: key, monthlySalary: v });
   };
 
   // ── Cálculo ──
@@ -88,7 +93,7 @@ export default function LaborCostCalculatorPanel() {
   const updateRow = (id: number, patch: Partial<Row>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-  const rowCost = (row: Row) => (rateMap[row.sectorKey] ?? 0) * parseNum(row.hours);
+  const rowCost = (row: Row) => (rateMap[row.sectorKey]?.hourly_rate ?? 0) * parseNum(row.hours);
   const total = useMemo(() => rows.reduce((acc, r) => acc + rowCost(r), 0), [rows, rateMap]);
 
   // ── Salvar / carregar / excluir ──
@@ -96,9 +101,11 @@ export default function LaborCostCalculatorPanel() {
     rows
       .filter((r) => r.sectorKey)
       .map((r) => {
-        const rate = rateMap[r.sectorKey] ?? 0;
+        const sr = rateMap[r.sectorKey];
+        const rate = sr?.hourly_rate ?? 0;
+        const salary = sr?.monthly_salary ?? 0;
         const hours = parseNum(r.hours);
-        return { sector_key: r.sectorKey, hours, hourly_rate: rate, cost: rate * hours };
+        return { sector_key: r.sectorKey, hours, hourly_rate: rate, monthly_salary: salary, cost: rate * hours };
       });
 
   const onSave = () => {
@@ -162,32 +169,41 @@ export default function LaborCostCalculatorPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Clock className="h-4 w-4 text-muted-foreground" />
-            Valor-hora por setor
+            Salário por setor
           </CardTitle>
           <CardDescription>
-            Cadastre o custo da hora trabalhada (R$/h) de cada setor. A calculadora abaixo puxa esse valor.
+            Cadastre o <strong>salário mensal</strong> de cada setor. O custo da hora é derivado
+            automaticamente = salário ÷ {SALARY_HOUR_DIVISOR} (mesma base da folha), <strong>sem encargos</strong>.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {RATE_SECTORS.map(({ key, label }) => (
-              <div key={key} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                <Label htmlFor={`rate-${key}`} className="text-xs font-medium truncate">{label}</Label>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-xs text-muted-foreground">R$</span>
-                  <Input
-                    id={`rate-${key}`}
-                    inputMode="decimal"
-                    className="h-8 w-24 text-right text-xs tabular-nums"
-                    value={draft[key] ?? ''}
-                    onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-                    onBlur={() => saveRate(key)}
-                    placeholder="0,00"
-                  />
-                  <span className="text-xs text-muted-foreground">/h</span>
+            {RATE_SECTORS.map(({ key, label }) => {
+              const hourly = hourlyFromSalary(parseNum(draft[key]));
+              return (
+                <div key={key} className="flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor={`rate-${key}`} className="text-xs font-medium truncate">{label}</Label>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs text-muted-foreground">R$</span>
+                      <Input
+                        id={`rate-${key}`}
+                        inputMode="decimal"
+                        className="h-8 w-24 text-right text-xs tabular-nums"
+                        value={draft[key] ?? ''}
+                        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                        onBlur={() => saveRate(key)}
+                        placeholder="0,00"
+                      />
+                      <span className="text-xs text-muted-foreground">/mês</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground text-right tabular-nums">
+                    custo-hora = {fmtBRL(hourly)}/h
+                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -202,7 +218,8 @@ export default function LaborCostCalculatorPanel() {
                 Cálculo de custo de MO
               </CardTitle>
               <CardDescription>
-                Escolha o setor em cada linha e preencha o tempo (horas/par). Custo = valor-hora × horas.
+                Escolha o setor em cada linha e preencha o tempo (horas/par). Custo = custo-hora × horas
+                (custo-hora = salário ÷ {SALARY_HOUR_DIVISOR}).
               </CardDescription>
             </div>
             {loadedId && (
@@ -227,7 +244,7 @@ export default function LaborCostCalculatorPanel() {
           {/* Cabeçalho */}
           <div className="hidden sm:grid grid-cols-[1fr_120px_120px_130px_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             <span>Setor</span>
-            <span className="text-right">Valor-hora</span>
+            <span className="text-right">Custo-hora</span>
             <span className="text-right">Tempo (h)</span>
             <span className="text-right">Custo</span>
             <span />
@@ -236,7 +253,7 @@ export default function LaborCostCalculatorPanel() {
           {/* Linhas */}
           <div className="space-y-2">
             {rows.map((row) => {
-              const rate = rateMap[row.sectorKey] ?? 0;
+              const rate = rateMap[row.sectorKey]?.hourly_rate ?? 0;
               const cost = rowCost(row);
               const rateMissing = !!row.sectorKey && rate === 0;
               return (
@@ -253,8 +270,8 @@ export default function LaborCostCalculatorPanel() {
                   </Select>
 
                   <div className="text-right text-sm tabular-nums text-muted-foreground">
-                    {row.sectorKey ? fmtBRL(rate) : '—'}
-                    {rateMissing && <span className="block text-[10px] text-amber-600">sem valor-hora</span>}
+                    {row.sectorKey ? `${fmtBRL(rate)}/h` : '—'}
+                    {rateMissing && <span className="block text-[10px] text-amber-600">sem salário</span>}
                   </div>
 
                   <div className="flex items-center justify-end gap-1">
