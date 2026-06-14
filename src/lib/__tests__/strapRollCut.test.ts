@@ -14,20 +14,21 @@ import {
  * GATE da fórmula de corte do rolo (tiras artesanais).
  *
  * Cobre TODOS os valores da tabela que o Leonardo passou e confirma que
- * `metros_uteis` e `cm_a_cortar` batem com o cálculo manual a 13% de perda.
+ * `metros_uteis` e `cm_a_cortar` batem com o cálculo manual a 15% de perda.
  */
 
-// [largura_mm, tiras_por_rolo esperado] — tabela canônica do Leonardo.
-const TABELA: Array<[number, number]> = [
-  [100, 4],
-  [150, 7],
-  [200, 9],
-  [250, 11],
-  [300, 14],
-  [400, 19],
-  [500, 23],
-  [685, 32],
-  [1370, 65],
+// [largura_mm, tiras_por_rolo, metros_uteis] — tabela canônica do Leonardo
+// (15% de perda: metros_uteis = tiras × 40 × 0,85).
+const TABELA: Array<[number, number, number]> = [
+  [100, 4, 136],
+  [150, 7, 238],
+  [200, 9, 306],
+  [250, 11, 374],
+  [300, 14, 476],
+  [400, 19, 646],
+  [500, 23, 782],
+  [685, 32, 1088],
+  [1370, 65, 2210],
 ];
 
 describe('constantes', () => {
@@ -35,17 +36,17 @@ describe('constantes', () => {
     expect(ROLO_LARGURA_MM).toBe(1370);
     expect(ROLO_COMPRIMENTO_M).toBe(40);
     expect(TIRA_DIVISOR_MM).toBe(21);
-    expect(PERDA_PCT).toBeCloseTo(0.13, 10);
+    expect(PERDA_PCT).toBeCloseTo(0.15, 10);
   });
 
-  it('kerf começa em 0 (a confirmar com Leonardo)', () => {
+  it('sem kerf (descartado pelo Leonardo)', () => {
     expect(KERF_MM).toBe(0);
   });
 });
 
 describe('computeStrapRollCut — tabela do Leonardo', () => {
-  for (const [largura, tirasEsperadas] of TABELA) {
-    it(`largura ${largura}mm → ${tirasEsperadas} tiras`, () => {
+  for (const [largura, tirasEsperadas, metrosUteisEsperado] of TABELA) {
+    it(`largura ${largura}mm → ${tirasEsperadas} tiras → ${metrosUteisEsperado} m`, () => {
       // metros_necessarios arbitrário > 0 para também validar cm_a_cortar.
       const metros = 100;
       const r = computeStrapRollCut({ largura_mm: largura, metros_necessarios: metros });
@@ -54,12 +55,13 @@ describe('computeStrapRollCut — tabela do Leonardo', () => {
       expect(r.widthMissing).toBe(false);
       expect(r.tiras_por_rolo).toBe(tirasEsperadas);
 
-      // metros_uteis = tiras × 40 × 0,87
-      const metrosUteisManual = tirasEsperadas * 40 * 0.87;
-      expect(r.metros_uteis_rolo).toBeCloseTo(metrosUteisManual, 6);
+      // metros_uteis cravado na tabela do Leonardo (15% de perda).
+      expect(r.metros_uteis_rolo).toBeCloseTo(metrosUteisEsperado, 6);
+      // e bate com a derivação manual tiras × 40 × 0,85.
+      expect(r.metros_uteis_rolo).toBeCloseTo(tirasEsperadas * 40 * 0.85, 6);
 
       // cm_a_cortar = (metros × 4000) ÷ metros_uteis
-      const cmManual = (metros * 4000) / metrosUteisManual;
+      const cmManual = (metros * 4000) / metrosUteisEsperado;
       expect(r.cm_a_cortar).toBeCloseTo(cmManual, 6);
     });
   }
@@ -84,9 +86,9 @@ describe('computeStrapRollCut — propriedades', () => {
     expect(r.tiras_por_rolo).toBe(65);
   });
 
-  it('com kerf=0 a fórmula equivale a floor(largura/21)', () => {
+  it('tiras_por_rolo = floor(largura / 21) (sem kerf)', () => {
     for (const [largura, tiras] of TABELA) {
-      expect(Math.floor((largura - KERF_MM) / (TIRA_DIVISOR_MM + KERF_MM))).toBe(tiras);
+      expect(Math.floor(largura / TIRA_DIVISOR_MM)).toBe(tiras);
     }
   });
 });

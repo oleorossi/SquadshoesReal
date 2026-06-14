@@ -3,7 +3,7 @@
  *
  * Tiras artesanais são cortadas de um rolo padrão (40 m × 1370 mm). A partir da
  * largura de corte cadastrada da tira (em mm), calculamos quantas tiras saem da
- * largura do rolo, o rendimento útil (já descontando 13% de perda) e, dado o
+ * largura do rolo, o rendimento útil (já descontando 15% de perda) e, dado o
  * total de metros lineares de tira necessários no PV, quantos centímetros do
  * comprimento do rolo precisam ser cortados.
  *
@@ -12,7 +12,7 @@
  *
  * Fórmula (espelha o que o Leonardo aprovou no mockup):
  *   tiras_por_rolo   = floor(largura_corte_mm ÷ 21)
- *   metros_uteis     = tiras_por_rolo × 40 × 0,87        // 13% de perda
+ *   metros_uteis     = tiras_por_rolo × 40 × 0,85        // 15% de perda
  *   cm_rolo_a_cortar = (metros_necessarios × 4000) ÷ metros_uteis
  *
  * 4000 = comprimento do rolo em cm (40 m × 100). Ou seja, cm_a_cortar é a fração
@@ -25,14 +25,13 @@ export const ROLO_COMPRIMENTO_M = 40;
 /** Cada tira de saída ocupa ~21 mm da largura do corte (deriva de floor(W/21)). */
 export const TIRA_DIVISOR_MM = 21;
 /**
- * Espessura da lâmina (kerf) consumida por corte, em mm. Mantida em 0 por
- * enquanto — quando confirmada, entra automaticamente na fórmula de
- * `tiras_por_rolo` sem mais nenhuma mudança.
+ * Kerf (espessura da lâmina por corte) — DESCARTADO por decisão do Leonardo
+ * (2026-06-14): a fórmula usa floor(W/21) direto, SEM ajuste de lâmina.
+ * Mantido em 0 só por referência.
  */
-// TODO: confirmar valor de kerf com Leonardo
 export const KERF_MM = 0;
-/** Perda do rolo (aparas/sobras). 13%. */
-export const PERDA_PCT = 0.13;
+/** Perda do rolo (aparas/sobras). 15%. */
+export const PERDA_PCT = 0.15;
 
 export interface StrapRollCutInput {
   /** Largura de corte cadastrada da tira artesanal, em mm. */
@@ -45,7 +44,7 @@ export interface StrapRollCutResult {
   largura_mm: number;
   /** Quantas tiras de ~21 mm saem da largura de corte. */
   tiras_por_rolo: number;
-  /** Metros lineares de tira aproveitáveis em 1 rolo cheio (já com 13% perda). */
+  /** Metros lineares de tira aproveitáveis em 1 rolo cheio (já com 15% perda). */
   metros_uteis_rolo: number;
   /** Centímetros do COMPRIMENTO do rolo a cortar para atender o consumo. */
   cm_a_cortar: number;
@@ -102,8 +101,8 @@ export function computeStrapRollCut({ largura_mm, metros_necessarios }: StrapRol
     return { ...base, warning: `Largura excede a largura do rolo (${ROLO_LARGURA_MM} mm)` };
   }
 
-  // Fórmula pronta para kerf: com KERF_MM = 0 reduz a floor(largura / 21).
-  const tiras_por_rolo = Math.floor((largura - KERF_MM) / (TIRA_DIVISOR_MM + KERF_MM));
+  // Versão simples (sem kerf): floor da largura de corte pela largura da tira.
+  const tiras_por_rolo = Math.floor(largura / TIRA_DIVISOR_MM);
   if (tiras_por_rolo <= 0) {
     return { ...base, warning: `Largura abaixo do mínimo de uma tira (${TIRA_DIVISOR_MM} mm)` };
   }
