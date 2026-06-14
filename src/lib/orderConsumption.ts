@@ -645,7 +645,14 @@ export function computeConsumptionForItems(
         const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
         const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-        const insolePlates = groupPlateArea > 0 ? (insoleDm2 / groupPlateArea) : convertDm2ToPlates(insoleDm2, insoleSheet);
+        // Aplica waste_pct também no caminho que usa dimensões do grupo, p/ paridade
+        // com convertDm2ToPlates() (fallback) e com bomConsumption.ts (Lista de
+        // Separação) — antes o modal divergia da Lista no nº de placas (auditoria
+        // 2026-06-14, Área 2).
+        const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
+        const insolePlates = groupPlateArea > 0
+          ? (insoleDm2 / groupPlateArea) * (1 + insoleWastePct / 100)
+          : convertDm2ToPlates(insoleDm2, insoleSheet);
 
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
