@@ -223,7 +223,12 @@ export function useDREAuto(monthsBack: number = 6) {
       if (recRes.error) throw recRes.error;
       if (payRes.error) throw payRes.error;
       if (factRes.error) throw factRes.error;
-      if (cmvRes?.error) throw cmvRes.error;
+      // CMV reconhecido: degrada com elegância se a tabela/migration ainda não foi
+      // aplicada (janela entre deploy do front e aplicação da migration via MCP).
+      // Sem isso a DRE inteira quebraria; aqui o CMV só fica 0 até a tabela existir.
+      if (cmvRes?.error) {
+        console.warn('useDREAuto: sale_order_cmv_recognized indisponível (migration pendente?) — CMV reconhecido tratado como 0.', cmvRes.error?.message);
+      }
       const isSimplesNacional = String(companyRes?.data?.regime_tributario || '') === '1';
 
       const months: Record<string, DREMonth> = {};
