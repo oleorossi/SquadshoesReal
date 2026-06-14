@@ -106,11 +106,22 @@ export const menuGroups = [
     label: "Financeiro",
     icon: Wallet,
     items: [
-      { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
-      { name: "Contas (AR/AP)",   icon: DollarSign,     path: "/finance" },
-      { name: "NF-e",             icon: Receipt,        path: "/nfe" },
-      { name: "Conciliação",      icon: Scale,          path: "/bank-reconciliation" },
-      { name: "SPED",             icon: FileText,       path: "/sped" },
+      { name: "Financeiro",       icon: Wallet,          path: "/financeiro" },
+      { name: "Contas (AR/AP)",   icon: DollarSign,      path: "/finance" },
+      { name: "Conciliação",      icon: Scale,           path: "/bank-reconciliation" },
+      { name: "CNAB / Boletos",   icon: FileSpreadsheet, path: "/cnab" },
+      { name: "Markup / Pricing", icon: Calculator,      path: "/pricing-calculator" },
+    ],
+  },
+  {
+    label: "Fiscal",
+    icon: Receipt,
+    items: [
+      { name: "NF-e",     icon: Receipt,    path: "/nfe" },
+      { name: "CT-e",     icon: Truck,      path: "/cte" },
+      { name: "MDF-e",    icon: FileText,   path: "/mdfe" },
+      { name: "SPED",     icon: FileText,   path: "/sped" },
+      { name: "Impostos", icon: Calculator, path: "/apuracao-impostos" },
     ],
   },
   {
@@ -160,15 +171,11 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Sessões de Picking",   icon: ClipboardCheck,   path: "/picking-sessions",       group: "Logística" },
   { name: "Rastreamento",         icon: Activity,         path: "/delivery-tracking",      group: "Logística" },
   // "Etiquetas" (/label-system) tem grupo próprio "Etiquetas" no topo do menu.
-  // Financeiro
-  { name: "Markup / Pricing",     icon: Calculator,       path: "/pricing-calculator",     group: "Financeiro" },
-  { name: "CT-e",                 icon: Truck,            path: "/cte",                    group: "Financeiro" },
-  { name: "MDF-e",                icon: FileText,         path: "/mdfe",                   group: "Financeiro" },
-  { name: "CNAB / Boletos",       icon: FileSpreadsheet,  path: "/cnab",                   group: "Financeiro" },
+  // Financeiro (visíveis na barra: Financeiro/Contas/Conciliação/CNAB/Pricing)
   { name: "Patrimônio",           icon: Buildings,        path: "/patrimonio",             group: "Financeiro" },
-  { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Financeiro" },
-  { name: "Perfis Tributários",   icon: Receipt,          path: "/perfis-tributarios",     group: "Financeiro" },
-  { name: "Apuração de Impostos", icon: Calculator,       path: "/apuracao-impostos",      group: "Financeiro" },
+  // Fiscal (visíveis na barra: NF-e/CT-e/MDF-e/SPED/Impostos; estas ficam em Cmd+K)
+  { name: "Perfis Tributários",   icon: Receipt,          path: "/perfis-tributarios",     group: "Fiscal" },
+  { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Fiscal" },
   // Sistema (admin)
   { name: "Auditoria (Logs)",     icon: FileText,         path: "/audit-logs",             group: "Sistema" },
   { name: "LGPD",                 icon: Lock,             path: "/lgpd",                   group: "Sistema" },
