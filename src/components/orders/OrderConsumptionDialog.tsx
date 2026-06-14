@@ -10,6 +10,8 @@ import {
    calculateGradeBasedDm2,
    calculateConsumptionWithUnit,
    convertDm2ToPlates,
+   convertDm2ToLinearMeters,
+   isLinearWidthMissing,
    getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
    normalizeText,
    calcRequiredForGrade,
@@ -30,6 +32,9 @@ type ConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
+  /** Material de área (dm²) sem largura na ficha de componente → não dá pra
+   *  converter pra unidade física; valor fica ~100× inflado e a linha vira neutra. */
+  widthMissing?: boolean;
 };
 
 const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
@@ -69,10 +74,11 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
 
   if (existing) {
     existing.totalQuantity += totalQuantity;
+    if (row.widthMissing) existing.widthMissing = true;
     return;
   }
 
-  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity });
+  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing });
 };
 
 export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, title }: Props) {
@@ -317,12 +323,13 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           productUnit: 'placa', color: '—', totalQuantity: insolePlates,
         });
 
-        // Solado
-        const soleColor = (() => {
-          const c = (orderColor || '').toLowerCase();
-          if (c.includes('preto') || c.includes('black') || c.includes('pb')) return 'Preto';
-          return 'Caramelo';
-        })();
+        // Solado — cor REAL do solado resolvido (soleColorMap) em vez de chutar
+        // Preto/Caramelo por string. Espelha resolve_sole_color do débito.
+        // Auditoria 2026-06-14, Área 2.
+        const resolvedSoleProd = soleProductIdForInsole
+          ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole)
+          : null;
+        const soleColor = ((resolvedSoleProd as any)?.color || orderColor || '—').trim() || '—';
         // Solado: regra industrial fixa = 1 par de solado por par produzido (sempre que ficha define sole_material)
         const solePerPair = sheet?.sole_material ? 1 : 0;
         addConsumptionRow(consumptionMap, {
@@ -379,13 +386,35 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           }
 
           let productUnit = product.unit || 'un';
-          let totalQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
-          if (productUnit === 'cm') { totalQty = totalQty / 100; productUnit = 'metro'; }
+          const unitLc = productUnit.toLowerCase();
+          const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+          const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
+          let totalQty = rawQty;
+          let widthMissing = false;
+
+          // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
+          // componente e quantity_per_unit em dm²/par. Converter pra metros
+          // lineares pela largura — senão aparece ~100× inflado. Espelha o motor
+          // canônico orderConsumption.ts (auditoria 2026-06-14, Top10 #5).
+          const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
+          if (isLinearUnit && cs) {
+            if (!isLinearWidthMissing(cs as any, productUnit)) {
+              totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
+              productUnit = 'metro';
+            } else {
+              widthMissing = true;
+              totalQty = rawQty;
+              productUnit = 'dm2';
+            }
+          } else if (unitLc === 'cm') {
+            totalQty = rawQty / 100;
+            productUnit = 'metro';
+          }
 
           addConsumptionRow(consumptionMap, {
             componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''),
             groupName, materialName: product.name || groupName, productUnit,
-            color: material.color || '—', totalQuantity: totalQty,
+            color: material.color || '—', totalQuantity: totalQty, widthMissing,
           });
         }
       }
@@ -572,7 +601,15 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
                           <TableCell className="font-medium">{row.groupName}</TableCell>
                           <TableCell>{row.materialName}</TableCell>
                           <TableCell>{row.color}</TableCell>
-                          <TableCell className="text-right font-mono font-bold">{row.totalQuantity.toFixed(2)}</TableCell>
+                          <TableCell className={`text-right font-mono font-bold ${row.widthMissing ? 'text-amber-600' : ''}`}>
+                            {row.totalQuantity.toFixed(2)}
+                            {row.widthMissing && (
+                              <span
+                                className="ml-1 cursor-help"
+                                title="Material de área sem largura na ficha de componente — valor em dm² (não convertido). Cadastre a largura em Materiais → Ficha de Componente → Dimensões."
+                              >⚠</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-center text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
                         </TableRow>
                       ))}
