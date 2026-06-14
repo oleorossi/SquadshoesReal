@@ -61,11 +61,18 @@ interface PvGroup {
 // quando ausente (coluna nullable) cai em created_at pra a OP não sumir do filtro.
 const effDateOf = (o: EligibleOp): string => o.planned_start || (o.created_at || '').slice(0, 10);
 
-// Status reais no banco (acento + capital): OP ativa em produção e PV "pickável".
-// Picking parte do INÍCIO da produção — por isso a OP tem que estar viva (não
-// Finalizado/Cancelada) e o PV não pode estar Faturado/Cancelado/Finalizado s/ NF.
+// Status reais no banco (acento + capital). A elegibilidade do picking é
+// DIRIGIDA PELA OP: a OP tem que estar viva (Em Produção / Reservado) e o picking
+// do PV não pode já ter sido feito em massa. O status do PV NÃO é allow-list —
+// só EXCLUI PVs realmente mortos (Cancelado / Rascunho).
+//
+// ⚠ Antes era allow-list ['Aprovado','Em Produção'], que escondia OPs ainda
+// EM PRODUÇÃO de PVs já FATURADOS. Como o faturamento ocorre DURANTE a produção
+// neste negócio (~78% dos PVs faturados), ~11 OPs em produção sumiam do picking
+// (bug reportado: "as que estão em produção não estão em picking"). Uma OP ativa
+// precisa de separação mesmo que o PV já tenha sido faturado.
 const ACTIVE_OP_STATUSES = ['Em Produção', 'Reservado'];
-const PICKABLE_PV_STATUSES = ['Aprovado', 'Em Produção'];
+const NON_PICKABLE_PV_STATUSES = ['Cancelado', 'Cancelada', 'Rascunho'];
 
 // Intervalo "sem filtro" (mostra todas as elegíveis).
 const SEM_FILTRO: DateRange = { from: '0000-01-01', to: '9999-12-31' };
@@ -133,7 +140,7 @@ export default function PickingListPage() {
       return (data || []).filter((o: any) => {
         const so = o.sale_orders;
         return so
-          && PICKABLE_PV_STATUSES.includes(so.status)
+          && !NON_PICKABLE_PV_STATUSES.includes(so.status)
           && so.picking_individually_done_at == null;
       }) as EligibleOp[];
     },
