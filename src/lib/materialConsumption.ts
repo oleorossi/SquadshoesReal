@@ -89,6 +89,7 @@ const convertDimensionToMm = (value?: number | null, unit?: string | null) => {
   const normalizedUnit = normalizeText(unit);
 
   if (normalizedUnit === 'cm') return numericValue * 10;
+  if (normalizedUnit === 'dm') return numericValue * 100;
   if (normalizedUnit === 'm' || normalizedUnit === 'metro' || normalizedUnit === 'mt') return numericValue * 1000;
 
   return numericValue;
