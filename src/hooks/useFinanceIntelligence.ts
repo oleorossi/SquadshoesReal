@@ -38,6 +38,9 @@ export type DREMonth = {
   ebitda: number;
   ebitdaPct: number;
   impostos: number;
+  /** Despesas financeiras de juros de factoring (regime caixa). Linha separada —
+   *  ver decisão Leonardo 2026-06-14: AR é gravada bruta, o juros vira despesa. */
+  jurosFactoring: number;
   resultadoLiquido: number;
   /** % do lucro líquido sobre a receita — resposta direta à pergunta
    *  "se faturei 100k, quanto vai pro meu bolso". Fórmula:
@@ -146,30 +149,59 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
 }
 
 /**
- * Auto-generated DRE for last N months (default 6)
+ * DRE canônica — REGIME DE CAIXA (decisão Leonardo 2026-06-14).
+ *
+ * Motor ÚNICO `dreByCash`: tudo reconhecido pela data em que o dinheiro entra/sai,
+ * NÃO por competência (due_date). Antes existiam 2 DREs irreconciliáveis — uma por
+ * caixa (DRETab, não-montada) e esta por competência. Agora há uma só, por caixa:
+ *   • Receita  = accounts_receivable.amount_received na data payment_date (entrou caixa)
+ *   • CMV      = AP material/MOD/frete pagos na data payment_date (transitório — o
+ *                grupo 3 troca por CMV reconhecido proporcional ao recebimento)
+ *   • Desp.Op  = demais AP pagas na data payment_date
+ *   • Juros factoring = financial_entries (sale_order_factoring) — despesa financeira
+ *                separada (a AR agora é bruta, ver useSaleOrders.ts)
+ *
+ * O relatório por COMPETÊNCIA/variação de estoque continua disponível como
+ * REFERÊNCIA em useDREInventoryVariation (não é a DRE principal).
+ *
+ * ⚠ Limitação do modelo de dados: pagamentos parciais sem payment_date não entram
+ * (só conta o que tem data de caixa). Não há ledger de pagamentos — payment_date é
+ * único por linha (reflete o último pagamento).
  */
 export function useDREAuto(monthsBack: number = 6) {
   return useQuery({
-    queryKey: ['dre-auto', monthsBack],
+    queryKey: ['dre-auto-cash', monthsBack],
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const now = new Date();
       const startDate = format(startOfMonth(subMonths(now, monthsBack - 1)), 'yyyy-MM-dd');
       const endDate = format(endOfMonth(now), 'yyyy-MM-dd');
 
-      const [recRes, payRes, companyRes] = await Promise.all([
+      const [recRes, payRes, factRes, companyRes] = await Promise.all([
+        // Receita por CAIXA: linhas com recebimento na janela (payment_date).
         supabase
           .from('accounts_receivable')
-          .select('due_date, amount, amount_received, status, category')
-          .gte('due_date', startDate)
-          .lte('due_date', endDate)
+          .select('payment_date, amount_received, status')
+          .gte('payment_date', startDate)
+          .lte('payment_date', endDate)
+          .gt('amount_received', 0)
           .neq('status', 'cancelled'),
+        // Despesas por CAIXA: linhas pagas na janela (payment_date).
         supabase
           .from('accounts_payable')
-          .select('due_date, amount, amount_paid, status, category')
-          .gte('due_date', startDate)
-          .lte('due_date', endDate)
+          .select('payment_date, amount_paid, status, category')
+          .gte('payment_date', startDate)
+          .lte('payment_date', endDate)
+          .gt('amount_paid', 0)
           .neq('status', 'cancelled'),
+        // Juros de factoring: despesa financeira separada (AR é bruta).
+        supabase
+          .from('financial_entries')
+          .select('entry_date, amount, type, reference_type, status')
+          .eq('reference_type', 'sale_order_factoring')
+          .eq('type', 'despesa')
+          .gte('entry_date', startDate)
+          .lte('entry_date', endDate),
         // Regime tributário da empresa primária pra ajustar DRE:
         // regime_tributario='1' = Simples Nacional → impostos vão no DAS,
         // não devem somar separadamente em "impostos" no DRE.
@@ -181,6 +213,7 @@ export function useDREAuto(monthsBack: number = 6) {
       ]);
       if (recRes.error) throw recRes.error;
       if (payRes.error) throw payRes.error;
+      if (factRes.error) throw factRes.error;
       const isSimplesNacional = String(companyRes?.data?.regime_tributario || '') === '1';
 
       const months: Record<string, DREMonth> = {};
@@ -196,24 +229,27 @@ export function useDREAuto(monthsBack: number = 6) {
           ebitda: 0,
           ebitdaPct: 0,
           impostos: 0,
+          jurosFactoring: 0,
           resultadoLiquido: 0,
           resultadoLiquidoPct: 0,
         };
       }
 
-      // Receitas: accounts_receivable (regime de competência por due_date)
+      // Receitas: caixa recebido (amount_received) na data payment_date.
       (recRes.data || []).forEach((r) => {
-        const m = r.due_date.substring(0, 7);
-        if (months[m]) months[m].receita += Number(r.amount);
+        if (!r.payment_date) return;
+        const m = r.payment_date.substring(0, 7);
+        if (months[m]) months[m].receita += Number(r.amount_received || 0);
       });
 
-      // Despesas por categoria
-      // Auditoria mai/2026: 'frete' agora compõe CMV (frete sobre compras é
-      // custo do produto). Antes ia pra "desp. operacional" e inflava o EBITDA.
+      // Despesas por categoria — caixa pago (amount_paid) na data payment_date.
+      // Auditoria mai/2026: 'frete' compõe CMV (frete sobre compras é custo do
+      // produto). Antes ia pra "desp. operacional" e inflava o EBITDA.
       (payRes.data || []).forEach((p) => {
-        const m = p.due_date.substring(0, 7);
+        if (!p.payment_date) return;
+        const m = p.payment_date.substring(0, 7);
         if (!months[m]) return;
-        const v = Number(p.amount);
+        const v = Number(p.amount_paid || 0);
         const cat = p.category;
         if (cat === 'material' || cat === 'mao_de_obra' || cat === 'frete') {
           months[m].cmv += v;
@@ -232,6 +268,15 @@ export function useDREAuto(monthsBack: number = 6) {
         }
       });
 
+      // Juros de factoring (despesa financeira) por mês de lançamento.
+      (factRes.data || []).forEach((e) => {
+        const st = String(e.status || '').toLowerCase();
+        if (st === 'cancelado' || st === 'cancelled' || st === 'estornado') return;
+        if (!e.entry_date) return;
+        const m = e.entry_date.substring(0, 7);
+        if (months[m]) months[m].jurosFactoring += Number(e.amount || 0);
+      });
+
       // Calcular derivados.
       // resultadoLiquidoPct = "% do faturamento que vira lucro líquido" —
       // métrica principal de saúde financeira. Equivalente direto à pergunta
@@ -241,7 +286,7 @@ export function useDREAuto(monthsBack: number = 6) {
         m.margemBrutaPct = m.receita > 0 ? (m.margemBruta / m.receita) * 100 : 0;
         m.ebitda = m.margemBruta - m.despOperacionais;
         m.ebitdaPct = m.receita > 0 ? (m.ebitda / m.receita) * 100 : 0;
-        m.resultadoLiquido = m.ebitda - m.impostos;
+        m.resultadoLiquido = m.ebitda - m.impostos - m.jurosFactoring;
         m.resultadoLiquidoPct = m.receita > 0 ? (m.resultadoLiquido / m.receita) * 100 : 0;
       });
 

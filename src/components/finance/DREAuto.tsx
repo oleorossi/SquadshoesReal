@@ -75,7 +75,8 @@ export function DREAuto() {
             DRE — Demonstrativo de Resultado Automático
           </h3>
           <p className="text-xs text-muted-foreground">
-            Calculado automaticamente a partir das contas a pagar (CMV/despesas) e a receber (receita)
+            Regime de <strong>caixa</strong> — reconhecido pela data em que o dinheiro entra
+            (recebimento) / sai (pagamento). Juros de factoring entram como despesa financeira.
           </p>
         </div>
         <div className="flex gap-1">
@@ -118,9 +119,9 @@ export function DREAuto() {
               </p>
             </div>
             <div className="text-xs text-muted-foreground max-w-sm leading-relaxed">
-              <p className="font-mono text-[10px] mb-1">FÓRMULA</p>
+              <p className="font-mono text-[10px] mb-1">FÓRMULA (regime caixa)</p>
               <p>
-                Receita − CMV (material/MOD/frete) − Despesas Operacionais − Impostos
+                Receita recebida − CMV (material/MOD/frete) − Despesas Operacionais − Impostos − Juros Factoring
               </p>
               <p className="mt-1 text-[10px]">
                 Benchmark indústria: ≥15% saudável · 8–15% ok · &lt;8% atenção
@@ -173,6 +174,7 @@ export function DREAuto() {
           <CardTitle className="text-sm flex items-center gap-2">
             <PackageSearch className="h-4 w-4 text-primary" />
             CMV por Variação de Estoque
+            <Badge variant="outline" className="text-[10px] font-normal">referência · competência</Badge>
             <span className="ml-auto flex items-center gap-1 text-xs font-normal text-muted-foreground">
               <Info className="h-3 w-3" />
               Estoque Inicial + Compras − Estoque Final
@@ -327,6 +329,7 @@ export function DREAuto() {
                 <TableHead className="text-right">EBITDA</TableHead>
                 <TableHead className="text-center">%</TableHead>
                 <TableHead className="text-right">(-) Impostos</TableHead>
+                <TableHead className="text-right">(-) Juros Fact.</TableHead>
                 <TableHead className="text-right">Resultado</TableHead>
                 <TableHead className="text-center">% bolso</TableHead>
               </TableRow>
@@ -356,6 +359,7 @@ export function DREAuto() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono text-destructive">{fmt(m.impostos)}</TableCell>
+                  <TableCell className="text-right font-mono text-destructive">{fmt(m.jurosFactoring)}</TableCell>
                   <TableCell className={cn(
                     'text-right font-mono font-bold',
                     m.resultadoLiquido >= 0 ? 'text-success' : 'text-destructive'
