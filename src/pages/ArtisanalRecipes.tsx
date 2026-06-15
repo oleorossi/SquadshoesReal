@@ -166,7 +166,7 @@ export default function ArtisanalRecipes() {
             <Sparkles className="h-4 w-4" /> Receitas
           </TabsTrigger>
           <TabsTrigger value="optimizer" className="gap-1.5">
-            <Scissors className="h-4 w-4" /> Otimizador de Corte
+            <Scissors className="h-4 w-4" /> Otimização de Corte de Rolo
           </TabsTrigger>
         </TabsList>
 
