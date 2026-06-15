@@ -501,12 +501,18 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // receita → largura do grupo (`product_groups.dimensions_width`).
       const recipeOutputNorms = new Set<string>();
       const recipeWidth = new Map<string, number>();
+      // Base do rolo por norm — INDEPENDENTE de yield (o `recipeMap` acima exige
+      // yield > 0; o agrupamento por base+cor do otimizador precisa valer também
+      // pra receitas yield-0, igual aos outros 2 painéis). Não ler do recipeMap.
+      const recipeBaseByNorm = new Map<string, string>();
       for (const r of (recipesData || []) as any[]) {
         const norm = normTxt(r.artisanal_product_name || '');
         if (!norm) continue;
         recipeOutputNorms.add(norm);
         const w = Number(r.cut_width_mm) || 0;
         if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+        const base = (r.base_product_name || '').toString().trim();
+        if (base && !recipeBaseByNorm.has(norm)) recipeBaseByNorm.set(norm, base);
       }
       const groupWidthByNorm = new Map<string, number>();
       const groupNameByNorm = new Map<string, string>();
@@ -580,7 +586,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         if (!detected) continue;
         const largura_mm = strapWidthForNorm(norm);
         const color = (row.color || '—').toString().trim() || '—';
-        const baseName = (recipeMap.get(norm)?.base || '').toString().trim() || undefined;
+        const baseName = recipeBaseByNorm.get(norm) || undefined;
         artisanalCut.push({
           key: `${norm}||${color.toLowerCase()}`,
           groupName: groupNameByNorm.get(norm) || row.groupName,
