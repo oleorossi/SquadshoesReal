@@ -5,7 +5,6 @@ import {
   normalizeWidthToMm,
   ROLO_LARGURA_MM,
   ROLO_COMPRIMENTO_M,
-  TIRA_DIVISOR_MM,
   KERF_MM,
   PERDA_PCT,
 } from '@/lib/strapRollCut';
@@ -13,29 +12,27 @@ import {
 /**
  * GATE da fórmula de corte do rolo (tiras artesanais).
  *
- * Cobre TODOS os valores da tabela que o Leonardo passou e confirma que
- * `metros_uteis` e `cm_a_cortar` batem com o cálculo manual a 15% de perda.
+ * Fórmula (confirmada pelo Leonardo em 2026-06-14): cada banda de `cut_width_mm`
+ * cortada ao longo da LARGURA do rolo vira UMA tira pronta.
+ *   tiras_por_rolo = floor(1370 ÷ cut_width_mm)
+ *   metros_uteis   = tiras_por_rolo × 40 × 0,85   // 15% de perda
  */
 
-// [largura_mm, tiras_por_rolo, metros_uteis] — tabela canônica do Leonardo
-// (15% de perda: metros_uteis = tiras × 40 × 0,85).
+// [cut_width_mm, tiras_por_rolo, metros_uteis] — receitas reais + limites do rolo.
+// (15% de perda: metros_uteis = tiras × 40 × 0,85.)
 const TABELA: Array<[number, number, number]> = [
-  [100, 4, 136],
-  [150, 7, 238],
-  [200, 9, 306],
-  [250, 11, 374],
-  [300, 14, 476],
-  [400, 19, 646],
-  [500, 23, 782],
-  [685, 32, 1088],
-  [1370, 65, 2210],
+  [11, 124, 4216], // Tira chata Costurada 11mm (cut=11)
+  [20, 68, 2312], // Tira Overlock 5mm / Tira chata 8mm (cut=20)
+  [23, 59, 2006], // TRANÇA (cut=23)
+  [25, 54, 1836], // Tira chata 25mm (cut=25)
+  [685, 2, 68], // metade da largura do rolo → 2 bandas
+  [1370, 1, 34], // banda = rolo inteiro → 1 tira
 ];
 
 describe('constantes', () => {
   it('valores padrão do rolo e perda', () => {
     expect(ROLO_LARGURA_MM).toBe(1370);
     expect(ROLO_COMPRIMENTO_M).toBe(40);
-    expect(TIRA_DIVISOR_MM).toBe(21);
     expect(PERDA_PCT).toBeCloseTo(0.15, 10);
   });
 
@@ -69,27 +66,33 @@ describe('computeStrapRollCut — tabela do Leonardo', () => {
 
 describe('computeStrapRollCut — propriedades', () => {
   it('rolo cheio: precisar de metros_uteis de tira ⇒ cortar o rolo inteiro (4000 cm)', () => {
-    const r1 = computeStrapRollCut({ largura_mm: 100, metros_necessarios: 0 });
-    const cheio = computeStrapRollCut({ largura_mm: 100, metros_necessarios: r1.metros_uteis_rolo });
+    const r1 = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 0 });
+    const cheio = computeStrapRollCut({ largura_mm: 20, metros_necessarios: r1.metros_uteis_rolo });
     expect(cheio.cm_a_cortar).toBeCloseTo(4000, 6);
   });
 
   it('metade do rendimento ⇒ metade do rolo (2000 cm)', () => {
-    const r1 = computeStrapRollCut({ largura_mm: 100, metros_necessarios: 0 });
-    const metade = computeStrapRollCut({ largura_mm: 100, metros_necessarios: r1.metros_uteis_rolo / 2 });
+    const r1 = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 0 });
+    const metade = computeStrapRollCut({ largura_mm: 20, metros_necessarios: r1.metros_uteis_rolo / 2 });
     expect(metade.cm_a_cortar).toBeCloseTo(2000, 6);
   });
 
-  it('largura no limite do rolo (1370mm) é válida', () => {
+  it('largura no limite do rolo (1370mm) é válida → 1 tira', () => {
     const r = computeStrapRollCut({ largura_mm: ROLO_LARGURA_MM, metros_necessarios: 50 });
     expect(r.valid).toBe(true);
-    expect(r.tiras_por_rolo).toBe(65);
+    expect(r.tiras_por_rolo).toBe(1);
   });
 
-  it('tiras_por_rolo = floor(largura / 21) (sem kerf)', () => {
+  it('tiras_por_rolo = floor(1370 / cut_width)', () => {
     for (const [largura, tiras] of TABELA) {
-      expect(Math.floor(largura / TIRA_DIVISOR_MM)).toBe(tiras);
+      expect(Math.floor(ROLO_LARGURA_MM / largura)).toBe(tiras);
     }
+  });
+
+  it('largura menor ⇒ mais tiras (monotonicidade inversa)', () => {
+    const fino = computeStrapRollCut({ largura_mm: 11, metros_necessarios: 0 });
+    const largo = computeStrapRollCut({ largura_mm: 25, metros_necessarios: 0 });
+    expect(fino.tiras_por_rolo).toBeGreaterThan(largo.tiras_por_rolo);
   });
 });
 
@@ -108,11 +111,12 @@ describe('computeStrapRollCut — validações', () => {
     expect(r.widthMissing).toBe(true);
   });
 
-  it('largura abaixo do mínimo de uma tira (< 21mm) → inválida', () => {
+  it('largura pequena (< 21mm) agora é VÁLIDA — vira muitas tiras', () => {
     const r = computeStrapRollCut({ largura_mm: 10, metros_necessarios: 100 });
-    expect(r.valid).toBe(false);
+    expect(r.valid).toBe(true);
     expect(r.widthMissing).toBe(false);
-    expect(r.warning).toMatch(/mínimo/i);
+    expect(r.warning).toBeUndefined();
+    expect(r.tiras_por_rolo).toBe(137); // floor(1370 / 10)
   });
 
   it('largura acima da largura do rolo (> 1370mm) → inválida', () => {
@@ -122,9 +126,9 @@ describe('computeStrapRollCut — validações', () => {
   });
 
   it('metros_necessarios = 0 → calcula rendimento mas cm_a_cortar 0', () => {
-    const r = computeStrapRollCut({ largura_mm: 200, metros_necessarios: 0 });
+    const r = computeStrapRollCut({ largura_mm: 20, metros_necessarios: 0 });
     expect(r.valid).toBe(true);
-    expect(r.tiras_por_rolo).toBe(9);
+    expect(r.tiras_por_rolo).toBe(68);
     expect(r.cm_a_cortar).toBe(0);
   });
 });
