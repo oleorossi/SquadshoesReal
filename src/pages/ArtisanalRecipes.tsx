@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle, Scissors } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,10 +22,12 @@ import {
 import { useContractors } from '@/hooks/useContractors';
  import { useProducts, getBaseName } from '@/hooks/useProducts';
  import { useGroups } from '@/hooks/useGroups';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import CuttingOptimizerPanel from '@/components/recipes/CuttingOptimizerPanel';
 
 const emptyRecipe: Partial<ArtisanalRecipe> = {
   name: '',
@@ -158,6 +160,17 @@ export default function ArtisanalRecipes() {
         }
       />
 
+      <Tabs defaultValue="recipes" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="recipes" className="gap-1.5">
+            <Sparkles className="h-4 w-4" /> Receitas
+          </TabsTrigger>
+          <TabsTrigger value="optimizer" className="gap-1.5">
+            <Scissors className="h-4 w-4" /> Otimizador de Corte
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="recipes" className="space-y-4 mt-0">
       {/* How-to card */}
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="p-4 text-sm space-y-2">
@@ -312,6 +325,12 @@ export default function ArtisanalRecipes() {
               </TableBody>
             </Table>
       </Panel>
+        </TabsContent>
+
+        <TabsContent value="optimizer" className="mt-0">
+          <CuttingOptimizerPanel recipes={recipes} />
+        </TabsContent>
+      </Tabs>
 
       {/* Recipe Dialog */}
       <Dialog
