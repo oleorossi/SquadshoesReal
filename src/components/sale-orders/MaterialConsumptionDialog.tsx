@@ -421,11 +421,21 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         }
       }
 
+      // Modo de embalagem do PEDIDO — quando a ficha tem várias caixas no BOM
+      // (colmeia + individual), o motor mostra só a caixa do modo escolhido.
+      const { data: soPkg } = await supabase
+        .from('sale_orders')
+        .select('packaging_mode')
+        .eq('id', saleOrderId)
+        .single();
+      const packagingMode = (soPkg as any)?.packaging_mode ?? null;
+      const itemsWithMode = (items as any[]).map((it) => ({ ...it, packagingMode }));
+
       // Motor CANÔNICO (mesmo de @/lib/orderConsumption usado pela ficha do
       // operador, por OP). Aqui calculamos por PEDIDO: agrega todos os itens do
       // PV. Só o consumo previsto — a disponibilidade é anotada logo abaixo.
       const rows = computeConsumptionForItems(
-        items as unknown as ConsumptionItem[],
+        itemsWithMode as unknown as ConsumptionItem[],
         ctx,
       ) as ConsumptionRow[];
 

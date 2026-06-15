@@ -201,6 +201,46 @@ describe('orderConsumption — motor canônico', () => {
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();
   });
 
+  // ── Embalagem: filtro de caixa por packaging_mode (bug PV-00141) ───────────
+  // A ficha lista DUAS caixas no BOM como alternativas (colmeia 0.083/par +
+  // individual 1/par), ambas no grupo "EMBALAGEM". Sem filtro, addConsumptionRow
+  // funde as duas e soma a qtd; com packaging_mode, mostra só a do modo.
+  function ctxComCaixas(): ConsumptionContext {
+    const ctx = buildContext();
+    ctx.materials = [
+      ...ctx.materials,
+      { sheet_id: 'sheet-1', product_id: 'p-cx-colmeia', group_id: 'g-embal', quantity_per_unit: 0.083, color: null, products: { name: 'CAIXA COLMEIA 11', unit: 'un', category: 'Embalagem' }, product_groups: { name: 'EMBALAGEM' } },
+      { sheet_id: 'sheet-1', product_id: 'p-cx-individual', group_id: 'g-embal', quantity_per_unit: 1, color: null, products: { name: 'CAIXA INDIVIDUAL 11', unit: 'un', category: 'Embalagem' }, product_groups: { name: 'EMBALAGEM' } },
+    ];
+    return ctx;
+  }
+
+  it('packaging_mode colmeia → mostra só CAIXA COLMEIA (não soma a individual)', () => {
+    const item = buildItem({ packagingMode: 'colmeia' });
+    const rows = computeConsumptionForItems([item], ctxComCaixas());
+    const embal = rows.filter(r => r.componentType === 'Embalagem');
+    expect(embal).toHaveLength(1);
+    expect(embal[0].materialName).toBe('CAIXA COLMEIA 11');
+    expect(embal[0].totalQuantity).toBeCloseTo(24 * 0.083, 6); // 1.992, não 25.992
+  });
+
+  it('packaging_mode individual → mostra só CAIXA INDIVIDUAL', () => {
+    const item = buildItem({ packagingMode: 'individual' });
+    const rows = computeConsumptionForItems([item], ctxComCaixas());
+    const embal = rows.filter(r => r.componentType === 'Embalagem');
+    expect(embal).toHaveLength(1);
+    expect(embal[0].materialName).toBe('CAIXA INDIVIDUAL 11');
+    expect(embal[0].totalQuantity).toBeCloseTo(24, 6);
+  });
+
+  it('SEM packaging_mode → comportamento legado (funde as duas caixas, qtd somada)', () => {
+    const item = buildItem(); // sem packagingMode
+    const rows = computeConsumptionForItems([item], ctxComCaixas());
+    const embal = rows.filter(r => r.componentType === 'Embalagem');
+    expect(embal).toHaveLength(1); // fundidas no grupo EMBALAGEM
+    expect(embal[0].totalQuantity).toBeCloseTo(24 * (0.083 + 1), 6); // 25.992
+  });
+
   it('solado fachetado gera linha Fachete (forração extra) convertida dm²→metro', () => {
     // Espelha o ramo de calculate_order_consumption (SQL). Solado is_fachetado
     // com fachete_lining_consumption_dm2 = 2 dm²/par em todas as numerações.

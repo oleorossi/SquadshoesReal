@@ -25,6 +25,7 @@ import {
   normalizeWidthToMm,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 
 type ConsumptionRow = {
@@ -120,19 +121,25 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         supabase
           .from('sale_order_items')
           .select(`
-            reference_id, color, quantity, grade, fichas, strap_colors,
+            sale_order_id, reference_id, color, quantity, grade, fichas, strap_colors,
             technical_sheets(upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_color, lining_accessories, components_accessories, lining_consumption_per_size, insole_consumption_per_size)
           `)
           .in('sale_order_id', saleOrderIds),
         supabase
           .from('sale_orders')
-          .select('order_number, client_order_number')
+          .select('id, order_number, client_order_number, packaging_mode')
           .in('id', saleOrderIds),
       ]);
 
       if (itemsError) throw itemsError;
       setOrderHeaders((saleOrders || []).map(so => ({ order_number: so.order_number, client_order_number: so.client_order_number })));
       if (!items || items.length === 0) { setRows([]); return; }
+
+      // sale_order_id → packaging_mode (a ficha pode listar várias caixas no BOM;
+      // mostra só a do modo do pedido). Por-pedido, pois a view aceita N PVs.
+      const packagingModeByOrder = new Map<string, string | null>(
+        (saleOrders || []).map((so: any) => [so.id, so.packaging_mode ?? null]),
+      );
 
       const refIds = [...new Set(items.map(i => i.reference_id).filter(Boolean))];
 
@@ -473,11 +480,30 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
 
         const itemMaterials = (materials || []).filter(m => m.sheet_id === item.reference_id);
+
+        // Embalagem: ficha pode listar várias caixas (colmeia + individual) no
+        // BOM; mostra só a do packaging_mode do pedido (espelha orderConsumption).
+        const itemPackagingMode = packagingModeByOrder.get((item as any).sale_order_id) ?? null;
+        const presentCaixaTypes = new Set<CollectiveType>();
+        if (itemPackagingMode) {
+          for (const m of itemMaterials) {
+            const p = m.products as any;
+            if (!p) continue;
+            const gName = (m.product_groups as any)?.name || p.category || p.name || '';
+            if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
+            const t = caixaCollectiveTypeFromName(p.name);
+            if (t) presentCaixaTypes.add(t);
+          }
+        }
+
         for (const material of itemMaterials) {
           const product = material.products as any;
           const group = material.product_groups as any;
           if (!product) continue;
           const groupName = group?.name || product.category || product.name || 'Outros';
+          // Embalagem com modo definido: pula caixa de outro modo (só quando há alternativas).
+          if (classifyBomMaterial(groupName, product.name || '', product.category || '') === 'Embalagem'
+            && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
           // Only skip BOM entry if the spec already accounts for consumption of this group
           // AND the BOM entry's category matches the spec type (to avoid excluding cabedal BOM when only lining spec exists)
           const groupKey = groupName.toLowerCase();

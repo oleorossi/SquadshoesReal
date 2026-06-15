@@ -61,3 +61,46 @@ export function volumesForPairs(mode: string | null | undefined, pairs: number, 
   const ppb = pairsPerVolumeForMode(mode, cadastrado);
   return Math.ceil(pairs / Math.max(ppb, 1));
 }
+
+/**
+ * Detecta o TIPO de caixa coletiva pelo NOME do produto de embalagem.
+ * Ex.: "CAIXA COLMEIA 11" → 'colmeia', "CAIXA INDIVIDUAL 11" → 'individual'.
+ * `null` quando o nome não denota um tipo conhecido (não é caixa tipada).
+ *
+ * Usado pelo consumo de materiais: uma ficha pode listar VÁRIAS caixas no BOM
+ * (colmeia + individual) como ALTERNATIVAS; o pedido escolhe uma via
+ * `packaging_mode`. Sem isso o motor somava as duas no grupo "EMBALAGEM".
+ */
+export function caixaCollectiveTypeFromName(name: string | null | undefined): CollectiveType | null {
+  const n = (name || '').toLowerCase();
+  if (!n) return null;
+  // colmeia/master/fitilho ANTES de individual (nomes como "individual master").
+  if (n.includes('colmeia') || n.includes('colméia')) return 'colmeia';
+  if (n.includes('master')) return 'master';
+  if (n.includes('fitilho')) return 'fitilho';
+  if (n.includes('individual')) return 'individual';
+  return null;
+}
+
+/**
+ * Decide se uma caixa de embalagem do BOM deve ser EXIBIDA no consumo, dado o
+ * `packaging_mode` do pedido e os tipos de caixa presentes na MESMA ficha.
+ *
+ * Só filtra quando há **alternativas reais** (≥ 2 tipos distintos na ficha) E a
+ * caixa do modo escolhido existe entre elas — aí mantém só a do modo e descarta
+ * as outras. Em qualquer outro caso (sem modo, caixa única, modo sem caixa
+ * cadastrada, ou caixa sem tipo reconhecível) NÃO filtra — degrada com elegância
+ * pra não esconder embalagem por engano.
+ */
+export function shouldShowCaixaForMode(
+  caixaName: string | null | undefined,
+  packagingMode: string | null | undefined,
+  presentTypes: Set<CollectiveType>,
+): boolean {
+  if (!packagingMode) return true;
+  const target = collectiveTypeForMode(packagingMode);
+  if (presentTypes.size < 2 || !presentTypes.has(target)) return true;
+  const t = caixaCollectiveTypeFromName(caixaName);
+  if (!t) return true; // caixa sem tipo reconhecível: mantém
+  return t === target;
+}
