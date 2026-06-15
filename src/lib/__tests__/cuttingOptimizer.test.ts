@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   optimizeRollCutting,
   planRollCutting,
+  planRollsFromStrapRows,
   bandsForMeters,
   METROS_UTEIS_POR_BANDA,
   ROLO_LARGURA_MM,
@@ -9,6 +10,7 @@ import {
   type CutBlock,
   type RollCutDemand,
 } from '@/lib/cuttingOptimizer';
+import { computeStrapRollCut, type ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 
 /**
  * GATE do otimizador de corte do rolo (FFD multi-tira).
@@ -236,5 +238,94 @@ describe('planRollCutting — wrapper de alto nível', () => {
     expect(p.total_rolls).toBe(0);
     expect(p.warnings).toHaveLength(0);
     expect(p.breakdown[0].n_bandas).toBe(0);
+  });
+});
+
+// ─── Ponte PV: planRollsFromStrapRows (agrupa por base+cor) ──────────────────
+
+const strapRow = (o: Partial<ArtisanalStrapCutRow> & { groupName: string; color: string }): ArtisanalStrapCutRow => {
+  const largura_mm = o.largura_mm ?? 20;
+  const metros_necessarios = o.metros_necessarios ?? 34;
+  return {
+    key: o.key ?? `${o.groupName}||${o.color}`.toLowerCase(),
+    groupName: o.groupName,
+    color: o.color,
+    largura_mm,
+    metros_necessarios,
+    cut: computeStrapRollCut({ largura_mm, metros_necessarios }),
+    baseName: o.baseName,
+  };
+};
+
+describe('planRollsFromStrapRows — agrupamento por base+cor', () => {
+  it('vazio → nenhum plano', () => {
+    expect(planRollsFromStrapRows([])).toHaveLength(0);
+  });
+
+  it('tiras da MESMA base+cor co-empacotam num só grupo/plano', () => {
+    const rows = [
+      strapRow({ groupName: 'Tira chata 25mm', color: 'Caramelo', baseName: 'NAPA SOFT', largura_mm: 25, metros_necessarios: 100 }),
+      strapRow({ groupName: 'Tira Overlock 5mm', color: 'Caramelo', baseName: 'NAPA SOFT', largura_mm: 5, metros_necessarios: 500 }),
+      strapRow({ groupName: 'Tira chata 8mm', color: 'Caramelo', baseName: 'NAPA SOFT', largura_mm: 8, metros_necessarios: 200 }),
+    ];
+    const plans = planRollsFromStrapRows(rows);
+    expect(plans).toHaveLength(1);
+    expect(plans[0].baseName).toBe('NAPA SOFT');
+    expect(plans[0].color).toBe('Caramelo');
+    expect(plans[0].rows).toHaveLength(3);
+    // 3×25=75, 15×5=75, 6×8=48 → 198mm → 1 rolo (caso real do Leonardo).
+    expect(plans[0].plan.total_used_mm).toBe(198);
+    expect(plans[0].plan.total_rolls).toBe(1);
+  });
+
+  it('bases diferentes → planos separados', () => {
+    const rows = [
+      strapRow({ groupName: 'Tira A', color: 'Preto', baseName: 'NAPA SOFT', largura_mm: 20, metros_necessarios: 100 }),
+      strapRow({ groupName: 'Tira B', color: 'Preto', baseName: 'COURO LISO', largura_mm: 20, metros_necessarios: 100 }),
+    ];
+    const plans = planRollsFromStrapRows(rows);
+    expect(plans).toHaveLength(2);
+    // ordenado por base: COURO LISO antes de NAPA SOFT
+    expect(plans.map((p) => p.baseName)).toEqual(['COURO LISO', 'NAPA SOFT']);
+  });
+
+  it('mesma base, cores diferentes → planos separados (rolo dedicado por cor)', () => {
+    const rows = [
+      strapRow({ groupName: 'Tira A', color: 'Caramelo', baseName: 'NAPA SOFT', largura_mm: 20, metros_necessarios: 100 }),
+      strapRow({ groupName: 'Tira A', color: 'Preto', baseName: 'NAPA SOFT', largura_mm: 20, metros_necessarios: 100 }),
+    ];
+    const plans = planRollsFromStrapRows(rows);
+    expect(plans).toHaveLength(2);
+    expect(plans.map((p) => p.color)).toEqual(['Caramelo', 'Preto']);
+  });
+
+  it('sem baseName → fallback pra groupName (cada tira é seu próprio grupo)', () => {
+    const rows = [
+      strapRow({ groupName: 'Tira Trançada', color: 'Marrom', largura_mm: 20, metros_necessarios: 100 }),
+      strapRow({ groupName: 'Tira Vazada', color: 'Marrom', largura_mm: 20, metros_necessarios: 100 }),
+    ];
+    const plans = planRollsFromStrapRows(rows);
+    expect(plans).toHaveLength(2); // não co-empacotam (bases = nomes distintos)
+    expect(plans.map((p) => p.baseName).sort()).toEqual(['Tira Trançada', 'Tira Vazada']);
+  });
+
+  it('uma tira que excede 1 rolo gera plano multi-rolo', () => {
+    const rows = [
+      strapRow({ groupName: 'Tira larga', color: 'Azul', baseName: 'NAPA SOFT', largura_mm: 20, metros_necessarios: 2448 }),
+    ];
+    const plans = planRollsFromStrapRows(rows);
+    expect(plans).toHaveLength(1);
+    // ceil(2448/34)=72 bandas × 20mm = 1440mm > 1370 → 2 rolos
+    expect(plans[0].plan.total_rolls).toBe(2);
+  });
+
+  it('largura ausente (0) vira warning no plano, não quebra o agrupamento', () => {
+    const rows = [
+      strapRow({ groupName: 'Sem largura', color: 'X', baseName: 'NAPA SOFT', largura_mm: 0, metros_necessarios: 100 }),
+    ];
+    const plans = planRollsFromStrapRows(rows);
+    expect(plans).toHaveLength(1);
+    expect(plans[0].plan.total_rolls).toBe(0);
+    expect(plans[0].plan.warnings.length).toBeGreaterThan(0);
   });
 });

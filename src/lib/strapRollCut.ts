@@ -186,4 +186,12 @@ export interface ArtisanalStrapCutRow {
   metros_necessarios: number;
   /** Resultado do cálculo de corte do rolo. */
   cut: StrapRollCutResult;
+  /**
+   * Material-base do rolo (ex.: "NAPA SOFT") — `base_product_name` da receita
+   * artesanal cujo resultado é esta tira. Usado pelo otimizador para AGRUPAR
+   * várias tiras da mesma base+cor num rolo (`planRollsFromStrapRows`). Ausente
+   * quando a tira não casa com nenhuma receita (heurístico) — aí cada tira é seu
+   * próprio grupo.
+   */
+  baseName?: string;
 }

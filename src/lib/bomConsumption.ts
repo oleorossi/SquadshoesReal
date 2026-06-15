@@ -599,18 +599,21 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
   // ainda não foi migrada, refaz sem ela (não quebra o painel).
   const recipeOutputNorms = new Set<string>();
   const recipeWidth = new Map<string, number>();
+  // norm do resultado (artisanal_product_name) → material-base do rolo (base_product_name).
+  // Usado pelo otimizador (planRollsFromStrapRows) pra agrupar tiras por base+cor.
+  const recipeBaseByNorm = new Map<string, string>();
   {
     let rows: any[] | null = null;
     const withWidth = await supabase
       .from('artisanal_recipes')
-      .select('artisanal_product_name, cut_width_mm' as any)
+      .select('artisanal_product_name, cut_width_mm, base_product_name' as any)
       .eq('active', true);
     if (!withWidth.error) {
       rows = withWidth.data as any[];
     } else {
       const fallback = await supabase
         .from('artisanal_recipes')
-        .select('artisanal_product_name')
+        .select('artisanal_product_name, base_product_name')
         .eq('active', true);
       if (!fallback.error) rows = fallback.data as any[];
     }
@@ -620,6 +623,8 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
       recipeOutputNorms.add(norm);
       const w = Number(r.cut_width_mm) || 0;
       if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+      const base = (r.base_product_name || '').toString().trim();
+      if (base && !recipeBaseByNorm.has(norm)) recipeBaseByNorm.set(norm, base);
     }
   }
   const widthForNorm = (norm: string): number =>
@@ -641,7 +646,7 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
   }
 
   // Acumula metros de tira por (grupo+cor) só para as tiras detectadas artesanais.
-  const agg = new Map<string, { groupName: string; color: string; norm: string; metros: number }>();
+  const agg = new Map<string, { groupName: string; color: string; norm: string; metros: number; baseName?: string }>();
 
   for (const order of ordersData) {
     const sheetStraps: any[] = sheetStrapsMap.get(order.reference_id) || [];
@@ -676,7 +681,7 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
       const key = `${norm}||${color.toLowerCase()}`;
       const existing = agg.get(key);
       if (existing) existing.metros += metros;
-      else agg.set(key, { groupName: groupNameByNorm.get(norm) || groupName, color, norm, metros });
+      else agg.set(key, { groupName: groupNameByNorm.get(norm) || groupName, color, norm, metros, baseName: recipeBaseByNorm.get(norm) });
     }
   }
 
@@ -689,6 +694,7 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
       largura_mm,
       metros_necessarios: v.metros,
       cut: computeStrapRollCut({ largura_mm, metros_necessarios: v.metros }),
+      baseName: v.baseName,
     };
   });
 

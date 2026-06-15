@@ -278,18 +278,21 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
       // Query DEFENSIVA em `cut_width_mm` (coluna pode ainda não estar migrada).
       const recipeOutputNorms = new Set<string>();
       const recipeWidth = new Map<string, number>();
+      // norm do resultado → material-base do rolo (base_product_name), pro otimizador
+      // agrupar tiras por base+cor (planRollsFromStrapRows).
+      const recipeBaseByNorm = new Map<string, string>();
       {
         let recipeRows: any[] | null = null;
         const withWidth = await supabase
           .from('artisanal_recipes')
-          .select('artisanal_product_name, cut_width_mm' as any)
+          .select('artisanal_product_name, cut_width_mm, base_product_name' as any)
           .eq('active', true);
         if (!withWidth.error) {
           recipeRows = withWidth.data as any[];
         } else {
           const fallback = await supabase
             .from('artisanal_recipes')
-            .select('artisanal_product_name')
+            .select('artisanal_product_name, base_product_name')
             .eq('active', true);
           if (!fallback.error) recipeRows = fallback.data as any[];
         }
@@ -299,6 +302,8 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           recipeOutputNorms.add(norm);
           const w = Number(r.cut_width_mm) || 0;
           if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+          const base = (r.base_product_name || '').toString().trim();
+          if (base && !recipeBaseByNorm.has(norm)) recipeBaseByNorm.set(norm, base);
         }
       }
       const strapWidthForNorm = (norm: string) =>
@@ -317,7 +322,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           }
         }
       }
-      const artisanalAgg = new Map<string, { groupName: string; color: string; norm: string; metros: number }>();
+      const artisanalAgg = new Map<string, { groupName: string; color: string; norm: string; metros: number; baseName?: string }>();
 
       const consumptionMap = new Map<string, ConsumptionRow>();
       const soleSizeMap: SoleByType = {};
@@ -456,7 +461,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             const aKey = `${strapNorm}||${strapColor.toLowerCase()}`;
             const existing = artisanalAgg.get(aKey);
             if (existing) existing.metros += metros;
-            else artisanalAgg.set(aKey, { groupName: strapGroupNameByNorm.get(strapNorm) || strapGroupName, color: strapColor, norm: strapNorm, metros });
+            else artisanalAgg.set(aKey, { groupName: strapGroupNameByNorm.get(strapNorm) || strapGroupName, color: strapColor, norm: strapNorm, metros, baseName: recipeBaseByNorm.get(strapNorm) });
           }
         }
 
@@ -543,6 +548,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           largura_mm,
           metros_necessarios: v.metros,
           cut: computeStrapRollCut({ largura_mm, metros_necessarios: v.metros }),
+          baseName: v.baseName,
         };
       }).sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
 

@@ -32,6 +32,7 @@ import {
   ROLO_COMPRIMENTO_M,
   PERDA_PCT,
   normalizeWidthToMm,
+  type ArtisanalStrapCutRow,
 } from './strapRollCut';
 
 export { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M, PERDA_PCT };
@@ -349,4 +350,76 @@ export function planRollCutting(
     breakdown,
     warnings,
   };
+}
+
+// ─── Ponte PV: linhas de tira artesanal → planos de rolo por base+cor ────────
+
+/** Plano de corte de UMA base+cor: as tiras agrupadas + o empacotamento FFD. */
+export interface ArtisanalStrapRollPlan {
+  /** Material-base do rolo (ex.: "NAPA SOFT") — ou o grupo da tira no fallback. */
+  baseName: string;
+  /** Cor do rolo/tira. */
+  color: string;
+  /** Tiras (grupo+cor) que saem desta base+cor. */
+  rows: ArtisanalStrapCutRow[];
+  /** Empacotamento FFD desta base+cor (quantos rolos, disposição, sobra). */
+  plan: CuttingPlan;
+}
+
+/**
+ * Agrupa linhas de tira artesanal (`ArtisanalStrapCutRow[]`, vindas dos painéis do
+ * PV) por **base + cor** e roda o FFD por grupo — reusa `planRollCutting`.
+ *
+ * Cada tira vira UMA demanda (largura própria × metros), e várias tiras da mesma
+ * base+cor co-empacotam no(s) rolo(s) daquela base. Tiras sem base de receita
+ * (`baseName` ausente — detectadas só pelo heurístico) caem no fallback: a própria
+ * `groupName` vira a base, então formam um plano de 1 tira (= comportamento legado,
+ * sem co-empacotar). Pura e determinística (ordena por base→cor).
+ *
+ * A cor do rolo == cor da tira (a tira é cortada daquela cor de base), então agrupar
+ * por (baseName, color) é correto — não mistura rolos de cores diferentes.
+ */
+export function planRollsFromStrapRows(
+  rows: ArtisanalStrapCutRow[],
+  opts: PlanRollCuttingOptions = {},
+): ArtisanalStrapRollPlan[] {
+  const groups = new Map<
+    string,
+    { baseName: string; color: string; rows: ArtisanalStrapCutRow[] }
+  >();
+
+  for (const row of rows) {
+    const baseName = (row.baseName && row.baseName.trim()) || row.groupName || '—';
+    const color = (row.color || '—').trim() || '—';
+    const key = `${baseName.toLowerCase()}||${color.toLowerCase()}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { baseName, color, rows: [] };
+      groups.set(key, g);
+    }
+    g.rows.push(row);
+  }
+
+  const plans: ArtisanalStrapRollPlan[] = [];
+  for (const g of groups.values()) {
+    const demands: RollCutDemand[] = g.rows.map((r) => ({
+      recipe_id: r.key,
+      recipe_name: r.groupName,
+      cut_width_mm: r.largura_mm,
+      m_needed: r.metros_necessarios,
+    }));
+    plans.push({
+      baseName: g.baseName,
+      color: g.color,
+      rows: g.rows,
+      plan: planRollCutting(demands, opts),
+    });
+  }
+
+  plans.sort(
+    (a, b) =>
+      a.baseName.localeCompare(b.baseName, 'pt-BR') ||
+      a.color.localeCompare(b.color, 'pt-BR'),
+  );
+  return plans;
 }

@@ -580,6 +580,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         if (!detected) continue;
         const largura_mm = strapWidthForNorm(norm);
         const color = (row.color || '—').toString().trim() || '—';
+        const baseName = (recipeMap.get(norm)?.base || '').toString().trim() || undefined;
         artisanalCut.push({
           key: `${norm}||${color.toLowerCase()}`,
           groupName: groupNameByNorm.get(norm) || row.groupName,
@@ -587,6 +588,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           largura_mm,
           metros_necessarios: row.totalQuantity,
           cut: computeStrapRollCut({ largura_mm, metros_necessarios: row.totalQuantity }),
+          baseName,
         });
       }
       artisanalCut.sort((a, b) =>
