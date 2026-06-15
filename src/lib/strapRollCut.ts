@@ -1,36 +1,33 @@
 /**
  * Corte do rolo para TIRAS ARTESANAIS.
  *
- * Tiras artesanais são cortadas de um rolo padrão (40 m × 1370 mm). A largura de
- * corte cadastrada da tira (`cut_width_mm`) é a banda que o Leonardo corta ao
- * longo da LARGURA do rolo — cada banda dessas vira UMA tira pronta (já com sobra
- * de costura/sobreposição embutida; o nome da tira, ex. "Tira chata 8mm", é a
- * medida FINAL da peça, não a banda). A partir dela calculamos quantas tiras saem
- * da largura do rolo, o rendimento útil (já descontando 15% de perda) e, dado o
- * total de metros lineares de tira necessários no PV, quantos centímetros do
- * comprimento do rolo precisam ser cortados.
+ * Tiras artesanais são cortadas de um rolo padrão (40 m × 1370 mm). A `cut_width_mm`
+ * cadastrada da tira é a LARGURA da banda cortada ao longo da dimensão de 1370 mm do
+ * rolo — cada banda vira UMA tira pronta e tem o comprimento inteiro do rolo (40 m,
+ * → 34 m úteis após 15% de perda). O nome da tira (ex. "Tira chata 8mm") é a medida
+ * FINAL da peça, não a banda.
  *
- * Esta é a FONTE ÚNICA da matemática usada nos dois painéis de consumo do PV
- * (Resumo de Consumo e Lista de Separação). Toda mudança de fórmula mora aqui.
+ * O valor de saída (`cm_a_cortar`) é quanto da LARGURA do rolo (dos 1370 mm) precisa
+ * ser cortado para atender o consumo do PV — NÃO o comprimento percorrido. Confirmado
+ * pelo Leonardo em 2026-06-14 (PV-00140).
  *
- * Fórmula (confirmada pelo Leonardo em 2026-06-14):
- *   tiras_por_rolo   = floor(1370 ÷ cut_width_mm)        // bandas na largura do rolo
- *   metros_uteis     = tiras_por_rolo × 40 × 0,85        // 15% de perda
- *   cm_rolo_a_cortar = (metros_necessarios × 4000) ÷ metros_uteis
+ * Fórmula:
+ *   metros_uteis_por_banda = 40 × (1 − 0,15) = 34 m       // cada banda rende 34 m úteis
+ *   n_bandas               = ceil(metros_necessarios ÷ 34)
+ *   cm_a_cortar            = (n_bandas × cut_width_mm) ÷ 10
  *
- * 4000 = comprimento do rolo em cm (40 m × 100). Ou seja, cm_a_cortar é a fração
- * do rolo necessária (metros_necessarios / metros_uteis) aplicada ao comprimento
- * total do rolo.
+ * Conferência (cut=20mm, PV-00140):
+ *   2448 m   → ⌈2448/34⌉ = 72 bandas × 20mm = 1440mm = 144,0 cm
+ *   2148 m   → 64 × 20mm = 1280mm = 128,0 cm
+ *   1509,6 m → 45 × 20mm =  900mm =  90,0 cm
+ *   384 m    → 12 × 20mm =  240mm =  24,0 cm
+ *
+ * Esta é a FONTE ÚNICA da matemática usada nos painéis de consumo do PV (Resumo de
+ * Consumo, Lista de Separação e modal Consumo de Materiais). Toda mudança mora aqui.
  */
 
 export const ROLO_LARGURA_MM = 1370;
 export const ROLO_COMPRIMENTO_M = 40;
-/**
- * Kerf (espessura da lâmina por corte) — DESCARTADO por decisão do Leonardo
- * (2026-06-14): a fórmula usa floor(1370 ÷ cut_width) direto, SEM ajuste de
- * lâmina. Mantido em 0 só por referência.
- */
-export const KERF_MM = 0;
 /** Perda do rolo (aparas/sobras). 15%. */
 export const PERDA_PCT = 0.15;
 
@@ -43,13 +40,15 @@ export interface StrapRollCutInput {
 
 export interface StrapRollCutResult {
   largura_mm: number;
-  /** Quantas bandas (= tiras prontas) de `cut_width_mm` saem da largura do rolo. */
-  tiras_por_rolo: number;
-  /** Metros lineares de tira aproveitáveis em 1 rolo cheio (já com 15% perda). */
-  metros_uteis_rolo: number;
-  /** Centímetros do COMPRIMENTO do rolo a cortar para atender o consumo. */
+  /** Metros lineares úteis por banda cortada (= 40 m × 0,85 = 34 m). Constante. */
+  metros_uteis_por_banda: number;
+  /** Quantas bandas (= tiras prontas) de `cut_width_mm` precisam ser cortadas. */
+  n_bandas: number;
+  /** Centímetros da LARGURA do rolo a cortar (`n_bandas × cut_width_mm ÷ 10`). */
   cm_a_cortar: number;
-  /** true quando a largura é válida e deu pra calcular o rendimento. */
+  /** Equivalência em rolos (largura cortada ÷ 1370 mm). > 1 ⇒ multi-rolos. */
+  rolos: number;
+  /** true quando a largura é válida e deu pra calcular o corte. */
   valid: boolean;
   /** true quando a tira não tem largura cadastrada (≤ 0 / ausente). */
   widthMissing: boolean;
@@ -82,12 +81,15 @@ export function normalizeWidthToMm(
 export function computeStrapRollCut({ largura_mm, metros_necessarios }: StrapRollCutInput): StrapRollCutResult {
   const largura = Number(largura_mm) || 0;
   const metros = Number(metros_necessarios) || 0;
+  // Cada banda cortada tem o comprimento inteiro do rolo (40 m) → 34 m úteis após perda.
+  const metros_uteis_por_banda = ROLO_COMPRIMENTO_M * (1 - PERDA_PCT);
 
   const base: StrapRollCutResult = {
     largura_mm: largura,
-    tiras_por_rolo: 0,
-    metros_uteis_rolo: 0,
+    metros_uteis_por_banda,
+    n_bandas: 0,
     cm_a_cortar: 0,
+    rolos: 0,
     valid: false,
     widthMissing: false,
   };
@@ -96,26 +98,23 @@ export function computeStrapRollCut({ largura_mm, metros_necessarios }: StrapRol
     return { ...base, widthMissing: true, warning: 'Largura não cadastrada — não foi possível calcular corte' };
   }
   if (largura > ROLO_LARGURA_MM) {
-    return { ...base, warning: `Largura excede a largura do rolo (${ROLO_LARGURA_MM} mm)` };
+    return { ...base, warning: `Largura maior que a largura do rolo (${ROLO_LARGURA_MM} mm)` };
   }
 
-  // Quantas bandas de `cut_width_mm` cabem na largura do rolo — cada banda é 1 tira.
-  const tiras_por_rolo = Math.floor(ROLO_LARGURA_MM / largura);
-  if (tiras_por_rolo <= 0) {
-    // Defensivo: inalcançável com 0 < largura ≤ 1370, mas mantém a função segura.
-    return { ...base, warning: 'Não foi possível calcular o corte do rolo' };
-  }
-
-  const metros_uteis_rolo = tiras_por_rolo * ROLO_COMPRIMENTO_M * (1 - PERDA_PCT);
-  const cm_a_cortar = metros > 0 && metros_uteis_rolo > 0
-    ? (metros * ROLO_COMPRIMENTO_M * 100) / metros_uteis_rolo
-    : 0;
+  // Quantas bandas de `largura` mm cortar ao longo da LARGURA do rolo — cada banda é
+  // 1 tira pronta e rende 34 m úteis. Uma banda parcial conta inteira (ceil).
+  const n_bandas = metros > 0 ? Math.ceil(metros / metros_uteis_por_banda) : 0;
+  const mm_largura_a_cortar = n_bandas * largura;
+  const cm_a_cortar = mm_largura_a_cortar / 10;
+  // Largura cortada vs largura do rolo: > 1 ⇒ precisa de mais de um rolo (nota informativa).
+  const rolos = mm_largura_a_cortar / ROLO_LARGURA_MM;
 
   return {
     largura_mm: largura,
-    tiras_por_rolo,
-    metros_uteis_rolo,
+    metros_uteis_por_banda,
+    n_bandas,
     cm_a_cortar,
+    rolos,
     valid: true,
     widthMissing: false,
   };

@@ -64,6 +64,9 @@ export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalSt
                     {cut.cm_a_cortar.toFixed(1)}
                     <span className="text-xs font-normal text-red-600/70 dark:text-red-400/70"> cm</span>
                   </span>
+                  {cut.rolos > 1 && (
+                    <span className="text-[10px] text-red-600/60 dark:text-red-400/60">≈ {cut.rolos.toFixed(2)} rolos</span>
+                  )}
                 </div>
               ) : (
                 <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
