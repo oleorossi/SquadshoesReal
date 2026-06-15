@@ -647,11 +647,9 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const cortar = cut.valid
           ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
           : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
+        const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
         return `<tr style="color:#dc2626">
-          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}</td>
-          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cut.widthMissing ? '—' : r.largura_mm.toFixed(0)}</td>
-          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${r.metros_necessarios.toFixed(2)}</td>
-          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cut.valid ? cut.metros_uteis_rolo.toFixed(1) : '—'}</td>
+          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
           <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}</td>
         </tr>`;
       }).join('');
@@ -660,10 +658,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Cortar do rolo — não é consumo direto de estoque.</p>
         <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;border:1px solid #fca5a5">
           <thead><tr style="color:#dc2626">
-            <th style="background:#fef2f2;padding:6px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase">Tira (cor)</th>
-            <th style="background:#fef2f2;padding:6px 10px;text-align:right;font-size:11px;font-weight:600;text-transform:uppercase">Largura corte (mm)</th>
-            <th style="background:#fef2f2;padding:6px 10px;text-align:right;font-size:11px;font-weight:600;text-transform:uppercase">Total de tiras (m)</th>
-            <th style="background:#fef2f2;padding:6px 10px;text-align:right;font-size:11px;font-weight:600;text-transform:uppercase">Rendimento útil (m/rolo)</th>
+            <th style="background:#fef2f2;padding:6px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase">Tira (cor · largura)</th>
             <th style="background:#fef2f2;padding:6px 10px;text-align:right;font-size:11px;font-weight:600;text-transform:uppercase">Cortar do rolo (cm)</th>
           </tr></thead>
           <tbody>${strapRows}</tbody>

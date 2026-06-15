@@ -566,7 +566,8 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // Linhas do bloco vermelho: uma por (grupo+cor) de tira artesanal. As
       // linhas 'Tiras' já vêm agregadas por grupo+cor em METROS (motor canônico),
       // então `totalQuantity` é exatamente os metros_necessarios do corte do rolo
-      // — o "Total de tiras (m)" do bloco bate com a seção Tiras.
+      // — o mesmo total que a seção "Tiras" exibe acima (por isso o bloco vermelho
+      // não repete a coluna de metros: só mostra o cm a cortar do rolo).
       const artisanalCut: ArtisanalStrapCutRow[] = [];
       for (const row of sortedRows) {
         if (row.componentType !== 'Tiras' || !(row.totalQuantity > 0)) continue;
@@ -841,10 +842,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           <p style="font-size:8.5pt;color:#dc2626;margin:4px 0">Cortar do rolo — não é consumo direto de estoque.</p>
           <table style="width:100%;border-collapse:collapse;font-size:9.5pt;border:1px solid #fca5a5">
             <thead><tr style="color:#dc2626;background:#fef2f2">
-              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira (cor)</th>
-              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Largura corte (mm)</th>
-              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Total de tiras (m)</th>
-              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Rend. útil (m/rolo)</th>
+              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira (cor · largura)</th>
               <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Cortar do rolo (cm)</th>
             </tr></thead>
             <tbody>${artisanalStrapRows.map((r) => {
@@ -852,11 +850,9 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
               const cortar = cut.valid
                 ? `<span style="font-weight:700;font-size:11pt">${cut.cm_a_cortar.toFixed(1)} cm</span>`
                 : `<span style="font-size:8.5pt">⚠ ${cut.warning || 'sem largura'}</span>`;
+              const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
               return `<tr style="color:#dc2626">
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${r.groupName}${r.color && r.color !== '—' ? ` · ${r.color}` : ''}</td>
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cut.widthMissing ? '—' : r.largura_mm.toFixed(0)}</td>
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${r.metros_necessarios.toFixed(2)}</td>
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cut.valid ? cut.metros_uteis_rolo.toFixed(1) : '—'}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${r.groupName}${r.color && r.color !== '—' ? ` · ${r.color}` : ''}${larguraTxt}</td>
                 <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}</td>
               </tr>`;
             }).join('')}</tbody>

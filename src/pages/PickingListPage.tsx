@@ -418,11 +418,9 @@ export default function PickingListPage() {
         const cortar = cut.valid
           ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
           : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
+        const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
         return `<tr style="color:#dc2626">
-          <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cut.widthMissing ? '—' : r.largura_mm.toFixed(0)}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace">${r.metros_necessarios.toFixed(2)}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cut.valid ? cut.metros_uteis_rolo.toFixed(1) : '—'}</td>
+          <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
           <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}</td>
         </tr>`;
       }).join('');
@@ -431,10 +429,7 @@ export default function PickingListPage() {
         <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Cortar do rolo — não é consumo direto de estoque.</p>
         <table style="border:1px solid #fca5a5">
           <thead><tr style="color:#dc2626">
-            <th style="background:#fef2f2">Tira (cor)</th>
-            <th style="background:#fef2f2;text-align:right">Largura corte (mm)</th>
-            <th style="background:#fef2f2;text-align:right">Total de tiras (m)</th>
-            <th style="background:#fef2f2;text-align:right">Rendimento útil (m/rolo)</th>
+            <th style="background:#fef2f2">Tira (cor · largura)</th>
             <th style="background:#fef2f2;text-align:right">Cortar do rolo (cm)</th>
           </tr></thead>
           <tbody>${strapRows}</tbody>
