@@ -683,14 +683,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   const toggleSector = (s: string) => {
     setActiveSectors(prev => {
-      // Estado inicial = TODOS marcados. O 1º clique num chip era um toggle
-      // puro: DESMARCAVA exatamente o setor que o usuário queria imprimir —
-      // o relatório saía com os outros 11 setores e sem o escolhido (bug
-      // reportado 11/06/2026: "seleciono um setor e não aparece, outro setor
-      // aparece sem estar relacionado"). A partir do estado todos-marcados,
-      // o clique agora ISOLA o setor clicado; "Marcar todos" continua
-      // cobrindo o caso imprimir-tudo.
-      if (prev.size === SECTORS.length) return new Set([s]);
+      // Estado inicial = TODOS marcados; o usuário DESMARCA os setores que não
+      // quer no arquivo final. Toggle PURO: clicar num chip adiciona/remove só
+      // aquele setor, nunca mexe nos demais.
+      //
+      // ⚠ Vai-e-volta documentado (não reverter por engano):
+      //  - 11/06/2026: um relato ("seleciono um setor e não aparece, outro
+      //    aparece") fez o 1º clique a partir de todos-marcados ISOLAR o setor
+      //    (prev.size === N → new Set([s])).
+      //  - 16/06/2026: o dono pediu o oposto e canônico — clicar num setor
+      //    DESMARCA só ele, mantendo os outros marcados. Reintroduzido o toggle
+      //    puro. Pra imprimir UM único setor, use "Limpar" e marque o desejado
+      //    (capacidade preservada, só muda o nº de cliques).
       const next = new Set(prev);
       if (next.has(s)) next.delete(s); else next.add(s);
       return next;
