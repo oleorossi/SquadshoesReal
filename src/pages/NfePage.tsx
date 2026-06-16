@@ -80,21 +80,24 @@ function EmitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     // Try exact match first to prevent ilike prefix ambiguity (e.g. "PV-001" matching "PV-0010").
     const { data: exact } = await supabase
       .from('sale_orders')
-      .select('id, order_number, client_name, total, status, nfe_required')
+      .select('id, order_number, client_name, total, status, nfe_required, company_id')
       .eq('order_number', orderNumber.trim())
       .maybeSingle();
     if (exact) {
       setFoundOrder(exact);
+      // Já seleciona o CNPJ emitente escolhido no PV ('' = primária/padrão).
+      setCompanyId((exact as any).company_id || '');
       setSearching(false);
       return;
     }
     const { data } = await supabase
       .from('sale_orders')
-      .select('id, order_number, client_name, total, status, nfe_required')
+      .select('id, order_number, client_name, total, status, nfe_required, company_id')
       .ilike('order_number', `%${orderNumber.trim()}%`)
       .order('order_number', { ascending: true })
       .limit(1);
     setFoundOrder(data?.[0] || null);
+    if (data?.[0]) setCompanyId((data[0] as any).company_id || '');
     if (!data?.[0]) toast.error('Pedido não encontrado');
     setSearching(false);
   };

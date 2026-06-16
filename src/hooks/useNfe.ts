@@ -61,6 +61,9 @@ export interface Company {
   cfop: string;
   is_primary: boolean;
   active: boolean;
+  /** ID da loja correspondente no GestaoClick/ClickNotas. Garante que a NF-e
+   *  seja emitida sob o CNPJ desta empresa (sem isso a emit-nfe usa a matriz). */
+  gestaoclick_loja_id?: string | null;
   created_at: string;
   updated_at: string;
 }

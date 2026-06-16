@@ -93,6 +93,7 @@ const STATUS_DOT: Record<string, string> = {
 const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
 
 const emptyForm: SaleOrderFormData = {
+  company_id: null,
   client_name: '', client_cnpj: '', client_contact: '', client_order_number: '',
   representative: '', payment_condition: '', delivery_deadline: '', delivery_week: '', delivery_month: '',
   notes: '', status: 'Rascunho',
@@ -915,6 +916,7 @@ export default function SaleOrders() {
     setEditOrderId(order.id);
     const rep = representatives.find(r => r.name === order.representative);
     setEditForm({
+      company_id: (order as any).company_id ?? null,
       client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
       client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
       representative: rep?.id || order.representative_id || '',

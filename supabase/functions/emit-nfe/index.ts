@@ -68,7 +68,13 @@ function splitAddress(addr: string | null | undefined, manualComplemento?: strin
 // é mais seguro (e cumpre o contrato da doc). Cache em memória do isolate
 // — válido enquanto o edge function fica quente. Reseta a cada cold start.
 let _gcLojaIdCache: string | null = null;
-async function resolveGcLojaId(): Promise<string | null> {
+async function resolveGcLojaId(preferredLojaId?: string | null): Promise<string | null> {
+  // Empresa (ex.: 2º CNPJ) com loja mapeada em companies.gestaoclick_loja_id →
+  // usa direto, garantindo que a NF saia sob o CNPJ certo em vez da matriz.
+  // NULL/vazio = comportamento atual (resolve matriz/primeira ativa).
+  if (preferredLojaId != null && String(preferredLojaId).trim() !== "") {
+    return String(preferredLojaId).trim();
+  }
   if (_gcLojaIdCache) return _gcLojaIdCache;
   try {
     const r = await gcFetch("/lojas");
@@ -1049,7 +1055,9 @@ Deno.serve(async (req) => {
     if (fiscal.uf) transportadorBlock.estado = fiscal.uf;
 
     // Resolve loja_id do GestaoClick — obrigatório segundo a doc da API.
-    const gcLojaId = await resolveGcLojaId();
+    // Usa a loja mapeada na empresa (companies.gestaoclick_loja_id) quando houver
+    // — essencial pra NF sair sob o 2º CNPJ; senão cai na matriz.
+    const gcLojaId = await resolveGcLojaId(fiscal?.gestaoclick_loja_id);
 
     // Resolve (cria se preciso) transportadora "Squad Shoes" no GestaoClick.
     const gcTransportadoraId = await resolveGcTransportadoraEmitenteId(fiscal);

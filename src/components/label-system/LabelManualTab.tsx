@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, ArrowSquareIn as Import, X } from '@phosphor-icons/react';
 import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { supabase } from '@/integrations/supabase/client';
+import { useCompanies } from '@/hooks/useNfe';
 import { toast } from 'sonner';
 
 const FALLBACK_SIZES = [
@@ -72,6 +73,18 @@ export function LabelManualTab() {
   const [importedRef, setImportedRef] = useState<{ kind: 'pv' | 'op'; id: string; label: string } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // Remetente da etiqueta = empresa (CNPJ) do PV. Sem company_id no PV cai na
+  // primária. Substitui o remetente hardcoded — suporta 2º CNPJ.
+  const { data: companies = [] } = useCompanies();
+  const resolveSender = (companyId?: string | null) => {
+    const co = (companyId && companies.find(c => c.id === companyId))
+      || companies.find(c => c.is_primary) || companies[0];
+    if (!co) return { senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93' };
+    const d = (co.cnpj || '').replace(/\D/g, '');
+    const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (co.cnpj || '');
+    return { senderName: co.razao_social || co.nome_fantasia || 'SQUAD SHOES', senderCnpj: cnpj };
+  };
+
   // PVs disponíveis pra importar (status ativos)
   const { data: salesList = [] } = useQuery({
     queryKey: ['manual_label_sales_list'],
@@ -120,9 +133,11 @@ export function LabelManualTab() {
       }
       const item = items[0];
       // Busca cliente pra preencher destinatário (caso seja etiqueta de caixa)
-      const { data: full } = await supabase
+      // cast: types.ts gerado ainda não conhece sale_orders.company_id (coluna
+      // nova via migration) — o select tipado quebraria sem o `as any`.
+      const { data: full } = await (supabase as any)
         .from('sale_orders')
-        .select('client_id, client_name, client_cnpj, clients(endereco, bairro, cidade, estado)')
+        .select('client_id, client_name, client_cnpj, company_id, clients(endereco, bairro, cidade, estado)')
         .eq('id', saleOrderId)
         .maybeSingle();
 
@@ -139,8 +154,7 @@ export function LabelManualTab() {
         materials: [(item as any).technical_sheets?.name || '', '', '', '', '', ''],
         preco: item.unit_price ? `R$ ${Number(item.unit_price).toFixed(2)}` : prev.preco,
         lote: so.order_number,
-        senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA',
-        senderCnpj: '62.406.033/0001-93',
+        ...resolveSender((full as any)?.company_id),
         recipientName: full?.client_name || prev.recipientName,
         recipientCnpj: full?.client_cnpj || prev.recipientCnpj,
         sizes: sizesArr.length > 0 ? sizesArr : prev.sizes,
@@ -170,7 +184,7 @@ export function LabelManualTab() {
       if (!op) return;
       const { data: full } = await supabase
         .from('orders')
-        .select('id, order_number, color, quantity, grade, sale_order_id, sale_orders!sale_order_id(client_name, client_cnpj, order_number)')
+        .select('id, order_number, color, quantity, grade, sale_order_id, sale_orders!sale_order_id(client_name, client_cnpj, order_number, company_id)')
         .eq('id', orderId)
         .maybeSingle();
       const grade = (full as any)?.grade as Record<string, number> | null;
@@ -184,8 +198,7 @@ export function LabelManualTab() {
         cor: full?.color || prev.cor,
         materials: [op.technical_sheets?.name || '', '', '', '', '', ''],
         lote: full?.order_number || prev.lote,
-        senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA',
-        senderCnpj: '62.406.033/0001-93',
+        ...resolveSender(so?.company_id),
         recipientName: so?.client_name || prev.recipientName,
         recipientCnpj: so?.client_cnpj || prev.recipientCnpj,
         sizes: sizesArr.length > 0 ? sizesArr : prev.sizes,
