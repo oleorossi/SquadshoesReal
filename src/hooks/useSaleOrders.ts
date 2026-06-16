@@ -687,6 +687,9 @@ export type SaleOrderFormData = {
    *  ficava vazio porque a FK era null). Agora salva o FK pra resolver
    *  o cliente completo via JOIN. */
   client_id?: string | null;
+  /** Empresa emitente (CNPJ) escolhida na criação do PV. NULL = empresa
+   *  primária (padrão). NF-e e etiqueta da caixa externa usam este CNPJ. */
+  company_id?: string | null;
   client_name: string;
   client_cnpj: string;
   client_contact: string;
@@ -877,7 +880,7 @@ export function useCreateSaleOrder() {
       insertData.client_request_id = client_request_id ?? crypto.randomUUID();
 
       // Sanitize: replace empty strings with null for all UUID-type fields
-      const uuidFields = ['client_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
+      const uuidFields = ['client_id', 'company_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
       for (const f of uuidFields) {
         if (insertData[f] === '') insertData[f] = null;
       }
@@ -1971,7 +1974,7 @@ export function useUpdateSaleOrder() {
       if (packaging_quantity !== undefined) updateData.packaging_quantity = packaging_quantity;
 
       // Sanitize: replace empty strings with null for all UUID-type fields
-      const uuidFields = ['client_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
+      const uuidFields = ['client_id', 'company_id', 'representative_id', 'factoring_config_id', 'packaging_product_id', 'economic_group_id'];
       for (const f of uuidFields) {
         if (updateData[f] === '') updateData[f] = null;
       }

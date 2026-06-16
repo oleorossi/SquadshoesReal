@@ -73,6 +73,18 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
               O certificado digital A1 é configurado no painel GestaoClick (ClickNotas) —
               não é gerenciado por aqui.
             </p>
+            <div>
+              <Label>ID da Loja no GestaoClick (ClickNotas)</Label>
+              <Input
+                value={form.gestaoclick_loja_id || ''}
+                onChange={e => set('gestaoclick_loja_id', e.target.value)}
+                placeholder="Vazio = loja matriz (padrão)"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Necessário quando este CNPJ é uma <strong>loja separada</strong> no GestaoClick —
+                garante que a NF-e seja emitida sob este CNPJ. Pegue o ID no painel do ClickNotas.
+              </p>
+            </div>
           </CardContent>
         </Card>
 

@@ -22,6 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
+import { useCompanies } from '@/hooks/useNfe';
 import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
 import {
   calculateFactoringDiscount,
@@ -381,6 +382,10 @@ export default function SaleOrderFormPanel({
   const selectedClient = clients.find(c => c.id === selectedClientId);
   const { data: factoringConfigs = [] } = useFactoringConfigs();
   const selectedFactoringConfig = factoringConfigs.find(c => c.id === form.factoring_config_id);
+  // Empresas emitentes (CNPJs). Só mostramos o seletor quando há mais de uma —
+  // com uma só, todo PV é da primária e o campo seria ruído. NULL = primária.
+  const { data: companies = [] } = useCompanies();
+  const primaryCompany = companies.find(c => c.is_primary);
 
   // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
   // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
@@ -841,6 +846,27 @@ export default function SaleOrderFormPanel({
                     </SelectContent>
                   </Select>
                 </div>
+                {/* CNPJ emitente: escolhe sob qual empresa o PV é faturado/etiquetado.
+                    Só aparece quando há 2+ empresas cadastradas. NULL = primária. */}
+                {companies.length > 1 && (
+                  <div>
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">CNPJ Emitente (NF-e / etiqueta)</Label>
+                    <Select
+                      value={form.company_id || '__primary__'}
+                      onValueChange={v => setForm(f => ({ ...f, company_id: v === '__primary__' ? null : v }))}
+                    >
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__primary__">
+                          {(primaryCompany?.nome_fantasia || primaryCompany?.razao_social || 'Empresa principal')} (padrão)
+                        </SelectItem>
+                        {companies.filter(c => !c.is_primary).map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               {/* Terceirização planejada (Fase A): manda um SETOR deste pedido pra

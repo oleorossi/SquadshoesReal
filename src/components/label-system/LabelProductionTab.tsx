@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
+import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 
@@ -365,6 +366,34 @@ export function LabelProductionTab() {
     },
     staleTime: 30 * 60 * 1000,
   });
+
+  // Remetente da etiqueta de caixa externa = empresa (CNPJ) escolhida no PV.
+  // Sem company_id no PV cai na primária. Substitui o remetente hardcoded —
+  // suporta o 2º CNPJ. Endereço sai dos campos da empresa; primária mantém
+  // o fallback do system_settings (company_address).
+  const { data: companies = [] } = useCompanies();
+  const resolveSender = (companyId?: string | null) => {
+    const co = (companyId && companies.find(c => c.id === companyId))
+      || companies.find(c => c.is_primary) || companies[0];
+    if (!co) return {
+      senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA',
+      senderCnpj: '62.406.033/0001-93',
+      senderAddress: companyAddress || undefined,
+    };
+    const d = (co.cnpj || '').replace(/\D/g, '');
+    const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (co.cnpj || '');
+    const addr = [
+      [co.logradouro, co.numero].filter(Boolean).join(', '),
+      co.bairro,
+      [co.cidade, co.uf].filter(Boolean).join('/'),
+      co.cep,
+    ].filter(Boolean).join(' - ');
+    return {
+      senderName: co.razao_social || co.nome_fantasia || 'SQUAD SHOES',
+      senderCnpj: cnpj,
+      senderAddress: addr || (co.is_primary ? (companyAddress || undefined) : undefined),
+    };
+  };
 
   // Set de sale_order_ids que estão em alguma onda de produção. Usado pra
   // GATE de impressão: o user só pode imprimir etiquetas de pedidos que já
@@ -1103,8 +1132,7 @@ export function LabelProductionTab() {
             boxItems.push({
               orderNumber: order.order_number || '', refCode: effRefCode, refName: effRefName || '',
               color: effColor, boxNumber: currentBoxNumber, totalBoxes: totalMasterBoxes,
-              senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93',
-              senderAddress: companyAddress || undefined,
+              ...resolveSender(so?.company_id),
               recipientName: so?.client_name || '',
               recipientRazaoSocial,
               recipientCnpj: so?.client_cnpj || '',
