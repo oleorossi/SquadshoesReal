@@ -237,6 +237,22 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       fieldRow('PED. COMPRA', item.clientOrderNumber, { mono: true }),
     ].filter(Boolean).join('');
 
+    // ─── REMETENTE (faixa fina sob o header) ───────────────
+    // Empresa emitente escolhida no PV (resolveSender → razão social + CNPJ +
+    // endereço). Distinta do destinatário (que é o CLIENTE no corpo). Quando
+    // não houver dados de remetente, a faixa não renderiza.
+    const remetenteParts = [
+      item.senderName,
+      item.senderCnpj ? `CNPJ ${item.senderCnpj}` : '',
+      item.senderAddress,
+    ].filter(Boolean);
+    const remetenteHtml = remetenteParts.length
+      ? `<div class="remetente-row">
+          <span class="rem-label">REMET.:</span>
+          <span class="rem-val">${escapeHtml(remetenteParts.join('  ·  '))}</span>
+        </div>`
+      : '';
+
     // ─── FOTO + COR (direita) ──────────────────────────────
     // imageIsFallback aplica grayscale pra deixar claro que a cor da foto não
     // corresponde à cor real do pedido (foto mestra da ficha técnica).
@@ -282,6 +298,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
             <span class="prog-value">${progValue}</span>
           </div>
         </div>
+
+        ${remetenteHtml}
 
         <div class="body">
           <div class="body-left">
@@ -413,6 +431,11 @@ ${LABEL_PRINT_HARDENING}
 .prog-cell{padding:6px 12px;display:flex;align-items:baseline;gap:6px;}
 .prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;letter-spacing:0.06em;}
 .prog-cell .prog-value{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;}
+
+/* REMETENTE (faixa fina) ───────────── */
+.remetente-row{display:flex;gap:6px;align-items:baseline;padding:3px 12px;border-bottom:1.5px solid #000;background:#000;color:#FFE94A;flex-shrink:0;}
+.remetente-row .rem-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:0.06em;white-space:nowrap;}
+.remetente-row .rem-val{font-family:'Inter Tight',sans-serif;font-weight:700;font-size:9.5px;line-height:1.15;}
 
 /* CORPO 2 colunas ──────────────────── */
 .body{display:flex;flex:1;min-height:0;}
