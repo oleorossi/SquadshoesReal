@@ -436,7 +436,12 @@ export function useCloneSheet() {
         .single();
       if (srcErr || !source) throw new Error(srcErr?.message || 'Ficha não encontrada');
 
-      const { id: _id, created_at: _ca, updated_at: _ua, ...fields } = source as any;
+      // `search_norm` é coluna GERADA (GENERATED ALWAYS … STORED, migration
+      // 20260613120000) — o banco recusa INSERT com valor nela ("cannot insert
+      // a non-DEFAULT value into column search_norm"). Como copiamos via
+      // select('*') + spread, precisa ser descartada explicitamente junto de
+      // id/created_at/updated_at.
+      const { id: _id, created_at: _ca, updated_at: _ua, search_norm: _sn, ...fields } = source as any;
       const { data: newSheet, error: insertErr } = await supabase
         .from('technical_sheets')
         .insert({ ...fields, name: newName, status_ficha: 'rascunho' } as any)
