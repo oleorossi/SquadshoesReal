@@ -605,10 +605,20 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 );
               })}
 
-              {/* Restaurar ordem padrão — só aparece se houver ordem customizada */}
-              {!mobile && hasCustomOrder && (
+              {/* Restaurar ordem padrão — aparece se houver ordem customizada OU
+                  grupos recolhidos. Além de zerar a ordem/agrupamento salvos
+                  (useNavOrder), EXPANDE todos os grupos: o estado de recolhidos
+                  (`nav-collapsed-groups`) vive aqui no AppLayout, fora do
+                  useNavOrder, então o reset precisa limpá-lo explicitamente —
+                  senão um item movido pra grupo recolhido continua "sumido"
+                  mesmo após restaurar. (Pedido user 2026-06-16.) */}
+              {!mobile && (hasCustomOrder || collapsedGroups.size > 0) && (
                 <button
-                  onClick={resetOrder}
+                  onClick={() => {
+                    resetOrder();
+                    setCollapsedGroups(new Set());
+                    try { localStorage.removeItem('nav-collapsed-groups'); } catch { /* ignora */ }
+                  }}
                   className="w-full text-left px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted hover:text-sidebar-foreground transition-colors"
                 >
                   ↺ Restaurar ordem padrão
