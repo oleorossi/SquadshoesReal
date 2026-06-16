@@ -488,6 +488,48 @@ export function LabelProductionTab() {
     refetchOnMount: 'always',
   });
 
+  // Cor "viva" do item do PV (id do sale_order_item → cor). A OP copia
+  // `item.color` no momento em que é criada, mas a cor principal some da
+  // etiqueta em dois cenários reais (PV-00140 / PV-00141):
+  //   (1) Cor escolhida via VARIANTE de material — selecionar o material LIMPA
+  //       `item.color` (SaleOrderItemForm) e a cor real passa a viver na
+  //       variante/seleção posterior; se a OP foi gerada antes disso, nasce com
+  //       color vazio.
+  //   (2) Cor do PV editada DEPOIS da OP criada, sem ressincronizar a OP.
+  // Em ambos `orders.color` fica vazio e o rótulo da caixa externa mostrava "—".
+  // Aqui buscamos a cor atual do sale_order_item pra usar como fallback.
+  const { data: itemColorLookup = new Map<string, string>() } = useQuery({
+    queryKey: ['sale_order_items_color_lookup'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_order_items')
+        .select('id, color')
+        .not('color', 'is', null);
+      if (error) throw error;
+      const map = new Map<string, string>();
+      for (const it of data || []) {
+        const c = (it.color || '').trim();
+        if (c) map.set(it.id, c);
+      }
+      return map;
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+
+  // Enriquece cada OP com a cor resolvida: usa `orders.color` quando preenchida,
+  // senão cai na cor viva do sale_order_item vinculado. Tudo a jusante
+  // (agrupamento, card da lista, etiqueta térmica e caixa externa) lê
+  // `order.color`, então resolver aqui conserta TODAS as superfícies de uma vez
+  // — sem inventar cor quando não há nenhuma fonte (mantém o "—").
+  const ordersWithResolvedColor = useMemo(() => {
+    return (allOrders as any[]).map((o: any) => {
+      if (o.color && String(o.color).trim() !== '') return o;
+      const fallback = o.sale_order_item_id ? itemColorLookup.get(o.sale_order_item_id) : '';
+      return fallback ? { ...o, color: fallback } : o;
+    });
+  }, [allOrders, itemColorLookup]);
+
   // Frescor das etiquetas: QUALQUER alteração em Estoque/OP/PV tem que refletir aqui.
   // (1) Ao MONTAR a tela, invalida tudo que alimenta as etiquetas pra puxar o
   //     estado mais recente — inclui `orders` (useOrders tem staleTime 2min e é
@@ -502,6 +544,7 @@ export function LabelProductionTab() {
       ['orders'],
       ['sale_orders_for_labels_v2'],
       ['sale_order_items_strap_lookup'],
+      ['sale_order_items_color_lookup'],
       ['sale_orders_in_waves_for_labels'],
       ['clients_by_cnpj_for_labels'],
     ];
@@ -519,6 +562,7 @@ export function LabelProductionTab() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_order_items' }, () => {
         queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
         queryClient.invalidateQueries({ queryKey: ['sale_order_items_strap_lookup'] });
+        queryClient.invalidateQueries({ queryKey: ['sale_order_items_color_lookup'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
       .subscribe((status, err) => {
@@ -617,7 +661,7 @@ export function LabelProductionTab() {
   // User pediu (15/05/2026): "Quando pedido entrar em onda eu passa a poder
   // ser impresso". Sem isso, a aba mostrava qualquer OP em produção mesmo
   // se a programação ainda não tinha agendado essa onda.
-  let productionOrders = allOrders.filter((o: any) =>
+  let productionOrders = ordersWithResolvedColor.filter((o: any) =>
     !!o.sale_order_id && saleOrdersInWaves.has(o.sale_order_id),
   );
 
@@ -632,7 +676,7 @@ export function LabelProductionTab() {
     ? saleOrders.find((so: any) => so.id === saleOrderFilter)
     : null;
   if (saleOrderFilter) {
-    productionOrders = allOrders.filter((o: any) => o.sale_order_id === saleOrderFilter);
+    productionOrders = ordersWithResolvedColor.filter((o: any) => o.sale_order_id === saleOrderFilter);
   }
   const clearSaleOrderFilter = () => {
     const next = new URLSearchParams(searchParams);
