@@ -1844,7 +1844,7 @@ export function useUpdateSaleOrderStatus() {
       if (status === 'Faturado' || status === 'Finalizado s/ NF') {
         const { data: linkedOps, error: faturadoLinkedErr } = await supabase
           .from('orders')
-          .select('id, status')
+          .select('id, status, order_number, notes')
           .eq('sale_order_id', id)
           .neq('status', 'Cancelada');
         if (faturadoLinkedErr) throw new Error(`Falha ao carregar OPs vinculadas para faturamento: ${faturadoLinkedErr.message}`);
@@ -1861,11 +1861,34 @@ export function useUpdateSaleOrderStatus() {
             // [1] Convert soft reservations to hard debits for Reservado OPs being
             // force-finalized. Without this, reserved_stock stays permanently inflated
             // for materials that were only soft-reserved (never converted by Kanban entry).
+            // C2 (auditoria) ABORTAVA o faturamento quando uma reserva não podia ser
+            // consumida (ex.: solado zerado), pra não faturar "sem lastro". Mudança
+            // pedida pelo usuário (PV-67, solado INFANTIL 25 zerado): falta de ESTOQUE
+            // não trava mais o faturamento — finaliza assim mesmo, MAS avisa ALTO e
+            // anota na OP pra reconciliar quando o material chegar. Erros que NÃO são
+            // de estoque (permissão/DB) continuam abortando — não mascarar falha real.
+            const convShortfalls: string[] = [];
             for (const op of reservadoOps) {
               const { error: convErr } = await (supabase as any).rpc('convert_reservation_to_out', { p_order_id: op.id });
-              // C2 (auditoria): NÃO engolir o erro. Se o consumo das reservas falhar, abortar o
-              // faturamento — senão o PV é faturado sem baixar o solado/estoque (receita sem lastro).
-              if (convErr) throw new Error(`Falha ao consumir reservas da OP ${op.id} no faturamento (estoque não baixado): ${convErr.message}`);
+              if (convErr) {
+                if (/insuficiente|insufficient/i.test(convErr.message || '')) {
+                  console.error(`Faturamento PV ${id}: reserva NÃO baixada na OP ${op.id}: ${convErr.message}`);
+                  const opLabel = (op as any).order_number || op.id.slice(0, 8);
+                  convShortfalls.push(`${opLabel}: ${convErr.message}`);
+                  // Marca a OP pra rastrear que foi faturada sem baixar 100% do estoque.
+                  await supabase.from('orders').update({
+                    notes: `${(op as any).notes ? (op as any).notes + '\n' : ''}⚠ Faturado SEM baixar estoque (falta): ${convErr.message}`,
+                  }).eq('id', op.id);
+                } else {
+                  throw new Error(`Falha ao consumir reservas da OP ${op.id} no faturamento: ${convErr.message}`);
+                }
+              }
+            }
+            if (convShortfalls.length > 0) {
+              toast.warning(
+                `PV finalizado, MAS ${convShortfalls.length} OP(s) com ESTOQUE NÃO BAIXADO (falta material/solado) — reconcilie ao repor: ${convShortfalls.slice(0, 3).join(' | ')}${convShortfalls.length > 3 ? '…' : ''}`,
+                { duration: 15000 },
+              );
             }
           }
 

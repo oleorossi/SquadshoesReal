@@ -342,6 +342,9 @@ export default function SaleOrderForm() {
       const rep = representatives.find(r => r.name === order.representative);
       setForm({
         client_id: (order as any).client_id || null,
+        // Sem carregar company_id, reabrir o PV mostrava o emitente como matriz/
+        // padrão e um novo save sobrescrevia a coluna com null. (PV-00140, 2026-06-16)
+        company_id: (order as any).company_id || null,
         client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
         client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
         representative: rep?.id || (order as any).representative_id || '',
