@@ -340,7 +340,10 @@ export function LabelProductionTab() {
         const authorized = (so.nfe_emitidas || [])
           .filter((n: any) => n.status === 'autorizada' && n.numero)
           .sort((a: any, b: any) => (b.created_at || '').localeCompare(a.created_at || ''));
-        const resolvedNfe = authorized[0]?.numero || so.nfe || '';
+        // Prioridade: NF autorizada (nfe_emitidas) → campo NF manual (so.nfe) →
+        // número de NF externa digitado no PV (so.external_nfe_number). Sem o
+        // último, quem usa o toggle "NF externa" não via o número na etiqueta.
+        const resolvedNfe = authorized[0]?.numero || so.nfe || (so as any).external_nfe_number || '';
         return { ...so, nfe: resolvedNfe };
       });
     },
