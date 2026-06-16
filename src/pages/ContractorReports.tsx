@@ -62,7 +62,7 @@ const PUNCTUALITY_STYLE: Record<string, string> = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ContractorReportsPage() {
+export default function ContractorReportsPage({ embedded }: { embedded?: boolean } = {}) {
   const { data: metrics = [], isLoading: loadingMetrics } = useContractorMetrics();
   const { data: contractors = [] } = useContractors();
 
@@ -155,12 +155,14 @@ export default function ContractorReportsPage() {
   }
 
   return (
-    <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · RELATÓRIOS · TERCEIROS"
-        title="Relatório de Terceirizados"
-        description="Métricas agregadas por prestador + histórico de OSs finalizadas no período. Filtre por contratada e janela de tempo."
-      />
+    <div className={cn('space-y-5', !embedded && 'page-enter')}>
+      {!embedded && (
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · RELATÓRIOS · TERCEIROS"
+          title="Relatório de Terceirizados"
+          description="Métricas agregadas por prestador + histórico de OSs finalizadas no período. Filtre por contratada e janela de tempo."
+        />
+      )}
 
       {/* Filtros */}
       <Panel

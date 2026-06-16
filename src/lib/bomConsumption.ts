@@ -10,6 +10,12 @@ import {
   normalizeColorKey,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import {
+  computeStrapRollCut,
+  isArtisanalStrap,
+  normalizeWidthToMm,
+  type ArtisanalStrapCutRow,
+} from '@/lib/strapRollCut';
 
 export type ConsumptionRow = {
   componentType: string;
@@ -280,12 +286,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       });
     }
 
-    // Solado
-    const soleColor = (() => {
-      const c = (orderColor || '').toLowerCase();
-      if (c.includes('preto') || c.includes('black') || c.includes('pb')) return 'Preto';
-      return 'Caramelo';
-    })();
+    // Solado — cor REAL do solado resolvido (soleColorMap, espelha resolve_sole_color
+    // do débito) em vez de chutar Preto/Caramelo por heurística de string (auditoria
+    // 2026-06-14, Área 2). Fallback pra cor do pedido; só por último um rótulo neutro.
+    const soleColor = ((insoleSoleProd as any)?.color || orderColor || '—').trim() || '—';
     const solePerPair = sheet?.sole_material ? 1 : 0;
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado', groupName: sheet?.sole_material || '', materialName: 'Solado',
@@ -521,4 +525,179 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   const grandTotal = rows.reduce((s, r) => s + r.total, 0);
 
   return { rows, allSizes, grandTotal };
+}
+
+// ─── Tiras artesanais — corte do rolo (40m × 1370mm) ────────────────────────
+
+/**
+ * Agrega o consumo de TIRAS ARTESANAIS de uma lista de OPs e calcula quanto
+ * cortar do rolo (40 m × 1370 mm) por tira/cor. Bloco SEPARADO dos materiais
+ * BOM normais — exibido em vermelho na Lista de Separação e no Resumo de
+ * Consumo do PV.
+ *
+ * `metros_necessarios` é o total de metros LINEARES de tira do conjunto inteiro
+ * de OPs (não por par): mesma base que alimenta as linhas "Tiras" do BOM.
+ * A largura de corte vem do cadastro do GRUPO da tira
+ * (`product_groups.dimensions_width` normalizado a mm). A detecção de "artesanal"
+ * segue a prioridade flag-da-tira → flag-do-grupo → heurístico (ver strapRollCut).
+ */
+export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promise<ArtisanalStrapCutRow[]> {
+  if (orderIds.length === 0) return [];
+
+  const { data: ordersData, error: ordersError } = await supabase
+    .from('orders')
+    .select('id, reference_id, color, quantity, grade, sale_order_item_id')
+    .in('id', orderIds);
+
+  if (ordersError) throw ordersError;
+  if (!ordersData || ordersData.length === 0) return [];
+
+  const refIds = [...new Set(ordersData.map(o => o.reference_id).filter(Boolean))];
+  const saleOrderItemIds = [...new Set(ordersData.map(o => o.sale_order_item_id).filter(Boolean))] as string[];
+
+  const [{ data: sheetsData }, { data: saleOrderItems }, { data: productGroups }, { data: dimProducts }] = await Promise.all([
+    supabase.from('technical_sheets').select('id, strap_colors').in('id', refIds),
+    saleOrderItemIds.length > 0
+      ? supabase.from('sale_order_items').select('id, strap_colors, fichas').in('id', saleOrderItemIds)
+      : Promise.resolve({ data: [] as any[] }),
+    supabase.from('product_groups').select('id, name, dimensions_width, dimensions_unit'),
+    // Largura cadastrada por PRODUTO (fallback quando o grupo não tem largura).
+    // CreateStrapProductDialog grava a largura no produto, não no grupo.
+    supabase.from('products').select('group_id, dimensions_width, dimensions_unit').gt('dimensions_width', 0).eq('active', true),
+  ]);
+
+  const sheetStrapsMap = new Map<string, any[]>(
+    (sheetsData || []).map((s: any) => [s.id, Array.isArray(s.strap_colors) ? s.strap_colors : []]),
+  );
+  const saleItemsMap = new Map((saleOrderItems || []).map((si: any) => [si.id, si]));
+
+  // Largura de corte por grupo (normalizado a mm) + nome canônico. Prioridade:
+  // largura do PRÓPRIO grupo (cadastro de família) → largura de qualquer produto
+  // do grupo (o caso comum, gravado pelo cadastro de tira).
+  const groupNameByNorm = new Map<string, string>();
+  const groupIdToNorm = new Map<string, string>();
+  const ownWidth = new Map<string, number>();
+  for (const g of (productGroups || []) as any[]) {
+    const norm = normalizeText(g.name);
+    groupNameByNorm.set(norm, g.name);
+    groupIdToNorm.set(g.id, norm);
+    ownWidth.set(norm, normalizeWidthToMm(g.dimensions_width, g.dimensions_unit));
+  }
+  const prodWidth = new Map<string, number>();
+  for (const p of (dimProducts || []) as any[]) {
+    const norm = groupIdToNorm.get(p.group_id);
+    if (!norm) continue;
+    const w = normalizeWidthToMm(p.dimensions_width, p.dimensions_unit);
+    if (w > (prodWidth.get(norm) || 0)) prodWidth.set(norm, w);
+  }
+
+  // Receitas artesanais (tela "Receitas → Produtos artesanais") — FONTE da verdade
+  // de "tira artesanal": o grupo de RESULTADO (`artisanal_product_name`) de uma
+  // receita ativa é uma tira cortada do rolo, independentemente do nome. A largura
+  // de corte cadastrada na própria receita (`cut_width_mm`, mm) tem prioridade
+  // sobre a largura do grupo/produto. Query DEFENSIVA em `cut_width_mm`: se a coluna
+  // ainda não foi migrada, refaz sem ela (não quebra o painel).
+  const recipeOutputNorms = new Set<string>();
+  const recipeWidth = new Map<string, number>();
+  // norm do resultado (artisanal_product_name) → material-base do rolo (base_product_name).
+  // Usado pelo otimizador (planRollsFromStrapRows) pra agrupar tiras por base+cor.
+  const recipeBaseByNorm = new Map<string, string>();
+  {
+    let rows: any[] | null = null;
+    const withWidth = await supabase
+      .from('artisanal_recipes')
+      .select('artisanal_product_name, cut_width_mm, base_product_name' as any)
+      .eq('active', true);
+    if (!withWidth.error) {
+      rows = withWidth.data as any[];
+    } else {
+      const fallback = await supabase
+        .from('artisanal_recipes')
+        .select('artisanal_product_name, base_product_name')
+        .eq('active', true);
+      if (!fallback.error) rows = fallback.data as any[];
+    }
+    for (const r of rows || []) {
+      const norm = normalizeText(r.artisanal_product_name);
+      if (!norm) continue;
+      recipeOutputNorms.add(norm);
+      const w = Number(r.cut_width_mm) || 0;
+      if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+      const base = (r.base_product_name || '').toString().trim();
+      if (base && !recipeBaseByNorm.has(norm)) recipeBaseByNorm.set(norm, base);
+    }
+  }
+  const widthForNorm = (norm: string): number =>
+    (recipeWidth.get(norm) || ownWidth.get(norm) || prodWidth.get(norm) || 0);
+
+  // Flag de cadastro `is_artisanal_strap` no grupo — query DEFENSIVA: se a coluna
+  // ainda não foi migrada no banco, o PostgREST retorna erro e seguimos só com
+  // flag-por-tira + heurístico (não quebra o painel).
+  const groupArtisanalFlag = new Map<string, boolean>();
+  {
+    const { data: flagged, error: flagErr } = await supabase
+      .from('product_groups')
+      .select('name, is_artisanal_strap' as any);
+    if (!flagErr && Array.isArray(flagged)) {
+      for (const g of flagged as any[]) {
+        if (g?.is_artisanal_strap) groupArtisanalFlag.set(normalizeText(g.name), true);
+      }
+    }
+  }
+
+  // Acumula metros de tira por (grupo+cor) só para as tiras detectadas artesanais.
+  const agg = new Map<string, { groupName: string; color: string; norm: string; metros: number; baseName?: string }>();
+
+  for (const order of ordersData) {
+    const sheetStraps: any[] = sheetStrapsMap.get(order.reference_id) || [];
+    const saleItem = order.sale_order_item_id ? saleItemsMap.get(order.sale_order_item_id) : null;
+    const itemStraps: any[] = Array.isArray(saleItem?.strap_colors) ? saleItem.strap_colors : [];
+    const resolvedStraps = resolveOrderStraps(itemStraps, sheetStraps);
+    if (resolvedStraps.length === 0) continue;
+
+    const itemQuantity = Number(order.quantity) || 0;
+    const grade = (order.grade as Record<string, number>) || {};
+
+    for (const strap of resolvedStraps) {
+      const groupName = (strap.group_name || strap.label || 'Tira').toString().trim();
+      const norm = normalizeText(groupName);
+      const artisanal = isArtisanalStrap({
+        strapFlag: (strap as any).is_artisanal_strap,
+        recipeFlag: recipeOutputNorms.has(norm),
+        groupFlag: groupArtisanalFlag.get(norm),
+        name: `${groupName} ${strap.label || ''}`,
+      });
+      if (!artisanal) continue;
+
+      const cm = calculateStrapConsumptionCm(strap, {
+        grade,
+        quantity: itemQuantity,
+        fichas: saleItem?.fichas,
+      });
+      const metros = cm / 100;
+      if (metros <= 0) continue;
+
+      const color = (strap.color || order.color || '—').toString().trim() || '—';
+      const key = `${norm}||${color.toLowerCase()}`;
+      const existing = agg.get(key);
+      if (existing) existing.metros += metros;
+      else agg.set(key, { groupName: groupNameByNorm.get(norm) || groupName, color, norm, metros, baseName: recipeBaseByNorm.get(norm) });
+    }
+  }
+
+  const rows: ArtisanalStrapCutRow[] = Array.from(agg.entries()).map(([key, v]) => {
+    const largura_mm = widthForNorm(v.norm);
+    return {
+      key,
+      groupName: v.groupName,
+      color: v.color,
+      largura_mm,
+      metros_necessarios: v.metros,
+      cut: computeStrapRollCut({ largura_mm, metros_necessarios: v.metros }),
+      baseName: v.baseName,
+    };
+  });
+
+  rows.sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
+  return rows;
 }

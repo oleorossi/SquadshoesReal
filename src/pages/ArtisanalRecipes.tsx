@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle, Scissors } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,10 +22,12 @@ import {
 import { useContractors } from '@/hooks/useContractors';
  import { useProducts, getBaseName } from '@/hooks/useProducts';
  import { useGroups } from '@/hooks/useGroups';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import CuttingOptimizerPanel from '@/components/recipes/CuttingOptimizerPanel';
 
 const emptyRecipe: Partial<ArtisanalRecipe> = {
   name: '',
@@ -34,6 +36,7 @@ const emptyRecipe: Partial<ArtisanalRecipe> = {
   yield_per_meter: 1,
   labor_cost_per_meter: 0,
   base_time_minutes: 0,
+  cut_width_mm: null,
   default_contractor_id: null,
   notes: '',
   active: true,
@@ -111,10 +114,12 @@ export default function ArtisanalRecipes() {
     ) {
       return;
     }
+    const cutWidth = Number(editing.cut_width_mm);
     const payload = {
       ...editing,
       yield_per_meter: Number(editing.yield_per_meter) || 1,
       labor_cost_per_meter: Number(editing.labor_cost_per_meter) || 0,
+      cut_width_mm: Number.isFinite(cutWidth) && cutWidth > 0 ? Math.round(cutWidth) : null,
     };
     if (isEditing && editing.id) {
       update.mutate(payload as ArtisanalRecipe, { onSuccess: () => setDialog(false) });
@@ -155,6 +160,17 @@ export default function ArtisanalRecipes() {
         }
       />
 
+      <Tabs defaultValue="recipes" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="recipes" className="gap-1.5">
+            <Sparkles className="h-4 w-4" /> Receitas
+          </TabsTrigger>
+          <TabsTrigger value="optimizer" className="gap-1.5">
+            <Scissors className="h-4 w-4" /> Otimização de Corte de Rolo
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="recipes" className="space-y-4 mt-0">
       {/* How-to card */}
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="p-4 text-sm space-y-2">
@@ -309,6 +325,12 @@ export default function ArtisanalRecipes() {
               </TableBody>
             </Table>
       </Panel>
+        </TabsContent>
+
+        <TabsContent value="optimizer" className="mt-0">
+          <CuttingOptimizerPanel recipes={recipes} />
+        </TabsContent>
+      </Tabs>
 
       {/* Recipe Dialog */}
       <Dialog
@@ -431,6 +453,36 @@ export default function ArtisanalRecipes() {
                 }
                 className="h-9 font-mono"
               />
+            </div>
+
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
+                Largura de corte da tira (mm)
+              </Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="1"
+                  min={1}
+                  placeholder="Ex: 150"
+                  value={editing.cut_width_mm ?? ''}
+                  onChange={(e) =>
+                    setEditing((p) => ({
+                      ...p,
+                      cut_width_mm:
+                        e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
+                    }))
+                  }
+                  className="h-9 font-mono pr-10"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  mm
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Largura da tira para o cálculo de <strong>corte do rolo</strong> no PV
+                (rolo padrão 40 m × 1370 mm). Deixe vazio se a tira não é cortada de rolo.
+              </p>
             </div>
 
             <div className="col-span-2 space-y-1.5">

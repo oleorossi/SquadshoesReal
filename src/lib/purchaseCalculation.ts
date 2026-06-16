@@ -1,4 +1,4 @@
-import { resolveConversionFactors } from '@/lib/unitConversion';
+import { resolveConversionFactors, isDiscretePurchaseUnit } from '@/lib/unitConversion';
 
 interface PurchaseProduct {
   conversion_rate: number;
@@ -33,9 +33,8 @@ export function calcularOrdemCompra(
     quantidadeParaComprar = product.min_order_quantity || 1;
   }
 
-  // Round up for discrete units
-  const discreteUnits = ['chapa', 'rolo', 'un', 'par', 'cx', 'pc'];
-  if (discreteUnits.includes(product.purchase_order_unit)) {
+  // Round up for discrete units (lista canônica — antes faltava 'placa').
+  if (isDiscretePurchaseUnit(product.purchase_order_unit)) {
     quantidadeParaComprar = Math.ceil(quantidadeParaComprar);
   }
 

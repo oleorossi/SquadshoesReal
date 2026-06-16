@@ -138,15 +138,17 @@ Deno.serve(async (req) => {
 
     if (newStatus === "autorizada" && d.numero_nf && nfe.sale_order_id
         && updatedRows && updatedRows.length > 0) {
-      // FIX M1: avança PV pra "Faturado" quando NF-e autoriza via polling
-      // (status='processando' → 'autorizada'). Antes só o caminho síncrono
-      // do emit-nfe disparava esse update — emissão assíncrona ficava com
-      // AR/financial_entries órfãos.
+      // Faturamento MANUAL (decisão 2026-06-13, alinhado ao emit-nfe síncrono):
+      // a NF é emitida DIAS ANTES da entrega, então autorizar a NF — inclusive
+      // via polling assíncrono — NÃO pode avançar o PV pra "Faturado" (isso
+      // reconheceria receita+CMV antes da venda confirmada). Aqui só gravamos o
+      // NÚMERO da NF no PV (rastreabilidade); o status 'Faturado' fica para o
+      // usuário acionar no dropdown do PV. Auditoria 2026-06-14, Área 4.
       const { error: updateSoErr } = await adminClient
         .from("sale_orders")
-        .update({ nfe: String(d.numero_nf), status: "Faturado" })
+        .update({ nfe: String(d.numero_nf) }) // só o nº da NF; status NÃO muda
         .eq("id", nfe.sale_order_id)
-        .not("status", "in", "(Cancelado,Faturado)");
+        .neq("status", "Cancelado");
       if (updateSoErr) console.error("nfe-status: failed to update sale_order:", updateSoErr.message);
     }
 

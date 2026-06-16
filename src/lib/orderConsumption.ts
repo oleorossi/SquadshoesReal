@@ -11,6 +11,7 @@ import {
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 
 /**
  * Motor CANÔNICO de consumo de materiais.
@@ -76,6 +77,14 @@ export type ConsumptionItem = {
   strap_colors?: any[] | null;
   /** Linha da ficha técnica (join `technical_sheets(...)`). */
   technical_sheets: any;
+  /**
+   * Modo de embalagem do PEDIDO (`sale_orders.packaging_mode`: colmeia /
+   * individual / individual_master / individual_fitilho / individual_amarrado).
+   * Quando presente e a ficha tem VÁRIAS caixas no BOM, o consumo mostra só a
+   * caixa do modo escolhido. Opcional — callers que não sabem o modo (ex.: ficha
+   * de operador por OP) passam undefined e o filtro não age.
+   */
+  packagingMode?: string | null;
 };
 
 /** Contexto compartilhado: as consultas e mapas que o cálculo precisa. */
@@ -645,7 +654,14 @@ export function computeConsumptionForItems(
         const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
         const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
-        const insolePlates = groupPlateArea > 0 ? (insoleDm2 / groupPlateArea) : convertDm2ToPlates(insoleDm2, insoleSheet);
+        // Aplica waste_pct também no caminho que usa dimensões do grupo, p/ paridade
+        // com convertDm2ToPlates() (fallback) e com bomConsumption.ts (Lista de
+        // Separação) — antes o modal divergia da Lista no nº de placas (auditoria
+        // 2026-06-14, Área 2).
+        const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
+        const insolePlates = groupPlateArea > 0
+          ? (insoleDm2 / groupPlateArea) * (1 + insoleWastePct / 100)
+          : convertDm2ToPlates(insoleDm2, insoleSheet);
 
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
@@ -830,6 +846,25 @@ export function computeConsumptionForItems(
     if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
 
     const itemMaterials = (materials || []).filter((material: any) => material.sheet_id === item.reference_id);
+
+    // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
+    // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
+    // caixa do modo escolhido — senão addConsumptionRow somaria as duas no grupo
+    // "EMBALAGEM" (qtd inflada) e rotularia com a primeira. Pré-varre os tipos de
+    // caixa presentes nesta ficha pra o filtro só agir quando há alternativa.
+    const itemPackagingMode = item.packagingMode;
+    const presentCaixaTypes = new Set<CollectiveType>();
+    if (itemPackagingMode) {
+      for (const m of itemMaterials) {
+        const p = m.products as any;
+        if (!p) continue;
+        const gName = (m.product_groups as any)?.name || p.category || p.name || '';
+        if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
+        const t = caixaCollectiveTypeFromName(p.name);
+        if (t) presentCaixaTypes.add(t);
+      }
+    }
+
     for (const material of itemMaterials) {
       const product = material.products as any;
       const group = material.product_groups as any;
@@ -854,6 +889,12 @@ export function computeConsumptionForItems(
       // além dos 1668 reais da matriz por numeração). Pula sempre que a ficha
       // define um solado; sem solado na ficha, o BOM segue como fallback.
       const bomComponentType = classifyBomMaterial(groupName, product.name || '', product.category || '');
+
+      // Embalagem com modo definido: pula a caixa que NÃO é a do packaging_mode
+      // do pedido (só quando há alternativas reais na ficha — ver pré-varredura).
+      if (bomComponentType === 'Embalagem'
+        && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
+
       const isSoleBom = normalizeText(product.category) === 'solado'
         || bomComponentType === 'Solado';
       const sheetHasSole = String(sheet?.sole_material || '').trim().length > 0

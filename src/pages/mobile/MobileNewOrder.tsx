@@ -7,6 +7,7 @@ import { enqueueOrder, saveDraft, loadDraft, deleteDraft } from '@/lib/mobile/of
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
 import { triggerSync } from '@/lib/mobile/syncEngine';
 import { fetchClientPriceList, fetchClientHistory, resolvePrice, type PriceLookup, type ClientHistory } from '@/lib/mobile/clientContext';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 
@@ -124,7 +125,8 @@ export default function MobileNewOrder() {
         .eq('active', true)
         .limit(40);
       if (clientSearch.length >= 2) {
-        q = q.ilike('razao_social', `%${clientSearch}%`);
+        // search_norm (banco) ignora acento/caixa/espaço — "tamara" casa "TÂMARA".
+        q = q.ilike('search_norm', `%${normalizeForSearch(clientSearch)}%`);
       }
       const { data } = await q;
       setClients(data ?? []);

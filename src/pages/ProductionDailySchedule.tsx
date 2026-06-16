@@ -28,7 +28,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
-import { computeParallelWindows, loadHolidayCache } from '@/lib/sectorCapacity';
+import { computeParallelWindows, loadHolidayCache, isBusinessDay } from '@/lib/sectorCapacity';
 import { DISPLAY_SECTORS, normalizeSector, type SectorKey } from '@/lib/sectors';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -172,6 +172,8 @@ function deriveMaterialGroup(sheetName: string, shoeCategory: string | null): st
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
+// Feriado-aware via isBusinessDay (cache populado por loadHolidayCache, awaited
+// na query). Auditoria 2026-06-14, Área 1: antes só pulava fim de semana.
 function addBizDays(date: Date, days: number): Date {
   if (days === 0) return new Date(date);
   const d = new Date(date);
@@ -179,7 +181,7 @@ function addBizDays(date: Date, days: number): Date {
   const dir = days > 0 ? 1 : -1;
   while (added < Math.abs(days)) {
     d.setTime(d.getTime() + dir * DAY_MS);
-    if (d.getDay() !== 0 && d.getDay() !== 6) added++;
+    if (isBusinessDay(d)) added++;
   }
   return d;
 }
@@ -189,7 +191,7 @@ function bizDaysInRange(start: Date, endExclusive: Date): number {
   let count = 0;
   const cur = new Date(start);
   while (cur.getTime() < endExclusive.getTime()) {
-    if (cur.getDay() !== 0 && cur.getDay() !== 6) count++;
+    if (isBusinessDay(cur)) count++;
     cur.setTime(cur.getTime() + DAY_MS);
   }
   return Math.max(1, count);
@@ -200,7 +202,7 @@ function businessDaysInPeriod(start: Date, endInclusive: Date): Date[] {
   const cur = new Date(start); cur.setHours(0, 0, 0, 0);
   const end = new Date(endInclusive); end.setHours(23, 59, 59, 999);
   while (cur <= end) {
-    if (cur.getDay() !== 0 && cur.getDay() !== 6) days.push(new Date(cur));
+    if (isBusinessDay(cur)) days.push(new Date(cur));
     cur.setTime(cur.getTime() + DAY_MS);
   }
   return days;

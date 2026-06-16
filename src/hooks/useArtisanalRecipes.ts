@@ -48,6 +48,8 @@ export interface ArtisanalRecipe {
   yield_per_meter: number;
   labor_cost_per_meter: number;
   base_time_minutes: number;
+  /** Largura de corte da tira artesanal em mm (corte do rolo no PV). Nullable. */
+  cut_width_mm: number | null;
   default_contractor_id: string | null;
   notes: string | null;
   active: boolean;

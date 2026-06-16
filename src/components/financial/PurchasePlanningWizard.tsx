@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { resolveConversionFactors } from '@/lib/unitConversion';
+import { resolveConversionFactors, areSameUnit } from '@/lib/unitConversion';
+import { areaToStockDivisor } from '@/lib/materialConsumption';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ interface MaterialLine {
   unit: string; // consumption unit
   purchase_unit: string; // purchase_order_unit for display
   conversion_rate: number;
+  width_missing?: boolean; // área sem largura na ficha → conversão dm²→física indefinida
 }
 
 interface WeeklyMaterialSummary {
@@ -67,6 +69,7 @@ interface AggregatedMaterial {
   supplier_id?: string; // FK suppliers — gravado na OC
   orders: string[];
   product_id?: string; // representative product id for PO item creation
+  width_missing?: boolean; // alguma linha de área sem largura → quantidade não confiável
 }
 
 const STEPS = [
@@ -124,8 +127,31 @@ export default function PurchasePlanningWizard() {
         return;
       }
 
-      // 3. Fetch technical sheets, products, groups, and recent PO items
-      const [sheetsRes, productsRes, groupsRes, poItemsRes] = await Promise.all([
+      // 2b. Data-LIMITE de compra por OP (auditoria 2026-06-14, Top10 #3).
+      // Antes o Wizard agrupava as necessidades pela semana de ENTREGA do cliente
+      // → sugeria comprar TARDE (o oposto da função do MRP). A view
+      // purchase_projection_timeline já calcula data_limite_compra por OP×material
+      // (cadeia de lead time produção + buffer fornecedor, server-side). Usamos a
+      // data-limite MAIS CEDO entre os materiais da OP (deadline vinculante);
+      // fallback pra entrega quando a view não cobre o material.
+      const orderIds = Array.from(new Set((orders as any[]).map(o => o.id).filter(Boolean)));
+      const purchaseDeadlineByOrder = new Map<string, string>();
+      if (orderIds.length > 0) {
+        const { data: timelineRows } = await (supabase as any)
+          .from('purchase_projection_timeline')
+          .select('order_id, data_limite_compra')
+          .in('order_id', orderIds);
+        for (const row of (timelineRows || []) as any[]) {
+          if (!row.order_id || !row.data_limite_compra) continue;
+          const prev = purchaseDeadlineByOrder.get(row.order_id);
+          if (!prev || row.data_limite_compra < prev) {
+            purchaseDeadlineByOrder.set(row.order_id, row.data_limite_compra);
+          }
+        }
+      }
+
+      // 3. Fetch technical sheets, products, groups, recent PO items, component sheets
+      const [sheetsRes, productsRes, groupsRes, poItemsRes, compSheetsRes] = await Promise.all([
         supabase
           .from('technical_sheets')
           .select(`
@@ -165,6 +191,12 @@ export default function PurchasePlanningWizard() {
           .from('purchase_order_items')
           .select('product_id, unit, created_at')
           .order('created_at', { ascending: false }),
+        // Component sheets — largura/área da ficha p/ converter material de área
+        // (dm²/par) → unidade física (m/placa). A conversão dm²→m NÃO mora em
+        // conversion_rate (mora aqui). Sem isto o Wizard inflava ~100×.
+        supabase
+          .from('component_sheets')
+          .select('product_id, group_id, dimensions_width, dimensions_length, dimensions_unit, waste_pct'),
       ]);
 
       if (sheetsRes.error) throw sheetsRes.error;
@@ -198,6 +230,17 @@ export default function PurchasePlanningWizard() {
 
       const pMap = new Map(productRows.map(p => [p.id, p]));
       setProductsMap(pMap);
+
+      // Ficha de componente por produto e por grupo (pra converter dm²→unidade
+      // física pela largura/área — mesma fonte do modal de consumo e da view).
+      const csByProduct = new Map<string, any>();
+      const csByGroup = new Map<string, any>();
+      for (const cs of (compSheetsRes.data ?? []) as any[]) {
+        if (cs.product_id && !csByProduct.has(cs.product_id)) csByProduct.set(cs.product_id, cs);
+        if (cs.group_id && !csByGroup.has(cs.group_id)) csByGroup.set(cs.group_id, cs);
+      }
+      const componentSheetFor = (productId?: string | null, groupId?: string | null): any =>
+        (productId && csByProduct.get(productId)) || (groupId && csByGroup.get(groupId)) || null;
 
       // Build group name → group id lookup
       const groupNameMap = new Map<string, string>();
@@ -317,9 +360,14 @@ export default function PurchasePlanningWizard() {
 
         const saleOrder = Array.isArray(order.sale_orders) ? order.sale_orders[0] : order.sale_orders;
         const deliveryDate = order.planned_delivery || saleOrder?.delivery_deadline || null;
-        const deliveryDateObj = parseDateValue(deliveryDate) ?? addWeeks(today, 4);
-        const weekStart = startOfWeek(deliveryDateObj, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(deliveryDateObj, { weekStartsOn: 1 });
+        // Agrupa pela DATA-LIMITE DE COMPRA (quando comprar) e não pela entrega
+        // (quando entregar) — ver bloco 2b. Fallback pra entrega quando a view não
+        // cobre a OP. Auditoria 2026-06-14, Top10 #3.
+        const purchaseDeadline = purchaseDeadlineByOrder.get(order.id) || null;
+        const schedulingDate = purchaseDeadline || deliveryDate;
+        const schedulingDateObj = parseDateValue(schedulingDate) ?? addWeeks(today, 4);
+        const weekStart = startOfWeek(schedulingDateObj, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(schedulingDateObj, { weekStartsOn: 1 });
         const weekLabel = `${format(weekStart, 'dd/MM', { locale: ptBR })} - ${format(weekEnd, 'dd/MM', { locale: ptBR })}`;
 
         const qty = Number(order.quantity) || 0;
@@ -351,12 +399,26 @@ export default function PurchasePlanningWizard() {
           const convRate = resolved.conversion_rate || 1;
           const purchaseUnit = resolved.purchase_unit || rawUnit;
           // Use unified conversion logic to handle both area→linear and stock→package cases
-          const { needToStockDivisor, stockToPurchaseDivisor } = resolveConversionFactors(
+          let { needToStockDivisor } = resolveConversionFactors(
             rawUnit,                    // consumption unit (e.g. dm², kg, par)
             resolved.stock_unit,        // stock unit (e.g. m, kg, par)
             purchaseUnit,               // purchase unit (e.g. metro, un, par)
             convRate,
           );
+          const { stockToPurchaseDivisor } = resolveConversionFactors(rawUnit, resolved.stock_unit, purchaseUnit, convRate);
+          // CORREÇÃO dm² (auditoria 2026-06-14): material de ÁREA (dm²/par) com produto
+          // em unidade física (m/cm/placa) converte pela LARGURA da ficha de componente,
+          // NÃO pelo conversion_rate (que costuma ser 1 nesses casos → resolveConversionFactors
+          // devolvia 1:1 e inflava a quantidade ~100×). Ver areaToStockDivisor / CLAUDE.md.
+          let widthMissing = false;
+          const rawIsArea = ['dm²', 'dm2', 'cm²', 'cm2', 'm²', 'm2'].includes((rawUnit || '').toLowerCase().trim());
+          if (rawIsArea && !areSameUnit(rawUnit, resolved.stock_unit)) {
+            const prodRow = resolved.product_id ? pMap.get(resolved.product_id) : null;
+            const cs = componentSheetFor(resolved.product_id, prodRow?.group_id);
+            const div = areaToStockDivisor(resolved.stock_unit, cs);
+            if (div && div > 0) needToStockDivisor = div;      // dm² → m/placa pela ficha
+            else widthMissing = true;                          // sem largura: não dá pra converter
+          }
           const needInStock = totalNeededRaw / needToStockDivisor;
           const totalNeededConverted = needInStock / stockToPurchaseDivisor;
           const stockInPurchaseUnit = resolved.stock / stockToPurchaseDivisor;
@@ -376,6 +438,7 @@ export default function PurchasePlanningWizard() {
             unit: rawUnit,
             purchase_unit: purchaseUnit,
             conversion_rate: convRate,
+            width_missing: widthMissing,
             _stock: stockInPurchaseUnit,
             _price: priceInPurchaseUnit,
             _supplier: resolved.supplier,
@@ -499,11 +562,13 @@ export default function PurchasePlanningWizard() {
             supplier_id: matAny._supplier_id || undefined,
             orders: [],
             product_id: matAny._product_id || undefined,
+            width_missing: matAny.width_missing || false,
           });
         }
         const agg = week.materials.get(key)!;
         // Use converted quantity (in purchase unit) for comparison with stock
         agg.total_needed += mat.total_needed_converted;
+        if (matAny.width_missing) agg.width_missing = true;
         agg.orders.push(order.order_number);
       }
     }
@@ -537,6 +602,7 @@ export default function PurchasePlanningWizard() {
         } else {
           const existing = merged.get(key)!;
           existing.total_needed += mat.total_needed;
+          if (mat.width_missing) existing.width_missing = true;
           existing.orders = Array.from(new Set([...existing.orders, ...mat.orders]));
           existing.stock_after = existing.current_stock - existing.total_needed;
           const deficit = Math.max(0, existing.total_needed - existing.current_stock);
@@ -572,7 +638,17 @@ export default function PurchasePlanningWizard() {
     if (creating) return; // guard contra double-click (fix A3.3a)
     setCreating(true);
     try {
-      const active = selectedMaterials.filter(m => m.selected && m.stock_after < 0);
+      const eligible = selectedMaterials.filter(m => m.selected && m.stock_after < 0);
+      // Material de ÁREA sem largura na ficha → conversão dm²→física indefinida →
+      // quantidade inflada (~100×). NÃO gera OC pra esses (evita pedido absurdo);
+      // avisa pra cadastrar a largura. Auditoria 2026-06-14.
+      const blocked = eligible.filter(m => m.width_missing);
+      const active = eligible.filter(m => !m.width_missing);
+      if (blocked.length > 0) {
+        toast.warning(
+          `${blocked.length} material(is) de área sem largura na ficha (${blocked.slice(0, 3).map(m => m.name).join(', ')}${blocked.length > 3 ? '…' : ''}) ficaram FORA da OC — a quantidade não é confiável. Cadastre a largura em Materiais → Ficha de Componente → Dimensões.`,
+        );
+      }
       const bySupplier = new Map<string, AggregatedMaterial[]>();
       active.forEach(m => {
         const key = m.supplier_name || 'Sem Fornecedor';
@@ -588,6 +664,18 @@ export default function PurchasePlanningWizard() {
         // FK do fornecedor quando algum produto do grupo tem (fix A3.3b) —
         // sem ele a OC caía no default de prazo de pagamento.
         const supplierId = items.find(i => i.supplier_id)?.supplier_id ?? null;
+        // Idempotência DETERMINÍSTICA (auditoria 2026-06-14, Área 6): o trigger
+        // tg_purchase_order_idempotency rejeita a MESMA key em 30s, mas
+        // crypto.randomUUID() gerava key nova a cada submit → o trigger nunca
+        // via repetição (dois cliques = 2 OCs). Agora a key é hash do payload
+        // (fornecedor + itens ordenados com déficit) — double-click colide e a
+        // 2ª OC é rejeitada; após 30s um re-pedido idêntico é liberado.
+        const idempSig = items
+          .filter(i => i.product_id)
+          .map(i => `${i.product_id}:${Math.ceil(Math.max(0, i.total_needed - i.current_stock))}`)
+          .sort()
+          .join('|');
+        const idempKey = `wizard|${supplierId || supplierName}|${idempSig}`;
         const { data: po, error: poErr } = await supabase
           .from('purchase_orders')
           .insert({
@@ -597,9 +685,7 @@ export default function PurchasePlanningWizard() {
             notes: `Plano de compras baseado em pedidos`,
             auto_generated: true,
             status: 'pending',
-            // trigger tg_purchase_order_idempotency (20260523130000) rejeita
-            // key repetida em 30s — protege contra double-click/retry
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key: idempKey,
           })
           .select('id')
           .single();

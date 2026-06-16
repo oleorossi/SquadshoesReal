@@ -1259,6 +1259,48 @@ Deno.serve(async (req) => {
     // ver no Supabase Functions Logs o que sai e o que volta.
     console.log("[emit-nfe] POST /notas_fiscais_produtos body:", JSON.stringify(nfePayload).slice(0, 2000));
 
+    // ── CLAIM ATÔMICO anti-dupla-emissão (auditoria 2026-06-14, Top10 #1) ──
+    // O pre-check lá em cima é só UX (SELECT — não trava corrida): dois requests
+    // concorrentes passavam ambos e cada um POSTava à SEFAZ → DOIS documentos
+    // fiscais reais (numeração queimada, cancelamento manual). O índice único
+    // parcial uq_nfe_active_per_sale_order (status processando/autorizada/
+    // cancelando) só batia no INSERT final — DEPOIS dos POSTs à SEFAZ.
+    // Aqui inserimos a linha 'processando' ANTES de qualquer POST: o índice
+    // rejeita o 2º request com 23505 e ele aborta sem chamar a SEFAZ. Os inserts
+    // de resultado mais abaixo viram UPDATE desta mesma linha (claimId).
+    let claimId: string;
+    {
+      const claimRecord: any = {
+        sale_order_id,
+        ref_nfe: ref,
+        status: "processando",
+        valor_total: totalComFrete,
+        cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
+        nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
+        cnpj_destinatario: cnpjDestRaw || null,
+      };
+      if (resolvedCompanyId) claimRecord.company_id = resolvedCompanyId;
+      const { data: claimRow, error: claimErr } = await adminClient
+        .from("nfe_emitidas").insert(claimRecord).select("id").single();
+      if (claimErr) {
+        if ((claimErr as any)?.code === "23505") {
+          return new Response(JSON.stringify({
+            error: "Já existe uma emissão de NF-e em andamento para este pedido. Aguarde concluir ou cancele antes de re-emitir.",
+            conflict: true,
+          }), { status: 409, headers: corsHeaders });
+        }
+        return new Response(JSON.stringify({
+          error: `Falha ao reservar a emissão da NF-e: ${claimErr.message}. Tente novamente.`,
+        }), { status: 500, headers: corsHeaders });
+      }
+      if (!claimRow?.id) {
+        return new Response(JSON.stringify({
+          error: "Falha ao reservar a emissão da NF-e (sem id retornado). Tente novamente.",
+        }), { status: 500, headers: corsHeaders });
+      }
+      claimId = claimRow.id as string;
+    }
+
     let createResp;
     try {
       createResp = await gcFetch("/notas_fiscais_produtos", {
@@ -1282,7 +1324,8 @@ Deno.serve(async (req) => {
         cnpj_destinatario: cnpjDestRaw || null,
       };
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
-      await adminClient.from("nfe_emitidas").insert(nfeRecord);
+      // UPDATE do claim (não insert) — a linha 'processando' já existe.
+      await adminClient.from("nfe_emitidas").update(nfeRecord).eq("id", claimId);
       return new Response(JSON.stringify({
         error: isTimeout
           ? "Timeout ao falar com GestaoClick. ATENÇÃO: A NF pode ter sido criada no painel deles. Confira antes de re-emitir pra evitar duplicata fiscal. Em caso de duplicata, cancele a antiga no painel ou use Sincronizar com GestaoClick."
@@ -1305,7 +1348,8 @@ Deno.serve(async (req) => {
         gc_response_payload: createResp.json as any,
       };
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
-      await adminClient.from("nfe_emitidas").insert(nfeRecord);
+      // UPDATE do claim (não insert) — a linha 'processando' já existe.
+      await adminClient.from("nfe_emitidas").update(nfeRecord).eq("id", claimId);
       return new Response(JSON.stringify({ error: `Falha ao cadastrar NF-e no GestaoClick: ${msg}` }), { status: 422, headers: corsHeaders });
     }
     const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
@@ -1390,8 +1434,9 @@ Deno.serve(async (req) => {
     };
     if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
 
+    // UPDATE do claim 'processando' (não insert) — preenche o resultado final.
     const { data: nfe, error: nfeErr } = await adminClient
-      .from("nfe_emitidas").insert(nfeRecord).select().single();
+      .from("nfe_emitidas").update(nfeRecord).eq("id", claimId).select().single();
 
     if (nfeErr) {
       const code = (nfeErr as any)?.code;
@@ -1409,23 +1454,27 @@ Deno.serve(async (req) => {
       }), { status: 500, headers: corsHeaders });
     }
 
-    // Audit Phase 3 fix: NF autorizada → advance SO para 'Faturado' pra disparar
-    // syncFinancialRecords (cria AR + financial_entries). Antes ficava órfão se o
-    // operador NF emitia mas ninguém ajustava o status manualmente.
+    // Faturamento MANUAL (pedido do usuário, 2026-06-13): a NF costuma ser emitida
+    // DIAS ANTES da entrega, então emitir a NF NÃO deve avançar o PV pra 'Faturado'
+    // automaticamente. Aqui só registramos o NÚMERO da NF no PV (rastreabilidade);
+    // o status 'Faturado' — e, com ele, o reconhecimento de receita via
+    // syncFinancialRecords (que exige Faturado + NF autorizada) — fica para o
+    // usuário acionar manualmente quando faturar de fato (dropdown de status do PV
+    // em Pedidos de Venda: 'Em Produção' → 'Faturado').
+    // (Antes, o auto-avanço também escondia OPs ainda em produção do picking.)
     let arSyncWarning: string | null = null;
     if (finalStatus === "autorizada" && order.status !== "Faturado" && order.status !== "Cancelado") {
       const numeroNfe = nfe?.numero || (await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`)).json?.data?.numero_nf || null;
-      const { error: soUpdErr } = await adminClient
-        .from("sale_orders")
-        .update({
-          status: "Faturado",
-          nfe: numeroNfe ? String(numeroNfe) : order.nfe,
-        })
-        .eq("id", sale_order_id)
-        .neq("status", "Cancelado");
-      if (soUpdErr) {
-        arSyncWarning = `NF autorizada mas falhou ao avançar PV pra Faturado: ${soUpdErr.message}. Ajuste o status manualmente pra gerar AR.`;
-        console.warn("emit-nfe SO status update failed:", soUpdErr);
+      if (numeroNfe) {
+        const { error: soUpdErr } = await adminClient
+          .from("sale_orders")
+          .update({ nfe: String(numeroNfe) }) // só o nº da NF; status NÃO muda
+          .eq("id", sale_order_id)
+          .neq("status", "Cancelado");
+        if (soUpdErr) {
+          arSyncWarning = `NF autorizada mas falhou ao registrar o número no PV: ${soUpdErr.message}.`;
+          console.warn("emit-nfe SO nfe-number update failed:", soUpdErr);
+        }
       }
     }
 

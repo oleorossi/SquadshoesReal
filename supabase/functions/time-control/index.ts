@@ -41,6 +41,25 @@ Deno.serve(async (req) => {
     return errorResponse("Unauthorized", 401);
   }
 
+  // Gate de role pra TODA a função (auditoria 2026-06-14, Top10 #8): os GETs de
+  // ponto/analytics (records/exceptions/analytics/work-days) só exigiam JWT
+  // válido → QUALQUER usuário autenticado lia o ponto (e o salário implícito) de
+  // TODOS — vazamento de PII de RH. Agora exige admin/gerente/rh logo após o
+  // auth, como já fazia o PATCH. (O check do PATCH fica de redundância defensiva.)
+  {
+    const adminAuthClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { data: roles, error: rolesErr } = await adminAuthClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id);
+    if (rolesErr) return errorResponse("Falha ao validar permissão", 500);
+    const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "rh"].includes(r.role));
+    if (!allowed) return errorResponse("Forbidden: apenas admin, gerente ou rh podem acessar dados de ponto", 403);
+  }
+
   const url = new URL(req.url);
   const path = url.pathname.replace("/time-control", "").replace(/^\//, "");
 

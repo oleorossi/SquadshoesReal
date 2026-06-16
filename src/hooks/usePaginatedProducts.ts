@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { searchMatchesAny } from '@/lib/searchUtils';
 
 export interface PaginatedProductsParams {
   search?: string;
@@ -57,15 +58,11 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
           in_production_quantity: inProdMap[p.id] || 0,
          }));
 
-      // 1. Text Search
+      // 1. Text Search — normalizeForSearch ignora acento/caixa/espaço
+      // (ex.: "tamara" casa "TÂMARA", "sp10" casa "SP 10").
       if (search) {
-        const s = search.toLowerCase();
-        filtered = filtered.filter(p => 
-          (p.name?.toLowerCase().includes(s)) ||
-          (p.sku?.toLowerCase().includes(s)) ||
-          (p.color?.toLowerCase().includes(s)) ||
-          (p.technical_name?.toLowerCase().includes(s)) ||
-          (p.group_name?.toLowerCase().includes(s))
+        filtered = filtered.filter(p =>
+          searchMatchesAny(search, p.name, p.sku, p.color, p.technical_name, p.group_name)
         );
       }
 

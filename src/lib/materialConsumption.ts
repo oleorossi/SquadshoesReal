@@ -89,6 +89,7 @@ const convertDimensionToMm = (value?: number | null, unit?: string | null) => {
   const normalizedUnit = normalizeText(unit);
 
   if (normalizedUnit === 'cm') return numericValue * 10;
+  if (normalizedUnit === 'dm') return numericValue * 100;
   if (normalizedUnit === 'm' || normalizedUnit === 'metro' || normalizedUnit === 'mt') return numericValue * 1000;
 
   return numericValue;
@@ -262,6 +263,91 @@ export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSh
   const wastePct = Number(componentSheet?.waste_pct) || 0;
   return (totalDm2 / plateAreaDm2) * (1 + wastePct / 100);
 };
+
+/**
+ * Custo de UM material do BOM por par, aplicando a REGRA CANÔNICA de consumo
+ * (CLAUDE.md / este arquivo): material de ÁREA (consumo em dm²/par) cujo produto é
+ * vendido em unidade FÍSICA (linear m/cm ou placa) precisa ser convertido pela
+ * largura/área da ficha de componente ANTES de multiplicar pelo preço — senão
+ * `quantity_per_unit(dm²) × unit_price(R$/m)` infla o custo ~100× (largura em dm).
+ *
+ * Itens DIRETOS (cola em kg, caixa em un, tira/elástico em m SEM ficha de largura)
+ * já têm quantity_per_unit na mesma unidade do preço → custo = qty × preço × (1+perda).
+ *
+ * ⚠ Os conversores dm²→físico JÁ aplicam a perda da ficha; por isso o ramo de
+ * área NÃO re-multiplica waste. Quando a unidade é física mas a ficha não tem
+ * largura/área cadastrada, mantém o cálculo direto (sem mudar o valor atual) e
+ * marca `widthMissing` pra UI avisar (custo pode estar inflado) — igual ao modal
+ * de Consumo de Materiais.
+ */
+export function bomMaterialCostPerPair(
+  quantityPerUnit: number | null | undefined,
+  unitPrice: number | null | undefined,
+  productUnit: string | null | undefined,
+  componentSheet: ComponentSheetCandidate | null,
+): { cost: number; converted: boolean; widthMissing: boolean } {
+  const qty = Number(quantityPerUnit) || 0;
+  const price = Number(unitPrice) || 0;
+  const unit = normalizeText(productUnit);
+  const wastePct = Number(componentSheet?.waste_pct) || 0;
+  const direct = () => ({ cost: qty * price * (1 + wastePct / 100), converted: false, widthMissing: false });
+
+  if (qty <= 0 || price <= 0) return direct();
+
+  if (LINEAR_UNITS.has(unit)) {
+    const widthMm = getLinearWidthMm(componentSheet);
+    if (widthMm > 0) {
+      // dm²/par → metros/par (já com perda) → × R$/m
+      return { cost: convertDm2ToLinearMeters(qty, componentSheet) * price, converted: true, widthMissing: false };
+    }
+    // unidade linear sem largura na ficha: pode ser item direto (tira) OU área sem
+    // largura cadastrada. Mantém o valor atual e só sinaliza quando HÁ ficha (= é
+    // material de área mal cadastrado); tira normalmente nem tem ficha → não avisa.
+    return { ...direct(), widthMissing: componentSheet != null };
+  }
+
+  if (PLATE_UNITS.has(unit)) {
+    const plateAreaDm2 = getPlateAreaDm2(componentSheet);
+    if (plateAreaDm2 > 0) {
+      return { cost: convertDm2ToPlates(qty, componentSheet) * price, converted: true, widthMissing: false };
+    }
+    return { ...direct(), widthMissing: componentSheet != null };
+  }
+
+  // contagem (un/par), massa (kg/g), volume (L/ml) — qty já na unidade do preço.
+  return direct();
+}
+
+/**
+ * Divisor pra converter QUANTIDADE de material de área (dm²/par) → unidade física de
+ * ESTOQUE do produto (metro linear ou placa), usando a largura/área da ficha de
+ * componente. PURO geométrico (NÃO aplica perda — o caller controla a perda dele).
+ *
+ *   need_em_estoque = total_dm2 / areaToStockDivisor(stockUnit, ficha)
+ *
+ * - linear (m/cm): divisor = largura_mm / 10  (= dm² por metro)
+ * - placa: divisor = área_da_placa_dm²
+ * - retorna null quando NÃO se aplica (unidade não é linear/placa) OU quando falta a
+ *   largura/área na ficha (caller deve sinalizar widthMissing e NÃO inflar ~100×).
+ *
+ * Usado no planejamento de compras (PurchasePlanningWizard) — a conversão dm²→físico
+ * NÃO mora em products.conversion_rate (mora aqui, na ficha). Ver CLAUDE.md.
+ */
+export function areaToStockDivisor(
+  stockUnit: string | null | undefined,
+  componentSheet: ComponentSheetCandidate | null,
+): number | null {
+  const unit = normalizeText(stockUnit);
+  if (LINEAR_UNITS.has(unit)) {
+    const w = getLinearWidthMm(componentSheet);
+    return w > 0 ? w / 10 : null;
+  }
+  if (PLATE_UNITS.has(unit)) {
+    const a = getPlateAreaDm2(componentSheet);
+    return a > 0 ? a : null;
+  }
+  return null;
+}
 
 /**
  * Unit-aware consumption calculation.

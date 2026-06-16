@@ -133,6 +133,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['so_return_dialog', soId] });
       onSaved?.({ completed });
       if (completed) onOpenChange(false);

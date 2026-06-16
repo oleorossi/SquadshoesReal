@@ -299,7 +299,19 @@ export async function syncFinancialRecords(saleOrderId: string) {
       }
     }
 
-    const arTotal = so.is_factoring ? factoringDiscountedTotal : total;
+    // Decisão Leonardo 2026-06-14 (regime caixa + factoring 1A): a AR é gravada
+    // SEMPRE pelo valor BRUTO da venda (total). O custo do factoring (juros de
+    // antecipação) NÃO é descontado da AR — vira uma despesa financeira separada
+    // (financial_entries reference_type='sale_order_factoring', criada abaixo).
+    //
+    // Antes a AR era LÍQUIDA (factoringDiscountedTotal) E existia a linha de
+    // despesa separada → o desconto entrava 2× na DRE (embutido na AR líquida +
+    // na linha de despesa). Agora: AR bruta (= total) + 1 linha de despesa ⇒
+    // factoring debitado UMA única vez. O factoringDiscountedTotal segue calculado
+    // só pra derivar o valor do juros (factoringDiscount); o cronograma de
+    // vencimentos ainda usa factoringReceivingDays pra empurrar o due_date (timing
+    // de quando a factoring repassa o líquido), independente do valor bruto da AR.
+    const arTotal = total;
     const factoringDiscount = so.is_factoring ? (total - factoringDiscountedTotal) : 0;
 
     if (arTotal <= 0) {
@@ -724,6 +736,11 @@ export type SaleOrderFormData = {
    *  caso external_nfe_number guarda o número informado manualmente. */
   nfe_external?: boolean;
   external_nfe_number?: string;
+  /** Terceirização planejada por setor (Fase A): manda o setor escolhido deste PV
+   *  pra fora (prestador), mesmo que desse pra fazer na fábrica — evita gargalo.
+   *  Ao virar OP, o trigger trg_apply_pv_outsourcing_to_op marca a OP. */
+  outsource_to_contractor_id?: string | null;
+  outsource_to_sector?: string | null;
 };
 
 /** Tipos de pedido (paridade Tutor32) — os `value` batem EXATAMENTE com o CHECK
@@ -2101,6 +2118,20 @@ export function useUpdateSaleOrder() {
         p_items: itemsPayload,
       });
       if (rpcErr) throw rpcErr;
+
+      // Terceirização planejada (Fase A): o RPC update_sale_order_atomic NÃO lista
+      // estas 2 colunas no UPDATE, então não as toca — um update direcionado é
+      // seguro (sem clobbering, diferente do caso strap_colors). O create persiste
+      // via spread; aqui cobrimos a edição.
+      {
+        const oc = (order as any).outsource_to_contractor_id || null;
+        const { error: outErr } = await supabase.from('sale_orders').update({
+          outsource_to_contractor_id: oc,
+          outsource_to_sector: oc ? ((order as any).outsource_to_sector || null) : null,
+        }).eq('id', id);
+        if (outErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização do PV:', outErr.message);
+      }
+
       const insertedIds: string[] = ((rpcOut as any)?.inserted_item_ids as string[] | undefined) || [];
       // Re-hydrate the same shape the older code returned so downstream MRP loop matches by index.
       const insertedItems: { id: string; reference_id: string; color: string | null; quantity: number | null }[] =
@@ -2358,6 +2389,12 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      // Editar o PV recria OPs e remexe a alocação de setores/ondas → invalidar
+      // os quadros de produção pra não mostrar OP/onda obsoleta. Auditoria 2026-06-14.
+      qc.invalidateQueries({ queryKey: ['waves'] });
+      qc.invalidateQueries({ queryKey: ['production_waves'] });
+      qc.invalidateQueries({ queryKey: ['sector-board'] });
+      qc.invalidateQueries({ queryKey: ['sector_distribution_plan'] });
       // Editar o PV muda a demanda do MRP — invalida as necessidades/sugestões.
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
       qc.invalidateQueries({ queryKey: ['material-needs-report'] });

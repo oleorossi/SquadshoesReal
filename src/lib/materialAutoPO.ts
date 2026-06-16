@@ -87,14 +87,18 @@ export async function autoCreateMaterialPO(params: {
   // ── Step 3: Check for existing open PO to accumulate into ────────────────
   let openPO: { id: string; order_number: string; total_value: number; notes: string } | null = null;
   if (supplierName !== 'A definir') {
-    const { data } = await (supabase as any)
+    // Acumula por supplier_id (robusto) quando houver — antes casava só por
+    // supplier_name (texto): fornecedores homônimos colidiam e o MESMO
+    // fornecedor com grafia ligeiramente diferente não acumulava (gerava OC
+    // duplicada). Fallback p/ nome quando não há id. Auditoria 2026-06-14, Área 5.
+    let q = (supabase as any)
       .from('purchase_orders')
       .select('id, order_number, total_value, notes')
-      .eq('supplier_name', supplierName)
       .in('status', ['pending', 'approved'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    q = supplierId ? q.eq('supplier_id', supplierId) : q.eq('supplier_name', supplierName);
+    const { data } = await q.maybeSingle();
     openPO = data ?? null;
   }
 

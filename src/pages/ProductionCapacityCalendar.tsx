@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 import type { SectorKey } from '@/lib/leadTime';
-import { computeParallelWindows, loadHolidayCache } from '@/lib/sectorCapacity';
+import { computeParallelWindows, loadHolidayCache, isBusinessDay } from '@/lib/sectorCapacity';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -73,6 +73,9 @@ interface ColDef {
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
+// Feriado-aware via isBusinessDay (cache populado por loadHolidayCache, awaited
+// na query antes do uso). Auditoria 2026-06-14, Área 1: antes só pulava fim de
+// semana enquanto as bordas (computeParallelWindows) já eram feriado-aware.
 function addBizDays(date: Date, days: number): Date {
   if (days === 0) return new Date(date);
   const d = new Date(date);
@@ -80,8 +83,7 @@ function addBizDays(date: Date, days: number): Date {
   const dir = days > 0 ? 1 : -1;
   while (added < Math.abs(days)) {
     d.setTime(d.getTime() + dir * DAY_MS);
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) added++;
+    if (isBusinessDay(d)) added++;
   }
   return d;
 }
@@ -91,7 +93,7 @@ function bizDaysInRange(start: Date, endExclusive: Date): number {
   let count = 0;
   const cur = new Date(start);
   while (cur.getTime() < endExclusive.getTime()) {
-    if (cur.getDay() !== 0 && cur.getDay() !== 6) count++;
+    if (isBusinessDay(cur)) count++;
     cur.setTime(cur.getTime() + DAY_MS);
   }
   return Math.max(1, count);
@@ -255,7 +257,7 @@ function computeSectorSummary(blocks: CapBlock[]) {
   // For each business day in the next 14 days
   const cur = new Date(today);
   while (cur <= horizon) {
-    if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+    if (isBusinessDay(cur)) {
       const dayISO = isoDate(cur);
       for (const { key } of DISPLAY_SECTORS) {
         const dayBlocks = blocks.filter(b =>

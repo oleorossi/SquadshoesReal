@@ -2366,6 +2366,54 @@ export type Database = {
         }
         Relationships: []
       }
+      sector_labor_rates: {
+        Row: {
+          hourly_rate: number
+          monthly_salary: number
+          sector_key: string
+          updated_at: string
+        }
+        Insert: {
+          hourly_rate?: number
+          monthly_salary?: number
+          sector_key: string
+          updated_at?: string
+        }
+        Update: {
+          hourly_rate?: number
+          monthly_salary?: number
+          sector_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      labor_cost_results: {
+        Row: {
+          created_at: string
+          id: string
+          lines: Json
+          reference: string
+          total_cost: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference?: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cost_parameters: {
         Row: {
           description: string | null
@@ -10967,6 +11015,7 @@ export type Database = {
           dimensions_width: number | null
           id: string
           insole_included: boolean | null
+          is_artisanal_strap: boolean
           is_bom_color_source: boolean
           metros_fitilho_per_amarrado: number | null
           name: string
@@ -10999,6 +11048,7 @@ export type Database = {
           dimensions_width?: number | null
           id?: string
           insole_included?: boolean | null
+          is_artisanal_strap?: boolean
           is_bom_color_source?: boolean
           metros_fitilho_per_amarrado?: number | null
           name: string
@@ -11031,6 +11081,7 @@ export type Database = {
           dimensions_width?: number | null
           id?: string
           insole_included?: boolean | null
+          is_artisanal_strap?: boolean
           is_bom_color_source?: boolean
           metros_fitilho_per_amarrado?: number | null
           name?: string
@@ -16272,6 +16323,8 @@ export type Database = {
           notes: string | null
           order_number: string
           order_type: string
+          outsource_to_contractor_id: string | null
+          outsource_to_sector: string | null
           original_min_billing_date: string | null
           own_delivery: boolean
           packaging_mode: string | null
@@ -16333,6 +16386,8 @@ export type Database = {
           notes?: string | null
           order_number?: string
           order_type?: string
+          outsource_to_contractor_id?: string | null
+          outsource_to_sector?: string | null
           original_min_billing_date?: string | null
           own_delivery?: boolean
           packaging_mode?: string | null
@@ -16394,6 +16449,8 @@ export type Database = {
           notes?: string | null
           order_number?: string
           order_type?: string
+          outsource_to_contractor_id?: string | null
+          outsource_to_sector?: string | null
           original_min_billing_date?: string | null
           own_delivery?: boolean
           packaging_mode?: string | null
@@ -20544,6 +20601,7 @@ export type Database = {
           fit_type_detail: string | null
           gestaoclick_id: string | null
           gluing_capacity_per_day: number | null
+          grading_config: Json
           has_colored_lining: boolean
           has_straps: boolean | null
           heel_height: string | null
@@ -20664,6 +20722,7 @@ export type Database = {
           fit_type_detail?: string | null
           gestaoclick_id?: string | null
           gluing_capacity_per_day?: number | null
+          grading_config?: Json
           has_colored_lining?: boolean
           has_straps?: boolean | null
           heel_height?: string | null
@@ -20784,6 +20843,7 @@ export type Database = {
           fit_type_detail?: string | null
           gestaoclick_id?: string | null
           gluing_capacity_per_day?: number | null
+          grading_config?: Json
           has_colored_lining?: boolean
           has_straps?: boolean | null
           heel_height?: string | null

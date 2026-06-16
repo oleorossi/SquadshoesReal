@@ -19,6 +19,14 @@ import {
    calcRequiredForGrade,
  } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import {
+  computeStrapRollCut,
+  isArtisanalStrap,
+  normalizeWidthToMm,
+  type ArtisanalStrapCutRow,
+} from '@/lib/strapRollCut';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 
 type ConsumptionRow = {
   componentType: string;
@@ -96,6 +104,7 @@ type Props = { saleOrderIds: string[] };
 export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
+  const [artisanalStrapRows, setArtisanalStrapRows] = useState<ArtisanalStrapCutRow[]>([]);
   const [soleSizeBreakdown, setSoleSizeBreakdown] = useState<SoleByType>({});
   const [orderHeaders, setOrderHeaders] = useState<OrderHeader[]>([]);
   const [groupFilter, setGroupFilter] = useState<string>("all");
@@ -112,19 +121,25 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         supabase
           .from('sale_order_items')
           .select(`
-            reference_id, color, quantity, grade, fichas, strap_colors,
+            sale_order_id, reference_id, color, quantity, grade, fichas, strap_colors,
             technical_sheets(upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_color, lining_accessories, components_accessories, lining_consumption_per_size, insole_consumption_per_size)
           `)
           .in('sale_order_id', saleOrderIds),
         supabase
           .from('sale_orders')
-          .select('order_number, client_order_number')
+          .select('id, order_number, client_order_number, packaging_mode')
           .in('id', saleOrderIds),
       ]);
 
       if (itemsError) throw itemsError;
       setOrderHeaders((saleOrders || []).map(so => ({ order_number: so.order_number, client_order_number: so.client_order_number })));
       if (!items || items.length === 0) { setRows([]); return; }
+
+      // sale_order_id → packaging_mode (a ficha pode listar várias caixas no BOM;
+      // mostra só a do modo do pedido). Por-pedido, pois a view aceita N PVs.
+      const packagingModeByOrder = new Map<string, string | null>(
+        (saleOrders || []).map((so: any) => [so.id, so.packaging_mode ?? null]),
+      );
 
       const refIds = [...new Set(items.map(i => i.reference_id).filter(Boolean))];
 
@@ -135,7 +150,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           .in('sheet_id', refIds),
         supabase
           .from('products')
-          .select('id, name, color, group_id')
+          .select('id, name, color, group_id, dimensions_width, dimensions_unit')
           .eq('active', true),
         supabase
           .from('product_groups')
@@ -242,6 +257,79 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         candidates.sort((a, b) => countGroupProducts(b.group) - countGroupProducts(a.group));
         return candidates[0];
       };
+
+      // ── Tiras artesanais: largura de corte por grupo (mm) + flag de cadastro ──
+      // Largura: prioridade do PRÓPRIO grupo → de qualquer produto do grupo
+      // (CreateStrapProductDialog grava no produto). Normalizada a mm.
+      const strapGroupNameByNorm = new Map<string, string>();
+      const strapGroupIdToNorm = new Map<string, string>();
+      const strapOwnWidth = new Map<string, number>();
+      for (const g of (productGroups || []) as any[]) {
+        const norm = normalizeText(g.name);
+        strapGroupNameByNorm.set(norm, g.name);
+        strapGroupIdToNorm.set(g.id, norm);
+        strapOwnWidth.set(norm, normalizeWidthToMm(g.dimensions_width, g.dimensions_unit));
+      }
+      const strapProdWidth = new Map<string, number>();
+      for (const p of (allProducts || []) as any[]) {
+        const norm = strapGroupIdToNorm.get(p.group_id);
+        if (!norm) continue;
+        const w = normalizeWidthToMm(p.dimensions_width, p.dimensions_unit);
+        if (w > (strapProdWidth.get(norm) || 0)) strapProdWidth.set(norm, w);
+      }
+
+      // Receitas artesanais ("Receitas → Produtos artesanais") — FONTE da verdade
+      // de "tira artesanal": o grupo de RESULTADO (`artisanal_product_name`) de uma
+      // receita ativa é cortado do rolo. A largura cadastrada na receita
+      // (`cut_width_mm`, mm) tem prioridade sobre a largura do grupo/produto.
+      // Query DEFENSIVA em `cut_width_mm` (coluna pode ainda não estar migrada).
+      const recipeOutputNorms = new Set<string>();
+      const recipeWidth = new Map<string, number>();
+      // norm do resultado → material-base do rolo (base_product_name), pro otimizador
+      // agrupar tiras por base+cor (planRollsFromStrapRows).
+      const recipeBaseByNorm = new Map<string, string>();
+      {
+        let recipeRows: any[] | null = null;
+        const withWidth = await supabase
+          .from('artisanal_recipes')
+          .select('artisanal_product_name, cut_width_mm, base_product_name' as any)
+          .eq('active', true);
+        if (!withWidth.error) {
+          recipeRows = withWidth.data as any[];
+        } else {
+          const fallback = await supabase
+            .from('artisanal_recipes')
+            .select('artisanal_product_name, base_product_name')
+            .eq('active', true);
+          if (!fallback.error) recipeRows = fallback.data as any[];
+        }
+        for (const r of recipeRows || []) {
+          const norm = normalizeText(r.artisanal_product_name);
+          if (!norm) continue;
+          recipeOutputNorms.add(norm);
+          const w = Number(r.cut_width_mm) || 0;
+          if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
+          const base = (r.base_product_name || '').toString().trim();
+          if (base && !recipeBaseByNorm.has(norm)) recipeBaseByNorm.set(norm, base);
+        }
+      }
+      const strapWidthForNorm = (norm: string) =>
+        (recipeWidth.get(norm) || strapOwnWidth.get(norm) || strapProdWidth.get(norm) || 0);
+
+      // Flag `is_artisanal_strap` no grupo — query DEFENSIVA (coluna pode ainda
+      // não estar migrada; nesse caso seguimos só com flag-por-tira + heurístico).
+      const strapGroupFlag = new Map<string, boolean>();
+      {
+        const { data: flagged, error: flagErr } = await supabase
+          .from('product_groups')
+          .select('name, is_artisanal_strap' as any);
+        if (!flagErr && Array.isArray(flagged)) {
+          for (const g of flagged as any[]) {
+            if (g?.is_artisanal_strap) strapGroupFlag.set(normalizeText(g.name), true);
+          }
+        }
+      }
+      const artisanalAgg = new Map<string, { groupName: string; color: string; norm: string; metros: number; baseName?: string }>();
 
       const consumptionMap = new Map<string, ConsumptionRow>();
       const soleSizeMap: SoleByType = {};
@@ -365,6 +453,23 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             color: strap.color || orderColor,
             totalQuantity: strapConsumptionCm / 100,
           });
+
+          // Acumula tiras ARTESANAIS (cortadas do rolo) num bloco separado.
+          const strapGroupName = (strap.group_name || strap.label || 'Tira').toString().trim();
+          const strapNorm = normalizeText(strapGroupName);
+          const metros = strapConsumptionCm / 100;
+          if (metros > 0 && isArtisanalStrap({
+            strapFlag: (strap as any).is_artisanal_strap,
+            recipeFlag: recipeOutputNorms.has(strapNorm),
+            groupFlag: strapGroupFlag.get(strapNorm),
+            name: `${strapGroupName} ${strap.label || ''}`,
+          })) {
+            const strapColor = (strap.color || orderColor || '—').toString().trim() || '—';
+            const aKey = `${strapNorm}||${strapColor.toLowerCase()}`;
+            const existing = artisanalAgg.get(aKey);
+            if (existing) existing.metros += metros;
+            else artisanalAgg.set(aKey, { groupName: strapGroupNameByNorm.get(strapNorm) || strapGroupName, color: strapColor, norm: strapNorm, metros, baseName: recipeBaseByNorm.get(strapNorm) });
+          }
         }
 
         // BOM entries: only exclude if the spec field for that group had consumption > 0
@@ -375,11 +480,30 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
 
         const itemMaterials = (materials || []).filter(m => m.sheet_id === item.reference_id);
+
+        // Embalagem: ficha pode listar várias caixas (colmeia + individual) no
+        // BOM; mostra só a do packaging_mode do pedido (espelha orderConsumption).
+        const itemPackagingMode = packagingModeByOrder.get((item as any).sale_order_id) ?? null;
+        const presentCaixaTypes = new Set<CollectiveType>();
+        if (itemPackagingMode) {
+          for (const m of itemMaterials) {
+            const p = m.products as any;
+            if (!p) continue;
+            const gName = (m.product_groups as any)?.name || p.category || p.name || '';
+            if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
+            const t = caixaCollectiveTypeFromName(p.name);
+            if (t) presentCaixaTypes.add(t);
+          }
+        }
+
         for (const material of itemMaterials) {
           const product = material.products as any;
           const group = material.product_groups as any;
           if (!product) continue;
           const groupName = group?.name || product.category || product.name || 'Outros';
+          // Embalagem com modo definido: pula caixa de outro modo (só quando há alternativas).
+          if (classifyBomMaterial(groupName, product.name || '', product.category || '') === 'Embalagem'
+            && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
           // Only skip BOM entry if the spec already accounts for consumption of this group
           // AND the BOM entry's category matches the spec type (to avoid excluding cabedal BOM when only lining spec exists)
           const groupKey = groupName.toLowerCase();
@@ -441,11 +565,26 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         return a.groupName.localeCompare(b.groupName, 'pt-BR') || a.materialName.localeCompare(b.materialName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR');
       });
 
+      const artisanalRows: ArtisanalStrapCutRow[] = Array.from(artisanalAgg.entries()).map(([key, v]) => {
+        const largura_mm = strapWidthForNorm(v.norm);
+        return {
+          key,
+          groupName: v.groupName,
+          color: v.color,
+          largura_mm,
+          metros_necessarios: v.metros,
+          cut: computeStrapRollCut({ largura_mm, metros_necessarios: v.metros }),
+          baseName: v.baseName,
+        };
+      }).sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
+
       setRows(sortedRows);
+      setArtisanalStrapRows(artisanalRows);
       setSoleSizeBreakdown(soleSizeMap);
     } catch (err) {
       console.error('Erro ao carregar consumo consolidado:', err);
       setRows([]);
+      setArtisanalStrapRows([]);
       setSoleSizeBreakdown({});
     } finally {
       setLoading(false);
@@ -532,6 +671,32 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
       ? orderHeaders.map(oh => `<div style="font-size:13px;margin-bottom:2px"><strong>Pedido:</strong> ${escapeHtml(oh.order_number)}${oh.client_order_number ? ` &nbsp;|&nbsp; <strong>Pedido Cliente:</strong> ${escapeHtml(oh.client_order_number)}` : ''}</div>`).join('')
       : '';
 
+    // Bloco vermelho: tiras artesanais — corte do rolo
+    let strapCutHtml = '';
+    if (artisanalStrapRows.length > 0) {
+      const strapRows = artisanalStrapRows.map(r => {
+        const { cut } = r;
+        const cortar = cut.valid
+          ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
+          : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
+        const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
+        return `<tr style="color:#dc2626">
+          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
+          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}</td>
+        </tr>`;
+      }).join('');
+      strapCutHtml = `
+        <h3 style="font-size:14px;margin:18px 0 4px;padding:4px 8px;background:#fef2f2;color:#dc2626;border-radius:4px">✂️ Tiras artesanais — corte do rolo (40m × 1370mm)</h3>
+        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Cortar do rolo — não é consumo direto de estoque.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;border:1px solid #fca5a5">
+          <thead><tr style="color:#dc2626">
+            <th style="background:#fef2f2;padding:6px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase">Tira (cor · largura)</th>
+            <th style="background:#fef2f2;padding:6px 10px;text-align:right;font-size:11px;font-weight:600;text-transform:uppercase">Cortar do rolo (cm)</th>
+          </tr></thead>
+          <tbody>${strapRows}</tbody>
+        </table>`;
+    }
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais</title>
       <style>@page{size:A4;margin:5mm 6mm}body{font-family:system-ui,-apple-system,sans-serif;color:#111;margin:0;padding:5mm 6mm}
       h1{font-size:18px;margin:0 0 4px}p.sub{color:#6b7280;font-size:13px;margin:0 0 16px}</style></head>
@@ -541,6 +706,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         <p class="sub">${rows.length} ${rows.length === 1 ? 'item' : 'itens'} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
         <div style="margin-bottom:16px">${totalsHtml}</div>
         ${sectionsHtml}
+        ${strapCutHtml}
       </body></html>`;
 
     const printWindow = window.open('', '_blank');
@@ -550,7 +716,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
       printWindow.focus();
       setTimeout(() => printWindow.print(), 400);
     }
-  }, [rows, totalsByUnit, grouped, orderHeaders, soleSizeBreakdown]);
+  }, [rows, totalsByUnit, grouped, orderHeaders, soleSizeBreakdown, artisanalStrapRows]);
 
   const uniqueGroups = useMemo(() => {
     return Array.from(new Set(rows.map(r => r.groupName))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -690,8 +856,11 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                )}
              </div>
            ))}
+
+           {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
+           <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
          </TabsContent>
- 
+
           <TabsContent value="segmented" className="space-y-4 mt-4 animate-in fade-in-50 duration-300">
             <div className="flex flex-wrap items-center gap-3 p-4 bg-muted/20 rounded-lg border border-muted/50 mb-6">
               <div className="flex items-center gap-2 text-muted-foreground mr-2">
@@ -833,6 +1002,9 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
                  </div>
                </div>
              ))}
+
+            {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
+            <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
          </TabsContent>
        </Tabs>
     </div>

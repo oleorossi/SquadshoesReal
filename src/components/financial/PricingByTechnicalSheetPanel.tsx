@@ -22,6 +22,7 @@ import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
+import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { usePricingSimulations, useCreatePricingSimulation, useDeletePricingSimulation } from '@/hooks/usePricingSimulations';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -157,24 +158,30 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
         const prod = m.products;
         if (!prod) return null;
         const unitPrice = Number(prod.unit_price || 0);
-        const cs = componentSheetMap[m.product_id];
+        const cs = componentSheetMap[m.product_id] || null;
         const wastePct = cs ? (cs.waste_pct || 0) : 0;
-        const rawCost = Number(m.quantity_per_unit) * unitPrice;
-        const finalCost = rawCost * (1 + wastePct / 100);
+        const qty = Number(m.quantity_per_unit) || 0;
+        // Regra canônica: material de área (dm²/par) com produto em unidade física
+        // (m/cm/placa) é convertido pela largura/área da ficha ANTES de × preço.
+        const { cost: finalCost, converted, widthMissing } = bomMaterialCostPerPair(qty, unitPrice, prod.unit, cs);
+        const rawCost = qty * unitPrice; // referência crua (sem perda/conversão), só p/ exibição
         return {
           id: m.id,
           name: prod.name || '—',
           unit: prod.unit || 'un',
-          quantity: Number(m.quantity_per_unit) || 0,
+          quantity: qty,
           unitPrice,
           wastePct,
           rawCost,
           finalCost,
+          converted,
+          widthMissing,
         };
       })
       .filter(Boolean) as Array<{
         id: string; name: string; unit: string; quantity: number;
         unitPrice: number; wastePct: number; rawCost: number; finalCost: number;
+        converted: boolean; widthMissing: boolean;
       }>;
   }, [materials, componentSheetMap]);
 
@@ -255,7 +262,9 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
     const commissionValue = suggestedPrice * (numCommission / 100);
 
     // Preço à vista (7 dias)
-    const factoringVistaP = (numFactoring / 30) * 7;
+    // À vista nunca com mais dias de factoring que o prazo (evita à vista > a prazo
+    // quando prazo < 7 dias). Auditoria 2026-06-14.
+    const factoringVistaP = (numFactoring / 30) * Math.min(7, numDays);
     const markupVistaPct = numTax + numProfit + factoringVistaP + numCommission;
     const markupVistaDivisor = 1 - (markupVistaPct / 100);
     const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;

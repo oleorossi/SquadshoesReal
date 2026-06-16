@@ -38,9 +38,9 @@ export const menuGroups = [
       { name: "Pronta-Entrega",   icon: Box,              path: "/pronta-entrega" },
       { name: "Clientes",         icon: Users,            path: "/clients" },
       { name: "CRM",              icon: HeartHandshake,   path: "/crm" },
-      { name: "Notas",            icon: FileText,         path: "/notas" },
       { name: "Tarefas",          icon: ListChecks,       path: "/tarefas" },
       { name: "Tabelas de Preço", icon: DollarSign,       path: "/price-lists" },
+      { name: "Notas",            icon: FileText,         path: "/notas" },
     ],
   },
   {
@@ -49,10 +49,10 @@ export const menuGroups = [
     items: [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
-      { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
+      { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
-      { name: "Terceiros na Rua", icon: Truck,             path: "/terceiros-na-rua" },
+      { name: "Terceiros",        icon: Truck,             path: "/terceiros" },
     ],
   },
   {
@@ -63,8 +63,8 @@ export const menuGroups = [
       { name: "MRP",              icon: Boxes,          path: "/mrp" },
       { name: "Picking",          icon: ClipboardCheck, path: "/picking" },
       { name: "Ajustes",          icon: Boxes,          path: "/ajuste-estoque" },
-      { name: "Histórico",        icon: History,      path: "/estoque/historico" },
       { name: "Qualidade",        icon: ShieldCheck,  path: "/estoque/qualidade" },
+      { name: "Histórico",        icon: History,      path: "/estoque/historico" },
       { name: "Inventário ABC",   icon: BarChart3,    path: "/estoque/inventario" },
     ],
   },
@@ -82,13 +82,14 @@ export const menuGroups = [
     label: "Compras",
     icon: ShoppingBag,
     items: [
-      { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
-      { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Planejamento",     icon: Calendar,        path: "/purchase-planning" },
+      { name: "MRP (Necessidades)", icon: Boxes,         path: "/mrp-advanced" },
+      { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
+      { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
+      { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
       { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
       { name: "Custos de Insumos", icon: DollarSign,     path: "/custos-insumos" },
       { name: "Alçadas",          icon: Gavel,           path: "/compras/alcadas" },
-      { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
     ],
   },
   {
@@ -106,11 +107,22 @@ export const menuGroups = [
     label: "Financeiro",
     icon: Wallet,
     items: [
-      { name: "Financeiro",       icon: Wallet,         path: "/financeiro" },
-      { name: "Contas (AR/AP)",   icon: DollarSign,     path: "/finance" },
-      { name: "NF-e",             icon: Receipt,        path: "/nfe" },
-      { name: "Conciliação",      icon: Scale,          path: "/bank-reconciliation" },
-      { name: "SPED",             icon: FileText,       path: "/sped" },
+      { name: "Financeiro",       icon: Wallet,          path: "/financeiro" },
+      { name: "Contas (AR/AP)",   icon: DollarSign,      path: "/finance" },
+      { name: "Conciliação",      icon: Scale,           path: "/bank-reconciliation" },
+      { name: "CNAB / Boletos",   icon: FileSpreadsheet, path: "/cnab" },
+      { name: "Markup / Pricing", icon: Calculator,      path: "/pricing-calculator" },
+    ],
+  },
+  {
+    label: "Fiscal",
+    icon: Receipt,
+    items: [
+      { name: "NF-e",     icon: Receipt,    path: "/nfe" },
+      { name: "CT-e",     icon: Truck,      path: "/cte" },
+      { name: "MDF-e",    icon: FileText,   path: "/mdfe" },
+      { name: "SPED",     icon: FileText,   path: "/sped" },
+      { name: "Impostos", icon: Calculator, path: "/apuracao-impostos" },
     ],
   },
   {
@@ -119,7 +131,6 @@ export const menuGroups = [
     items: [
       { name: "Ponto & Folha",      icon: LayoutDashboard,path: "/rh" },
       { name: "Terceirizados",      icon: UserCheck,      path: "/contractors" },
-      { name: "Relatório Terceiros",icon: BarChart3,      path: "/terceiros/relatorios" },
     ],
   },
 ];
@@ -160,15 +171,11 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Sessões de Picking",   icon: ClipboardCheck,   path: "/picking-sessions",       group: "Logística" },
   { name: "Rastreamento",         icon: Activity,         path: "/delivery-tracking",      group: "Logística" },
   // "Etiquetas" (/label-system) tem grupo próprio "Etiquetas" no topo do menu.
-  // Financeiro
-  { name: "Markup / Pricing",     icon: Calculator,       path: "/pricing-calculator",     group: "Financeiro" },
-  { name: "CT-e",                 icon: Truck,            path: "/cte",                    group: "Financeiro" },
-  { name: "MDF-e",                icon: FileText,         path: "/mdfe",                   group: "Financeiro" },
-  { name: "CNAB / Boletos",       icon: FileSpreadsheet,  path: "/cnab",                   group: "Financeiro" },
+  // Financeiro (visíveis na barra: Financeiro/Contas/Conciliação/CNAB/Pricing)
   { name: "Patrimônio",           icon: Buildings,        path: "/patrimonio",             group: "Financeiro" },
-  { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Financeiro" },
-  { name: "Perfis Tributários",   icon: Receipt,          path: "/perfis-tributarios",     group: "Financeiro" },
-  { name: "Apuração de Impostos", icon: Calculator,       path: "/apuracao-impostos",      group: "Financeiro" },
+  // Fiscal (visíveis na barra: NF-e/CT-e/MDF-e/SPED/Impostos; estas ficam em Cmd+K)
+  { name: "Perfis Tributários",   icon: Receipt,          path: "/perfis-tributarios",     group: "Fiscal" },
+  { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Fiscal" },
   // Sistema (admin)
   { name: "Auditoria (Logs)",     icon: FileText,         path: "/audit-logs",             group: "Sistema" },
   { name: "LGPD",                 icon: Lock,             path: "/lgpd",                   group: "Sistema" },

@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode, ORDER_TYPES } from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { useContractors } from '@/hooks/useContractors';
+import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import SaleOrderItemForm from './SaleOrderItemForm';
@@ -372,6 +374,9 @@ export default function SaleOrderFormPanel({
    const [submitAttempted, setSubmitAttempted] = useState(false);
    const formRef = useRef<HTMLFormElement>(null);
   const { canSeeFinancialValues } = useAccessControl();
+  // Terceirização planejada (Fase A): prestadores ativos pro picker de "mandar setor pra fora".
+  const { data: allContractors = [] } = useContractors();
+  const activeContractors = useMemo(() => allContractors.filter((c: any) => c.active !== false), [allContractors]);
   const selectedRep = representatives.find(r => r.id === form.representative);
   const selectedClient = clients.find(c => c.id === selectedClientId);
   const { data: factoringConfigs = [] } = useFactoringConfigs();
@@ -837,6 +842,58 @@ export default function SaleOrderFormPanel({
                   </Select>
                 </div>
               </div>
+
+              {/* Terceirização planejada (Fase A): manda um SETOR deste pedido pra
+                  fora (prestador), de propósito, pra evitar gargalo. Ao virar OP, o
+                  trigger trg_apply_pv_outsourcing_to_op marca a OP (aparece no hub
+                  Terceiros "Na Rua"). Guarda a CHAVE canônica do setor. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Terceirizar setor (evitar gargalo)</Label>
+                  <Select
+                    value={form.outsource_to_sector || '__none__'}
+                    onValueChange={v => setForm(f => ({
+                      ...f,
+                      outsource_to_sector: v === '__none__' ? null : v,
+                      outsource_to_contractor_id: v === '__none__' ? null : f.outsource_to_contractor_id,
+                    }))}
+                  >
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Não terceirizar (fábrica)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Não terceirizar (fábrica)</SelectItem>
+                      {DISPLAY_SECTORS.map(s => (
+                        <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.outsource_to_sector && (
+                  <div>
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Prestador</Label>
+                    <Select
+                      value={form.outsource_to_contractor_id || ''}
+                      onValueChange={v => setForm(f => ({ ...f, outsource_to_contractor_id: v || null }))}
+                    >
+                      <SelectTrigger className={cn('h-9', !form.outsource_to_contractor_id && 'border-amber-400 focus:ring-amber-400')}>
+                        <SelectValue placeholder="Escolha o prestador..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeContractors.length === 0 ? (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum prestador ativo</div>
+                        ) : activeContractors.map((c: any) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}{c.service_type ? ` · ${c.service_type}` : ''}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+              {form.outsource_to_sector && form.outsource_to_contractor_id && (
+                <div className="-mt-2 flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                  <Truck className="h-3.5 w-3.5 shrink-0" />
+                  <span>Este pedido sai pra <strong>{activeContractors.find((c: any) => c.id === form.outsource_to_contractor_id)?.name}</strong> no setor <strong>{SECTOR_LABELS[form.outsource_to_sector as SectorKey] ?? form.outsource_to_sector}</strong> — as OPs nascem já terceirizadas nesse setor.</span>
+                </div>
+              )}
 
               {/* Razão Social + CNPJ ficam OCULTOS quando o cliente foi
                   selecionado do cadastro — handleClientSelect já preencheu

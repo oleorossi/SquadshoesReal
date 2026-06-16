@@ -74,6 +74,7 @@ const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
 const PCPDashboard = lazy(() => import("./pages/PCPDashboard"));
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
 const MrpPage = lazy(() => import("./pages/MrpPage"));
+const MrpAdvancedPage = lazy(() => import("./pages/MrpAdvancedPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
 const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
@@ -84,8 +85,7 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
-const OutsourcedInFieldPage = lazy(() => import("./pages/OutsourcedInField"));
-const ContractorReportsPage = lazy(() => import("./pages/ContractorReports"));
+const Terceiros = lazy(() => import("./pages/Terceiros"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
 const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
@@ -684,17 +684,21 @@ const router = createBrowserRouter([
         element: <BottlenecksPage />,
       },
       {
-        // Tudo o que está fora da fábrica AGORA — OSs ativas de gargalo +
-        // OPs inteiras terceirizadas (orders.outsourced_to_contractor_id).
-        // Operacional: cards por contratada + tabela com prazo/atraso/ações.
-        path: "terceiros-na-rua",
-        element: <OutsourcedInFieldPage />,
+        // Hub de Terceirização — unifica "Na Rua" (operacional) e "Relatório"
+        // (analítico) em abas. Ver src/pages/Terceiros.tsx.
+        path: "terceiros",
+        element: <Terceiros />,
       },
       {
-        // Relatório agregado por contractor — taxa de pontualidade, R$ pago,
-        // atraso médio + histórico de OSs finalizadas no período.
+        // Rotas antigas → redirecionam pro hub com a aba certa (deep-links e
+        // links internos preservados). OutsourcedInField/ContractorReports agora
+        // só renderizam embutidos no hub.
+        path: "terceiros-na-rua",
+        element: <Navigate to="/terceiros?tab=rua" replace />,
+      },
+      {
         path: "terceiros/relatorios",
-        element: <ContractorReportsPage />,
+        element: <Navigate to="/terceiros?tab=relatorio" replace />,
       },
       {
         // Pendências de ponto — dias com batidas inconsistentes/irregulares
@@ -820,6 +824,13 @@ const router = createBrowserRouter([
       {
         path: "purchase-planning",
         element: <PurchasePlanning />,
+      },
+      {
+        // Motor de MRP net-correto (v_mrp_needs): demanda projetada − estoque
+        // disponível − reservas − OCs em aberto, com CEIL e "Gerar OC". Antes a
+        // página existia mas não tinha rota (motor morto). Auditoria 2026-06-14, #6.
+        path: "mrp-advanced",
+        element: <MrpAdvancedPage />,
       },
       {
         path: "pricing-calculator",
