@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -546,13 +547,12 @@ export default function SolesCadastroTab({ sole }: Props) {
                 Valor do solado
                 <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">· R$/par · por variante</span>
               </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.unit_price}
-                onChange={e => setForm(f => ({ ...f, unit_price: Number(e.target.value) }))}
-                placeholder="0,00"
+              {/* CurrencyInput (não <input type=number>): aceita vírgula pt-BR
+                  (2,20), seleciona tudo no foco (zero não "gruda") e preserva o
+                  texto digitado sem round-trip. (Bug user 2026-06-17.) */}
+              <CurrencyInput
+                value={Number(form.unit_price) || 0}
+                onChange={v => setForm(f => ({ ...f, unit_price: v }))}
               />
               <p className="text-xs text-muted-foreground leading-tight">
                 Custo de compra por par. Entra no <strong>valor de estoque</strong> e no <strong>custeio do calçado</strong>.
