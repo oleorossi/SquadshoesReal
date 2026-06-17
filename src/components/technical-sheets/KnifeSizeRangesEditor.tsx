@@ -1,227 +1,278 @@
-import { useEffect, useState } from 'react';
-import { Plus, X, Knife } from '@phosphor-icons/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, X, Knife, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { parseSizes } from '@/lib/labelUtils';
+import {
+  expandFacasByBoundaries,
+  boundariesFromBuckets,
+  type FacaBoundary,
+  type KnifeBucket,
+} from '@/lib/knifeFacas';
+import { useKnifeFacasDefault, useSaveKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 
-export interface KnifeBucket {
-  label: string;
-  sizes: string[];
-  /** Código físico da faca (cadastro do dono, 2026-06-12) — sai na ficha de
-   *  Corte Cabedal (bloco "Facas de Corte"). Opcional: ranges antigos sem
-   *  code continuam válidos (a ficha mostra "—"). */
-  code?: string;
-}
+// Mantém o import existente do OperationsTab (`type KnifeBucket`).
+export type { KnifeBucket } from '@/lib/knifeFacas';
 
 interface Props {
-  /** Range de numerações da ficha (ex: "33-41"). Usado pra mostrar as opções. */
+  /** Range de numerações da ficha (ex: "33-41"). Usado pras opções de faixa. */
   sheetSizes: string;
-  /** Valor atual (NULL = sem cadastro). */
+  /** Override por ficha: null/undefined = herda o padrão; [] = sem faca
+   *  (numeração individual); array com itens = faca própria desta referência. */
   value: KnifeBucket[] | null | undefined;
   onChange: (next: KnifeBucket[] | null) => void;
 }
 
+type Mode = 'inherit' | 'custom' | 'none';
+const REST = '__rest__';
+
+const modeFromValue = (v: KnifeBucket[] | null | undefined): Mode =>
+  v == null ? 'inherit' : (Array.isArray(v) && v.length === 0 ? 'none' : 'custom');
+
 /**
- * Editor de facas de Corte Cabedal por referência.
+ * Editor de Facas de Corte Cabedal (P/M/G) por referência, com PADRÃO GLOBAL
+ * reutilizável e preenchimento rápido por FAIXA ("P vai até 36").
  *
- * Cada faca tem um label (P/M/G/PP/GG/...) e cobre um conjunto de numerações.
- * Regras:
- *   - Cada size só pode estar em 1 faca (validado ao clicar).
- *   - Labels devem ser únicos.
- *   - Pode ter de 0 a N facas (configurável).
+ * Modos:
+ *  - Herdar padrão: usa o padrão global (faixas) — sem recadastrar.
+ *  - Personalizar:  define a faixa de cada faca SÓ nesta referência (override).
+ *  - Sem faca:      mostra numeração individual (opt-out).
  *
- * Usado APENAS no setor Corte Cabedal: no print da ficha de operador, as
- * quantidades são somadas por faca (P=34+35+36) em vez de mostrar número-a-número.
- * Refs sem cadastro caem no comportamento atual (mostra sizes individuais).
+ * O motor de Corte Cabedal soma as numerações por faca. (User 2026-06-16.)
  */
 export function KnifeSizeRangesEditor({ sheetSizes, value, onChange }: Props) {
-  const allSizes = parseSizes(sheetSizes);
-  const [buckets, setBuckets] = useState<KnifeBucket[]>(value || []);
+  const allSizes = useMemo(() => parseSizes(sheetSizes), [sheetSizes]);
+  const { data: defaultBoundaries } = useKnifeFacasDefault();
+  const saveDefault = useSaveKnifeFacasDefault();
 
+  const [mode, setMode] = useState<Mode>(() => modeFromValue(value));
+  const [boundaries, setBoundaries] = useState<FacaBoundary[]>(() =>
+    modeFromValue(value) === 'custom' ? boundariesFromBuckets(value as KnifeBucket[]) : [],
+  );
+
+  // Evita resync do nosso próprio "eco" (onChange → value volta) — só resincroniza
+  // quando o valor muda DE FORA (ex.: ficha recarregada).
+  const lastEmitted = useRef<string | null>(null);
+  const emit = (v: KnifeBucket[] | null) => {
+    lastEmitted.current = JSON.stringify(v ?? null);
+    onChange(v);
+  };
   useEffect(() => {
-    setBuckets(value || []);
+    if (JSON.stringify(value ?? null) === lastEmitted.current) return;
+    const m = modeFromValue(value);
+    setMode(m);
+    if (m === 'custom') setBoundaries(boundariesFromBuckets(value as KnifeBucket[]));
   }, [value]);
 
-  const sizeToBucketIdx = new Map<string, number>();
-  buckets.forEach((b, i) => {
-    for (const s of b.sizes) sizeToBucketIdx.set(s, i);
-  });
+  // Buckets resultantes da faixa atual (preview + valor emitido).
+  const expanded = useMemo(() => expandFacasByBoundaries(allSizes, boundaries), [allSizes, boundaries]);
 
-  const updateBuckets = (next: KnifeBucket[]) => {
-    setBuckets(next);
-    onChange(next.length === 0 ? null : next);
+  const applyBoundaries = (next: FacaBoundary[]) => {
+    setBoundaries(next);
+    emit(expandFacasByBoundaries(allSizes, next));
   };
 
-  const addBucket = () => {
-    const used = new Set(buckets.map(b => b.label.toUpperCase()));
-    const defaults = ['P', 'M', 'G', 'PP', 'GG', 'GGG'];
-    const nextLabel = defaults.find(d => !used.has(d)) || `F${buckets.length + 1}`;
-    updateBuckets([...buckets, { label: nextLabel, sizes: [] }]);
-  };
-
-  const removeBucket = (idx: number) => {
-    updateBuckets(buckets.filter((_, i) => i !== idx));
-  };
-
-  const updateLabel = (idx: number, newLabel: string) => {
-    const sanitized = newLabel.toUpperCase().trim().slice(0, 4);
-    const next = [...buckets];
-    next[idx] = { ...next[idx], label: sanitized };
-    updateBuckets(next);
-  };
-
-  // Código físico da faca (2026-06-12). String vazia vira undefined pra
-  // manter o shape antigo do JSONB (ranges sem code seguem válidos).
-  const updateCode = (idx: number, newCode: string) => {
-    const sanitized = newCode.toUpperCase().slice(0, 20);
-    const next = [...buckets];
-    next[idx] = { ...next[idx], code: sanitized.trim() === '' ? undefined : sanitized };
-    updateBuckets(next);
-  };
-
-  const toggleSize = (bucketIdx: number, size: string) => {
-    const next = [...buckets];
-    // Remove de qualquer outro bucket antes (size só em 1 faca).
-    for (let i = 0; i < next.length; i++) {
-      if (i !== bucketIdx && next[i].sizes.includes(size)) {
-        next[i] = { ...next[i], sizes: next[i].sizes.filter(s => s !== size) };
-      }
+  const goInherit = () => { setMode('inherit'); emit(null); };
+  const goNone = () => { setMode('none'); emit([]); };
+  const goCustom = () => {
+    setMode('custom');
+    // Semeia: override atual → padrão global → 1 faca cobrindo tudo.
+    let seed: FacaBoundary[] = boundaries;
+    if (seed.length === 0) {
+      seed = (defaultBoundaries && defaultBoundaries.length > 0)
+        ? defaultBoundaries.map(b => ({ ...b }))
+        : [{ label: 'P', upTo: null }];
     }
-    // Toggle no bucket alvo.
-    const bucket = next[bucketIdx];
-    const has = bucket.sizes.includes(size);
-    next[bucketIdx] = {
-      ...bucket,
-      sizes: has
-        ? bucket.sizes.filter(s => s !== size)
-        : [...bucket.sizes, size].sort((a, b) => parseInt(a) - parseInt(b)),
-    };
-    updateBuckets(next);
+    applyBoundaries(seed);
   };
 
-  // Validação visual: labels duplicados
-  const labelCounts = new Map<string, number>();
-  for (const b of buckets) {
-    const key = b.label.toUpperCase();
-    labelCounts.set(key, (labelCounts.get(key) || 0) + 1);
-  }
-  const hasDuplicates = Array.from(labelCounts.values()).some(c => c > 1);
+  const addFaca = () => {
+    const used = new Set(boundaries.map(b => b.label.toUpperCase()));
+    const nextLabel = ['P', 'M', 'G', 'PP', 'GG', 'GGG'].find(d => !used.has(d)) || `F${boundaries.length + 1}`;
+    // Nova faca entra como "resto"; a anterior que era resto recebe um corte.
+    applyBoundaries([...boundaries, { label: nextLabel, upTo: null }]);
+  };
+  const removeFaca = (idx: number) => applyBoundaries(boundaries.filter((_, i) => i !== idx));
+  const setLabel = (idx: number, v: string) => {
+    const next = [...boundaries];
+    next[idx] = { ...next[idx], label: v.toUpperCase().trim().slice(0, 4) };
+    applyBoundaries(next);
+  };
+  const setCode = (idx: number, v: string) => {
+    const c = v.toUpperCase().slice(0, 20).trim();
+    const next = [...boundaries];
+    next[idx] = { ...next[idx], code: c === '' ? undefined : c };
+    applyBoundaries(next);
+  };
+  const setUpTo = (idx: number, v: string) => {
+    const next = [...boundaries];
+    next[idx] = { ...next[idx], upTo: v === REST ? null : v };
+    applyBoundaries(next);
+  };
 
-  // Cobertura: quantos sizes da ficha estão mapeados
-  const mappedCount = sizeToBucketIdx.size;
+  const applyGlobalDefault = () => {
+    if (!defaultBoundaries || defaultBoundaries.length === 0) return;
+    setMode('custom');
+    applyBoundaries(defaultBoundaries.map(b => ({ ...b })));
+  };
+  const saveAsGlobalDefault = () => {
+    // Usa as boundaries atuais (preferindo as do editor; senão deriva do expandido).
+    const b = boundaries.length > 0 ? boundaries : boundariesFromBuckets(expanded);
+    if (b.length === 0) return;
+    saveDefault.mutate(b);
+  };
+
+  // Validações visuais.
+  const labelCounts = new Map<string, number>();
+  for (const b of boundaries) labelCounts.set(b.label.toUpperCase(), (labelCounts.get(b.label.toUpperCase()) || 0) + 1);
+  const hasDuplicates = Array.from(labelCounts.values()).some(c => c > 1);
+  const mappedCount = expanded.reduce((s, b) => s + b.sizes.length, 0);
   const totalSizes = allSizes.length;
+
+  const ModeBtn = ({ m, children }: { m: Mode; children: React.ReactNode }) => (
+    <button
+      type="button"
+      onClick={() => (m === 'inherit' ? goInherit() : m === 'none' ? goNone() : goCustom())}
+      className={`text-xs px-3 py-1.5 rounded-md border font-medium transition-colors ${
+        mode === m ? 'bg-amber-500 text-white border-amber-600' : 'bg-background text-foreground border-border hover:border-amber-500/40'
+      }`}
+    >
+      {children}
+    </button>
+  );
+
+  const defaultPreview = useMemo(
+    () => (defaultBoundaries && defaultBoundaries.length > 0 ? expandFacasByBoundaries(allSizes, defaultBoundaries) : []),
+    [allSizes, defaultBoundaries],
+  );
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2">
-          <Knife className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-semibold">Facas de Corte Cabedal</h4>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Define como as numerações são agrupadas por faca no relatório de Corte Cabedal.
-              {' '}Ex: faca <strong>P</strong> = 34/35/36, faca <strong>M</strong> = 37/38, faca <strong>G</strong> = 39/40.
-              {' '}Cada numeração só pode estar em 1 faca. Sem cadastro, a ficha mostra as numerações individuais.
-              {' '}O <strong>código da faca</strong> (opcional) identifica a faca física e sai em destaque no bloco
-              {' '}"Facas de Corte" da ficha do operador.
-            </p>
-          </div>
+      <div className="flex items-start gap-2">
+        <Knife className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold">Facas de Corte Cabedal</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Agrupa numerações por faca (P/M/G) no relatório de Corte Cabedal — ex.: <strong>P</strong> = 34/35/36 →
+            soma as quantidades. Defina a <strong>faixa</strong> que cada faca cobre. O <strong>padrão global</strong> é
+            herdado por todas as referências; personalize só onde mudar.
+          </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={addBucket} className="gap-1 shrink-0">
-          <Plus className="h-3.5 w-3.5" />
-          Adicionar faca
-        </Button>
       </div>
 
       {totalSizes === 0 && (
         <div className="text-xs italic text-muted-foreground py-2">
-          Cadastre o campo "Numerações" da ficha primeiro (ex: 33-41) pra liberar a configuração das facas.
+          Cadastre o campo "Numerações" da ficha primeiro (ex: 33-41) pra configurar as facas.
         </div>
       )}
 
-      {totalSizes > 0 && buckets.length === 0 && (
-        <div className="text-xs italic text-muted-foreground py-2 border-l-2 border-muted-foreground/30 pl-3">
-          Sem facas cadastradas — a ficha de Corte Cabedal mostrará as numerações individuais (34, 35, 36...).
-        </div>
-      )}
-
-      {buckets.length > 0 && (
+      {totalSizes > 0 && (
         <>
-          <div className="space-y-2">
-            {buckets.map((bucket, idx) => (
-              <div key={idx} className="rounded-md border bg-muted/20 p-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs shrink-0">Faca</Label>
-                  <Input
-                    value={bucket.label}
-                    onChange={(e) => updateLabel(idx, e.target.value)}
-                    className="h-8 text-sm font-mono font-bold uppercase w-24"
-                    maxLength={4}
-                    placeholder="P"
-                  />
-                  <Label className="text-xs shrink-0">Código da faca</Label>
-                  <Input
-                    value={bucket.code || ''}
-                    onChange={(e) => updateCode(idx, e.target.value)}
-                    className="h-8 text-sm font-mono uppercase w-32"
-                    maxLength={20}
-                    placeholder="FC-0123"
-                    title="Código físico da faca — sai no bloco 'Facas de Corte' da ficha de Corte Cabedal"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {bucket.sizes.length} numeraç{bucket.sizes.length === 1 ? 'ão' : 'ões'}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-7 px-2 text-destructive hover:text-destructive"
-                    onClick={() => removeBucket(idx)}
-                    title="Remover faca"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {allSizes.map((size) => {
-                    const inThisBucket = bucket.sizes.includes(size);
-                    const inOtherBucket = sizeToBucketIdx.has(size) && sizeToBucketIdx.get(size) !== idx;
-                    return (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() => toggleSize(idx, size)}
-                        className={`text-xs px-2.5 py-1 rounded-md border font-mono font-bold transition-colors ${
-                          inThisBucket
-                            ? 'bg-amber-500 text-white border-amber-600'
-                            : inOtherBucket
-                            ? 'bg-muted/40 text-muted-foreground border-muted-foreground/20'
-                            : 'bg-background text-foreground border-border hover:border-amber-500/40'
-                        }`}
-                        title={inOtherBucket ? `Já está na faca ${buckets[sizeToBucketIdx.get(size)!].label}` : ''}
-                      >
-                        {size}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">Nesta referência:</span>
+            <ModeBtn m="inherit">Herdar padrão</ModeBtn>
+            <ModeBtn m="custom">Personalizar</ModeBtn>
+            <ModeBtn m="none">Sem faca</ModeBtn>
           </div>
 
-          {hasDuplicates && (
-            <div className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">
-              ⚠ Há facas com labels duplicados. Renomeie pra continuar.
+          {mode === 'inherit' && (
+            <div className="text-xs rounded px-3 py-2 bg-muted/30 border-l-2 border-amber-500/40">
+              {defaultPreview.length > 0 ? (
+                <>
+                  <span className="text-muted-foreground">Usando o padrão global: </span>
+                  {defaultPreview.map(b => (
+                    <Badge key={b.label} variant="outline" className="mr-1 font-mono">
+                      {b.label}: {b.sizes.join('·')}
+                    </Badge>
+                  ))}
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  Nenhum padrão global definido ainda — esta ficha mostra numerações individuais.
+                  Use "Personalizar" e clique <strong>Salvar como padrão</strong> pra criar o padrão.
+                </span>
+              )}
             </div>
           )}
 
-          {mappedCount < totalSizes && (
-            <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 flex items-center gap-2">
-              <Badge variant="outline" className="font-mono">{mappedCount}/{totalSizes}</Badge>
-              {totalSizes - mappedCount} numeraç{totalSizes - mappedCount === 1 ? 'ão' : 'ões'} sem faca atribuída — aparecerão individualmente no relatório.
+          {mode === 'none' && (
+            <div className="text-xs italic text-muted-foreground py-1 border-l-2 border-muted-foreground/30 pl-3">
+              Sem faca — a ficha de Corte Cabedal mostra as numerações individuais (34, 35, 36...).
             </div>
+          )}
+
+          {mode === 'custom' && (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={addFaca} className="gap-1 h-7 text-xs">
+                  <Plus className="h-3.5 w-3.5" /> Adicionar faca
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={applyGlobalDefault}
+                  disabled={!defaultBoundaries || defaultBoundaries.length === 0}
+                  className="gap-1 h-7 text-xs" title="Carrega o padrão global como ponto de partida">
+                  <DownloadSimple className="h-3.5 w-3.5" /> Aplicar padrão
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={saveAsGlobalDefault}
+                  disabled={expanded.length === 0 || saveDefault.isPending}
+                  className="gap-1 h-7 text-xs" title="Salva a faixa atual como padrão global (todas as fichas herdam)">
+                  <FloppyDisk className="h-3.5 w-3.5" /> Salvar como padrão
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {boundaries.map((b, idx) => (
+                  <div key={idx} className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-2.5">
+                    <Label className="text-xs shrink-0">Faca</Label>
+                    <Input value={b.label} onChange={e => setLabel(idx, e.target.value)}
+                      className="h-8 text-sm font-mono font-bold uppercase w-20" maxLength={4} placeholder="P" />
+                    <Label className="text-xs shrink-0">vai até</Label>
+                    <Select value={b.upTo == null ? REST : b.upTo} onValueChange={v => setUpTo(idx, v)}>
+                      <SelectTrigger className="h-8 w-32 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {allSizes.map(s => <SelectItem key={s} value={s} className="font-mono">{s}</SelectItem>)}
+                        <SelectItem value={REST}>resto (até o fim)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Label className="text-xs shrink-0">Código</Label>
+                    <Input value={b.code || ''} onChange={e => setCode(idx, e.target.value)}
+                      className="h-8 text-sm font-mono uppercase w-28" maxLength={20} placeholder="FC-0123"
+                      title="Código físico da faca — sai no bloco 'Facas de Corte' da ficha" />
+                    <Button type="button" variant="ghost" size="sm"
+                      className="ml-auto h-7 px-2 text-destructive hover:text-destructive"
+                      onClick={() => removeFaca(idx)} title="Remover faca">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Preview do resultado */}
+              {expanded.length > 0 && (
+                <div className="text-xs rounded px-3 py-2 bg-amber-500/5 border border-amber-500/20">
+                  <span className="text-muted-foreground mr-1">Resultado:</span>
+                  {expanded.map(b => (
+                    <Badge key={b.label} variant="outline" className="mr-1 font-mono">
+                      {b.label}{b.code ? ` (${b.code})` : ''}: {b.sizes.join('·')}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {hasDuplicates && (
+                <div className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">
+                  ⚠ Há facas com labels duplicados. Renomeie pra continuar.
+                </div>
+              )}
+              {mappedCount < totalSizes && (
+                <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-500/10 rounded px-3 py-2 flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono">{mappedCount}/{totalSizes}</Badge>
+                  {totalSizes - mappedCount} numeração(ões) fora das faixas — aparecerão individualmente.
+                </div>
+              )}
+            </>
           )}
         </>
       )}

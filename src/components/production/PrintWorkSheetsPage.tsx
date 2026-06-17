@@ -27,6 +27,8 @@ import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { sheetHasSector } from '@/lib/sectors';
+import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
+import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -1148,6 +1150,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     return m;
   }, [sheetLiningFlags]);
 
+  // Padrão GLOBAL de facas (faixas P/M/G). Fichas com knife_size_ranges NULL
+  // HERDAM esse padrão; knife_size_ranges=[] é opt-out explícito (numeração
+  // individual). (User 2026-06-16 — reutilizar entre referências.)
+  const { data: knifeDefaultBoundaries = null } = useKnifeFacasDefault();
+  const knifeOptOutByRef = useMemo(() => {
+    const s = new Set<string>();
+    for (const sh of sheetLiningFlags as any[]) {
+      if (Array.isArray(sh.knife_size_ranges) && sh.knife_size_ranges.length === 0) s.add(sh.id);
+    }
+    return s;
+  }, [sheetLiningFlags]);
+
   // Map reference_id → aviamento_steps[]. Cada ficha define quais etapas
   // de Aviamento aplicam (Frente, Traseira, Costura de tiras). Worksheet
   // de Aviamento usa pra renderizar checklist por etapa × numeração.
@@ -1968,18 +1982,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // Knife mapping da ficha técnica desta OP (P/M/G/...). NULL se não
       // cadastrado — neste caso o knifeGrid recebe a numeração literal como
       // chave (fallback transparente, comportamento idêntico a combinedGrid).
+      // Resolução de faca da ficha: override próprio (knife_size_ranges com
+      // itens) → opt-out ([] = sem faca, numeração individual) → padrão global
+      // (NULL herda as faixas P/M/G). Sem override e sem padrão = literal.
       const knifeRanges = knifeRangesByRef.get(sheetId) || null;
+      const knifeOptedOut = knifeOptOutByRef.has(sheetId);
+      const useDefaultFacas = !knifeRanges && !knifeOptedOut
+        && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0;
       // Largest-remainder por OP: combinedGrid soma EXATO orderTotal (Math.round
       // por tamanho deixava a soma off por ±N).
       const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
       for (const [size, scaled] of Object.entries(scaledGrade)) {
         if (scaled > 0) {
           cg.combinedGrid[size] = (cg.combinedGrid[size] ?? 0) + scaled;
-          // knifeGrid: agrupa por faca quando há cadastro; senão usa size literal.
+          // knifeGrid: agrupa por faca (override OU padrão global); senão literal.
           let bucketKey = size;
           if (knifeRanges) {
             const bucket = knifeRanges.find(b => Array.isArray(b.sizes) && b.sizes.includes(size));
             if (bucket) bucketKey = bucket.label;
+          } else if (useDefaultFacas) {
+            const label = facaLabelForSize(size, knifeDefaultBoundaries!);
+            if (label) bucketKey = label;
           }
           cg.knifeGrid = cg.knifeGrid || {};
           cg.knifeGrid[bucketKey] = (cg.knifeGrid[bucketKey] ?? 0) + scaled;
@@ -3031,13 +3054,28 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             // cobertas, identificando a referência quando o maço tem várias.
             const knives = sectorName === 'Corte Cabedal'
               ? (() => {
+                  // Numerações presentes por ref (pra expandir o padrão global).
+                  const sizesByRef = new Map<string, Set<string>>();
+                  for (const order of expandedOrders) {
+                    const sid = (order as any).reference_id;
+                    if (!sid) continue;
+                    const grid = ((order as any).grid || {}) as Record<string, number>;
+                    if (!sizesByRef.has(sid)) sizesByRef.set(sid, new Set());
+                    for (const k of Object.keys(grid)) sizesByRef.get(sid)!.add(k);
+                  }
                   const seen = new Map<string, { refCode: string; refName: string; ranges: Array<{ label: string; sizes: string[]; code?: string }> }>();
                   for (const order of expandedOrders) {
                     const sheetId = (order as any).reference_id;
                     if (!sheetId || seen.has(sheetId)) continue;
                     // Modelo de tiras não tem cabedal — fora do Corte Cabedal.
                     if (hasStrapsLookup.get(sheetId) === true) continue;
-                    const ranges = knifeRangesByRef.get(sheetId);
+                    let ranges = knifeRangesByRef.get(sheetId);
+                    // Sem override próprio e sem opt-out → herda o padrão global.
+                    if ((!ranges || ranges.length === 0)
+                        && !knifeOptOutByRef.has(sheetId)
+                        && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0) {
+                      ranges = expandFacasByBoundaries(Array.from(sizesByRef.get(sheetId) || []), knifeDefaultBoundaries);
+                    }
                     if (!ranges || ranges.length === 0) continue;
                     seen.set(sheetId, {
                       refCode: (order as any).reference_code || '',
