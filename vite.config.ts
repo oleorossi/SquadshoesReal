@@ -49,6 +49,26 @@ const versionJsonPlugin = (): Plugin => ({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
+      // ⚠ SERVICE WORKER DESLIGADO (selfDestroying).
+      //
+      // O SW de precache (Workbox) prendia usuários em bundles obsoletos: ele
+      // servia o index.html precacheado (cache-first em NavigationRoute), que
+      // apontava pros chunks hasheados do build antigo. Após um deploy novo na
+      // Vercel, esses chunks `immutable` somem (404) — e o import() dinâmico de
+      // uma rota lazy ainda-não-visitada quebrava com "Importing a module
+      // script failed". O reload de recuperação (chunkErrorHandler.ts) não
+      // resolvia, pois o próprio SW re-servia o index.html velho.
+      //
+      // `selfDestroying: true` gera um SW mínimo que, no activate, se
+      // DESREGISTRA, limpa TODOS os caches e recarrega as abas abertas. Com o
+      // `registerType: 'autoUpdate'` acima, usuários que ainda têm o SW de
+      // precache antigo recebem este destruidor automaticamente na próxima
+      // visita e são libertados — sem depender do unregister em main.tsx.
+      //
+      // Mantém o manifest (metadados/ícones do app) sem nenhum SW de cache.
+      // Pra REATIVAR a PWA offline de /m no futuro: scope restrito a '/m' +
+      // remover esta flag (ver histórico do CLAUDE.md sobre o cache-trap).
+      selfDestroying: true,
       // Coexistência com public/sw.js legado: usa filename próprio pra não
       // sobrescrever. O sw.js legado se auto-destrói em users antigos;
       // novos users instalam squad-vendas-sw.js direto.
