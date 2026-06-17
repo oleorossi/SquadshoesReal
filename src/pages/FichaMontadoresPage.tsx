@@ -210,10 +210,17 @@ export default function FichaMontadoresPage() {
   };
 
   async function salvar() {
+    // `dia` alimenta a coluna `dia date NOT NULL` — se o operador limpar o campo
+    // de data, "" estoura um erro de cast opaco no Postgres. Valida antes e cai
+    // pra hoje como defesa extra (o input nunca deveria chegar vazio aqui).
+    if (!dia) {
+      setMsg({ type: "err", text: "Informe a data da ficha." });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     const payload = {
-      dia,
+      dia: dia || todayISO(),
       montador: montador.trim() || null,
       solado: solado.trim() || null,
       grade,
@@ -411,7 +418,7 @@ export default function FichaMontadoresPage() {
                 <Plus className="h-4 w-4" /> Nova ficha
               </Button>
             )}
-            <Button type="button" onClick={salvar} disabled={saving} size="sm" className="h-9">
+            <Button type="button" onClick={salvar} disabled={saving || !dia} size="sm" className="h-9">
               {saving ? "Salvando…" : editingId ? "Atualizar ficha" : "Salvar ficha"}
             </Button>
           </div>
