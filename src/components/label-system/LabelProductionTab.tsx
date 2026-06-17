@@ -385,7 +385,8 @@ export function LabelProductionTab() {
       senderAddress: companyAddress || undefined,
     };
     const d = (co.cnpj || '').replace(/\D/g, '');
-    const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (co.cnpj || '');
+    // CNPJ malformado/vazio → DEFAULT (rodapé INMETRO 576/2014 nunca fica em branco).
+    const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : DEFAULT_MANUFACTURER_CNPJ;
     const addr = [
       [co.logradouro, co.numero].filter(Boolean).join(', '),
       co.bairro,

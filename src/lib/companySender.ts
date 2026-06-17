@@ -37,5 +37,8 @@ export function resolveSenderCnpj(
     list.find((c) => c.is_primary) ||
     list[0];
   if (!co) return DEFAULT_MANUFACTURER_CNPJ;
-  return formatCnpj(co.cnpj) || DEFAULT_MANUFACTURER_CNPJ;
+  // Só aceita CNPJ com 14 dígitos; cadastro malformado/vazio cai no DEFAULT em
+  // vez de estampar "CNPJ 123" ou rodapé sem CNPJ no rótulo (INMETRO 576/2014).
+  const digits = (co.cnpj || '').replace(/\D/g, '');
+  return digits.length === 14 ? formatCnpj(digits) : DEFAULT_MANUFACTURER_CNPJ;
 }

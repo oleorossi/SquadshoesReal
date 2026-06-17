@@ -745,8 +745,13 @@ export function buildThermalLabelsHtml(labels: {
 
   const barcodeInits = labels.map((l, idx) => {
     if (!l.barcode || !c.showBarcode) return '';
-    const code = sanitizeBarcode(l.barcode);
-    return `try{var el=document.querySelector("#bc-${idx}");JsBarcode(el,"${code}",{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});if(el){el.removeAttribute("width");el.removeAttribute("height");el.style.width="100%";el.style.height="auto";}}catch(e){}`;
+    // Em ficha-mode o barcode é "REF-34(2) 35(3) ..." (com espaços/parênteses,
+    // legais em CODE128). sanitizeBarcode os removia, alterando o payload
+    // codificado. jsStringLiteral preserva o valor inteiro e ainda é seguro
+    // dentro do <script> (escapa aspas e neutraliza </). Já é uma string
+    // entre aspas, então NÃO envolver em "" de novo.
+    const code = jsStringLiteral(l.barcode);
+    return `try{var el=document.querySelector("#bc-${idx}");JsBarcode(el,${code},{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});if(el){el.removeAttribute("width");el.removeAttribute("height");el.style.width="100%";el.style.height="auto";}}catch(e){}`;
   }).filter(Boolean).join('\n');
 
   const cols: string[] = [];

@@ -82,7 +82,8 @@ export function LabelManualTab() {
       || companies.find(c => c.is_primary) || companies[0];
     if (!co) return { senderName: DEFAULT_MANUFACTURER_NAME, senderCnpj: DEFAULT_MANUFACTURER_CNPJ };
     const d = (co.cnpj || '').replace(/\D/g, '');
-    const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (co.cnpj || '');
+    // CNPJ malformado/vazio → DEFAULT (rodapé INMETRO 576/2014 nunca fica em branco).
+    const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : DEFAULT_MANUFACTURER_CNPJ;
     return { senderName: co.razao_social || co.nome_fantasia || 'SQUAD SHOES', senderCnpj: cnpj };
   };
 
