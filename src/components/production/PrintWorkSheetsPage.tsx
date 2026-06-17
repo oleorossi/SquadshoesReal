@@ -29,6 +29,8 @@ import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { sheetHasSector } from '@/lib/sectors';
 import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
 import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
+import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
+import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -1007,7 +1009,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, aviamento_size_ranges, shoe_category')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -1158,6 +1160,28 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     const s = new Set<string>();
     for (const sh of sheetLiningFlags as any[]) {
       if (Array.isArray(sh.knife_size_ranges) && sh.knife_size_ranges.length === 0) s.add(sh.id);
+    }
+    return s;
+  }, [sheetLiningFlags]);
+
+  // Faixas P/M/G do AVIAMENTO (segmento próprio, independente das facas). Mesma
+  // semântica: override por ref (aviamento_size_ranges com itens) → opt-out ([])
+  // → padrão global (NULL herda as faixas). Usado APENAS no setor Aviamento.
+  const aviamentoRangesByRef = useMemo(() => {
+    const m = new Map<string, Array<{ label: string; sizes: string[] }>>();
+    for (const s of sheetLiningFlags as any[]) {
+      const r = s.aviamento_size_ranges;
+      if (Array.isArray(r) && r.length > 0) {
+        m.set(s.id, r as Array<{ label: string; sizes: string[] }>);
+      }
+    }
+    return m;
+  }, [sheetLiningFlags]);
+  const { data: aviamentoDefaultBoundaries = null } = useAviamentoPmgDefault();
+  const aviamentoOptOutByRef = useMemo(() => {
+    const s = new Set<string>();
+    for (const sh of sheetLiningFlags as any[]) {
+      if (Array.isArray(sh.aviamento_size_ranges) && sh.aviamento_size_ranges.length === 0) s.add(sh.id);
     }
     return s;
   }, [sheetLiningFlags]);
@@ -1989,6 +2013,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const knifeOptedOut = knifeOptOutByRef.has(sheetId);
       const useDefaultFacas = !knifeRanges && !knifeOptedOut
         && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0;
+      // Faixas P/M/G do Aviamento — mesma resolução (override → opt-out →
+      // padrão global), grid SEPARADO (cg.aviamentoGrid) consumido só na ficha
+      // de Aviamento. Sem cadastro e sem padrão = numeração literal.
+      const aviamentoRanges = aviamentoRangesByRef.get(sheetId) || null;
+      const aviamentoOptedOut = aviamentoOptOutByRef.has(sheetId);
+      const useDefaultAviamento = !aviamentoRanges && !aviamentoOptedOut
+        && Array.isArray(aviamentoDefaultBoundaries) && aviamentoDefaultBoundaries.length > 0;
       // Largest-remainder por OP: combinedGrid soma EXATO orderTotal (Math.round
       // por tamanho deixava a soma off por ±N).
       const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, multiplier, orderTotal);
@@ -2006,6 +2037,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           }
           cg.knifeGrid = cg.knifeGrid || {};
           cg.knifeGrid[bucketKey] = (cg.knifeGrid[bucketKey] ?? 0) + scaled;
+          // aviamentoGrid: agrupa por faixa P/M/G (override OU padrão global); senão literal.
+          let aviKey = size;
+          if (aviamentoRanges) {
+            const bucket = aviamentoRanges.find(b => Array.isArray(b.sizes) && b.sizes.includes(size));
+            if (bucket) aviKey = bucket.label;
+          } else if (useDefaultAviamento) {
+            const label = pmgLabelForSize(size, aviamentoDefaultBoundaries!);
+            if (label) aviKey = label;
+          }
+          cg.aviamentoGrid = cg.aviamentoGrid || {};
+          cg.aviamentoGrid[aviKey] = (cg.aviamentoGrid[aviKey] ?? 0) + scaled;
         }
       }
       cg.totalPairs = Object.values(cg.combinedGrid).reduce((s, v) => s + v, 0);
@@ -2050,7 +2092,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // knifeDefaultBoundaries vem de query SEPARADA (useKnifeFacasDefault) — sem ele
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
   // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
   // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
@@ -2060,7 +2102,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     if (!activeSectors.has('Aviamento')) return null;
     return buildColorGroupedSheets('reference');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
   // ── Solagem / Colagem: consolidated by sole color ────────────────────────────
   // B1 (2026-06-10): as bandas passam a ser calculadas POR SETOR — uma OP só
@@ -3388,6 +3430,32 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               );
             });
           }
+          // Pares/caixa do solado pra contagem de caixas no Acabamento.
+          // Reusa EXATAMENTE a mesma fonte/lógica da Expedição (resolveSoleInfo):
+          // grupo do solado RESOLVIDO (A1) + tipo de caixa do packaging_mode do PV
+          // (colmeia/master = coletiva 12 padrão), via pairsPerVolumeForMode.
+          // Acabamento agrupa por OP (não por loja), mas o solado é por-OP, então
+          // a resolução é idêntica. Se não resolver grupo, omite (componente cai
+          // no fallback 12 sozinho).
+          const groupPackagingByIdAcab = new Map<string, any>();
+          for (const g of soleGroupPackaging as any[]) {
+            groupPackagingByIdAcab.set((g as any).id, g);
+          }
+          const resolveAcabPairsPerBox = (order: any): number | undefined => {
+            const soleGroupId = resolveSoleForOrder(order.reference_id, order.color)?.groupId ?? null;
+            if (!soleGroupId) return undefined;
+            const grp = groupPackagingByIdAcab.get(soleGroupId);
+            if (!grp) return undefined;
+            const so = (saleOrders as any[]).find((s: any) => s.id === order.sale_order_id);
+            const mode = (so as any)?.packaging_mode;
+            const collType = collectiveTypeForMode(mode);
+            const field = collType === 'master' ? 'pairs_per_box_master'
+              : collType === 'colmeia' ? 'pairs_per_box_colmeia'
+              : collType === 'fitilho' ? 'pairs_per_box_fitilho'
+              : 'pairs_per_box_individual';
+            const cadastrado = Number(grp[field]) || 0;
+            return pairsPerVolumeForMode(mode, cadastrado);
+          };
           const items = acabamentoOrders.map((order) => {
             const { resolvedImageUrl, tsImage } = resolveOrderImage(order);
             const syntheticOrder = {
@@ -3412,6 +3480,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               if (isFinite(ka) && isFinite(kb)) return ka - kb;
               return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
             });
+            const acabPairsPerBox = resolveAcabPairsPerBox(order);
             return {
               order: syntheticOrder,
               silk,
@@ -3420,6 +3489,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               insoleReadyMade,
               hasStraps,
               strapColors: strapColorsOrdered,
+              // Só anexa quando o grupo do solado resolveu (senão omite e o
+              // componente cai no fallback item.pairsPerBox ?? order.pairs_per_box ?? 12).
+              ...(acabPairsPerBox != null ? { pairsPerBox: acabPairsPerBox } : {}),
               opNumbers: [order.op_number].filter(Boolean),
               clientName: clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined,
               lotInfo:

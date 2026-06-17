@@ -158,6 +158,11 @@ export type SheetFormData = {
     *  `code` (2026-06-12) = código físico da faca — opcional e retrocompatível
     *  (JSONB livre, ranges antigos sem o campo seguem válidos; sem migration). */
    knife_size_ranges?: Array<{ label: string; sizes: string[]; code?: string }> | null;
+   /** Faixas P/M/G PRÓPRIAS do setor de Aviamento (segmento independente das
+    *  facas de Corte Cabedal). Agrega numerações por faixa na ficha de operador
+    *  de Aviamento. NULL = herda padrão global aviamento_pmg_default; [] = sem
+    *  faixa (numeração individual); [{label,sizes[]}] = faixas próprias da ref. */
+   aviamento_size_ranges?: Array<{ label: string; sizes: string[] }> | null;
 };
 
 export const emptySheetForm: SheetFormData = {
@@ -201,6 +206,7 @@ export const emptySheetForm: SheetFormData = {
    box_weight_kg: null,
    ncm: null,
    knife_size_ranges: null,
+   aviamento_size_ranges: null,
 };
 
 export type SheetMaterialFormData = {

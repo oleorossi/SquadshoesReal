@@ -172,6 +172,7 @@ import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevW
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
 import { GradingCadTab } from '@/components/technical-sheets/GradingCadTab';
+import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
  import { usePalmilhaColorMappings, useUpsertPalmilhaColorMapping, PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
@@ -183,7 +184,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, CaretUpDown as ChevronsUpDown, Ruler } from '@phosphor-icons/react';
+import { Check, CaretUpDown as ChevronsUpDown, Ruler, Paperclip } from '@phosphor-icons/react';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
@@ -1973,6 +1974,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </Badge>
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="range-aviamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <Paperclip className="h-3.5 w-3.5" /> Range Aviamento
+          </TabsTrigger>
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="escalonamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Ruler className="h-3.5 w-3.5" /> Escalonamento
           </TabsTrigger>
@@ -3372,6 +3377,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
             </div>
           </div>
+        </TabsContent>
+
+        {/* TAB: Range Aviamento — faixas P/M/G próprias do setor de Aviamento */}
+        <TabsContent value="range-aviamento" className="mt-4 space-y-4">
+          <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
+            <Paperclip className="h-4 w-4 text-primary shrink-0" />
+            <div>
+              <div className="text-sm font-bold">Range Aviamento</div>
+              <div className="text-xs text-muted-foreground">
+                Define as faixas P/M/G do setor de Aviamento. A ficha de operador de Aviamento agrupa as numerações
+                por faixa (segmento próprio, independente das facas de Corte Cabedal).
+              </div>
+            </div>
+          </div>
+          <AviamentoRangeTab form={form} updateField={updateField} />
         </TabsContent>
 
          {/* TAB: Produção & Embalagens */}

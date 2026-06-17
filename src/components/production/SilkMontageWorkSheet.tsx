@@ -25,6 +25,12 @@ export interface SilkColorGroup {
    *  chave literal (ex: '41'). Sem cadastro = NULL/vazio = fallback pro
    *  combinedGrid (sizes individuais). */
   knifeGrid?: Record<string, number>;
+  /** Grade agregada por FAIXA P/M/G do AVIAMENTO (segmento próprio, independente
+   *  das facas). Populada quando a ref tem aviamento_size_ranges (ou herda o
+   *  padrão global). Em Aviamento, a worksheet usa este grid em vez de
+   *  combinedGrid. Sizes não-mapeadas viram chave literal. Sem cadastro/padrão =
+   *  fallback pro combinedGrid (numerações individuais). */
+  aviamentoGrid?: Record<string, number>;
   /** Curva-base de 1 CORRUGADO físico (soma = baseGradeSum). Vazia/ausente
    *  quando a resolução é inexata. */
   baseGrid?: Record<string, number>;
@@ -241,12 +247,27 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   const renderGradeTable = (cg: SilkColorGroup) => {
     // Corte Cabedal: se a ref tem knife_size_ranges cadastrado (knifeGrid
     // populado com labels P/M/G), exibe colunas por faca em vez de
-    // numeração individual. Outros setores sempre usam combinedGrid.
+    // numeração individual. Aviamento: idem com aviamentoGrid (segmento
+    // próprio). Outros setores sempre usam combinedGrid.
     const usingKnife = sector === 'Corte Cabedal'
       && cg.knifeGrid
       && Object.keys(cg.knifeGrid).length > 0;
-    const sourceGrid: Record<string, number> = usingKnife ? cg.knifeGrid! : cg.combinedGrid;
+    const usingAviamentoPmg = sector === 'Aviamento'
+      && cg.aviamentoGrid
+      && Object.keys(cg.aviamentoGrid).length > 0;
+    const usingBuckets = usingKnife || usingAviamentoPmg;
+    const sourceGrid: Record<string, number> = usingKnife
+      ? cg.knifeGrid!
+      : usingAviamentoPmg
+        ? cg.aviamentoGrid!
+        : cg.combinedGrid;
     const activeSizes = sortSizes(Object.keys(sourceGrid).filter(s => (sourceGrid[s] ?? 0) > 0));
+    // F-M3 (2026-06-17): na grade por faixa (faca/P-M-G), a soma das colunas
+    // exibidas tem que fechar com o total de pares do grupo — senão alguma
+    // numeração não foi mapeada e o operador produziria a menos/a mais. Aviso
+    // visual discreto (não esconde dados, só alerta).
+    const displayedSum = activeSizes.reduce((s, k) => s + (Number(sourceGrid[k]) || 0), 0);
+    const knifeGridMismatch = usingBuckets && displayedSum !== (cg.totalPairs || 0);
     // Fontes adaptativas pela qtd de colunas (2026-06-12): grade mista
     // (16+ numerações) cortava as células com fonte fixa. No layout COMPACTO
     // a grade desce 1 bucket (dense, 7º passe) pra caberem 2 cores por página.
@@ -264,6 +285,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       return contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join('·');
     };
     return (
+      <>
       <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
         <thead>
           <tr style={{ borderBottom: '1.5px solid #000' }}>
@@ -299,7 +321,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               grupo têm a mesma grade base. Quando há grades
               mistas, omitimos pra evitar perCard × N ≠ Total
               confundir o operador. */}
-          {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && !usingKnife && (
+          {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && !usingBuckets && (
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
                 Por Ficha<br />({cg.baseGradeSum}p)
@@ -378,6 +400,16 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           })()}
         </tbody>
       </table>
+      {/* F-M3: grade por faixa (faca/P-M-G) não fecha com o total do grupo. */}
+      {knifeGridMismatch && (
+        <p
+          className="leading-tight mt-0.5"
+          style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}
+        >
+          ⚠ grade por {usingAviamentoPmg ? 'faixa P/M/G' : 'faca'} não fecha com o total ({displayedSum} ≠ {cg.totalPairs} pares) — conferir mapeamento de numerações
+        </p>
+      )}
+      </>
     );
   };
 
