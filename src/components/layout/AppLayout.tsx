@@ -4,6 +4,7 @@ import { menuGroups, systemItems, topItem } from '@/data/navigation';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useCurrentProfile, useCurrentUserRoles, ROLES } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
@@ -92,9 +93,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [favorites, setFavorites] = useState<{ name: string; path: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('menu-favorites') || '[]'); } catch { return []; }
-  });
+  // Favoritos persistidos NO BANCO por usuário (useMenuFavorites). Antes
+  // viviam só no localStorage e sumiam ao limpar cache / trocar de navegador /
+  // mudar de domínio — esse era o motivo de "os favoritos sumiram". O hook
+  // mantém o localStorage como cache e migra o que existir nele pro banco.
+  const { favorites, toggleFavorite: toggleFav } = useMenuFavorites();
 
   const filteredFavorites = React.useMemo(
     () => favorites.filter(item => canAccessRoute(item.path)),
@@ -104,12 +107,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const toggleFavorite = (e: React.MouseEvent, name: string, path: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setFavorites(prev => {
-      const isFavorite = prev.some(f => f.path === path);
-      const next = isFavorite ? prev.filter(f => f.path !== path) : [...prev, { name, path }];
-      localStorage.setItem('menu-favorites', JSON.stringify(next));
-      return next;
-    });
+    toggleFav(name, path);
   };
 
   // Favoritos: chave de colapso dedicada (não colide com label de grupo real,
@@ -589,12 +587,18 @@ export default function AppLayout({ children, printMode = false }: { children: R
                               <button
                                 onClick={(e) => toggleFavorite(e, item.name, item.path)}
                                 className={cn(
+                                  // Estrela de adicionar/remover favorito. Não-favorito
+                                  // ficava em opacity-40 (quase invisível, "fácil de não
+                                  // achar"): subido pra opacity-70 + cor com tom de primary
+                                  // pra deixar claro que é clicável. Favorito = cheio/primary.
                                   "p-1 transition-all duration-200",
-                                  isFavorite ? "opacity-100 text-primary" : "opacity-40 hover:opacity-100 text-sidebar-muted hover:text-primary"
+                                  isFavorite
+                                    ? "opacity-100 text-primary"
+                                    : "opacity-70 hover:opacity-100 text-sidebar-muted hover:text-primary"
                                 )}
                                 aria-label={isFavorite ? `Remover ${item.name} dos favoritos` : `Adicionar ${item.name} aos favoritos`}
                               >
-                                <Star className={cn("h-3 w-3", isFavorite && "fill-current")} />
+                                <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
                               </button>
                             </NavLink>
                           );
