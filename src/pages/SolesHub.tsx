@@ -95,19 +95,43 @@ export default function SolesHub() {
     );
   }, [soles, search]);
 
-  // Agrupa por nome base (descarta cor pra agrupar variantes do mesmo solado)
-  const grouped = useMemo(() => {
-    const map = new Map<string, SoleProduct[]>();
-    for (const p of filtered) {
-      // Nome base = nome sem a cor entre parênteses
-      const base = p.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
-      if (!map.has(base)) map.set(base, []);
-      map.get(base)!.push(p);
+  // Nome base = nome sem a cor: remove o parêntese final E o sufixo " - COR" da
+  // própria variante (ex.: "204 - CARAMELO" → "204"). Assim variantes do mesmo
+  // modelo com a cor embutida no nome não fragmentam o rótulo.
+  const cleanBase = (name: string, color?: string | null) => {
+    let base = (name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const c = (color || '').trim();
+    if (c) {
+      const esc = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const stripped = base.replace(new RegExp('[\\s\\-–—/]+' + esc + '\\s*$', 'i'), '').trim();
+      if (stripped) base = stripped; // nunca esvazia (caso nome == cor)
     }
-    // Ordena por nome base
+    return base;
+  };
+
+  // Agrupa por FAMÍLIA = group_id (modelo canônico: 1 grupo = 1 família; a cor
+  // mora em products.color, nunca no nome). Sem group_id, cai no nome base.
+  // Antes agrupava só por nome base — solados com a cor embutida no nome
+  // (ex.: "204 - CARAMELO" + "204 - Preto" no MESMO group_id "SOLADO 204")
+  // apareciam como 2 famílias distintas. (Fix 2026-06-17.)
+  const grouped = useMemo(() => {
+    const map = new Map<string, { items: SoleProduct[]; labels: Map<string, number> }>();
+    for (const p of filtered) {
+      const base = cleanBase(p.name, p.color);
+      const key = p.group_id ? `g:${p.group_id}` : `n:${base.toLowerCase()}`;
+      let entry = map.get(key);
+      if (!entry) { entry = { items: [], labels: new Map() }; map.set(key, entry); }
+      entry.items.push(p);
+      entry.labels.set(base, (entry.labels.get(base) || 0) + 1);
+    }
+    // Rótulo do grupo = nome base mais frequente (desempate alfabético).
     return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
-      .map(([base, items]) => ({ base, items }));
+      .map(([key, e]) => {
+        const base = [...e.labels.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'))[0]?.[0] ?? '';
+        return { key, base, items: e.items };
+      })
+      .sort((a, b) => a.base.localeCompare(b.base, 'pt-BR'));
   }, [filtered]);
 
   const selected = useMemo(() =>
@@ -213,7 +237,7 @@ export default function SolesHub() {
                         o cadastro técnico de fato. Cabeçalho do grupo agrupa
                         visualmente as cores do mesmo modelo. */}
                     {grouped.map(group => (
-                      <div key={group.base}>
+                      <div key={group.key}>
                         {/* Header do grupo (modelo) */}
                         <div className="px-3 py-1.5 bg-muted/30 border-b border-border/60 flex items-center justify-between">
                           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">
