@@ -3055,40 +3055,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             // a cortar) cuja ficha técnica tem knife_size_ranges cadastrado —
             // a worksheet mostra quantidade de facas + código + numerações
             // cobertas, identificando a referência quando o maço tem várias.
-            const knives = sectorName === 'Corte Cabedal'
-              ? (() => {
-                  // Numerações presentes por ref (pra expandir o padrão global).
-                  const sizesByRef = new Map<string, Set<string>>();
-                  for (const order of expandedOrders) {
-                    const sid = (order as any).reference_id;
-                    if (!sid) continue;
-                    const grid = ((order as any).grid || {}) as Record<string, number>;
-                    if (!sizesByRef.has(sid)) sizesByRef.set(sid, new Set());
-                    for (const k of Object.keys(grid)) sizesByRef.get(sid)!.add(k);
-                  }
-                  const seen = new Map<string, { refCode: string; refName: string; ranges: Array<{ label: string; sizes: string[]; code?: string }> }>();
-                  for (const order of expandedOrders) {
-                    const sheetId = (order as any).reference_id;
-                    if (!sheetId || seen.has(sheetId)) continue;
-                    // Modelo de tiras não tem cabedal — fora do Corte Cabedal.
-                    if (hasStrapsLookup.get(sheetId) === true) continue;
-                    let ranges = knifeRangesByRef.get(sheetId);
-                    // Sem override próprio e sem opt-out → herda o padrão global.
-                    if ((!ranges || ranges.length === 0)
-                        && !knifeOptOutByRef.has(sheetId)
-                        && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0) {
-                      ranges = expandFacasByBoundaries(Array.from(sizesByRef.get(sheetId) || []), knifeDefaultBoundaries);
-                    }
-                    if (!ranges || ranges.length === 0) continue;
-                    seen.set(sheetId, {
-                      refCode: (order as any).reference_code || '',
-                      refName: (order as any).reference_name || (order as any).reference_code || '—',
-                      ranges,
-                    });
-                  }
-                  return Array.from(seen.values());
-                })()
-              : undefined;
+            // FACAS DE CORTE: bloco-resumo (Ref/Faca/Código/Numerações) REMOVIDO
+            // da ficha de Corte Cabedal a pedido do user (2026-06-17) — a própria
+            // grade já mostra P/M/G somados, então o resumo ficou redundante.
+            // Pra reativar, restaurar o cálculo por knifeRangesByRef + padrão
+            // global expandido (ver git 0098789) e voltar a passar em <knives>.
+            const knives = undefined;
             if (reduced) {
               return groupsForSector.map((g, gi) =>
                 reducedSilkNode(withClientNames(g), sectorName, `${sectorName}-red-${gi}-${g.soleName}`));
