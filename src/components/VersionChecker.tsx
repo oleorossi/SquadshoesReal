@@ -1,6 +1,7 @@
  import { useEffect, useState, useCallback } from "react";
  import { toast } from "sonner";
  import { ArrowsClockwise as RefreshCw, X, WarningCircle as AlertCircle, Keyboard } from '@phosphor-icons/react';
+ import { tryReserveReload, hasRecoveryBudget } from "@/lib/recoveryReload";
  
  const RELOAD_COOLDOWN_MS = 15_000;
  const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -37,7 +38,10 @@
    const attempts = parseInt(sessionStorage.getItem(ATTEMPT_KEY) ?? "0", 10);
    sessionStorage.setItem(ATTEMPT_KEY, String(attempts + 1));
    sessionStorage.setItem(LAST_RELOAD_KEY, Date.now().toString());
- 
+   // Contabiliza no orçamento global de recuperação (recoveryReload.ts) pra que
+   // este reload de versão NÃO empilhe com os do chunkErrorHandler/preloadError.
+   tryReserveReload();
+
    // Navigate to root with timestamp — CDN must re-evaluate this URL
    const url = new URL(window.location.origin);
    if (serverVersion) url.searchParams.set("v", serverVersion);
@@ -120,6 +124,9 @@
    // Auto-trigger reload once, with cooldown protection against loops
    useEffect(() => {
      if (!pendingVersion || cdnStuck) return;
+     // Orçamento global esgotado (ex.: o chunkErrorHandler já recarregou no limite
+     // neste episódio) → não empilha outro reload; escala pra instrução manual.
+     if (!hasRecoveryBudget()) { setCdnStuck(true); return; }
      const lastReload = sessionStorage.getItem(LAST_RELOAD_KEY);
      const now = Date.now();
      if (lastReload && now - parseInt(lastReload, 10) < RELOAD_COOLDOWN_MS) {

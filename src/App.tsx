@@ -513,9 +513,11 @@ const router = createBrowserRouter([
     errorElement: <RouteErrorFallback />,
   },
   // ── Mobile app (/m/*) — fluxo PWA standalone ──
-  // Layout próprio (sem sidebar desktop), bottom tab nav, offline-first
-  // via service worker + IndexedDB queue. Vendedor instala como app no
-  // iPhone/iPad ("Add to Home Screen") e usa em campo.
+  // Layout próprio (sem sidebar desktop), bottom tab nav. Vendedor instala como
+  // app no iPhone/iPad ("Add to Home Screen") e usa em campo. A fila de pedidos
+  // (IndexedDB + syncEngine) tolera ficar sem sinal e sincroniza ao voltar; o
+  // SW de cache offline está desligado (selfDestroying) — o app não carrega a
+  // frio totalmente offline (ver vite.config.ts / CLAUDE.md sobre o cache-trap).
   {
     path: "/m",
     element: (

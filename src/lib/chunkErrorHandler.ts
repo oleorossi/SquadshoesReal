@@ -26,14 +26,16 @@
  * Em qualquer match, recarrega a página 1x. Flag em sessionStorage evita
  * loop infinito (se persistir, deixa o erro aparecer pro usuário).
  *
- * # Compatibilidade com vite:preloadError
+ * # Compatibilidade com vite:preloadError e VersionChecker
  *
- * Os 3 listeners convivem — todos checam o mesmo flag de sessionStorage,
- * então quem chegar primeiro reloada e os outros viram noop. Não duplica.
+ * Os 3 listeners e o vite:preloadError de main.tsx compartilham o MESMO
+ * orçamento global de recuperação (src/lib/recoveryReload.ts), então quem
+ * chegar primeiro reserva o reload e os outros viram noop. O orçamento também
+ * é respeitado pelo VersionChecker, evitando reloads encadeados entre os três
+ * mecanismos no cenário degradado (CDN servindo HTML velho).
  */
 
-const RELOAD_FLAG = 'chunk-error-reload';
-const FLAG_TTL_MS = 8000;
+import { tryReserveReload } from './recoveryReload';
 
 function isDynamicImportError(message: string): boolean {
   if (!message) return false;
@@ -47,13 +49,12 @@ function isDynamicImportError(message: string): boolean {
 }
 
 function tryReload(reason: string): void {
-  if (sessionStorage.getItem(RELOAD_FLAG)) {
-    // Já tentamos uma vez recentemente — não loopear.
-    console.warn(`[chunk-error] Already reloaded for ${reason}, giving up.`);
+  if (!tryReserveReload()) {
+    // Sem orçamento global (já recarregamos demais / em cooldown) — não loopear.
+    console.warn(`[chunk-error] Sem orçamento de recuperação para ${reason}, desistindo.`);
     return;
   }
-  sessionStorage.setItem(RELOAD_FLAG, String(Date.now()));
-  console.warn(`[chunk-error] Reloading due to: ${reason}`);
+  console.warn(`[chunk-error] Recarregando por: ${reason}`);
   window.location.reload();
 }
 
@@ -77,7 +78,7 @@ export function installChunkErrorHandler(): void {
     }
   });
 
-  // Limpa o flag depois de um carregamento bem-sucedido para liberar
-  // recuperações futuras (deploys seguintes).
-  setTimeout(() => sessionStorage.removeItem(RELOAD_FLAG), FLAG_TTL_MS);
+  // O reset do orçamento é por timestamp (EPISODE_RESET_MS em recoveryReload.ts):
+  // recuperações futuras (deploys seguintes) reabrem o orçamento sozinhas, sem
+  // precisar limpar flag aqui.
 }

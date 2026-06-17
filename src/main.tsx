@@ -6,6 +6,7 @@ import { GlobalErrorBoundary } from "./components/GlobalErrorBoundary";
  import "./styles-paper.css";
 import { installWhiteLabelGuard } from "./lib/whiteLabelGuard";
 import { installChunkErrorHandler } from "./lib/chunkErrorHandler";
+import { tryReserveReload } from "./lib/recoveryReload";
 
 // White-label runtime guard: remove badges/branding injetados via script
 // (cobre casos não pegos pelo CSS estático e shadow DOM dinâmico).
@@ -18,9 +19,13 @@ installWhiteLabelGuard();
 // quebrado). Ver src/lib/chunkErrorHandler.ts pra detalhes.
 installChunkErrorHandler();
 
-// Service Worker desabilitado — estava causando trava de cache em deploys.
-// Para usuários que ainda têm o SW antigo instalado, /sw.js agora é uma
-// versão self-destruct que limpa tudo e se desregistra automaticamente.
+// SW de cache desligado. O vite-plugin-pwa roda em modo `selfDestroying` e o
+// /squad-vendas-sw.js gerado se desregistra + limpa caches no activate (ver
+// vite.config.ts). Este unregister-all é cinto-e-suspensório: mata QUALQUER SW
+// remanescente em todo load — inclusive o /sw.js legado (também self-destruct)
+// e o squad-vendas-sw.js entre uma visita e outra. NÃO é "nenhum SW registrado":
+// o registerSW.js (injectRegister) re-registra o destruidor a cada load; ele só
+// não persiste nem controla a aba (o template não chama clients.claim()).
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((regs) => {
     regs.forEach((reg) => reg.unregister());
@@ -48,19 +53,16 @@ if (import.meta.env.DEV) {
 // Recuperação automática de chunk obsoleto: quando um deploy novo remove os
 // .js hasheados antigos, uma aba aberta no deploy anterior falha o import
 // dinâmico de rota ("Importing a module script failed"). O Vite dispara
-// `vite:preloadError` nesse caso — recarregamos a página 1x pra pegar o
-// index.html novo. O flag em sessionStorage evita loop infinito caso o erro
-// persista por outro motivo (ex.: chunk realmente quebrado).
+// `vite:preloadError` nesse caso — recarregamos a página pra pegar o index.html
+// novo. O orçamento global de recuperação (recoveryReload.ts) é COMPARTILHADO
+// com o chunkErrorHandler e o VersionChecker, então não há reloads encadeados
+// entre os três; esgotado o orçamento, deixamos o erro aparecer (sem loop).
 window.addEventListener("vite:preloadError", (e) => {
-  const KEY = "vite-preload-reload";
-  if (sessionStorage.getItem(KEY)) return; // já tentamos — deixa o erro aparecer
-  sessionStorage.setItem(KEY, String(Date.now()));
-  e.preventDefault();
-  window.location.reload();
+  if (tryReserveReload()) {
+    e.preventDefault();
+    window.location.reload();
+  }
 });
-// Após um carregamento bem-sucedido, limpa o flag pra liberar futuras
-// recuperações (deploys seguintes).
-setTimeout(() => sessionStorage.removeItem("vite-preload-reload"), 8000);
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Failed to find the root element");

@@ -78,7 +78,7 @@ const versionJsonPlugin = (): Plugin => ({
       manifest: {
         name: 'Squad Vendas',
         short_name: 'Squad Vendas',
-        description: 'Pedidos de venda Squad Shoes — funciona offline em campo',
+        description: 'Pedidos de venda Squad Shoes em campo',
         start_url: '/m',
         scope: '/',
         display: 'standalone',
@@ -93,6 +93,12 @@ const versionJsonPlugin = (): Plugin => ({
           { src: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' },
         ],
       },
+      // ⚠ CÓDIGO MORTO enquanto `selfDestroying: true` (acima): o vite-plugin-pwa
+      // ignora SILENCIOSAMENTE todo este objeto `workbox` quando selfDestroying
+      // está ligado (gera só o SW destruidor, sem precache/runtimeCaching). Mantido
+      // versionado pra reativação futura da PWA offline (scope '/m'); enquanto isso
+      // NÃO tem efeito nenhum em runtime. Não confie nestes comentários como se
+      // houvesse cache ativo — não há.
       workbox: {
         // App é grande (1MB+ gzip) — só precache o shell mínimo
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
@@ -100,7 +106,7 @@ const versionJsonPlugin = (): Plugin => ({
         // Cache strategies por tipo de recurso
         runtimeCaching: [
           {
-            // Supabase REST: stale-while-revalidate (mostra cached, busca novo em bg)
+            // Supabase REST: NetworkFirst (rede primeiro, cai pro cache se falhar/timeout)
             urlPattern: /^https:\/\/ssvxfoybzmjlypnipqzn\.supabase\.co\/rest\/v1\/.*/,
             handler: 'NetworkFirst',
             options: {

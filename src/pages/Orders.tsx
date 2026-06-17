@@ -820,6 +820,12 @@ function getWeekOptions() {
       return;
     }
 
+    // Tudo daqui pra baixo (incluindo o import() dinâmico do exceljs e o
+    // writeBuffer) fica sob try/catch: em aba obsoleta pós-deploy o chunk do
+    // exceljs pode dar 404 — sem o catch isso vira unhandledrejection e o
+    // chunkErrorHandler recarrega a página NO MEIO do export. Aqui mostramos um
+    // toast acionável em vez de perder a ação do usuário.
+    try {
     // Build sale order index and client group index
     const soById: Record<string, any> = {};
     (saleOrders || []).forEach((so: any) => { soById[so.id] = so; });
@@ -1026,6 +1032,16 @@ function getWeekOptions() {
     anchor.click();
     window.URL.revokeObjectURL(url);
     toast.success('Arquivo Excel gerado com sucesso!');
+    } catch (err: any) {
+      console.error('[Orders] Falha ao exportar Excel:', err);
+      const msg = String(err?.message || err || '');
+      const staleChunk = /importing a module script failed|failed to fetch dynamically imported module|error loading dynamically imported module|failed to load module script/i.test(msg);
+      toast.error(staleChunk ? 'Falha ao carregar o gerador de Excel.' : 'Falha ao gerar o Excel.', {
+        description: staleChunk
+          ? 'O app foi atualizado. Recarregue a página (Ctrl/⌘+R) e exporte de novo.'
+          : 'Verifique a conexão e tente novamente.',
+      });
+    }
   };
 
   const handlePrepareOrder = async (e: React.FormEvent) => {
