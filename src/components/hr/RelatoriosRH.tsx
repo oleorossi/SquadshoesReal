@@ -13,6 +13,7 @@ import {
   Clock, CurrencyDollar as DollarSign, CaretRight, CaretDown,
   Warning as AlertTriangle, Users as Users2, Printer,
   CalendarBlank as Calendar, IdentificationCard, DownloadSimple,
+  Scales,
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules, calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
@@ -258,7 +259,11 @@ export default function RelatoriosRH() {
   const totals = useMemo(() => ({
     normalMin: visibleRows.reduce((s, r) => s + r.result.normal_minutes, 0),
     premiumMin: visibleRows.reduce((s, r) => s + r.result.premium_minutes, 0),
+    workedMin: visibleRows.reduce((s, r) => s + r.result.worked_minutes, 0),
+    expectedMin: visibleRows.reduce((s, r) => s + r.result.expected_minutes, 0),
     heMin: visibleRows.reduce((s, r) => s + r.result.he_minutes, 0),
+    faltaDays: visibleRows.reduce((s, r) => s + r.result.falta_days, 0),
+    pendingDays: visibleRows.reduce((s, r) => s + r.result.pending_days, 0),
     salarioBase: visibleRows.reduce((s, r) => s + r.result.base_salary, 0),
     faltaDesc: visibleRows.reduce((s, r) => s + r.result.falta_desconto, 0),
     atrasoDesc: visibleRows.reduce((s, r) => s + r.result.atraso_desconto, 0),
@@ -268,6 +273,21 @@ export default function RelatoriosRH() {
     liqQ1: visibleRows.reduce((s, r) => s + r.q1.net_value, 0),
     liqQ2: visibleRows.reduce((s, r) => s + r.q2.net_value, 0),
   }), [visibleRows]);
+
+  // Pendências de ponto (batida ímpar/1 batida) — dias a resolver antes de fechar.
+  const pendencias = useMemo(
+    () => visibleRows.flatMap(r => r.days
+      .filter(d => d.punches.length >= 1 && d.punches.length % 2 === 1)
+      .map(d => ({ empId: r.id, emp: r.name, date: d.date, dow: d.dow, punches: d.punches }))),
+    [visibleRows],
+  );
+
+  // Formata saldo de banco (minutos, com sinal): +9h00 / −1h30 / 0h00.
+  const fmtSaldo = (min: number) => {
+    const abs = Math.abs(min);
+    const sign = min > 0 ? '+' : min < 0 ? '−' : '';
+    return `${sign}${Math.floor(abs / 60)}h${String(Math.round(abs % 60)).padStart(2, '0')}`;
+  };
 
   const toggle = (id: string) =>
     setExpanded(prev => {
@@ -369,11 +389,13 @@ export default function RelatoriosRH() {
   };
 
   const espelhoNeedsEmployee = tab === 'espelho' && scope === ALL;
-  const printDisabled = visibleRows.length === 0 || espelhoNeedsEmployee;
+  const noPrintTab = tab === 'banco' || tab === 'pendencias';
+  const printDisabled = visibleRows.length === 0 || espelhoNeedsEmployee || noPrintTab;
   const printLabel = tab === 'ponto' ? 'Imprimir horas'
     : tab === 'pagamento' ? (scope === ALL ? 'Imprimir folha (comparativo)' : 'Imprimir demonstrativo')
     : tab === 'calendario' ? 'Imprimir calendário'
-    : 'Imprimir espelho';
+    : tab === 'espelho' ? 'Imprimir espelho'
+    : 'Imprimir';
 
   const Toolbar = (
     <div className="flex flex-wrap items-center gap-2">
@@ -428,12 +450,34 @@ export default function RelatoriosRH() {
       </div>
       {CoverageBanner}
 
+      {/* RESUMO/KPIs DO PERÍODO — sempre visível, vale pra todas as abas. Vem do
+          motor único (mesma base da folha) pro escopo selecionado (1 ou todos). */}
+      {visibleRows.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {[
+            { label: 'Funcionários', value: String(visibleRows.length) },
+            { label: 'Trabalhadas', value: fmtH(totals.workedMin) },
+            { label: 'Esperadas', value: fmtH(totals.expectedMin) },
+            { label: 'Hora extra', value: totals.heMin > 0 ? fmtH(totals.heMin) : '—', amber: totals.heMin > 0 },
+            { label: 'Faltas', value: String(totals.faltaDays), red: totals.faltaDays > 0 },
+            { label: 'Líquido período', value: fmtBRL(totals.liqMes), accent: true },
+          ].map(k => (
+            <div key={k.label} className={`rounded-md border p-2.5 ${k.accent ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/30'}`}>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{k.label}</p>
+              <p className={`tabular-nums font-bold ${k.accent ? 'text-base text-primary' : k.amber ? 'text-sm text-amber-700 dark:text-amber-400' : k.red ? 'text-sm text-red-700 dark:text-red-400' : 'text-sm'}`}>{k.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
           { value: 'ponto', label: 'Horas', icon: Clock },
           { value: 'pagamento', label: 'Pagamento', icon: DollarSign },
           { value: 'calendario', label: 'Calendário', icon: Calendar },
           { value: 'espelho', label: 'Espelho (legal)', icon: IdentificationCard },
+          { value: 'banco', label: 'Banco de Horas', icon: Scales },
+          { value: 'pendencias', label: 'Pendências', icon: AlertTriangle },
         ]} />
 
         {/* ── HORAS: resumo por funcionário + detalhe por dia ── */}
@@ -669,6 +713,106 @@ export default function RelatoriosRH() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── BANCO DE HORAS: saldo DO PERÍODO via motor único ── */}
+        <TabsContent value="banco">
+          {visibleRows.length === 0 ? Empty : (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Scales className="h-4 w-4" /> Banco de horas — saldo do período ({periodLabel})
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Saldo do período pelo <strong>motor único</strong> (mesma base da folha; agregação semanal CLT).
+                  <span className="text-emerald-700 dark:text-emerald-400"> Verde</span> = a favor do funcionário;
+                  <span className="text-red-700 dark:text-red-400"> vermelho</span> = devendo.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">Matríc.</TableHead>
+                        <TableHead>Funcionário</TableHead>
+                        <TableHead className="text-right">Saldo do período</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleRows.map(r => {
+                        const bal = periodBankBalance?.get(r.id);
+                        const tone = bal == null ? 'text-muted-foreground'
+                          : bal > 0 ? 'text-emerald-700 dark:text-emerald-400'
+                          : bal < 0 ? 'text-red-700 dark:text-red-400' : '';
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell className="tabular-nums text-xs text-muted-foreground">{r.ext || '—'}</TableCell>
+                            <TableCell className="font-medium">{r.name}</TableCell>
+                            <TableCell className={`text-right tabular-nums font-semibold ${tone}`}>
+                              {bal == null ? '…' : fmtSaldo(bal)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── PENDÊNCIAS: dias com batida ímpar/inconsistente a resolver ── */}
+        <TabsContent value="pendencias">
+          {visibleRows.length === 0 ? Empty : pendencias.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <Clock className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                Nenhuma pendência de ponto no período {scope === ALL ? '' : `de ${scopedRow?.name || ''}`}.
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" /> Pendências de ponto ({pendencias.length}) — resolver antes de fechar a folha
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Dias com nº <strong>ímpar de batidas</strong> (faltou entrada/saída): não somam horas nem descontam — corrija o ponto na aba <strong>Ponto</strong>.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Funcionário</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Dia</TableHead>
+                        <TableHead>Batidas</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendencias.map((p, i) => (
+                        <TableRow key={`${p.empId}-${p.date}-${i}`}>
+                          <TableCell className="font-medium">{p.emp}</TableCell>
+                          <TableCell className="tabular-nums text-xs">{fmtBR(p.date)}</TableCell>
+                          <TableCell className="text-xs">{DAYS_PT[p.dow]}</TableCell>
+                          <TableCell className="text-xs font-mono">
+                            {p.punches.map(cleanPunch).join(' · ')}
+                            <Badge className="ml-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal">
+                              {p.punches.length} batida(s)
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
