@@ -17,8 +17,8 @@ interface Props {
   accentColor?: 'slate' | 'amber' | 'emerald' | 'blue' | 'pink' | 'violet' | 'cyan' | 'lime' | 'rose' | 'orange';
   /** Título customizado. Se não passar, monta um padrão. */
   title?: string;
-  /** Tamanho do quadrado. sm = 16px (layout compacto), md = 20px (default),
-   *  lg = 28px. */
+  /** Tamanho do quadrado (+25% em 2026-06-17, pedido user): sm = 20px (layout
+   *  compacto), md = 25px (default), lg = 35px. */
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -41,7 +41,9 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // (190mm) = economia extra de ~31mm por tally grande.
   // 7º passe (2026-06-12): size 'sm' (16px, gap 2px) pros layouts COMPACTOS
   // (Corte Forração / Costura Palmilha / Silk) — 2 cores por A4.
-  const boxSize = size === 'lg' ? 'w-7 h-7' : size === 'sm' ? 'w-4 h-4' : 'w-5 h-5';
+  // +25% (pedido user 2026-06-17): lg 28→35, sm 16→20, md 20→25px. Em px inline
+  // (componente de print) pra cair fora dos passos de 4px do Tailwind.
+  const boxPx = size === 'lg' ? 35 : size === 'sm' ? 20 : 25;
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
 
   // Font-size dinâmico pra número caber na caixinha mesmo com 3+ dígitos
@@ -55,19 +57,20 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   //   1-2 dígitos: 13px · 3 dígitos: 11px · 4+: 9px
   const getFontSize = (n: number): string => {
     const digits = String(n).length;
+    // Fontes ×1.25 junto com a caixa (+25%) pra manter a proporção do número.
     if (size === 'lg') {
-      if (digits <= 2) return '13px';
-      if (digits === 3) return '11px';
-      return '9px';
+      if (digits <= 2) return '16px';
+      if (digits === 3) return '14px';
+      return '11px';
     }
     if (size === 'sm') {
-      if (digits <= 2) return '8px';
-      if (digits === 3) return '6.5px';
-      return '5.5px';
+      if (digits <= 2) return '10px';
+      if (digits === 3) return '8px';
+      return '7px';
     }
-    if (digits <= 2) return '9px';
-    if (digits === 3) return '7.5px';
-    return '6px';
+    if (digits <= 2) return '11px';
+    if (digits === 3) return '9.5px';
+    return '7.5px';
   };
 
   // Fix 22/05/2026: tally >60 caixinhas estourava 1 A4 e aplicar keep-together
@@ -111,11 +114,10 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
               {chunk.map((n) => (
                 <div
                   key={n}
-                  className={cn(
-                    'flex items-center justify-center bg-white text-black font-mono font-bold leading-none',
-                    boxSize,
-                  )}
+                  className="flex items-center justify-center bg-white text-black font-mono font-bold leading-none"
                   style={{
+                    width: boxPx,
+                    height: boxPx,
                     border: '1.5px solid #000',
                     fontSize: getFontSize(n),
                     fontVariantNumeric: 'tabular-nums',
