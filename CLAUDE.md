@@ -110,6 +110,18 @@ O custeio e o MRP usam funções SQL (`calculate_order_consumption*`) — caminh
 consumo de área, verificar se o lado SQL também converte dm²→unidade física, senão
 custeio/MRP divergem do modal.
 
+> **Status (auditoria 2026-06-16):** as divergências foram FECHADAS em produção —
+> `calculate_order_consumption` (escalar) e `..._by_grade` usam a condição de
+> palmilha pronta unificada (`insole_ready_made` OU `sole_classification='palmilha_pronta'`,
+> **sem** o legado `insole_mode`), aplicam conversão dm²→unidade via
+> `get_material_conversion_info` e incluem Fachete. Pra **impedir regressão**:
+> - **`run_consumption_parity_tests()`** (migration `20260722120000`) trava esse
+>   contrato no lado SQL (wrapper vitest: `consumptionService.parity.test.ts`,
+>   skip sem `RUN_DB_INTEGRATION`). O lado TS é travado por `orderConsumption.test.ts`.
+> - **`consumption_consistency_report()`** lista gaps de cadastro que reintroduzem
+>   consumo errado (largura faltando, palmilha pronta inconsistente, solado sem
+>   specs, **solado fachetado sem consumo de fachete**). Rodar em /diagnostics.
+
 ### Unidades de medida — lista CANÔNICA (1 unidade-base por produto)
 
 Padrão industrial: cada produto tem UMA unidade-base (`products.unit` = estoque +

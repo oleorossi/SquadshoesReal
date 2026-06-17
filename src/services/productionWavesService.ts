@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type {
-  ProductionWave, WaveDetail, SectorBoardRow, FinishingPackage,
+  ProductionWave, WaveDetail, FinishingPackage,
   ProductionStage, WavePickupSummary,
 } from '@/types/production-waves';
 
@@ -21,15 +21,6 @@ export async function getWaveDetail(waveId: string): Promise<WaveDetail | null> 
     .maybeSingle();
   if (error) throw error;
   return (data as unknown as WaveDetail) ?? null;
-}
-
-export async function getSectorBoard(): Promise<SectorBoardRow[]> {
-  const { data, error } = await supabase
-    .from('v_sector_board' as any)
-    .select('*')
-    .order('ord');
-  if (error) throw error;
-  return (data ?? []) as unknown as SectorBoardRow[];
 }
 
 export async function createWave(params: {
