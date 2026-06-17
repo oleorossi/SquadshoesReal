@@ -444,8 +444,9 @@ export default function RelatoriosRH() {
       <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
         <DollarSign className="h-4 w-4 shrink-0" />
         <span>
-          <strong>Horas e Pagamento alinhados à Folha</strong> — salário − descontos, hora extra só no excedente do período
-          (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}). O <strong>Espelho de Ponto</strong> segue no regime legal CLT (44h/semana), assinável.
+          <strong>Motor único</strong> — todos os relatórios partem da MESMA base por-dia (batidas + escala). Pagamento =
+          salário − descontos, hora extra só no excedente do período (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}).
+          Banco/Espelho usam a mesma base, agregando HE no regime semanal CLT (44h), assinável.
         </span>
       </div>
       {CoverageBanner}
