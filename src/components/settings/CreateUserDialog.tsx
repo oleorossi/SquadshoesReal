@@ -10,7 +10,8 @@ import { CircleNotch as Loader2, Warning as AlertTriangle, Check, Lightning as Z
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { MENU_OPTIONS, getMenuOptionsGrouped, type MenuOption } from '@/lib/userMenuOptions';
+import { MENU_OPTIONS } from '@/lib/userMenuOptions';
+import { getMenuItemsGrouped } from '@/data/navigation';
 
 interface CreateUserDialogProps {
   open: boolean;
@@ -43,12 +44,13 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
   // Aba "rapida" (role) vs "granular" (checkbox por menu)
   const [mode, setMode] = useState<'role' | 'granular'>('role');
   const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set(['comercial']));
-  const [selectedModules, setSelectedModules] = useState<Set<string>>(new Set(['dashboard']));
+  // Permissão granular POR ITEM de menu (paths). Login mostra só os marcados.
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [approveNow, setApproveNow] = useState(true);
   const [loading, setLoading] = useState(false);
   const qc = useQueryClient();
 
-  const grouped = useMemo(() => getMenuOptionsGrouped(), []);
+  const grouped = useMemo(() => getMenuItemsGrouped(), []);
 
   const toggleRole = (key: string) => {
     setSelectedRoles(prev => {
@@ -58,23 +60,18 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
     });
   };
 
-  const toggleModule = (module: string) => {
-    setSelectedModules(prev => {
+  const togglePath = (path: string) => {
+    setSelectedPaths(prev => {
       const next = new Set(prev);
-      if (next.has(module)) next.delete(module); else next.add(module);
-      // Dashboard sempre marcado (tela inicial)
-      next.add('dashboard');
+      if (next.has(path)) next.delete(path); else next.add(path);
       return next;
     });
   };
 
-  const markAllModulesInGroup = (groupKey: MenuOption['group']) => {
-    setSelectedModules(prev => {
+  const markAllInGroup = (groupKey: string) => {
+    setSelectedPaths(prev => {
       const next = new Set(prev);
-      next.add('dashboard');
-      for (const opt of grouped[groupKey] || []) {
-        if (!opt.adminOnly) next.add(opt.module);
-      }
+      for (const it of grouped[groupKey] || []) next.add(it.path);
       return next;
     });
   };
@@ -85,7 +82,7 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
     setFullName('');
     setMode('role');
     setSelectedRoles(new Set(['comercial']));
-    setSelectedModules(new Set(['dashboard']));
+    setSelectedPaths(new Set());
     setApproveNow(true);
   };
 
@@ -95,9 +92,8 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
       toast.error('Selecione pelo menos uma role.');
       return;
     }
-    if (mode === 'granular' && selectedModules.size <= 1) {
-      // só dashboard marcado = nada útil liberado
-      toast.error('Selecione pelo menos um menu além do Painel.');
+    if (mode === 'granular' && selectedPaths.size === 0) {
+      toast.error('Selecione pelo menos um menu.');
       return;
     }
     setLoading(true);
@@ -113,8 +109,11 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
         ? Array.from(selectedRoles)
         : ['consulta'];
 
+      // Em modo granular, allowed_modules carrega os PATHS dos menus marcados.
+      // A edge function grava cada um como row em user_permissions (module=path)
+      // — o controle de acesso trata module iniciado por '/' como item de menu.
       const allowedModules = mode === 'granular'
-        ? Array.from(selectedModules)
+        ? Array.from(selectedPaths)
         : undefined;
 
       const res = await supabase.functions.invoke('create-user', {
@@ -208,50 +207,42 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
 
             <TabsContent value="granular" className="space-y-2 mt-3">
               <p className="text-xs text-muted-foreground">
-                Marque exatamente quais menus o usuário verá. Permite combinações que as roles prontas não cobrem (ex: <em>só Pedido de Venda + NF-e</em>). O Painel está sempre marcado por ser a tela inicial.
+                Marque exatamente quais <strong>menus</strong> o usuário verá ao logar — item por item. Permite combinações que as roles prontas não cobrem (ex: <em>só Ficha de Montadores + Etiquetas + Imprimir Fichas</em>). O Painel fica sempre disponível.
               </p>
               <div className="space-y-3 border rounded-md p-3 bg-muted/20 max-h-96 overflow-y-auto">
-                {(Object.keys(grouped) as MenuOption['group'][]).map(group => (
+                {Object.entries(grouped).map(([group, items]) => (
+                  items.length === 0 ? null : (
                   <div key={group} className="space-y-1">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group}</h4>
-                      <button type="button" onClick={() => markAllModulesInGroup(group)} className="text-xs text-primary hover:underline">
+                      <button type="button" onClick={() => markAllInGroup(group)} className="text-xs text-primary hover:underline">
                         Marcar todos
                       </button>
                     </div>
                     <div className="space-y-0.5">
-                      {grouped[group].map(opt => {
-                        const checked = selectedModules.has(opt.module);
-                        const disabled = opt.adminOnly || opt.alwaysOn;
+                      {items.map(it => {
+                        const checked = selectedPaths.has(it.path);
                         return (
                           <label
-                            key={opt.module}
-                            className={`flex items-start gap-2.5 p-1.5 rounded ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-background'} ${checked ? 'bg-background border border-primary/30' : 'border border-transparent'}`}
-                            title={opt.adminOnly ? 'Só Administradores podem acessar' : opt.alwaysOn ? 'Sempre liberado (tela inicial)' : undefined}
+                            key={it.path}
+                            className={`flex items-center gap-2.5 p-1.5 rounded cursor-pointer hover:bg-background ${checked ? 'bg-background border border-primary/30' : 'border border-transparent'}`}
                           >
                             <Checkbox
-                              checked={checked || !!opt.alwaysOn}
-                              onCheckedChange={() => !disabled && toggleModule(opt.module)}
-                              disabled={disabled}
-                              className="mt-0.5"
+                              checked={checked}
+                              onCheckedChange={() => togglePath(it.path)}
                             />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-sm font-medium">{opt.label}</span>
-                                {opt.adminOnly && <Badge variant="outline" className="text-xs h-4 px-1">admin</Badge>}
-                                {opt.alwaysOn && <Badge variant="outline" className="text-xs h-4 px-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">sempre</Badge>}
-                              </div>
-                              <p className="text-xs text-muted-foreground leading-tight">{opt.description}</p>
-                            </div>
+                            <span className="text-sm font-medium flex-1 min-w-0 truncate">{it.label}</span>
+                            <code className="text-xs text-muted-foreground">{it.path}</code>
                           </label>
                         );
                       })}
                     </div>
                   </div>
+                  )
                 ))}
               </div>
               <div className="text-xs text-muted-foreground">
-                Esses menus são gravados em <code>user_permissions</code> e sobrepõem o RBAC tradicional. Pra ajustar depois, edite direto na tabela ou em Configurações → Usuários.
+                Esses menus são gravados em <code>user_permissions</code> (allow-list por item) e sobrepõem o RBAC por role — só os marcados aparecem no login. Pra ajustar depois: Configurações → Usuários → expandir o usuário.
               </div>
             </TabsContent>
           </Tabs>
@@ -282,7 +273,7 @@ export default function CreateUserDialog({ open, onOpenChange }: CreateUserDialo
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit" disabled={loading || (mode === 'role' ? selectedRoles.size === 0 : selectedModules.size <= 1)}>
+            <Button type="submit" disabled={loading || (mode === 'role' ? selectedRoles.size === 0 : selectedPaths.size === 0)}>
               {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Criar Usuário
             </Button>

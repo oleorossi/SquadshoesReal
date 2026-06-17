@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
+import { getAllMenuItems } from '@/data/navigation';
 
 export type Profile = {
   id: string;
@@ -221,5 +222,41 @@ export function useSetUserPermission() {
       toast.success('Permissão atualizada!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+}
+
+/**
+ * Substitui TODAS as permissões granulares de um usuário pela allow-list de
+ * PATHS de menu informada (permissão por item, user 2026-06-17). Apaga as rows
+ * antigas (inclusive grants de módulo legados) e grava 1 row por path liberado
+ * (module = path '/...'). Resultado: o login mostra SÓ os menus selecionados.
+ * Lista vazia = usuário sem granular → volta a valer o RBAC por role.
+ */
+export function useReplaceUserPermissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, paths }: { userId: string; paths: string[] }) => {
+      const { error: delErr } = await supabase
+        .from('user_permissions')
+        .delete()
+        .eq('user_id', userId);
+      if (delErr) throw delErr;
+      // Só grava paths que são itens REAIS da sidebar — evita poluir a tabela
+      // com path digitado errado (que deixaria o usuário em allow-list sem
+      // acesso a nada). can_edit=false (não usado pelo controle de acesso, que
+      // só lê can_view — alinhado com a edge function create-user).
+      const valid = new Set(getAllMenuItems().map((i) => i.path));
+      const clean = Array.from(new Set(paths.filter((p) => typeof p === 'string' && valid.has(p))));
+      if (clean.length > 0) {
+        const rows = clean.map((module) => ({ user_id: userId, module, can_view: true, can_edit: false }));
+        const { error: insErr } = await supabase.from('user_permissions').insert(rows);
+        if (insErr) throw insErr;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user_permissions'] });
+      toast.success('Permissões de menu salvas!');
+    },
+    onError: (err: Error) => toast.error(`Erro ao salvar permissões: ${err.message}`),
   });
 }

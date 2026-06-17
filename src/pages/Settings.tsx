@@ -1,5 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Gear as Settings, UserCheck, UserMinus as UserX, Shield, CircleNotch as Loader2, CaretDown as ChevronDown, CaretUp as ChevronUp, Users, Eye, PencilSimple as Pencil, Lock, LockOpen as Unlock, MagnifyingGlass as Search, Envelope as Mail, Calendar, ShieldCheck, ShieldWarning as ShieldAlert, Crown, Briefcase, Factory, Warehouse, Storefront as Store, BookOpen, Receipt, UserGear as UserCog, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,8 +19,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   useProfiles, useAllUserRoles, useApproveUser, useSetUserRole, useSetUserPermission,
-  useIsAdmin, MODULES, ROLES, useUserPermissions,
+  useIsAdmin, ROLES, useUserPermissions, useReplaceUserPermissions,
 } from '@/hooks/useUserManagement';
+import { Checkbox } from '@/components/ui/checkbox';
+import { getMenuItemsGrouped } from '@/data/navigation';
+import { isRouteAllowed } from '@/hooks/useAccessControl';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import RepresentativesPanel from '@/components/settings/RepresentativesPanel';
@@ -57,108 +60,110 @@ const ROLE_COLORS: Record<string, string> = {
   consulta: 'bg-muted text-muted-foreground border-border/50',
 };
 
-function UserPermissionsPanel({ userId }: { userId: string }) {
+/**
+ * Permissões POR MENU (item a item). Lista TODOS os itens da sidebar; o admin
+ * marca os que o usuário verá. Salvar grava a allow-list de paths em
+ * user_permissions (replace-all) → no login do usuário aparecem SÓ os marcados.
+ * (User 2026-06-17.) Pré-marca pelo acesso EFETIVO atual (grants existentes ou,
+ * sem grants, o RBAC da role) pra o admin ajustar em cima do que já é visível.
+ */
+function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles: string[] }) {
   const { data: permissions = [] } = useUserPermissions(userId);
-  const setPermission = useSetUserPermission();
-  const [granting, setGranting] = useState(false);
+  const replacePerms = useReplaceUserPermissions();
+  const grouped = useMemo(() => getMenuItemsGrouped(), []);
+  const isAdminTarget = userRoles.includes('admin');
 
-  const getPermission = (module: string) => permissions.find(p => p.module === module);
-
-  const groups = [...new Set(MODULES.map(m => m.group))];
-
-  const handleGrantAllPermissions = async () => {
-    setGranting(true);
-    const modulesToGrant = MODULES.filter(m => m.key !== 'configuracoes');
-    for (const mod of modulesToGrant) {
-      await setPermission.mutateAsync({
-        userId,
-        module: mod.key,
-        can_view: true,
-        can_edit: true,
-      });
+  // Acesso efetivo atual de cada item (mesma regra do login).
+  const initialChecked = useMemo(() => {
+    const s = new Set<string>();
+    for (const items of Object.values(grouped)) {
+      for (const it of items) {
+        if (isRouteAllowed(it.path, { isAdmin: isAdminTarget, roles: userRoles, perms: permissions })) {
+          s.add(it.path);
+        }
+      }
     }
-    setGranting(false);
+    return s;
+  }, [grouped, isAdminTarget, userRoles, permissions]);
+
+  const [checked, setChecked] = useState<Set<string>>(initialChecked);
+  const [dirty, setDirty] = useState(false);
+  // Re-sincroniza com o servidor enquanto o admin não mexeu (evita sobrescrever
+  // edição em andamento). Após salvar, dirty volta a false e re-sincroniza.
+  useEffect(() => { if (!dirty) setChecked(initialChecked); }, [initialChecked, dirty]);
+
+  const toggle = (path: string) => {
+    setDirty(true);
+    setChecked(prev => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n; });
   };
+  const markGroup = (items: { path: string }[], on: boolean) => {
+    setDirty(true);
+    setChecked(prev => { const n = new Set(prev); for (const it of items) on ? n.add(it.path) : n.delete(it.path); return n; });
+  };
+
+  const save = async () => {
+    await replacePerms.mutateAsync({ userId, paths: Array.from(checked) });
+    setDirty(false);
+  };
+
+  if (isAdminTarget) {
+    return (
+      <p className="text-sm text-muted-foreground rounded-lg border bg-muted/20 px-3 py-2.5">
+        <ShieldCheck className="h-4 w-4 inline mr-1.5 text-primary" />
+        Administrador tem acesso a <strong>todos os menus</strong> — sem restrição por item.
+      </p>
+    );
+  }
+
+  const total = Object.values(grouped).reduce((s, items) => s + items.length, 0);
 
   return (
     <div className="space-y-4">
-      {groups.map(group => {
-        const groupModules = MODULES.filter(m => m.group === group && m.key !== 'configuracoes');
-        if (groupModules.length === 0) return null;
+      <p className="text-xs text-muted-foreground">
+        Marque os menus que este usuário verá ao logar. O <strong>Painel</strong> fica sempre disponível.
+        Salvar substitui as permissões atuais pela seleção (allow-list).
+      </p>
+      {Object.entries(grouped).map(([group, items]) => {
+        if (items.length === 0) return null;
+        const allOn = items.every(it => checked.has(it.path));
         return (
           <div key={group}>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2">{group}</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">{group}</p>
+              <button type="button" onClick={() => markGroup(items, !allOn)} className="text-xs text-primary hover:underline">
+                {allOn ? 'Desmarcar todos' : 'Marcar todos'}
+              </button>
+            </div>
             <div className="space-y-1">
-              {groupModules.map(mod => {
-                const perm = getPermission(mod.key);
-                const canView = perm?.can_view ?? false;
-                const canEdit = perm?.can_edit ?? false;
+              {items.map(it => {
+                const on = checked.has(it.path);
                 return (
-                  <div key={mod.key} className="flex items-center justify-between rounded-lg border bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors">
-                    <span className="text-sm font-medium">{mod.label}</span>
-                    <div className="flex items-center gap-4">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center gap-1.5">
-                            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                            <Switch
-                              checked={canView}
-                              onCheckedChange={v => setPermission.mutate({
-                                userId, module: mod.key,
-                                can_view: v,
-                                can_edit: v ? canEdit : false,
-                              })}
-                              className="scale-80"
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>Pode visualizar</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center gap-1.5">
-                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                            <Switch
-                              checked={canEdit}
-                              disabled={!canView}
-                              onCheckedChange={v => setPermission.mutate({
-                                userId, module: mod.key,
-                                can_view: true,
-                                can_edit: v,
-                              })}
-                              className="scale-80"
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>Pode editar</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </div>
+                  <label
+                    key={it.path}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
+                      on ? 'bg-primary/5 border-primary/30' : 'bg-card hover:bg-muted/30',
+                    )}
+                  >
+                    <Checkbox checked={on} onCheckedChange={() => toggle(it.path)} />
+                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{it.label}</span>
+                    <code className="text-xs text-muted-foreground">{it.path}</code>
+                  </label>
                 );
               })}
             </div>
           </div>
         );
       })}
-      
-      <Button
-        onClick={handleGrantAllPermissions}
-        disabled={granting}
-        className="w-full mt-4"
-        variant="outline"
-      >
-        {granting ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            Concedendo...
-          </>
-        ) : (
-          <>
-            <ShieldCheck className="h-4 w-4 mr-2" />
-            Conceder todas as permissões
-          </>
-        )}
-      </Button>
+
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <span className="text-xs text-muted-foreground">{checked.size}/{total} menus selecionados</span>
+        <Button onClick={save} disabled={!dirty || replacePerms.isPending} className="gap-2">
+          {replacePerms.isPending
+            ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>
+            : <><ShieldCheck className="h-4 w-4" /> Salvar permissões</>}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -340,9 +345,9 @@ function UserCard({
             <div>
               <p className="text-sm font-semibold mb-3 flex items-center gap-1.5">
                 <Settings className="h-4 w-4 text-primary" />
-                Permissões por Módulo
+                Permissões por Menu
               </p>
-              <UserPermissionsPanel userId={profile.id} />
+              <UserPermissionsPanel userId={profile.id} userRoles={roles.map(r => r.role)} />
             </div>
           </div>
         )}

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { House as Home, Kanban, Package, ShoppingCart, DotsThree as MoreHorizontal, X } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { menuGroups } from '@/data/navigation';
+import { useAccessControl } from '@/hooks/useAccessControl';
 
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
@@ -15,6 +16,16 @@ export function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
+  // Mesma regra de acesso da sidebar: só mostra o que o usuário pode abrir
+  // (permissão por menu). Sem isso o nav mobile expunha itens não liberados.
+  const { canAccessRoute } = useAccessControl();
+  const primaryItems = useMemo(() => PRIMARY_ITEMS.filter(i => canAccessRoute(i.path)), [canAccessRoute]);
+  const visibleGroups = useMemo(
+    () => menuGroups
+      .map(g => ({ ...g, items: g.items.filter(i => canAccessRoute(i.path)) }))
+      .filter(g => g.items.length > 0),
+    [canAccessRoute],
+  );
 
   useEffect(() => { setMoreOpen(false); }, [location.pathname]);
 
@@ -45,7 +56,7 @@ export function BottomNav() {
             </button>
           </div>
           <div className="px-4 pb-4 space-y-4 max-h-[70vh] overflow-y-auto">
-            {menuGroups.map((group) => (
+            {visibleGroups.map((group) => (
               <div key={group.label}>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                   <group.icon className="h-3 w-3" />
@@ -80,7 +91,7 @@ export function BottomNav() {
       {/* Bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 pb-safe">
         <div className="flex justify-around items-stretch h-16 px-1">
-          {PRIMARY_ITEMS.map((item) => {
+          {primaryItems.map((item) => {
             const active = isActive(item.path);
             return (
               <NavLink

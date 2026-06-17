@@ -1,0 +1,124 @@
+import { describe, it, expect } from 'vitest';
+import { isRouteAllowed, resolveMenuOwner, resolveModuleForPath } from '@/hooks/useAccessControl';
+
+// Catálogo de menu controlado pros testes de "dono" da rota (sibling resolution).
+const MENU = [
+  '/estoque', '/estoque/historico', '/estoque/qualidade',
+  '/sales', '/pcp', '/orders', '/imprimir-fichas', '/fichas-montadores',
+  '/label-system', '/rh', '/contractors',
+];
+
+const perm = (module: string, can_view = true) => ({ module, can_view });
+
+describe('resolveModuleForPath', () => {
+  it('casa pelo maior prefixo', () => {
+    expect(resolveModuleForPath('/fichas-montadores')).toBe('producao');
+    expect(resolveModuleForPath('/label-system')).toBe('expedicao');
+    expect(resolveModuleForPath('/estoque/historico')).toBe('estoque');
+    expect(resolveModuleForPath('/sales/123')).toBe('vendas');
+  });
+});
+
+describe('resolveMenuOwner', () => {
+  it('item próprio vence o pai (não herda do prefixo mais curto)', () => {
+    expect(resolveMenuOwner('/estoque/historico', MENU)).toBe('/estoque/historico');
+    expect(resolveMenuOwner('/estoque', MENU)).toBe('/estoque');
+  });
+  it('sub-rota sem item próprio cai no item pai', () => {
+    expect(resolveMenuOwner('/sales/123', MENU)).toBe('/sales');
+    expect(resolveMenuOwner('/estoque/qualquer-detalhe', MENU)).toBe('/estoque');
+  });
+  it('rota sem nenhum item-prefixo → null', () => {
+    expect(resolveMenuOwner('/sac', MENU)).toBeNull();
+  });
+});
+
+describe('isRouteAllowed — admin', () => {
+  it('admin acessa tudo, inclusive sistema', () => {
+    const o = { isAdmin: true, roles: ['admin'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/settings', o)).toBe(true);
+    expect(isRouteAllowed('/fichas-montadores', o)).toBe(true);
+  });
+});
+
+describe('isRouteAllowed — RBAC por role (sem granular)', () => {
+  const rh = { isAdmin: false, roles: ['rh'], perms: [], allMenuPaths: MENU };
+  it('rh vê seus módulos e o dashboard', () => {
+    expect(isRouteAllowed('/dashboard', rh)).toBe(true);
+    expect(isRouteAllowed('/rh', rh)).toBe(true);
+    expect(isRouteAllowed('/contractors', rh)).toBe(true);
+  });
+  it('rh NÃO vê produção/expedição', () => {
+    expect(isRouteAllowed('/fichas-montadores', rh)).toBe(false);
+    expect(isRouteAllowed('/imprimir-fichas', rh)).toBe(false);
+    expect(isRouteAllowed('/label-system', rh)).toBe(false);
+    expect(isRouteAllowed('/pcp', rh)).toBe(false);
+  });
+  it('módulos admin-only bloqueados pra não-admin', () => {
+    expect(isRouteAllowed('/settings', rh)).toBe(false);
+    expect(isRouteAllowed('/security', rh)).toBe(false);
+  });
+  it('rh_folha só admin/gerente', () => {
+    expect(isRouteAllowed('/payroll', rh)).toBe(false);
+    expect(isRouteAllowed('/payroll', { isAdmin: false, roles: ['gerente'], perms: [], allMenuPaths: MENU })).toBe(true);
+  });
+  it('produção vê páginas de produção', () => {
+    const prod = { isAdmin: false, roles: ['producao'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/pcp', prod)).toBe(true);
+    expect(isRouteAllowed('/fichas-montadores', prod)).toBe(true);
+  });
+});
+
+describe('isRouteAllowed — granular POR ITEM (allow-list de paths)', () => {
+  // RH + 3 menus liberados por item (o caso do pedido do usuário).
+  const rhPlus = {
+    isAdmin: false,
+    roles: ['rh'],
+    perms: [perm('/fichas-montadores'), perm('/label-system'), perm('/imprimir-fichas'), perm('/rh'), perm('/contractors')],
+    allMenuPaths: MENU,
+  };
+  it('vê exatamente os itens liberados (+ dashboard)', () => {
+    expect(isRouteAllowed('/dashboard', rhPlus)).toBe(true);
+    expect(isRouteAllowed('/fichas-montadores', rhPlus)).toBe(true);
+    expect(isRouteAllowed('/label-system', rhPlus)).toBe(true);
+    expect(isRouteAllowed('/imprimir-fichas', rhPlus)).toBe(true);
+    expect(isRouteAllowed('/rh', rhPlus)).toBe(true);
+  });
+  it('NÃO vê o resto de produção/expedição (só o item, não o módulo todo)', () => {
+    expect(isRouteAllowed('/pcp', rhPlus)).toBe(false);
+    expect(isRouteAllowed('/orders', rhPlus)).toBe(false);
+    expect(isRouteAllowed('/sales', rhPlus)).toBe(false);
+  });
+
+  it('liberar item-pai NÃO libera item-irmão com path próprio', () => {
+    const o = { isAdmin: false, roles: ['consulta'], perms: [perm('/estoque')], allMenuPaths: MENU };
+    expect(isRouteAllowed('/estoque', o)).toBe(true);
+    expect(isRouteAllowed('/estoque/historico', o)).toBe(false); // item próprio, não liberado
+    expect(isRouteAllowed('/estoque/qualidade', o)).toBe(false);
+    expect(isRouteAllowed('/estoque/detalhe-qualquer', o)).toBe(true); // sub-rota sem item → cobre
+  });
+
+  it('sub-rota de um item liberado é coberta', () => {
+    const o = { isAdmin: false, roles: ['consulta'], perms: [perm('/sales')], allMenuPaths: MENU };
+    expect(isRouteAllowed('/sales', o)).toBe(true);
+    expect(isRouteAllowed('/sales/123', o)).toBe(true);
+  });
+
+  it('can_view=false é ignorado', () => {
+    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/fichas-montadores', false)], allMenuPaths: MENU };
+    // só essa row (can_view=false) → não conta como granular → cai no RBAC rh
+    expect(isRouteAllowed('/fichas-montadores', o)).toBe(false);
+  });
+});
+
+describe('isRouteAllowed — retrocompat grant por MÓDULO (legado)', () => {
+  const o = { isAdmin: false, roles: ['consulta'], perms: [perm('estoque')], allMenuPaths: MENU };
+  it('grant de módulo cobre todas as rotas do módulo', () => {
+    expect(isRouteAllowed('/estoque', o)).toBe(true);
+    expect(isRouteAllowed('/estoque/historico', o)).toBe(true); // módulo 'estoque'
+  });
+  it('grant de módulo NÃO cobre outros módulos', () => {
+    expect(isRouteAllowed('/sales', o)).toBe(false);
+    expect(isRouteAllowed('/pcp', o)).toBe(false);
+  });
+});

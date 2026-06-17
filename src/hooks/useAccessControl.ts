@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useCurrentUserRoles, useCurrentUserPermissions } from './useUserManagement';
 import { useAuth } from './useAuth';
+import { getAllMenuItems } from '@/data/navigation';
 
 /**
  * Route-to-module mapping.
@@ -203,6 +204,87 @@ function getAllowedModules(roles: string[]): Set<string> {
   return modules;
 }
 
+// Módulos que só admin acessa — nunca liberáveis por role/granular a outros.
+const ADMIN_ONLY_MODULES = new Set(['sistema', 'financeiro_admin']);
+
+// Caminhos de TODOS os itens de menu (sidebar) — usado pra resolver o "dono"
+// de uma rota navegada no modo granular por item. Calculado uma vez.
+const ALL_MENU_PATHS: string[] = getAllMenuItems().map((i) => i.path);
+
+/** Módulo associado a uma rota (maior prefixo do ROUTE_MODULE_MAP que casa). */
+export function resolveModuleForPath(path: string): string | null {
+  const matchedKey = Object.keys(ROUTE_MODULE_MAP)
+    .sort((a, b) => b.length - a.length)
+    .find((prefix) => path === prefix || path.startsWith(prefix + '/') || path.startsWith(prefix + '?'));
+  return matchedKey ? ROUTE_MODULE_MAP[matchedKey] : null;
+}
+
+/** Item de menu "dono" de uma rota = maior path de menu que é prefixo dela.
+ *  Garante que liberar "/estoque" NÃO libere o item irmão "/estoque/historico"
+ *  (que tem item próprio), mas cubra sub-rotas sem item próprio (/estoque/x). */
+export function resolveMenuOwner(path: string, allMenuPaths: string[] = ALL_MENU_PATHS): string | null {
+  let best: string | null = null;
+  for (const p of allMenuPaths) {
+    if (path === p || path.startsWith(p + '/') || path.startsWith(p + '?')) {
+      if (best === null || p.length > best.length) best = p;
+    }
+  }
+  return best;
+}
+
+export interface RouteAccessInput {
+  isAdmin: boolean;
+  roles: string[];
+  /** Linhas de user_permissions (module pode ser key de módulo OU path '/...'). */
+  perms: Array<{ module: string; can_view: boolean }>;
+  allMenuPaths?: string[];
+}
+
+/**
+ * Regra ÚNICA de acesso a uma rota (pura/testável). Usada pelo usuário logado
+ * (useAccessControl) e pra pré-marcar o painel de permissões de OUTRO usuário.
+ *
+ * Precedência:
+ *   1. admin → tudo.
+ *   2. módulos admin-only (sistema) → só admin; rh_folha → admin/gerente.
+ *   3. dashboard → sempre liberado (tela inicial).
+ *   4. tem permissão granular (rows em user_permissions):
+ *        - libera se o ITEM dono da rota está liberado por PATH, OU
+ *        - (retrocompat) se o MÓDULO da rota está liberado por key.
+ *      Caso contrário, bloqueia (allow-list estrita — "só os selecionados").
+ *   5. sem granular → RBAC por role (comportamento legado).
+ */
+export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
+  const { isAdmin, roles, perms } = input;
+  const allMenuPaths = input.allMenuPaths ?? ALL_MENU_PATHS;
+  if (isAdmin || roles.includes('admin')) return true;
+
+  const mod = resolveModuleForPath(path);
+  // Gates admin-only valem em QUALQUER modo (não-admin chega aqui).
+  if (mod && ADMIN_ONLY_MODULES.has(mod)) return false;
+  if (mod === 'rh_folha' && !roles.includes('gerente')) return false;
+
+  if (path === '/dashboard' || mod === 'dashboard') return true;
+
+  const view = perms.filter((p) => p.can_view).map((p) => p.module);
+  const grantedPaths = new Set(view.filter((m) => m.startsWith('/')));
+  const grantedModules = new Set(view.filter((m) => !m.startsWith('/')));
+  const hasGranular = grantedPaths.size > 0 || grantedModules.size > 0;
+
+  if (hasGranular) {
+    const owner = resolveMenuOwner(path, allMenuPaths);
+    if (owner && grantedPaths.has(owner)) return true;
+    if (mod && grantedModules.has(mod)) return true; // retrocompat módulo
+    return false;
+  }
+
+  // Sem granular → RBAC por role (legado).
+  if (!mod) return true; // rotas fora do mapa = livres (ex.: detalhes)
+  const roleMods = getAllowedModules(roles);
+  if (roleMods.has('*')) return true;
+  return roleMods.has(mod);
+}
+
  export type PermissionStatus = 'loading' | 'ready' | 'error';
  
  export function useAccessControl() {
@@ -279,30 +361,17 @@ function getAllowedModules(roles: string[]): Set<string> {
     return roleKeys.some(r => !ROLES_BLOCKED_FROM_FINANCIAL_VALUES.has(r));
   }, [isAdmin, roleKeys]);
 
-  /** Check if a given route path is accessible */
+  /** Check if a given route path is accessible.
+   *  Modo granular por ITEM: rows em user_permissions (path '/...' ou key de
+   *  módulo legado) viram allow-list estrita — só os menus selecionados pro
+   *  usuário aparecem/abrem. Sem rows → RBAC por role (legado). */
   const canAccessRoute = (path: string): boolean => {
     if (!user) return false;
-    if (allowedModules.has('*')) return true;
-
-    // Find the matching module for the route
-    const matchedKey = Object.keys(ROUTE_MODULE_MAP)
-      .sort((a, b) => b.length - a.length) // longest prefix first
-      .find(prefix => path === prefix || path.startsWith(prefix + '/') || path.startsWith(prefix + '?'));
-
-    if (!matchedKey) return true; // routes not in map are accessible (e.g. dashboard)
-    const mod = ROUTE_MODULE_MAP[matchedKey];
-
-    // financeiro_admin is admin-only
-    if (mod === 'financeiro_admin') return isAdmin;
-    // sistema is admin-only
-    if (mod === 'sistema') return isAdmin;
-    // rh_folha (folha de pagamento): admin/gerente apenas — role 'rh' não acessa
-    if (mod === 'rh_folha') return isAdmin || roleKeys.includes('gerente');
-
-    return allowedModules.has(mod);
+    return isRouteAllowed(path, { isAdmin, roles: roleKeys, perms: granularPerms });
   };
 
-  /** Check if a module key is accessible */
+  /** Check if a module key is accessible. Mantido por compatibilidade de API
+   *  (sem consumidores externos hoje). Path-grants não implicam módulo inteiro. */
   const canAccessModule = (moduleKey: string): boolean => {
     if (!user) return false;
     if (allowedModules.has('*')) return true;

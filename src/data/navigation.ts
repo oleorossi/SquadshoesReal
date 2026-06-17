@@ -190,6 +190,36 @@ export function getSecondaryRoutesForGroup(group: string) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// Catálogo PLANO dos itens de menu (1 entrada por janela da sidebar). Fonte
+// única pra: (1) checkboxes de permissão POR ITEM no cadastro/edição de
+// usuário; (2) resolução de "dono" de uma rota no controle de acesso granular
+// (useAccessControl.isRouteAllowed). Derivado de menuGroups — item novo na
+// sidebar aparece automaticamente como permissão selecionável, sem lista
+// paralela pra manter em sincronia. (Permissão por menu, user 2026-06-17.)
+// ════════════════════════════════════════════════════════════════════════
+export interface FlatMenuItem {
+  path: string;
+  label: string;
+  group: string;
+}
+
+/** Todos os itens visíveis da sidebar (menuGroups), achatados. */
+export function getAllMenuItems(): FlatMenuItem[] {
+  return menuGroups.flatMap((g) =>
+    g.items.map((it) => ({ path: it.path, label: it.name, group: g.label })),
+  );
+}
+
+/** Itens de menu agrupados pelo rótulo do grupo (pra render dos checkboxes). */
+export function getMenuItemsGrouped(): Record<string, FlatMenuItem[]> {
+  const out: Record<string, FlatMenuItem[]> = {};
+  for (const g of menuGroups) {
+    out[g.label] = g.items.map((it) => ({ path: it.path, label: it.name, group: g.label }));
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // Sub-features movidas para TABS internas (rotas continuam ativas):
 //   Comercial: /sac /forecast → tabs em /sales ou hub Comercial
 //   Produção:  /producao/fluxo /producao/live /producao/timeline
