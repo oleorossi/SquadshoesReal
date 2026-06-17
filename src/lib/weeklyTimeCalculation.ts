@@ -8,8 +8,13 @@
  * 4. Deficit  = max(0, weekExpected − weekWorked) per week.
  * 5. Aggregate across all weeks for the period.
  *
- * This module is the SINGLE SOURCE OF TRUTH for overtime/deficit.
- * All views (Overview, Reports, Timesheet, Print) must use it.
+ * ⚠ Este módulo calcula HE no regime SEMANAL-ISO (Visão Geral/OverviewTab).
+ * NÃO é a fonte da verdade do PAGAMENTO — esse é a FOLHA
+ * (src/lib/salaryPayroll.ts:computePeriodFolha, HE LÍQUIDA do período). Coexistem
+ * 3 regimes de HE de propósito: folha (período-líquido, pagamento), este
+ * (semanal-ISO, visão gerencial) e o Banco de Horas SQL (semanal + tolerância +
+ * mínimo + cutoff, documento legal CLT). Não unificar sem decisão (mexe em saldo
+ * histórico/legal). (auditoria 2026-06-17.)
  */
 
 /** Minimal day shape required for weekly calculation */
@@ -176,7 +181,10 @@ export function calculateWeeklyPeriod(
     totalOvertimeMinutes: weeks.reduce((s, w) => s + w.overtimeMinutes, 0),
     totalDeficitMinutes: weeks.reduce((s, w) => s + w.deficitMinutes, 0),
     totalAbsences: days.filter(d => d.isAbsent).length,
-    totalIncomplete: days.filter(d => d.status === 'incomplete').length,
+    // calculateDaySummary emite 'irregular' (batida ímpar), nunca 'incomplete' —
+    // filtrar só 'incomplete' dava SEMPRE 0. Conta os dois (alinha com o badge
+    // "N incompleto(s)" da aba Horas = pending_days). (fix auditoria 2026-06-17)
+    totalIncomplete: days.filter(d => d.status === 'irregular' || d.status === 'incomplete').length,
     totalHolidaysWorked: days.filter(d => d.isHoliday && d.workedMinutes > 0).length,
   };
 }
