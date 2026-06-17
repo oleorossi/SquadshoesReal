@@ -57,6 +57,21 @@ export const PAGE_CAPACITY_PX =
   (PAGE_HEIGHT_MM - PAGE_PAD_TOP_MM - PAGE_PAD_BOTTOM_MM - HEADER_BAND_MM) * MM_TO_PX;
 export const BLOCK_GAP_PX = BLOCK_GAP_MM * MM_TO_PX;
 
+/* ── Auto-fit (2026-06-17) ──
+ * Quando a ficha derrama POUCO na última página (usa menos que AUTO_FIT_SPILL
+ * da capacidade dela), reduz fonte+tabela proporcionalmente (zoom no conteúdo
+ * dos blocos) pra caber em UMA página a menos — elimina a folha quase em
+ * branco. A redução é limitada por AUTO_FIT_FLOOR pra não comprometer a
+ * legibilidade no chão de fábrica. A medição dos blocos sempre recupera a
+ * altura em escala 1 (divide pelo zoom corrente), então não há loop de
+ * re-medição nem deriva de paginação. */
+/** Última página usando menos que isto da capacidade ⇒ tenta encolher. */
+const AUTO_FIT_SPILL = 0.15;
+/** Redução máxima do auto-fit (0.85 = −15% de fonte/tabela). */
+const AUTO_FIT_FLOOR = 0.85;
+/** Passo da busca do fator de escala. */
+const AUTO_FIT_STEP = 0.01;
+
 export interface PackedPage {
   /** Índices dos blocos desta página, em ordem. */
   blockIdxs: number[];
@@ -178,18 +193,25 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
   const [heights, setHeights] = useState<number[]>([]);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
+  // Fator de zoom corrente aplicado ao conteúdo dos blocos (auto-fit). A
+  // medição divide a altura medida por ele pra recuperar SEMPRE a altura em
+  // escala 1 (baseline) — assim o cálculo de paginação/escala é estável e não
+  // entra em loop quando o zoom muda o tamanho renderizado.
+  const scaleRef = useRef(1);
 
   const measure = useCallback(() => {
+    const s = scaleRef.current || 1;
     const next: number[] = [];
     for (let i = 0; i < blocks.length; i++) {
       const el = wrapperEls.current.get(i);
       if (!el) return; // render incompleto — espera o próximo ciclo
       // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
       // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
-      next[i] = Math.ceil(el.getBoundingClientRect().height);
+      // Divide pelo zoom corrente pra normalizar à escala 1 (auto-fit).
+      next[i] = Math.ceil(el.getBoundingClientRect().height / s);
     }
     setHeights(prev => {
-      if (prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 1)) return prev;
+      if (prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 1.5)) return prev;
       return next;
     });
   }, [blocks.length]);
@@ -238,15 +260,43 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
   }, [measure]);
 
   const ready = blocks.length > 0 && heights.length === blocks.length;
-  const pages = useMemo<PackedPage[]>(() => {
+  const { pages, scale } = useMemo<{ pages: PackedPage[]; scale: number }>(() => {
     if (!ready) {
       // Passada de medição: tudo numa página flow (height auto) — repaginada
       // pelo useLayoutEffect antes do paint.
-      return [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }];
+      return { pages: [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }], scale: 1 };
     }
-    return packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
+    const base = packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
+    const baseTotal = base.reduce((s, p) => s + p.spanned, 0);
+    // Auto-fit: se a ÚLTIMA página usa < AUTO_FIT_SPILL da capacidade (derrama
+    // pouco), busca o MAIOR fator de escala (≥ AUTO_FIT_FLOOR) que faça a ficha
+    // caber em uma página a menos. Só encolhe quando realmente remove a folha
+    // quase vazia — senão mantém escala 1.
+    if (baseTotal >= 2) {
+      const last = base[base.length - 1];
+      // Bloco "flow" (maior que 1 página) não é candidato — não dá pra
+      // empacotar junto reduzindo só um pouco.
+      if (!last.flow) {
+        const usedPx = last.blockIdxs.reduce(
+          (acc, bi, k) => acc + heights[bi] + (k > 0 ? BLOCK_GAP_PX : 0),
+          0,
+        );
+        if (usedPx / PAGE_CAPACITY_PX < AUTO_FIT_SPILL) {
+          const target = baseTotal - 1;
+          for (let s = 1 - AUTO_FIT_STEP; s >= AUTO_FIT_FLOOR - 1e-9; s -= AUTO_FIT_STEP) {
+            const scaled = heights.map(h => h * s);
+            const p = packBlocks(scaled, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
+            const t = p.reduce((a, q) => a + q.spanned, 0);
+            if (t <= target) return { pages: p, scale: +s.toFixed(2) };
+          }
+        }
+      }
+    }
+    return { pages: base, scale: 1 };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, heights, blocks.length]);
+  // Propaga o zoom escolhido pra medição normalizar à escala 1 (sem loop).
+  scaleRef.current = scale;
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
 
   const registerEl = (idx: number) => (el: HTMLDivElement | null) => {
@@ -319,7 +369,12 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
                 marginBottom: j < page.blockIdxs.length - 1 ? `${BLOCK_GAP_MM}mm` : 0,
               }}
             >
-              {nodes[bi]}
+              {/* Zoom do auto-fit aplicado SÓ no conteúdo (não no wrapper que
+                  carrega o gap), pra encolher fonte+tabela sem mexer no respiro
+                  entre blocos. zoom:1 é no-op. */}
+              {scale !== 1
+                ? <div style={{ zoom: scale } as React.CSSProperties}>{nodes[bi]}</div>
+                : nodes[bi]}
             </div>
           ))}
         </div>

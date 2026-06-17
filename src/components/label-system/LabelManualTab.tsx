@@ -11,6 +11,7 @@ import { Printer, Upload, Plus, Minus, ArrowCounterClockwise as RotateCcw, Eye, 
 import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanies } from '@/hooks/useNfe';
+import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { toast } from 'sonner';
 
 const FALLBACK_SIZES = [
@@ -79,7 +80,7 @@ export function LabelManualTab() {
   const resolveSender = (companyId?: string | null) => {
     const co = (companyId && companies.find(c => c.id === companyId))
       || companies.find(c => c.is_primary) || companies[0];
-    if (!co) return { senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA', senderCnpj: '62.406.033/0001-93' };
+    if (!co) return { senderName: DEFAULT_MANUFACTURER_NAME, senderCnpj: DEFAULT_MANUFACTURER_CNPJ };
     const d = (co.cnpj || '').replace(/\D/g, '');
     const cnpj = d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (co.cnpj || '');
     return { senderName: co.razao_social || co.nome_fantasia || 'SQUAD SHOES', senderCnpj: cnpj };
@@ -303,7 +304,7 @@ export function LabelManualTab() {
             imageUrl: form.imageUrl || undefined,
             clientOrderNumber: form.lote || undefined,
           }));
-      openPrint(buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG));
+      openPrint(buildThermalLabelsHtml(rows, '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj));
     } else if (form.labelType === 'box') {
       const items = Array.from({ length: copies }, (_, i) => ({
         orderNumber: form.lote || '—',
@@ -341,7 +342,7 @@ export function LabelManualTab() {
       };
       const w = window.open('', '_blank');
       if (!w) return;
-      w.document.write(buildThermalLabelsHtml([label], '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG));
+      w.document.write(buildThermalLabelsHtml([label], '', { width: 100, height: 30 }, DEFAULT_THERMAL_CONFIG, resolveSender().senderCnpj));
       w.document.close();
     } else if (form.labelType === 'foot') {
       handlePrint();

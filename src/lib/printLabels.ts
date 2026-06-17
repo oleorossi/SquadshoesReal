@@ -1,5 +1,19 @@
 import { escapeHtml } from './htmlUtils';
 
+/** Sanitiza valor de barcode pra interpolação segura em <script> (evita XSS/quebra de tag). Barcodes/nº de pedido são alfanuméricos. */
+function sanitizeBarcode(value: unknown): string {
+  return String(value ?? '').replace(/[^A-Za-z0-9._\-\/]/g, '');
+}
+
+/** Literal de string JS seguro pra interpolar dentro de <script>, PRESERVANDO
+ *  todos os caracteres (ex.: URL de QR com `:` `?` `=` `&` `#`). Usa
+ *  JSON.stringify (escapa aspas/barras/quebras) e neutraliza `</` pra não
+ *  fechar a tag <script>. Diferente de sanitizeBarcode, que é pra CODE128
+ *  (alfanumérico) e NÃO serve pra URL. */
+function jsStringLiteral(value: unknown): string {
+  return JSON.stringify(String(value ?? '')).replace(/<\//g, '<\\/');
+}
+
 /**
  * Generates printable box labels (rótulos caixa externa), individual labels (etiquetas caixa individual)
  * and brand hangtags (etiquetas de marca/penduricalhos).
@@ -205,7 +219,9 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
   // Render de uma etiqueta individual (198×132mm).
   const renderLabel = (item: BoxIdentificationData, idx: number): string => {
     // ─── HEADER NF / PROG ──────────────────────────────────
-    const nfValue = item.nfe || '—';
+    // E-M3: sem NF, exibe o rótulo "NF:" com valor vazio (em vez de "—"),
+    // mantendo o layout do header íntegro (a célula PROG. continua).
+    const nfValue = item.nfe || '';
     const progParts = [
       item.orderNumber ? escapeHtml(item.orderNumber) : '',
       item.ficha ? `FICHA ${escapeHtml(item.ficha)}` : '',
@@ -261,7 +277,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       ? `<div class="photo-fallback-badge">FOTO GENÉRICA</div>`
       : '';
     const photoInner = item.imageUrl
-      ? `${fallbackBadge}<img src="${item.imageUrl}" style="${imgFilter}" onerror="this.onerror=null;this.src='${FALLBACK_PHOTO_DATA_URL}';" alt="" />`
+      ? `${fallbackBadge}<img src="${escapeHtml(item.imageUrl)}" style="${imgFilter}" onerror="this.onerror=null;this.src='${FALLBACK_PHOTO_DATA_URL}';" alt="" />`
       : `<img src="${FALLBACK_PHOTO_DATA_URL}" alt="" />`;
 
     // ─── GRADE (tabela rodapé) ─────────────────────────────
@@ -365,14 +381,14 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
   // Preload das imagens dos produtos pra evitar layout shift na impressão.
   const uniqueImageUrls = [...new Set(items.map(i => i.imageUrl).filter(Boolean))];
   const preloadLinks = uniqueImageUrls
-    .map(u => `<link rel="preload" as="image" href="${u}" crossorigin="anonymous" />`)
+    .map(u => `<link rel="preload" as="image" href="${escapeHtml(u as string)}" crossorigin="anonymous" />`)
     .join('\n');
 
   // Código de barras (CODE128) por etiqueta — antes a caixa master saía SEM barcode
   // (o campo item.barcode era descartado), quebrando conferência na expedição.
   const boxBarcodeInits = items.map((it, idx) => {
     if (!it.barcode) return '';
-    const code = String(it.barcode).replace(/"/g, '\\"');
+    const code = sanitizeBarcode(it.barcode);
     return `try{JsBarcode("#bx-${idx}","${code}",{format:"CODE128",width:1.4,height:42,displayValue:true,fontSize:13,margin:0});}catch(e){}`;
   }).filter(Boolean).join('\n');
 
@@ -566,12 +582,12 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   fontSizeCode: 5.5,
   fontSizeColor: 6.5,
   fontSizeMaterial: 5.5,
-  fontSizeSize: 15,
+  fontSizeSize: 20,
   fontSizePed: 5.5,
-  imgWidthMm: 12,
-  imgHeightMm: 16,
-  leftColumnMm: 20,
-  rightColumnMm: 24,
+  imgWidthMm: 20,
+  imgHeightMm: 22,
+  leftColumnMm: 26,
+  rightColumnMm: 17,
   showImage: true,
   showBarcode: true,
   showCode: true,
@@ -585,6 +601,9 @@ export function buildThermalLabelsHtml(labels: {
   refCode: string; refName: string; mainMaterial: string; color: string;
   size: string; barcode: string; imageUrl?: string; shoeCategory?: string;
   clientOrderNumber?: string; qty?: number; strapsLabel?: string;
+  /** True quando imageUrl é fallback (foto mestra, não retrata a cor real
+   *  pedida). Aplica grayscale + selo "FOTO GENÉRICA" na moldura da foto. */
+  imageIsFallback?: boolean;
 }[], logoUrl: string, dimensions = { width: 100, height: 30 }, config: ThermalLabelConfig = DEFAULT_THERMAL_CONFIG, senderCnpj?: string): string {
   const { width: W, height: H } = dimensions;
   const c = { ...DEFAULT_THERMAL_CONFIG, ...config };
@@ -621,7 +640,7 @@ export function buildThermalLabelsHtml(labels: {
   const innerH = Math.max(12, +(H - safePadY * 2).toFixed(1));
   const hasLeftColumn = c.showImage || c.showSize;
   const hasRightColumn = c.showBarcode;
-  const gapCount = (hasLeftColumn ? 1 : 0) + (hasRightColumn ? 1 : 0);
+  const gapCount = (c.showImage ? 1 : 0) + (c.showSize ? 1 : 0) + (hasRightColumn ? 1 : 0);
   const columnGapMm = +(0.8 * scaleW).toFixed(1);
   const totalGapMm = gapCount * columnGapMm;
   const minInfoWidthMm = clamp(+(innerW * 0.28).toFixed(1), 14, 40);
@@ -649,6 +668,15 @@ export function buildThermalLabelsHtml(labels: {
   const imageMaxHeightMm = c.showImage
     ? Math.max(6, Math.min(scaledImgHeightMm, +(innerH - 2).toFixed(1)))
     : 0;
+  // ── Layout 2026-06-17: [FOTO] [DESCRIÇÃO] [Nº] [CÓDIGO] ──
+  // A numeração saiu da esquerda e passou a ficar ENTRE a descrição e o código
+  // de barras (caixa preta, coluna própria). A foto do produto ocupa a coluna
+  // da esquerda. As larguras reaproveitam o budget já calculado (foto = antigo
+  // frame da imagem; Nº = antiga size box), só muda a POSIÇÃO no grid.
+  // Foto recebe TODA a coluna da esquerda (o Nº saiu de lá) → imagem maior.
+  const photoColMm = c.showImage ? +Math.max(leftColumnMm, 8).toFixed(1) : 0;
+  // Nº em destaque (número grande), em chip que preenche a altura útil.
+  const sizeColMm = c.showSize ? +clamp(sizeBoxWidthMm, 10, 13).toFixed(1) : 0;
   const barcodeHeightPx = Math.max(24, Math.round(innerH * 3.5));
   const barcodeHeightMm = Math.max(6, +(innerH - 1.5).toFixed(1));
 
@@ -690,12 +718,9 @@ export function buildThermalLabelsHtml(labels: {
     return `<div class="print-page">
       ${headerHtml}
       <section class="label-shell" style="top:${thisShellTopMm}mm">
-        ${hasLeftColumn ? `<div class="label-left${c.showImage && c.showSize ? ' has-size' : ''}">
-          ${c.showSize ? `<div class="label-size-box"><span class="sz-nr">Nº</span>${l.size || '—'}</div>` : ''}
-          ${c.showImage ? `<div class="label-image-frame">${l.imageUrl
-            ? `<img src="${l.imageUrl}" class="label-img" crossorigin="anonymous" onerror="this.onerror=null;this.style.display='none'" />`
-            : `<img src="${logoUrl}" class="label-img" crossorigin="anonymous" alt="Logo" />`}</div>` : ''}
-        </div>` : ''}
+        ${c.showImage ? `<div class="label-image-frame">${l.imageUrl
+            ? `${l.imageIsFallback ? `<div class="img-fallback-badge">FOTO GENÉRICA</div>` : ''}<img src="${escapeHtml(l.imageUrl)}" class="label-img" crossorigin="anonymous" ${l.imageIsFallback ? `style="filter:grayscale(100%);-webkit-filter:grayscale(100%);" ` : ''}onerror="this.onerror=null;this.style.display='none'" />`
+            : `<img src="${escapeHtml(logoUrl)}" class="label-img" crossorigin="anonymous" alt="Logo" />`}</div>` : ''}
 
         <div class="label-info">
           <p class="info-reference">${escapeHtml(displayReference)}</p>
@@ -704,6 +729,8 @@ export function buildThermalLabelsHtml(labels: {
           ${c.showPedido && l.clientOrderNumber ? `<p class="info-pedido">PED. ${escapeHtml(l.clientOrderNumber)}</p>` : ''}
           ${!showHeader && c.showCategory && l.shoeCategory ? `<p class="info-category">${escapeHtml(l.shoeCategory)}</p>` : ''}
         </div>
+
+        ${c.showSize ? `<div class="label-size-box"><span class="sz-nr">Nº</span>${escapeHtml(l.size || '—')}</div>` : ''}
 
         ${hasRightColumn ? `<div class="label-right">
           ${l.barcode
@@ -718,19 +745,20 @@ export function buildThermalLabelsHtml(labels: {
 
   const barcodeInits = labels.map((l, idx) => {
     if (!l.barcode || !c.showBarcode) return '';
-    const code = l.barcode.replace(/"/g, '\\"');
+    const code = sanitizeBarcode(l.barcode);
     return `try{var el=document.querySelector("#bc-${idx}");JsBarcode(el,"${code}",{format:"CODE128",width:0.8,height:${barcodeHeightPx},displayValue:false,margin:0});if(el){el.removeAttribute("width");el.removeAttribute("height");el.style.width="100%";el.style.height="auto";}}catch(e){}`;
   }).filter(Boolean).join('\n');
 
   const cols: string[] = [];
-  if (hasLeftColumn) cols.push(`${leftColumnMm}mm`);
-  cols.push(`1fr`);
-  if (hasRightColumn) cols.push(`${rightColumnMm}mm`);
+  if (c.showImage) cols.push(`${photoColMm}mm`);   // FOTO (esquerda)
+  cols.push(`1fr`);                                 // DESCRIÇÃO
+  if (c.showSize) cols.push(`${sizeColMm}mm`);      // Nº (entre descrição e código)
+  if (hasRightColumn) cols.push(`${rightColumnMm}mm`); // CÓDIGO DE BARRAS (direita)
   const gridCols = cols.join(' ');
 
   // Collect unique image URLs for preloading
   const uniqueImageUrls = [...new Set(labels.map(l => l.imageUrl).filter(Boolean))];
-  const preloadLinks = uniqueImageUrls.map(u => `<link rel="preload" as="image" href="${u}" crossorigin="anonymous" />`).join('\n');
+  const preloadLinks = uniqueImageUrls.map(u => `<link rel="preload" as="image" href="${escapeHtml(u as string)}" crossorigin="anonymous" />`).join('\n');
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Etiquetas - Elgin L42 Pro Full</title>
@@ -823,18 +851,6 @@ ${preloadLinks}
     align-items:center;
     overflow:hidden;
   }
-  .label-left{
-    height:100%;
-    min-width:0;
-    max-width:100%;
-    display:grid;
-    align-items:center;
-    overflow:hidden;
-  }
-  .label-left.has-size{
-    grid-template-columns:1fr auto;
-    column-gap:0.8mm;
-  }
   .label-image-frame{
     width:100%;
     height:100%;
@@ -844,6 +860,23 @@ ${preloadLinks}
     display:flex;
     align-items:center;
     justify-content:center;
+    position:relative;
+  }
+  /* Selo "FOTO GENÉRICA" (análogo ao .photo-fallback-badge da caixa externa):
+     marca que a foto é ilustrativa e não retrata a cor real do produto. */
+  .img-fallback-badge{
+    position:absolute;
+    top:0;left:0;
+    z-index:1;
+    background:#000;
+    color:#fff;
+    font-size:3pt;
+    font-weight:800;
+    line-height:1;
+    letter-spacing:0.2px;
+    padding:0.3mm 0.5mm;
+    text-transform:uppercase;
+    white-space:nowrap;
   }
   .label-img{
     width:auto;
@@ -854,8 +887,10 @@ ${preloadLinks}
     display:block;
   }
   .label-size-box{
-    width:${Math.max(sizeBoxWidthMm, 9).toFixed(1)}mm;
-    padding:0.8mm 0.5mm;
+    width:100%;
+    height:100%;
+    align-self:stretch;
+    padding:0.4mm 0.4mm;
     display:flex;
     flex-direction:column;
     align-items:center;
@@ -889,8 +924,8 @@ ${preloadLinks}
     gap:0.3mm;
     overflow:hidden;
     padding:0.3mm 1.2mm;
-    ${hasLeftColumn ? 'border-left:0.22mm solid #000;' : ''}
-    ${hasRightColumn ? 'border-right:0.22mm solid #000;' : ''}
+    ${c.showImage ? 'border-left:0.22mm solid #000;' : ''}
+    ${(c.showSize || hasRightColumn) ? 'border-right:0.22mm solid #000;' : ''}
   }
   .info-reference,
   .info-code,
@@ -1061,6 +1096,9 @@ export async function buildThermalLabelsPdf(
     qty?: number;
     strapsLabel?: string;
     imageUrl?: string;
+    /** True quando imageUrl é fallback — desenha a foto em escala de cinza
+     *  e adiciona texto "FOTO GENÉRICA" junto à moldura. */
+    imageIsFallback?: boolean;
   }[],
   dimensions = { width: 100, height: 30 },
   senderCnpj?: string,
@@ -1119,6 +1157,14 @@ export async function buildThermalLabelsPdf(
   // a normalização via canvas não "tainta" o canvas. Falha de carga = etiqueta sem
   // foto (degrada suave, nunca quebra o PDF inteiro). Downscale p/ não inflar o PDF.
   const imageCache = new Map<string, { dataUrl: string; w: number; h: number }>();
+  // Cache separado pras versões em escala de cinza (foto fallback). A mesma URL
+  // pode ser fallback numa label e não noutra, então mantemos as duas variantes
+  // e escolhemos no momento do desenho via l.imageIsFallback.
+  const grayImageCache = new Map<string, { dataUrl: string; w: number; h: number }>();
+  // URLs que aparecem ao menos uma vez como fallback → precisam da variante cinza.
+  const fallbackUrls = new Set(
+    labels.filter(l => l.imageIsFallback && l.imageUrl).map(l => l.imageUrl as string),
+  );
   const uniqueImgUrls = [...new Set(labels.map(l => l.imageUrl).filter(Boolean))] as string[];
   await Promise.all(uniqueImgUrls.map(async (url) => {
     try {
@@ -1141,6 +1187,27 @@ export async function buildThermalLabelsPdf(
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, cw, ch);
       imageCache.set(url, { dataUrl: canvas.toDataURL('image/png'), w: cw, h: ch });
+
+      // jsPDF não tem filtro grayscale nativo — geramos a versão cinza num 2º
+      // canvas só quando essa URL é usada como foto fallback em alguma label.
+      if (fallbackUrls.has(url)) {
+        try {
+          const grayCanvas = document.createElement('canvas');
+          grayCanvas.width = cw; grayCanvas.height = ch;
+          const gctx = grayCanvas.getContext('2d');
+          if (gctx) {
+            gctx.drawImage(img, 0, 0, cw, ch);
+            const imgData = gctx.getImageData(0, 0, cw, ch);
+            const px = imgData.data;
+            for (let p = 0; p < px.length; p += 4) {
+              const gray = 0.299 * px[p] + 0.587 * px[p + 1] + 0.114 * px[p + 2];
+              px[p] = px[p + 1] = px[p + 2] = gray;
+            }
+            gctx.putImageData(imgData, 0, 0);
+            grayImageCache.set(url, { dataUrl: grayCanvas.toDataURL('image/png'), w: cw, h: ch });
+          }
+        } catch { /* canvas tainted ou getImageData bloqueado — usa colorida */ }
+      }
     } catch { /* sem foto pra essa URL — segue sem */ }
   }));
 
@@ -1174,40 +1241,48 @@ export async function buildThermalLabelsPdf(
       doc.setTextColor(0, 0, 0);
     }
 
-    // ─── Body layout: size box | info | barcode ───
+    // ─── Body layout (2026-06-17): FOTO | DESCRIÇÃO | Nº | CÓDIGO ───
     const bodyTop = (headerName ? headerH : 0) + padY;
     const bodyBottom = H - footerH - padY * 0.5;
     const bodyH = bodyBottom - bodyTop;
 
-    const sizeBoxW = Math.min(W * 0.16, 14);
-    const sizeBoxX = padX;
-    const sizeBoxY = bodyTop;
-
-    const barcodeW = Math.min(W * 0.32, 32);
+    // Código de barras na direita — MENOR (largura reduzida).
+    const barcodeW = Math.min(W * 0.20, 18);
     const barcodeX = W - padX - barcodeW;
 
-    // Coluna da foto do produto — entre o nº e as infos, só quando a imagem
-    // carregou. Espelha o layout da etiqueta HTML ([nº][foto][info][barcode]).
-    const imgData = l.imageUrl ? imageCache.get(l.imageUrl) : undefined;
-    const imgFrameW = imgData ? Math.min(W * 0.14, 13) : 0;
-    const imgFrameX = sizeBoxX + sizeBoxW + (imgData ? 1.0 : 0);
+    // Nº ENTRE a descrição e o código de barras — número GRANDE em chip preto
+    // que ocupa toda a altura útil do corpo (bodyTop/bodyBottom já reservam a
+    // margem de segurança da impressora) → número cresce pra cima e pra baixo.
+    const sizeBoxW = Math.min(W * 0.16, 13);
+    const sizeBoxX = barcodeX - 1.2 - sizeBoxW;
+    const sizeBoxH = bodyH;
+    const sizeBoxY = bodyTop;
 
-    const infoX = imgFrameX + imgFrameW + 1.2;
-    const infoW = barcodeX - infoX - 1.2;
+    // Foto do produto na ESQUERDA — maior (ocupa mais da etiqueta). Foto
+    // fallback: usa a variante cinza quando disponível (cai pra colorida se a
+    // conversão tiver falhado por canvas tainted).
+    const imgData = l.imageUrl
+      ? ((l.imageIsFallback && grayImageCache.get(l.imageUrl)) || imageCache.get(l.imageUrl))
+      : undefined;
+    const imgFrameW = imgData ? Math.min(W * 0.22, 20) : 0;
+    const imgFrameX = padX;
 
-    // Size box
+    const infoX = imgFrameX + (imgData ? imgFrameW + 1.2 : 0);
+    const infoW = sizeBoxX - infoX - 1.2;
+
+    // Size box (chip compacto)
     if (l.size) {
       doc.setFillColor(0, 0, 0);
-      doc.roundedRect(sizeBoxX, sizeBoxY, sizeBoxW, bodyH, 0.8, 0.8, 'F');
+      doc.roundedRect(sizeBoxX, sizeBoxY, sizeBoxW, sizeBoxH, 0.7, 0.7, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(2.5 * scale);
-      doc.text('Nº', sizeBoxX + sizeBoxW / 2, sizeBoxY + bodyH * 0.25, { align: 'center', baseline: 'middle' });
+      doc.setFontSize(2.3 * scale);
+      doc.text('Nº', sizeBoxX + sizeBoxW / 2, sizeBoxY + sizeBoxH * 0.18, { align: 'center', baseline: 'middle' });
       doc.setFont('helvetica', 'bold');
-      const sizeFontPt = Math.min(bodyH * 2.5, sizeBoxW * 1.6);
+      const sizeFontPt = Math.min(sizeBoxH * 2.3, sizeBoxW * 1.6);
       doc.setFontSize(sizeFontPt);
       const sizeText = (l.size || '—').slice(0, 6);
-      doc.text(sizeText, sizeBoxX + sizeBoxW / 2, sizeBoxY + bodyH * 0.62, { align: 'center', baseline: 'middle' });
+      doc.text(sizeText, sizeBoxX + sizeBoxW / 2, sizeBoxY + sizeBoxH * 0.66, { align: 'center', baseline: 'middle' });
       doc.setTextColor(0, 0, 0);
     }
 
@@ -1220,6 +1295,14 @@ export async function buildThermalLabelsPdf(
       const ix = imgFrameX + (imgFrameW - drawW) / 2;
       const iy = bodyTop + (bodyH - drawH) / 2;
       try { doc.addImage(imgData.dataUrl, 'PNG', ix, iy, drawW, drawH, undefined, 'FAST'); } catch { /* ignora foto que falhar */ }
+      // Texto "FOTO GENÉRICA" junto à moldura quando a foto é fallback.
+      if (l.imageIsFallback) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(3);
+        doc.setTextColor(120, 120, 120);
+        doc.text('FOTO GENÉRICA', imgFrameX, bodyTop + 0.4, { baseline: 'top' });
+        doc.setTextColor(0, 0, 0);
+      }
     }
 
     // Info column (ref name, color, material, pedido)
@@ -1257,10 +1340,12 @@ export async function buildThermalLabelsPdf(
       doc.setTextColor(0, 0, 0);
     }
 
-    // Vertical separator before barcode
+    // Separadores verticais: entre foto↔descrição e entre descrição↔Nº
+    // (espelha as bordas da etiqueta HTML).
     doc.setLineWidth(0.15);
     doc.setDrawColor(0);
-    doc.line(barcodeX - 0.6, bodyTop + 0.5, barcodeX - 0.6, bodyBottom - 0.5);
+    if (imgData) doc.line(infoX - 0.6, bodyTop + 0.5, infoX - 0.6, bodyBottom - 0.5);
+    doc.line(sizeBoxX - 0.6, bodyTop + 0.5, sizeBoxX - 0.6, bodyBottom - 0.5);
 
     // Barcode (right column)
     if (l.barcode) {
@@ -1320,21 +1405,23 @@ export function buildThermalLabelsZpl(
   const padY = Math.round(1.2 * dpMm);
   const innerH = H - padY * 2;
 
-  // Left zone: size box (~18% width)
-  const sizeBoxW = Math.round(W * 0.18);
-  const sizeBoxH = innerH;
-  // Info zone starts after size box + divider gap
-  const infoX = padX + sizeBoxW + Math.round(2.5 * dpMm);
-  // Right zone: barcode (~34% width)
-  const barcodeW = Math.round(W * 0.34);
+  // Layout 2026-06-17: DESCRIÇÃO (esquerda) | Nº | CÓDIGO. ZPL não tem foto.
+  // Info zone começa na esquerda.
+  const infoX = padX;
+  // Right zone: barcode — MENOR (~24% width).
+  const barcodeW = Math.round(W * 0.24);
   const barcodeX = W - padX - barcodeW;
-  const infoW = barcodeX - infoX - Math.round(2 * dpMm);
+  // Size box ENTRE a descrição e o código de barras — número em destaque (~16% width).
+  const sizeBoxW = Math.round(W * 0.16);
+  const sizeBoxH = innerH;
+  const sizeBoxX = barcodeX - Math.round(2.5 * dpMm) - sizeBoxW;
+  const infoW = sizeBoxX - infoX - Math.round(2 * dpMm);
 
   // Barcode height: leave ~1.5mm headroom at top and bottom
   const barcodeH = innerH - Math.round(1 * dpMm);
 
   // Font heights (dots): scale proportionally to innerH
-  const sizeFont  = Math.round(innerH * 0.72); // dominant size number
+  const sizeFont  = Math.round(innerH * 0.78); // número em destaque (preenche a altura útil)
   const refFont   = Math.max(18, Math.round(innerH * 0.22));
   const colorFont = Math.max(16, Math.round(innerH * 0.18));
   const matFont   = Math.max(14, Math.round(innerH * 0.15));
@@ -1362,14 +1449,11 @@ export function buildThermalLabelsZpl(
       `^LH0,0`,         // label home (origin)
       `^CI28`,          // encoding: UTF-8
 
-      // ── Size box border ──
-      `^FO${padX},${padY}^GB${sizeBoxW},${sizeBoxH},2,B,2^FS`,
+      // ── Size box border (entre descrição e código) ──
+      `^FO${sizeBoxX},${padY}^GB${sizeBoxW},${sizeBoxH},2,B,2^FS`,
 
       // ── Size number (centered in box) ──
-      `^FO${padX + 2},${sizeCenterY}^A0N,${sizeFont},${fw(sizeFont)}^FD${sizeVal}^FS`,
-
-      // ── Vertical divider before barcode ──
-      `^FO${barcodeX - Math.round(2 * dpMm)},${padY}^GB2,${sizeBoxH},2^FS`,
+      `^FO${sizeBoxX + 2},${sizeCenterY}^A0N,${sizeFont},${fw(sizeFont)}^FD${sizeVal}^FS`,
 
       // ── Reference name ──
       refName  ? `^FO${infoX},${rowY(0.04)}^A0N,${refFont},${fw(refFont)}^FD${refName}^FS`   : '',
@@ -1409,7 +1493,7 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
           <div class="label-cell">
             ${item.imageUrl ? `
               <div style="height:30mm;display:flex;align-items:center;justify-content:center;margin-bottom:3px;overflow:hidden;">
-                <img src="${item.imageUrl}" crossorigin="anonymous" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;filter:grayscale(100%);" onerror="this.parentElement.style.display='none'" />
+                <img src="${escapeHtml(item.imageUrl)}" crossorigin="anonymous" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;filter:grayscale(100%);" onerror="this.parentElement.style.display='none'" />
               </div>
             ` : ''}
             <div style="text-align:center;margin-bottom:2px;">
@@ -1509,7 +1593,7 @@ export function buildHangtagHtml(labels: {
       <div class="ht-shell">
         <div class="ht-top">
           ${l.logoUrl
-            ? `<img src="${l.logoUrl}" class="ht-brand-logo" crossorigin="anonymous" />`
+            ? `<img src="${escapeHtml(l.logoUrl)}" class="ht-brand-logo" crossorigin="anonymous" />`
             : `<span class="ht-brand-name">${escapeHtml(l.brandName || 'SQUAD')}</span>`
           }
         </div>
@@ -1523,7 +1607,7 @@ export function buildHangtagHtml(labels: {
             <p class="ht-info-row"><span class="ht-info-label">Cor</span> <span class="ht-info-value">${escapeHtml(l.color)}</span></p>
           </div>
           ${l.composition ? `<div class="ht-composition">${escapeHtml(l.composition || 'SINTÉTICO / TÊXTIL / BORRACHA')}</div>` : ''}
-          ${(l.careSymbols || []).length > 0 ? `<div class="ht-care-icons">${(l.careSymbols || []).map(s => `<span>${s}</span>`).join('')}</div>` : ''}
+          ${(l.careSymbols || []).length > 0 ? `<div class="ht-care-icons">${(l.careSymbols || []).map(s => `<span>${escapeHtml(s)}</span>`).join('')}</div>` : ''}
         </div>
         <div class="ht-footer">
           <div class="ht-barcode"><svg id="bc-ht-${idx}"></svg></div>
@@ -1535,12 +1619,15 @@ export function buildHangtagHtml(labels: {
 
   const barcodeInits = labels.map((l, idx) => {
     if (!l.barcode) return '';
-    return `JsBarcode("#bc-ht-${idx}","${l.barcode}",{format:"CODE128",width:1,height:30,displayValue:true,fontSize:10,margin:0});`;
+    const code = sanitizeBarcode(l.barcode);
+    return `JsBarcode("#bc-ht-${idx}","${code}",{format:"CODE128",width:1,height:30,displayValue:true,fontSize:10,margin:0});`;
   }).join('\n');
 
   const qrcodeInits = labels.map((l, idx) => {
     if (!l.qrcode) return '';
-    return `new QRCode(document.getElementById("qr-ht-${idx}"), { text: "${l.qrcode}", width: 50, height: 50, correctLevel: QRCode.CorrectLevel.H });`;
+    // QR encoda URL — preserva `:` `?` `=` `&` `#` (jsStringLiteral), só barcode CODE128 usa sanitizeBarcode.
+    const qr = jsStringLiteral(l.qrcode);
+    return `new QRCode(document.getElementById("qr-ht-${idx}"), { text: ${qr}, width: 50, height: 50, correctLevel: QRCode.CorrectLevel.H });`;
   }).join('\n');
 
   return `<!DOCTYPE html>
@@ -1608,16 +1695,27 @@ export function buildHangtagHtml(labels: {
   .ht-barcode svg{max-width:100%;}
   .ht-qr{margin-top:0.5mm;}
   .ht-qr canvas,.ht-qr img{margin:0 auto;}
+  ${LABEL_PRINT_HARDENING}
 </style>
 </head><body>
   ${labelHtml}
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script>
-    window.onload = function() {
-      ${barcodeInits}
-      ${qrcodeInits}
-    }
-  </script>
+${safeScript('https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js')}
+${safeScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js')}
+${safeScriptBlock(`
+var _htRetry=0;
+function initHtBC(){
+  // Só dispara quando AMBOS os CDNs (JsBarcode + QRCode) carregaram. Antes
+  // rodava direto em window.onload sem retry — se o CDN demorasse, etiqueta
+  // saía sem código de barras/QR (E-M4).
+  if(typeof JsBarcode==='undefined'||typeof QRCode==='undefined'){
+    _htRetry++;if(_htRetry>40){return;}setTimeout(initHtBC,150);return;
+  }
+  try{
+    ${barcodeInits}
+    ${qrcodeInits}
+  }catch(e){}
+}
+initHtBC();
+`)}
 </body></html>`;
 }

@@ -927,6 +927,11 @@ const router = createBrowserRouter([
         path: "imprimir-fichas",
         element: <PrintWorkSheets />,
       },
+      {
+        // Ficha de Montadores — fichas de corte/montagem por dia (tabela ficha_montadores)
+        path: "fichas-montadores",
+        lazy: () => import("./pages/FichaMontadoresPage").then(m => ({ Component: m.default })),
+      },
       // Requested snippet routes with lazy property
       {
         path: "inventory",

@@ -126,10 +126,21 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
   // (Custos & Margem REMOVIDOS em 2026-06-12 — pedido do dono. O relatório
   //  mantém apenas KPIs operacionais: OPs, pares, prazos e status.)
 
-  // Progresso operacional (% de stages concluídos)
+  // ── Progresso operacional (% de stages concluídos) ──
+  // F-M1 (2026-06-17): setores que o MODELO não percorre (ex.: palmilha
+  // pronta na cor PULA Corte Palmilha/Corte Forração) geram order_stages com
+  // status 'skipped' (várias funções SQL inserem stages assim). Esses stages
+  // NUNCA viram 'concluido', então o denominador antigo (todos os stages)
+  // travava o progresso < 100% pra sempre e `opsConcluidas` (.every concluído)
+  // nunca era atingido. Regra: stages pulados/não-aplicáveis NÃO entram no
+  // denominador nem bloqueiam a conclusão da OP. Só stages "aplicáveis"
+  // (pendente/em_andamento/concluido) contam.
+  const SKIPPED_STATUSES = new Set(['skipped', 'pulado', 'nao_aplicavel', 'n/a', 'na', 'cancelado', 'cancelled']);
+  const isApplicable = (st: string | undefined | null) => !SKIPPED_STATUSES.has(String(st || '').toLowerCase());
   const stageStats = orders.reduce(
     (acc, o) => {
       for (const s of o.stages || []) {
+        if (!isApplicable(s.status)) continue; // pula stages de setores não percorridos
         acc.total += 1;
         if (s.status === 'concluido') acc.done += 1;
       }
@@ -138,9 +149,12 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
     { total: 0, done: 0 },
   );
   const progressPct = stageStats.total > 0 ? Math.round((stageStats.done / stageStats.total) * 100) : 0;
-  const opsConcluidas = orders.filter(o =>
-    (o.stages || []).length > 0 && (o.stages || []).every(s => s.status === 'concluido')
-  ).length;
+  // OP concluída = tem ao menos 1 stage aplicável E todos os aplicáveis estão
+  // concluídos (stages pulados são ignorados, não impedem a conclusão).
+  const opsConcluidas = orders.filter(o => {
+    const applicable = (o.stages || []).filter(s => isApplicable(s.status));
+    return applicable.length > 0 && applicable.every(s => s.status === 'concluido');
+  }).length;
 
   // Setores únicos presentes (normalizando Mesa → Aviamento)
   const sectorsPresent = new Set<string>();
@@ -245,7 +259,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
             })()}
             {saleOrder.client_order_number && (
               <p className="mt-3 text-[9pt] text-black">
-                <span className="section-label" style={{ color: '#666' }}>Pedido cliente</span>{' '}
+                <span className="section-label" style={{ color: '#555' }}>Pedido cliente</span>{' '}
                 <span className="font-mono font-semibold ml-1">{saleOrder.client_order_number}</span>
               </p>
             )}
@@ -253,26 +267,26 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
 
           <div className="col-span-4 border-l border-black pl-4 space-y-2">
             <div>
-              <p className="section-label" style={{ color: '#666' }}>Cliente</p>
+              <p className="section-label" style={{ color: '#555' }}>Cliente</p>
               <p className="font-semibold text-[10pt] text-black leading-tight mt-0.5">
                 {saleOrder.client_name || 'Sem cliente'}
               </p>
             </div>
             {saleOrder.client_cnpj && (
               <div>
-                <p className="section-label" style={{ color: '#666' }}>CNPJ</p>
+                <p className="section-label" style={{ color: '#555' }}>CNPJ</p>
                 <p className="font-mono text-[9pt] text-black mt-0.5">{saleOrder.client_cnpj}</p>
               </div>
             )}
             {saleOrder.client_city && (
               <div>
-                <p className="section-label" style={{ color: '#666' }}>Praça</p>
+                <p className="section-label" style={{ color: '#555' }}>Praça</p>
                 <p className="text-[9pt] text-black mt-0.5">{saleOrder.client_city}</p>
               </div>
             )}
             {saleOrder.delivery_deadline && (
               <div>
-                <p className="section-label" style={{ color: '#666' }}>Faturar até</p>
+                <p className="section-label" style={{ color: '#555' }}>Faturar até</p>
                 <p className="font-mono font-semibold text-[10pt] text-black mt-0.5">
                   {fmtDate(saleOrder.delivery_deadline)}
                 </p>
@@ -280,7 +294,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
             )}
             {saleOrder.status && (
               <div>
-                <p className="section-label" style={{ color: '#666' }}>Status</p>
+                <p className="section-label" style={{ color: '#555' }}>Status</p>
                 <p className="text-[9pt] font-semibold text-black mt-0.5 uppercase tracking-wider">
                   {saleOrder.status}
                 </p>
@@ -385,20 +399,26 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                 (o.stages || []).map(s => [normalizeStageName(s.stage_name), s])
               );
               return (
-                <tr key={o.id} style={{ borderBottom: '0.5px solid #d4d4d4' }}>
+                <tr key={o.id} style={{ borderBottom: '1px solid #333' }}>
                   <td className="py-1.5 pr-2 font-mono text-black" style={{ fontSize: `${stF.cellPx}px`, lineHeight: 1.25 }}>{o.op_number || '—'}</td>
                   <td className="py-1.5 pr-2 text-black" style={{ fontSize: `${stF.textPx + 1}px`, lineHeight: 1.25 }}>
                     <span className="font-semibold">{o.reference_name || o.reference_code || '—'}</span>
                     {o.color && <span className="text-black"> · {o.color}</span>}
                   </td>
-                  <td className="py-1.5 pr-2 text-neutral-700" style={{ fontSize: `${stF.textPx}px`, lineHeight: 1.25 }}>{o.sole_name || '—'}</td>
+                  <td className="py-1.5 pr-2" style={{ fontSize: `${stF.textPx}px`, lineHeight: 1.25, color: '#333' }}>{o.sole_name || '—'}</td>
                   <td className="py-1.5 pr-2 text-right font-mono font-bold text-black" style={{ fontSize: `${stF.cellPx + 1}px`, lineHeight: 1.25 }}>{o.total_pairs}</td>
                   {sectorsOrdered.map(s => {
                     // s já é canônico (Aviamento/Costura/etc). Mapa usa chaves normalizadas.
                     const stage = stageByName.get(s) || null;
                     const status = stage?.status || 'pendente';
-                    const symbol = status === 'concluido' ? '●' : status === 'em_andamento' ? '◐' : '○';
-                    const color = status === 'concluido' ? '#000' : status === 'em_andamento' ? '#E11D2E' : '#bababa';
+                    // F-M1 (2026-06-17): setor pulado pelo modelo (palmilha
+                    // pronta etc.) → '–' neutro, não '○ pendente' enganoso.
+                    const skipped = !isApplicable(status);
+                    const symbol = skipped ? '–' : status === 'concluido' ? '●' : status === 'em_andamento' ? '◐' : '○';
+                    // F-A1 (2026-06-17): pendente em #777 (não #bababa, que
+                    // desbotava no papel). Concluído preto, andamento vermelho,
+                    // pulado #777.
+                    const color = skipped ? '#777' : status === 'concluido' ? '#000' : status === 'em_andamento' ? '#E11D2E' : '#777';
                     return (
                       <td
                         key={s}
@@ -415,7 +435,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
           </tbody>
         </table>
 
-        <div className="mt-3 flex items-center gap-4 text-[8pt] text-neutral-600">
+        <div className="mt-3 flex items-center gap-4 text-[8pt]" style={{ color: '#333' }}>
           <span className="flex items-center gap-1.5">
             <span className="font-mono text-black" style={{ fontSize: '11pt' }}>●</span> concluído
           </span>
@@ -423,7 +443,12 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
             <span className="font-mono" style={{ fontSize: '11pt', color: '#E11D2E' }}>◐</span> em andamento
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="font-mono text-neutral-400" style={{ fontSize: '11pt' }}>○</span> pendente
+            {/* símbolo pendente em #777 (cinza-escuro legível no papel, não o
+                #bababa antigo que sumia na impressão) — F-A1 2026-06-17. */}
+            <span className="font-mono" style={{ fontSize: '11pt', color: '#777' }}>○</span> pendente
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono" style={{ fontSize: '11pt', color: '#777' }}>–</span> não percorre
           </span>
         </div>
       </section>
@@ -470,7 +495,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
 
           {saleOrder.notes && (
             <div className="mt-3 border-l-2 border-black pl-3">
-              <p className="section-label mb-1" style={{ color: '#666' }}>Observações</p>
+              <p className="section-label mb-1" style={{ color: '#555' }}>Observações</p>
               <p className="text-[9pt] text-black whitespace-pre-wrap leading-snug">{saleOrder.notes}</p>
             </div>
           )}
@@ -539,8 +564,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                 <p className="text-[8pt] text-black font-semibold leading-tight">{s.name}</p>
                 {/* Referências que levam esta silk (2026-06-12). */}
                 {s.refs.length > 0 && (
-                  <div className="mt-1 pt-1" style={{ borderTop: '0.5px solid #d4d4d4' }}>
-                    <p className="section-label" style={{ color: '#666' }}>
+                  <div className="mt-1 pt-1" style={{ borderTop: '1px solid #333' }}>
+                    <p className="section-label" style={{ color: '#555' }}>
                       Referência{s.refs.length > 1 ? 's' : ''}
                     </p>
                     <p className="text-[7.5pt] text-black leading-snug mt-0.5">
@@ -591,7 +616,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                     </span>
                     <span className="text-[9pt] text-black font-semibold">
                       {o.reference_name || o.reference_code || '—'}
-                      {o.color && <span className="text-neutral-600"> · {o.color}</span>}
+                      {o.color && <span style={{ color: '#333' }}> · {o.color}</span>}
                     </span>
                   </div>
                   <span className="font-mono text-[9pt] text-black font-bold">
@@ -600,12 +625,12 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                 </div>
 
                 {o.sole_name && (
-                  <p className="text-[8pt] text-neutral-700 mb-1.5">
-                    <span className="section-label" style={{ color: '#666' }}>Solado</span>
+                  <p className="text-[8pt] mb-1.5" style={{ color: '#333' }}>
+                    <span className="section-label" style={{ color: '#555' }}>Solado</span>
                     <span className="ml-1.5">{o.sole_name}</span>
                     {o.pairs_per_box != null && (
                       <span className="ml-3">
-                        <span className="section-label" style={{ color: '#666' }}>Pares/cx</span>
+                        <span className="section-label" style={{ color: '#555' }}>Pares/cx</span>
                         <span className="font-mono ml-1.5">{o.pairs_per_box}</span>
                       </span>
                     )}
@@ -619,15 +644,15 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                   const cellW = gradeEntries.length > 16 ? 20 : 26;
                   return (
                   <div className="mb-1.5">
-                    <p className="section-label mb-1" style={{ color: '#666' }}>Grade</p>
+                    <p className="section-label mb-1" style={{ color: '#555' }}>Grade</p>
                     <table style={{ borderCollapse: 'collapse' }}>
                       <tbody>
                         <tr>
                           {gradeEntries.map(([size]) => (
                             <td
                               key={`s-${size}`}
-                              className="border border-neutral-400 font-mono text-center text-neutral-700"
-                              style={{ minWidth: cellW, fontSize: `${gF.cellPx}px`, padding: `${gF.padY}px ${gF.padX}px`, lineHeight: 1.2 }}
+                              className="font-mono text-center"
+                              style={{ minWidth: cellW, fontSize: `${gF.cellPx}px`, padding: `${gF.padY}px ${gF.padX}px`, lineHeight: 1.2, border: '1px solid #000', color: '#333' }}
                             >
                               {size}
                             </td>
@@ -637,8 +662,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                           {gradeEntries.map(([size, qty]) => (
                             <td
                               key={`q-${size}`}
-                              className="border border-neutral-400 font-mono font-bold text-center text-black"
-                              style={{ minWidth: cellW, fontSize: `${gF.cellPx}px`, padding: `${gF.padY}px ${gF.padX}px`, lineHeight: 1.2 }}
+                              className="font-mono font-bold text-center text-black"
+                              style={{ minWidth: cellW, fontSize: `${gF.cellPx}px`, padding: `${gF.padY}px ${gF.padX}px`, lineHeight: 1.2, border: '1px solid #000' }}
                             >
                               {qty}
                             </td>
@@ -652,15 +677,16 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
 
                 {hasStraps && (
                   <div className="mb-1.5">
-                    <p className="section-label mb-1" style={{ color: '#666' }}>Tiras</p>
+                    <p className="section-label mb-1" style={{ color: '#555' }}>Tiras</p>
                     <div className="flex flex-wrap gap-1.5">
                       {o.straps!.map((st, i) => (
                         <span
                           key={`${o.id}-strap-${i}`}
-                          className="text-[8pt] text-black border border-neutral-400 px-1.5 py-0.5"
+                          className="text-[8pt] text-black px-1.5 py-0.5"
+                          style={{ border: '1px solid #000' }}
                         >
                           {st.label || st.group_name || `Tira ${i + 1}`}
-                          {st.color && <span className="text-neutral-600"> · {st.color}</span>}
+                          {st.color && <span style={{ color: '#333' }}> · {st.color}</span>}
                         </span>
                       ))}
                     </div>
@@ -671,19 +697,19 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                   <div className="grid grid-cols-3 gap-x-4 text-[8pt] text-black">
                     {o.upper_material && (
                       <div>
-                        <span className="section-label" style={{ color: '#666' }}>Cabedal</span>
+                        <span className="section-label" style={{ color: '#555' }}>Cabedal</span>
                         <span className="ml-1.5">{o.upper_material}</span>
                       </div>
                     )}
                     {o.lining_material && (
                       <div>
-                        <span className="section-label" style={{ color: '#666' }}>Forração</span>
+                        <span className="section-label" style={{ color: '#555' }}>Forração</span>
                         <span className="ml-1.5">{o.lining_material}</span>
                       </div>
                     )}
                     {o.insole_material && (
                       <div>
-                        <span className="section-label" style={{ color: '#666' }}>Palmilha</span>
+                        <span className="section-label" style={{ color: '#555' }}>Palmilha</span>
                         <span className="ml-1.5">{o.insole_material}</span>
                       </div>
                     )}
@@ -691,8 +717,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                 )}
 
                 {o.due_date && (
-                  <p className="text-[8pt] text-neutral-700 mt-1">
-                    <span className="section-label" style={{ color: '#666' }}>Prazo</span>
+                  <p className="text-[8pt] mt-1" style={{ color: '#333' }}>
+                    <span className="section-label" style={{ color: '#555' }}>Prazo</span>
                     <span className="font-mono ml-1.5">{fmtDate(o.due_date)}</span>
                   </p>
                 )}
@@ -742,11 +768,11 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                 (o.stages || [])
                   .filter(s => s.started_at || s.completed_at)
                   .map((s, i) => (
-                    <tr key={`${o.id}-${s.stage_name}-${i}`} style={{ borderBottom: '0.5px solid #e5e5e5' }}>
+                    <tr key={`${o.id}-${s.stage_name}-${i}`} style={{ borderBottom: '1px solid #333' }}>
                       <td className="py-1 pr-2 font-mono text-black">{o.op_number || '—'}</td>
                       <td className="py-1 pr-2 text-black">{normalizeStageName(s.stage_name)}</td>
-                      <td className="py-1 pr-2 font-mono text-neutral-700">{fmtDateTime(s.started_at)}</td>
-                      <td className="py-1 pr-2 font-mono text-neutral-700">{fmtDateTime(s.completed_at)}</td>
+                      <td className="py-1 pr-2 font-mono" style={{ color: '#333' }}>{fmtDateTime(s.started_at)}</td>
+                      <td className="py-1 pr-2 font-mono" style={{ color: '#333' }}>{fmtDateTime(s.completed_at)}</td>
                       <td className="py-1 text-[7.5pt] uppercase tracking-wider text-black">
                         {s.status === 'concluido' ? 'concluído'
                           : s.status === 'em_andamento' ? 'em andamento'
@@ -778,8 +804,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
             </div>
           ))}
         </div>
-        <div className="mt-6 flex items-baseline justify-between text-[7pt] text-neutral-500">
-          <span className="section-label" style={{ color: '#999' }}>Squad Shoes · Sistema de Gestão</span>
+        <div className="mt-6 flex items-baseline justify-between text-[7pt]" style={{ color: '#555' }}>
+          <span className="section-label" style={{ color: '#555' }}>Squad Shoes · Sistema de Gestão</span>
           <span className="font-mono">{saleOrder.order_number || 'PV —'} · {date || new Date().toLocaleDateString('pt-BR')}</span>
         </div>
       </footer>
@@ -810,7 +836,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <p className="section-label mb-0.5" style={{ color: '#666' }}>{label}</p>
+      <p className="section-label mb-0.5" style={{ color: '#555' }}>{label}</p>
       <p className={`text-[9pt] text-black ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
   );

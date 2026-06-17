@@ -119,6 +119,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/forecast': 'vendas',
   '/centro-controle': 'producao',
   '/imprimir-fichas': 'producao',
+  '/fichas-montadores': 'producao',
   '/quotations': 'financeiro',
   '/manifests': 'expedicao',
   '/transporters': 'expedicao',

@@ -54,6 +54,10 @@ export interface OperatorWorkSheetItem {
   corrugadosMistos?: boolean;
   /** Alguma OP com última ficha parcial — grade exibe "≈ N fichas". */
   fichasAproximadas?: boolean;
+  /** Pares por caixa de expedição (Acabamento). Default 12 quando ausente.
+   *  Resolvido em PrintWorkSheetsPage via packaging_mode/product_groups
+   *  (mesma fonte da ExpedicaoWorkSheet). */
+  pairsPerBox?: number;
 }
 
 interface Props {
@@ -162,7 +166,17 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const baseGrade: Record<string, number> = {};
     const activeSizes = Object.keys(grid).filter(s => Number(grid[s]) > 0);
     for (const s of activeSizes) baseGrade[s] = Number(grid[s]) || 0;
-    const scaledGrade = scaleGradeWithLargestRemainder(baseGrade, multiplier, totalPairs);
+    // F-C1 (2026-06-17): quando a soma da grade já bate com o total de pares
+    // (gradeSum === totalPairs), o multiplier é 1 e o escalonamento é, na
+    // melhor das hipóteses, inócuo — mas o largest-remainder pode redistribuir
+    // arredondamentos e DIVERGIR da grade crua do PV quando `order.grid` chega
+    // como curva-base. Nesse caso usamos a grade CRUA direto (baseGrade), que
+    // é exatamente o que o PV especificou. Só escalamos quando as somas
+    // divergem (grid é curva-base que precisa multiplicar até o total).
+    const gradeMatchesTotal = gradeSum > 0 && gradeSum === totalPairs;
+    const scaledGrade = gradeMatchesTotal
+      ? { ...baseGrade }
+      : scaleGradeWithLargestRemainder(baseGrade, multiplier, totalPairs);
     // Ensure every base size has an entry (even if scaled to 0) for table rendering.
     for (const s of activeSizes) if (!(s in scaledGrade)) scaledGrade[s] = 0;
 
@@ -181,7 +195,18 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       : resolvedColorName;
     const resolvedSoleColor = soleColor || resolvedColorName;
 
-    const boxes = isAcabamento ? Math.ceil(totalPairs / 12) : 0;
+    // F-B1 (2026-06-17): pares por caixa REAL do pedido (mesma fonte da
+    // ExpedicaoWorkSheet — packaging_mode/product_groups), resolvido upstream
+    // em PrintWorkSheetsPage e anexado em item.pairsPerBox. Fallback defensivo
+    // pra 12 quando o valor não chega (ou vem <= 0). Lemos também de
+    // order.pairs_per_box caso a OP já carregue o campo resolvido.
+    const orderPpb = (order as { pairs_per_box?: number | null }).pairs_per_box;
+    const pairsPerBox = (item.pairsPerBox && item.pairsPerBox > 0)
+      ? item.pairsPerBox
+      : (orderPpb && orderPpb > 0)
+        ? orderPpb
+        : 12;
+    const boxes = isAcabamento ? Math.ceil(totalPairs / pairsPerBox) : 0;
 
     // Tally de controle por setor: 1 caixinha = 1 CORRUGADO físico (12/15/18
     // pares) — SEMPRE, mesmo com grades mistas (7º passe). Quando os
@@ -612,7 +637,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
         )}
         {isAcabamento && (
           <div className="keep-with-next">
-            <TallyBox count={boxes} pairsPerCard={12} totalUnits={totalPairs} title={`Caixas · ${boxes} × 12 pares`} />
+            <TallyBox count={boxes} pairsPerCard={pairsPerBox} totalUnits={totalPairs} title={`Caixas · ${boxes} × ${pairsPerBox} pares`} />
           </div>
         )}
         </div>

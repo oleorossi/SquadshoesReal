@@ -45,6 +45,7 @@ import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanyS
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
+import { resolveSenderCnpj } from '@/lib/companySender';
 import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { computeARSchedule } from '@/lib/saleOrderAR';
@@ -1562,7 +1563,11 @@ export default function SaleOrders() {
                     }
                     if (labels.length === 0) { toast.info('Nenhuma etiqueta para gerar.'); return; }
                     const logoUrl = new URL(logoImg, window.location.origin).href;
-                    const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 });
+                    // CNPJ do remetente/fabricante (INMETRO 576/2014). Resolve a
+                    // partir da empresa (company_id) do 1º PV selecionado; cai na
+                    // primária/padrão quando ausente.
+                    const senderCnpj = resolveSenderCnpj(companies, (selectedOrders[0] as any)?.company_id);
+                    const html = buildThermalLabelsHtml(labels, logoUrl, { width: 100, height: 30 }, undefined, senderCnpj);
                     writeRawPrintWindow(pw, html);
                     toast.success(`${labels.length} etiqueta(s) gerada(s)`);
                   } catch (err: any) { toast.error(err.message); }

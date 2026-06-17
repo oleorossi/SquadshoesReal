@@ -28,7 +28,9 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
     produto.imagemPrincipalUrl || 
     '/placeholder-sapato.png';
 
-  const barcodeValue = varianteSelecionada?.barcode || '000000000000';
+  // Sem barcode cadastrado NÃO inventamos um código (zeros geram um EAN
+  // escaneável falso). A zona do barcode mostra um traço "—", como a térmica.
+  const barcodeValue = varianteSelecionada?.barcode || '';
 
   return (
     // Safe-area lateral 3mm (left padding 3mm, right 3mm). Impressoras térmicas
@@ -55,7 +57,7 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
       {/* Centro: Tipografia dominante */}
       <div className="flex-1 px-3 py-2 flex flex-col justify-between min-w-0">
         <div className="min-w-0">
-          <div className="section-label text-black/60">SKU</div>
+          <div className="section-label" style={{ color: '#555' }}>MODELO</div>
           <div
             className="font-display leading-none uppercase truncate -mt-0.5"
             style={{ fontSize: adaptiveFontSize(produto.nome || '', { maxWidthPx: 130, baseFontPx: 24, minFontPx: 11, charWidthRatio: 0.5 }) }}
@@ -67,7 +69,7 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
 
         <div className="flex items-end justify-between gap-3 min-w-0">
           <div className="min-w-0 flex-1">
-            <div className="section-label text-black/60">Cor</div>
+            <div className="section-label" style={{ color: '#555' }}>Cor</div>
             <div
               className="font-editorial font-semibold uppercase tracking-[0.2em] truncate leading-tight"
               style={{ fontSize: adaptiveFontSize(varianteSelecionada?.cor || 'Padrão', { maxWidthPx: 80, baseFontPx: 11, minFontPx: 7, charWidthRatio: 0.7 }) }}
@@ -77,7 +79,7 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
             </div>
           </div>
           <div className="flex-shrink-0 text-right">
-            <div className="section-label text-black/60">Tam</div>
+            <div className="section-label" style={{ color: '#555' }}>Tam</div>
             <div className="font-mono text-base font-bold leading-none tabular-nums">
               {varianteSelecionada?.tamanho ?? '--'}
             </div>
@@ -86,10 +88,12 @@ export const EtiquetaProduto = ({ produto, varianteSelecionada }: EtiquetaProdut
       </div>
 
       {/* Direita: EAN + Código de Barras (sem pr-2: safe-area já dá margem) */}
-      <div className="w-[32mm] flex-shrink-0 flex flex-col items-stretch justify-center pl-1 py-2 border-l border-black/15">
-        <div className="section-label text-black/60 mb-1">EAN</div>
+      <div className="w-[32mm] flex-shrink-0 flex flex-col items-stretch justify-center pl-1 py-2" style={{ borderLeft: '1px solid #000' }}>
+        <div className="section-label mb-1" style={{ color: '#555' }}>EAN</div>
         <div className="flex-1 flex items-center justify-center overflow-hidden">
-          <BarcodeSVG value={barcodeValue} height={28} fontSize={8} />
+          {barcodeValue
+            ? <BarcodeSVG value={barcodeValue} height={28} fontSize={8} />
+            : <span className="font-mono text-base" style={{ color: '#555' }}>—</span>}
         </div>
       </div>
     </div>

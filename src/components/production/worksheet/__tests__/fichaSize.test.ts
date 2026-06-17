@@ -83,14 +83,18 @@ describe('resolveFicha', () => {
     expect(r.exact).toBe(true);
   });
 
-  it('grade total divisível no total mas NÃO célula-a-célula cai no próximo corrugado ou fallback', () => {
-    // total 120 divide por 12 (f=10) mas a célula 35:5 não divide por 10.
-    // 120/15 = 8 → células {5,35,40,20,20} % 8 ≠ 0. 120/18 não inteiro.
+  it('grade total divisível no total mas NÃO célula-a-célula: deriva baseCurve via largest-remainder (F-M2)', () => {
+    // total 120 divide por 12 (f=10); as células não dividem por 10. A partir do
+    // F-M2 (2026-06-17) NÃO caímos mais no fallback sem curva — derivamos a curva
+    // "Por Ficha" proporcional por largest-remainder (Hamilton), garantindo que
+    // Σ baseCurve === corrugado (12). Antes este caso retornava baseCurve=null.
     const r = resolveFicha(120, { '35': 5, '36': 35, '37': 40, '38': 20, '39': 20 });
-    expect(r.exact).toBe(false);
+    expect(r.exact).toBe(true);
     expect(r.corrugado).toBe(12);
-    expect(r.fichas).toBe(10); // ceil(120/12)
-    expect(r.baseCurve).toBeNull();
+    expect(r.fichas).toBe(10);
+    expect(r.baseCurve).not.toBeNull();
+    const baseSum = Object.values(r.baseCurve!).reduce((s, v) => s + (Number(v) || 0), 0);
+    expect(baseSum).toBe(12);
   });
 
   // ── Caso 3: curva multiplicada (Σ ∉ {12,15,18}, total % Σ == 0) ──

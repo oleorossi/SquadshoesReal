@@ -32,9 +32,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveProductImage, resolveProductImageWithSource } from '@/lib/imageFallback';
+import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { fetchMainMaterial } from '@/lib/labelUtils';
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
+import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
@@ -379,8 +380,8 @@ export function LabelProductionTab() {
     const co = (companyId && companies.find(c => c.id === companyId))
       || companies.find(c => c.is_primary) || companies[0];
     if (!co) return {
-      senderName: 'SQUAD SHOES IND. E COM. DE CALÇADOS LTDA',
-      senderCnpj: '62.406.033/0001-93',
+      senderName: DEFAULT_MANUFACTURER_NAME,
+      senderCnpj: DEFAULT_MANUFACTURER_CNPJ,
       senderAddress: companyAddress || undefined,
     };
     const d = (co.cnpj || '').replace(/\D/g, '');
@@ -867,32 +868,44 @@ export function LabelProductionTab() {
           }
         }
       }
+      // imageFallbackMap: true quando a foto resolvida NÃO corresponde à cor
+      // pedida (caiu no master/variante de outra cor). A térmica aplica
+      // grayscale + selo "FOTO GENÉRICA" via imageIsFallback.
+      const imageFallbackMap = new Map<string, boolean>();
       const imageResults = await Promise.all(imageRequests.map(async ({ key, referenceId, colorName }) => {
-        const url = await resolveProductImage({ referenceId, colorName, fallbackUrl: logoUrl }).catch(() => logoUrl);
-        return [key, url] as const;
+        try {
+          const result = await resolveProductImageWithSource({ referenceId, colorName, fallbackUrl: logoUrl });
+          return [key, result.url, !result.matchedColor] as const;
+        } catch {
+          return [key, logoUrl, true] as const;
+        }
       }));
-      const imageMap = new Map(imageResults);
+      const imageMap = new Map<string, string>();
+      imageResults.forEach(([k, url, isFallback]) => { imageMap.set(k, url); imageFallbackMap.set(k, isFallback); });
 
       for (const group of thermalGroups) {
         const mainMaterial = materialMap.get(group.referenceId) || '';
         const refData = refDataMap.get(group.referenceId);
         const colorName = group.colors[0] || '';
         const productImageUrl = imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl;
+        const productImageFallback = imageFallbackMap.get(`${group.referenceId}|${colorName}`) ?? false;
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
             for (let i = 0; i < Math.min(qty as number, 2000); i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         } else {
           for (const order of group.orders) {
             const orderColor = order.color || colorName;
-            const orderImageUrl = imageMap.get(`${group.referenceId}|${orderColor}`) || productImageUrl;
+            const orderKey = `${group.referenceId}|${orderColor}`;
+            const orderImageUrl = imageMap.get(orderKey) || productImageUrl;
+            const orderImageFallback = imageMap.has(orderKey) ? (imageFallbackMap.get(orderKey) ?? false) : productImageFallback;
             const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
             for (let i = 0; i < numFichas; i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`, imageUrl: orderImageUrl, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`, imageUrl: orderImageUrl, imageIsFallback: orderImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         }
@@ -901,7 +914,7 @@ export function LabelProductionTab() {
       await supabase.from('print_jobs').insert({ batch_name: `Térmicas - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any).throwOnError();
       queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
-      setPrintHtml(buildThermalLabelsHtml(labels, logoUrl, { width: currentSize.width, height: currentSize.height }, labelConfig));
+      setPrintHtml(buildThermalLabelsHtml(labels, logoUrl, { width: currentSize.width, height: currentSize.height }, labelConfig, resolveSender().senderCnpj));
       toast.success(`${labels.length} etiquetas térmicas geradas.`);
     } catch (err: any) { toast.error(err?.message || 'Erro ao gerar etiquetas'); } finally { setIsGenerating(false); }
   };
@@ -935,13 +948,19 @@ export function LabelProductionTab() {
           imageRequests.set(`${group.referenceId}|${orderColor}`, { referenceId: group.referenceId, colorName: orderColor });
         }
       }
+      const imageFallbackMap = new Map<string, boolean>();
       const imageResults = await Promise.all([...imageRequests.entries()].map(async ([key, { referenceId, colorName }]) => {
-        const url = await resolveProductImage({ referenceId, colorName, fallbackUrl: logoUrl }).catch(() => logoUrl);
-        return [key, url] as const;
+        try {
+          const result = await resolveProductImageWithSource({ referenceId, colorName, fallbackUrl: logoUrl });
+          return [key, result.url, !result.matchedColor] as const;
+        } catch {
+          return [key, logoUrl, true] as const;
+        }
       }));
-      const imageMap = new Map(imageResults);
+      const imageMap = new Map<string, string>();
+      imageResults.forEach(([k, url, isFallback]) => { imageMap.set(k, url); imageFallbackMap.set(k, isFallback); });
 
-      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; imageUrl?: string; }[] = [];
+      const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; imageUrl?: string; imageIsFallback?: boolean; }[] = [];
       for (const group of thermalGroups) {
         const mainMaterial = materialMap.get(group.referenceId) || '';
         const refData = refDataMap.get(group.referenceId);
@@ -958,6 +977,7 @@ export function LabelProductionTab() {
                 clientOrderNumber: group.clientOrderNumber || '',
                 strapsLabel: getEffectiveStrapsLabel(group),
                 imageUrl: imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl,
+                imageIsFallback: imageFallbackMap.get(`${group.referenceId}|${colorName}`) ?? false,
               });
             }
           }
@@ -975,6 +995,9 @@ export function LabelProductionTab() {
                 qty: pairsInOneFicha,
                 strapsLabel: getEffectiveStrapsLabel(group),
                 imageUrl: imageMap.get(`${group.referenceId}|${orderColor}`) || imageMap.get(`${group.referenceId}|${group.colors[0] || ''}`) || logoUrl,
+                imageIsFallback: imageMap.has(`${group.referenceId}|${orderColor}`)
+                  ? (imageFallbackMap.get(`${group.referenceId}|${orderColor}`) ?? false)
+                  : (imageFallbackMap.get(`${group.referenceId}|${group.colors[0] || ''}`) ?? false),
               });
             }
           }
@@ -987,7 +1010,7 @@ export function LabelProductionTab() {
       const blob = await buildThermalLabelsPdf(
         labels,
         { width: currentSize.width, height: currentSize.height },
-        '62.406.033/0001-93',
+        resolveSender().senderCnpj,
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

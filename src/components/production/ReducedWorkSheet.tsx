@@ -146,7 +146,7 @@ export function ReducedWorkSheet({
                   {sizes.map(s => {
                     const q = grade[s] || 0;
                     return (
-                      <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '1px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 17, lineHeight: 1 } : { color: '#bbb', fontSize: 10 }) }}>
+                      <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '1px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 17, lineHeight: 1 } : { color: '#999', fontSize: 10 }) }}>
                         {q > 0 ? q : 0}
                       </td>
                     );
@@ -198,7 +198,7 @@ export function ReducedWorkSheet({
                   {sizes.map(s => {
                     const q = c.grade?.[s] || 0;
                     return (
-                      <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '1px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 14, lineHeight: 1 } : { color: '#ccc', fontSize: 9 }) }}>
+                      <td key={s} style={{ border: '1px solid #000', textAlign: 'center', padding: '1px 0', ...(q > 0 ? { ...DISPLAY, fontSize: 14, lineHeight: 1 } : { color: '#999', fontSize: 9 }) }}>
                         {q > 0 ? q : '–'}
                       </td>
                     );

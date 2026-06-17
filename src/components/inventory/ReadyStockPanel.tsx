@@ -3,6 +3,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass as Search, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { printBoxLabels } from '@/lib/printLabels';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
+import { DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { printHtml, writeRawPrintWindow, openPrintWindow } from '@/lib/printOrder';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -488,7 +489,7 @@ ${cardsHtml}
                   }))
                 )
               );
-              const html = buildThermalLabelsHtml(thermal, '', { width: 100, height: 30 });
+              const html = buildThermalLabelsHtml(thermal, '', { width: 100, height: 30 }, undefined, DEFAULT_MANUFACTURER_CNPJ);
               const w = window.open('', '_blank'); if (w) { w.document.open(); w.document.write(html); w.document.close(); }
             }} className="gap-2">
               <Tag className="h-4 w-4" />
