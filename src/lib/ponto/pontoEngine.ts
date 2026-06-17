@@ -154,5 +154,6 @@ export function computeWeekly(
 }
 
 // Reexports úteis pra os relatórios consumirem TUDO do motor único.
+export { splitDayMinutes };
 export { expectedDayMinutes, worksOnDow, getDaysInRange, computePeriodFolha };
 export type { PeriodFolhaInput, SalaryPayrollResult, PeriodSummary, WeeklyCalcDay };

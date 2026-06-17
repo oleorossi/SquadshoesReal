@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+// Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
+import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
 
 // ── Types ──────────────────────────────────────────────
 export interface WorkSchedule {
@@ -588,65 +590,28 @@ export function calculateDaySummary(
   schedule: WorkSchedule,
   isHoliday: boolean
 ): Omit<DaySummary, 'date' | 'punches'> {
-  const isSunday = dayOfWeek === 0;
-  const isSaturday = dayOfWeek === 6;
+  // ── MOTOR ÚNICO (2026-06-17) ──────────────────────────────────────────────
+  // Delegamos a BASE por-dia ao motor único (pontoEngine), que usa EXATAMENTE os
+  // mesmos primitivos da folha (worksOnDow + expectedDayMinutes + splitDayMinutes).
+  // Assim o corpo do Espelho / Visão Geral / banco de horas usa as MESMAS horas
+  // trabalhadas que a folha (pagamento) — os relatórios se COMPLEMENTAM.
+  //
+  // Mudança vs a versão antiga (que espelhava o SQL): turno parcial à tarde
+  // (ex. 13:08→18:00) NÃO desconta mais "almoço fantasma" (a pessoa entrou depois
+  // do almoço) → 292 em vez de 232; almoço só deduzido quando o dia longo cruza o
+  // meio-dia (regra splitDayMinutes); sem dedupe de 5min (a folha não dedupa).
+  // A função SQL calculate_day_summary é atualizada em LOCKSTEP (mesma regra) e o
+  // histórico fica CONGELADO (folhas/saldos fechados não são recalculados).
+  const isWorkday = worksOnDow(schedule, dayOfWeek) && !isHoliday;
+  const expectedMinutes = isWorkday ? expectedDayMinutes(schedule) : 0;
+  const tolerance = schedule.tolerance_minutes ?? 10;
 
-  // Expected daily minutes — DECISÃO 03/06 (reafirmada 2026-06-10): esperado
-  // do dia = JORNADA CADASTRADA da escala (saída − entrada − almoço, ex.
-  // 08–18 c/ 1h = 540), igual ao motor da folha (salaryPayroll). A antiga
-  // distribuição semanal (44h/5 = 528) gerava ~1h/semana de HE fantasma no
-  // banco vs a folha — números nunca conciliavam.
-  const morningFromSchedule = timeToMinutes(schedule.lunch_start) - timeToMinutes(schedule.entry_time);
-  const afternoonFromSchedule = timeToMinutes(schedule.exit_time) - timeToMinutes(schedule.lunch_end);
-  const dailyFromSchedule = morningFromSchedule + afternoonFromSchedule;
+  const sp = punches.length >= 2
+    ? splitDayMinutes(punches, dayOfWeek, isHoliday)
+    : { normal: 0, premium: 0, incomplete: punches.length === 1 };
 
-  const hasSaturday = !!(schedule.saturday_entry && schedule.saturday_exit);
-  const satFromSchedule = hasSaturday
-    ? timeToMinutes(schedule.saturday_exit!) - timeToMinutes(schedule.saturday_entry!)
-    : 0;
-
-  let expectedMinutes = 0;
-  if (isHoliday || isSunday) {
-    expectedMinutes = 0;
-  } else if (isSaturday) {
-    expectedMinutes = hasSaturday ? Math.max(0, satFromSchedule) : 0;
-  } else {
-    expectedMinutes = Math.max(0, dailyFromSchedule);
-  }
-
-  if (punches.length === 0) {
-    const isAbsent = expectedMinutes > 0;
-    return {
-      dayOfWeek,
-      workedMinutes: 0,
-      workedFormatted: '00:00',
-      expectedMinutes,
-      overtimeMinutes: 0,
-      overtimeFormatted: '00:00',
-      isHoliday,
-      isAbsent,
-      status: isHoliday ? 'holiday' : (isSunday || (isSaturday && expectedMinutes === 0)) ? 'weekend' : isAbsent ? 'absent' : 'normal',
-    };
-  }
-
-  // Calculate worked time from punch pairs (strip manual marker *)
-  // ESPELHA O SQL CANONICAL public.calculate_day_summary (migration
-  // 20260613120000_timesheet-option-c-canonical.sql). Qualquer mudança
-  // aqui DEVE ser refletida na função SQL e vice-versa.
-  let workedMinutes = 0;
-  const rawSorted = [...punches].map(p => p.replace(/\*$/, '')).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
-  // Deduplicate punches within 5 minutes of each other
-  const sorted = rawSorted.filter((p, i) => {
-    if (i === 0) return true;
-    return Math.abs(timeToMinutes(p) - timeToMinutes(rawSorted[i - 1])) >= 5;
-  });
-
-  // ── IRREGULAR (espelha SQL canonical): batidas ímpares ────────────────
-  // sorted.length === 1 ou ímpar (3, 5, …): falha do relógio. Vão pra
-  // "Pendências" pra completar — não geram saldo (sem somar pares parciais
-  // pra evitar saldos negativos falsos, vide auditoria).
-  const isIrregular = sorted.length === 1 || (sorted.length > 1 && sorted.length % 2 !== 0);
-  if (isIrregular) {
+  // Batida ímpar / 1 batida → INCONSISTENTE → PENDENTE (resolve na aba Pendências).
+  if (sp.incomplete) {
     return {
       dayOfWeek,
       workedMinutes: 0,
@@ -660,34 +625,24 @@ export function calculateDaySummary(
     };
   }
 
-  // Pares completos: soma cada par com correção de turno noturno (saída < entrada → +24h)
-  for (let i = 0; i < sorted.length - 1; i += 2) {
-    let pairMin = timeToMinutes(sorted[i + 1]) - timeToMinutes(sorted[i]);
-    if (pairMin < 0) pairMin += 24 * 60; // overnight fix
-    workedMinutes += pairMin;
-  }
-
-  // A6 (auditoria): padrão Squad = 2 batidas (entrada+saída, sem registrar almoço).
-  // SEMPRE inferir o almoço agendado em dia útil com 2 batidas, INDEPENDENTEMENTE de
-  // cobrir a janela agendada — espelha o SQL canônico (calculate_day_summary) usado pelo
-  // banco de horas/Espelho. Antes só deduzia quando as 2 batidas cobriam a janela, o que
-  // divergia ~60min do SQL em turnos parciais (ex.: 13:08→18:00).
-  if (sorted.length === 2 && !isSaturday && !isSunday && !isHoliday) {
-    const lunchDuration = timeToMinutes(schedule.lunch_end) - timeToMinutes(schedule.lunch_start);
-    if (lunchDuration > 0) workedMinutes = Math.max(0, workedMinutes - lunchDuration);
-  }
-
-  const tolerance = schedule.tolerance_minutes || 10;
-  // Per-day overtime is NOT calculated here.
-  // Overtime is a WEEKLY concept (CLT 44h): only after the employee
-  // exceeds the weekly target does overtime begin.
-  // calculateWeeklyPeriod handles the correct weekly calculation.
+  const workedMinutes = sp.normal + sp.premium;
+  // HE NÃO é por-dia (é semanal/período) — calculada fora (calculateWeeklyPeriod / folha).
   const overtimeMinutes = 0;
 
-  let status: DaySummary['status'] = 'normal';
-  if (isHoliday && workedMinutes > 0) status = 'holiday';
-  else if (workedMinutes > expectedMinutes + tolerance) status = 'overtime';
-  else if (workedMinutes < expectedMinutes - tolerance && expectedMinutes > 0) status = 'absent';
+  let status: DaySummary['status'];
+  if (workedMinutes === 0) {
+    status = isHoliday ? 'holiday' : isWorkday ? 'absent' : 'weekend';
+  } else if (isHoliday) {
+    status = 'holiday';
+  } else if (!isWorkday) {
+    status = 'weekend'; // fim de semana / folga trabalhada
+  } else if (workedMinutes > expectedMinutes + tolerance) {
+    status = 'overtime';
+  } else if (workedMinutes < expectedMinutes - tolerance) {
+    status = 'absent';
+  } else {
+    status = 'normal';
+  }
 
   return {
     dayOfWeek,
@@ -697,7 +652,7 @@ export function calculateDaySummary(
     overtimeMinutes,
     overtimeFormatted: minutesToHHMM(overtimeMinutes),
     isHoliday,
-    isAbsent: workedMinutes === 0 && expectedMinutes > 0,
+    isAbsent: workedMinutes === 0 && isWorkday,
     status,
   };
 }
