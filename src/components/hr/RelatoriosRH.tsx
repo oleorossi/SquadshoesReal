@@ -16,7 +16,6 @@ import {
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules, calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
-import { useBankHoursBalances } from '@/hooks/useRH';
 import { splitDayMinutes, MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { computePeriodFolha, expectedDayMinutes, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import {
@@ -103,7 +102,6 @@ export default function RelatoriosRH() {
   const { data: employees = [] } = useEmployees();
   const { data: holidaysList = [] } = useHolidays();
   const { data: schedules = [] } = useWorkSchedules();
-  const { data: bankBalances = [] } = useBankHoursBalances();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
 
   const holidaysSet = useMemo(
@@ -232,6 +230,31 @@ export default function RelatoriosRH() {
   const visibleRows = useMemo(() => (scope === ALL ? rows : rows.filter(r => r.id === scope)), [rows, scope]);
   const scopedRow = useMemo(() => (scope === ALL ? null : rows.find(r => r.id === scope) || null), [rows, scope]);
 
+  // Saldo do banco de horas DO PERÍODO impresso (não o acumulado) por funcionário.
+  // O Espelho é documento do mês, então o rodapé reflete o saldo do período
+  // (calculate_employee_bank_balance com from/to do mês). Pré-carregado num Map
+  // pra printEspelho ficar SÍNCRONO (sem await antes do window.open → sem popup
+  // bloqueado). (auditoria 2026-06-17 — antes mostrava o acumulado desde 15/04.)
+  const periodBankIds = visibleRows.map(r => r.id).join(',');
+  const { data: periodBankBalance } = useQuery({
+    queryKey: ['espelho_period_bank', periodRange.from, periodRange.to, periodBankIds],
+    enabled: !!periodRange.from && !!periodRange.to && visibleRows.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const m = new Map<string, number>();
+      await Promise.all(visibleRows.map(async (r) => {
+        try {
+          const { data } = await (supabase as any).rpc('calculate_employee_bank_balance', {
+            p_employee_id: r.id, p_from: periodRange.from, p_to: periodRange.to, p_skip_missing: true,
+          });
+          const bal = (data as any)?.balance_min;
+          if (typeof bal === 'number') m.set(r.id, bal);
+        } catch { /* ignora — cai em '—' no rodapé do espelho */ }
+      }));
+      return m;
+    },
+  });
+
   const totals = useMemo(() => ({
     normalMin: visibleRows.reduce((s, r) => s + r.result.normal_minutes, 0),
     premiumMin: visibleRows.reduce((s, r) => s + r.result.premium_minutes, 0),
@@ -280,7 +303,6 @@ export default function RelatoriosRH() {
   const printEspelho = (row: EmpRow) => {
     const data = buildPrintData(row);
     const emp = employees.find(e => e.id === row.id);
-    const balance = bankBalances.find((b: any) => b.employee_id === row.id);
     const days = data.days.map(d => ({
       date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches,
       workedMinutes: d.workedMinutes, expectedMinutes: d.expectedMinutes,
@@ -302,7 +324,7 @@ export default function RelatoriosRH() {
       company: { name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa' },
       period,
       days,
-      bankHoursBalance: (balance as any)?.balance_min,
+      bankHoursBalance: periodBankBalance?.get(row.id),
     });
   };
 

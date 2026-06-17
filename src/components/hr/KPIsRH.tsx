@@ -39,7 +39,11 @@ function useKPIsRH() {
       const [runsRes, empRes] = await Promise.all([
         (supabase as any)
           .from('payroll_runs')
-          .select('employee_id, absent_days, business_days, worked_minutes, overtime_50_minutes, overtime_100_minutes, night_minutes, overtime_50_value, overtime_100_value, night_bonus_value')
+          // HE do modelo ATUAL da folha: he_minutes é gravado em overtime_50_minutes
+          // e he_value em overtime_amount (Payroll.tsx). As colunas overtime_100_*/
+          // night_* são LEGADO (modelo 50/100/noturno, não escrito mais) — somá-las
+          // dava Custo HE = 0/defasado vs a folha. (fix auditoria 2026-06-17)
+          .select('employee_id, absent_days, business_days, worked_minutes, overtime_50_minutes, overtime_amount')
           .eq('period', period),
         supabase.from('employees').select('id, active').eq('active', true),
       ]);
@@ -52,14 +56,12 @@ function useKPIsRH() {
         absentDays: acc.absentDays + (Number(r.absent_days) || 0),
         businessDays: acc.businessDays + (Number(r.business_days) || 0),
         workedMin: acc.workedMin + (Number(r.worked_minutes) || 0),
-        heMin: acc.heMin + (Number(r.overtime_50_minutes) || 0) + (Number(r.overtime_100_minutes) || 0) + (Number(r.night_minutes) || 0),
-        heValue: acc.heValue + (Number(r.overtime_50_value) || 0) + (Number(r.overtime_100_value) || 0) + (Number(r.night_bonus_value) || 0),
+        heMin: acc.heMin + (Number(r.overtime_50_minutes) || 0),
+        heValue: acc.heValue + (Number(r.overtime_amount) || 0),
       }), { absentDays: 0, businessDays: 0, workedMin: 0, heMin: 0, heValue: 0 });
 
       const funcsComHE = new Set(runs.filter(r =>
-        (Number(r.overtime_50_minutes) || 0) > 0 ||
-        (Number(r.overtime_100_minutes) || 0) > 0 ||
-        (Number(r.night_minutes) || 0) > 0
+        (Number(r.overtime_50_minutes) || 0) > 0
       ).map(r => r.employee_id)).size;
 
       return {

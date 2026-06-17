@@ -226,9 +226,10 @@ ${calendarSections}
 <div class="totals">
   <div class="cell"><div class="label">Trabalhadas</div><div class="value">${fmtMin(totalWorked)}</div></div>
   <div class="cell"><div class="label">Esperadas</div><div class="value">${fmtMin(totalExpected)}</div></div>
-  <div class="cell"><div class="label">Horas extras</div><div class="value" style="color:#7c2d12;">${fmtMin(totalOT)}</div></div>
+  <!-- "Horas extras" (Σ overtimeMinutes diário) REMOVIDO: era sempre 0 (HE é do
+       período, não diária). O saldo do período vai em "Banco (período)". (2026-06-17) -->
   <div class="cell"><div class="label">Faltas</div><div class="value" style="color:#c00;">${totalAbsent}</div></div>
-  <div class="cell"><div class="label">Banco de horas</div><div class="value">${bankHoursBalance !== undefined ? fmtMin(bankHoursBalance) : '—'}</div></div>
+  <div class="cell"><div class="label">Banco (período)</div><div class="value">${bankHoursBalance !== undefined ? fmtMin(bankHoursBalance) : '—'}</div></div>
 </div>
 
 ${observations ? `<div class="obs"><strong>Observações:</strong> ${escapeHtml(observations)}</div>` : ''}
