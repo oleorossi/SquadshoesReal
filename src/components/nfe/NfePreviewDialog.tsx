@@ -74,6 +74,11 @@ export function NfePreviewDialog({
   const firstDueValue = firstDueOverride ?? ddmmyyyyToISO(parcelas[0]?.vencimento);
   const multiParcela = parcelas.length > 1;
   const reloading = preview.isPending && !!previewData;
+  // Segurança fiscal: se o operador escolheu uma 1ª data mas o preview (que vem
+  // do emit-nfe deployado) NÃO a aplicou, a edge function está DESATUALIZADA —
+  // emitir agora geraria duplicatas com data errada (≠ contas a receber). Bloqueia.
+  const overrideIgnoredByServer = !!firstDueOverride && !reloading && parcelas.length > 0
+    && ddmmyyyyToISO(parcelas[0]?.vencimento) !== firstDueOverride;
 
   const handleConfirm = async () => {
     if (submitting || !saleOrderId) return;
@@ -144,6 +149,17 @@ export function NfePreviewDialog({
               </div>
             )}
 
+            {overrideIgnoredByServer && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  A data escolhida ainda <strong>não foi aplicada</strong> pelo servidor de emissão — a função
+                  <code className="mx-1">emit-nfe</code> está desatualizada. Emitir agora colocaria datas
+                  diferentes na NF e nas contas a receber. Faça o deploy da função antes de emitir com data customizada.
+                </p>
+              </div>
+            )}
+
             <NfePreviewPanel preview={previewData.preview} />
           </>
         )}
@@ -152,7 +168,7 @@ export function NfePreviewDialog({
           <Button variant="outline" onClick={onClose} disabled={emit.isPending || submitting}>Fechar</Button>
           <Button
             onClick={handleConfirm}
-            disabled={!previewData || emit.isPending || submitting || reloading}
+            disabled={!previewData || emit.isPending || submitting || reloading || overrideIgnoredByServer}
           >
             {emit.isPending || submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
             Confirmar e emitir NF-e
