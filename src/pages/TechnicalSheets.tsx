@@ -3151,7 +3151,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           explícito) — antes ficava num combobox sem label
                           espremido entre badge e média, parecia opcional. */}
                       <div className="flex items-center gap-3">
-                        <Badge variant="outline" className="font-semibold text-xs whitespace-nowrap">{strap.label || `TIRA ${idx + 1}`}</Badge>
+                        {/* Rótulo da tira — selecionável (antes era badge fixo
+                            "TIRA N"). Permite marcar tira única ("TIRA") ou a
+                            de trás ("TRASEIRA"). Se o valor gravado não estiver
+                            na lista (cadastro antigo customizado), entra como
+                            1ª opção pra não sumir da seleção. */}
+                        {(() => {
+                          const currentLabel = strap.label || `TIRA ${idx + 1}`;
+                          const options = STRAP_LABEL_OPTIONS.includes(currentLabel as any)
+                            ? [...STRAP_LABEL_OPTIONS]
+                            : [currentLabel, ...STRAP_LABEL_OPTIONS];
+                          return (
+                            <Select
+                              value={currentLabel}
+                              onValueChange={(val) => {
+                                const updated = [...(form.strap_colors || [])];
+                                updated[idx] = { ...updated[idx], label: val };
+                                updateField('strap_colors', updated);
+                              }}
+                            >
+                              <SelectTrigger className="h-7 w-auto min-w-[112px] text-xs font-semibold">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {options.map(opt => (
+                                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          );
+                        })()}
                         <span className="text-xs text-muted-foreground ml-auto">
                           Média: <strong>{safeToFixed(avgConsumption, 1)} cm</strong>/par
                         </span>
@@ -3653,6 +3682,23 @@ const AVIAMENTO_STEPS = [
   'Frente',
   'Traseira',
   'Costura de tiras',
+] as const;
+
+// Rótulos disponíveis pra cada tira na "Configuração de Tiras" (onde se
+// define material + consumo por numeração). Antes o rótulo era fixo
+// "TIRA 1/2/3" (badge read-only); agora o usuário escolhe — útil pra marcar
+// uma tira única ("TIRA") ou a de trás ("TRASEIRA"). UPPERCASE pra casar com
+// os defaults antigos já gravados ('TIRA 1' etc.) sem precisar de migração.
+// O label escolhido propaga pro pedido de venda ("Cores das Tiras"), pro
+// resumo de tiras e pras fichas de operador (useOrderStraps lê strap.label).
+const STRAP_LABEL_OPTIONS = [
+  'TIRA',
+  'TIRA 1',
+  'TIRA 2',
+  'TIRA 3',
+  'FRENTE',
+  'TRASEIRA',
+  'LATERAL',
 ] as const;
 
 function ProductionSectorsTab({
