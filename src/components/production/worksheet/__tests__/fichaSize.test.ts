@@ -83,18 +83,37 @@ describe('resolveFicha', () => {
     expect(r.exact).toBe(true);
   });
 
-  it('grade total divisível no total mas NÃO célula-a-célula: deriva baseCurve via largest-remainder (F-M2)', () => {
-    // total 120 divide por 12 (f=10); as células não dividem por 10. A partir do
-    // F-M2 (2026-06-17) NÃO caímos mais no fallback sem curva — derivamos a curva
-    // "Por Ficha" proporcional por largest-remainder (Hamilton), garantindo que
-    // Σ baseCurve === corrugado (12). Antes este caso retornava baseCurve=null.
+  it('grade total divisível no total mas NÃO célula-a-célula: exact=false, sem curva "Por Ficha" (F-M2 revisado)', () => {
+    // total 120 divide por 12 (f=10); as células não dividem por 10. Como a grade
+    // é IRREGULAR, NÃO existe curva "Por Ficha" confiável (qualquer suavização ×
+    // fichas ≠ a grade real célula-a-célula). A 1ª versão do F-M2 devolvia uma
+    // curva por largest-remainder com exact:true — o que corrompia a grade TOTAL
+    // impressa na ficha de operador (regressão corrigida 2026-06-17). Agora:
+    // exact=false + baseCurve=null ⇒ os worksheets caem na grade combinada REAL
+    // (mixedGrades) e omitem a linha "Por Ficha".
     const r = resolveFicha(120, { '35': 5, '36': 35, '37': 40, '38': 20, '39': 20 });
-    expect(r.exact).toBe(true);
+    expect(r.exact).toBe(false);
     expect(r.corrugado).toBe(12);
     expect(r.fichas).toBe(10);
-    expect(r.baseCurve).not.toBeNull();
-    const baseSum = Object.values(r.baseCurve!).reduce((s, v) => s + (Number(v) || 0), 0);
-    expect(baseSum).toBe(12);
+    expect(r.baseCurve).toBeNull();
+  });
+
+  it('F-M2: quando há baseCurve "exata", curve × fichas reproduz a grade real (invariante anti-corrupção)', () => {
+    // Garante que NENHUM caminho devolva exact:true com uma curva que, multiplicada
+    // pelo nº de fichas, divirja da grade do pedido — a raiz da regressão F-M2.
+    const irregulars: Array<[number, Record<string, number>]> = [
+      [120, { '35': 5, '36': 35, '37': 40, '38': 20, '39': 20 }],
+      [120, { '35': 11, '36': 29, '37': 40, '38': 20, '39': 20 }],
+      [90, { '35': 7, '36': 23, '37': 30, '38': 18, '39': 12 }],
+    ];
+    for (const [total, grid] of irregulars) {
+      const r = resolveFicha(total, grid);
+      if (r.exact && r.baseCurve) {
+        for (const [size, qty] of Object.entries(grid)) {
+          expect((r.baseCurve[size] || 0) * r.fichas).toBe(qty);
+        }
+      }
+    }
   });
 
   // ── Caso 3: curva multiplicada (Σ ∉ {12,15,18}, total % Σ == 0) ──

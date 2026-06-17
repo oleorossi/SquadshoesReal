@@ -13,8 +13,6 @@
  * grade total, imprimia "POR FICHA (120P) · 1 ficha · 1 quadradinho".
  */
 
-import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-
 export const CORRUGADOS = [12, 15, 18] as const;
 
 export interface FichaResolution {
@@ -104,24 +102,24 @@ export function resolveFicha(
       }
     }
 
-    // 3.5 (F-M2, 2026-06-17). Grade IRREGULAR que fecha em pares mas cujas
-    // células NÃO são todas divisíveis pelo nº de fichas (ex.: total 120 com
-    // grid {35:11,36:29,37:40,38:20,39:20} → 10 fichas, mas 35:11 não divide
-    // por 10). O caso 2 cai fora por causa de `allCellsDivisible`, perdendo a
-    // curva "Por Ficha". Aqui: se um corrugado candidato (12/15/18) divide o
-    // TOTAL em nº inteiro de fichas, derivamos a baseCurve por divisão
-    // proporcional com largest-remainder (Hamilton) — garante que a soma da
-    // baseCurve seja EXATAMENTE o corrugado, mesmo sem divisibilidade célula a
-    // célula. Só roda quando os casos exatos (1/2/3) acima falharam, então NÃO
-    // altera o comportamento de grades que já dividiam limpo.
+    // 3.5 (F-M2 revisado, 2026-06-17). Grade IRREGULAR que fecha em pares mas
+    // cujas células NÃO são todas divisíveis pelo nº de fichas (ex.: total 120
+    // com grid {35:11,36:29,37:40,38:20,39:20} → 10 fichas, mas 35:11 não divide
+    // por 10). NÃO existe curva "Por Ficha" CONFIÁVEL aqui: qualquer curva
+    // suavizada × fichas ≠ a grade real célula-a-célula. A 1ª versão do F-M2
+    // devolvia uma curva por largest-remainder com exact:true — isso fazia os
+    // worksheets tratarem a curva suavizada como a grade TOTAL e imprimirem
+    // QUANTIDADES POR NUMERAÇÃO ERRADAS (regressão; corrigido 2026-06-17).
+    // Mantemos só a escolha do corrugado que divide o total (contagem de fichas
+    // exata, ex.: 90 → 6 fichas de 15, melhor que ceil(90/12)=8), mas com
+    // exact:false + baseCurve:null. Assim foldFichaIntoGroup marca mixedGrades e
+    // os worksheets usam a grade combinada REAL (combinedGrid), omitindo a linha
+    // "Por Ficha" (que mentiria pra grade irregular).
     if (sum > 0) {
       for (const c of CORRUGADOS) {
         const fichas = total / c;
         if (Number.isInteger(fichas) && fichas >= 1) {
-          // multiplier = 1/fichas: reparte o total proporcionalmente pra 1
-          // corrugado. scaleGradeWithLargestRemainder garante Σ === round(c).
-          const baseCurve = scaleGradeWithLargestRemainder(g, c / sum, c);
-          return { corrugado: c, fichas, baseCurve, exact: true };
+          return { corrugado: c, fichas, baseCurve: null, exact: false };
         }
       }
     }
