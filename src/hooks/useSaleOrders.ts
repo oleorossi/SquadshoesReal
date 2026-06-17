@@ -335,6 +335,9 @@ export async function syncFinancialRecords(saleOrderId: string) {
       deliveryDeadline: so.delivery_deadline,
       isFactoring: !!so.is_factoring,
       factoringReceivingDays: factoringConfigForEntry?.receiving_days ?? null,
+      // Faturamento antecipado: se o operador escolheu a 1ª data de vencimento na
+      // emissão da NF-e, as contas a receber seguem as MESMAS datas das duplicatas.
+      firstDueDateOverride: (so as any).nfe_first_due_date ?? null,
     });
 
     await reconcileARInstallments(saleOrderId, schedule, existingAR ?? [], {

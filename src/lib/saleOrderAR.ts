@@ -32,6 +32,14 @@ export interface ComputeScheduleInput {
   deliveryDeadline: string | null | undefined;   // ISO ou null → usa hoje
   isFactoring: boolean;
   factoringReceivingDays: number | null | undefined;
+  /**
+   * 1ª data de vencimento escolhida na emissão da NF-e (ISO yyyy-mm-dd) —
+   * faturamento antecipado. Quando preenchida, ANCORA a parcela 1 nesta data e
+   * as demais seguem os MESMOS intervalos da payment_condition (gaps entre
+   * parcelas), IGNORANDO a base por entrega/factoring. Ex.: 60/75/90 + override
+   * 15/08 → 15/08, 30/08, 14/09 (gaps +0/+15/+15). NULL = base padrão.
+   */
+  firstDueDateOverride?: string | null;
   /** Pra ser testável: data de "hoje". Default Date.now(). */
   now?: Date;
 }
@@ -71,6 +79,14 @@ export function computeARSchedule(input: ComputeScheduleInput): InstallmentSched
   const offsets = daysArr.length > 0 ? daysArr : [0];
   const N = offsets.length;
 
+  // Override de faturamento antecipado: ancora a 1ª parcela na data escolhida e
+  // as demais seguem os GAPS da condição (days[i] - days[0]), ignorando a base
+  // por entrega/factoring. Mantém alinhado com as duplicatas da NF (emit-nfe).
+  const overrideAnchor = input.firstDueDateOverride
+    ? parseISODate(input.firstDueDateOverride)
+    : null;
+  const firstOffset = offsets[0];
+
   // Split de valor: floor a centavos pra todas menos a última, resto na última.
   // Garante sum exato == total mesmo com total não divisível por N.
   const cents = Math.round(total * 100);
@@ -78,8 +94,14 @@ export function computeARSchedule(input: ComputeScheduleInput): InstallmentSched
   const remainder = cents - perCents * N;
 
   return offsets.map((days, idx) => {
-    const due = new Date(baseDate);
-    due.setDate(due.getDate() + days);
+    let due: Date;
+    if (overrideAnchor) {
+      due = new Date(overrideAnchor);
+      due.setDate(due.getDate() + (days - firstOffset));
+    } else {
+      due = new Date(baseDate);
+      due.setDate(due.getDate() + days);
+    }
     const amountCents = idx === N - 1 ? perCents + remainder : perCents;
     return {
       installment_number: idx + 1,

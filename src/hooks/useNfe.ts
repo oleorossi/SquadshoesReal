@@ -490,8 +490,8 @@ export interface NfePreviewResponse {
  * sucesso (UI renderiza inline); erros caem em toast.error normalmente.
  */
 export function usePreviewNfe() {
-  return useMutation<NfePreviewResponse, Error, { saleOrderId: string; companyId?: string }>({
-    mutationFn: async ({ saleOrderId, companyId }) => {
+  return useMutation<NfePreviewResponse, Error, { saleOrderId: string; companyId?: string; firstDueDate?: string | null }>({
+    mutationFn: async ({ saleOrderId, companyId, firstDueDate }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
 
@@ -504,7 +504,7 @@ export function usePreviewNfe() {
           'Authorization': `Bearer ${session.access_token}`,
           'apikey': SUPABASE_KEY,
         },
-        body: JSON.stringify({ sale_order_id: saleOrderId, company_id: companyId, dry_run: true }),
+        body: JSON.stringify({ sale_order_id: saleOrderId, company_id: companyId, dry_run: true, first_due_date: firstDueDate ?? null }),
       });
       const txt = await res.text();
       let parsed: any = null;
@@ -525,7 +525,7 @@ export function usePreviewNfe() {
 export function useEmitNfe() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ saleOrderId, companyId }: { saleOrderId: string; companyId?: string }) => {
+    mutationFn: async ({ saleOrderId, companyId, firstDueDate }: { saleOrderId: string; companyId?: string; firstDueDate?: string | null }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
 
@@ -541,7 +541,7 @@ export function useEmitNfe() {
           'Authorization': `Bearer ${session.access_token}`,
           'apikey': SUPABASE_KEY,
         },
-        body: JSON.stringify({ sale_order_id: saleOrderId, company_id: companyId }),
+        body: JSON.stringify({ sale_order_id: saleOrderId, company_id: companyId, first_due_date: firstDueDate ?? null }),
       });
 
       // Tenta JSON, depois texto. Sempre mostra a mensagem REAL do edge fn.
@@ -557,7 +557,7 @@ export function useEmitNfe() {
       if (parsed?.error) throw new Error(String(parsed.error));
       return parsed;
     },
-    onSuccess: async (data: any, variables: { saleOrderId: string; companyId?: string }) => {
+    onSuccess: async (data: any, variables: { saleOrderId: string; companyId?: string; firstDueDate?: string | null }) => {
       if (data?.reconciliation_needed) {
         toast.warning(
           `NF-e aceita pelo GestaoClick${data.provider_nfe_id ? ` (id ${data.provider_nfe_id})` : ''} mas falhou ao salvar no banco. Reconcilie manualmente no painel GestaoClick.`,
@@ -582,6 +582,16 @@ export function useEmitNfe() {
       // syncFinancialRecords garante que só cria se a NF estiver 'autorizada' —
       // se ficou 'processando', não cria (espera a autorização via sync/cron).
       try {
+        // Faturamento antecipado: persiste a 1ª data escolhida no PV ANTES de
+        // gerar as contas a receber, pra que o computeARSchedule (dentro de
+        // syncFinancialRecords, que relê o PV) ancore as parcelas na mesma data
+        // das duplicatas da NF. Sem data escolhida, não toca a coluna.
+        if (variables.firstDueDate) {
+          await (supabase as any)
+            .from('sale_orders')
+            .update({ nfe_first_due_date: variables.firstDueDate })
+            .eq('id', variables.saleOrderId);
+        }
         await syncFinancialRecords(variables.saleOrderId);
         qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
         qc.invalidateQueries({ queryKey: ['financial_entries'] });

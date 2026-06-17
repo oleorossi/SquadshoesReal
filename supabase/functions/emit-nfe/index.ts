@@ -216,7 +216,13 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem emitir NF-e" }), { status: 403, headers: corsHeaders });
     }
 
-    const { sale_order_id, company_id, dry_run = false } = await req.json();
+    const { sale_order_id, company_id, dry_run = false, first_due_date = null } = await req.json();
+    // 1ª data de vencimento (faturamento antecipado), ISO yyyy-mm-dd. Quando
+    // presente, ancora a 1ª duplicata nesta data e as demais seguem os GAPS da
+    // payment_condition. Inválida/ausente → base = hoje + dias (comportamento atual).
+    const firstDueIso = typeof first_due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(first_due_date)
+      ? first_due_date
+      : null;
     if (!sale_order_id) {
       return new Response(JSON.stringify({ error: "sale_order_id é obrigatório" }), { status: 400, headers: corsHeaders });
     }
@@ -983,9 +989,13 @@ Deno.serve(async (req) => {
       const totalCent = Math.round(totalComFrete * 100);
       const baseCent = Math.floor(totalCent / n);
       const hoje = new Date();
+      // Override: ancora na 1ª data escolhida; demais seguem os gaps da condição
+      // (dias[i] - dias[0]). Sem override: base = hoje + dias[i] (comportamento atual).
+      const anchor = firstDueIso ? new Date(`${firstDueIso}T00:00:00`) : null;
+      const firstOffset = lista[0];
       return lista.map((dias, i) => {
-        const venc = new Date(hoje);
-        venc.setDate(venc.getDate() + dias);
+        const venc = anchor ? new Date(anchor) : new Date(hoje);
+        venc.setDate(venc.getDate() + (anchor ? dias - firstOffset : dias));
         const dd = String(venc.getDate()).padStart(2, "0");
         const mm = String(venc.getMonth() + 1).padStart(2, "0");
         const yyyy = venc.getFullYear();
