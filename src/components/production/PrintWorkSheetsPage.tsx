@@ -2047,7 +2047,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     if (!soleSheetSectors.some(s => activeSectors.has(s))) return null;
     return buildColorGroupedSheets('sole');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS]);
+  // knifeDefaultBoundaries vem de query SEPARADA (useKnifeFacasDefault) — sem ele
+  // nas deps, o memo não recomputava quando o padrão de facas carregava async →
+  // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef]);
 
   // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
   // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
@@ -2057,7 +2060,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     if (!activeSectors.has('Aviamento')) return null;
     return buildColorGroupedSheets('reference');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef]);
 
   // ── Solagem / Colagem: consolidated by sole color ────────────────────────────
   // B1 (2026-06-10): as bandas passam a ser calculadas POR SETOR — uma OP só
