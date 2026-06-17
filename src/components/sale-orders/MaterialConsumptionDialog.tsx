@@ -18,9 +18,10 @@ import {
   type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
 import {
-  computeStrapRollCut,
+  aggregateArtisanalStrapCut,
   isArtisanalStrap,
   normalizeWidthToMm,
+  type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
@@ -526,10 +527,13 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       }
       const groupWidthByNorm = new Map<string, number>();
       const groupNameByNorm = new Map<string, string>();
+      // norm do nome → group_id, pra agregar por (group_id+cor) igual aos outros painéis.
+      const groupIdByNorm = new Map<string, string>();
       for (const g of (ctx.productGroups || []) as any[]) {
         const norm = normTxt(g.name);
         if (!norm) continue;
         if (!groupNameByNorm.has(norm)) groupNameByNorm.set(norm, g.name);
+        if (g.id && !groupIdByNorm.has(norm)) groupIdByNorm.set(norm, String(g.id));
         const w = normalizeWidthToMm(g.dimensions_width, g.dimensions_unit);
         if (w > (groupWidthByNorm.get(norm) || 0)) groupWidthByNorm.set(norm, w);
       }
@@ -584,7 +588,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // então `totalQuantity` é exatamente os metros_necessarios do corte do rolo
       // — o mesmo total que a seção "Tiras" exibe acima (por isso o bloco vermelho
       // não repete a coluna de metros: só mostra o cm a cortar do rolo).
-      const artisanalCut: ArtisanalStrapCutRow[] = [];
+      const artisanalInputs: ArtisanalStrapAggInput[] = [];
       for (const row of sortedRows) {
         if (row.componentType !== 'Tiras' || !(row.totalQuantity > 0)) continue;
         const norm = normTxt(row.groupName);
@@ -594,21 +598,19 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           name: `${row.groupName} ${row.materialName || ''}`,
         });
         if (!detected) continue;
-        const largura_mm = strapWidthForNorm(norm);
-        const color = (row.color || '—').toString().trim() || '—';
-        const baseName = recipeBaseByNorm.get(norm) || undefined;
-        artisanalCut.push({
-          key: `${norm}||${color.toLowerCase()}`,
+        artisanalInputs.push({
+          // group_id resolvido pelo nome do grupo (as linhas canônicas já vêm
+          // somadas por grupo+cor); agrupar por (group_id+cor) mantém paridade
+          // com os outros painéis e soma os metros antes do corte do rolo.
+          groupKey: groupIdByNorm.get(norm) || norm,
           groupName: groupNameByNorm.get(norm) || row.groupName,
-          color,
-          largura_mm,
-          metros_necessarios: row.totalQuantity,
-          cut: computeStrapRollCut({ largura_mm, metros_necessarios: row.totalQuantity }),
-          baseName,
+          color: (row.color || '—').toString().trim() || '—',
+          metros: row.totalQuantity,
+          largura_mm: strapWidthForNorm(norm),
+          baseName: recipeBaseByNorm.get(norm) || undefined,
         });
       }
-      artisanalCut.sort((a, b) =>
-        a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
+      const artisanalCut: ArtisanalStrapCutRow[] = aggregateArtisanalStrapCut(artisanalInputs);
 
       if (isCancelled()) return;
       setRows(sortedRows);

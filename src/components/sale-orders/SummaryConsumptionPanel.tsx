@@ -20,9 +20,10 @@ import {
  } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import {
-  computeStrapRollCut,
+  aggregateArtisanalStrapCut,
   isArtisanalStrap,
   normalizeWidthToMm,
+  type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
@@ -329,7 +330,9 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           }
         }
       }
-      const artisanalAgg = new Map<string, { groupName: string; color: string; norm: string; metros: number; baseName?: string }>();
+      // Entradas brutas de tira artesanal — a agregação por (group_id+cor) e a soma
+      // dos metros antes do corte ficam no helper canônico (aggregateArtisanalStrapCut).
+      const strapInputs: ArtisanalStrapAggInput[] = [];
 
       const consumptionMap = new Map<string, ConsumptionRow>();
       const soleSizeMap: SoleByType = {};
@@ -465,10 +468,16 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
             name: `${strapGroupName} ${strap.label || ''}`,
           })) {
             const strapColor = (strap.color || orderColor || '—').toString().trim() || '—';
-            const aKey = `${strapNorm}||${strapColor.toLowerCase()}`;
-            const existing = artisanalAgg.get(aKey);
-            if (existing) existing.metros += metros;
-            else artisanalAgg.set(aKey, { groupName: strapGroupNameByNorm.get(strapNorm) || strapGroupName, color: strapColor, norm: strapNorm, metros, baseName: recipeBaseByNorm.get(strapNorm) });
+            // group_id colapsa variantes "TIRA 1".."TIRA N" da mesma família; nome
+            // normalizado é o fallback quando a tira não tem group_id.
+            strapInputs.push({
+              groupKey: ((strap as any).group_id || '').toString().trim() || strapNorm,
+              groupName: strapGroupNameByNorm.get(strapNorm) || strapGroupName,
+              color: strapColor,
+              metros,
+              largura_mm: strapWidthForNorm(strapNorm),
+              baseName: recipeBaseByNorm.get(strapNorm),
+            });
           }
         }
 
@@ -565,18 +574,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         return a.groupName.localeCompare(b.groupName, 'pt-BR') || a.materialName.localeCompare(b.materialName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR');
       });
 
-      const artisanalRows: ArtisanalStrapCutRow[] = Array.from(artisanalAgg.entries()).map(([key, v]) => {
-        const largura_mm = strapWidthForNorm(v.norm);
-        return {
-          key,
-          groupName: v.groupName,
-          color: v.color,
-          largura_mm,
-          metros_necessarios: v.metros,
-          cut: computeStrapRollCut({ largura_mm, metros_necessarios: v.metros }),
-          baseName: v.baseName,
-        };
-      }).sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
+      const artisanalRows: ArtisanalStrapCutRow[] = aggregateArtisanalStrapCut(strapInputs);
 
       setRows(sortedRows);
       setArtisanalStrapRows(artisanalRows);

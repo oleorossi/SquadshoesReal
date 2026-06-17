@@ -11,9 +11,10 @@ import {
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import {
-  computeStrapRollCut,
+  aggregateArtisanalStrapCut,
   isArtisanalStrap,
   normalizeWidthToMm,
+  type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
 
@@ -645,8 +646,11 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
     }
   }
 
-  // Acumula metros de tira por (grupo+cor) só para as tiras detectadas artesanais.
-  const agg = new Map<string, { groupName: string; color: string; norm: string; metros: number; baseName?: string }>();
+  // Entradas brutas (uma por tira/OP detectada artesanal). A AGREGAÇÃO por
+  // (group_id+cor) e a SOMA dos metros antes do corte ficam no helper canônico
+  // (aggregateArtisanalStrapCut) — mesma lógica nos 3 painéis do PV. Agrupar por
+  // group_id (não pelo nome) colapsa variantes "TIRA 1".."TIRA N" da mesma família.
+  const strapInputs: ArtisanalStrapAggInput[] = [];
 
   for (const order of ordersData) {
     const sheetStraps: any[] = sheetStrapsMap.get(order.reference_id) || [];
@@ -678,26 +682,16 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
       if (metros <= 0) continue;
 
       const color = (strap.color || order.color || '—').toString().trim() || '—';
-      const key = `${norm}||${color.toLowerCase()}`;
-      const existing = agg.get(key);
-      if (existing) existing.metros += metros;
-      else agg.set(key, { groupName: groupNameByNorm.get(norm) || groupName, color, norm, metros, baseName: recipeBaseByNorm.get(norm) });
+      strapInputs.push({
+        groupKey: ((strap as any).group_id || '').toString().trim() || norm,
+        groupName: groupNameByNorm.get(norm) || groupName,
+        color,
+        metros,
+        largura_mm: widthForNorm(norm),
+        baseName: recipeBaseByNorm.get(norm),
+      });
     }
   }
 
-  const rows: ArtisanalStrapCutRow[] = Array.from(agg.entries()).map(([key, v]) => {
-    const largura_mm = widthForNorm(v.norm);
-    return {
-      key,
-      groupName: v.groupName,
-      color: v.color,
-      largura_mm,
-      metros_necessarios: v.metros,
-      cut: computeStrapRollCut({ largura_mm, metros_necessarios: v.metros }),
-      baseName: v.baseName,
-    };
-  });
-
-  rows.sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
-  return rows;
+  return aggregateArtisanalStrapCut(strapInputs);
 }
