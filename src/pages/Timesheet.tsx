@@ -734,7 +734,7 @@ function TimesheetRecordsTab() {
   const absences = faltasFolha;
   const holidayWorked = periodSummary.totalHolidaysWorked;
 
-  const overtimeDays = summaries.filter(d => d.overtimeMinutes > 0);
+  // overtimeDays removido: overtimeMinutes por dia é sempre 0 (HE é do período).
   const deficitDays = summaries.filter(d => d.expectedMinutes > 0 && d.workedMinutes > 0 && d.workedMinutes < d.expectedMinutes);
   const absentDays = summaries.filter(d => d.isAbsent);
 
@@ -1212,51 +1212,10 @@ function TimesheetRecordsTab() {
             </Card>
           )}
 
-          {/* Overtime days detail */}
-          {overtimeDays.length > 0 && (
-            <Panel
-              title={<span className="flex items-center gap-2"><Clock className="h-4 w-4 text-amber-500" /> Dias com Hora Extra ({overtimeDays.length})</span>}
-              flush
-            >
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                      <TableHead>Data</TableHead>
-                      <TableHead>Dia</TableHead>
-                      <TableHead>Batidas</TableHead>
-                      <TableHead className="text-right">HE</TableHead>
-                      <TableHead>Tipo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {overtimeDays.map(d => (
-                      <TableRow key={d.date}>
-                        <TableCell className="font-mono text-sm">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
-                        <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm font-medium text-amber-600">{d.overtimeFormatted}</TableCell>
-                        <TableCell>
-                          <Badge variant={d.isHoliday ? 'default' : 'outline'} className="text-xs">
-                            {d.isHoliday ? `Feriado ${defaultSchedule.holiday_multiplier}x` : `Normal ${defaultSchedule.overtime_multiplier}x`}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="bg-muted/30 font-semibold">
-                      <TableCell colSpan={3}>TOTAL HE BRUTA</TableCell>
-                      <TableCell className="text-right font-mono text-sm text-amber-600">{minutesToDisplay(totalOvertime)}</TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            </Panel>
-          )}
+          {/* "Dias com Hora Extra" REMOVIDO (auditoria 2026-06-17): HE é conceito
+              de PERÍODO (não diário) — calculateDaySummary.overtimeMinutes é sempre
+              0, então este bloco nunca tinha dado. A HE real (líquida do período)
+              aparece no card "Hora Extra" acima (motor da folha). */}
 
           {/* Day-by-day table */}
           <Panel title="Registro Diário Completo" flush>
@@ -1270,7 +1229,6 @@ function TimesheetRecordsTab() {
                     <TableHead>Batidas</TableHead>
                     <TableHead className="text-right">Trabalhado</TableHead>
                     <TableHead className="text-right">Esperado</TableHead>
-                    <TableHead className="text-right">HE</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1295,11 +1253,6 @@ function TimesheetRecordsTab() {
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">{d.workedFormatted}</TableCell>
                       <TableCell className="text-right font-mono text-sm text-muted-foreground">{minutesToDisplay(d.expectedMinutes)}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {d.overtimeMinutes > 0 ? (
-                          <span className="text-amber-600 font-medium">{d.overtimeFormatted}</span>
-                        ) : '—'}
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1391,33 +1344,9 @@ function TimesheetRecordsTab() {
                   </Card>
                 )}
 
-                {/* Overtime days */}
-                {overtimeDays.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-amber-500" /> Dias com Hora Extra ({overtimeDays.length})
-                    </h4>
-                    <div className="rounded-lg border overflow-hidden">
-                      <Table>
-                        <TableHeader><TableRow className="bg-amber-500/5">
-                          <TableHead>Data</TableHead><TableHead>Dia</TableHead><TableHead>Batidas</TableHead>
-                          <TableHead className="text-right">HE</TableHead><TableHead>Tipo</TableHead>
-                        </TableRow></TableHeader>
-                        <TableBody>
-                          {overtimeDays.map(d => (
-                            <TableRow key={d.date}>
-                              <TableCell className="font-mono text-sm">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
-                              <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
-                              <TableCell><div className="flex flex-wrap gap-1">{d.punches.map((p, i) => <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>)}</div></TableCell>
-                              <TableCell className="text-right font-mono text-sm font-medium text-amber-600">{d.overtimeFormatted}</TableCell>
-                              <TableCell><Badge variant={d.isHoliday ? 'default' : 'outline'} className="text-xs">{d.isHoliday ? 'Feriado' : 'Normal'}</Badge></TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                )}
+                {/* "Dias com Hora Extra" REMOVIDO (auditoria 2026-06-17): HE é do
+                    PERÍODO, não diária — overtimeMinutes por dia é sempre 0. Ver
+                    card "Hora Extra" (motor da folha). */}
 
                 {/* Deficit days */}
                 {deficitDays.length > 0 && (
