@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeStrapRollCut,
+  aggregateArtisanalStrapCut,
   isArtisanalStrap,
   normalizeWidthToMm,
   ROLO_LARGURA_MM,
+  ROLO_LARGURA_CM,
   ROLO_COMPRIMENTO_M,
   PERDA_PCT,
 } from '@/lib/strapRollCut';
@@ -129,6 +131,125 @@ describe('computeStrapRollCut — validações', () => {
     expect(r.warning).toBeUndefined();
     expect(r.n_bandas).toBe(Math.ceil(100 / 34)); // 3
     expect(r.cm_a_cortar).toBeCloseTo(3, 6); // 3 bandas × 10mm = 30mm = 3cm
+  });
+});
+
+describe('breakdown multi-rolo (n_rolos_completos + cm_no_ultimo_rolo)', () => {
+  it('ROLO_LARGURA_CM = 137', () => {
+    expect(ROLO_LARGURA_CM).toBe(137);
+  });
+
+  // [descrição, cut_width_mm, metros, cm_a_cortar, n_rolos_completos, cm_no_ultimo_rolo]
+  const CASOS: Array<[string, number, number, number, number, number]> = [
+    // Caso 1 — CARAMELO PV-00144: 182 cm → 1 rolo completo + 45 cm.
+    ['CARAMELO PV-00144', 20, 3091.2, 182, 1, 45],
+    // Caso 2 — OFF WHITE PV-00144: 130 cm → < 1 rolo (0 completos).
+    ['OFF WHITE PV-00144', 20, 2184, 130, 0, 130],
+    // Caso 3 — exatamente 137 cm → 1 rolo completo, sem sobra.
+    ['137 cm exato', 10, 4640, 137, 1, 0],
+    // Caso 4 — 411 cm → 3 rolos completos, sem sobra.
+    ['411 cm = 3 rolos', 30, 4640, 411, 3, 0],
+    // Caso 5 — 274 cm → 2 rolos completos, sem sobra.
+    ['274 cm = 2 rolos', 20, 4640, 274, 2, 0],
+    // Caso 6 — 200 cm → 1 rolo completo + 63 cm.
+    ['200 cm = 1 rolo + 63', 20, 3400, 200, 1, 63],
+    // Extra (Task 2) — 300 cm → 2 rolos completos + 26 cm.
+    ['300 cm = 2 rolos + 26', 30, 3400, 300, 2, 26],
+    // Sub-rolo simples — 30 cm → 0 completos (sem breakdown).
+    ['30 cm simples', 20, 510, 30, 0, 30],
+  ];
+
+  for (const [nome, cut, metros, cm, completos, sobra] of CASOS) {
+    it(`${nome}: cut ${cut}mm · ${metros}m → ${cm}cm = ${completos} rolo(s) + ${sobra}cm`, () => {
+      const r = computeStrapRollCut({ largura_mm: cut, metros_necessarios: metros });
+      expect(r.valid).toBe(true);
+      expect(r.cm_a_cortar).toBeCloseTo(cm, 6);
+      expect(r.n_rolos_completos).toBe(completos);
+      expect(r.cm_no_ultimo_rolo).toBeCloseTo(sobra, 6);
+      // Invariante: completos × 137 + sobra reconstrói o total (a menos do arredondamento da sobra).
+      expect(completos * ROLO_LARGURA_CM + r.cm_no_ultimo_rolo).toBeCloseTo(r.cm_a_cortar, 1);
+    });
+  }
+
+  it('inválida (sem largura) → breakdown zerado', () => {
+    const r = computeStrapRollCut({ largura_mm: 0, metros_necessarios: 1000 });
+    expect(r.valid).toBe(false);
+    expect(r.n_rolos_completos).toBe(0);
+    expect(r.cm_no_ultimo_rolo).toBe(0);
+  });
+});
+
+describe('aggregateArtisanalStrapCut — soma metros ANTES de calcular', () => {
+  it('lista vazia → []', () => {
+    expect(aggregateArtisanalStrapCut([])).toHaveLength(0);
+  });
+
+  it('REGRESSÃO PV-00144 OFF WHITE: 5 tiras (4×312 + 1×936) → 1 linha de 130 cm (não 136)', () => {
+    // Mesmo group_id (família TIRA OVERLOCK 5MM) com labels distintos e consumos
+    // diferentes. A soma dos ceils individuais daria 136 cm; somar os metros antes
+    // dá 130 cm — 6 cm a menos de rolo.
+    const inputs = [
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 312, largura_mm: 20 },
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 312, largura_mm: 20 },
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 312, largura_mm: 20 },
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 312, largura_mm: 20 },
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'OFF WHITE', metros: 936, largura_mm: 20 },
+    ];
+    const rows = aggregateArtisanalStrapCut(inputs);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metros_necessarios).toBeCloseTo(2184, 6);
+    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(130, 6);
+    expect(rows[0].cut.n_rolos_completos).toBe(0);
+
+    // Documenta que somar os ceils individuais seria PIOR (136 cm).
+    const somaIndividual = inputs
+      .map((i) => computeStrapRollCut({ largura_mm: i.largura_mm, metros_necessarios: i.metros }).cm_a_cortar)
+      .reduce((s, v) => s + v, 0);
+    expect(somaIndividual).toBeCloseTo(136, 6);
+    expect(rows[0].cut.cm_a_cortar).toBeLessThan(somaIndividual);
+  });
+
+  it('CARAMELO: soma 3091,2 m → 182 cm com breakdown 1 rolo + 45', () => {
+    const rows = aggregateArtisanalStrapCut([
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'CARAMELO', metros: 3000, largura_mm: 20 },
+      { groupKey: 'g-overlock', groupName: 'TIRA OVERLOCK 5MM', color: 'CARAMELO', metros: 91.2, largura_mm: 20 },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metros_necessarios).toBeCloseTo(3091.2, 6);
+    expect(rows[0].cut.cm_a_cortar).toBeCloseTo(182, 6);
+    expect(rows[0].cut.n_rolos_completos).toBe(1);
+    expect(rows[0].cut.cm_no_ultimo_rolo).toBeCloseTo(45, 6);
+  });
+
+  it('separa por cor e por grupo; group_id colapsa labels distintos', () => {
+    const rows = aggregateArtisanalStrapCut([
+      // mesmo group_id, cores diferentes → 2 linhas
+      { groupKey: 'g-a', groupName: 'TIRA A', color: 'PRETO', metros: 100, largura_mm: 20 },
+      { groupKey: 'g-a', groupName: 'TIRA A', color: 'BRANCO', metros: 100, largura_mm: 20 },
+      // grupo diferente, mesma cor → linha própria
+      { groupKey: 'g-b', groupName: 'TIRA B', color: 'PRETO', metros: 100, largura_mm: 11 },
+    ]);
+    expect(rows).toHaveLength(3);
+  });
+
+  it('fallback: sem groupKey usa o nome normalizado (acento/caixa-insensível)', () => {
+    const rows = aggregateArtisanalStrapCut([
+      { groupName: 'Tira Café', color: 'Único', metros: 50, largura_mm: 20 },
+      { groupName: 'TIRA CAFÉ', color: 'unico', metros: 50, largura_mm: 20 },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metros_necessarios).toBeCloseTo(100, 6);
+  });
+
+  it('usa a maior largura > 0 das tiras com metros e ignora metros ≤ 0', () => {
+    const rows = aggregateArtisanalStrapCut([
+      { groupKey: 'g', groupName: 'TIRA', color: 'X', metros: 100, largura_mm: 20 },
+      { groupKey: 'g', groupName: 'TIRA', color: 'X', metros: 50, largura_mm: 25 },
+      { groupKey: 'g', groupName: 'TIRA', color: 'X', metros: 0, largura_mm: 99 }, // ignorada (metros 0)
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metros_necessarios).toBeCloseTo(150, 6); // 100 + 50 (o de metros 0 não soma)
+    expect(rows[0].largura_mm).toBe(25); // maior largura entre as tiras contabilizadas
   });
 });
 
