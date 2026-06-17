@@ -56,33 +56,39 @@ const fmtDia = (iso: string) => {
 const esc = (s: string) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
-/* ---------- Impressão (nova janela, A4 paisagem, várias fichas por folha) ----------
+/* ---------- Impressão (nova janela, A4 paisagem, 6 fichas por folha) ----------
    Cores hardcoded INTENCIONAIS — impressão A4 precisa de tons garantidos,
-   independentes do tema/dark mode (mesma regra dos demais prints do sistema). */
+   independentes do tema/dark mode (mesma regra dos demais prints do sistema).
+   Layout: cada folha (.page) é uma grade 2 colunas × 3 linhas = 6 fichas; o
+   imprimirFichas agrupa os cards em blocos de 6 e força page-break por folha. */
 const PRINT_CSS = `
   *{box-sizing:border-box}
   body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a1a}
   .mono{font-family:'SF Mono','JetBrains Mono',Menlo,Consolas,monospace}
-  .print-card{break-inside:avoid;page-break-inside:avoid;margin:0 0 8mm}
-  .print-card:last-child{margin-bottom:0}
-  .card{border:1px solid #000;padding:14px 16px}
-  .page-num{float:right;font:600 11px/'SF Mono',monospace;letter-spacing:.08em;color:#888}
-  .grade-tag{font-family:'SF Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#b08400;display:inline-block;margin-bottom:8px}
+  /* 6 fichas por A4 paisagem (2 col × 3 lin). align-content:start mantém os
+     cards compactos no topo; o page-break vem do agrupamento de 6 em 6. */
+  .page{display:grid;grid-template-columns:repeat(2,1fr);gap:6mm;align-content:start;
+        page-break-after:always;break-after:page}
+  .page:last-child{page-break-after:auto;break-after:auto}
+  .print-card{break-inside:avoid;page-break-inside:avoid;min-width:0;display:flex}
+  .card{border:1px solid #000;padding:7px 9px;width:100%;display:flex;flex-direction:column}
+  .page-num{float:right;font:600 9px/1 'SF Mono',monospace;letter-spacing:.06em;color:#888}
+  .grade-tag{font-family:'SF Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#b08400;display:inline-block;margin-bottom:4px}
   .grade-tag.adulto{color:#444}
-  .head{border:1.5px solid #1f1f1f;clear:both;padding:8px 12px}
+  .head{border:1.5px solid #1f1f1f;clear:both;padding:4px 9px}
   .meta{display:flex;border:1.5px solid #1f1f1f;border-top:none}
-  .meta>div{flex:1;padding:6px 12px;border-right:1.5px solid #1f1f1f}
+  .meta>div{flex:1;padding:3px 9px;border-right:1.5px solid #1f1f1f}
   .meta>div:last-child{border-right:none}
-  .lbl{font-family:'SF Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#888;display:block;margin-bottom:3px}
-  .v-big{font-size:20px;font-weight:800}
-  .v-mid{font-size:15px;font-weight:700;min-height:18px}
-  table{width:100%;border-collapse:collapse;border:1.5px solid #1f1f1f;border-top:none;table-layout:fixed}
-  th,td{border:1px solid #1f1f1f;text-align:center;height:40px;font-weight:700;font-size:15px}
-  .rowlabel{font-family:'SF Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#444;text-align:left;padding:0 10px;width:160px}
-  thead th{font-family:'SF Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#888;height:28px}
-  .col-total{width:70px;color:#888}
-  .ppf-cell{background:#f1f0ed;font-size:17px}
-  @page{size:A4 landscape;margin:12mm}
+  .lbl{font-family:'SF Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#888;display:block;margin-bottom:2px}
+  .v-big{font-size:15px;font-weight:800;line-height:1.1}
+  .v-mid{font-size:11px;font-weight:700;min-height:13px;line-height:1.1}
+  table{width:100%;border-collapse:collapse;border:1.5px solid #1f1f1f;border-top:none;table-layout:fixed;margin-top:5px}
+  th,td{border:1px solid #1f1f1f;text-align:center;height:24px;font-weight:700;font-size:12px}
+  .rowlabel{font-family:'SF Mono',monospace;font-size:8px;letter-spacing:.04em;text-transform:uppercase;color:#444;text-align:left;padding:0 6px;width:56px;line-height:1.05}
+  thead th{font-family:'SF Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:#888;height:16px}
+  .col-total{width:38px;color:#888}
+  .ppf-cell{background:#f1f0ed;font-size:13px}
+  @page{size:A4 landscape;margin:8mm}
 `;
 
 function cardHTML(f: {
@@ -124,13 +130,19 @@ function imprimirFichas(
   }>,
   expandByCopias: boolean,
 ) {
-  const cards = list
-    .flatMap((f) => {
-      const n = expandByCopias ? Math.max(1, f.copias || 1) : 1;
-      return Array.from({ length: n }, () => cardHTML(f));
-    })
-    .join("");
-  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha de Montadores</title><style>${PRINT_CSS}</style></head><body>${cards}<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`;
+  const cards = list.flatMap((f) => {
+    const n = expandByCopias ? Math.max(1, f.copias || 1) : 1;
+    return Array.from({ length: n }, () => cardHTML(f));
+  });
+  // Agrupa em folhas de 6 fichas (grade 2×3 do A4 paisagem). Cada .page força
+  // page-break, então sempre saem no máx. 6 por folha — independente do total.
+  const PER_PAGE = 6;
+  const pages: string[] = [];
+  for (let i = 0; i < cards.length; i += PER_PAGE) {
+    pages.push(`<div class="page">${cards.slice(i, i + PER_PAGE).join("")}</div>`);
+  }
+  const body = pages.join("") || `<div class="page"></div>`;
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha de Montadores</title><style>${PRINT_CSS}</style></head><body>${body}<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`;
   const w = window.open("", "_blank");
   if (!w) {
     alert("Permita pop-ups neste site para imprimir.");
