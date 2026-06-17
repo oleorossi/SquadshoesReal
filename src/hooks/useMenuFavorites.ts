@@ -57,33 +57,44 @@ export function useMenuFavorites() {
     staleTime: 30 * 1000,
     retry: 1,
     queryFn: async () => {
-      const { data, error } = await sb
-        .from('user_menu_favorites')
-        .select('favorites')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (error) throw error;
+      // NUNCA lança: o handler global de erros do react-query exibiria um toast
+      // ("Falha ao carregar menu-favorites…"). Favorito não é crítico e sempre
+      // há o cache local — em qualquer falha (tabela ainda não migrada, sem
+      // rede) caímos no localStorage silenciosamente.
+      try {
+        const { data, error } = await sb
+          .from('user_menu_favorites')
+          .select('favorites')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) throw error;
 
-      const dbFavs: MenuFavorite[] = Array.isArray(data?.favorites)
-        ? data.favorites.filter((f: any) => f && f.path && f.name)
-        : [];
+        const dbFavs: MenuFavorite[] = Array.isArray(data?.favorites)
+          ? data.favorites.filter((f: any) => f && f.path && f.name)
+          : [];
 
-      // Migração one-shot do localStorage → banco quando o banco está vazio.
-      if (dbFavs.length === 0 && !migratedRef.current) {
-        const local = readLocal();
-        if (local.length > 0) {
-          migratedRef.current = true;
-          await sb.from('user_menu_favorites').upsert(
-            { user_id: userId, favorites: local, updated_at: new Date().toISOString() },
-            { onConflict: 'user_id' },
-          );
-          writeLocal(local);
-          return local;
+        // Migração one-shot do localStorage → banco quando o banco está vazio.
+        if (dbFavs.length === 0 && !migratedRef.current) {
+          const local = readLocal();
+          if (local.length > 0) {
+            migratedRef.current = true;
+            try {
+              await sb.from('user_menu_favorites').upsert(
+                { user_id: userId, favorites: local, updated_at: new Date().toISOString() },
+                { onConflict: 'user_id' },
+              );
+            } catch { /* tabela ainda não migrada: mantém só o local */ }
+            writeLocal(local);
+            return local;
+          }
         }
-      }
 
-      writeLocal(dbFavs); // espelha no cache local pra próxima carga ser instantânea
-      return dbFavs;
+        writeLocal(dbFavs); // espelha no cache local pra próxima carga ser instantânea
+        return dbFavs;
+      } catch (err: any) {
+        console.warn('[menu-favorites] banco indisponível, usando cache local:', err?.message || err);
+        return readLocal();
+      }
     },
   });
 
