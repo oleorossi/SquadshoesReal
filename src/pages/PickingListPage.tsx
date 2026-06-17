@@ -24,8 +24,7 @@ import {
   COMPONENT_ORDER,
   formatUnit,
 } from '@/lib/bomConsumption';
-import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM } from '@/lib/strapRollCut';
-import { planRollsFromStrapRows } from '@/lib/cuttingOptimizer';
+import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollBreakdownLabel } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -411,48 +410,36 @@ export default function PickingListPage() {
       `;
     }
 
-    // Bloco vermelho: tiras artesanais — corte do rolo. Agrupado por base+cor
-    // (mesmo otimizador FFD do bloco em tela — planRollsFromStrapRows) pra a
-    // impressão mostrar quantos ROLOS cada cor consome, não só o cm por tira.
+    // Bloco vermelho: tiras artesanais — corte do rolo. UMA linha por (grupo+cor),
+    // com os metros já somados (aggregateArtisanalStrapCut). Quando passa de 1 rolo
+    // (137 cm), mostra o breakdown "N rolos completos + X cm" embaixo do cm total.
     let strapCutHtml = '';
     if (strapCut.length > 0) {
-      const fmtMm = (mm: number) => Math.round(mm).toLocaleString('pt-BR');
-      const tiraRow = (r: ArtisanalStrapCutRow, showColor: boolean) => {
+      const strapRows = strapCut.map((r) => {
         const { cut } = r;
         const cortar = cut.valid
           ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
           : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
+        const breakdown = rollBreakdownLabel(cut);
+        const breakdownHtml = breakdown
+          ? `<div style="font-size:10px;color:#dc2626;opacity:.85;font-family:system-ui">${escapeHtml(breakdown)}</div>`
+          : '';
         const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
-        const colorTxt = showColor && r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : '';
+        const colorTxt = r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : '';
         return `<tr style="color:#dc2626">
           <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${colorTxt}${larguraTxt}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}${breakdownHtml}</td>
         </tr>`;
-      };
-      const groupRows = planRollsFromStrapRows(strapCut).map(g => {
-        // Fallback (tira sem receita): base == nome da tira e 1 só → linha única.
-        const single = g.rows.length === 1 && g.baseName === g.rows[0].groupName;
-        if (single) return tiraRow(g.rows[0], true);
-        const { plan } = g;
-        const rolos = plan.total_rolls > 0
-          ? `${plan.total_rolls} rolo${plan.total_rolls === 1 ? '' : 's'}${plan.total_leftover_mm > 0 ? ` · sobra ${fmtMm(plan.total_leftover_mm)} mm` : ''}`
-          : '';
-        const colorTxt = g.color && g.color !== '—' ? ` · ${escapeHtml(g.color)}` : '';
-        const header = `<tr style="color:#dc2626;background:#fef2f2">
-          <td style="padding:4px 8px;font-weight:700">${escapeHtml(g.baseName)}${colorTxt}</td>
-          <td style="padding:4px 8px;text-align:right;font-weight:700">${rolos}</td>
-        </tr>`;
-        return header + g.rows.map(r => tiraRow(r, false)).join('');
       }).join('');
       strapCutHtml = `
         <h2 style="font-size:13px;margin:18px 0 4px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px">✂️ Tiras artesanais — corte do rolo (${ROLO_COMPRIMENTO_M}m × ${ROLO_LARGURA_MM}mm)</h2>
-        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Agrupadas por base + cor (1 rolo dedicado por cor). Cortar do rolo — não é consumo direto de estoque.</p>
+        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Agrupadas por grupo + cor (metros somados antes do corte). Cortar do rolo — não é consumo direto de estoque.</p>
         <table style="border:1px solid #fca5a5">
           <thead><tr style="color:#dc2626">
-            <th style="background:#fef2f2">Base · cor / tira (largura)</th>
-            <th style="background:#fef2f2;text-align:right">Rolos / cortar (cm)</th>
+            <th style="background:#fef2f2">Tira (cor · largura)</th>
+            <th style="background:#fef2f2;text-align:right">Cortar do rolo (cm)</th>
           </tr></thead>
-          <tbody>${groupRows}</tbody>
+          <tbody>${strapRows}</tbody>
         </table>`;
     }
 

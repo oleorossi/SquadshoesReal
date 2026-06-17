@@ -137,6 +137,24 @@ export function computeStrapRollCut({ largura_mm, metros_necessarios }: StrapRol
   };
 }
 
+/**
+ * Texto do breakdown multi-rolo para UI/impressão:
+ *   "1 rolo completo + 45 cm do próximo"  (sobra > 0)
+ *   "3 rolos completos"                    (múltiplo exato, sem sobra)
+ * Retorna `null` quando o corte cabe em MENOS de 1 rolo (< 137 cm) — aí a UI mostra
+ * só o cm total, sem breakdown. FONTE ÚNICA do texto nos 4 render-sites (bloco em
+ * tela + 3 PDFs), pra não divergir a redação.
+ */
+export function rollBreakdownLabel(
+  cut: Pick<StrapRollCutResult, 'valid' | 'n_rolos_completos' | 'cm_no_ultimo_rolo'>,
+): string | null {
+  if (!cut.valid || cut.n_rolos_completos < 1) return null;
+  const n = cut.n_rolos_completos;
+  const rolos = `${n} rolo${n === 1 ? '' : 's'} completo${n === 1 ? '' : 's'}`;
+  const sobra = Math.round(cut.cm_no_ultimo_rolo);
+  return sobra > 0 ? `${rolos} + ${sobra} cm do próximo` : rolos;
+}
+
 // ─── Detecção de "tira artesanal" ───────────────────────────────────────────
 
 /** Itens de tira COMPRADOS prontos (não cortados de rolo) — excluídos do bloco. */
