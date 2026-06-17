@@ -136,6 +136,9 @@ interface Props {
    *  por faca (código em destaque + numerações cobertas + referência quando
    *  o maço tem várias). */
   knives?: KnifeRefSpec[];
+  /** Range de numerações de cada faca (label P/M/G → ["34","35","36","37"]) —
+   *  exibido sob o rótulo no cabeçalho da grade de Corte Cabedal. (User 2026-06-17.) */
+  facaRanges?: Record<string, string[]>;
 }
 
 // Simplificação 2026-06-12: KPIs, blocos de materiais (cabedal/forro),
@@ -219,7 +222,7 @@ const sortSizes = (sizes: string[]): string[] =>
  * numeração + alerta fachetado em 1 linha + tally. Silk adiciona o bloco
  * da LOGOMARCA a estampar (única por grupo, ou por cor quando divergem).
  */
-export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives }: Props) => {
+export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
 
@@ -248,6 +251,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     // (16+ numerações) cortava as células com fonte fixa. No layout COMPACTO
     // a grade desce 1 bucket (dense, 7º passe) pra caberem 2 cores por página.
     const ft = gradeTableFont(activeSizes, theme.compact);
+    // Range de numerações de cada faca (P → "34-37") sob o rótulo no cabeçalho
+    // quando agrupando por faca (Corte Cabedal). Contíguo vira "34-37"; senão
+    // lista "34·36". Vazio quando não há range pra a faca.
+    const facaRangeLabel = (label: string): string => {
+      const sizes = facaRanges?.[label];
+      if (!sizes || sizes.length === 0) return '';
+      const nums = sizes.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      if (nums.length === 0) return '';
+      if (nums.length === 1) return String(nums[0]);
+      const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+      return contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join('·');
+    };
     return (
       <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
         <thead>
@@ -269,6 +284,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 }}
               >
                 {s}
+                {usingKnife && facaRangeLabel(s) && (
+                  <div style={{ fontSize: `${Math.max(6, ft.headerPx - 4)}px`, fontWeight: 400, fontFamily: "'Fira Code', monospace", lineHeight: 1, marginTop: 1, color: '#000' }}>
+                    {facaRangeLabel(s)}
+                  </div>
+                )}
               </th>
             ))}
             <th className="section-label py-1" style={{ color: '#000', width: 50 }}>Total</th>

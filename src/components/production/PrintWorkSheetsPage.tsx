@@ -3055,12 +3055,34 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             // a cortar) cuja ficha técnica tem knife_size_ranges cadastrado —
             // a worksheet mostra quantidade de facas + código + numerações
             // cobertas, identificando a referência quando o maço tem várias.
-            // FACAS DE CORTE: bloco-resumo (Ref/Faca/Código/Numerações) REMOVIDO
-            // da ficha de Corte Cabedal a pedido do user (2026-06-17) — a própria
-            // grade já mostra P/M/G somados, então o resumo ficou redundante.
-            // Pra reativar, restaurar o cálculo por knifeRangesByRef + padrão
-            // global expandido (ver git 0098789) e voltar a passar em <knives>.
-            const knives = undefined;
+            // O bloco-resumo "Facas de Corte" foi removido (redundante). Mas o
+            // CABEÇALHO da grade de Corte Cabedal mostra o range de cada faca ao
+            // lado de P/M/G — facaRanges une as numerações por label entre as refs
+            // do maço (override próprio ou padrão global expandido). (User 2026-06-17.)
+            const facaRanges: Record<string, string[]> | undefined = sectorName === 'Corte Cabedal'
+              ? (() => {
+                  const m = new Map<string, Set<string>>();
+                  for (const order of expandedOrders) {
+                    const sheetId = (order as any).reference_id;
+                    if (!sheetId || hasStrapsLookup.get(sheetId) === true) continue;
+                    let ranges = knifeRangesByRef.get(sheetId);
+                    if ((!ranges || ranges.length === 0)
+                        && !knifeOptOutByRef.has(sheetId)
+                        && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0) {
+                      ranges = expandFacasByBoundaries(Object.keys(((order as any).grid || {})), knifeDefaultBoundaries);
+                    }
+                    if (!ranges) continue;
+                    for (const r of ranges) {
+                      if (!m.has(r.label)) m.set(r.label, new Set());
+                      for (const s of r.sizes) m.get(r.label)!.add(String(s));
+                    }
+                  }
+                  if (m.size === 0) return undefined;
+                  const out: Record<string, string[]> = {};
+                  for (const [label, set] of m) out[label] = Array.from(set).sort((a, b) => parseInt(a) - parseInt(b));
+                  return out;
+                })()
+              : undefined;
             if (reduced) {
               return groupsForSector.map((g, gi) =>
                 reducedSilkNode(withClientNames(g), sectorName, `${sectorName}-red-${gi}-${g.soleName}`));
@@ -3077,7 +3099,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   sectorLabel={sectorName}
                   groups={enriched}
                   sector={sectorName}
-                  knives={knives}
+                  facaRanges={facaRanges}
                   sizeBand={bandForOps(enriched.flatMap(g => g.colorGroups.flatMap(cg => cg.opNumbers || [])))}
                 />
               </div>,
