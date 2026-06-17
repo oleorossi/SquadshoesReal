@@ -3425,7 +3425,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             onUpdateSheet={(data) => updateSheet.mutate({ id: sheet.id, data: data as any })}
             activeSectors={Array.isArray((sheet as any).production_sectors) ? ((sheet as any).production_sectors as string[]) : undefined}
             sheetSizes={sheet.sizes || ''}
-            knifeSizeRanges={Array.isArray((sheet as any).knife_size_ranges) ? ((sheet as any).knife_size_ranges as any[]) : null}
+            // Lê do FORM (não do sheet) e propaga toda edição pro form via
+            // updateField — sem isso, o "Salvar" geral mandava o knife_size_ranges
+            // ANTIGO (null) e sobrescrevia a faca cadastrada (perda silenciosa:
+            // 0 fichas persistiam). (PV-00142, 2026-06-17.)
+            knifeSizeRanges={Array.isArray((form as any).knife_size_ranges) ? ((form as any).knife_size_ranges as any[]) : null}
+            onKnifeSizeRangesChange={(v) => updateField('knife_size_ranges' as any, v)}
           />
         </TabsContent>
 

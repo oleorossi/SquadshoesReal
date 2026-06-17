@@ -75,6 +75,9 @@ interface OperationsTabProps {
   sheetSizes?: string;
   /** Mapping atual de facas de Corte Cabedal (NULL = sem cadastro). */
   knifeSizeRanges?: KnifeBucket[] | null;
+  /** Propaga cada edição das facas pro FORM da ficha (fonte única de verdade),
+   *  pra o "Salvar" geral persistir — sem isso a faca era sobrescrita por null. */
+  onKnifeSizeRangesChange?: (v: KnifeBucket[] | null) => void;
 }
 
 export function OperationsTab({
@@ -102,6 +105,7 @@ export function OperationsTab({
   activeSectors,
   sheetSizes = '',
   knifeSizeRanges = null,
+  onKnifeSizeRangesChange,
 }: OperationsTabProps) {
   const { data: operations = [], isLoading } = useBomOperations(sheetId);
   const { data: costPolicy } = useCostPolicies();
@@ -395,7 +399,7 @@ export function OperationsTab({
       <KnifeSizeRangesEditor
         sheetSizes={sheetSizes}
         value={knifeRanges}
-        onChange={setKnifeRanges}
+        onChange={(v) => { setKnifeRanges(v); onKnifeSizeRangesChange?.(v); }}
       />
 
       {/* ── Capacity Cards: Pares/Dia em destaque (origem do cálculo)
