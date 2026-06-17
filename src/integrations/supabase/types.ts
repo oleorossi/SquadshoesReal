@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      _audit_stock_sync_20260614: {
+        Row: {
+          backed_up_at: string | null
+          current_stock_old: number | null
+          id: string | null
+          name: string | null
+          quantity_old: number | null
+          sku: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          current_stock_old?: number | null
+          id?: string | null
+          name?: string | null
+          quantity_old?: number | null
+          sku?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          current_stock_old?: number | null
+          id?: string | null
+          name?: string | null
+          quantity_old?: number | null
+          sku?: string | null
+        }
+        Relationships: []
+      }
       accounts_payable: {
         Row: {
           account_id: string | null
@@ -294,6 +321,7 @@ export type Database = {
           base_product_name: string
           base_time_minutes: number
           created_at: string
+          cut_width_mm: number | null
           default_contractor_id: string | null
           id: string
           labor_cost_per_meter: number
@@ -308,6 +336,7 @@ export type Database = {
           base_product_name: string
           base_time_minutes?: number
           created_at?: string
+          cut_width_mm?: number | null
           default_contractor_id?: string | null
           id?: string
           labor_cost_per_meter?: number
@@ -322,6 +351,7 @@ export type Database = {
           base_product_name?: string
           base_time_minutes?: number
           created_at?: string
+          cut_width_mm?: number | null
           default_contractor_id?: string | null
           id?: string
           labor_cost_per_meter?: number
@@ -1121,13 +1151,13 @@ export type Database = {
           comprimento_cm: number
           created_at: string | null
           empilhamento_maximo: number | null
+          empty_weight_kg: number | null
           id: string
           interno: boolean | null
           largura_cm: number
           metros_per_amarrado_default: number | null
           min_stock: number
           nome: string
-          empty_weight_kg: number | null
           pairs_per_box_default: number | null
           peso_kg: number | null
           quantity: number
@@ -1142,13 +1172,13 @@ export type Database = {
           comprimento_cm: number
           created_at?: string | null
           empilhamento_maximo?: number | null
+          empty_weight_kg?: number | null
           id?: string
           interno?: boolean | null
           largura_cm: number
           metros_per_amarrado_default?: number | null
           min_stock: number
           nome: string
-          empty_weight_kg?: number | null
           pairs_per_box_default?: number | null
           peso_kg?: number | null
           quantity: number
@@ -1163,13 +1193,13 @@ export type Database = {
           comprimento_cm?: number
           created_at?: string | null
           empilhamento_maximo?: number | null
+          empty_weight_kg?: number | null
           id?: string
           interno?: boolean | null
           largura_cm?: number
           metros_per_amarrado_default?: number | null
           min_stock?: number
           nome?: string
-          empty_weight_kg?: number | null
           pairs_per_box_default?: number | null
           peso_kg?: number | null
           quantity?: number
@@ -1433,6 +1463,7 @@ export type Database = {
           regime_tributario: string | null
           sales_channel: string | null
           score_class: string | null
+          search_norm: string | null
           silk_url: string | null
           suframa: string | null
           tags: string[] | null
@@ -1487,6 +1518,7 @@ export type Database = {
           regime_tributario?: string | null
           sales_channel?: string | null
           score_class?: string | null
+          search_norm?: string | null
           silk_url?: string | null
           suframa?: string | null
           tags?: string[] | null
@@ -1541,6 +1573,7 @@ export type Database = {
           regime_tributario?: string | null
           sales_channel?: string | null
           score_class?: string | null
+          search_norm?: string | null
           silk_url?: string | null
           suframa?: string | null
           tags?: string[] | null
@@ -1944,6 +1977,7 @@ export type Database = {
           codigo_municipio: string
           complemento: string
           created_at: string
+          gestaoclick_loja_id: string | null
           id: string
           inscricao_estadual: string
           is_primary: boolean
@@ -1973,6 +2007,7 @@ export type Database = {
           codigo_municipio?: string
           complemento?: string
           created_at?: string
+          gestaoclick_loja_id?: string | null
           id?: string
           inscricao_estadual?: string
           is_primary?: boolean
@@ -2002,6 +2037,7 @@ export type Database = {
           codigo_municipio?: string
           complemento?: string
           created_at?: string
+          gestaoclick_loja_id?: string | null
           id?: string
           inscricao_estadual?: string
           is_primary?: boolean
@@ -2362,54 +2398,6 @@ export type Database = {
           id?: string
           name?: string
           type?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      sector_labor_rates: {
-        Row: {
-          hourly_rate: number
-          monthly_salary: number
-          sector_key: string
-          updated_at: string
-        }
-        Insert: {
-          hourly_rate?: number
-          monthly_salary?: number
-          sector_key: string
-          updated_at?: string
-        }
-        Update: {
-          hourly_rate?: number
-          monthly_salary?: number
-          sector_key?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      labor_cost_results: {
-        Row: {
-          created_at: string
-          id: string
-          lines: Json
-          reference: string
-          total_cost: number
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          lines?: Json
-          reference: string
-          total_cost?: number
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          lines?: Json
-          reference?: string
-          total_cost?: number
           updated_at?: string
         }
         Relationships: []
@@ -3987,6 +3975,7 @@ export type Database = {
           is_favorite: boolean
           logo_url: string | null
           name: string
+          search_norm: string | null
           silk_url: string | null
           updated_at: string
         }
@@ -4011,6 +4000,7 @@ export type Database = {
           is_favorite?: boolean
           logo_url?: string | null
           name: string
+          search_norm?: string | null
           silk_url?: string | null
           updated_at?: string
         }
@@ -4035,6 +4025,7 @@ export type Database = {
           is_favorite?: boolean
           logo_url?: string | null
           name?: string
+          search_norm?: string | null
           silk_url?: string | null
           updated_at?: string
         }
@@ -6463,6 +6454,33 @@ export type Database = {
           name?: string
           type?: string
           width_mm?: number
+        }
+        Relationships: []
+      }
+      labor_cost_results: {
+        Row: {
+          created_at: string
+          id: string
+          lines: Json
+          reference: string
+          total_cost: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference?: string
+          total_cost?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -10078,6 +10096,7 @@ export type Database = {
         Row: {
           bin_location: string | null
           color: string | null
+          committed_qty: number
           conferred_at: string | null
           conferred_qty: number
           ean_scanned: string | null
@@ -10090,12 +10109,14 @@ export type Database = {
           picking_session_id: string
           product_id: string | null
           reference_id: string | null
+          reservation_id: string | null
           size: string | null
           status: string
         }
         Insert: {
           bin_location?: string | null
           color?: string | null
+          committed_qty?: number
           conferred_at?: string | null
           conferred_qty?: number
           ean_scanned?: string | null
@@ -10108,12 +10129,14 @@ export type Database = {
           picking_session_id: string
           product_id?: string | null
           reference_id?: string | null
+          reservation_id?: string | null
           size?: string | null
           status?: string
         }
         Update: {
           bin_location?: string | null
           color?: string | null
+          committed_qty?: number
           conferred_at?: string | null
           conferred_qty?: number
           ean_scanned?: string | null
@@ -10126,6 +10149,7 @@ export type Database = {
           picking_session_id?: string
           product_id?: string | null
           reference_id?: string | null
+          reservation_id?: string | null
           size?: string | null
           status?: string
         }
@@ -10277,231 +10301,12 @@ export type Database = {
             referencedRelation: "v_technical_sheets_audit"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      picking_list_items: {
-        Row: {
-          created_at: string
-          id: string
-          location: string | null
-          lot_number: string | null
-          picked: boolean | null
-          picked_at: string | null
-          picked_by: string | null
-          picking_list_id: string
-          product_id: string
-          quantity_picked: number
-          quantity_required: number
-          reservation_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          location?: string | null
-          lot_number?: string | null
-          picked?: boolean | null
-          picked_at?: string | null
-          picked_by?: string | null
-          picking_list_id: string
-          product_id: string
-          quantity_picked?: number
-          quantity_required?: number
-          reservation_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          location?: string | null
-          lot_number?: string | null
-          picked?: boolean | null
-          picked_at?: string | null
-          picked_by?: string | null
-          picking_list_id?: string
-          product_id?: string
-          quantity_picked?: number
-          quantity_required?: number
-          reservation_id?: string | null
-        }
-        Relationships: [
           {
-            foreignKeyName: "picking_list_items_picking_list_id_fkey"
-            columns: ["picking_list_id"]
-            isOneToOne: false
-            referencedRelation: "picking_lists"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "product_stock_with_reservations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "purchase_projection_timeline"
-            referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_product_abc"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_products_abc_class"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_products_below_rop"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_products_missing_supplier"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_products_missing_supplier_active_demand"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_products_with_location"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_soles_audit"
-            referencedColumns: ["sole_id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_soles_with_specs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_list_items_reservation_id_fkey"
+            foreignKeyName: "picking_items_reservation_id_fkey"
             columns: ["reservation_id"]
             isOneToOne: false
             referencedRelation: "material_reservations"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      picking_lists: {
-        Row: {
-          assigned_to: string | null
-          completed_at: string | null
-          completed_by: string | null
-          created_at: string
-          id: string
-          notes: string | null
-          order_id: string
-          started_at: string | null
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          assigned_to?: string | null
-          completed_at?: string | null
-          completed_by?: string | null
-          created_at?: string
-          id?: string
-          notes?: string | null
-          order_id: string
-          started_at?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          assigned_to?: string | null
-          completed_at?: string | null
-          completed_by?: string | null
-          created_at?: string
-          id?: string
-          notes?: string | null
-          order_id?: string
-          started_at?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "picking_lists_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_lists_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "purchase_projection_timeline"
-            referencedColumns: ["order_id"]
-          },
-          {
-            foreignKeyName: "picking_lists_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "v_late_orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_lists_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "v_order_pickup_window"
-            referencedColumns: ["order_id"]
-          },
-          {
-            foreignKeyName: "picking_lists_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "v_order_split_suggestions"
-            referencedColumns: ["order_id"]
-          },
-          {
-            foreignKeyName: "picking_lists_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "vw_costura_queue"
-            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -10518,6 +10323,7 @@ export type Database = {
           session_number: string
           started_at: string | null
           status: string
+          stock_committed_at: string | null
           total_pairs: number
           total_volumes: number
           total_weight_kg: number
@@ -10535,6 +10341,7 @@ export type Database = {
           session_number?: string
           started_at?: string | null
           status?: string
+          stock_committed_at?: string | null
           total_pairs?: number
           total_volumes?: number
           total_weight_kg?: number
@@ -10552,6 +10359,7 @@ export type Database = {
           session_number?: string
           started_at?: string | null
           status?: string
+          stock_committed_at?: string | null
           total_pairs?: number
           total_volumes?: number
           total_weight_kg?: number
@@ -11015,7 +10823,6 @@ export type Database = {
           dimensions_width: number | null
           id: string
           insole_included: boolean | null
-          is_artisanal_strap: boolean
           is_bom_color_source: boolean
           metros_fitilho_per_amarrado: number | null
           name: string
@@ -11048,7 +10855,6 @@ export type Database = {
           dimensions_width?: number | null
           id?: string
           insole_included?: boolean | null
-          is_artisanal_strap?: boolean
           is_bom_color_source?: boolean
           metros_fitilho_per_amarrado?: number | null
           name: string
@@ -11081,7 +10887,6 @@ export type Database = {
           dimensions_width?: number | null
           id?: string
           insole_included?: boolean | null
-          is_artisanal_strap?: boolean
           is_bom_color_source?: boolean
           metros_fitilho_per_amarrado?: number | null
           name?: string
@@ -13295,6 +13100,7 @@ export type Database = {
           requires_sewing: boolean | null
           reserved_stock: number | null
           safety_stock: number | null
+          search_norm: string | null
           sku: string
           sole_classification:
             | Database["public"]["Enums"]["sole_classification_enum"]
@@ -13366,6 +13172,7 @@ export type Database = {
           requires_sewing?: boolean | null
           reserved_stock?: number | null
           safety_stock?: number | null
+          search_norm?: string | null
           sku: string
           sole_classification?:
             | Database["public"]["Enums"]["sole_classification_enum"]
@@ -13437,6 +13244,7 @@ export type Database = {
           requires_sewing?: boolean | null
           reserved_stock?: number | null
           safety_stock?: number | null
+          search_norm?: string | null
           sku?: string
           sole_classification?:
             | Database["public"]["Enums"]["sole_classification_enum"]
@@ -13772,6 +13580,7 @@ export type Database = {
           purchase_order_id: string
           quantity: number
           received_at: string | null
+          received_quantity: number
           suggested_quantity: number
           unit: string
           unit_price: number
@@ -13788,6 +13597,7 @@ export type Database = {
           purchase_order_id: string
           quantity?: number
           received_at?: string | null
+          received_quantity?: number
           suggested_quantity?: number
           unit?: string
           unit_price?: number
@@ -13804,6 +13614,7 @@ export type Database = {
           purchase_order_id?: string
           quantity?: number
           received_at?: string | null
+          received_quantity?: number
           suggested_quantity?: number
           unit?: string
           unit_price?: number
@@ -16299,6 +16110,7 @@ export type Database = {
           client_signature_at: string | null
           client_signature_data_url: string | null
           commission_value: number
+          company_id: string | null
           costs_dirty_at: string | null
           created_at: string
           deleted_at: string | null
@@ -16323,9 +16135,9 @@ export type Database = {
           notes: string | null
           order_number: string
           order_type: string
+          original_min_billing_date: string | null
           outsource_to_contractor_id: string | null
           outsource_to_sector: string | null
-          original_min_billing_date: string | null
           own_delivery: boolean
           packaging_mode: string | null
           packaging_product_id: string | null
@@ -16338,6 +16150,7 @@ export type Database = {
           representative_id: string | null
           reservations_outdated_at: string | null
           scheduled_dispatch_at: string | null
+          search_norm: string | null
           shipped_at: string | null
           shipping_rate_per_pair: number
           status: string
@@ -16362,6 +16175,7 @@ export type Database = {
           client_signature_at?: string | null
           client_signature_data_url?: string | null
           commission_value?: number
+          company_id?: string | null
           costs_dirty_at?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -16386,9 +16200,9 @@ export type Database = {
           notes?: string | null
           order_number?: string
           order_type?: string
+          original_min_billing_date?: string | null
           outsource_to_contractor_id?: string | null
           outsource_to_sector?: string | null
-          original_min_billing_date?: string | null
           own_delivery?: boolean
           packaging_mode?: string | null
           packaging_product_id?: string | null
@@ -16401,6 +16215,7 @@ export type Database = {
           representative_id?: string | null
           reservations_outdated_at?: string | null
           scheduled_dispatch_at?: string | null
+          search_norm?: string | null
           shipped_at?: string | null
           shipping_rate_per_pair?: number
           status?: string
@@ -16425,6 +16240,7 @@ export type Database = {
           client_signature_at?: string | null
           client_signature_data_url?: string | null
           commission_value?: number
+          company_id?: string | null
           costs_dirty_at?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -16449,9 +16265,9 @@ export type Database = {
           notes?: string | null
           order_number?: string
           order_type?: string
+          original_min_billing_date?: string | null
           outsource_to_contractor_id?: string | null
           outsource_to_sector?: string | null
-          original_min_billing_date?: string | null
           own_delivery?: boolean
           packaging_mode?: string | null
           packaging_product_id?: string | null
@@ -16464,6 +16280,7 @@ export type Database = {
           representative_id?: string | null
           reservations_outdated_at?: string | null
           scheduled_dispatch_at?: string | null
+          search_norm?: string | null
           shipped_at?: string | null
           shipping_rate_per_pair?: number
           status?: string
@@ -16512,11 +16329,32 @@ export type Database = {
             referencedColumns: ["client_id"]
           },
           {
+            foreignKeyName: "sale_orders_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sale_orders_factoring_config_id_fkey"
             columns: ["factoring_config_id"]
             isOneToOne: false
             referencedRelation: "factoring_config"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_orders_outsource_to_contractor_id_fkey"
+            columns: ["outsource_to_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_orders_outsource_to_contractor_id_fkey"
+            columns: ["outsource_to_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_contractor_metrics"
+            referencedColumns: ["contractor_id"]
           },
           {
             foreignKeyName: "sale_orders_packaging_product_id_fkey"
@@ -16814,6 +16652,27 @@ export type Database = {
         }
         Relationships: []
       }
+      sector_labor_rates: {
+        Row: {
+          hourly_rate: number
+          monthly_salary: number
+          sector_key: string
+          updated_at: string
+        }
+        Insert: {
+          hourly_rate?: number
+          monthly_salary?: number
+          sector_key: string
+          updated_at?: string
+        }
+        Update: {
+          hourly_rate?: number
+          monthly_salary?: number
+          sector_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       security_settings: {
         Row: {
           id: string
@@ -16968,6 +16827,13 @@ export type Database = {
             columns: ["service_order_id"]
             isOneToOne: false
             referencedRelation: "v_service_order_balance"
+            referencedColumns: ["service_order_id"]
+          },
+          {
+            foreignKeyName: "service_order_returns_service_order_id_fkey"
+            columns: ["service_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_service_order_overview"
             referencedColumns: ["service_order_id"]
           },
         ]
@@ -19366,6 +19232,7 @@ export type Database = {
           phone: string | null
           price_rating: number | null
           quality_rating: number | null
+          search_norm: string | null
           service_rating: number | null
           state: string | null
           supplier_category: string | null
@@ -19398,6 +19265,7 @@ export type Database = {
           phone?: string | null
           price_rating?: number | null
           quality_rating?: number | null
+          search_norm?: string | null
           service_rating?: number | null
           state?: string | null
           supplier_category?: string | null
@@ -19430,6 +19298,7 @@ export type Database = {
           phone?: string | null
           price_rating?: number | null
           quality_rating?: number | null
+          search_norm?: string | null
           service_rating?: number | null
           state?: string | null
           supplier_category?: string | null
@@ -20648,6 +20517,7 @@ export type Database = {
           requires_sewing: boolean
           safety_margin_pct: number | null
           sale_price: number | null
+          search_norm: string | null
           sector_notes: Json
           sewing_capacity_per_day: number | null
           shoe_category: string | null
@@ -20769,6 +20639,7 @@ export type Database = {
           requires_sewing?: boolean
           safety_margin_pct?: number | null
           sale_price?: number | null
+          search_norm?: string | null
           sector_notes?: Json
           sewing_capacity_per_day?: number | null
           shoe_category?: string | null
@@ -20890,6 +20761,7 @@ export type Database = {
           requires_sewing?: boolean
           safety_margin_pct?: number | null
           sale_price?: number | null
+          search_norm?: string | null
           sector_notes?: Json
           sewing_capacity_per_day?: number | null
           shoe_category?: string | null
@@ -22543,12 +22415,14 @@ export type Database = {
       }
       v_bank_hours_summary: {
         Row: {
-          employee_count: number | null
-          employees_in_credit: number | null
-          employees_in_debit: number | null
+          employees_balanced: number | null
+          employees_with_credit: number | null
+          employees_with_debit: number | null
+          sector_count: number | null
           total_balance_min: number | null
           total_credit_min: number | null
           total_debit_min: number | null
+          total_employees: number | null
         }
         Relationships: []
       }
@@ -24715,6 +24589,25 @@ export type Database = {
           },
         ]
       }
+      v_service_order_overview: {
+        Row: {
+          accounts_payable_id: string | null
+          has_payable: boolean | null
+          is_paid: boolean | null
+          last_return_at: string | null
+          payable_amount: number | null
+          payment_date: string | null
+          payment_due_date: string | null
+          payment_status: string | null
+          qty_in_field: number | null
+          qty_loss: number | null
+          qty_returned_defect: number | null
+          qty_returned_good: number | null
+          qty_sent: number | null
+          service_order_id: string | null
+        }
+        Relationships: []
+      }
       v_sheets_missing_lining_consumption: {
         Row: {
           code: string | null
@@ -25514,6 +25407,7 @@ export type Database = {
         Args: { p_end: string; p_start: string }
         Returns: number
       }
+      caixa_collective_type: { Args: { p_name: string }; Returns: string }
       calc_required_for_grade: {
         Args: {
           p_consumption_per_size: Json
@@ -25621,6 +25515,7 @@ export type Database = {
         Args: { p_sale_order_id: string }
         Returns: Json
       }
+      commit_picking_session: { Args: { p_session_id: string }; Returns: Json }
       compact_orders_by_ref_color: {
         Args: { p_sale_order_id: string }
         Returns: {
@@ -25714,6 +25609,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      consumption_consistency_report: {
+        Args: never
+        Returns: {
+          check_name: string
+          item_count: number
+          sample: string
+          severity: string
+        }[]
+      }
       convert_reservation_to_out: {
         Args: { p_order_id: string; p_product_id?: string }
         Returns: undefined
@@ -25790,6 +25694,15 @@ export type Database = {
           p_packaging_mode?: string
           p_reference_id: string
           p_sale_order_id: string
+        }
+        Returns: Json
+      }
+      debit_packaging_for_order_atomic: {
+        Args: {
+          p_order_id: string
+          p_packaging_product_id: string
+          p_packaging_type?: string
+          p_quantity: number
         }
         Returns: Json
       }
@@ -25889,6 +25802,10 @@ export type Database = {
       }
       estimate_weight_per_pair_kg: {
         Args: { p_sheet_id: string }
+        Returns: Json
+      }
+      filter_caixa_by_packaging_mode: {
+        Args: { p_cons: Json; p_packaging_mode: string }
         Returns: Json
       }
       finalize_cycle_count: {
@@ -26184,6 +26101,10 @@ export type Database = {
         Args: { p_qty: number; p_sale_order_item_id: string }
         Returns: Json
       }
+      increment_workflow_stats: {
+        Args: { p_id: string; p_success?: boolean }
+        Returns: undefined
+      }
       is_admin_or_gerente: { Args: { _user_id: string }; Returns: boolean }
       is_approved: { Args: { _user_id: string }; Returns: boolean }
       is_approved_user: { Args: never; Returns: boolean }
@@ -26281,12 +26202,17 @@ export type Database = {
         Args: { base_date: string; target_dow: number }
         Returns: string
       }
+      normalize_search: { Args: { "": string }; Returns: string }
       normalize_shoe_category: { Args: { p_input: string }; Returns: string }
       notify_costura_overflow: { Args: never; Returns: Json }
       open_inventory_count: { Args: { p_scope?: string }; Returns: string }
       override_service_order_for_montagem: {
         Args: { p_reason: string; p_so_id: string }
         Returns: undefined
+      }
+      packaging_mode_collective_type: {
+        Args: { p_mode: string }
+        Returns: string
       }
       parse_iso_billing_week: { Args: { p_text: string }; Returns: string }
       pay_bank_hours: {
@@ -26327,6 +26253,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      populate_picking_session_from_sale_order: {
+        Args: { p_session_id: string }
+        Returns: Json
       }
       process_dirty_order_costs: {
         Args: { p_max_orders?: number }
@@ -26579,6 +26509,14 @@ export type Database = {
           ok: boolean
         }[]
       }
+      run_consumption_parity_tests: {
+        Args: never
+        Returns: {
+          case_name: string
+          message: string
+          ok: boolean
+        }[]
+      }
       scale_grade_to_total: {
         Args: { p_grade: Json; p_total: number }
         Returns: Json
@@ -26731,6 +26669,21 @@ export type Database = {
           p_unit_price: number
         }
         Returns: string
+      }
+      upsert_po_item_atomic: {
+        Args: {
+          p_color?: string
+          p_current_stock?: number
+          p_grade_delta?: Json
+          p_max_stock?: number
+          p_min_stock?: number
+          p_po_id: string
+          p_product_id: string
+          p_qty_delta: number
+          p_unit?: string
+          p_unit_price: number
+        }
+        Returns: Json
       }
       upsert_ready_stock_atomic: {
         Args: {
