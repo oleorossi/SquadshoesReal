@@ -118,14 +118,30 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                 ))}
               </tbody>
               <tfoot>
+                {/* total_pedido = soma_itens + frete (computado no emit-nfe). Quando há
+                    frete, mostra o desdobramento (mercadoria + frete) em vez de um
+                    falso "diverge" — a NF é emitida com o total COM frete. */}
+                {totais.total_pedido - totais.soma_itens > 0.01 && (
+                  <>
+                    <tr className="text-muted-foreground">
+                      <td className="px-2 py-1 text-right" colSpan={8}>Mercadoria (itens)</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(totais.soma_itens)}</td>
+                    </tr>
+                    <tr className="text-muted-foreground">
+                      <td className="px-2 py-1 text-right" colSpan={8}>Frete</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(totais.total_pedido - totais.soma_itens)}</td>
+                    </tr>
+                  </>
+                )}
                 <tr className="border-t-2 border-border font-medium">
                   <td className="px-2 py-2 text-right" colSpan={8}>Total da NF</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{fmtMoney(totais.soma_itens)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{fmtMoney(totais.total_pedido)}</td>
                 </tr>
-                {Math.abs(totais.soma_itens - totais.total_pedido) > 0.01 && (
+                {/* Anomalia REAL: itens somam MAIS que o total da NF (não é frete). */}
+                {totais.soma_itens - totais.total_pedido > 0.01 && (
                   <tr>
                     <td colSpan={9} className="px-2 py-1.5 text-xs text-red-600">
-                      ⚠ Soma dos itens ({fmtMoney(totais.soma_itens)}) diverge do total do PV ({fmtMoney(totais.total_pedido)})
+                      ⚠ Soma dos itens ({fmtMoney(totais.soma_itens)}) maior que o total da NF ({fmtMoney(totais.total_pedido)}) — confira os valores.
                     </td>
                   </tr>
                 )}
