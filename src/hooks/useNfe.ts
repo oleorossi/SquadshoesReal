@@ -560,17 +560,29 @@ export function useEmitNfe() {
       return parsed;
     },
     onSuccess: async (data: any, variables: { saleOrderId: string; companyId?: string; firstDueDate?: string | null }) => {
+      // numero mora em data.nfe.numero (o topo da resposta NÃO tem `numero`).
+      const numero = data?.nfe?.numero ? `NF #${data.nfe.numero}` : 'NF-e';
       if (data?.reconciliation_needed) {
         toast.warning(
           `NF-e aceita pelo GestaoClick${data.provider_nfe_id ? ` (id ${data.provider_nfe_id})` : ''} mas falhou ao salvar no banco. Reconcilie manualmente no painel GestaoClick.`,
           { duration: 12000 }
         );
+      } else if (data?.ambiente_warning) {
+        // Ambiente errado (homologação x produção) — risco fiscal real. Avisa
+        // em destaque e por bastante tempo (o operador precisa agir).
+        toast.warning(data.ambiente_warning, { duration: 20000 });
+      } else if (data?.transmit_warning) {
+        // NF cadastrada mas NÃO transmitida (envio automático ignorado + /emitir
+        // sem permissão) — NÃO é sucesso, o operador acha que emitiu e não emitiu.
+        toast.warning(data.transmit_warning, { duration: 20000 });
       } else {
         // Toast com link pro menu de NF: alguns operadores ficavam no PV e
         // achavam que a NF não aparecia (cache estale + olhavam só o card
         // local do PV). Botão 'Abrir menu' navega direto pra lista global.
-        const numero = data?.numero ? `NF #${data.numero}` : 'NF-e';
-        toast.success(`${numero} emitida e salva no menu de NF!`, {
+        const ambSuffix = data?.ambiente === 'homologacao'
+          ? ' · ⚠ HOMOLOGAÇÃO (sem valor fiscal)'
+          : '';
+        toast.success(`${numero} emitida e salva no menu de NF!${ambSuffix}`, {
           duration: 8000,
           action: {
             label: 'Abrir menu →',

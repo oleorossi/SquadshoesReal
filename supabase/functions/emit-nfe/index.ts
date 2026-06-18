@@ -1413,6 +1413,7 @@ Deno.serve(async (req) => {
     let serieNf = "";
     let dataEmissao = "";
     let motivoRejeicaoSefaz = "";
+    let tipoAmbienteReal = "";
     let detailResponseJson: unknown = null;
 
     const readDetail = async () => {
@@ -1429,6 +1430,10 @@ Deno.serve(async (req) => {
       // com numero/serie vazios (quebrava a aba "NF-es Emitidas" e a devolução).
       numeroNf = d.numero_nf ? String(d.numero_nf) : numeroNf;
       serieNf = d.serie ? String(d.serie) : serieNf;
+      // tipo_ambiente real que o ClickNotas aplicou (1=Produção, 2=Homologação).
+      // É a fonte da verdade do ambiente — vem da config da conta/loja no ClickNotas,
+      // NÃO do nosso payload. Usado pra avisar mismatch com fiscal.ambiente do app.
+      tipoAmbienteReal = d.tipo_ambiente ? String(d.tipo_ambiente) : tipoAmbienteReal;
       // data_emissao real da SEFAZ — sem isso a coluna assumia o default now()
       // do insert e a janela de 24h pra cancelamento ficava imprecisa.
       if (d.data_emissao) {
@@ -1491,6 +1496,25 @@ Deno.serve(async (req) => {
       ? `NF nº ${numeroNf || gcNfeId} cadastrada no ClickNotas mas NÃO transmitida automaticamente${emitMsg ? ` (emitir: ${emitMsg})` : ""}. Emita manualmente no painel ClickNotas ou verifique a permissão de emissão da API key.`
       : null;
     const emitOk = finalStatus === "autorizada" || finalStatus === "processando";
+
+    // ---------- Ambiente real (homologação x produção) ----------
+    // O ambiente é definido na conta/loja do ClickNotas (portal deles), NÃO no
+    // nosso payload — o ClickNotas ignora campo de ambiente que a gente mande.
+    // Aqui só DETECTAMOS o que ele REALMENTE aplicou (tipo_ambiente do detalhe:
+    // 1=Produção, 2=Homologação) e avisamos se diverge do fiscal.ambiente do app.
+    // Protege os dois desastres: (a) querer testar em homologação mas sair nota
+    // REAL; (b) esquecer de voltar pra produção e emitir venda real como
+    // homologação (sem valor fiscal).
+    const ambienteEsperadoHomolog = /homolog/i.test(String(fiscal?.ambiente || ""));
+    const ambienteRealStr = tipoAmbienteReal === "2" ? "homologacao"
+      : tipoAmbienteReal === "1" ? "producao" : "";
+    let ambienteWarning: string | null = null;
+    if (ambienteRealStr && ambienteEsperadoHomolog !== (tipoAmbienteReal === "2")) {
+      ambienteWarning = ambienteEsperadoHomolog
+        ? `⚠ Você queria HOMOLOGAÇÃO (teste), mas o ClickNotas emitiu em PRODUÇÃO — esta é uma NF-e REAL (nº ${numeroNf || gcNfeId}). Troque o ambiente para Homologação no painel ClickNotas e cancele esta nota.`
+        : `⚠ Esta NF saiu em HOMOLOGAÇÃO — SEM VALOR FISCAL! Volte o ambiente para Produção no painel ClickNotas e reemita para gerar a nota válida.`;
+      console.warn(`[emit-nfe] AMBIENTE MISMATCH PV ${sale_order_id}: app=${ambienteEsperadoHomolog ? "homologacao" : "producao"} real=${ambienteRealStr}`);
+    }
 
     const nfeRecord: any = {
       sale_order_id,
@@ -1569,9 +1593,11 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success: emitOk,
       nfe,
+      ambiente: ambienteRealStr || null,
       provider_response: { create: createResp.json, emit: emitResp.json },
       ...(arSyncWarning ? { ar_sync_warning: arSyncWarning } : {}),
       ...(transmitWarning ? { transmit_warning: transmitWarning } : {}),
+      ...(ambienteWarning ? { ambiente_warning: ambienteWarning } : {}),
     }), {
       status: emitOk ? 200 : 422,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
