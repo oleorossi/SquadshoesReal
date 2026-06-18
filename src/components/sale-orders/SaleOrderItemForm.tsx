@@ -1160,6 +1160,41 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           </div>
         </div>
 
+        {/* Aviso: cor principal não cadastrada nos materiais de área coloridos
+            (forração / cabedal). Espelha o aviso das tiras. O débito (SQL)
+            resolve esses materiais pela cor principal do PV; se o grupo é
+            gerido por cor mas a cor não existe, o débito PULA o material
+            (vira ruptura) em vez de baixar a cor errada. Avisar aqui evita
+            a surpresa só na produção. */}
+        {!!item.color && (() => {
+          const matNames = Array.from(new Set(
+            [sheetSpecs?.lining_material, sheetSpecs?.upper_material]
+              .map((n: any) => (n || '').trim()).filter(Boolean),
+          ));
+          if (matNames.length === 0) return null;
+          const target = item.color.trim().toLowerCase();
+          const issues = matNames.map((name: string) => {
+            const grp = (productGroups as any[]).find(
+              (g: any) => (g.name || '').trim().toLowerCase() === name.toLowerCase());
+            if (!grp) return null;
+            const groupProds = (allProducts as any[]).filter(
+              (p: any) => p.group_id === grp.id && p.active !== false);
+            // Grupo SEM cores = material genérico → débito ok (não avisa).
+            const colorManaged = groupProds.some((p: any) => (p.color || '').trim() !== '');
+            if (!colorManaged) return null;
+            const hasColor = groupProds.some(
+              (p: any) => (p.color || '').trim().toLowerCase() === target);
+            return hasColor ? null : name;
+          }).filter(Boolean) as string[];
+          if (issues.length === 0) return null;
+          return (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-400">
+              <strong>⚠ Cor "{item.color}" não cadastrada</strong> no estoque {issues.length === 1 ? 'do material' : 'dos materiais'}:{' '}
+              <strong>{issues.join(', ')}</strong>. O débito da forração/cabedal será <strong>pulado</strong> (vira ruptura) em vez de baixar a cor errada. Cadastre essa cor em Estoque pra debitar certo.
+            </div>
+          );
+        })()}
+
         {/* Straps Section — fluxo sequencial: só abre após cor principal definida.
             Sem isso, ao selecionar referência com tiras o user via cor principal +
             tiras juntas e ficava confuso sobre qual preencher primeiro.
