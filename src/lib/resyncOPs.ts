@@ -89,6 +89,10 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
             p_order_quantity: op.quantity,
             p_order_id: op.id,
             p_order_grade: (matchingItem as any).grade || (Object.keys(opGradeForStraps).length > 0 ? opGradeForStraps : null),
+            // Resync = reserva SOFT (igual à criação da OP). Sem isso o débito
+            // era HARD e travava o resync com "Estoque insuficiente" quando a
+            // tira (cortada do rolo) está com 0 no estoque. Falta vira ruptura.
+            p_force_soft: true,
           } as any);
           if (strapErr) {
             errors.push(`OP ${op.order_number} — tiras: ${strapErr.message}`);
@@ -225,6 +229,9 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
           p_order_quantity: op.quantity,
           p_order_id: op.id,
           p_order_grade: (matchingItem as any).grade || grade || null,
+          // Resync = reserva SOFT (igual à criação da OP) — não trava com
+          // "Estoque insuficiente" quando a tira está com 0 no estoque.
+          p_force_soft: true,
         } as any);
         if (strapErr) {
           console.error('Erro ao re-debitar tiras (resync):', strapErr.message);
