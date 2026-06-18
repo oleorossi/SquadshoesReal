@@ -14,6 +14,7 @@ import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, F
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { SALE_ORDER_STATUS } from '@/lib/saleOrderStateMachine';
 
 interface OrderRow {
   id: string;
@@ -25,7 +26,7 @@ interface OrderRow {
   status: string;
   sale_order_id: string | null;
   sale_order_item_id?: string | null;
-  sale_orders?: { order_number: string; client_name: string; delivery_deadline: string | null } | null;
+  sale_orders?: { order_number: string; client_name: string; delivery_deadline: string | null; status: string } | null;
   technical_sheets?: { name: string; code: string | null } | null;
   /** Sequência de tiras do item de PV (ordem TIRA 1, TIRA 2, ...).
    *  Trazido via join sale_order_items pra que as fichas de operador
@@ -41,6 +42,19 @@ interface OrderRow {
 // Default 'em_fluxo' cobre OPs ainda passíveis de impressão de ficha.
 const STATUS_OPTIONS = ['Reservado', 'Em Produção', 'Finalizado'];
 const EM_FLUXO = ['Reservado', 'Em Produção'];
+
+// PVs que NÃO entraram em produção (pré-produção) ou foram cancelados. As OPs
+// desses PVs NÃO devem aparecer na impressão de fichas de PRODUÇÃO, mesmo a OP
+// estando 'Reservado' — a página filtrava só por status da OP e ignorava o PV,
+// deixando vazar OP de PV Cancelado/Aprovado (user 2026-06-18). Exclude-list:
+// qualquer status de produção-ou-depois (Em Produção/Faturado/Expedido/...)
+// entra por padrão.
+const HIDDEN_PV_STATUSES = new Set<string>([
+  SALE_ORDER_STATUS.RASCUNHO,
+  SALE_ORDER_STATUS.PENDENTE,
+  SALE_ORDER_STATUS.APROVADO,
+  SALE_ORDER_STATUS.CANCELADO,
+]);
 
 // Faixa etária por NUMERAÇÃO da grade (< 33 = infantil) — mesma regra
 // canônica do filtro de faixa da tela de print e dos selos das fichas
@@ -94,7 +108,7 @@ export default function PrintWorkSheets() {
         .from('orders')
         // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
         // (sale_order_id e cross_dock_sale_order_id). PostgREST não escolhe sozinho.
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors)')
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline, status), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors)')
         .order('order_number', { ascending: false })
         .limit(500);
       if (statusFilter === 'em_fluxo') {
@@ -104,7 +118,11 @@ export default function PrintWorkSheets() {
       }
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []) as unknown as OrderRow[];
+      // Esconde OPs cujo PV não está em produção (Cancelado/Rascunho/Pendente/
+      // Aprovado) — é ficha de PRODUÇÃO, então só PV que entrou em produção.
+      // Mantém OP sem PV (manual) e PV em produção/faturado/expedido/finalizado.
+      return ((data || []) as unknown as OrderRow[])
+        .filter(r => !HIDDEN_PV_STATUSES.has((r.sale_orders?.status ?? '').trim()));
     },
   });
 
