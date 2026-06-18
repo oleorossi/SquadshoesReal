@@ -1084,26 +1084,12 @@ Deno.serve(async (req) => {
     // produto). A Squad Shoes não usa marcação por volume → vai VAZIA. Pôr a
     // marca comercial aqui era semanticamente errado (a marca do produto já
     // vai em <prod><xMarca> por item = silk do solado).
-    // ── PROBE DISCRIMINANTE de campo de volume (SÓ em HOMOLOGAÇÃO) ──
-    // O ClickNotas não documenta o campo da quantidade de volumes e NÃO devolve
-    // o volume na consulta da nota — a única forma de descobrir qual nome ele
-    // honra é emitir e olhar a DANFE. Em HOMOLOGAÇÃO cada candidato leva um
-    // número DISTINTO; o número que aparecer na QUANTIDADE da DANFE crava o campo:
-    //   111 = volumes[] (array top-level)   222 = quantidade_volumes
-    //   333 = quantidade_volume             444 = qtd_volumes
-    //   555 = numero_volumes                666 = transporte.volumes.quantidade
-    //   (Se aparecer a Σ de pares → NENHUM desses nomes funciona.)
-    // Em PRODUÇÃO, todos levam o valor REAL — produção NUNCA vê sentinela.
-    const ambienteHomolog = /homolog/i.test(String(fiscal?.ambiente || ""));
-    const volReal = qtdVolumesStr ? Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) : undefined;
-    const volProbe = (sentinel: number): number | undefined => ambienteHomolog ? sentinel : volReal;
-
     const volumesObj: Record<string, string | number> = {
       especie: "Volumes",
       marca: "",
     };
     // qVol é INTEIRO no XML SEFAZ — envia como number, não string.
-    if (volReal !== undefined) volumesObj.quantidade = volProbe(666)!;
+    if (qtdVolumesStr) volumesObj.quantidade = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
     if (pesoLiquidoStr) volumesObj.peso_liquido = pesoLiquidoStr;
     if (pesoBrutoStr) volumesObj.peso_bruto = pesoBrutoStr;
     // Variantes de nomes de campo de modalidade de frete — diferentes ERPs
@@ -1170,25 +1156,30 @@ Deno.serve(async (req) => {
       // Peso/volumes top-level (Webmania-style fallback).
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
-      ...(volReal !== undefined ? { quantidade_volumes: volProbe(222)! } : {}),
+      ...(qtdVolumesStr ? { quantidade_volumes: Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) } : {}),
       especie_volumes: "Volumes",
-      // ⚠ ClickNotas IGNOROU os campos de volume na NF 278 (saiu Σ pares = 1884
-      // em vez de 157) mas RESPEITOU peso_bruto/peso_liquido top-level. Mandamos
-      // TODOS os candidatos de nome — em produção com o valor real (volProbe →
-      // volReal), em homologação com SENTINELAS distintas (volProbe → 111..666)
-      // pra a DANFE revelar qual o ClickNotas honra (ver tabela acima).
-      ...(volReal !== undefined ? {
-        quantidade_volume: volProbe(333)!,
-        qtd_volumes: volProbe(444)!,
-        numero_volumes: volProbe(555)!,
-        volumes: [{
-          quantidade: volProbe(111)!,
-          especie: "Volumes",
-          marca: "",
-          ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
-          ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
-        }],
-      } : {}),
+      // ⚠ ClickNotas IGNOROU quantidade_volumes/transporte.volumes.quantidade
+      // (NF 278 saiu com volume = Σ pares = 1884 em vez de 157, mode=colmeia),
+      // mas RESPEITOU peso_bruto/peso_liquido top-level. Como o modelo de NF do
+      // GestaoClick tem uma seção "Volumes" com VÁRIAS linhas, o contrato mais
+      // provável é um ARRAY `volumes` no top-level (espelha o <vol> repetível da
+      // NF-e). Mandamos isso + variações de nome do contador escalar. Campos não
+      // reconhecidos o ClickNotas descarta (já descarta os atuais) — seguro.
+      ...(qtdVolumesStr ? (() => {
+        const q = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
+        return {
+          quantidade_volume: q,
+          qtd_volumes: q,
+          numero_volumes: q,
+          volumes: [{
+            quantidade: q,
+            especie: "Volumes",
+            marca: "",
+            ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+            ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+          }],
+        };
+      })() : {}),
       // valor_frete REMOVIDO do payload (2026-06-18): o frete NÃO compõe a NF —
       // é lançado só no financeiro (despesa "Frete a pagar"). A NF sai com vFrete=0
       // e valor_total = só mercadoria. (Antes somava ao vNF — pedido Leonardo.)
