@@ -181,6 +181,53 @@ function mapSituacao(situacao: string): string {
   return "processando";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPO DE "QUANTIDADE DE VOLUMES" DA NF-e — PONTO ÚNICO DE AJUSTE
+// ─────────────────────────────────────────────────────────────────────────────
+// O ClickNotas IGNORA os campos de volume que mandamos hoje (a NF sai com a Σ das
+// quantidades dos ITENS em vez do nº de CAIXAS). O nome/estrutura EXATA do campo
+// é INDOCUMENTADO. Assim que o suporte ClickNotas confirmar, ajuste SÓ AQUI:
+//
+//   • Campo escalar top-level (ex.: suporte diz "use qtd_volumes"):
+//       NFE_VOLUME_FIELD = "qtd_volumes";   NFE_VOLUME_IS_ARRAY = false;
+//   • Campo ARRAY top-level (ex.: "use volumes: [{ quantidade, ... }]"):
+//       NFE_VOLUME_FIELD = "volumes";       NFE_VOLUME_IS_ARRAY = true;
+//
+// NFE_VOLUME_FIELD === null  → modo SHOTGUN: manda TODOS os candidatos
+// (inofensivo — o ClickNotas descarta os que não reconhece). Confirmado → manda
+// SÓ o campo certo (payload limpo). NADA mais no arquivo precisa mudar.
+const NFE_VOLUME_FIELD: string | null = null;
+const NFE_VOLUME_IS_ARRAY: boolean = false;
+const NFE_VOLUME_SCALAR_CANDIDATES = [
+  "quantidade_volumes", "quantidade_volume", "qtd_volumes", "numero_volumes",
+];
+
+// Monta os campos de quantidade de volumes pro top-level do payload da NF-e,
+// respeitando NFE_VOLUME_FIELD (confirmado) ou o shotgun (não confirmado).
+function buildVolumeCountFields(
+  qty: number | undefined,
+  pesoBrutoStr?: string,
+  pesoLiquidoStr?: string,
+): Record<string, unknown> {
+  if (qty === undefined) return {};
+  const arrItem = {
+    quantidade: qty,
+    especie: "Volumes",
+    marca: "",
+    ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+    ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+  };
+  if (NFE_VOLUME_FIELD) {
+    return NFE_VOLUME_IS_ARRAY
+      ? { [NFE_VOLUME_FIELD]: [arrItem] }
+      : { [NFE_VOLUME_FIELD]: qty };
+  }
+  // Shotgun: array `volumes` + todos os nomes escalares candidatos.
+  const out: Record<string, unknown> = { volumes: [arrItem] };
+  for (const name of NFE_VOLUME_SCALAR_CANDIDATES) out[name] = qty;
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -1088,8 +1135,11 @@ Deno.serve(async (req) => {
       especie: "Volumes",
       marca: "",
     };
-    // qVol é INTEIRO no XML SEFAZ — envia como number, não string.
-    if (qtdVolumesStr) volumesObj.quantidade = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
+    // qVol é INTEIRO no XML SEFAZ — envia como number, não string. Esta é a
+    // quantidade DENTRO de transporte.volumes — só mais UM candidato (shotgun).
+    // Quando o campo for confirmado (NFE_VOLUME_FIELD), o nº de volumes vai só no
+    // campo certo (top-level, via buildVolumeCountFields) — aqui fica só o peso.
+    if (qtdVolumesStr && !NFE_VOLUME_FIELD) volumesObj.quantidade = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
     if (pesoLiquidoStr) volumesObj.peso_liquido = pesoLiquidoStr;
     if (pesoBrutoStr) volumesObj.peso_bruto = pesoBrutoStr;
     // Variantes de nomes de campo de modalidade de frete — diferentes ERPs
@@ -1156,30 +1206,16 @@ Deno.serve(async (req) => {
       // Peso/volumes top-level (Webmania-style fallback).
       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
-      ...(qtdVolumesStr ? { quantidade_volumes: Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) } : {}),
       especie_volumes: "Volumes",
-      // ⚠ ClickNotas IGNOROU quantidade_volumes/transporte.volumes.quantidade
-      // (NF 278 saiu com volume = Σ pares = 1884 em vez de 157, mode=colmeia),
-      // mas RESPEITOU peso_bruto/peso_liquido top-level. Como o modelo de NF do
-      // GestaoClick tem uma seção "Volumes" com VÁRIAS linhas, o contrato mais
-      // provável é um ARRAY `volumes` no top-level (espelha o <vol> repetível da
-      // NF-e). Mandamos isso + variações de nome do contador escalar. Campos não
-      // reconhecidos o ClickNotas descarta (já descarta os atuais) — seguro.
-      ...(qtdVolumesStr ? (() => {
-        const q = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
-        return {
-          quantidade_volume: q,
-          qtd_volumes: q,
-          numero_volumes: q,
-          volumes: [{
-            quantidade: q,
-            especie: "Volumes",
-            marca: "",
-            ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
-            ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
-          }],
-        };
-      })() : {}),
+      // Quantidade de volumes: montada por buildVolumeCountFields, controlada pelo
+      // PONTO ÚNICO DE AJUSTE `NFE_VOLUME_FIELD` (topo do arquivo). Hoje em SHOTGUN
+      // (ClickNotas ignora os campos atuais); quando o suporte confirmar o nome,
+      // seta NFE_VOLUME_FIELD lá e sai só ele — nada aqui muda.
+      ...buildVolumeCountFields(
+        qtdVolumesStr ? Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) : undefined,
+        pesoBrutoStr,
+        pesoLiquidoStr,
+      ),
       // valor_frete REMOVIDO do payload (2026-06-18): o frete NÃO compõe a NF —
       // é lançado só no financeiro (despesa "Frete a pagar"). A NF sai com vFrete=0
       // e valor_total = só mercadoria. (Antes somava ao vNF — pedido Leonardo.)
