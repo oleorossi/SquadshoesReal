@@ -454,6 +454,8 @@ export interface NfePreviewResponse {
     totais: {
       soma_itens: number;
       total_pedido: number;
+      /** Frete do PV — NÃO compõe a NF; exibido só como info (lançado no financeiro). */
+      valor_frete?: number;
       qtd_itens: number;
       qtd_pares: number;
     };

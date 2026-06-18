@@ -435,13 +435,14 @@ Deno.serve(async (req) => {
         error: `Valor total do pedido (R$ ${orderTotalNum.toFixed(2)}) difere da soma dos itens (R$ ${sumItems.toFixed(2)}). Atualize o pedido antes de emitir a NF-e.`,
       }), { status: 400, headers: corsHeaders });
     }
-    // Frete (auditoria fiscal 01/06/2026): order.total e sumItems são SÓ
-    // mercadoria; valor_frete é coluna à parte e o GestaoClick soma ao vNF.
-    // Pra a NF fechar (soma das duplicatas + valor_total gravado = mercadoria +
-    // frete = vNF), calculamos o total-com-frete e usamos nas duplicatas e no
-    // valor_total. Sem frete, totalComFrete == sumItems (comportamento intacto).
+    // Frete NÃO entra na NF (pedido Leonardo 2026-06-18): a NF, as duplicatas e a
+    // conta a receber ficam SÓ com a mercadoria (sumItems). O frete é lançado
+    // APENAS no financeiro, como despesa "Frete a pagar" — gerada pelo gatilho
+    // tg_sale_order_creates_shipping_expense (financial_entries, reference_type
+    // 'sale_order_frete'). valorFrete fica só pra EXIBIR no preview (informativo);
+    // NUNCA vai no payload da NF nem no valor_total.
     const valorFrete = Number(order.valor_frete) || 0;
-    const totalComFrete = Number((sumItems + valorFrete).toFixed(2));
+    const nfTotal = sumItems;
 
     // CFOP por código (GestaoClick aceita `codigo_cfop` diretamente).
     // Auditoria A14: valida formato do CFOP configurado. Se preenchido mas
@@ -986,7 +987,7 @@ Deno.serve(async (req) => {
       const prazos = (cond.match(/\d+/g) || []).map(Number).filter((n) => n >= 0);
       const lista = prazos.length > 0 ? prazos : [0]; // sem prazo → à vista
       const n = lista.length;
-      const totalCent = Math.round(totalComFrete * 100);
+      const totalCent = Math.round(nfTotal * 100);
       const baseCent = Math.floor(totalCent / n);
       const hoje = new Date();
       // Override: ancora na 1ª data escolhida; demais seguem os gaps da condição
@@ -1149,13 +1150,9 @@ Deno.serve(async (req) => {
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) } : {}),
       especie_volumes: "Volumes",
-      // valor_frete: bug fix 20/05/2026 (PV-00122). Antes a UI somava
-      // mercadoria+frete (R$ 0,50/par × N pares) mas a NF emitia só
-      // mercadoria — divergência entre tela e fiscal. Agora envia o
-      // valor_frete gravado no PV (atualizado pelo useUpdate/CreateSaleOrder).
-      ...(Number(order.valor_frete) > 0
-        ? { valor_frete: Number(Number(order.valor_frete).toFixed(2)) }
-        : {}),
+      // valor_frete REMOVIDO do payload (2026-06-18): o frete NÃO compõe a NF —
+      // é lançado só no financeiro (despesa "Frete a pagar"). A NF sai com vFrete=0
+      // e valor_total = só mercadoria. (Antes somava ao vNF — pedido Leonardo.)
       produtos: produtosGC,
       ...(pagamentoArr.length ? { pagamento: pagamentoArr } : {}),
       transporte: transporteBlock,
@@ -1237,7 +1234,8 @@ Deno.serve(async (req) => {
           produtos: produtosPreview,
           totais: {
             soma_itens: Number(sumItems.toFixed(2)),
-            total_pedido: totalComFrete,
+            total_pedido: nfTotal, // = mercadoria (frete fora da NF)
+            valor_frete: Number(valorFrete.toFixed(2)), // só informativo no preview
             qtd_itens: produtosPreview.length,
             qtd_pares: produtosPreview.reduce((s, p) => s + p.quantidade, 0),
           },
@@ -1292,7 +1290,7 @@ Deno.serve(async (req) => {
         sale_order_id,
         ref_nfe: ref,
         status: "processando",
-        valor_total: totalComFrete,
+        valor_total: nfTotal,
         cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
         nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
         cnpj_destinatario: cnpjDestRaw || null,
@@ -1333,7 +1331,7 @@ Deno.serve(async (req) => {
         sale_order_id,
         ref_nfe: ref,
         status: "rejeitada",
-        valor_total: totalComFrete,
+        valor_total: nfTotal,
         motivo_rejeicao: isTimeout
           ? `Timeout no GestaoClick (>30s). NF pode ter sido criada lá — confira no painel pelo número de PV antes de re-emitir (evita NF duplicada). Detalhe: ${errMsg}`
           : `Erro de rede: ${errMsg}`,
@@ -1357,7 +1355,7 @@ Deno.serve(async (req) => {
         sale_order_id,
         ref_nfe: ref,
         status: "rejeitada",
-        valor_total: totalComFrete,
+        valor_total: nfTotal,
         motivo_rejeicao: `Cadastro: ${msg}`,
         cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
         nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
@@ -1426,7 +1424,7 @@ Deno.serve(async (req) => {
       sale_order_id,
       ref_nfe: ref,
       status: finalStatus,
-      valor_total: totalComFrete,
+      valor_total: nfTotal,
       // Sempre grava o motivo quando rejeitada. Precedência: motivo da SEFAZ
       // (mais específico) > emitMsg (genérico do emit) > situacao > fallback.
       motivo_rejeicao: finalStatus === "rejeitada"

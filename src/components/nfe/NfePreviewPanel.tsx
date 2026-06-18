@@ -118,26 +118,21 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                 ))}
               </tbody>
               <tfoot>
-                {/* total_pedido = soma_itens + frete (computado no emit-nfe). Quando há
-                    frete, mostra o desdobramento (mercadoria + frete) em vez de um
-                    falso "diverge" — a NF é emitida com o total COM frete. */}
-                {totais.total_pedido - totais.soma_itens > 0.01 && (
-                  <>
-                    <tr className="text-muted-foreground">
-                      <td className="px-2 py-1 text-right" colSpan={8}>Mercadoria (itens)</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(totais.soma_itens)}</td>
-                    </tr>
-                    <tr className="text-muted-foreground">
-                      <td className="px-2 py-1 text-right" colSpan={8}>Frete</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(totais.total_pedido - totais.soma_itens)}</td>
-                    </tr>
-                  </>
-                )}
+                {/* Total da NF = SÓ mercadoria. O frete NÃO compõe a NF (pedido
+                    Leonardo 2026-06-18) — vai só pro financeiro como "Frete a pagar". */}
                 <tr className="border-t-2 border-border font-medium">
-                  <td className="px-2 py-2 text-right" colSpan={8}>Total da NF</td>
+                  <td className="px-2 py-2 text-right" colSpan={8}>Total da NF (mercadoria)</td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmtMoney(totais.total_pedido)}</td>
                 </tr>
-                {/* Anomalia REAL: itens somam MAIS que o total da NF (não é frete). */}
+                {(totais.valor_frete ?? 0) > 0.01 && (
+                  <tr className="text-muted-foreground">
+                    <td colSpan={8} className="px-2 py-1 text-right text-xs">
+                      Frete <span className="opacity-70">(fora da NF — lançado no financeiro como “Frete a pagar”)</span>
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums text-xs">{fmtMoney(totais.valor_frete!)}</td>
+                  </tr>
+                )}
+                {/* Anomalia REAL: itens somam MAIS que o total da NF. */}
                 {totais.soma_itens - totais.total_pedido > 0.01 && (
                   <tr>
                     <td colSpan={9} className="px-2 py-1.5 text-xs text-red-600">
