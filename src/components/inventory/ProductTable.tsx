@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Product } from '@/types/inventory';
 import { supabase } from '@/integrations/supabase/client';
@@ -504,7 +504,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       if (groupVariants.length > 0) {
         // Usa o nome base normalizado pra o título do dialog
         const baseName = (product.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || product.name;
-        setMasterVariant({ baseName, products: groupVariants });
+        setMasterVariant({ baseName, groupId: product.group_id, baseKey: null });
         return;
       }
     }
@@ -512,7 +512,29 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
   }, [onEdit, products]);
   const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [masterVariant, setMasterVariant] = useState<{ baseName: string; products: Product[] } | null>(null);
+  // Guarda só a IDENTIDADE do grupo aberto (não um snapshot dos produtos): as
+  // variantes exibidas são DERIVADAS da lista viva `products` a cada render, pra que
+  // editar cor/nome/etc dentro do modal reflita NA HORA. Antes o estado segurava um
+  // snapshot congelado de Product[] → salvar atualizava o banco mas o modal continuava
+  // mostrando o valor antigo ("aparece que salvou, porém não altera").
+  // baseKey != null ⇒ aberto por SUBGRUPO (deriva por nome-base, escopado ao group_id);
+  // senão ⇒ aberto pela linha (deriva por group_id, igual ao comportamento anterior).
+  const [masterVariant, setMasterVariant] = useState<{ baseName: string; groupId: string | null; baseKey: string | null } | null>(null);
+  const masterVariantProducts = useMemo(() => {
+    if (!masterVariant) return [] as Product[];
+    const { groupId, baseKey } = masterVariant;
+    if (baseKey != null) {
+      return products.filter(p =>
+        (getBaseName(p) || p.name.toUpperCase()) === baseKey &&
+        (groupId == null || p.group_id === groupId));
+    }
+    if (groupId) return products.filter(p => p.group_id === groupId);
+    return [] as Product[];
+  }, [masterVariant, products]);
+  // Se todas as variantes do grupo aberto sumirem (ex.: excluiu a última), fecha o modal.
+  useEffect(() => {
+    if (masterVariant && masterVariantProducts.length === 0) setMasterVariant(null);
+  }, [masterVariant, masterVariantProducts]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMarqueeSelection = useCallback((_indices: number[], keys: string[]) => {
@@ -720,7 +742,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                 </div>
                 <button
                   className="font-semibold text-sm text-foreground hover:text-primary transition-colors"
-                  onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, products: sub.products }); }}
+                  onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, groupId: sub.products[0]?.group_id ?? null, baseKey: sub.baseName }); }}
                 >
                   {sub.baseName}
                 </button>
@@ -733,7 +755,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
                        variant="ghost"
                        size="icon"
                        className="h-6 w-6 ml-1"
-                       onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, products: sub.products }); }}
+                       onClick={(e) => { e.stopPropagation(); setMasterVariant({ baseName: sub.baseName, groupId: sub.products[0]?.group_id ?? null, baseKey: sub.baseName }); }}
                      >
                        <Pencil className="h-3 w-3" />
                      </Button>
@@ -811,7 +833,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} />
         <SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
       </>
     );
   }
@@ -844,7 +866,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
           </SelectionMarquee>
           <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
           <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-       {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+       {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
      </>
       );
@@ -872,7 +894,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
         </SelectionMarquee>
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
-        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+        {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
          <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
       </>
     );
@@ -973,7 +995,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       {editingGroup && (
         <GroupEditDialog open={!!editingGroup} onOpenChange={(o) => { if (!o) setEditingGroup(null); }} group={editingGroup} />
       )}
-      {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariant.products} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
+      {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
     </>
   );
