@@ -53,9 +53,14 @@ jobs:
           for fn in ${{ steps.detect.outputs.functions }}; do
             if [ -d "supabase/functions/$fn" ]; then
               echo "::group::Deploy $fn"
+              # NÃO passar --no-verify-jwt aqui: o flag OVERRIDA o config.toml.
+              # `--no-verify-jwt=false` forçava verify_jwt=TRUE em TODA função,
+              # quebrando emit-nfe/nfe-status/recolor-image/time-control que
+              # exigem verify_jwt=false (autenticam por conta própria). Sem o
+              # flag, o CLI (setup-cli@latest) respeita [functions.<nome>]
+              # verify_jwt do supabase/config.toml — fonte única da verdade.
               supabase functions deploy "$fn" \
-                --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} \
-                --no-verify-jwt=false
+                --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
               echo "::endgroup::"
             else
               echo "Skipping $fn (not a directory)"

@@ -1119,6 +1119,14 @@ Deno.serve(async (req) => {
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
       tipo_nf: 1,
+      // envio_automatico=1 (ClickNotas/GestaoClick): o próprio cadastro JÁ
+      // dispara a transmissão pra SEFAZ, pelo MÉTODO de cadastro — que este
+      // token TEM permissão de chamar. Antes dependíamos do método separado
+      // POST /notas_fiscais_produtos/emitir/{id}, que retorna 403 "este
+      // usuário não possui permissão para acessar este método" (a API key não
+      // tem o método /emitir liberado). Com envio automático a NF transmite
+      // sem precisar daquele método. Ver doc oficial clicknotas.apib.
+      envio_automatico: 1,
       // loja_id (obrigatório na doc). Quando null, GC usa matriz por default.
       ...(gcLojaId ? { loja_id: Number(gcLojaId) } : {}),
       natureza_operacao: naturezaEsperada,
@@ -1370,12 +1378,12 @@ Deno.serve(async (req) => {
     }
     const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
 
-    // ---------- Emite a NF-e (envia pra SEFAZ) ----------
-    const emitResp = await gcFetch(`/notas_fiscais_produtos/emitir/${gcNfeId}`, { method: "POST" });
-    const emitOk = emitResp.ok && emitResp.json?.data?.ok !== false && emitResp.json?.status !== "error";
-    const emitMsg = emitResp.json?.data?.mensagem || emitResp.json?.message || emitResp.json?.mensagem || "";
-
-    // ---------- Consulta status final + protocolo/chave ----------
+    // ---------- Transmissão pra SEFAZ ----------
+    // A emissão foi disparada pelo próprio cadastro (envio_automatico=1). A
+    // FONTE DA VERDADE do status é o DETALHE (situacao_nf/chave), consultado em
+    // poll — NÃO o método /emitir (que dá 403 de permissão neste token). O
+    // /emitir vira só fallback best-effort caso o envio automático não tenha
+    // transmitido (NF segue "em aberto").
     let chave = "";
     let protocolo = "";
     let situacao = "";
@@ -1384,41 +1392,83 @@ Deno.serve(async (req) => {
     let dataEmissao = "";
     let motivoRejeicaoSefaz = "";
     let detailResponseJson: unknown = null;
-    if (emitOk) {
-      const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
-      detailResponseJson = detail.json ?? null;
+
+    const readDetail = async () => {
+      const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`).catch(() => ({ json: null as any }));
+      detailResponseJson = detail.json ?? detailResponseJson;
       const d = detail.json?.data || {};
-      chave = d.chave || "";
-      protocolo = d.protocolo || "";
-      situacao = d.situacao_nf || "";
-      // motivo_rejeicao_sefaz vem preenchido quando a SEFAZ rejeitou no
-      // pós-emit. Detector antigo só lia situacao_nf; agora usamos esse
-      // campo como sinal forte de rejeição.
-      motivoRejeicaoSefaz = d.motivo_rejeicao_sefaz || d.motivo_rejeicao || "";
-      // numero_nf / serie só vêm no detalhe — sem isso o registro local
-      // ficava com numero/serie vazios (quebrava a aba "NF-es Emitidas" e
-      // a devolução, que referencia nfeOriginal.numero).
-      numeroNf = d.numero_nf ? String(d.numero_nf) : "";
-      serieNf = d.serie ? String(d.serie) : "";
-      // data_emissao real da SEFAZ — sem isso a coluna assumia o default
-      // now() do insert e a janela de 24h pra cancelamento ficava imprecisa.
+      chave = d.chave || chave;
+      protocolo = d.protocolo || protocolo;
+      situacao = d.situacao_nf || situacao;
+      // motivo_rejeicao_sefaz vem preenchido quando a SEFAZ rejeitou — sinal
+      // forte de rejeição, mesmo que situacao_nf venha estranha.
+      motivoRejeicaoSefaz = d.motivo_rejeicao_sefaz || d.motivo_rejeicao || motivoRejeicaoSefaz;
+      // numero_nf / serie só vêm no detalhe — sem isso o registro local ficava
+      // com numero/serie vazios (quebrava a aba "NF-es Emitidas" e a devolução).
+      numeroNf = d.numero_nf ? String(d.numero_nf) : numeroNf;
+      serieNf = d.serie ? String(d.serie) : serieNf;
+      // data_emissao real da SEFAZ — sem isso a coluna assumia o default now()
+      // do insert e a janela de 24h pra cancelamento ficava imprecisa.
       if (d.data_emissao) {
         const t = d.hora_emissao ? `${d.data_emissao}T${d.hora_emissao}` : String(d.data_emissao);
         const norm = /Z$|[+-]\d{2}:\d{2}$/.test(t) ? t : t + "-03:00";
         const ts = new Date(norm).getTime();
         if (!Number.isNaN(ts) && ts > 0 && ts < Date.now() + 86_400_000) dataEmissao = norm;
       }
+    };
+    // NF chegou a um desfecho (autorizada / rejeitada / cancelada)?
+    const isTerminal = () => {
+      const s = situacao.toLowerCase();
+      return !!chave || motivoRejeicaoSefaz.trim() !== "" ||
+        s.includes("autoriz") || s.includes("aprovada") || s.includes("rejeit") ||
+        s.includes("denegada") || s.includes("cancel");
+    };
+    // NF ainda só cadastrada, sem transmitir.
+    const isOpen = () => {
+      const s = situacao.toLowerCase();
+      return s === "" || s.includes("aberto") || s.includes("aberta") ||
+        s.includes("digita");
+    };
+
+    // Poll pós-cadastro (a autorização SEFAZ leva alguns segundos).
+    for (let i = 0; i < 4; i++) {
+      await readDetail();
+      if (isTerminal()) break;
+      if (i < 3) await new Promise((r) => setTimeout(r, 2000));
     }
-    // Status final via mapSituacao() canônico (mesma lógica de nfe-status e
-    // sync-nfe-from-provider). Sinais fortes de rejeição que sobrescrevem o
-    // mapper:
-    //   - emitOk=false → POST /emitir já falhou
-    //   - motivo_rejeicao_sefaz preenchido → SEFAZ rejeitou pós-emit, mesmo
-    //     que situacao_nf venha estranha
-    //   - emitMsg contém "rejei" → mensagem de erro da chamada de emit
+
+    // Fallback: se ainda "em aberto" (envio automático não transmitiu), tenta o
+    // método /emitir. Pode dar 403 (sem permissão) — best-effort, não fatal.
+    let emitResp: { ok: boolean; json: any } = { ok: true, json: null };
+    let emitMsg = "";
+    if (!isTerminal() && isOpen()) {
+      emitResp = await gcFetch(`/notas_fiscais_produtos/emitir/${gcNfeId}`, { method: "POST" })
+        .catch(() => ({ ok: false, json: null as any }));
+      emitMsg = emitResp.json?.data?.mensagem || emitResp.json?.message || emitResp.json?.mensagem || "";
+      for (let i = 0; i < 3; i++) {
+        await readDetail();
+        if (isTerminal()) break;
+        if (i < 2) await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    // Status final via mapSituacao() canônico. Rejeição só com sinal REAL
+    // (motivo SEFAZ, situacao rejeitada/denegada, ou emitMsg "rejei"). O 403 de
+    // PERMISSÃO do /emitir NÃO marca mais rejeitada — a NF pode ter sido
+    // transmitida pelo envio automático.
     const msg = (emitMsg || "").toLowerCase();
-    const explicitRejection = !emitOk || motivoRejeicaoSefaz.trim() !== "" || msg.includes("rejei");
-    const finalStatus = explicitRejection ? "rejeitada" : mapSituacao(situacao);
+    const sLow = situacao.toLowerCase();
+    const sefazRejected = motivoRejeicaoSefaz.trim() !== "" ||
+      sLow.includes("rejeit") || sLow.includes("denegada") || msg.includes("rejei");
+    const authorized = !!chave || sLow.includes("autoriz") || sLow.includes("aprovada");
+    const finalStatus = sefazRejected ? "rejeitada" : (authorized ? "autorizada" : mapSituacao(situacao));
+    // Cadastrada mas NÃO transmitida após todas as tentativas (envio automático
+    // ignorado E /emitir sem permissão) → avisa o operador; não é autorizada.
+    const notTransmitted = finalStatus === "processando" && !chave && !protocolo && isOpen();
+    const transmitWarning = notTransmitted
+      ? `NF nº ${numeroNf || gcNfeId} cadastrada no ClickNotas mas NÃO transmitida automaticamente${emitMsg ? ` (emitir: ${emitMsg})` : ""}. Emita manualmente no painel ClickNotas ou verifique a permissão de emissão da API key.`
+      : null;
+    const emitOk = finalStatus === "autorizada" || finalStatus === "processando";
 
     const nfeRecord: any = {
       sale_order_id,
@@ -1499,6 +1549,7 @@ Deno.serve(async (req) => {
       nfe,
       provider_response: { create: createResp.json, emit: emitResp.json },
       ...(arSyncWarning ? { ar_sync_warning: arSyncWarning } : {}),
+      ...(transmitWarning ? { transmit_warning: transmitWarning } : {}),
     }), {
       status: emitOk ? 200 : 422,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
