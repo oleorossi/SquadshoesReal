@@ -316,6 +316,21 @@ export default function Employees() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => { setEditing(e); setForm(e); setDialogOpen(true); }} aria-label={`Editar funcionário ${e.name}`}><Pencil className="h-4 w-4" /></Button>
+                          {/* Inativar/Reativar em 1 clique: o destino certo quando
+                              o funcionário tem ponto/folha no histórico (excluir é
+                              bloqueado). Reversível, sem confirmação. */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => updateEmployee.mutate({ id: e.id, data: { active: !e.active } })}
+                            disabled={updateEmployee.isPending}
+                            aria-label={e.active ? `Inativar funcionário ${e.name}` : `Reativar funcionário ${e.name}`}
+                            title={e.active ? 'Inativar' : 'Reativar'}
+                          >
+                            {e.active
+                              ? <UserX className="h-4 w-4 text-amber-600" />
+                              : <UserCheck className="h-4 w-4 text-emerald-600" />}
+                          </Button>
                           <DeleteConfirmButton onConfirm={() => deleteEmployee.mutate(e.id)} size="icon" />
                         </div>
                       </TableCell>
