@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { stripColorFromName } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1018,6 +1019,19 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          {/* Edição em abas: "Dados do Item" (formulário) + "Mover de Família"
+              (corrigir item cadastrado na família errada). Em criação não há
+              abas (só o formulário). O rodapé Salvar fica fora das abas. */}
+          <Tabs defaultValue="dados" className="mt-2">
+            {isEditing && (
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="dados">Dados do Item</TabsTrigger>
+                <TabsTrigger value="mover" className="gap-1.5">
+                  <ArrowRightLeft className="h-3.5 w-3.5" /> Mover de Família
+                </TabsTrigger>
+              </TabsList>
+            )}
+            <TabsContent value="dados" className="space-y-4 mt-3">
           {attempted && Object.keys(errors).length > 0 && (
             <div className="p-3 rounded-lg border border-destructive/20 bg-destructive/5">
               <p className="text-sm font-semibold text-destructive mb-1">
@@ -1209,52 +1223,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </Select>
             </div>
 
-            {isEditing && (
-              <div className="col-span-2">
-                <Label className="flex items-center gap-1.5 text-sm font-medium">
-                  <ArrowRightLeft className="h-3.5 w-3.5" />
-                  Mover para Grupo
-                </Label>
-                <Select value={form.group_id || 'none'} onValueChange={v => {
-                  const gid = v === 'none' ? null : v;
-                  if (gid && product) {
-                    const conflicting = allProducts.find(p => {
-                      if (p.id === product.id) return false;
-                      if (p.group_id !== gid) return false;
-                      const sameName = form.name.trim().toLowerCase() === p.name.trim().toLowerCase();
-                      const sameColor = form.color && p.color && form.color.trim().toLowerCase() === p.color.trim().toLowerCase();
-                      return sameName || sameColor;
-                    });
-                    if (conflicting) {
-                      setGroupConflict(conflicting);
-                      return;
-                    }
-                  }
-                  update('group_id', gid);
-                  if (gid) {
-                    const selectedGroup = groups.find(g => g.id === gid);
-                    if (selectedGroup) {
-                      toast.info(`Item será movido para o grupo "${selectedGroup.name}" ao salvar`);
-                    }
-                  }
-                }}>
-                  <SelectTrigger className="mt-1 border-dashed">
-                    <SelectValue placeholder="Selecione o grupo de destino" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sem grupo</SelectItem>
-                    {groups.map(g => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Selecione um grupo diferente para mover este item
-                </p>
-              </div>
-            )}
+            {/* "Mover para Grupo" foi movido pra aba "Mover de Família" (edição). */}
 
             {groupConflict && (
               <Dialog open={!!groupConflict} onOpenChange={() => setGroupConflict(null)}>
@@ -1806,6 +1775,74 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </p>
             )}
           </div>
+            </TabsContent>
+
+            {isEditing && (
+              <TabsContent value="mover" className="space-y-4 mt-3">
+                <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-start gap-2">
+                    <ArrowRightLeft className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-semibold">Mover para outra família</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Use quando o item foi cadastrado na <strong>família errada</strong>. Escolha a família
+                        de destino e clique em <strong>Salvar</strong> — a categoria é recalculada automaticamente.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Família atual</Label>
+                      <p className="mt-1 text-sm font-medium">
+                        {product?.group_id ? (groups.find(g => g.id === product.group_id)?.name || '—') : 'Sem grupo'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Mover para</Label>
+                      <Select
+                        value={form.group_id || 'none'}
+                        onValueChange={v => {
+                          const gid = v === 'none' ? null : v;
+                          // Bloqueia mover pra um grupo que já tem item de mesmo nome/cor
+                          // (abre o diálogo de conflito, com opção de mover assim mesmo).
+                          if (gid && product) {
+                            const conflicting = allProducts.find(p => {
+                              if (p.id === product.id) return false;
+                              if (p.group_id !== gid) return false;
+                              const sameName = form.name.trim().toLowerCase() === p.name.trim().toLowerCase();
+                              const sameColor = form.color && p.color && form.color.trim().toLowerCase() === p.color.trim().toLowerCase();
+                              return sameName || sameColor;
+                            });
+                            if (conflicting) { setGroupConflict(conflicting); return; }
+                          }
+                          update('group_id', gid);
+                          // Mantém categoria coerente com a nova família (espelha o
+                          // trigger do banco que deriva category do grupo).
+                          update('category', deriveCategoryFromGroup(gid ? groups.find(g => g.id === gid)?.name : undefined));
+                        }}
+                      >
+                        <SelectTrigger className="mt-1 border-dashed">
+                          <SelectValue placeholder="Selecione a família de destino" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem grupo</SelectItem>
+                          {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {product && (product.group_id || null) !== (form.group_id || null) && (
+                    <div className="text-xs rounded-md px-3 py-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                      Ao salvar, este item será movido para{' '}
+                      <strong>{form.group_id ? (groups.find(g => g.id === form.group_id)?.name || '—') : 'Sem grupo'}</strong>.
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancelar</Button>
             <Button type="submit" disabled={submitting || (attempted && !isFormValid)}>
