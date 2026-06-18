@@ -1158,6 +1158,28 @@ Deno.serve(async (req) => {
       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
       ...(qtdVolumesStr ? { quantidade_volumes: Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1) } : {}),
       especie_volumes: "Volumes",
+      // ⚠ ClickNotas IGNOROU quantidade_volumes/transporte.volumes.quantidade
+      // (NF 278 saiu com volume = Σ pares = 1884 em vez de 157, mode=colmeia),
+      // mas RESPEITOU peso_bruto/peso_liquido top-level. Como o modelo de NF do
+      // GestaoClick tem uma seção "Volumes" com VÁRIAS linhas, o contrato mais
+      // provável é um ARRAY `volumes` no top-level (espelha o <vol> repetível da
+      // NF-e). Mandamos isso + variações de nome do contador escalar. Campos não
+      // reconhecidos o ClickNotas descarta (já descarta os atuais) — seguro.
+      ...(qtdVolumesStr ? (() => {
+        const q = Math.max(1, Math.trunc(Number(qtdVolumesStr)) || 1);
+        return {
+          quantidade_volume: q,
+          qtd_volumes: q,
+          numero_volumes: q,
+          volumes: [{
+            quantidade: q,
+            especie: "Volumes",
+            marca: "",
+            ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+            ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+          }],
+        };
+      })() : {}),
       // valor_frete REMOVIDO do payload (2026-06-18): o frete NÃO compõe a NF —
       // é lançado só no financeiro (despesa "Frete a pagar"). A NF sai com vFrete=0
       // e valor_total = só mercadoria. (Antes somava ao vNF — pedido Leonardo.)
