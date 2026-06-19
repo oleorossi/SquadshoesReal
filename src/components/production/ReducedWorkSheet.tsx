@@ -75,7 +75,11 @@ export function ReducedWorkSheet({
 
   return (
     <div
-      className="w-[210mm] p-[6mm] print:w-full print:p-0 flex flex-col"
+      // SEM flex no root: o fragmentador do Chrome CLIPA conteúdo de flex-col
+      // que passa de 1 página (ficha reduzida grande = várias cores + tally) —
+      // bug clássico. display:block flui/fragmenta certo. Os filhos empilham
+      // igual (nenhum depende do flex do root). Auditoria de impressão 2026-06-19.
+      className="w-[210mm] p-[6mm] print:w-full print:p-0"
       style={{ boxSizing: 'border-box', fontFamily: "'Fira Sans', sans-serif", color: '#000', background: '#fff' }}
     >
       {/* ── Header ── */}

@@ -883,7 +883,7 @@ function KpiBlock({
         {value}
       </p>
       {sub && (
-        <p className="font-mono mt-1 text-[9pt] opacity-60" style={{ color: '#000' }}>
+        <p className="font-mono mt-1 text-[9pt]" style={{ color: '#666' }}>
           {sub}
         </p>
       )}
