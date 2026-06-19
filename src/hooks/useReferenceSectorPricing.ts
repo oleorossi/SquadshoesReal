@@ -2,22 +2,44 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * Resultados salvos da calculadora de custo de MO por SETOR baseada em TEMPO
- * (aba "MOD por Setor" em /pricing-calculator). Cada resultado guarda a
- * referência, as linhas (setor / minutos por par / custo-hora SNAPSHOT) e o
- * total. Ver migration 20260806120000_reference-sector-pricing.
+ * Resultados salvos da calculadora de custo de MO por SETOR baseada em
+ * PRODUTIVIDADE (pares por hora) — aba "MOD por Setor" em /pricing-calculator.
+ * Cada resultado guarda a referência, as linhas (setor / pares por hora /
+ * custo-hora SNAPSHOT) e o total. Ver migration 20260806120000 +
+ * 20260807120000 (min/par → pares/hora).
  *
  * Independente de labor_cost_results (aba "Mão de Obra", que guarda HORAS).
+ *
+ * Retrocompat: linhas salvas no formato antigo (`time_per_pair_min`) são
+ * convertidas na leitura para `pairs_per_hour = 60 / time_per_pair_min` — o que
+ * preserva o custo exatamente (hora/(60/min) = (min/60)×hora).
  */
 
 export interface ReferenceSectorPricingLine {
   sector_key: string;
-  /** Tempo gasto no setor, por par, em MINUTOS. */
-  time_per_pair_min: number;
+  /** Produtividade do setor: pares produzidos por hora. */
+  pairs_per_hour: number;
   /** Custo-hora do setor no momento de salvar (default = salário ÷ 220, editável). */
   cost_per_hour: number;
-  /** Custo/par derivado = (time_per_pair_min / 60) × cost_per_hour. */
+  /** Custo/par derivado = cost_per_hour / pairs_per_hour. */
   cost: number;
+}
+
+/** Converte uma linha de qualquer formato (novo pairs_per_hour OU legado
+ *  time_per_pair_min) na forma canônica atual. */
+function normalizeLine(raw: any): ReferenceSectorPricingLine {
+  const costPerHour = Number(raw?.cost_per_hour) || 0;
+  let pph = Number(raw?.pairs_per_hour) || 0;
+  if (pph <= 0) {
+    const legacyMin = Number(raw?.time_per_pair_min) || 0;
+    if (legacyMin > 0) pph = 60 / legacyMin; // preserva o custo (hora/(60/min) = (min/60)×hora)
+  }
+  return {
+    sector_key: String(raw?.sector_key ?? ''),
+    pairs_per_hour: pph,
+    cost_per_hour: costPerHour,
+    cost: Number(raw?.cost) || (pph > 0 ? costPerHour / pph : 0),
+  };
 }
 
 export interface ReferenceSectorPricing {
@@ -43,7 +65,7 @@ export function useReferenceSectorPricing() {
       return (data ?? []).map((r) => ({
         id: r.id,
         reference: r.reference,
-        lines: (r.lines as unknown as ReferenceSectorPricingLine[]) ?? [],
+        lines: Array.isArray(r.lines) ? (r.lines as unknown[]).map(normalizeLine) : [],
         total_cost: Number(r.total_cost) || 0,
         created_at: r.created_at,
         updated_at: r.updated_at,

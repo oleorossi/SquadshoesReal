@@ -1,21 +1,25 @@
 /**
  * Calculadora de custo de MÃO DE OBRA por par, detalhada por SETOR e baseada
- * em TEMPO (minutos/par). Aba "MOD por Setor" do Markup (/pricing-calculator).
+ * em PRODUTIVIDADE (pares por hora). Aba "MOD por Setor" do Markup
+ * (/pricing-calculator). Cálculo ISOLADO — não toca no preço do Markup.
  *
  * Fórmula (src/lib/sectorPricing.ts é a fonte da verdade):
- *   custo/par do setor = (tempo_min / 60) × custo-hora
+ *   custo/par do setor = custo-hora / pares_por_hora
  *   MOD/par da referência = Σ (custo/par dos setores pelos quais ela passa)
+ *
+ * Pares/hora (em vez de min/par) porque a amostragem é maior → mais previsível.
  *
  * • O custo-hora DEFAULT de cada setor vem de sector_labor_rates (salário ÷ 220,
  *   sem encargos — configurado na aba "Mão de Obra"). Cada linha pode
  *   sobrescrever o custo-hora pra esta referência.
- * • O tempo/par pode ser digitado OU derivado da CAPACIDADE do setor
- *   (pares/dia ⇒ jornada de 8h ÷ capacidade).
+ * • Os pares/hora podem ser digitados OU derivados da CAPACIDADE do setor
+ *   (pares/dia ÷ jornada de 8h).
  * • Pré-preenche a sequência canônica de setores do PCP numa referência nova.
- * • Salva por referência em reference_sector_pricing (snapshot do custo-hora).
+ * • Salva por referência em reference_sector_pricing (snapshot do custo-hora);
+ *   linhas antigas em min/par são convertidas na leitura (60 / min).
  *
- * Diferente da aba "Mão de Obra" (labor_cost_results), que trabalha em HORAS e
- * sem capacidade — as duas convivem (retrocompat).
+ * Diferente da aba "Mão de Obra" (labor_cost_results), que trabalha em HORAS —
+ * as duas convivem (retrocompat).
  */
 import { useState, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,7 +38,7 @@ import { useSectorLaborRates } from '@/hooks/useSectorLaborRates';
 import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
-  sectorCostPerPair, minutesPerPairFromCapacity, totalModPerPair, countActiveSectors,
+  sectorCostPerPair, pairsPerHourFromCapacity, totalModPerPair, countActiveSectors,
   DEFAULT_HOURS_PER_DAY, type SectorPricingRow,
 } from '@/lib/sectorPricing';
 import {
@@ -69,11 +73,11 @@ function resultSummary(r: ReferenceSectorPricing): string {
 interface Row {
   id: number;
   sectorKey: string;
-  /** Minutos por par (digitado ou derivado da capacidade). */
-  minPerPair: string;
+  /** Pares por hora (digitado ou derivado da capacidade). */
+  pairsPerHour: string;
   /** Override do custo-hora; vazio = usa o default do setor (salário ÷ 220). */
   costPerHour: string;
-  /** Helper opcional: pares/dia → deriva minPerPair. Não é salvo. */
+  /** Helper opcional: pares/dia → deriva pares/hora. Não é salvo. */
   capacityPerDay: string;
 }
 
@@ -81,7 +85,7 @@ function canonicalRows(startId: number): Row[] {
   return RATE_SECTORS.map((s, i) => ({
     id: startId + i,
     sectorKey: s.key,
-    minPerPair: '',
+    pairsPerHour: '',
     costPerHour: '',
     capacityPerDay: '',
   }));
@@ -105,11 +109,11 @@ export default function SectorPricingCalculator() {
 
   const toModel = (row: Row): SectorPricingRow => ({
     sectorKey: row.sectorKey,
-    timePerPairMin: parseNum(row.minPerPair),
+    pairsPerHour: parseNum(row.pairsPerHour),
     costPerHour: effectiveHourly(row),
   });
 
-  const rowCostBrl = (row: Row) => sectorCostPerPair(parseNum(row.minPerPair), effectiveHourly(row));
+  const rowCostBrl = (row: Row) => sectorCostPerPair(parseNum(row.pairsPerHour), effectiveHourly(row));
 
   const total = useMemo(() => totalModPerPair(rows.filter((r) => r.sectorKey).map(toModel)), [rows, rateMap]);
   const activeCount = useMemo(
@@ -119,18 +123,18 @@ export default function SectorPricingCalculator() {
 
   // ── Manipulação de linhas ──
   const addRow = () =>
-    setRows((r) => [...r, { id: rowId.current++, sectorKey: '', minPerPair: '', costPerHour: '', capacityPerDay: '' }]);
+    setRows((r) => [...r, { id: rowId.current++, sectorKey: '', pairsPerHour: '', costPerHour: '', capacityPerDay: '' }]);
   const removeRow = (id: number) => setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
   const updateRow = (id: number, patch: Partial<Row>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-  // Editar capacidade deriva o tempo/par (jornada de 8h ÷ pares/dia).
+  // Editar capacidade deriva os pares/hora (pares/dia ÷ jornada de 8h).
   const onCapacityChange = (id: number, raw: string) => {
     const cap = parseNum(raw);
-    const derived = cap > 0 ? minutesPerPairFromCapacity(cap) : 0;
+    const derived = cap > 0 ? pairsPerHourFromCapacity(cap) : 0;
     updateRow(id, {
       capacityPerDay: raw,
-      minPerPair: cap > 0 ? fmtNum(derived, 3).replace('.', ',') : '',
+      pairsPerHour: cap > 0 ? fmtNum(derived, 3).replace('.', ',') : '',
     });
   };
 
@@ -142,15 +146,15 @@ export default function SectorPricingCalculator() {
   // ── Salvar / carregar / excluir ──
   const buildLines = (): ReferenceSectorPricingLine[] =>
     rows
-      .filter((r) => r.sectorKey && parseNum(r.minPerPair) > 0)
+      .filter((r) => r.sectorKey && parseNum(r.pairsPerHour) > 0)
       .map((r) => {
-        const min = parseNum(r.minPerPair);
+        const pph = parseNum(r.pairsPerHour);
         const hour = effectiveHourly(r);
         return {
           sector_key: r.sectorKey,
-          time_per_pair_min: min,
+          pairs_per_hour: pph,
           cost_per_hour: hour,
-          cost: sectorCostPerPair(min, hour),
+          cost: sectorCostPerPair(pph, hour),
         };
       });
 
@@ -158,7 +162,7 @@ export default function SectorPricingCalculator() {
     const ref = reference.trim();
     if (!ref) { toast.error('Preencha a referência antes de salvar'); return; }
     const lines = buildLines();
-    if (lines.length === 0) { toast.error('Preencha o tempo de ao menos um setor'); return; }
+    if (lines.length === 0) { toast.error('Preencha os pares por hora de ao menos um setor'); return; }
     const totalSnapshot = lines.reduce((a, l) => a + l.cost, 0);
 
     let targetId = loadedId;
@@ -184,7 +188,7 @@ export default function SectorPricingCalculator() {
         ? r.lines.map((l) => ({
             id: rowId.current++,
             sectorKey: l.sector_key,
-            minPerPair: fmtNum(l.time_per_pair_min, 3).replace('.', ','),
+            pairsPerHour: fmtNum(l.pairs_per_hour, 3).replace('.', ','),
             // Mostra como override só se diferir do default atual do setor.
             costPerHour:
               Math.abs((l.cost_per_hour ?? 0) - (rateMap[l.sector_key]?.hourly_rate ?? 0)) < 0.005
@@ -244,9 +248,9 @@ export default function SectorPricingCalculator() {
                 Custo de mão de obra por setor
               </CardTitle>
               <CardDescription>
-                Tempo (min/par) por setor × custo-hora = custo de MO por par. Custo-hora default vem do salário
-                do setor (÷ {SALARY_HOUR_DIVISOR}); edite por linha pra sobrescrever. O tempo pode ser derivado
-                da capacidade (pares/dia em {DEFAULT_HOURS_PER_DAY}h).
+                Custo-hora ÷ pares por hora = custo de MO por par. Custo-hora default vem do salário
+                do setor (÷ {SALARY_HOUR_DIVISOR}); edite por linha pra sobrescrever. Os pares/hora podem ser
+                derivados da capacidade (pares/dia ÷ {DEFAULT_HOURS_PER_DAY}h).
               </CardDescription>
             </div>
             {loadedId && (
@@ -276,7 +280,7 @@ export default function SectorPricingCalculator() {
           {/* Cabeçalho da tabela */}
           <div className="hidden md:grid grid-cols-[1fr_110px_120px_130px_120px_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             <span>Setor</span>
-            <span className="text-right">Tempo (min/par)</span>
+            <span className="text-right">Pares por hora</span>
             <span className="text-right">Capacidade/dia</span>
             <span className="text-right">Custo-hora (R$)</span>
             <span className="text-right">Custo/par</span>
@@ -288,9 +292,10 @@ export default function SectorPricingCalculator() {
             {rows.map((row) => {
               const hourly = effectiveHourly(row);
               const cost = rowCostBrl(row);
-              const min = parseNum(row.minPerPair);
+              const pph = parseNum(row.pairsPerHour);
               const isOverride = row.costPerHour.trim() !== '';
-              const rateMissing = !!row.sectorKey && min > 0 && hourly === 0;
+              const capacityMissing = !!row.sectorKey && pph <= 0;
+              const rateMissing = !!row.sectorKey && pph > 0 && hourly === 0;
               return (
                 <div
                   key={row.id}
@@ -307,19 +312,19 @@ export default function SectorPricingCalculator() {
                     </SelectContent>
                   </Select>
 
-                  {/* Tempo (min/par) */}
+                  {/* Pares por hora */}
                   <div className="flex items-center justify-end gap-1">
                     <Input
                       inputMode="decimal"
-                      value={row.minPerPair}
-                      onChange={(e) => updateRow(row.id, { minPerPair: e.target.value, capacityPerDay: '' })}
+                      value={row.pairsPerHour}
+                      onChange={(e) => updateRow(row.id, { pairsPerHour: e.target.value, capacityPerDay: '' })}
                       placeholder="0"
                       className="h-9 w-full text-right text-sm tabular-nums"
                     />
-                    <span className="text-xs text-muted-foreground shrink-0">min</span>
+                    <span className="text-xs text-muted-foreground shrink-0">p/h</span>
                   </div>
 
-                  {/* Capacidade/dia (helper → deriva tempo) */}
+                  {/* Capacidade/dia (helper → deriva pares/hora) */}
                   <div className="flex items-center justify-end gap-1">
                     <Gauge className="h-3.5 w-3.5 text-muted-foreground shrink-0 hidden md:block" />
                     <Input
@@ -327,7 +332,7 @@ export default function SectorPricingCalculator() {
                       value={row.capacityPerDay}
                       onChange={(e) => onCapacityChange(row.id, e.target.value)}
                       placeholder="—"
-                      title="Pares/dia → deriva o tempo/par (jornada de 8h)"
+                      title={`Pares/dia → deriva os pares/hora (÷ ${DEFAULT_HOURS_PER_DAY}h)`}
                       className="h-9 w-full text-right text-sm tabular-nums"
                     />
                   </div>
@@ -352,6 +357,7 @@ export default function SectorPricingCalculator() {
                   {/* Custo/par */}
                   <div className="text-right text-sm font-semibold tabular-nums">
                     {fmtBRL(cost)}
+                    {capacityMissing && <span className="block text-[10px] text-amber-600">sem capacidade</span>}
                     {rateMissing && <span className="block text-[10px] text-amber-600">sem custo-hora</span>}
                   </div>
 
