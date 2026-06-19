@@ -6,9 +6,10 @@
  *
  * A DEMANDA em si (consumo × pares, conversão dm²→física, desconto de
  * estoque/reserva) é calculada no banco pela RPC `compute_materials_per_pv`
- * (wrapper de get_wave_material_needs). Este módulo só recebe a lista de
- * necessidades já calculada e a empacota em OCs — por isso é 100% testável sem
- * banco.
+ * (wrapper de `calculate_order_consumption` — o motor canônico de consumo, o
+ * mesmo do modal "Consumo de Materiais", do MRP e das ondas). Este módulo só
+ * recebe a lista de necessidades já calculada e a empacota em OCs — por isso é
+ * 100% testável sem banco.
  */
 
 /** Uma necessidade de material vinda da RPC compute_materials_per_pv. */
