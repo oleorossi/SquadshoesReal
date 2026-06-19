@@ -37,6 +37,8 @@ export type ProductFormData = {
   // Purchase order config
   purchase_order_unit?: string;
   min_order_quantity?: number;
+  /** Múltiplo de compra (embalagem): qtd da OC arredonda pra cima (187→200 c/ 50). */
+  purchase_multiple?: number;
   // Stock management
   reserved_stock?: number;
   safety_stock?: number;

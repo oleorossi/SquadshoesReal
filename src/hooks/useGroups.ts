@@ -20,6 +20,8 @@ export type ProductGroup = {
   box_type_id: string | null;
   shared_specs?: boolean;
   consumption_unit?: string | null;
+  /** Múltiplo de compra padrão do grupo (embalagem); fallback do item. */
+  purchase_multiple?: number | null;
   created_at: string;
   updated_at: string;
 };
