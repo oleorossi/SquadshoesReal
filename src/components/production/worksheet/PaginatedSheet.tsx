@@ -195,28 +195,43 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
   const [heights, setHeights] = useState<number[]>([]);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
-  // Fator de zoom corrente aplicado ao conteúdo dos blocos (auto-fit). A
-  // medição divide a altura medida por ele pra recuperar SEMPRE a altura em
-  // escala 1 (baseline) — assim o cálculo de paginação/escala é estável e não
-  // entra em loop quando o zoom muda o tamanho renderizado.
+  // Fator de zoom corrente do auto-fit (escolhido pelo useMemo). A medição NUNCA
+  // lê o DOM com zoom: `measure` só roda quando scaleRef===1 (baseline). Medir o
+  // DOM zoomado e dividir pelo zoom era INSTÁVEL (zoom reflui texto, não é linear)
+  // → measure↔auto-fit oscilavam e estouravam "Maximum update depth" (React #185).
+  // A paginação prevê o tamanho zoomado via heights*scale no useMemo.
   const scaleRef = useRef(1);
 
   const measure = useCallback(() => {
-    const s = scaleRef.current || 1;
+    // Mede SÓ a baseline (escala 1). Em escala <1 a baseline já foi capturada;
+    // re-medir o DOM zoomado realimentaria o auto-fit em loop infinito (#185).
+    if ((scaleRef.current || 1) !== 1) return;
     const next: number[] = [];
     for (let i = 0; i < blocks.length; i++) {
       const el = wrapperEls.current.get(i);
       if (!el) return; // render incompleto — espera o próximo ciclo
       // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
       // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
-      // Divide pelo zoom corrente pra normalizar à escala 1 (auto-fit).
-      next[i] = Math.ceil(el.getBoundingClientRect().height / s);
+      next[i] = Math.ceil(el.getBoundingClientRect().height);
     }
     setHeights(prev => {
       if (prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 1.5)) return prev;
       return next;
     });
   }, [blocks.length]);
+
+  // Conjunto de blocos mudou → volta pra escala 1 e re-mede a baseline (measure só
+  // roda em s=1; sem este reset a medição ficaria presa na escala antiga). Declarado
+  // ANTES do effect que chama measure, pra rodar primeiro no mesmo commit.
+  const blockSig = `${blocks.length}|${keepFlags.join('')}|${keepNextFlags.join('')}`;
+  const prevSigRef = useRef(blockSig);
+  useLayoutEffect(() => {
+    if (prevSigRef.current !== blockSig) {
+      prevSigRef.current = blockSig;
+      scaleRef.current = 1;
+      setHeights([]);
+    }
+  });
 
   // Mede SÍNCRONO após cada render (antes do paint) — a 1ª passada renderiza
   // tudo numa página flow só pra medir; a repaginação acontece antes do
