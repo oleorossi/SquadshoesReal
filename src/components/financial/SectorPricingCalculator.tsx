@@ -15,6 +15,9 @@
  * • Os pares/hora podem ser digitados OU derivados da CAPACIDADE do setor
  *   (pares/dia ÷ jornada de 8h).
  * • Pré-preenche a sequência canônica de setores do PCP numa referência nova.
+ * • Colunas DERIVADAS (só visuais): Pares/dia = pares/hora × jornada; Diária =
+ *   custo-hora × jornada (+ "Diária total" no rodapé). Servem pra avaliar
+ *   rendimento de prestador diarista — NÃO entram na fórmula do custo/par.
  * • Salva por referência em reference_sector_pricing (snapshot do custo-hora);
  *   linhas antigas em min/par são convertidas na leitura (60 / min).
  *
@@ -39,6 +42,7 @@ import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
   sectorCostPerPair, pairsPerHourFromCapacity, totalModPerPair, countActiveSectors,
+  pairsPerDay, dailyRate, totalDailyRate,
   DEFAULT_HOURS_PER_DAY, type SectorPricingRow,
 } from '@/lib/sectorPricing';
 import {
@@ -51,6 +55,10 @@ const RATE_SECTORS: { key: SectorKey; label: string }[] = [
   ...DISPLAY_SECTORS,
   { key: 'expedicao' as SectorKey, label: SECTOR_LABELS.expedicao },
 ];
+
+// Jornada-padrão da fábrica (horas/dia). Ajuste aqui se mudar — usada pra
+// derivar pares/hora da capacidade, pares/dia e a diária equivalente.
+const JORNADA_HORAS = DEFAULT_HOURS_PER_DAY; // 8h
 
 const parseNum = parseBrlNumberNonNeg;
 
@@ -120,6 +128,16 @@ export default function SectorPricingCalculator() {
     () => countActiveSectors(rows.filter((r) => r.sectorKey).map(toModel)),
     [rows, rateMap],
   );
+  // Diária total/dia (soma das diárias dos setores com capacidade > 0) — projeção
+  // pra comparar com prestador diarista. hasCapacity decide se a linha aparece.
+  const totalDaily = useMemo(
+    () => totalDailyRate(rows.filter((r) => r.sectorKey).map(toModel), JORNADA_HORAS),
+    [rows, rateMap],
+  );
+  const hasCapacity = useMemo(
+    () => rows.some((r) => r.sectorKey && parseNum(r.pairsPerHour) > 0),
+    [rows],
+  );
 
   // ── Manipulação de linhas ──
   const addRow = () =>
@@ -128,10 +146,10 @@ export default function SectorPricingCalculator() {
   const updateRow = (id: number, patch: Partial<Row>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-  // Editar capacidade deriva os pares/hora (pares/dia ÷ jornada de 8h).
+  // Editar capacidade deriva os pares/hora (pares/dia ÷ jornada).
   const onCapacityChange = (id: number, raw: string) => {
     const cap = parseNum(raw);
-    const derived = cap > 0 ? pairsPerHourFromCapacity(cap) : 0;
+    const derived = cap > 0 ? pairsPerHourFromCapacity(cap, JORNADA_HORAS) : 0;
     updateRow(id, {
       capacityPerDay: raw,
       pairsPerHour: cap > 0 ? fmtNum(derived, 3).replace('.', ',') : '',
@@ -250,7 +268,9 @@ export default function SectorPricingCalculator() {
               <CardDescription>
                 Custo-hora ÷ pares por hora = custo de MO por par. Custo-hora default vem do salário
                 do setor (÷ {SALARY_HOUR_DIVISOR}); edite por linha pra sobrescrever. Os pares/hora podem ser
-                derivados da capacidade (pares/dia ÷ {DEFAULT_HOURS_PER_DAY}h).
+                derivados da capacidade (pares/dia ÷ {JORNADA_HORAS}h). <strong>Pares/dia</strong> e{' '}
+                <strong>Diária (R$)</strong> são projeções pra jornada de {JORNADA_HORAS}h — pra avaliar
+                rendimento de prestador diarista.
               </CardDescription>
             </div>
             {loadedId && (
@@ -278,11 +298,13 @@ export default function SectorPricingCalculator() {
           </div>
 
           {/* Cabeçalho da tabela */}
-          <div className="hidden md:grid grid-cols-[1fr_110px_120px_130px_120px_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="hidden md:grid grid-cols-[1fr_92px_100px_84px_120px_96px_92px_36px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             <span>Setor</span>
             <span className="text-right">Pares por hora</span>
             <span className="text-right">Capacidade/dia</span>
+            <span className="text-right">Pares/dia</span>
             <span className="text-right">Custo-hora (R$)</span>
+            <span className="text-right">Diária (R$)</span>
             <span className="text-right">Custo/par</span>
             <span />
           </div>
@@ -293,13 +315,15 @@ export default function SectorPricingCalculator() {
               const hourly = effectiveHourly(row);
               const cost = rowCostBrl(row);
               const pph = parseNum(row.pairsPerHour);
+              const ppd = pairsPerDay(pph, JORNADA_HORAS);     // derivado: pares/dia
+              const dailyBrl = dailyRate(hourly, JORNADA_HORAS); // derivado: diária equivalente
               const isOverride = row.costPerHour.trim() !== '';
               const capacityMissing = !!row.sectorKey && pph <= 0;
               const rateMissing = !!row.sectorKey && pph > 0 && hourly === 0;
               return (
                 <div
                   key={row.id}
-                  className="grid grid-cols-2 md:grid-cols-[1fr_110px_120px_130px_120px_40px] gap-2 items-center"
+                  className="grid grid-cols-2 md:grid-cols-[1fr_92px_100px_84px_120px_96px_92px_36px] gap-2 items-center"
                 >
                   <Select value={row.sectorKey} onValueChange={(v) => updateRow(row.id, { sectorKey: v })}>
                     <SelectTrigger className="h-9 text-sm">
@@ -332,9 +356,14 @@ export default function SectorPricingCalculator() {
                       value={row.capacityPerDay}
                       onChange={(e) => onCapacityChange(row.id, e.target.value)}
                       placeholder="—"
-                      title={`Pares/dia → deriva os pares/hora (÷ ${DEFAULT_HOURS_PER_DAY}h)`}
+                      title={`Pares/dia → deriva os pares/hora (÷ ${JORNADA_HORAS}h)`}
                       className="h-9 w-full text-right text-sm tabular-nums"
                     />
+                  </div>
+
+                  {/* Pares/dia (derivado = pares/hora × jornada) */}
+                  <div className="text-right text-sm tabular-nums text-muted-foreground" title={`pares/hora × ${JORNADA_HORAS}h`}>
+                    {pph > 0 ? fmtNum(ppd, 1) : '—'}
                   </div>
 
                   {/* Custo-hora (override) */}
@@ -352,6 +381,11 @@ export default function SectorPricingCalculator() {
                     <span className="text-[10px] text-muted-foreground">
                       {isOverride ? 'override' : 'salário ÷ ' + SALARY_HOUR_DIVISOR}
                     </span>
+                  </div>
+
+                  {/* Diária equivalente (derivado = custo-hora × jornada) */}
+                  <div className="text-right text-sm tabular-nums text-muted-foreground" title={`custo-hora × ${JORNADA_HORAS}h`}>
+                    {fmtBRL(dailyBrl)}
                   </div>
 
                   {/* Custo/par */}
@@ -381,26 +415,43 @@ export default function SectorPricingCalculator() {
           </Button>
 
           {/* Total + ações + resumo */}
-          <div className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-primary/70">
-                MOD por par{reference ? ` · ${reference}` : ''}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {activeCount} {activeCount === 1 ? 'setor' : 'setores'} · soma do custo de mão de obra
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <p className="display text-2xl tabular-nums text-primary">{fmtBRL(total)}</p>
-              <div className="flex items-center gap-1.5">
-                {loadedId && (
-                  <Button variant="ghost" size="sm" onClick={onNew} className="h-9">Novo</Button>
-                )}
-                <Button size="sm" onClick={onSave} disabled={save.isPending} className="h-9 gap-1.5">
-                  <FloppyDisk className="h-4 w-4" /> {loadedId ? 'Atualizar' : 'Salvar'}
-                </Button>
+          <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 space-y-2.5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-primary/70">
+                  MOD por par{reference ? ` · ${reference}` : ''}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {activeCount} {activeCount === 1 ? 'setor' : 'setores'} · soma do custo de mão de obra
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <p className="display text-2xl tabular-nums text-primary">{fmtBRL(total)}</p>
+                <div className="flex items-center gap-1.5">
+                  {loadedId && (
+                    <Button variant="ghost" size="sm" onClick={onNew} className="h-9">Novo</Button>
+                  )}
+                  <Button size="sm" onClick={onSave} disabled={save.isPending} className="h-9 gap-1.5">
+                    <FloppyDisk className="h-4 w-4" /> {loadedId ? 'Atualizar' : 'Salvar'}
+                  </Button>
+                </div>
               </div>
             </div>
+
+            {/* Diária total — projeção pra comparar com prestador diarista */}
+            {hasCapacity && (
+              <div className="flex items-center justify-between gap-3 border-t border-primary/15 pt-2.5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-primary/70">Diária total</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    soma das diárias dos setores ativos · jornada {JORNADA_HORAS}h/dia
+                  </p>
+                </div>
+                <p className="display text-xl tabular-nums text-primary">
+                  {fmtBRL(totalDaily)}<span className="text-xs font-normal text-muted-foreground"> /dia</span>
+                </p>
+              </div>
+            )}
           </div>
 
           <p className="text-[11px] text-muted-foreground">

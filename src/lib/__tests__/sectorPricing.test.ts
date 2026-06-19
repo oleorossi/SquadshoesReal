@@ -5,6 +5,9 @@ import {
   totalModPerPair,
   countActiveSectors,
   rowCost,
+  pairsPerDay,
+  dailyRate,
+  totalDailyRate,
   DEFAULT_HOURS_PER_DAY,
   type SectorPricingRow,
 } from '../sectorPricing';
@@ -114,6 +117,71 @@ describe('totalModPerPair', () => {
   it('robusto a undefined/null', () => {
     expect(totalModPerPair(undefined as unknown as SectorPricingRow[])).toBe(0);
     expect(totalModPerPair(null as unknown as SectorPricingRow[])).toBe(0);
+  });
+});
+
+describe('pairsPerDay', () => {
+  it('pares/dia = pares/hora × 8h', () => {
+    expect(pairsPerDay(10)).toBeCloseTo(80, 6);
+    expect(pairsPerDay(25)).toBeCloseTo(200, 6);
+  });
+
+  it('jornada custom', () => {
+    expect(pairsPerDay(10, 10)).toBeCloseTo(100, 6);
+  });
+
+  it('produtividade 0/negativa/NaN ⇒ 0', () => {
+    expect(pairsPerDay(0)).toBe(0);
+    expect(pairsPerDay(-5)).toBe(0);
+    expect(pairsPerDay(Number.NaN)).toBe(0);
+  });
+});
+
+describe('dailyRate', () => {
+  it('diária = custo-hora × 8h', () => {
+    expect(dailyRate(12)).toBeCloseTo(96, 6);
+    expect(dailyRate(15)).toBeCloseTo(120, 6);
+  });
+
+  it('jornada custom', () => {
+    expect(dailyRate(15, 10)).toBeCloseTo(150, 6);
+  });
+
+  it('custo-hora 0 ⇒ diária 0', () => {
+    expect(dailyRate(0)).toBe(0);
+  });
+
+  it('independe da produtividade (só custo-hora)', () => {
+    // diária não usa pares/hora — é custo_hora × jornada
+    expect(dailyRate(20)).toBeCloseTo(160, 6);
+  });
+});
+
+describe('totalDailyRate', () => {
+  const rows: SectorPricingRow[] = [
+    { sectorKey: 'corte_palmilha', pairsPerHour: 20, costPerHour: 12 },  // ativo → 96
+    { sectorKey: 'costura', pairsPerHour: 6, costPerHour: 15 },          // ativo → 120
+    { sectorKey: 'silk', pairsPerHour: 0, costPerHour: 30 },             // sem capacidade → ignora
+    { sectorKey: 'montagem', pairsPerHour: 5, costPerHour: 0 },          // ativo mas sem salário → 0
+  ];
+
+  it('soma as diárias só dos setores com capacidade > 0', () => {
+    // 12×8 + 15×8 + (silk ignorado) + 0×8 = 96 + 120 + 0 = 216
+    expect(totalDailyRate(rows)).toBeCloseTo(216, 6);
+  });
+
+  it('jornada custom propaga', () => {
+    expect(totalDailyRate(rows, 10)).toBeCloseTo(12 * 10 + 15 * 10, 6);
+  });
+
+  it('lista vazia / sem capacidade ⇒ 0', () => {
+    expect(totalDailyRate([])).toBe(0);
+    expect(totalDailyRate([{ sectorKey: 'silk', pairsPerHour: 0, costPerHour: 30 }])).toBe(0);
+  });
+
+  it('robusto a undefined/null', () => {
+    expect(totalDailyRate(undefined as unknown as SectorPricingRow[])).toBe(0);
+    expect(totalDailyRate(null as unknown as SectorPricingRow[])).toBe(0);
   });
 });
 

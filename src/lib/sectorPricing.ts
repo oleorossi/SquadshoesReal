@@ -64,6 +64,23 @@ export function sectorCostPerPair(pairsPerHour: number, costPerHour: number): nu
   return nonNeg(costPerHour) / pph;
 }
 
+/**
+ * Pares por dia = pares_por_hora × jornada. Projeção pra avaliar rendimento de
+ * diarista (quantos pares ele entrega num dia). Produtividade 0 ⇒ 0.
+ */
+export function pairsPerDay(pairsPerHour: number, hoursPerDay: number = DEFAULT_HOURS_PER_DAY): number {
+  return nonNeg(pairsPerHour) * nonNeg(hoursPerDay);
+}
+
+/**
+ * Diária equivalente = custo_hora × jornada. Quanto custaria um dia de trabalho
+ * naquele setor pelo custo-hora vigente — pra comparar com prestador diarista.
+ * Depende SÓ do custo-hora (independe da produtividade). Custo-hora 0 ⇒ 0.
+ */
+export function dailyRate(costPerHour: number, hoursPerDay: number = DEFAULT_HOURS_PER_DAY): number {
+  return nonNeg(costPerHour) * nonNeg(hoursPerDay);
+}
+
 /** Linha de cálculo de MOD por setor. */
 export interface SectorPricingRow {
   sectorKey: string;
@@ -87,4 +104,15 @@ export function totalModPerPair(rows: SectorPricingRow[]): number {
 /** Quantos setores têm contribuição real (> 0) — pro resumo "(Y setores)". */
 export function countActiveSectors(rows: SectorPricingRow[]): number {
   return (rows ?? []).filter((r) => rowCost(r) > 0).length;
+}
+
+/**
+ * Diária total/dia = soma das diárias dos setores ATIVOS (com pares_por_hora > 0,
+ * i.e. que fazem parte do fluxo desta referência). Setor sem produtividade não
+ * entra (não é usado). Pra comparar o custo diário de uma equipe de diaristas.
+ */
+export function totalDailyRate(rows: SectorPricingRow[], hoursPerDay: number = DEFAULT_HOURS_PER_DAY): number {
+  return (rows ?? [])
+    .filter((r) => nonNeg(r.pairsPerHour) > 0)
+    .reduce((acc, r) => acc + dailyRate(r.costPerHour, hoursPerDay), 0);
 }
