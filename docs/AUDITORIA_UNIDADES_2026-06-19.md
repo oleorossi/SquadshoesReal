@@ -134,6 +134,30 @@ vazio). Mas há uma constatação **estrutural** e um bug **crítico ativo**:
 - **P2.3** DROP das funções de débito legadas; alinhar `chapa→placa`.
 - **P2.4** CHECK/trigger no banco (conversion_rate>0; purchase_order_unit default=unit; width obrigatória).
 
+## Status de execução (2026-06-19, aplicado via MCP em prod)
+
+### ✅ Feito e verificado
+- **P0.1** `calculate_order_consumption_by_grade` converte massa dos std-items (cola) via `convert_to_product_unit` (migration `20260811120000`). COLA 9798,6g→9,7986kg.
+- **P0.2** Repair: 27 reservas de cola corrigidas (÷1000) + `reserved_stock` ressincronizado. COLA PVC 103.865→103,87 kg; 0 colas em drift.
+- **P0.3** `get_material_conversion_info` usa `GREATEST(width,length)` (`20260812120000`). NAPA ONÇA/GLOW 100→137 (parity com TS).
+- **P0.4** `get_wave_material_needs` rebaseado em `calculate_order_consumption` (`20260813120000`). Ondas agora compram napa/forro/palmilha; 0 divergência vs per-PV.
+- **P1.1** 25 napas com preço 0,8668 → preço real do mesmo grupo (R$13,34–17,34). *(heurística: preço da família; conferir valores exatos por cor)*
+- **P1.4** 47 produtos com invariante violado → `purchase_order_unit=unit`; cadastro novo herda unit (trigger).
+- **P1.3** nova `audit_unit_invariants()` (`20260815120000`) — cobre os invariantes que `audit_unit_divergences` era cego.
+- **P2.3** `chapa/placas → placa` em `normalize_product_unit`.
+- **P2.4** `CHECK conversion_rate>0` + `purchase_order_unit` sem default 'un' (herda unit) (`20260814120000`).
+
+### ⏳ Aguardando decisão do dono (dado de negócio — NÃO alterei pra não chutar)
+- **P1.2** 8 fichas com forro `per-size`=0,5 vs escalar ~5,7 (**DS20, SP101, SP105, ST15, ST17**). Anular o per-size faz o forro consumir ~11× mais — só confirmar se 0,5 é erro de digitação (m² em campo dm²) ou intencional.
+- **P2.1** `180 SALTO BLOCO` (solado fachetado) sem `fachete_lining_consumption_dm2` — precisa do valor real de consumo do forro do fachete por tamanho.
+
+### 📋 Follow-up recomendado (aditivo/prevenção; não feito p/ não apressar em sessão longa)
+- **P1.5** OC exibir `needed_qty` na unidade de COMPRA (EVA dm²→placa) — hoje mostra dm² (consistente com o modal de consumo).
+- **P1.6** estender `run_consumption_parity_tests()` (std-items g→kg, largura, cross-engine) — cinto de segurança contra regressão.
+- **P2.2** defesa em profundidade no `convert_reservation_to_out` (recomputar/validar unidade) — causa raiz já fechada em P0.1.
+- **P2.3** DROP das funções de débito legadas órfãs (`debit_stock_for_order` text, `process_order_stock_out`) — reconfirmar 0 callers antes.
+- **P2.4** trigger exigindo `dimensions_width>0` p/ material de área usado em ficha/BOM.
+
 ## Notas de confiança
 - "~8 fichas de forro per-size=0,5": reportado por uma frente, **a confirmar** a contagem exata por ficha (o `audit_unit_divergences` live agregou 69 chaves, todas da ficha órfã CF 03).
 - Todo o resto tem evidência SQL direta (def viva das funções + contagens reais).
