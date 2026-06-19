@@ -365,7 +365,7 @@ export default function OverviewTab() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-semibold uppercase">Custo Estimado de Horas Extras</p>
-                    <p className="text-xs text-muted-foreground">Baseado nos salários e taxas individuais cadastradas (HE líquida após compensação de déficit)</p>
+                    <p className="text-xs text-muted-foreground">Baseado nos salários e taxas individuais cadastradas (HE e atraso por dia, sem compensação)</p>
                   </div>
                 </div>
                 <p className="text-xl font-black font-mono text-amber-600">{formatCurrency(totals.overtimeCost)}</p>

@@ -10,10 +10,11 @@
  *   - valor-dia  = salário ÷ 30      (desconto de 1 falta = 1 dia)
  *   - valor-hora = salário ÷ 220     (desconto de atraso/saída-cedo e cálculo da HE)
  *   - Falta (dia útil sem trabalho)        → − valor-dia (à parte, fora da conta de horas)
- *   - LÍQUIDO do período (decisão 2026-06-03): soma TUDO que trabalhou (dias presentes +
- *     fim de semana/feriado) vs o esperado dos dias presentes. Sobrou → hora extra
- *     × valor-hora × 1,5. Faltou → atraso × valor-hora. Hora extra SÓ quando passa da
- *     meta; trabalhar fds/após-18h sem bater a meta NÃO vira HE, só abate o que deve.
+ *   - BRUTO por-dia (decisão do usuário 2026-06-19, SUPERSEDE o líquido de 2026-06-04):
+ *     cada dia compara o trabalhado com o esperado DAQUELE dia. Excedente → hora extra
+ *     × valor-hora × 1,5. Déficit → atraso × valor-hora. SEM compensação entre dias
+ *     (um dia que sobrou NÃO apaga o atraso de outro). Dia não-útil (fds/feriado)
+ *     trabalhado = tudo hora extra. Falta (dia útil sem trabalho) = −1 valor-dia à parte.
  *   - Falta NÃO tira o DSR (desconta só o dia).
  *   - Dia com nº ÍMPAR de batidas = INCONSISTENTE → fica PENDENTE: não desconta nem
  *     paga, conta só pra alerta (resolver na aba Pendências de Ponto antes de fechar).
@@ -128,7 +129,7 @@ export function calculateSalaryPayroll(
     : sal;
 
   let expectedMin = 0;        // esperado total dos dias úteis (inclui faltas) — só p/ relatório
-  let expectedPresentMin = 0; // esperado dos dias PRESENTES (falta excluída) — base do líquido
+  let expectedPresentMin = 0; // esperado dos dias PRESENTES (falta excluída) — p/ relatório
   let workedMin = 0;          // TUDO trabalhado (dias úteis presentes + fim de semana/feriado)
   let normalMin = 0;
   let premiumMin = 0;
@@ -136,6 +137,10 @@ export function calculateSalaryPayroll(
   let workedDays = 0;
   let faltaDays = 0;
   let pendingDays = 0;
+  // BRUTO por-dia (decisão do usuário 2026-06-19): HE e atraso acumulam POR DIA
+  // (excedente/déficit de cada dia), SEM compensação entre dias. Ver loop abaixo.
+  let heMin = 0;
+  let atrasoMin = 0;
 
   for (const d of days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -164,21 +169,20 @@ export function calculateSalaryPayroll(
       normalMin += sp.normal;
       premiumMin += sp.premium;
       expectedPresentMin += d.expectedMinutes;
+      // BRUTO por-dia: compara o trabalhado com o esperado DAQUELE dia. Excedente → HE;
+      // déficit → atraso. Sem compensação entre dias (um dia que sobrou NÃO apaga o
+      // atraso de outro). SUPERSEDE o modelo líquido de 2026-06-04.
+      const dayBal = worked - d.expectedMinutes;
+      if (dayBal > 0) heMin += dayBal;
+      else if (dayBal < 0) atrasoMin += -dayBal;
     } else if (worked > 0) {
-      // Dia NÃO útil (fim de semana/feriado) trabalhado: conta como trabalho e ABATE o
-      // déficit (vira hora extra só se, no fim, o total passar do esperado).
+      // Dia NÃO útil (fim de semana/feriado) trabalhado: esperado = 0 → TUDO é hora extra.
       workedMin += worked;
       normalMin += sp.normal;
       premiumMin += sp.premium;
+      heMin += worked;
     }
   }
-
-  // LÍQUIDO do período (decisão 2026-06-03): hora extra SÓ no excedente. Se o total
-  // trabalhado (já com fds/após-18h) passou do esperado dos dias presentes → o que passou
-  // é HE 1,5×; se ficou devendo → atraso. Quem não cumpriu a meta NÃO tem hora extra.
-  const balance = workedMin - expectedPresentMin;
-  const atrasoMin = balance < 0 ? -balance : 0;
-  const heMin = balance > 0 ? balance : 0;
 
   const faltaDesconto = faltaDays * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * valorHora;

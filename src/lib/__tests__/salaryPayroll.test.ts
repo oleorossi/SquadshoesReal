@@ -143,18 +143,18 @@ describe('calculateSalaryPayroll — base proporcional por quinzena (periodDays 
   });
 });
 
-describe('calculateSalaryPayroll — LÍQUIDO do período (HE só no excedente, fds abate)', () => {
-  it('devendo no total + domingo trabalhado: domingo ABATE o déficit, HE = 0', () => {
-    // Seg: trabalhou só 08–12 (4h, esperado 9h ⇒ deve 5h). Dom: trabalhou 2h.
-    // Líquido: (240 + 120) − 540 = −180 ⇒ atraso 180min; SEM hora extra.
+describe('calculateSalaryPayroll — BRUTO por-dia (atraso e HE por dia, sem compensação)', () => {
+  it('domingo trabalhado é HE; déficit de seg NÃO é abatido pelo domingo', () => {
+    // Seg: 08–12 (240 trab, esperado 540 ⇒ déficit 300). Dom: 2h trabalhadas.
+    // BRUTO: atraso 300 (seg) + HE 120 (dom) — sem compensação entre dias.
     const r = calculateSalaryPayroll(2200, [
       work('2026-05-04', MON, ['08:00', '12:00']),
       weekend('2026-05-10', SUN, ['14:00', '16:00']),
     ], 0);
-    expect(r.he_minutes).toBe(0);
-    expect(r.he_value).toBe(0);
-    expect(r.atraso_minutes).toBe(180);
-    expect(r.atraso_desconto).toBeCloseTo(30, 2); // 3h × (2200/220)=10
+    expect(r.atraso_minutes).toBe(300);
+    expect(r.atraso_desconto).toBeCloseTo(50, 2); // 5h × (2200/220)=10
+    expect(r.he_minutes).toBe(120);               // domingo = hora extra (esperado 0)
+    expect(r.he_value).toBeCloseTo(30, 2);        // 2h × 10 × 1,5
   });
 
   it('cumpriu a meta + sábado extra: o EXCEDENTE vira hora extra 1,5×', () => {
@@ -172,16 +172,17 @@ describe('calculateSalaryPayroll — LÍQUIDO do período (HE só no excedente, 
     expect(r.he_value).toBeCloseTo(60, 2);    // 4h × 10 × 1,5
   });
 
-  it('atraso num dia + saída tarde noutro se COMPENSAM no líquido', () => {
-    // Seg 10:00–18:00 = 8h span − 1h almoço = 420 trab. (deve 120). Ter 08–20 c/ almoço =
-    // 540 normal + 120 após-18h = 660 (sobra 120). Líquido: (420+660) − 1080 = 0 ⇒
-    // o dia longo compensa o dia curto: nem atraso nem hora extra.
+  it('atraso num dia e saída tarde noutro NÃO se compensam (bruto)', () => {
+    // Seg 10:00–18:00 = 420 trab (deve 540 ⇒ atraso 120). Ter 08–20 c/ almoço = 660
+    // (sobra 120 ⇒ HE 120). BRUTO: atraso 120 E HE 120 — NÃO se anulam (era 0/0 no líquido).
     const r = calculateSalaryPayroll(2200, [
       work('2026-05-04', 1, ['10:00', '18:00']),
       work('2026-05-05', 2, ['08:00', '12:00', '13:00', '20:00']),
     ], 0);
-    expect(r.atraso_minutes).toBe(0);
-    expect(r.he_minutes).toBe(0);
+    expect(r.atraso_minutes).toBe(120);
+    expect(r.he_minutes).toBe(120);
+    expect(r.atraso_desconto).toBeCloseTo(20, 2); // 2h × 10
+    expect(r.he_value).toBeCloseTo(30, 2);        // 2h × 10 × 1,5
   });
 })
 

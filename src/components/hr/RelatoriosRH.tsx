@@ -546,7 +546,7 @@ export default function RelatoriosRH() {
         <DollarSign className="h-4 w-4 shrink-0" />
         <span>
           <strong>Motor único</strong> — todos os relatórios partem da MESMA base por-dia (batidas + escala). Pagamento =
-          salário − descontos, hora extra só no excedente do período (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}).
+          salário − descontos, hora extra e atraso POR DIA, sem compensar entre dias (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}).
           Banco/Espelho usam a mesma base, agregando HE no regime semanal CLT (44h), assinável.
         </span>
       </div>
@@ -736,8 +736,9 @@ export default function RelatoriosRH() {
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Antes de pagar:</strong> hora extra conta só no <strong>excedente</strong> — quem não bateu a meta de horas do período
-                  NÃO tem HE; fim de semana / após-18h abatem o déficit; falta = −1 dia. Os valores refletem o ponto <strong>como foi importado</strong> —
+                  <strong>Antes de pagar:</strong> hora extra e atraso são contados <strong>por dia</strong> — cada dia que passou do esperado
+                  paga HE ×1,5 e cada dia que ficou abaixo desconta atraso, <strong>sem compensar entre dias</strong>; fim de semana / feriado
+                  trabalhado = tudo HE; falta = −1 dia. Os valores refletem o ponto <strong>como foi importado</strong> —
                   confira a coluna <strong>Situação</strong> e corrija o ponto antes de pagar.
                 </span>
               </div>
@@ -748,7 +749,7 @@ export default function RelatoriosRH() {
                     <DollarSign className="h-4 w-4" /> Folha {periodLabel} — Mês × 1ª × 2ª quinzena (líquido por funcionário)
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Mesmo motor da Folha (HE líquida), <strong>líquido já com adiantamentos pendentes descontados</strong>. Base da quinzena é
+                    Mesmo motor da Folha (HE/atraso por dia), <strong>líquido já com adiantamentos pendentes descontados</strong>. Base da quinzena é
                     <strong> proporcional aos dias</strong> (1ª = 15/30, 2ª = {monthDays.length - 15}/30).
                     <strong> Imprimir</strong>: Todos → esta tabela; um funcionário selecionado → o demonstrativo individual completo.
                   </p>

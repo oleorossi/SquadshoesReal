@@ -20,7 +20,7 @@ function emp(days: Partial<EmployeeTimesheetData['days'][number]>[]): EmployeeTi
   };
 }
 
-describe('evaluationDetail — LÍQUIDO do período (mesma conta da folha)', () => {
+describe('evaluationDetail — BRUTO por-dia (mesma conta da folha)', () => {
   it('FALTA em dia útil desconta 1 dia (salário ÷ 30), sem HE/atraso', () => {
     const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: [], expectedMinutes: 540 }]));
     expect(e.faltaCount).toBe(1);
@@ -52,16 +52,16 @@ describe('evaluationDetail — LÍQUIDO do período (mesma conta da folha)', () 
     expect(e.heValue).toBeCloseTo((60 / 60) * VH * 1.5, 5); // 15
   });
 
-  it('DEVENDO no total + domingo trabalhado: domingo ABATE o déficit, HE = 0', () => {
-    // Seg 08–12 (240, deve 300). Dom 2h (120). Líquido (240+120)−540 = −180 ⇒ atraso 180, HE 0.
+  it('BRUTO por-dia: domingo trabalhado é HE; déficit de seg NÃO é abatido', () => {
+    // Seg 08–12 (240, esperado 540 ⇒ déficit 300). Dom 2h (120). BRUTO: atraso 300 + HE 120.
     const e = evaluationDetail(emp([
       { dayOfWeek: 1, punches: ['08:00', '12:00'], expectedMinutes: 540 },
       { dayOfWeek: 0, punches: ['14:00', '16:00'], expectedMinutes: 0 },
     ]));
-    expect(e.heMin).toBe(0);
-    expect(e.heValue).toBe(0);
-    expect(e.atrasoMin).toBe(180);
-    expect(e.atrasoDesconto).toBeCloseTo((180 / 60) * VH, 5); // 30
+    expect(e.atrasoMin).toBe(300);
+    expect(e.atrasoDesconto).toBeCloseTo((300 / 60) * VH, 5); // 50
+    expect(e.heMin).toBe(120);                                 // domingo = HE
+    expect(e.heValue).toBeCloseTo((120 / 60) * VH * 1.5, 5);   // 30
   });
 
   it('Batida ÍMPAR fica PENDENTE — não desconta nem paga', () => {
