@@ -398,8 +398,8 @@ export default function SectorPricingCalculator() {
           </div>
 
           <p className="text-[11px] text-muted-foreground">
-            Dica: depois de salvar, este valor pode ser puxado no <strong>Simulador</strong> (aba Manual) pelo
-            campo <strong>Custo MO (R$/par)</strong> — entra na fórmula do preço junto com matéria-prima e overhead.
+            Cálculo isolado de mão de obra — <strong>não altera o preço do Markup</strong> nem soma com material/overhead.
+            Serve só pra estimar o custo de MO por par; o que você cadastra aqui fica nesta calculadora.
           </p>
         </CardContent>
       </Card>
