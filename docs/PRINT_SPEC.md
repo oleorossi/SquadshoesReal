@@ -1,13 +1,88 @@
 # Sistema de Impressão Squad Shoes — Especificação Técnica
 
 > **Documento canônico** das regras de impressão A4 do sistema. Última
-> atualização: 2026-06-12. Mantenha sincronizado com mudanças em
-> `styles-paper.css`, `index.css` e `PrintWorkSheetsPage.tsx`.
+> atualização: 2026-06-19. Mantenha sincronizado com mudanças em
+> `styles-paper.css`, `index.css`, `PrintWorkSheetsPage.tsx` e
+> `worksheet/PaginatedSheet.tsx`.
 >
-> ⚠ **Fichas de operador + Relatório Gerencial (rota /print-worksheets)
-> usam o modelo v7 — paginação explícita por medição (`PaginatedSheet`),
-> seção 3-B.** A quebra natural do browser (seção 3) continua valendo pros
-> demais imprimíveis (relatórios A4 avulsos, espelho de ponto, popups).
+> ⚠ **PADRÃO CANÔNICO (2026-06-19): o `PaginatedSheet` — paginação explícita
+> por medição (§3-B) — é o mecanismo DEFAULT de toda impressão A4 in-app com
+> conteúdo variável/multi-página. As "Regras anti-folha-branca" (§0.2) são
+> OBRIGATÓRIAS para TODA impressão A4, inclusive as geradas via `window.open`.
+> Comece pela §0.** A quebra natural do browser (§3) é tier-2 (legado +
+> relatórios com tabelão grande, §2.3); os prints via `window.open` são
+> contexto HTML à parte (§0.4) — mas todos seguem as regras anti-folha-branca.
+
+---
+
+## 0. PADRÃO CANÔNICO A4 (2026-06-19)
+
+> **Regra:** toda impressão A4 do sistema segue ESTE padrão. O `PaginatedSheet`
+> (§3-B) é o mecanismo CANÔNICO para qualquer impressão **in-app (React) com
+> conteúdo variável / multi-página**. As regras anti-folha-branca (§0.2) são
+> OBRIGATÓRIAS para TODAS as A4 — inclusive as geradas via `window.open`.
+
+### 0.1 Qual mecanismo usar
+
+| Tipo de impressão | Mecanismo | Por quê |
+|---|---|---|
+| In-app React, conteúdo variável/multi-página (fichas, romaneios, relatórios por PV) | **`PaginatedSheet`** (§3-B) | medição + páginas explícitas = zero folha em branco |
+| In-app React, doc de página única simples | `PaginatedSheet` (1 bloco) ou `PaperShell` + `keep-together` | ambos servem; o `PaginatedSheet` é mais à prova |
+| HTML standalone via `window.open` | regras CSS anti-folha-branca embutidas na string (§0.2) | não há React/medição na janela popup — usa fragmentação do browser |
+| Etiqueta de tamanho fixo (térmica) | NÃO é A4 — fora deste padrão (§5.4) | formato próprio |
+
+### 0.2 Regras anti-folha-branca (OBRIGATÓRIAS em toda A4)
+
+1. **WYSIWYG** — nenhuma regra que mude ALTURA (font/line-height/padding/margin/
+   height/`table-layout`) pode viver SÓ em `@media print`: tela e papel têm que
+   medir igual. Crítico no `PaginatedSheet` (mede a tela); nos demais evita derrame.
+2. **Sem altura fixa que derrama** — caixa de página = `height:auto` em print;
+   nada de `height: NNNmm` fixo sem `overflow` controlado. Imagens SEMPRE em caixa
+   de tamanho FIXO (medição estável — ver `ProductImageBlock`).
+3. **Prever a altura de IMPRESSÃO** — o papel rende ~3-4% mais alto que a tela →
+   empacotar pela altura medida × **`PRINT_INFLATE` (1.06)**. Sem isso a página
+   CHEIA derrama o pé numa folha 100% branca (bug do PDF de 2026-06-19, ACABAMENTO).
+4. **`@page { size: A4 portrait; margin: 0 }`** + padding interno POR página (mata
+   o header/footer do navegador; a área não-imprimível fica garantida pelo padding).
+5. **Blocos atômicos** — cabeçalho/rodapé/card/linha NUNCA cortados: `keepWithPrev`
+   (rodapés) e `keepWithNext` (sub-headers) no `PaginatedSheet`; `.keep-together`/
+   `.keep-with-next`/`.keep-with-previous` no fluxo do browser.
+6. **Print-safety** — inline styles + cores hardcoded `#000` (NUNCA primitives
+   shadcn Card/Badge/Button/Table; NUNCA token com alpha tipo `border-foreground/15`
+   = invisível no papel); fontes `'Fira Sans'/'Fira Code'/'Anton'` (in-app).
+   `'Inter Tight'/'JetBrains Mono'` valem SÓ na etiqueta térmica (`window.open`).
+7. **NÃO usar `flex`/`grid` no ROOT de um doc que pagina** — o fragmentador do
+   Chrome CLIPA conteúdo de flex-col que passa de 1 página (bug ReducedWorkSheet,
+   2026-06-19). Root = `display:block`; flex só em sub-blocos atômicos.
+
+### 0.3 Checklist — TODA impressão A4 nova
+
+- [ ] É React in-app com conteúdo variável? → `<PaginatedSheet blocks={...}>`.
+- [ ] Rodapés/assinaturas com `keepWithPrev`; sub-headers de grupo com `keepWithNext`.
+- [ ] Nenhuma regra de ALTURA só em `@media print` (WYSIWYG).
+- [ ] Imagens em caixa de tamanho FIXO; root sem `flex`/`grid`.
+- [ ] `@page A4 margin 0` + padding por página.
+- [ ] Inline + `#000`; sem shadcn/alpha; fontes Fira.
+- [ ] Testado IMPRESSO: zero folha em branco, zero header órfão, zero bloco
+      cortado, e nº físico de folhas == "N/TOTAL" da faixa de cabeçalho.
+
+### 0.4 Classificação das impressões A4 hoje
+
+- **✅ Conforme (`PaginatedSheet`):** `OperatorWorkSheet`, `SilkMontageWorkSheet`,
+  `SolagemWorkSheet`, `PalmilhaWorkSheet`, `ExpedicaoWorkSheet`, `ManagementReport`
+  (rota `/imprimir-fichas`). Auditados OK em 2026-06-19.
+- **🟡 In-app, fluxo do browser (migrar pro `PaginatedSheet` quando tocar):**
+  `EspelhoPontoPage`, `GroupedReportSummary`, `OrdersSummary`, `PickingListPage`,
+  `FichaMontadoresPage`. Relatórios A4Layout (`RelOpA4`/`RelSemanalA4`/`RelDiarioA4`/
+  `RelRefugoA4`/`RelOeeA4`/`RelQualidadeA4`) = tier-2 ACEITO por ora (tabelão não
+  cabe em "blocos atômicos", §2.3) — mas devem seguir §0.2. `ReducedWorkSheet` =
+  caso especial (empacota VÁRIAS fichas por folha → fica no fluxo, root SEM flex).
+- **🔵 `window.open` (HTML separado — não roda `PaginatedSheet`):** `printOrder`,
+  `printPurchaseOrder`, `printStockPurchaseOrder`, `printServiceOrderReceipt`,
+  `printPerPvMaterials`, `printDanfe`. Cada um tem seu `@page`; devem seguir §0.2.
+  Consolidar num preâmbulo CSS compartilhado = trabalho futuro.
+- **⛔ Fora do padrão A4 (etiqueta térmica):** `printLabels`, `label-system/*`,
+  `EtiquetaProduto`, `ExternalBoxLabel` — formato fixo, não A4.
 
 ---
 
@@ -143,6 +218,24 @@ por margens/padding no `.reduced-card`.
 ---
 
 ## 3-B. Paginação explícita por medição — v7 (2026-06-12) — MODELO ATUAL DAS FICHAS
+
+> **Atualização v7.2 (2026-06-19) — números atuais (substituem os de 2026-06-12 abaixo):**
+> - `PAGE_HEIGHT_MM` **294 → 288** (folga ~9mm vs os 296.9mm que o Chrome usa pra A4).
+> - **`PRINT_INFLATE = 1.06`**: empacota pela altura PREVISTA de impressão
+>   (`heights × 1.06`, na base E na busca do auto-fit), porque o papel rende ~3-4%
+>   mais alto que a tela. Sem isso a página CHEIA derramava o pé numa folha 100%
+>   branca mesmo com a folga fixa (PDFs 2026-06-18/19: CORTE FORRAÇÃO, ACABAMENTO).
+>   A folga passou a ser PROPORCIONAL ao conteúdo (não corte fixo da caixa).
+> - **Auto-fit agressivo:** reduz fonte+tabela até **−20%** (`AUTO_FIT_FLOOR 0.85→0.80`)
+>   e SEM o antigo gate de "<15% da última página" — tenta encolher SEMPRE que isso
+>   remova uma folha (só encolhe quando de fato remove; piso é o único limite).
+> - **Medição só na baseline (fix React #185):** `measure` só roda quando
+>   `scaleRef===1`; medir o DOM já com `zoom` do auto-fit reflui texto e entrava em
+>   loop infinito de setState ("Maximum update depth"). Reset de `scaleRef=1` ao
+>   mudar o conjunto de blocos. **Regra: nunca realimentar o auto-fit com medida do
+>   DOM escalado.**
+> - Travado por testes em `worksheet/__tests__/paginatedSheet.test.ts` (incl.
+>   `PRINT_INFLATE`). Ver §0 pro padrão geral.
 
 A fragmentação automática do browser não dá **padding por página**
 (necessário com `@page margin: 0`) nem **"card inteiro ou nada"**
@@ -597,6 +690,11 @@ Imagens (silks, produtos) com altura > 281mm causam overflow não-mitigável. Ho
 | — | 2026-06-11 | v6: `.flow-card` (fragmenta só entre sub-seções, box-decoration-break: clone) |
 | — | 2026-06-12 | **v7: paginação explícita** — `PaginatedSheet` (blocos medidos → páginas 296mm), `@page margin: 0` (mata header/footer do navegador), faixa de cabeçalho "Setor + N/TOTAL" em TODA página, card inteiro ou nada; `SectorRegion` removido |
 | — | 2026-06-12 | **v7.1: WYSIWYG + caixa auto em print** — fix do PDF "mesmo erro" (toda página lógica virava 2 físicas): regras de altura (8pt, spacing, table-layout fixed) saíram do `@media print` e valem sempre na `.print-area`; caixa 294mm em tela / `height:auto` em print; `print:p-0 print:space-y-0` no root (fantasma de ~13mm acima da 1ª folha); medição `ceil(getBoundingClientRect)`; `keepWithNext` pro sub-header de grupo não fechar página órfão |
+| `4368261` | 2026-06-19 | **v7.2a:** caixa 294→288mm (folga) + auto-fit agressivo −20% sem gate de 15% |
+| `b11d08a` | 2026-06-19 | **v7.2b:** fix React #185 (loop) — `measure` só na baseline `scale=1`, nunca o DOM zoomado |
+| `816f583` | 2026-06-19 | **v7.2c:** `PRINT_INFLATE` (1.06) — empacota prevendo a altura de IMPRESSÃO; mata a folha branca da página CHEIA (proporcional, não corte fixo) |
+| `bad4dbb` | 2026-06-19 | **v7.3:** auditoria multiagente de TODAS as fichas (motor+CSS+6 fichas OK); fix `opacity-60`→`#666` (ManagementReport) + tira `flex` do root da `ReducedWorkSheet` (clip do Chrome) |
+| — | 2026-06-19 | **§0: PADRÃO CANÔNICO** — `PaginatedSheet` default p/ A4 in-app variável; regras anti-folha-branca obrigatórias p/ todas; checklist + classificação |
 
 ---
 
@@ -610,4 +708,4 @@ Imagens (silks, produtos) com altura > 281mm causam overflow não-mitigável. Ho
 ---
 
 **Contato/responsável**: Squad Shoes — Time de Engenharia
-**Última revisão**: 2026-05-24
+**Última revisão**: 2026-06-19 (§0 padrão canônico + v7.2/v7.3)
