@@ -845,12 +845,40 @@ export function useCancelNfe() {
       if (!justificativa || justificativa.trim().length < 15) {
         throw new Error('Justificativa deve ter no mínimo 15 caracteres.');
       }
-      const { data, error } = await supabase.functions.invoke('cancel-nfe', {
-        body: { nfe_id: nfeId, justificativa },
+      // Fetch direto (não .invoke): o cancel-nfe responde 422 quando a SEFAZ/
+      // GestaoClick RECUSA o cancelamento, com o motivo REAL em provider_response.
+      // O .invoke() esconde isso atrás de "Edge Function returned a non-2xx
+      // status code" (o corpo fica em error.context, que ele não lê). Aqui lemos
+      // o corpo e mostramos a causa real. (Mesmo padrão de useEmitNfe.)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
+      const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-nfe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': SUPABASE_KEY,
+        },
+        body: JSON.stringify({ nfe_id: nfeId, justificativa }),
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      const txt = await res.text();
+      let parsed: any = null;
+      try { parsed = JSON.parse(txt); } catch { /* resposta não-JSON */ }
+
+      if (!res.ok || parsed?.success === false) {
+        const pr = parsed?.provider_response;
+        const prMsg = pr?.mensagem
+          || (Array.isArray(pr?.erros) ? pr.erros.join('; ') : pr?.erros)
+          || (typeof pr === 'string' ? pr : null);
+        const realMsg = parsed?.error || prMsg || parsed?.message || txt
+          || `HTTP ${res.status} ao cancelar NF-e`;
+        console.error('[cancel-nfe] HTTP', res.status, parsed || txt);
+        throw new Error(typeof realMsg === 'string' ? realMsg : JSON.stringify(realMsg));
+      }
+      if (parsed?.error) throw new Error(String(parsed.error));
+      return parsed;
     },
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
