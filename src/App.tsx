@@ -55,6 +55,7 @@ const Contractors = lazy(() => import("./pages/Contractors"));
 // Employees/Timesheet agora são abas dentro do hub /rh (RHHub).
 // Rotas legadas (/employees, /timesheet) redirecionam para /rh?tab=...
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
+const PurchaseOrdersPerPv = lazy(() => import("./pages/PurchaseOrdersPerPv"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
 const ProductionLive = lazy(() => import("./pages/ProductionLive"));
@@ -818,6 +819,10 @@ const router = createBrowserRouter([
       {
         path: "time-control",
         element: <Navigate to="/rh?tab=ponto" replace />,
+      },
+      {
+        path: "purchase-orders/per-pv",
+        element: <PurchaseOrdersPerPv />,
       },
       {
         path: "purchase-orders",

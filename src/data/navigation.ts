@@ -87,6 +87,7 @@ export const menuGroups = [
       { name: "MRP (Necessidades)", icon: Boxes,         path: "/mrp-advanced" },
       { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
+      { name: "Compras por Pedido", icon: ShoppingCart,  path: "/purchase-orders/per-pv" },
       { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
       { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
       { name: "Custos de Insumos", icon: DollarSign,     path: "/custos-insumos" },
