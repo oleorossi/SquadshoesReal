@@ -71,18 +71,27 @@
 - **✅ Conforme (`PaginatedSheet`):** `OperatorWorkSheet`, `SilkMontageWorkSheet`,
   `SolagemWorkSheet`, `PalmilhaWorkSheet`, `ExpedicaoWorkSheet`, `ManagementReport`
   (rota `/imprimir-fichas`). Auditados OK em 2026-06-19.
-- **🟡 In-app, fluxo do browser (migrar pro `PaginatedSheet` quando tocar):**
-  `EspelhoPontoPage`, `GroupedReportSummary`, `OrdersSummary`, `PickingListPage`,
-  `FichaMontadoresPage`. Relatórios A4Layout (`RelOpA4`/`RelSemanalA4`/`RelDiarioA4`/
-  `RelRefugoA4`/`RelOeeA4`/`RelQualidadeA4`) = tier-2 ACEITO por ora (tabelão não
-  cabe em "blocos atômicos", §2.3) — mas devem seguir §0.2. `ReducedWorkSheet` =
-  caso especial (empacota VÁRIAS fichas por folha → fica no fluxo, root SEM flex).
-- **🔵 `window.open` (HTML separado — não roda `PaginatedSheet`):** `printOrder`,
-  `printPurchaseOrder`, `printStockPurchaseOrder`, `printServiceOrderReceipt`,
-  `printPerPvMaterials`, `printDanfe`. Cada um tem seu `@page`; devem seguir §0.2.
-  Consolidar num preâmbulo CSS compartilhado = trabalho futuro.
-- **⛔ Fora do padrão A4 (etiqueta térmica):** `printLabels`, `label-system/*`,
-  `EtiquetaProduto`, `ExternalBoxLabel` — formato fixo, não A4.
+- **🟡 In-app React + `window.print` (ÚNICO candidato real ao `PaginatedSheet`):**
+  `EspelhoPontoPage` (espelho de ponto — multi-funcionário, multi-página). É doc
+  LEGAL e hoje funciona no fluxo do browser com `keep-together` — migrar SÓ se
+  aparecer folha em branco/órfão na prática (não está quebrado; migração
+  preventiva = risco num doc legal). `ReducedWorkSheet` = caso especial (empacota
+  VÁRIAS fichas por folha → fica no fluxo, root SEM flex, §0.2-7).
+  Relatórios **A4Layout** (`RelOpA4`/`RelSemanalA4`/`RelDiarioA4`/`RelRefugoA4`/
+  `RelOeeA4`/`RelQualidadeA4`) = **tier-2 ACEITO** (tabelão não cabe em "blocos
+  atômicos", decisão §2.3) — NÃO migrar; só seguir §0.2.
+- **🔵 `window.open` / `printHtml` (janela HTML separada — NÃO roda `PaginatedSheet`,
+  contexto sem React/medição):** `printOrder`, `printPurchaseOrder`,
+  `printStockPurchaseOrder`, `printServiceOrderReceipt`, `printPerPvMaterials`,
+  `printDanfe`, **`OrdersSummary`, `GroupedReportSummary`, `PickingListPage`,
+  `FichaMontadoresPage`** (estes 4 usam `printHtml`/`window.open`, não in-app).
+  Cada um embute o próprio `@page` + CSS; devem seguir as regras §0.2 dentro da
+  string HTML. Consolidar num preâmbulo CSS compartilhado = trabalho futuro.
+- **⛔ FORA do padrão A4 — ETIQUETAS (decisão do dono 2026-06-19, totalmente à
+  parte):** `printLabels`, `label-system/*`, `EtiquetaProduto`, `ExternalBoxLabel`,
+  `ExternalBoxLabelPro`. Formato térmico/fixo, sistema PRÓPRIO (`'Inter Tight'`/
+  `'JetBrains Mono'`, `window.open` próprio) — **nada deste padrão A4 se aplica a
+  elas, em nenhuma circunstância.**
 
 ---
 
