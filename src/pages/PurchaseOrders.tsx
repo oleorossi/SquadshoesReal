@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
+import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -96,6 +97,10 @@ export default function PurchaseOrders() {
   const [statusFilterRaw, setStatusFilter] = usePersistedState('po-status-filter', 'all');
   const statusFilter = VALID_PO_STATUS_FILTERS.includes(statusFilterRaw) ? statusFilterRaw : 'all';
   const [supplierFilter, setSupplierFilter] = usePersistedState('po-supplier-filter', 'all');
+  // Canal "Compras por Pedido": OCs source_type='per_pv' ficam escondidas por
+  // padrão (senão duplicam visualmente o que o MRP/ondas já planeja). Toggle
+  // opcional pra incluí-las nesta listagem.
+  const [showPerPv, setShowPerPv] = usePersistedState('po-show-per-pv', false);
    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
    const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -105,7 +110,11 @@ export default function PurchaseOrders() {
     return Array.from(names).sort();
   }, [orders]);
 
+  const perPvCount = useMemo(() => orders.filter(isPerPvPurchaseOrder).length, [orders]);
+
   const filtered = useMemo(() => orders.filter(o => {
+    // Esconde OCs do canal "Compras por Pedido" por padrão (toggle showPerPv).
+    if (!showPerPv && isPerPvPurchaseOrder(o)) return false;
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (supplierFilter !== 'all' && o.supplier_name !== supplierFilter) return false;
     if (search) {
@@ -113,7 +122,7 @@ export default function PurchaseOrders() {
       return normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.supplier_name).includes(q);
     }
     return true;
-  }), [orders, statusFilter, supplierFilter, search]);
+  }), [orders, statusFilter, supplierFilter, search, showPerPv]);
 
   const pendingCount = orders.filter(o => o.status === 'pending').length;
   const pendingOrders = orders.filter(o => o.status === 'pending');
@@ -275,6 +284,20 @@ export default function PurchaseOrders() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Toggle do canal "Compras por Pedido" (escondido por padrão pra não
+                duplicar o que o MRP/ondas planeja). */}
+            {perPvCount > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <Checkbox id="show-per-pv" checked={showPerPv} onCheckedChange={(v) => setShowPerPv(!!v)} />
+                <Label htmlFor="show-per-pv" className="font-normal cursor-pointer">
+                  Mostrar OCs por pedido ({perPvCount})
+                </Label>
+                <Link to="/purchase-orders/per-pv" className="text-xs text-primary hover:underline">
+                  ver canal dedicado →
+                </Link>
+              </div>
+            )}
 
             {/* Bulk actions bar */}
             {selectedIds.size > 0 && (

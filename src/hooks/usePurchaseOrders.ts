@@ -15,8 +15,12 @@ export type PurchaseOrder = {
   received_date: string | null;
   created_at: string;
   updated_at: string;
-  /** PVs que contribuíram com itens pra esta OC (agregada). */
+  /** PVs que contribuíram com itens pra esta OC (agregada — canal MRP/auto-PO). */
   linked_sale_order_ids?: string[] | null;
+  /** Canal de origem: 'manual' | 'mrp' | 'per_pv' (migration 20260808120000). */
+  source_type?: string | null;
+  /** PVs que originaram a OC quando source_type='per_pv'. */
+  source_pv_ids?: string[] | null;
 };
 
 export type PurchaseOrderItem = {
