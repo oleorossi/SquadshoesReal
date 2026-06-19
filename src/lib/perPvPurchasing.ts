@@ -46,6 +46,9 @@ export interface DraftPurchaseOrderItem {
   stock_qty: number;
   unit_price: number;
   purchase_multiple?: number | null;
+  /** Excedente comprado a mais por causa do múltiplo de compra (qtd − necessidade
+   *  pré-arredondamento). 0 quando não houve arredondamento. Exibido em azul. */
+  rounding_surplus?: number;
 }
 
 export interface DraftPurchaseOrder {
@@ -136,7 +139,9 @@ export function buildPerPvPurchaseOrders(
     // Múltiplo de compra (embalagem): arredonda pra cima (ex.: 187 → 200 c/ 50).
     const qty = roundUpToPurchaseMultiple(qtyRaw, it.purchase_multiple);
     if (qty <= 0) continue;
-    items.push({ ...it, quantity: qty });
+    // Excedente do arredondamento — exibido em azul na coluna "A comprar".
+    const rounding_surplus = round3(Math.max(0, qty - qtyRaw));
+    items.push({ ...it, quantity: qty, rounding_surplus });
   }
 
   // 3) Agrupa por fornecedor.
@@ -162,6 +167,8 @@ export function buildPerPvPurchaseOrders(
       needed_qty: it.needed_qty,
       stock_qty: it.stock_qty,
       unit_price: it.unit_price,
+      purchase_multiple: it.purchase_multiple,
+      rounding_surplus: it.rounding_surplus,
     });
   }
 

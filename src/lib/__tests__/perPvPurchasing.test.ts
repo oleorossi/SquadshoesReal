@@ -41,6 +41,23 @@ describe('buildPerPvPurchaseOrders', () => {
     expect(drafts[0].total).toBe(150); // 30 × 5
   });
 
+  it('múltiplo de compra: arredonda a qtd pra cima e expõe o excedente (azul)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'm1', product_name: 'Caixa Colmeia', needed_qty: 8800, last_unit_price: 1, purchase_multiple: 1000 }),
+    ]);
+    expect(drafts[0].items[0].quantity).toBe(9000);
+    expect(drafts[0].items[0].rounding_surplus).toBe(200);
+    expect(drafts[0].total).toBe(9000); // 9000 × 1
+  });
+
+  it('múltiplo de compra: sem múltiplo, sem excedente', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'm1', needed_qty: 8800, last_unit_price: 1 }),
+    ]);
+    expect(drafts[0].items[0].quantity).toBe(8800);
+    expect(drafts[0].items[0].rounding_surplus).toBe(0);
+  });
+
   it('1 PV, 3 materiais, 2 fornecedores + 1 sem fornecedor → 3 OCs (2 + 1 "Sem Fornecedor")', () => {
     const drafts = buildPerPvPurchaseOrders([
       need({ material_id: 'm1', product_name: 'Napa', supplier_id: 's1', supplier_name: 'Couros SA', needed_qty: 10, last_unit_price: 4 }),
