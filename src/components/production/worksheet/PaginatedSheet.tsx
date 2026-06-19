@@ -59,6 +59,17 @@ export const PAGE_CAPACITY_PX =
   (PAGE_HEIGHT_MM - PAGE_PAD_TOP_MM - PAGE_PAD_BOTTOM_MM - HEADER_BAND_MM) * MM_TO_PX;
 export const BLOCK_GAP_PX = BLOCK_GAP_MM * MM_TO_PX;
 
+/** Inflação print-vs-tela (2026-06-19). A IMPRESSÃO renderiza o conteúdo ~3-4%
+ *  mais alto que a medição em TELA (métrica do line-height 8pt + arredondamento
+ *  de linhas de tabela, acumulado ao longo da página). Numa página CHEIA (ex.:
+ *  ACABAMENTO 1/2 a 99%) esse delta derramava o pé numa folha 100% branca mesmo
+ *  com a folga fixa de 288mm. Em vez de cortar mais a caixa (folga fixa, penaliza
+ *  toda página), EMPACOTAMOS prevendo a altura de impressão: altura medida ×
+ *  PRINT_INFLATE. Assim a folga é PROPORCIONAL ao conteúdo — página cheia ganha
+ *  ~16mm de respiro (não derrama), página vazia não muda. 1.06 cobre o delta
+ *  observado com margem. Aplicado em packBlocks (base + busca do auto-fit). */
+export const PRINT_INFLATE = 1.06;
+
 /* ── Auto-fit (2026-06-17; agressivo 2026-06-19) ──
  * SEMPRE que reduzir fonte+tabela (zoom no conteúdo dos blocos) fizer a ficha
  * caber em UMA página a menos, aplica a MENOR redução que consegue isso —
@@ -283,7 +294,11 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
       // pelo useLayoutEffect antes do paint.
       return { pages: [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }], scale: 1 };
     }
-    const base = packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
+    // Empacota prevendo a altura de IMPRESSÃO (medida × PRINT_INFLATE) — a
+    // impressão rende ~3-4% mais alto que a tela; sem isso a página cheia
+    // derrama numa folha em branco (ex.: ACABAMENTO 1/2 do PDF de 2026-06-19).
+    const packHeights = heights.map(h => h * PRINT_INFLATE);
+    const base = packBlocks(packHeights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
     const baseTotal = base.reduce((s, p) => s + p.spanned, 0);
     // Auto-fit: busca o MAIOR fator de escala (≥ AUTO_FIT_FLOOR) que faça a
     // ficha caber em uma página a menos. Só encolhe quando realmente remove uma
@@ -301,7 +316,8 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
         // 2026-06-19 (deixava passar última-página meia-cheia).
         const target = baseTotal - 1;
         for (let s = 1 - AUTO_FIT_STEP; s >= AUTO_FIT_FLOOR - 1e-9; s -= AUTO_FIT_STEP) {
-          const scaled = heights.map(h => h * s);
+          // mesma previsão de impressão (× PRINT_INFLATE) que a base
+          const scaled = heights.map(h => h * s * PRINT_INFLATE);
           const p = packBlocks(scaled, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
           const t = p.reduce((a, q) => a + q.spanned, 0);
           if (t <= target) return { pages: p, scale: +s.toFixed(2) };
