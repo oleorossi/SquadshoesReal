@@ -1,5 +1,6 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
-import { Plus } from '@phosphor-icons/react';
+import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDialog";
+import { Plus, Receipt } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect } from 'react';
@@ -103,6 +104,7 @@ export default function PurchaseOrders() {
   const [showPerPv, setShowPerPv] = usePersistedState('po-show-per-pv', false);
    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
    const [createDialogOpen, setCreateDialogOpen] = useState(false);
+   const [avulsoOpen, setAvulsoOpen] = useState(false);
 
   // Extract unique supplier names for filter
   const uniqueSuppliers = useMemo(() => {
@@ -226,6 +228,9 @@ export default function PurchaseOrders() {
                   <AlertTriangle className="h-3.5 w-3.5" /> {overdueCount} em atraso
                 </Badge>
               )}
+              <Button variant="outline" onClick={() => setAvulsoOpen(true)} className="gap-2">
+                <Receipt className="h-4 w-4" /> Lançar Avulsa
+              </Button>
               <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
                 <Plus className="h-4 w-4" /> Nova OC
               </Button>
@@ -478,6 +483,7 @@ export default function PurchaseOrders() {
       {selectedId && <OrderDetailDialog orderId={selectedId} onClose={() => setSelectedId(null)} />}
        {showSummary && <PendingSummaryDialog orderIds={pendingOrders.map(o => o.id)} orders={pendingOrders} onClose={() => setShowSummary(false)} />}
        <CreatePurchaseOrderDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+       <LancamentoAvulsoDialog open={avulsoOpen} onOpenChange={setAvulsoOpen} mode="oc" />
      </div>
    );
 }
