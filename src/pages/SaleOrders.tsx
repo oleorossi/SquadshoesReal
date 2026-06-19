@@ -9,6 +9,8 @@ import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
+import GeneratePurchaseOrdersDialog from '@/components/purchase/GeneratePurchaseOrdersDialog';
+import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
@@ -246,7 +248,8 @@ export default function SaleOrders() {
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
   // e KPIs financeiros sem retirar a navegação.
-  const { canSeeFinancialValues } = useAccessControl();
+  const { canSeeFinancialValues, canAccessModule } = useAccessControl();
+  const canBuy = canAccessModule('financeiro');
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -281,6 +284,8 @@ export default function SaleOrders() {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [consumptionDialogOpen, setConsumptionDialogOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
+  // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
+  const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[] } | null>(null);
   const [quickConsumptionId, setQuickConsumptionId] = useState<string | null>(null);
   const [quickConsumptionNumber, setQuickConsumptionNumber] = useState('');
 
@@ -1489,6 +1494,22 @@ export default function SaleOrders() {
             </Button>
             {selectedIds.size > 0 && (
               <>
+                {canBuy && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const selected = orders.filter(o => selectedIds.has(o.id));
+                      if (selected.length === 0) { toast.info('Selecione pelo menos um pedido.'); return; }
+                      setPoGenTarget({ ids: selected.map(o => o.id), numbers: selected.map(o => o.order_number) });
+                    }}
+                    className="gap-2"
+                    title="Gera Ordens de Compra para os pedidos selecionados (canal Compras por Pedido)"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="hidden sm:inline">Gerar OCs</span>
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selectedIds.size}</Badge>
+                  </Button>
+                )}
                 <Button variant="default" onClick={() => setOverviewOpen(true)} className="gap-2">
                   <LayoutDashboard className="h-4 w-4" />
                   <span className="hidden sm:inline">Visão Geral</span>
@@ -2208,6 +2229,17 @@ export default function SaleOrders() {
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setConsumptionDialogOpen(true)}><ClipboardList className="h-3.5 w-3.5" /> Consumo de materiais</Button>
+                  {canBuy && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setPoGenTarget({ ids: [selectedOrder.id], numbers: [selectedOrder.order_number] })}
+                      title="Gera Ordens de Compra só para este pedido (canal Compras por Pedido, separado do MRP)"
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" /> Gerar OCs
+                    </Button>
+                  )}
                   {/* Picking individual — esconde quando já foi feito (badge no
                       header já indica). Isso evita: (a) duplicar UI redundante,
                       (b) confundir operador achando que pode re-rodar. Pra
@@ -2433,6 +2465,9 @@ export default function SaleOrders() {
                   <p><span className="text-muted-foreground">Total:</span> <span className="font-bold font-mono text-lg">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</span></p>
                 )}
               </div>
+
+              {/* Compras deste PV (canal "Compras por Pedido") */}
+              {canBuy && <PurchaseOrdersForPvCard pvId={selectedOrder.id} />}
 
               {/* PV informal: aviso no lugar do painel NF-e */}
               {(selectedOrder as any).nfe_required === false && selectedOrderNfes.length === 0 && (
@@ -2818,6 +2853,15 @@ export default function SaleOrders() {
         orderNumber={selectedOrder?.order_number || ''}
         total={Number(selectedOrder?.total) || 0}
       />
+
+      {poGenTarget && (
+        <GeneratePurchaseOrdersDialog
+          open={!!poGenTarget}
+          onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
+          pvIds={poGenTarget.ids}
+          pvNumbers={poGenTarget.numbers}
+        />
+      )}
     </>
   );
 }
