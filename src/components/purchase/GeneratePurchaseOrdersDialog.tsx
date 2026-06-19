@@ -12,10 +12,13 @@ import {
   CaretDown as ChevronDown,
   Package,
   ShoppingCart,
+  FileText,
 } from '@phosphor-icons/react';
 import { formatCurrency } from '@/lib/utils';
 import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePerPvPurchasing';
 import { buildPerPvPurchaseOrders, summarizePerPvDrafts, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
+import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
+import { toast } from 'sonner';
 
 type Props = {
   open: boolean;
@@ -56,6 +59,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     } catch {
       /* erro já exibido via toast no hook */
     }
+  };
+
+  const handlePrintPdf = () => {
+    const ok = printPerPvMaterials({ scopeLabel: titleScope, pvNumbers: pvNumbers || [], drafts, netOfStock, summary });
+    if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
   };
 
   return (
@@ -184,6 +192,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
           </div>
           <div className="flex items-center gap-2">
+            {drafts.length > 0 && (
+              <Button variant="outline" onClick={handlePrintPdf} disabled={generate.isPending} className="gap-2">
+                <FileText className="h-4 w-4" /> Gerar PDF
+              </Button>
+            )}
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generate.isPending}>
               Cancelar
             </Button>
