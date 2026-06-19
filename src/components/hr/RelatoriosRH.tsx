@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
@@ -13,7 +14,7 @@ import {
   Clock, CurrencyDollar as DollarSign, CaretRight, CaretDown,
   Warning as AlertTriangle, Users as Users2, Printer,
   CalendarBlank as Calendar, IdentificationCard, DownloadSimple,
-  Scales,
+  Scales, PencilSimple, Check, X as XIcon,
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules, calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
@@ -99,6 +100,10 @@ export default function RelatoriosRH() {
   const [tab, setTab] = usePersistedState<string>('rh-relatorios-tab', 'ponto');
   const [scope, setScope] = useState<string>(ALL);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Edição inline de batidas (resolver pendência de horário direto no relatório).
+  // { empId, date } da linha em edição + o texto editável das batidas.
+  const [editPunch, setEditPunch] = useState<{ empId: string; date: string; value: string } | null>(null);
+  const qc = useQueryClient();
 
   const { data: employees = [] } = useEmployees();
   const { data: holidaysList = [] } = useHolidays();
@@ -139,11 +144,11 @@ export default function RelatoriosRH() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('time_records')
-        .select('employee_external_id, employee_name, record_date, punches')
+        .select('id, employee_external_id, employee_name, record_date, punches')
         .gte('record_date', periodRange.from!)
         .lte('record_date', periodRange.to!);
       if (error) throw error;
-      return (data || []) as { employee_external_id: string | null; employee_name: string | null; record_date: string; punches: string[] }[];
+      return (data || []) as { id: string; employee_external_id: string | null; employee_name: string | null; record_date: string; punches: string[] }[];
     },
   });
 
@@ -164,6 +169,65 @@ export default function RelatoriosRH() {
       return (data || []) as { employee_id: string; amount: number; advance_date: string }[];
     },
   });
+
+  // Lookup do id da row de time_records (UPDATE preciso). Casa por matrícula
+  // (external_id) ou nome — mesmo critério do relatório.
+  const recordIdByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of timeRecords) {
+      if (!r.id) continue;
+      if (r.employee_external_id) m.set(`x:${r.employee_external_id}::${r.record_date}`, r.id);
+      const nk = (r.employee_name || '').toLowerCase().trim();
+      if (nk) m.set(`n:${nk}::${r.record_date}`, r.id);
+    }
+    return m;
+  }, [timeRecords]);
+
+  const savePunches = useMutation({
+    mutationFn: async ({ recordId, ext, name, date, punches }: { recordId: string | null; ext?: string; name: string; date: string; punches: string[] }) => {
+      if (recordId) {
+        const { error } = await supabase.from('time_records').update({ punches }).eq('id', recordId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('time_records')
+          .insert({ employee_external_id: ext || null, employee_name: name, record_date: date, punches } as any);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      // Recálculo AUTOMÁTICO: invalida a base de batidas (e cobertura/pendências)
+      // — o motor (splitDayMinutes + computePeriodFolha) recomputa no refetch.
+      qc.invalidateQueries({ predicate: (q) => {
+        const k = String(q.queryKey?.[0] ?? '');
+        return k.startsWith('rh-report') || k.includes('coverage') || k.includes('timesheet') || k.includes('pend') || k.includes('time_record');
+      }});
+      toast.success('Batidas atualizadas — relatório recalculado.');
+      setEditPunch(null);
+    },
+    onError: (e: Error) => toast.error(`Erro ao salvar batidas: ${e.message}`),
+  });
+
+  // Texto "08:00 12:00 13:00 18:00" → array validado (HH:MM), par e ordenado.
+  const saveEditedPunches = (empId: string, ext: string | undefined, name: string, date: string, raw: string) => {
+    const tokens = raw.split(/[\s,;·]+/).map(t => t.trim()).filter(Boolean);
+    const norm: string[] = [];
+    for (const t of tokens) {
+      const mt = t.match(/^(\d{1,2}):(\d{2})$/);
+      if (!mt || Number(mt[1]) > 23 || Number(mt[2]) > 59) {
+        toast.error(`Horário inválido: "${t}" — use HH:MM (ex.: 08:00).`);
+        return;
+      }
+      norm.push(`${mt[1].padStart(2, '0')}:${mt[2]}`);
+    }
+    if (norm.length % 2 !== 0) {
+      toast.error('Número ÍMPAR de batidas — falta uma entrada/saída (cada turno = entrada + saída).');
+      return;
+    }
+    norm.sort();
+    const recordId = (ext && recordIdByKey.get(`x:${ext}::${date}`))
+      || recordIdByKey.get(`n:${name.toLowerCase().trim()}::${date}`) || null;
+    savePunches.mutate({ recordId, ext, name, date, punches: norm });
+  };
 
   const rows: EmpRow[] = useMemo(() => {
     // Mapas batida → dia, por matrícula e por nome (mesmo casamento da Folha).
@@ -589,7 +653,43 @@ export default function RelatoriosRH() {
                                           <TableCell className="text-xs">
                                             {DAYS_PT[d.dow]}{d.isHoliday && <span className="ml-1 text-amber-600">feriado</span>}
                                           </TableCell>
-                                          <TableCell className="text-xs font-mono">{d.punches.map(cleanPunch).join(' · ')}</TableCell>
+                                          <TableCell className="text-xs font-mono">
+                                            {editPunch && editPunch.empId === r.id && editPunch.date === d.date ? (
+                                              <div className="flex items-center gap-1 font-sans">
+                                                <Input
+                                                  value={editPunch.value}
+                                                  onChange={e => setEditPunch({ ...editPunch, value: e.target.value })}
+                                                  className="h-7 text-xs font-mono w-52" placeholder="08:00 12:00 13:00 18:00" autoFocus
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') saveEditedPunches(r.id, r.ext, r.name, d.date, editPunch.value);
+                                                    if (e.key === 'Escape') setEditPunch(null);
+                                                  }}
+                                                />
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-600" disabled={savePunches.isPending}
+                                                  onClick={() => saveEditedPunches(r.id, r.ext, r.name, d.date, editPunch.value)} title="Salvar">
+                                                  <Check className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground"
+                                                  onClick={() => setEditPunch(null)} title="Cancelar">
+                                                  <XIcon className="h-3.5 w-3.5" />
+                                                </Button>
+                                              </div>
+                                            ) : (
+                                              <div className="flex items-center gap-2">
+                                                <span className={d.punches.length % 2 !== 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : ''}>
+                                                  {d.punches.map(cleanPunch).join(' · ')}
+                                                </span>
+                                                {d.punches.length % 2 !== 0 && (
+                                                  <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal text-[10px] px-1">ímpar</Badge>
+                                                )}
+                                                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                                  onClick={() => setEditPunch({ empId: r.id, date: d.date, value: d.punches.map(cleanPunch).join(' ') })}
+                                                  title="Editar batidas">
+                                                  <PencilSimple className="h-3 w-3" />
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </TableCell>
                                           <TableCell className="text-xs text-right tabular-nums">{fmtH(d.normal)}</TableCell>
                                           <TableCell className="text-xs text-right tabular-nums text-amber-700 dark:text-amber-400">{d.premium > 0 ? fmtH(d.premium) : '—'}</TableCell>
                                         </TableRow>
