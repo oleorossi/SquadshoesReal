@@ -137,8 +137,9 @@ describe('packBlocks — paginação explícita das fichas', () => {
   });
 
   it('constantes reais: capacidade A4 com margens internas é plausível', () => {
-    // 294mm − 6 − 8 − 8 (faixa) = 272mm ≈ 1028px @96dpi
-    expect(PAGE_CAPACITY_PX).toBeGreaterThan(1000);
+    // 288mm − 6 − 8 − 8 (faixa) = 266mm ≈ 1005px @96dpi (288 dá ~9mm de folga
+    // contra os 296.9mm que o Chrome usa pra A4 — mata o derrame em página cheia).
+    expect(PAGE_CAPACITY_PX).toBeGreaterThan(950);
     expect(PAGE_CAPACITY_PX).toBeLessThan(1100);
     expect(BLOCK_GAP_PX).toBeGreaterThan(0);
   });
