@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -181,6 +182,7 @@ export default function PurchasePlanningWizard() {
             supplier_id,
             purchase_order_unit,
             conversion_rate,
+            purchase_multiple,
             supplier_ref:suppliers!products_supplier_id_fkey(name, trade_name)
           `),
         supabase
@@ -697,9 +699,12 @@ export default function PurchasePlanningWizard() {
           const deficit = Math.max(0, item.total_needed - item.current_stock);
           // Respeita o lote mínimo de compra (min_order_quantity): arredonda pro
           // próximo múltiplo. Antes pedia o déficit cru (fracionava papelão/bobina).
-          const moq = Number(productsMap.get(item.product_id!)?.min_order_quantity) || 0;
+          const prod = productsMap.get(item.product_id!);
+          const moq = Number(prod?.min_order_quantity) || 0;
           let qty = Math.ceil(deficit);
           if (moq > 1) qty = Math.ceil(qty / moq) * moq;
+          // Múltiplo de compra (embalagem): arredonda pra cima (ex.: 187 → 200 c/ 50).
+          qty = roundUpToPurchaseMultiple(qty, prod?.purchase_multiple);
           return {
             purchase_order_id: po.id,
             product_id: item.product_id!,

@@ -16,6 +16,8 @@ import {
 } from '@phosphor-icons/react';
 import { formatCurrency } from '@/lib/utils';
 import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePerPvPurchasing';
+import { useProducts } from '@/hooks/useProducts';
+import { effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
 import { buildPerPvPurchaseOrders, summarizePerPvDrafts, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
 import { toast } from 'sonner';
@@ -39,11 +41,27 @@ type Props = {
 export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds, pvNumbers, onGenerated }: Props) {
   const [netOfStock, setNetOfStock] = useState(false);
   const { data: needs = [], isLoading, isError, error } = useMaterialsPerPv(open ? pvIds : null);
+  const { data: products = [] } = useProducts();
   const generate = useGeneratePerPvPurchaseOrders();
 
+  // Enriquece cada necessidade com o múltiplo de compra efetivo (item→grupo),
+  // pra buildPerPvPurchaseOrders arredondar a quantidade pra cima (187 → 200).
+  const multipleByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of products as any[]) {
+      m.set(p.id, effectivePurchaseMultiple(p.purchase_multiple, p.product_groups?.purchase_multiple));
+    }
+    return m;
+  }, [products]);
+
+  const enrichedNeeds = useMemo(
+    () => needs.map((n: any) => ({ ...n, purchase_multiple: multipleByProduct.get(n.material_id) ?? null })),
+    [needs, multipleByProduct],
+  );
+
   const drafts = useMemo(
-    () => buildPerPvPurchaseOrders(needs, { netOfStock }),
-    [needs, netOfStock],
+    () => buildPerPvPurchaseOrders(enrichedNeeds, { netOfStock }),
+    [enrichedNeeds, netOfStock],
   );
   const summary = useMemo(() => summarizePerPvDrafts(drafts), [drafts]);
 

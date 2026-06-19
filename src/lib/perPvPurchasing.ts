@@ -12,6 +12,8 @@
  * 100% testável sem banco.
  */
 
+import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
+
 /** Uma necessidade de material vinda da RPC compute_materials_per_pv. */
 export interface PvMaterialNeed {
   material_id: string;
@@ -29,6 +31,8 @@ export interface PvMaterialNeed {
   /** Custo padrão do produto (estimativa de preço da OC). */
   last_unit_price: number;
   is_artisanal?: boolean;
+  /** Múltiplo de compra (embalagem): qtd arredonda pra cima. Enriquecido pela UI. */
+  purchase_multiple?: number | null;
 }
 
 export interface DraftPurchaseOrderItem {
@@ -41,6 +45,7 @@ export interface DraftPurchaseOrderItem {
   needed_qty: number;
   stock_qty: number;
   unit_price: number;
+  purchase_multiple?: number | null;
 }
 
 export interface DraftPurchaseOrder {
@@ -115,6 +120,7 @@ export function buildPerPvPurchaseOrders(
         needed_qty: round3(needed),
         stock_qty: round3(stock),
         unit_price: price,
+        purchase_multiple: n.purchase_multiple ?? null,
         supplier_id: n.supplier_id ?? null,
         supplier_name: n.supplier_name ?? null,
       });
@@ -124,9 +130,11 @@ export function buildPerPvPurchaseOrders(
   // 2) Define quantidade a comprar e descarta zeros.
   const items: (DraftPurchaseOrderItem & { supplier_id: string | null; supplier_name: string | null })[] = [];
   for (const it of merged.values()) {
-    const qty = netOfStock
+    const qtyRaw = netOfStock
       ? Math.max(0, round3(it.needed_qty - it.stock_qty))
       : it.needed_qty;
+    // Múltiplo de compra (embalagem): arredonda pra cima (ex.: 187 → 200 c/ 50).
+    const qty = roundUpToPurchaseMultiple(qtyRaw, it.purchase_multiple);
     if (qty <= 0) continue;
     items.push({ ...it, quantity: qty });
   }

@@ -23,6 +23,7 @@ export const ProductSchema = z.object({
   sole_material: z.string().nullable().optional(),
   heel_height: z.number().nullable().optional(),
   is_standard_sole_item: z.boolean().optional(),
+  purchase_multiple: z.number().min(0, "Múltiplo deve ser zero ou positivo").optional(),
 }).passthrough();
 
 
@@ -50,7 +51,7 @@ export function useProducts() {
             // lê product.product_groups?.consumption_unit ao adicionar material
             // ao BOM. Sem ele cai pro fallback product.unit (estoque, ex: 'un'/
             // 'rolo'), gerando consumo na unidade errada.
-            .select('*, product_groups!products_group_id_fkey(name, consumption_unit)')
+            .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple)')
             .order('updated_at', { ascending: false })
             .range(i * PAGE, (i + 1) * PAGE - 1),
         ));
