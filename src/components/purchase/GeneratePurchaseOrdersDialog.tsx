@@ -132,6 +132,15 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               </Label>
             </div>
 
+            {/* Legenda do excedente por múltiplo de compra (só quando há) */}
+            {drafts.some((d) => d.items.some((it) => (it.rounding_surplus ?? 0) > 0)) && (
+              <p className="text-xs text-muted-foreground">
+                Na coluna <strong>A comprar</strong>, o valor em{' '}
+                <span className="text-blue-600 dark:text-blue-400 font-medium">azul</span> é o
+                excedente comprado a mais pra fechar o múltiplo de compra (embalagem).
+              </p>
+            )}
+
             {/* Aviso "Sem Fornecedor" */}
             {summary.hasNoSupplier && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
@@ -186,6 +195,14 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-semibold">
                             {it.quantity.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
+                            {(it.rounding_surplus ?? 0) > 0 && (
+                              <span
+                                className="ml-1 text-blue-600 dark:text-blue-400 font-medium"
+                                title={`+${(it.rounding_surplus ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} comprado a mais pra fechar o múltiplo de compra (embalagem)`}
+                              >
+                                +{(it.rounding_surplus ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{it.unit}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">{formatCurrency(it.unit_price)}</TableCell>

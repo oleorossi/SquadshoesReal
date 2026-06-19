@@ -89,6 +89,16 @@ export default function PurchasePlanningWizard() {
   const [productsMap, setProductsMap] = useState<Map<string, any>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Quantidade FINAL de compra: déficit → inteiro → lote mínimo (moq) → múltiplo
+  // de compra (embalagem). Fonte única usada na criação da OC E na exibição da
+  // revisão (pra o número e o excedente em azul baterem com o que será comprado).
+  const computeBuyQty = (deficit: number, prod: any): number => {
+    const moq = Number(prod?.min_order_quantity) || 0;
+    let qty = Math.ceil(Math.max(0, deficit));
+    if (moq > 1) qty = Math.ceil(qty / moq) * moq;
+    return roundUpToPurchaseMultiple(qty, prod?.purchase_multiple);
+  };
   const [selectedMaterials, setSelectedMaterials] = useState<AggregatedMaterial[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -697,14 +707,9 @@ export default function PurchasePlanningWizard() {
           .filter(item => item.product_id) // Only include items with a valid product_id
           .map(item => {
           const deficit = Math.max(0, item.total_needed - item.current_stock);
-          // Respeita o lote mínimo de compra (min_order_quantity): arredonda pro
-          // próximo múltiplo. Antes pedia o déficit cru (fracionava papelão/bobina).
-          const prod = productsMap.get(item.product_id!);
-          const moq = Number(prod?.min_order_quantity) || 0;
-          let qty = Math.ceil(deficit);
-          if (moq > 1) qty = Math.ceil(qty / moq) * moq;
-          // Múltiplo de compra (embalagem): arredonda pra cima (ex.: 187 → 200 c/ 50).
-          qty = roundUpToPurchaseMultiple(qty, prod?.purchase_multiple);
+          // Lote mínimo (min_order_quantity) + múltiplo de compra (embalagem):
+          // mesma lógica da revisão (computeBuyQty) pra não divergir.
+          const qty = computeBuyQty(deficit, productsMap.get(item.product_id!));
           return {
             purchase_order_id: po.id,
             product_id: item.product_id!,
@@ -1062,10 +1067,24 @@ export default function PurchasePlanningWizard() {
                       <div className="space-y-1">
                         {items.map(item => {
                           const deficit = Math.max(0, item.total_needed - item.current_stock);
+                          const prod = item.product_id ? productsMap.get(item.product_id) : null;
+                          const buyQty = computeBuyQty(deficit, prod);
+                          const surplus = Math.max(0, buyQty - deficit);
                           return (
                             <div key={item.material_key} className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0">
                               <span>{item.name} <Badge variant="outline" className="text-xs ml-1">{item.type}</Badge></span>
-                              <span className="font-medium">{fmtQty(deficit)} {item.unit} × {fmt(item.unit_price)}</span>
+                              <span className="font-medium">
+                                {fmtQty(buyQty)}
+                                {surplus > 0.0001 && (
+                                  <span
+                                    className="ml-1 text-blue-600 dark:text-blue-400"
+                                    title={`+${fmtQty(surplus)} ${item.unit} comprado a mais pra fechar o múltiplo de compra (embalagem)`}
+                                  >
+                                    +{fmtQty(surplus)}
+                                  </span>
+                                )}{' '}
+                                {item.unit} × {fmt(item.unit_price)}
+                              </span>
                             </div>
                           );
                         })}
