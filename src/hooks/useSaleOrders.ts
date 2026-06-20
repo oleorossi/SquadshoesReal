@@ -776,6 +776,10 @@ export type SaleOrderItemFormData = {
   strap_colors?: { id: string; label: string; color: string }[];
   observation?: string | null;
   material_variant_id?: string | null;
+  /** Terceirização integrada: IDs das reference_terceirizacoes marcadas pra
+   *  terceirizar este item neste PV. Default [] = faz em casa (nada terceirizado).
+   *  Ao salvar o PV, o RPC sync_sale_order_service_orders gera/atualiza as OS. */
+  selected_terceirizacao_ids?: string[];
 };
 
 export function useSaleOrders() {
@@ -927,6 +931,27 @@ export function useCreateSaleOrder() {
       // Auto-sync financial records
       await syncFinancialRecords(data.id);
 
+      // Terceirização integrada: gera as Ordens de Serviço pras terceirizações
+      // marcadas nos itens (selected_terceirizacao_ids já foi persistido via spread
+      // acima). Non-fatal — o PV já foi salvo; falha aqui só vira aviso.
+      const anyTerceirizacao = items.some(
+        (i) => Array.isArray(i.selected_terceirizacao_ids) && i.selected_terceirizacao_ids.length > 0,
+      );
+      if (anyTerceirizacao) {
+        try {
+          const { data: syncRes, error: syncErr } = await (supabase as any).rpc(
+            'sync_sale_order_service_orders', { p_sale_order_id: data.id },
+          );
+          if (syncErr) throw syncErr;
+          const created = Number((syncRes as any)?.created || 0);
+          if (created > 0) {
+            toast.success(`${created} ${created === 1 ? 'Ordem de Serviço gerada' : 'Ordens de Serviço geradas'} pela terceirização.`);
+          }
+        } catch (e: any) {
+          toast.warning(`Pedido salvo, mas a geração de OS de terceirização falhou: ${e?.message || e}. Reabra e salve o pedido pra tentar de novo.`);
+        }
+      }
+
       // Audit trail: registra override manual de data de faturamento
       if (order.manual_billing_override) {
         await logAuditEvent({
@@ -953,6 +978,10 @@ export function useCreateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
       // Profitability aggregate may have shifted with the new order's revenue.
       qc.invalidateQueries({ queryKey: ['profitability'] });
+      // Terceirização integrada pode ter gerado Ordens de Serviço.
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       toast.success('Pedido de venda criado!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -2171,6 +2200,30 @@ export function useUpdateSaleOrder() {
           quantity: items[idx]?.quantity ?? null,
         }));
 
+      // Terceirização integrada: o RPC update_sale_order_atomic recria os itens SEM
+      // a coluna selected_terceirizacao_ids — persistimos a seleção nos itens novos
+      // (por índice) e reconciliamos as OS. Como os IDs dos itens mudam a cada save,
+      // o sync casa as OS pela chave estável (PV, ref::cor, terceirização). Non-fatal.
+      try {
+        for (let idx = 0; idx < items.length; idx++) {
+          const sel = items[idx]?.selected_terceirizacao_ids;
+          const newId = insertedIds[idx];
+          if (newId && Array.isArray(sel) && sel.length > 0) {
+            const { error: selErr } = await supabase
+              .from('sale_order_items')
+              .update({ selected_terceirizacao_ids: sel } as any)
+              .eq('id', newId);
+            if (selErr) console.warn('[useUpdateSaleOrder] falha ao gravar selected_terceirizacao_ids:', selErr.message);
+          }
+        }
+        const { error: syncErr } = await (supabase as any).rpc(
+          'sync_sale_order_service_orders', { p_sale_order_id: id },
+        );
+        if (syncErr) console.warn('[useUpdateSaleOrder] sync OS de terceirização falhou:', syncErr.message);
+      } catch (e: any) {
+        console.warn('[useUpdateSaleOrder] terceirização sync erro:', e?.message || e);
+      }
+
       // 4. Recreate OPs if status is Aprovado or Em Produção (regardless of whether OPs existed before)
       if (order.status === 'Aprovado' || order.status === 'Em Produção') {
         // Fetch billing_week, packaging_mode AND canonical status from the DB.
@@ -2438,6 +2491,10 @@ export function useUpdateSaleOrder() {
       // the next read recomputes against the new items.
       qc.invalidateQueries({ queryKey: ['order-cost'] });
       qc.invalidateQueries({ queryKey: ['profitability'] });
+      // Terceirização integrada: OS podem ter sido criadas/atualizadas/canceladas.
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       toast.success('Pedido atualizado e OPs sincronizadas!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
