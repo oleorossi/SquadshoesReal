@@ -5,8 +5,10 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare, Handshake } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useActiveReferenceTerceirizacoes } from '@/hooks/useReferenceTerceirizacoes';
 import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
 import { resolvePrice, type PriceLookup } from '@/lib/mobile/clientContext';
@@ -1361,6 +1363,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </Button>
           )}
         </div>
+
+        {/* Terceirização (opcional) — só aparece se a ficha da ref tem terceirizações ativas */}
+        <TerceirizacaoItemSection
+          referenceId={item.reference_id}
+          selectedIds={item.selected_terceirizacao_ids || []}
+          totalPairs={totalPairs}
+          onChange={(ids) => onUpdate(index, 'selected_terceirizacao_ids', ids)}
+        />
       </div>
 
       <CreateStrapProductDialog
@@ -1628,5 +1638,68 @@ function ReferencePickerControlled({
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Seção "Terceirização (opcional)" do item do PV. Só renderiza quando a ficha
+ * técnica da referência tem terceirizações ATIVAS cadastradas. Cada checkbox
+ * marca uma terceirização — ao salvar o PV, gera 1 Ordem de Serviço por item ×
+ * terceirização marcada. Default tudo desmarcado (faz em casa).
+ */
+function TerceirizacaoItemSection({
+  referenceId, selectedIds, totalPairs, onChange,
+}: {
+  referenceId: string;
+  selectedIds: string[];
+  totalPairs: number;
+  onChange: (ids: string[]) => void;
+}) {
+  const { data: terceirizacoes = [] } = useActiveReferenceTerceirizacoes(referenceId || null);
+  if (!referenceId || terceirizacoes.length === 0) return null;
+
+  const toggle = (id: string) => {
+    const set = new Set(selectedIds);
+    if (set.has(id)) set.delete(id); else set.add(id);
+    onChange([...set]);
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+        <Handshake className="h-3.5 w-3.5" /> Terceirização (opcional)
+      </div>
+      <div className="space-y-1.5">
+        {terceirizacoes.map((t) => {
+          const checked = selectedIds.includes(t.id);
+          const total = (Number(t.value_per_pair) || 0) * (totalPairs || 0);
+          const contractor = t.contractors?.trade_name || t.contractors?.name || 'Contratada';
+          return (
+            <label
+              key={t.id}
+              className={cn(
+                'flex items-center gap-2.5 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
+                checked ? 'border-primary/40 bg-primary/5' : 'border-border/50 hover:bg-muted/40',
+              )}
+            >
+              <Checkbox checked={checked} onCheckedChange={() => toggle(t.id)} />
+              <div className="flex-1 min-w-0 text-xs">
+                <span className="font-medium text-foreground">{contractor}</span>
+                <span className="text-muted-foreground"> — {t.description}</span>
+              </div>
+              <div className="text-right text-xs tabular-nums shrink-0">
+                <span className="text-muted-foreground">{formatCurrency(t.value_per_pair)}/par × {totalPairs}</span>
+                <span className="ml-1.5 font-semibold text-foreground">= {formatCurrency(total)}</span>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+      {selectedIds.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {selectedIds.length} {selectedIds.length === 1 ? 'serviço será terceirizado' : 'serviços serão terceirizados'} — a Ordem de Serviço é criada/atualizada ao salvar o pedido.
+        </p>
+      )}
+    </div>
   );
 }
