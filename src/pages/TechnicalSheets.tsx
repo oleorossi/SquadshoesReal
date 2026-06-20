@@ -2923,6 +2923,83 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         });
                       })()}
                     </div>
+                    {/* ── Forração — re-adicionado 2026-06-20 a pedido do dono ──
+                        Seletor do GRUPO de material de forro. As cores da forração
+                        vêm dos produtos deste grupo (o mapa "Cor da Forração por Cor
+                        de Cabedal" e o débito por cor puxam dele). O consumo por
+                        numeração (lining_consumption_per_size) é o primário no motor. */}
+                    <div className="space-y-2 pt-2 border-t border-border/40">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Scissors className="h-3.5 w-3.5 text-purple-600" />
+                          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Forração</span>
+                        </div>
+                        {form.sole_group_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => {
+                              const soleId = products.find(p => p.group_id === form.sole_group_id)?.id;
+                              if (soleId) autoFillFromSoleSpecs(soleId);
+                              else toast.error('Não foi possível localizar o produto do solado para buscar consumos.');
+                            }}
+                          >
+                            <RefreshCw className="h-3 w-3" /> Puxar do Solado
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
+                        <GroupMaterialSelect
+                          label="Grupo de material de forração"
+                          value={form.lining_material}
+                          onChange={v => { updateField('lining_material', v); autoFillConsumption(v, 'lining_material'); }}
+                        />
+                        {form.lining_material && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-destructive hover:text-destructive"
+                            onClick={() => {
+                              updateField('lining_material', '');
+                              updateField('lining_consumption', 0);
+                              updateField('lining_consumption_per_size' as any, {});
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+
+                      {form.lining_material && (() => {
+                        const liningUnit = getUnitForGroupName(form.lining_material);
+                        return (
+                          <div>
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Consumo de Forração por Numeração ({liningUnit}/par)
+                            </Label>
+                            <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
+                              Preencha o consumo de forro número a número. A média alimenta o custo automaticamente.
+                              As <strong>cores</strong> vêm dos produtos deste grupo (mapa Cabedal → Forro abaixo).
+                            </p>
+                            {renderSizeGrid(
+                              (form as any).lining_consumption_per_size || {},
+                              liningUnit,
+                              (newPerSize) => {
+                                updateField('lining_consumption_per_size' as any, newPerSize);
+                                const filled = Object.values(newPerSize).filter((v: any) => Number(v) > 0);
+                                if (filled.length > 0) {
+                                  const avg = filled.reduce((a: number, b: any) => a + Number(b), 0) / filled.length;
+                                  updateField('lining_consumption', Math.round(avg * 10000) / 10000);
+                                }
+                              },
+                              'emerald',
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </>
                 );
               })()}
