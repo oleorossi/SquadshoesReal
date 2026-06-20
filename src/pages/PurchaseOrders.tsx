@@ -424,6 +424,8 @@ export default function PurchaseOrders() {
                         <TableCell>
                           {o.auto_generated ? (
                             <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>
+                          ) : o.source_type === 'manual_avulsa' ? (
+                            <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>
                           ) : (
                             <span className="text-xs text-muted-foreground">Manual</span>
                           )}
@@ -968,6 +970,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             {order.order_number}
             <Badge variant={st.variant} className="ml-2">{st.label}</Badge>
             {order.auto_generated && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
+            {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
           </DialogTitle>
         </DialogHeader>
 
