@@ -1,14 +1,14 @@
 /**
- * Guard de CONTRATO da migration de Terceirização Integrada (PV → OS automática).
+ * Guard de CONTRATO da migration de Terceirização Integrada (PV → envio → OS).
  *
- * A lógica de geração/sincronização das Ordens de Serviço vive no SQL
- * (RPC sync_sale_order_service_orders + trigger de cascata). Não há motor TS
- * pra testar isoladamente. Este suite trava os invariantes do contrato no
- * arquivo de migration pra que uma edição acidental (remover a idempotência,
- * mudar o formato das notes, tirar a guarda de OS concluída) quebre o CI.
+ * A lógica vive no SQL (RPCs send_terceirizacao_os / send_all / get_pv_… /
+ * update_…_qty + trigger de cascata). Não há motor TS pra testar isoladamente.
+ * Este suite trava os invariantes do contrato no arquivo de migration pra que
+ * uma edição acidental (reintroduzir auto-criação, mudar o formato das notes,
+ * tirar a idempotência ou a guarda de OS concluída) quebre o CI.
  *
- * O teste end-to-end de comportamento (cria → marca no PV → OS criada → muda
- * qty → atualiza → desmarca → cancela → PV cancelado → cascata) é manual /
+ * O teste end-to-end de comportamento (marca no PV → envia linha → OS criada →
+ * muda qty → atualiza → cancela → reenvia → PV cancelado → cascata) é manual /
  * DB-integration: requer a migration aplicada e um Postgres com dados.
  */
 import { describe, it, expect } from 'vitest';
@@ -27,8 +27,10 @@ describe('migration terceirização integrada — contrato SQL', () => {
     expect(SQL).toMatch(/reference_id\s+uuid\s+NOT NULL\s+REFERENCES public\.technical_sheets\(id\)\s+ON DELETE CASCADE/);
   });
 
-  it('adiciona a seleção por item no PV (selected_terceirizacao_ids)', () => {
+  it('a seleção por item do PV é só INTENÇÃO (não gera OS sozinha)', () => {
     expect(SQL).toMatch(/ALTER TABLE public\.sale_order_items[\s\S]*selected_terceirizacao_ids\s+uuid\[\]/);
+    // remove a RPC de auto-sync da v1 (o fluxo agora é envio explícito por botão)
+    expect(SQL).toMatch(/DROP FUNCTION IF EXISTS public\.sync_sale_order_service_orders\(uuid\)/);
   });
 
   it('adiciona as colunas de origem na OS (incl. chave estável source_item_key)', () => {
@@ -44,9 +46,20 @@ describe('migration terceirização integrada — contrato SQL', () => {
     );
   });
 
-  it('define o RPC de sincronização concedido a authenticated', () => {
-    expect(SQL).toMatch(/CREATE OR REPLACE FUNCTION public\.sync_sale_order_service_orders\(p_sale_order_id uuid\)/);
-    expect(SQL).toMatch(/GRANT EXECUTE ON FUNCTION public\.sync_sale_order_service_orders\(uuid\) TO authenticated/);
+  it('expõe a leitura das linhas do card concedida a authenticated', () => {
+    expect(SQL).toMatch(/CREATE OR REPLACE FUNCTION public\.get_pv_terceirizacao_lines\(p_sale_order_id uuid\)/);
+    expect(SQL).toMatch(/GRANT EXECUTE ON FUNCTION public\.get_pv_terceirizacao_lines\(uuid\) TO authenticated/);
+  });
+
+  it('define os RPCs de envio explícito (uma linha + todas) e de update de qty', () => {
+    expect(SQL).toMatch(/CREATE OR REPLACE FUNCTION public\.send_terceirizacao_os\(/);
+    expect(SQL).toMatch(/GRANT EXECUTE ON FUNCTION public\.send_terceirizacao_os\(uuid, uuid, text, uuid, boolean\) TO authenticated/);
+    expect(SQL).toMatch(/CREATE OR REPLACE FUNCTION public\.send_all_terceirizacao_os\(p_sale_order_id uuid\)/);
+    expect(SQL).toMatch(/CREATE OR REPLACE FUNCTION public\.update_terceirizacao_os_qty\(p_service_order_id uuid\)/);
+  });
+
+  it('"enviar todas" não ressuscita canceladas (p_reactivate=false)', () => {
+    expect(SQL).toMatch(/send_terceirizacao_os\(p_sale_order_id, r\.reference_id, r\.color, r\.terceirizacao_id, false\)/);
   });
 
   it('monta as notes com o número do pedido do cliente quando houver, senão o interno', () => {
@@ -64,13 +77,10 @@ describe('migration terceirização integrada — contrato SQL', () => {
     expect(SQL).toMatch(/source_sale_order_id, source_sale_order_item_id, source_terceirizacao_id, source_item_key/);
   });
 
-  it('nunca mexe em OS já entregue/concluída', () => {
+  it('nunca mexe em OS já entregue/concluída; idempotente em OS ativa', () => {
     expect(SQL).toMatch(/v_finalized\s+constant text\[\]\s*:=\s*ARRAY\['received', ?'Concluído'/);
-    expect(SQL).toMatch(/IF v_existing\.status = ANY \(v_finalized\) THEN[\s\S]*CONTINUE;/);
-  });
-
-  it('cancela OS de terceirização desmarcada (não deleta)', () => {
-    expect(SQL).toMatch(/SET status = 'Cancelado'[\s\S]*NOT EXISTS\s*\([\s\S]*selected_terceirizacao_ids/);
+    expect(SQL).toMatch(/IF v_existing\.status = ANY \(v_finalized\) THEN[\s\S]*finalized_untouched/);
+    expect(SQL).toMatch(/já enviada e ativa[\s\S]*'exists'/);
   });
 
   it('faz cascata: PV → Cancelado cancela as OS vinculadas ativas via trigger', () => {

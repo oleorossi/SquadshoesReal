@@ -1,18 +1,19 @@
 -- =============================================================================
--- TERCEIRIZAÇÃO INTEGRADA: ficha técnica → PV → Ordem de Serviço automática
+-- TERCEIRIZAÇÃO INTEGRADA: ficha técnica → PV (intenção) → ENVIO explícito → OS
 -- =============================================================================
 -- Pedido do dono: cadastrar terceirizações (prestador + descrição + valor POR PAR)
--- na ficha técnica da referência; na criação do pedido de venda, marcar (opcional)
--- quais terceirizações vão pra fora; ao salvar o PV, gerar/atualizar 1 Ordem de
--- Serviço por (item × terceirização marcada) — automaticamente.
+-- na ficha técnica da referência; na criação do pedido de venda, MARCAR (opcional)
+-- quais terceirizações pretende mandar pra fora. A marcação é só INTENÇÃO — a
+-- Ordem de Serviço NÃO nasce no save (senão sobra OS cancelada). A OS só é criada
+-- quando o usuário clica "Enviar para terceirizados" (por linha) ou "Enviar todas"
+-- no card de Terceirizações do PV.
 --
 -- ── Chave de idempotência ESTÁVEL ───────────────────────────────────────────
 -- O PV reescreve sale_order_items a CADA edição (RPC update_sale_order_atomic
 -- apaga+reinsere as linhas → os IDs dos itens MUDAM). Logo a idempotência da OS
 -- NÃO pode depender só de source_sale_order_item_id. Usamos a tripla estável:
---   (source_sale_order_id, source_item_key, source_terceirizacao_id)
--- onde source_item_key = 'reference_id::color' (sobrevive ao replace de itens).
--- source_sale_order_item_id fica como link "best-effort", refrescado a cada sync.
+--   (source_sale_order_id, source_item_key='reference_id::color', source_terceirizacao_id)
+-- source_sale_order_item_id fica como link "best-effort", refrescado a cada envio.
 --
 -- ── Financeiro ──────────────────────────────────────────────────────────────
 -- A OS nasce 'Pendente'. A conta a pagar (accounts_payable) é criada pelo trigger
@@ -58,14 +59,15 @@ CREATE TRIGGER set_reference_terceirizacoes_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ----------------------------------------------------------------------------
--- 2. Seleção por item do PV: quais terceirizações vão pra fora nessa venda
+-- 2. Seleção por item do PV = INTENÇÃO (não gera OS sozinha)
 -- ----------------------------------------------------------------------------
 ALTER TABLE public.sale_order_items
   ADD COLUMN IF NOT EXISTS selected_terceirizacao_ids uuid[] NOT NULL DEFAULT '{}'::uuid[];
 
 COMMENT ON COLUMN public.sale_order_items.selected_terceirizacao_ids IS
-  'IDs das reference_terceirizacoes marcadas pra terceirizar este item neste PV. '
-  'Default {} = nada terceirizado (faz em casa). A geração de OS lê esta coluna.';
+  'IDs das reference_terceirizacoes que o usuário PRETENDE terceirizar neste item '
+  '(intenção). Default {} = faz em casa. A OS só é criada no ENVIO explícito '
+  '(send_terceirizacao_os / send_all_terceirizacao_os), nunca no save do PV.';
 
 -- ----------------------------------------------------------------------------
 -- 3. Vínculo OS ← PV item (rastreabilidade + idempotência + cascata)
@@ -77,7 +79,7 @@ ALTER TABLE public.service_orders
   ADD COLUMN IF NOT EXISTS source_item_key text;
 
 COMMENT ON COLUMN public.service_orders.source_sale_order_id IS
-  'PV de origem quando a OS foi gerada automaticamente pela terceirização integrada. '
+  'PV de origem quando a OS foi enviada pela terceirização integrada. '
   'NULL = OS manual/avulsa. Usado pra cascata de cancelamento e card no detalhe do PV.';
 COMMENT ON COLUMN public.service_orders.source_item_key IS
   'Chave estável reference_id::color do item de origem — sobrevive ao replace de '
@@ -93,16 +95,94 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_service_order_per_pv_item_terceirizacao
   WHERE source_sale_order_id IS NOT NULL AND source_terceirizacao_id IS NOT NULL;
 
 -- ----------------------------------------------------------------------------
--- 4. RPC de sincronização: reconcilia as OS de um PV com a seleção atual
+-- 4. Remove a RPC de auto-sync da v1 (o fluxo agora é envio explícito por botão)
 -- ----------------------------------------------------------------------------
--- Chamada pelo app após salvar o PV (create/update). Atômica e idempotente:
---   • cria OS pra (item × terceirização marcada) que ainda não tem;
---   • atualiza qty/total/descrição/notes da OS existente quando muda;
---   • reativa (Cancelado → Pendente) OS de uma terceirização re-selecionada;
---   • cancela OS cuja terceirização foi DESMARCADA;
---   • se o PV está Cancelado, cancela todas as OS vinculadas ainda ativas.
--- OS já entregues/concluídas (com trabalho feito e AP gerável) NUNCA são mexidas.
-CREATE OR REPLACE FUNCTION public.sync_sale_order_service_orders(p_sale_order_id uuid)
+DROP FUNCTION IF EXISTS public.sync_sale_order_service_orders(uuid);
+
+-- ----------------------------------------------------------------------------
+-- 5. Leitura: linhas de terceirização do PV (pro card de Terceirizações)
+-- ----------------------------------------------------------------------------
+-- Agrega as terceirizações MARCADAS por (referência::cor) × terceirização, soma a
+-- qty dos itens e casa com a OS já enviada (se houver) pela chave estável. O status
+-- local é derivado no front: sem OS = "pendente envio"; OS cancelada = "cancelada";
+-- senão = "enviada" (+ divergência se os_quantity ≠ qty).
+CREATE OR REPLACE FUNCTION public.get_pv_terceirizacao_lines(p_sale_order_id uuid)
+RETURNS TABLE (
+  reference_id          uuid,
+  color                 text,
+  ref_code              text,
+  terceirizacao_id      uuid,
+  contractor_id         uuid,
+  contractor_name       text,
+  description           text,
+  value_per_pair        numeric,
+  terceirizacao_active  boolean,
+  qty                   numeric,
+  os_id                 uuid,
+  os_number             text,
+  os_status             text,
+  os_quantity           numeric,
+  os_total              numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  SELECT
+    agg.reference_id,
+    agg.color,
+    agg.ref_code,
+    agg.terceirizacao_id,
+    t.contractor_id,
+    COALESCE(c.trade_name, c.name)        AS contractor_name,
+    t.description,
+    t.value_per_pair,
+    t.active                              AS terceirizacao_active,
+    agg.qty,
+    so.id                                 AS os_id,
+    so.order_number                       AS os_number,
+    so.status                             AS os_status,
+    so.quantity                           AS os_quantity,
+    so.total_value                        AS os_total
+  FROM (
+    SELECT
+      i.reference_id,
+      COALESCE(i.color, '')                                  AS color,
+      ts.code                                                AS ref_code,
+      sel.tid                                                AS terceirizacao_id,
+      (i.reference_id::text || '::' || COALESCE(i.color, '')) AS item_key,
+      SUM(COALESCE(i.quantity, 0))::numeric                  AS qty
+    FROM public.sale_order_items i
+    JOIN LATERAL unnest(COALESCE(i.selected_terceirizacao_ids, '{}'::uuid[])) AS sel(tid) ON true
+    LEFT JOIN public.technical_sheets ts ON ts.id = i.reference_id
+    WHERE i.sale_order_id = p_sale_order_id
+    GROUP BY 1, 2, 3, 4, 5
+  ) agg
+  JOIN public.reference_terceirizacoes t ON t.id = agg.terceirizacao_id
+  LEFT JOIN public.contractors c ON c.id = t.contractor_id
+  LEFT JOIN public.service_orders so
+    ON so.source_sale_order_id = p_sale_order_id
+   AND so.source_item_key = agg.item_key
+   AND so.source_terceirizacao_id = agg.terceirizacao_id
+  ORDER BY agg.ref_code NULLS LAST, agg.color, t.description;
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.get_pv_terceirizacao_lines(uuid) TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 6. Envio de UMA linha: cria (ou reativa) a OS daquela terceirização
+-- ----------------------------------------------------------------------------
+-- Idempotente: se já existe OS ativa pra (PV, ref::cor, terceirização) não duplica.
+-- Se existe cancelada e p_reactivate=true, reabre (Pendente) com os valores atuais.
+-- Nunca mexe em OS já entregue/concluída.
+CREATE OR REPLACE FUNCTION public.send_terceirizacao_os(
+  p_sale_order_id   uuid,
+  p_reference_id    uuid,
+  p_color           text,
+  p_terceirizacao_id uuid,
+  p_reactivate      boolean DEFAULT true
+)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -110,147 +190,187 @@ SET search_path TO 'public'
 AS $function$
 DECLARE
   v_so          RECORD;
+  v_t           RECORD;
   v_notes       text;
   v_due         date;
-  v_created     int := 0;
-  v_updated     int := 0;
-  v_cancelled   int := 0;
-  r             RECORD;
-  v_existing    RECORD;
+  v_color       text := COALESCE(p_color, '');
+  v_item_key    text;
+  v_qty         numeric;
+  v_any_item_id uuid;
+  v_ref_code    text;
   v_desc        text;
+  v_existing    RECORD;
+  v_os_id       uuid;
   v_finalized   constant text[] := ARRAY['received','Concluído','concluido','finalizado','Finalizado'];
 BEGIN
   SELECT id, order_number, client_order_number, delivery_deadline, status
-    INTO v_so
-  FROM public.sale_orders
-  WHERE id = p_sale_order_id;
-
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('error', 'sale_order_not_found');
+    INTO v_so FROM public.sale_orders WHERE id = p_sale_order_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('error', 'sale_order_not_found'); END IF;
+  IF lower(btrim(COALESCE(v_so.status, ''))) IN ('cancelado', 'cancelada', 'cancelled') THEN
+    RETURN jsonb_build_object('error', 'sale_order_cancelled');
   END IF;
 
-  -- Observação automática da OS (número do pedido do cliente quando houver).
+  SELECT id, contractor_id, description, value_per_pair
+    INTO v_t FROM public.reference_terceirizacoes WHERE id = p_terceirizacao_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('error', 'terceirizacao_not_found'); END IF;
+
+  v_item_key := p_reference_id::text || '::' || v_color;
+
+  SELECT SUM(COALESCE(i.quantity, 0))::numeric, (array_agg(i.id ORDER BY i.id))[1]
+    INTO v_qty, v_any_item_id
+  FROM public.sale_order_items i
+  WHERE i.sale_order_id = p_sale_order_id
+    AND i.reference_id = p_reference_id
+    AND COALESCE(i.color, '') = v_color
+    AND p_terceirizacao_id = ANY (COALESCE(i.selected_terceirizacao_ids, '{}'::uuid[]));
+
+  IF v_qty IS NULL OR v_qty <= 0 THEN
+    RETURN jsonb_build_object('error', 'line_not_marked');
+  END IF;
+
+  SELECT code INTO v_ref_code FROM public.technical_sheets WHERE id = p_reference_id;
+
   IF v_so.client_order_number IS NOT NULL AND btrim(v_so.client_order_number) <> '' THEN
     v_notes := 'PV cliente: ' || btrim(v_so.client_order_number)
              || ' | PV interno: ' || COALESCE(v_so.order_number, p_sale_order_id::text);
   ELSE
     v_notes := 'PV: ' || COALESCE(v_so.order_number, p_sale_order_id::text);
   END IF;
+  v_due  := COALESCE(v_so.delivery_deadline, (CURRENT_DATE + INTERVAL '30 days')::date);
+  v_desc := v_t.description || ' — Ref ' || COALESCE(v_ref_code, '?')
+          || COALESCE(' ' || NULLIF(btrim(v_color), ''), '');
 
-  v_due := COALESCE(v_so.delivery_deadline, (CURRENT_DATE + INTERVAL '30 days')::date);
+  SELECT * INTO v_existing FROM public.service_orders so
+   WHERE so.source_sale_order_id = p_sale_order_id
+     AND so.source_item_key = v_item_key
+     AND so.source_terceirizacao_id = p_terceirizacao_id
+   LIMIT 1;
 
-  -- PV cancelado → cancela todas as OS vinculadas ainda ativas e encerra.
-  IF lower(btrim(COALESCE(v_so.status, ''))) IN ('cancelado', 'cancelada', 'cancelled') THEN
-    UPDATE public.service_orders so
-       SET status = 'Cancelado', updated_at = now()
-     WHERE so.source_sale_order_id = p_sale_order_id
-       AND so.status <> 'Cancelado'
-       AND NOT (so.status = ANY (v_finalized));
-    GET DIAGNOSTICS v_cancelled = ROW_COUNT;
-    RETURN jsonb_build_object('created', 0, 'updated', 0, 'cancelled', v_cancelled, 'pv_cancelled', true);
-  END IF;
-
-  -- ── Upsert do conjunto desejado ────────────────────────────────────────────
-  FOR r IN
-    SELECT
-      (i.reference_id::text || '::' || COALESCE(i.color, '')) AS item_key,
-      t.id                AS terceirizacao_id,
-      t.contractor_id     AS contractor_id,
-      t.description        AS t_desc,
-      t.value_per_pair     AS value_per_pair,
-      ts.code              AS ref_code,
-      i.color              AS color,
-      SUM(COALESCE(i.quantity, 0))::numeric           AS qty,
-      (array_agg(i.id ORDER BY i.id))[1]              AS any_item_id
-    FROM public.sale_order_items i
-    JOIN LATERAL unnest(COALESCE(i.selected_terceirizacao_ids, '{}'::uuid[])) AS sel(tid) ON true
-    JOIN public.reference_terceirizacoes t
-      ON t.id = sel.tid AND t.active = true AND t.reference_id = i.reference_id
-    LEFT JOIN public.technical_sheets ts ON ts.id = i.reference_id
-    WHERE i.sale_order_id = p_sale_order_id
-    GROUP BY 1, 2, 3, 4, 5, 6, 7
-  LOOP
-    v_desc := r.t_desc || ' — Ref ' || COALESCE(r.ref_code, '?')
-            || COALESCE(' ' || NULLIF(btrim(COALESCE(r.color, '')), ''), '');
-
-    SELECT * INTO v_existing
-    FROM public.service_orders so
-    WHERE so.source_sale_order_id = p_sale_order_id
-      AND so.source_item_key = r.item_key
-      AND so.source_terceirizacao_id = r.terceirizacao_id
-    LIMIT 1;
-
-    IF FOUND THEN
-      -- Entregue/concluída: trabalho já feito — não reabre nem altera valores.
-      IF v_existing.status = ANY (v_finalized) THEN
-        CONTINUE;
+  IF FOUND THEN
+    IF v_existing.status = ANY (v_finalized) THEN
+      RETURN jsonb_build_object('action', 'finalized_untouched', 'os_id', v_existing.id);
+    END IF;
+    IF v_existing.status = 'Cancelado' THEN
+      IF NOT p_reactivate THEN
+        RETURN jsonb_build_object('action', 'skipped_cancelled', 'os_id', v_existing.id);
       END IF;
-
       UPDATE public.service_orders so SET
-        contractor_id             = r.contractor_id,
+        contractor_id             = v_t.contractor_id,
         description               = v_desc,
-        quantity                  = r.qty,
-        unit_price                = r.value_per_pair,
-        total_value               = r.qty * r.value_per_pair,
+        service_date              = CURRENT_DATE,
+        quantity                  = v_qty,
+        unit_price                = v_t.value_per_pair,
+        total_value               = v_qty * v_t.value_per_pair,
         payment_due_date          = v_due,
         notes                     = v_notes,
-        source_sale_order_item_id = r.any_item_id,
-        status                    = CASE WHEN so.status = 'Cancelado' THEN 'Pendente' ELSE so.status END,
+        source_sale_order_item_id = v_any_item_id,
+        status                    = 'Pendente',
         updated_at                = now()
       WHERE so.id = v_existing.id;
-      v_updated := v_updated + 1;
-    ELSE
-      INSERT INTO public.service_orders (
-        contractor_id, description, service_date, quantity, unit_price, total_value,
-        status, notes, payment_due_date, is_avulsa,
-        source_sale_order_id, source_sale_order_item_id, source_terceirizacao_id, source_item_key
-      ) VALUES (
-        r.contractor_id, v_desc, CURRENT_DATE, r.qty, r.value_per_pair, r.qty * r.value_per_pair,
-        'Pendente', v_notes, v_due, false,
-        p_sale_order_id, r.any_item_id, r.terceirizacao_id, r.item_key
-      );
-      v_created := v_created + 1;
+      RETURN jsonb_build_object('action', 'reactivated', 'os_id', v_existing.id);
     END IF;
-  END LOOP;
+    -- já enviada e ativa → não duplica
+    RETURN jsonb_build_object('action', 'exists', 'os_id', v_existing.id);
+  END IF;
 
-  -- ── Cancela OS de terceirizações DESMARCADAS ───────────────────────────────
-  UPDATE public.service_orders so
-     SET status = 'Cancelado', updated_at = now()
-   WHERE so.source_sale_order_id = p_sale_order_id
-     AND so.status <> 'Cancelado'
-     AND NOT (so.status = ANY (v_finalized))
-     AND NOT EXISTS (
-       SELECT 1
-       FROM public.sale_order_items i
-       JOIN LATERAL unnest(COALESCE(i.selected_terceirizacao_ids, '{}'::uuid[])) AS sel(tid) ON true
-       JOIN public.reference_terceirizacoes t
-         ON t.id = sel.tid AND t.active = true AND t.reference_id = i.reference_id
-       WHERE i.sale_order_id = p_sale_order_id
-         AND (i.reference_id::text || '::' || COALESCE(i.color, '')) = so.source_item_key
-         AND t.id = so.source_terceirizacao_id
-     );
-  GET DIAGNOSTICS v_cancelled = ROW_COUNT;
+  INSERT INTO public.service_orders (
+    contractor_id, description, service_date, quantity, unit_price, total_value,
+    status, notes, payment_due_date, is_avulsa,
+    source_sale_order_id, source_sale_order_item_id, source_terceirizacao_id, source_item_key
+  ) VALUES (
+    v_t.contractor_id, v_desc, CURRENT_DATE, v_qty, v_t.value_per_pair, v_qty * v_t.value_per_pair,
+    'Pendente', v_notes, v_due, false,
+    p_sale_order_id, v_any_item_id, p_terceirizacao_id, v_item_key
+  ) RETURNING id INTO v_os_id;
 
-  RETURN jsonb_build_object(
-    'created', v_created,
-    'updated', v_updated,
-    'cancelled', v_cancelled,
-    'pv_cancelled', false
-  );
+  RETURN jsonb_build_object('action', 'created', 'os_id', v_os_id);
 END;
 $function$;
 
-GRANT EXECUTE ON FUNCTION public.sync_sale_order_service_orders(uuid) TO authenticated;
-
-COMMENT ON FUNCTION public.sync_sale_order_service_orders(uuid) IS
-  'Reconcilia as Ordens de Serviço geradas pela terceirização integrada de um PV '
-  'com a seleção atual dos itens. Idempotente. Chamada pelo app após salvar o PV.';
+GRANT EXECUTE ON FUNCTION public.send_terceirizacao_os(uuid, uuid, text, uuid, boolean) TO authenticated;
 
 -- ----------------------------------------------------------------------------
--- 5. Cascata: PV → Cancelado cancela as OS vinculadas ainda ativas
+-- 7. Enviar TODAS: cria OS só pras linhas pendentes de envio (sem OS ainda)
+-- ----------------------------------------------------------------------------
+-- p_reactivate=false → NÃO ressuscita linhas que o usuário cancelou de propósito.
+CREATE OR REPLACE FUNCTION public.send_all_terceirizacao_os(p_sale_order_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  r         RECORD;
+  v_res     jsonb;
+  v_created int := 0;
+  v_skipped int := 0;
+BEGIN
+  FOR r IN
+    SELECT DISTINCT i.reference_id AS reference_id, COALESCE(i.color, '') AS color, sel.tid AS terceirizacao_id
+    FROM public.sale_order_items i
+    JOIN LATERAL unnest(COALESCE(i.selected_terceirizacao_ids, '{}'::uuid[])) AS sel(tid) ON true
+    WHERE i.sale_order_id = p_sale_order_id
+  LOOP
+    v_res := public.send_terceirizacao_os(p_sale_order_id, r.reference_id, r.color, r.terceirizacao_id, false);
+    IF (v_res->>'action') = 'created' THEN
+      v_created := v_created + 1;
+    ELSE
+      v_skipped := v_skipped + 1;
+    END IF;
+  END LOOP;
+  RETURN jsonb_build_object('created', v_created, 'skipped', v_skipped);
+END;
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.send_all_terceirizacao_os(uuid) TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 8. Atualizar a qty da OS pra bater com a qty atual do item do PV
+-- ----------------------------------------------------------------------------
+-- Recalcula a qty agregada a partir dos itens atuais (casando pela chave estável)
+-- e ajusta quantity + total_value. Usado pelo botão "Atualizar OS pra nova qty".
+CREATE OR REPLACE FUNCTION public.update_terceirizacao_os_qty(p_service_order_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_os  RECORD;
+  v_qty numeric;
+BEGIN
+  SELECT id, source_sale_order_id, source_item_key, source_terceirizacao_id, unit_price, status
+    INTO v_os FROM public.service_orders WHERE id = p_service_order_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('error', 'os_not_found'); END IF;
+  IF v_os.source_sale_order_id IS NULL THEN RETURN jsonb_build_object('error', 'not_pv_linked'); END IF;
+
+  SELECT SUM(COALESCE(i.quantity, 0))::numeric INTO v_qty
+  FROM public.sale_order_items i
+  WHERE i.sale_order_id = v_os.source_sale_order_id
+    AND (i.reference_id::text || '::' || COALESCE(i.color, '')) = v_os.source_item_key
+    AND v_os.source_terceirizacao_id = ANY (COALESCE(i.selected_terceirizacao_ids, '{}'::uuid[]));
+
+  IF v_qty IS NULL OR v_qty <= 0 THEN
+    RETURN jsonb_build_object('error', 'line_not_marked');
+  END IF;
+
+  UPDATE public.service_orders SET
+    quantity    = v_qty,
+    total_value = v_qty * COALESCE(unit_price, 0),
+    updated_at  = now()
+  WHERE id = p_service_order_id;
+
+  RETURN jsonb_build_object('quantity', v_qty, 'total', v_qty * COALESCE(v_os.unit_price, 0));
+END;
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.update_terceirizacao_os_qty(uuid) TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 9. Cascata: PV → Cancelado cancela as OS ENVIADAS ainda ativas
 -- ----------------------------------------------------------------------------
 -- Independente do caminho que cancela o PV (form, dropdown de status, etc.).
--- Não toca OS já entregues/concluídas (trabalho feito → pagamento devido).
+-- Não toca OS já entregue/concluída (trabalho feito → pagamento devido).
 CREATE OR REPLACE FUNCTION public.tg_cancel_service_orders_on_pv_cancel()
 RETURNS trigger
 LANGUAGE plpgsql
