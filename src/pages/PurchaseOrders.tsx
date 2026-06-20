@@ -3,11 +3,11 @@ import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDial
 import { Plus, Receipt } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { usePurchaseOrders, usePurchaseOrderItems, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder, type PurchaseOrderItem } from '@/hooks/usePurchaseOrders';
+import { usePurchaseOrders, usePurchaseOrderItems, usePurchaseOrderPayments, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder, type PurchaseOrder, type PurchaseOrderItem } from '@/hooks/usePurchaseOrders';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,11 +17,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown, Package } from '@phosphor-icons/react';
+import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown, Package, Funnel, X as XIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SolePurchaseTab from '@/components/purchase/SolePurchaseTab';
 import { printPurchaseOrderGrouped, printSupplierPOs } from '@/lib/printPurchaseOrder';
+import { SelectionTotalsBar } from '@/components/ui/selection-totals-bar';
+import { generateCostReportPdf } from '@/lib/costReportPdf';
+import { type CostReportRow, type DateBasis, summarizeRows, rowDateForBasis, inDateRange } from '@/lib/costReport';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -83,21 +87,59 @@ function mergeReceivedGrade(
 }
 
 const VALID_PO_STATUS_FILTERS = ['all', 'pending', 'approved', 'sent', 'parcial', 'received', 'cancelled'];
+// Opções do multi-select de status (sem 'all'; conjunto vazio = todos).
+const PO_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'pending', label: 'Pendente' },
+  { value: 'approved', label: 'Aprovada' },
+  { value: 'sent', label: 'Enviada' },
+  { value: 'parcial', label: 'Parcial' },
+  { value: 'received', label: 'Recebida' },
+  { value: 'cancelled', label: 'Cancelada' },
+];
 
 export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = usePurchaseOrders();
+  const { data: paymentsMap } = usePurchaseOrderPayments();
   const updateOrder = useUpdatePurchaseOrder();
   const deleteOrder = useDeletePurchaseOrder();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
-  // Auditoria visual 11/06/2026: busca não persiste mais entre sessões (termo
-  // antigo fazia a página abrir "vazia") e o filtro de status é validado —
-  // chaves antigas genéricas ('search'/'statusFilter') podiam conter valor de
-  // outra tela, deixando o Select em branco e escondendo TODAS as OCs.
-  const [search, setSearch] = useState('');
-  const [statusFilterRaw, setStatusFilter] = usePersistedState('po-status-filter', 'all');
-  const statusFilter = VALID_PO_STATUS_FILTERS.includes(statusFilterRaw) ? statusFilterRaw : 'all';
-  const [supplierFilter, setSupplierFilter] = usePersistedState('po-supplier-filter', 'all');
+
+  // ── Filtros na URL (compartilháveis / voltáveis) ─────────────────────────────
+  // q=busca, status=csv (vazio=todos), supplier, from/to=período, basis=base de
+  // data (vencimento|criacao). Substituem o antigo localStorage por-filtro.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get('q') ?? '';
+  const supplierFilter = searchParams.get('supplier') ?? 'all';
+  const fromDate = searchParams.get('from') ?? '';
+  const toDate = searchParams.get('to') ?? '';
+  const basis: DateBasis = searchParams.get('basis') === 'criacao' ? 'criacao' : 'vencimento';
+  const statusCsv = searchParams.get('status') ?? '';
+  const statusSet = useMemo(
+    () => new Set(statusCsv.split(',').map(s => s.trim()).filter(s => VALID_PO_STATUS_FILTERS.includes(s) && s !== 'all')),
+    [statusCsv],
+  );
+  const setParam = useCallback((key: string, value: string | null) => {
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      if (value) p.set(key, value); else p.delete(key);
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
+  const toggleStatus = useCallback((value: string) => {
+    const next = new Set(statusSet);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    setParam('status', next.size > 0 ? Array.from(next).join(',') : null);
+  }, [statusSet, setParam]);
+  const hasActiveFilters = !!(search || (supplierFilter && supplierFilter !== 'all') || fromDate || toDate || statusSet.size > 0);
+  const clearFilters = useCallback(() => {
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      ['q', 'supplier', 'status', 'from', 'to', 'basis'].forEach(k => p.delete(k));
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   // Canal "Compras por Pedido": OCs source_type='per_pv' ficam escondidas por
   // padrão (senão duplicam visualmente o que o MRP/ondas já planeja). Toggle
   // opcional pra incluí-las nesta listagem.
@@ -105,6 +147,7 @@ export default function PurchaseOrders() {
    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
    const [createDialogOpen, setCreateDialogOpen] = useState(false);
    const [avulsoOpen, setAvulsoOpen] = useState(false);
+   const [pdfBusy, setPdfBusy] = useState(false);
 
   // Extract unique supplier names for filter
   const uniqueSuppliers = useMemo(() => {
@@ -114,17 +157,69 @@ export default function PurchaseOrders() {
 
   const perPvCount = useMemo(() => orders.filter(isPerPvPurchaseOrder).length, [orders]);
 
+  // OC → linha do relatório de custos (pago/vencimento vêm de accounts_payable).
+  const toCostRow = useCallback((o: PurchaseOrder): CostReportRow => {
+    const pay = paymentsMap?.get(o.id);
+    return {
+      id: o.id,
+      number: o.order_number,
+      provider: o.supplier_name || '—',
+      description: (o.notes || '').split('\n')[0]?.slice(0, 80) || (o.auto_generated ? 'OC automática' : 'OC manual'),
+      total: Number(o.total_value) || 0,
+      createdAt: o.created_at,
+      date: o.created_at,
+      dueDate: pay?.dueDate ?? null,
+      status: o.status,
+      statusLabel: STATUS_MAP[o.status]?.label ?? o.status,
+      isPaid: pay?.isPaid ?? false,
+      isCancelled: o.status === 'cancelled',
+    };
+  }, [paymentsMap]);
+
   const filtered = useMemo(() => orders.filter(o => {
     // Esconde OCs do canal "Compras por Pedido" por padrão (toggle showPerPv).
     if (!showPerPv && isPerPvPurchaseOrder(o)) return false;
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false;
+    if (statusSet.size > 0 && !statusSet.has(o.status)) return false;
     if (supplierFilter !== 'all' && o.supplier_name !== supplierFilter) return false;
     if (search) {
       const q = normalizeForSearch(search);
-      return normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.supplier_name).includes(q);
+      if (!(normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.supplier_name).includes(q))) return false;
+    }
+    if (fromDate || toDate) {
+      const r = toCostRow(o);
+      if (!inDateRange(rowDateForBasis(r, basis), fromDate || null, toDate || null)) return false;
     }
     return true;
-  }), [orders, statusFilter, supplierFilter, search, showPerPv]);
+  }), [orders, statusSet, supplierFilter, search, showPerPv, fromDate, toDate, basis, toCostRow]);
+
+  const selectedOrders = useMemo(() => orders.filter(o => selectedIds.has(o.id)), [orders, selectedIds]);
+  const selectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toCostRow)), [selectedOrders, toCostRow]);
+
+  const handleGeneratePdf = useCallback(async (scope: 'filtro' | 'selecao') => {
+    const src = scope === 'selecao' ? selectedOrders : filtered;
+    if (src.length === 0) {
+      toast.error(scope === 'selecao' ? 'Selecione ≥1 OC pra gerar o relatório.' : 'Nenhuma OC no filtro atual.');
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      await generateCostReportPdf({
+        kind: 'OC',
+        rows: src.map(toCostRow),
+        period: { from: fromDate || null, to: toDate || null },
+        basis,
+        providerName: supplierFilter !== 'all' ? supplierFilter : null,
+        generatedBy: auth?.user?.email || 'sistema',
+        scope,
+      });
+      toast.success('Relatório PDF gerado.');
+    } catch (err: any) {
+      toast.error(err.message || 'Falha ao gerar o PDF.');
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [selectedOrders, filtered, toCostRow, fromDate, toDate, basis, supplierFilter]);
 
   const pendingCount = orders.filter(o => o.status === 'pending').length;
   const pendingOrders = orders.filter(o => o.status === 'pending');
@@ -260,34 +355,68 @@ export default function PurchaseOrders() {
             </div>
 
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar por número ou fornecedor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Buscar por número ou fornecedor..." value={search} onChange={e => setParam('q', e.target.value || null)} className="pl-9" />
+                </div>
+                {/* Status multi-select (vazio = todos) */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-10 gap-1.5 w-44 justify-between font-normal">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Funnel className="h-4 w-4 shrink-0" />
+                        {statusSet.size === 0 ? 'Todos os status' : `${statusSet.size} status`}
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-52 p-2">
+                    {PO_STATUS_OPTIONS.map(opt => (
+                      <label key={opt.value} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-muted/50">
+                        <Checkbox checked={statusSet.has(opt.value)} onCheckedChange={() => toggleStatus(opt.value)} />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+                <Select value={supplierFilter} onValueChange={v => setParam('supplier', v === 'all' ? null : v)}>
+                  <SelectTrigger className="w-52">
+                    <SelectValue placeholder="Todos os fornecedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os fornecedores</SelectItem>
+                    {uniqueSuppliers.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os status</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="approved">Aprovada</SelectItem>
-                  <SelectItem value="sent">Enviada</SelectItem>
-                  <SelectItem value="parcial">Parcial</SelectItem>
-                  <SelectItem value="received">Recebida</SelectItem>
-                  <SelectItem value="cancelled">Cancelada</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-                <SelectTrigger className="w-52">
-                  <SelectValue placeholder="Todos os fornecedores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os fornecedores</SelectItem>
-                  {uniqueSuppliers.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Período + base de data + ações de relatório */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" /> De</Label>
+                  <Input type="date" value={fromDate} onChange={e => setParam('from', e.target.value || null)} className="h-9 w-[150px]" />
+                  <Label className="text-xs text-muted-foreground">até</Label>
+                  <Input type="date" value={toDate} onChange={e => setParam('to', e.target.value || null)} className="h-9 w-[150px]" />
+                </div>
+                <Select value={basis} onValueChange={v => setParam('basis', v === 'criacao' ? 'criacao' : null)}>
+                  <SelectTrigger className="w-40 h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vencimento">Por vencimento</SelectItem>
+                    <SelectItem value="criacao">Por criação</SelectItem>
+                  </SelectContent>
+                </Select>
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={clearFilters}>
+                    <XIcon className="h-3.5 w-3.5" /> Limpar filtros
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 ml-auto" disabled={pdfBusy} onClick={() => handleGeneratePdf('filtro')}>
+                  {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                  Relatório PDF ({filtered.length})
+                </Button>
+              </div>
             </div>
 
             {/* Toggle do canal "Compras por Pedido" (escondido por padrão pra não
@@ -486,6 +615,17 @@ export default function PurchaseOrders() {
        {showSummary && <PendingSummaryDialog orderIds={pendingOrders.map(o => o.id)} orders={pendingOrders} onClose={() => setShowSummary(false)} />}
        <CreatePurchaseOrderDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
        <LancamentoAvulsoDialog open={avulsoOpen} onOpenChange={setAvulsoOpen} mode="oc" />
+
+       {/* Rodapé fixo de seleção: totais somados + relatório PDF das selecionadas */}
+       <SelectionTotalsBar
+         count={selectedIds.size}
+         total={selectionSummary.total}
+         paid={selectionSummary.paid}
+         pending={selectionSummary.pending}
+         onClear={() => setSelectedIds(new Set())}
+         onGeneratePdf={() => handleGeneratePdf('selecao')}
+         generating={pdfBusy}
+       />
      </div>
    );
 }
@@ -1397,7 +1537,7 @@ type SummaryItem = {
   fromOrders: string[];
 };
 
-import { PurchaseOrder } from '@/hooks/usePurchaseOrders';
+// PurchaseOrder agora importado no topo do arquivo (era re-importado aqui).
 // useQuery já importado no topo; re-import causava SyntaxError "Identifier
 // 'useQuery' has already been declared" — auditoria visual 24/05/2026.
 import { normalizeForSearch } from '@/lib/searchUtils';
