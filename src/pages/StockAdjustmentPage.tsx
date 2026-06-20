@@ -141,6 +141,7 @@ function loadStoredFilters() {
     if (!raw) return null;
     return JSON.parse(raw) as {
       categoryFilter?: string;
+      groupFilter?: string;
       statusFilter?: "all" | "ok" | "low" | "zero" | "pending";
       unitFilter?: string;
       typeFilter?: "all" | "soles" | "regular";
@@ -155,6 +156,8 @@ export default function StockAdjustmentPage() {
   const stored = loadStoredFilters();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(stored?.categoryFilter ?? "all");
+  // Família (grupo filho, ex.: NAPA SOFT) dentro do grupo Pai (categoria).
+  const [groupFilter, setGroupFilter] = useState(stored?.groupFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "zero" | "pending">(stored?.statusFilter ?? "all");
   const [unitFilter, setUnitFilter] = useState(stored?.unitFilter ?? "all");
   const [typeFilter, setTypeFilter] = useState<"all" | "soles" | "regular">(stored?.typeFilter ?? "all");
@@ -163,10 +166,10 @@ export default function StockAdjustmentPage() {
     try {
       localStorage.setItem(
         STOCK_FILTERS_KEY,
-        JSON.stringify({ categoryFilter, statusFilter, unitFilter, typeFilter }),
+        JSON.stringify({ categoryFilter, groupFilter, statusFilter, unitFilter, typeFilter }),
       );
     } catch {}
-  }, [categoryFilter, statusFilter, unitFilter, typeFilter]);
+  }, [categoryFilter, groupFilter, statusFilter, unitFilter, typeFilter]);
   const [reasonPreset, setReasonPreset] = useState<string>('inventario');
   const [reasonDetail, setReasonDetail] = useState("");
   // Combina preset + detalhe. Se preset não exige detalhe e usuário não informou,
@@ -344,6 +347,35 @@ export default function StockAdjustmentPage() {
     return us.sort();
   }, [products]);
 
+  // Famílias (grupo filho): nome via product_groups; grupo Pai (categoria) vem
+  // dos próprios produtos. Ex.: NAPA SOFT (família) → Forração (Pai) → cores.
+  const { data: groupRows = [] } = useQuery({
+    queryKey: ["stock-adjustment-groups"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("product_groups").select("id, name");
+      if (error) throw error;
+      return (data || []) as { id: string; name: string }[];
+    },
+  });
+  const groupOptions = useMemo(() => {
+    const nameById = new Map(groupRows.map((g) => [g.id, g.name] as const));
+    const byId = new Map<string, { id: string; name: string; category: string }>();
+    for (const p of products) {
+      if (!p.group_id || byId.has(p.group_id)) continue;
+      byId.set(p.group_id, { id: p.group_id, name: nameById.get(p.group_id) || p.group_id, category: p.category || "" });
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [products, groupRows]);
+  // Famílias visíveis = só as do grupo Pai selecionado (ou todas).
+  const visibleGroupOptions = useMemo(
+    () => groupOptions.filter((g) => categoryFilter === "all" || g.category === categoryFilter),
+    [groupOptions, categoryFilter],
+  );
+  // Trocou o grupo Pai e a família não pertence mais a ele → limpa.
+  useEffect(() => {
+    if (groupFilter !== "all" && !visibleGroupOptions.some((g) => g.id === groupFilter)) setGroupFilter("all");
+  }, [visibleGroupOptions, groupFilter]);
+
   const filtered = useMemo(() => {
     const q = normalizeForSearch(search);
     return products.filter((p) => {
@@ -354,6 +386,7 @@ export default function StockAdjustmentPage() {
         normalizeForSearch(p.category).includes(q) ||
         normalizeForSearch(p.color).includes(q);
       const matchCategory = categoryFilter === "all" || p.category === categoryFilter;
+      const matchGroup = groupFilter === "all" || p.group_id === groupFilter;
       const matchUnit = unitFilter === "all" || p.unit === unitFilter;
       const matchType =
         typeFilter === "all" ||
@@ -363,9 +396,9 @@ export default function StockAdjustmentPage() {
       else if (statusFilter === "low") matchStatus = p.min_stock > 0 && p.quantity <= p.min_stock && p.quantity > 0;
       else if (statusFilter === "ok") matchStatus = !(p.min_stock > 0 && p.quantity <= p.min_stock) && p.quantity > 0;
       else if (statusFilter === "pending") matchStatus = !!drafts[p.id] || !!soleDrafts[p.id];
-      return matchSearch && matchCategory && matchUnit && matchType && matchStatus;
+      return matchSearch && matchCategory && matchGroup && matchUnit && matchType && matchStatus;
     });
-  }, [products, search, categoryFilter, unitFilter, typeFilter, statusFilter, drafts, soleDrafts]);
+  }, [products, search, categoryFilter, groupFilter, unitFilter, typeFilter, statusFilter, drafts, soleDrafts]);
 
   cellRefs.current = cellRefs.current.slice(0, filtered.length);
 
@@ -644,13 +677,26 @@ export default function StockAdjustmentPage() {
         </div>
 
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="h-8 w-44 text-sm">
+          <SelectTrigger className="h-8 w-44 text-sm" title="Grupo Pai (categoria)">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas categorias</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Família (grupo filho) dentro do grupo Pai — ex.: NAPA SOFT → cores. */}
+        <Select value={groupFilter} onValueChange={setGroupFilter}>
+          <SelectTrigger className="h-8 w-48 text-sm" title="Família (grupo)">
+            <SelectValue placeholder="Todas famílias" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas famílias</SelectItem>
+            {visibleGroupOptions.map((g) => (
+              <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -823,7 +869,7 @@ export default function StockAdjustmentPage() {
                   <td colSpan={10}>
                     {/* E8 (audit): empty state distingue "nenhum produto cadastrado"
                         de "filtros zeraram resultado". Hint pra reset rápido se for filtro. */}
-                    {(search || categoryFilter !== 'all' || statusFilter !== 'all') ? (
+                    {(search || categoryFilter !== 'all' || groupFilter !== 'all' || statusFilter !== 'all') ? (
                       <EmptyState
                         icon={SlidersHorizontal}
                         title="Nenhum produto bate com os filtros"
