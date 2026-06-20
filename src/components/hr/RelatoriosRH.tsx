@@ -287,6 +287,8 @@ export default function RelatoriosRH() {
           salary: Number(emp.salary) || 0, from, to,
           schedule: sch, holidaysSet, punchesByDate: empPunches,
           periodDays, monthDays: monthDays.length, maxCoveredDate: maxCov,
+          payRegime: ((emp as any).payment_type as 'mensalista' | 'remoto' | 'diarista') || 'mensalista',
+          dailyRate: Number((emp as any).daily_rate) || 0,
           advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
         });
         const result = folha(rangeFrom, rangeTo, rangeDays.length); // intervalo selecionado
@@ -394,6 +396,9 @@ export default function RelatoriosRH() {
       hourlySalary: (Number(emp?.salary) || 0) / MONTHLY_HOURS_DIVISOR,
       overtimeHourlyRate: (emp as any)?.overtime_hourly_rate ?? null,
       expectedDayMin: expectedDayMinutes(sch),
+      paymentType: ((emp as any)?.payment_type as 'mensalista' | 'remoto' | 'diarista') || 'mensalista',
+      dailyRate: Number((emp as any)?.daily_rate) || 0,
+      monthlySalary: Number(emp?.salary) || 0,
     };
   };
 

@@ -233,10 +233,10 @@ export default function Payroll() {
       let calculated = 0;
       let withIncomplete = 0;
       let sharedMatricula = 0;
-      // Diarista tem cálculo próprio (useMonthlyClosing) — o motor de salário
-      // mensal gravaria líquido negativo (salário 0 − vales).
-      const isDiarista = (e: any) => String(e.payment_type || '').toLowerCase() === 'diarista';
-      for (const emp of employees.filter(e => e.active && !isDiarista(e))) {
+      // Todos os regimes passam pelo MESMO motor (computePeriodFolha honra
+      // payment_type): mensalista (salário − descontos por dia), remoto (salário
+      // cheio, ignora ponto) e diarista (diária × dias trabalhados). (2026-06-19)
+      for (const emp of employees.filter(e => e.active)) {
         // Match das batidas por MATRÍCULA + NOME. Se a matrícula é compartilhada por
         // mais de um nome (ex.: ext_id 1 = "valdilene" + "Dona Val"), pega SÓ as
         // batidas com o nome DESTE funcionário — senão herdaria o ponto do outro.
@@ -265,6 +265,8 @@ export default function Payroll() {
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
           monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)
           maxCoveredDate: maxCov,
+          payRegime: (String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
+          dailyRate: Number((emp as any).daily_rate) || 0,
         });
         if (result.pending_days > 0) withIncomplete++;
 

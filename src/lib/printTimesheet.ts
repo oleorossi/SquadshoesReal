@@ -34,6 +34,13 @@ export interface EmployeeTimesheetData {
   hourlySalary?: number;
   /** Per-employee overtime hourly rate (R$/hr). Overrides hourlySalary * multiplier when set. */
   overtimeHourlyRate?: number | null;
+  /** Regime: mensalista (padrão), remoto (salário cheio, ignora ponto) ou diarista
+   *  (diária × dias). Quando ausente = mensalista. */
+  paymentType?: 'mensalista' | 'remoto' | 'diarista';
+  /** Valor da diária (R$/dia) — só diarista. */
+  dailyRate?: number;
+  /** Salário mensal cheio (R$) — base do remoto. Default = hourlySalary × 220. */
+  monthlySalary?: number;
   /**
    * Jornada esperada por dia útil (min) vinda da ESCALA — saída − entrada − almoço
    * (ex.: 540 = 9h). É o MESMO "esperado" que a folha usa (expectedDayMinutes), pra
@@ -693,6 +700,22 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     }
   }
 
+  const regime = emp.paymentType || 'mensalista';
+  const monthlySalary = emp.monthlySalary ?? vh * SALARY_HOUR_DIVISOR; // salário cheio (220h)
+
+  // ── REMOTO / DIARISTA: zera ajustes de ponto (sem falta/atraso/HE) ──
+  if (regime === 'remoto' || regime === 'diarista') {
+    const paidDays = dayRows.filter(r => (r.punches?.length || 0) >= 1).length;
+    const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : monthlySalary;
+    return {
+      vh, valorDia, dayRows, pendingDays,
+      faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, heValue: 0,
+      totalDesconto: 0, liquido: 0, hasSalary: paidBase > 0,
+      workedTotalMin, expectedPresentMin,
+      paymentType: regime, paidDays, dailyRate: emp.dailyRate || 0, paidBase,
+    };
+  }
+
   const faltaDesconto = faltaCount * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * vh;
   const heValue = (heMin / 60) * vh * PREMIUM_MULTIPLIER;
@@ -703,6 +726,8 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     faltaCount, faltaDesconto, atrasoMin, atrasoDesconto, heMin, heValue,
     totalDesconto, liquido: heValue - totalDesconto, hasSalary: vh > 0,
     workedTotalMin, expectedPresentMin,
+    paymentType: 'mensalista' as const, paidDays: dayRows.filter(r => r.kind === 'ok' || r.kind === 'curto' || r.kind === 'fds').length,
+    dailyRate: 0, paidBase: vh * SALARY_HOUR_DIVISOR,
   };
 }
 
@@ -738,19 +763,25 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
   const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
 
-  const base = e.vh * SALARY_HOUR_DIVISOR;             // salário do mês (220h) — referência da folha
+  const base = e.paidBase;                             // base do regime (mensalista=salário; diarista=diária×dias; remoto=salário cheio)
   const liquido = base + e.heValue - e.totalDesconto;  // base + HE − (faltas + atraso)
   const saldoMin = e.workedTotalMin - e.expectedPresentMin;
   const kindColor: Record<string, string> = { ok: '#16a34a', curto: '#dc2626', falta: '#dc2626', fds: '#2563eb', pendente: '#b45309' };
+  const baseLabel = e.paymentType === 'diarista'
+    ? `Diárias — ${e.paidDays} dia(s) × ${formatMoney(e.dailyRate)}`
+    : e.paymentType === 'remoto'
+    ? 'Salário (remoto — cheio, sem ponto)'
+    : 'Salário base (mês · 220h)';
+  const isMensal = (e.paymentType ?? 'mensalista') === 'mensalista';
 
   // ── Folha (holerite): base − descontos + HE = líquido ──
   const payBlock = e.hasSalary ? `
     <h2>Folha salarial — ${escapeHtml(periodLabel)}</h2>
     <table class="pay">
-      <tr><td class="lbl">Salário base (mês · 220h)</td><td class="amt">${formatMoney(base)}</td></tr>
-      <tr><td class="lbl neg">(−) Faltas — ${e.faltaCount} dia(s) × valor-dia</td><td class="amt neg">${e.faltaDesconto > 0 ? '− ' + formatMoney(e.faltaDesconto) : '—'}</td></tr>
-      <tr><td class="lbl neg">(−) Atrasos (líq.) — ${e.atrasoMin > 0 ? minutesToDisplay(e.atrasoMin) : '0:00'}</td><td class="amt neg">${e.atrasoDesconto > 0 ? '− ' + formatMoney(e.atrasoDesconto) : '—'}</td></tr>
-      <tr><td class="lbl pos">(+) Hora extra (líq. ×1,5) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>
+      <tr><td class="lbl">${baseLabel}</td><td class="amt">${formatMoney(base)}</td></tr>
+      ${isMensal ? `<tr><td class="lbl neg">(−) Faltas — ${e.faltaCount} dia(s) × valor-dia</td><td class="amt neg">${e.faltaDesconto > 0 ? '− ' + formatMoney(e.faltaDesconto) : '—'}</td></tr>
+      <tr><td class="lbl neg">(−) Atrasos (por dia) — ${e.atrasoMin > 0 ? minutesToDisplay(e.atrasoMin) : '0:00'}</td><td class="amt neg">${e.atrasoDesconto > 0 ? '− ' + formatMoney(e.atrasoDesconto) : '—'}</td></tr>
+      <tr><td class="lbl pos">(+) Hora extra (por dia ×1,5) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>` : ''}
       ${advance > 0 ? `<tr><td class="lbl neg">(−) Adiantamentos (vales do mês)</td><td class="amt neg">− ${formatMoney(advance)}</td></tr>` : ''}
       <tr class="net"><td>= Líquido a pagar</td><td class="amt">${formatMoney(liquido - advance)}</td></tr>
     </table>

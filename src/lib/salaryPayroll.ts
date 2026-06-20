@@ -91,6 +91,12 @@ export interface SalaryPayrollResult {
   total_proventos: number; // salário + HE
   gross_value: number;     // salário − faltas − atrasos + HE
   net_value: number;       // bruto − adiantamentos
+  // Regime de pagamento (2026-06-19): 'mensalista' = padrão (acima); 'remoto' =
+  // salário cheio ignorando ponto (sem falta/atraso/HE); 'diarista' = diária × dias
+  // trabalhados (sem salário mensal nem desconto de falta).
+  payment_type: 'mensalista' | 'remoto' | 'diarista';
+  daily_rate: number;      // R$/dia (só diarista)
+  paid_days: number;       // dias pagos (diarista = dias com batida; senão worked_days)
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -214,6 +220,9 @@ export function calculateSalaryPayroll(
     total_proventos: round2(periodBase + heValue),
     gross_value: round2(gross),
     net_value: round2(gross - adv),
+    payment_type: 'mensalista',
+    daily_rate: 0,
+    paid_days: workedDays,
   };
 }
 
@@ -250,9 +259,11 @@ export interface PeriodFolhaInput {
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
   monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
   maxCoveredDate?: string | null;         // clamp: ignora dias após a última data importada
+  payRegime?: 'mensalista' | 'remoto' | 'diarista';  // regime de pagamento (default mensalista)
+  dailyRate?: number;                     // R$/dia (só diarista)
 }
 
-/** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha líquida. */
+/** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha. */
 export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   let dates = getDaysInRange(inp.from, inp.to);
   if (inp.maxCoveredDate) dates = dates.filter(d => d.date <= inp.maxCoveredDate!);
@@ -265,5 +276,36 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       punches: inp.punchesByDate.get(d.date) || [],
     };
   });
-  return calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays);
+  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays);
+  const regime = inp.payRegime || 'mensalista';
+  const adv = base.advances_total;
+
+  // ── REMOTO: não bate ponto → salário cheio do período, ZERO desconto/HE de ponto.
+  if (regime === 'remoto') {
+    return {
+      ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
+      worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
+      worked_days: 0, falta_days: 0, falta_desconto: 0,
+      atraso_minutes: 0, atraso_desconto: 0, he_minutes: 0, he_value: 0, pending_days: 0,
+      total_proventos: base.period_base, total_descontos: adv,
+      gross_value: base.period_base, net_value: round2(base.period_base - adv),
+    };
+  }
+
+  // ── DIARISTA: paga diária × dias trabalhados (dias com batida). Sem salário
+  // mensal, sem desconto de falta, sem atraso. (batida ímpar conta como presença.)
+  if (regime === 'diarista') {
+    const dr = Number(inp.dailyRate) || 0;
+    const paidDays = days.filter(d => (d.punches?.length || 0) >= 1).length;
+    const grossD = round2(dr * paidDays);
+    return {
+      ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
+      falta_days: 0, falta_desconto: 0, atraso_minutes: 0, atraso_desconto: 0,
+      he_minutes: 0, he_value: 0,
+      period_base: grossD, total_proventos: grossD, total_descontos: adv,
+      gross_value: grossD, net_value: round2(grossD - adv),
+    };
+  }
+
+  return base; // mensalista
 }

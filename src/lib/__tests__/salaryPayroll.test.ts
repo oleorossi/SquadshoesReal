@@ -229,3 +229,39 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
     expect(r2.falta_days).toBe(2); // sem clamp, qui/sex viram falta
   });
 });
+
+describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => {
+  it('REMOTO: salário cheio, ignora ponto (sem falta/atraso/HE) mesmo sem bater nada', () => {
+    const r = computePeriodFolha({ salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: new Map(), payRegime: 'remoto' });
+    expect(r.payment_type).toBe('remoto');
+    expect(r.falta_days).toBe(0);
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+    expect(r.gross_value).toBeCloseTo(3000, 2); // salário cheio
+    expect(r.net_value).toBeCloseTo(3000, 2);
+  });
+
+  it('REMOTO com adiantamento: salário cheio − vale', () => {
+    const r = computePeriodFolha({ salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: new Map(), payRegime: 'remoto', advancesTotal: 500 });
+    expect(r.net_value).toBeCloseTo(2500, 2);
+  });
+
+  it('DIARISTA: diária × dias com batida; sem falta nem salário mensal', () => {
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05', '2026-05-06']) punches.set(d, full); // veio 3 dias, faltou qui/sex
+    const r = computePeriodFolha({ salary: 0, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, payRegime: 'diarista', dailyRate: 150 });
+    expect(r.payment_type).toBe('diarista');
+    expect(r.paid_days).toBe(3);
+    expect(r.falta_days).toBe(0);
+    expect(r.daily_rate).toBe(150);
+    expect(r.gross_value).toBeCloseTo(450, 2); // 3 × 150
+    expect(r.net_value).toBeCloseTo(450, 2);
+  });
+
+  it('DIARISTA: dia de batida ímpar conta como presença (1 diária)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', full], ['2026-05-05', ['08:00']]]);
+    const r = computePeriodFolha({ salary: 0, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, payRegime: 'diarista', dailyRate: 100 });
+    expect(r.paid_days).toBe(2);
+    expect(r.gross_value).toBeCloseTo(200, 2);
+  });
+});
