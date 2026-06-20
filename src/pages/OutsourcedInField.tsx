@@ -6,7 +6,7 @@ import {
   Truck, ArrowSquareOut, Buildings, Funnel, Warning as AlertTriangle,
   CurrencyDollar as DollarSign, Package as Boxes, X, CheckCircle, Clock,
   Calendar, DotsThreeVertical, Printer, CaretRight, Palette, Flask as FlaskConical,
-  Ruler, Plus, Camera, ChartBar as BarChart3,
+  Ruler, Plus, Camera, ChartBar as BarChart3, Receipt,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Link } from 'react-router-dom';
 import { cn, formatCurrency } from '@/lib/utils';
 import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
+import { LancamentoAvulsoDialog } from '@/components/avulso/LancamentoAvulsoDialog';
 import { SignedReceiptUploadDialog } from '@/components/contractors/SignedReceiptUploadDialog';
 import { printServiceOrderReceipt } from '@/lib/printServiceOrderReceipt';
 import { useContractors } from '@/hooks/useContractors';
@@ -351,6 +352,7 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
   // Dialogs novos
   const [createOpen, setCreateOpen] = useState(false);
   const [createContractorId, setCreateContractorId] = useState<string | undefined>(undefined);
+  const [avulsoOpen, setAvulsoOpen] = useState(false);
   const [photoItem, setPhotoItem] = useState<OutsourcedItem | null>(null);
 
   // Filtros locais
@@ -568,7 +570,11 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
       {embedded ? (
         // No hub /terceiros: header vem do hub; aqui só a ação crítica "Nova OS"
         // (o link "Relatórios" virou aba do hub).
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => setAvulsoOpen(true)} size="sm" variant="outline" className="h-9 gap-1.5">
+            <Receipt className="h-3.5 w-3.5" />
+            Lançar OS Avulsa
+          </Button>
           <Button onClick={() => openCreate()} size="sm" className="h-9 gap-1.5">
             <Plus className="h-3.5 w-3.5" />
             Nova OS
@@ -586,6 +592,10 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
                   <BarChart3 className="h-3.5 w-3.5" />
                   Relatórios
                 </Link>
+              </Button>
+              <Button onClick={() => setAvulsoOpen(true)} size="sm" variant="outline" className="h-9 gap-1.5">
+                <Receipt className="h-3.5 w-3.5" />
+                Lançar OS Avulsa
               </Button>
               <Button onClick={() => openCreate()} size="sm" className="h-9 gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
@@ -989,6 +999,9 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
         onOpenChange={setCreateOpen}
         initialContractorId={createContractorId}
       />
+
+      {/* Dialog: lançar OS avulsa (serviço manual → financeiro) */}
+      <LancamentoAvulsoDialog open={avulsoOpen} onOpenChange={setAvulsoOpen} mode="os" />
 
       {/* Dialog: anexar foto do recibo assinado */}
       <SignedReceiptUploadDialog

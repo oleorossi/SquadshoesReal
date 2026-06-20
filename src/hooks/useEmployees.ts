@@ -15,8 +15,9 @@ export interface Employee {
   hourly_rate: number | null;
   overtime_hourly_rate: number | null;
   overtime_multiplier: number;
-  /** Tipo de pagamento: mensalista (salário + banco de horas) ou diarista (por dia). */
-  payment_type: 'mensalista' | 'diarista';
+  /** Regime de pagamento: mensalista (salário, desconta ponto), remoto (salário cheio,
+   *  não bate ponto) ou diarista (paga por dia trabalhado, valor da diária). */
+  payment_type: 'mensalista' | 'remoto' | 'diarista';
   /** Valor da diária (R$/dia) quando diarista. */
   daily_rate: number | null;
   work_schedule_id: string | null;

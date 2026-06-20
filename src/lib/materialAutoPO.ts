@@ -1,5 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
+import { roundUpToPurchaseMultiple, effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
+
 export interface MaterialAutoPOResult {
   poNumber: string;
   supplierName: string;
@@ -24,9 +26,10 @@ export async function autoCreateMaterialPO(params: {
   if (shortageQty <= 0) return null;
 
   // ── Step 1: Fetch product details ────────────────────────────────────────
-  const { data: product } = await supabase
-    .from('products')
-    .select('id, name, quantity, min_stock, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color')
+  // Cast: a coluna purchase_multiple ainda não está nos tipos gerados do Supabase
+  // (aplicada via MCP nesta sessão). product fica `any` — ok, o arquivo já usa casts.
+  const { data: product } = await (supabase.from('products') as any)
+    .select('id, name, quantity, min_stock, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color, purchase_multiple, product_groups:product_groups!products_group_id_fkey(purchase_multiple)')
     .eq('id', productId)
     .maybeSingle();
 
@@ -51,6 +54,11 @@ export async function autoCreateMaterialPO(params: {
   if (DISCRETE_PURCHASE_UNITS.includes(String(purchaseUnit).toLowerCase())) {
     orderQty = Math.ceil(orderQty);
   }
+  // Múltiplo de compra (embalagem): arredonda pra cima (ex.: 187 → 200 c/ 50).
+  orderQty = roundUpToPurchaseMultiple(
+    orderQty,
+    effectivePurchaseMultiple((product as any).purchase_multiple, (product as any).product_groups?.purchase_multiple),
+  );
 
   // ── Step 2: Resolve supplier ─────────────────────────────────────────────
   let supplierName = 'A definir';

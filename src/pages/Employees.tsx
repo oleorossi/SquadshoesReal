@@ -470,14 +470,40 @@ export default function Employees() {
             </div>
 
             <div className="col-span-2">
-              <Label>Salário (R$)</Label>
-              <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
+              <Label>Regime de pagamento</Label>
+              <Select value={(form as any).payment_type || 'mensalista'} onValueChange={v => setForm(f => ({ ...f, payment_type: v } as any))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mensalista">Mensalista — salário, desconta ponto</SelectItem>
+                  <SelectItem value="remoto">Remoto — salário cheio, não bate ponto</SelectItem>
+                  <SelectItem value="diarista">Diarista — paga por dia trabalhado</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground mt-1">
-                Referência de jornada cheia (220h/mês). Valor-hora = salário ÷ 220 ={' '}
-                <strong className="text-foreground">{fmt(form.salary > 0 ? form.salary / 220 : 0)}/h</strong>.
-                {' '}Paga-se por hora efetivamente batida — sáb/dom/feriado e após 18h valem 1,5×.
+                {(form as any).payment_type === 'remoto'
+                  ? 'Recebe o salário cheio do período — o ponto não desconta falta/atraso nem paga hora extra.'
+                  : (form as any).payment_type === 'diarista'
+                  ? 'Paga a diária × dias com batida no período. Sem salário mensal nem desconto de falta.'
+                  : 'Salário do mês − faltas/atrasos + hora extra, contados por dia (sem compensar entre dias).'}
               </p>
             </div>
+
+            <div className="col-span-2">
+              <Label>{(form as any).payment_type === 'diarista' ? 'Salário (referência — não usado no diarista)' : 'Salário (R$)'}</Label>
+              <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
+              <p className="text-xs text-muted-foreground mt-1">
+                Valor-hora = salário ÷ 220 = <strong className="text-foreground">{fmt(form.salary > 0 ? form.salary / 220 : 0)}/h</strong>;
+                valor-dia = salário ÷ 30. Base do atraso/HE/falta do mensalista (e do salário cheio do remoto).
+              </p>
+            </div>
+
+            {(form as any).payment_type === 'diarista' && (
+              <div className="col-span-2">
+                <Label>Valor da diária (R$/dia)</Label>
+                <CurrencyInput value={(form as any).daily_rate || 0} onChange={v => setForm(f => ({ ...f, daily_rate: v } as any))} />
+                <p className="text-xs text-muted-foreground mt-1">Pagamento = diária × nº de dias com batida no período.</p>
+              </div>
+            )}
             <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
             <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
             <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>

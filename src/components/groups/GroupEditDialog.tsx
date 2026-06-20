@@ -29,6 +29,7 @@ import { getSoleModelName } from '@/lib/utils';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface GroupEditDialogProps {
@@ -710,6 +711,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [parentGroupId, setParentGroupId] = useState<string>(group.parent_group_id || '');
   const [linkChildOpen, setLinkChildOpen] = useState(false);
   const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
+  const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
   const queryClient = useQueryClient();
   const forceDeleteFlow = useForceDeleteProductFlow();
 
@@ -785,6 +787,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           shared_specs: sharedSpecs,
           parent_group_id: parentGroupId || null,
           unit_weight_kg: unitWeightKg,
+          purchase_multiple: purchaseMultiple > 0 ? purchaseMultiple : null,
         } as any,
       });
 
@@ -802,6 +805,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         // Mass update price and location if provided
         if (unitPrice > 0) updateData.unit_price = unitPrice;
         if (location.trim()) updateData.location = location.trim();
+        // Múltiplo de compra: aplica a todos os itens do grupo (igual preço).
+        if (purchaseMultiple > 0) updateData.purchase_multiple = purchaseMultiple;
 
         if (Object.keys(updateData).length > 0) {
           const { error } = await supabase
@@ -817,7 +822,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             if (unitChanged) {
               toast.success(`Unidade de consumo aplicada em ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
             }
-            if (unitPrice > 0 || location.trim()) {
+            if (unitPrice > 0 || location.trim() || purchaseMultiple > 0) {
               toast.success(`Dados financeiros/estoque aplicados a ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
             }
           }
@@ -1241,6 +1246,21 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     />
                     <p className="text-xs text-muted-foreground">
                       Se preenchido, aplicará esta localização a TODOS os itens.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Múltiplo de Compra (embalagem)</Label>
+                    <NumberInput
+                      value={purchaseMultiple}
+                      onChange={v => setPurchaseMultiple(v || 0)}
+                      min={0}
+                      step="1"
+                      placeholder="Ex: 50"
+                      className="h-9"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Só vende em pacote fechado? Ao gerar a OC, a quantidade arredonda
+                      pra cima (187 → 200 com 50). Aplica a TODOS os itens do grupo. 0 = não arredonda.
                     </p>
                   </div>
                 </CardContent>

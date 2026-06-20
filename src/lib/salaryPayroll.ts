@@ -10,10 +10,11 @@
  *   - valor-dia  = salário ÷ 30      (desconto de 1 falta = 1 dia)
  *   - valor-hora = salário ÷ 220     (desconto de atraso/saída-cedo e cálculo da HE)
  *   - Falta (dia útil sem trabalho)        → − valor-dia (à parte, fora da conta de horas)
- *   - LÍQUIDO do período (decisão 2026-06-03): soma TUDO que trabalhou (dias presentes +
- *     fim de semana/feriado) vs o esperado dos dias presentes. Sobrou → hora extra
- *     × valor-hora × 1,5. Faltou → atraso × valor-hora. Hora extra SÓ quando passa da
- *     meta; trabalhar fds/após-18h sem bater a meta NÃO vira HE, só abate o que deve.
+ *   - BRUTO por-dia (decisão do usuário 2026-06-19, SUPERSEDE o líquido de 2026-06-04):
+ *     cada dia compara o trabalhado com o esperado DAQUELE dia. Excedente → hora extra
+ *     × valor-hora × 1,5. Déficit → atraso × valor-hora. SEM compensação entre dias
+ *     (um dia que sobrou NÃO apaga o atraso de outro). Dia não-útil (fds/feriado)
+ *     trabalhado = tudo hora extra. Falta (dia útil sem trabalho) = −1 valor-dia à parte.
  *   - Falta NÃO tira o DSR (desconta só o dia).
  *   - Dia com nº ÍMPAR de batidas = INCONSISTENTE → fica PENDENTE: não desconta nem
  *     paga, conta só pra alerta (resolver na aba Pendências de Ponto antes de fechar).
@@ -90,6 +91,12 @@ export interface SalaryPayrollResult {
   total_proventos: number; // salário + HE
   gross_value: number;     // salário − faltas − atrasos + HE
   net_value: number;       // bruto − adiantamentos
+  // Regime de pagamento (2026-06-19): 'mensalista' = padrão (acima); 'remoto' =
+  // salário cheio ignorando ponto (sem falta/atraso/HE); 'diarista' = diária × dias
+  // trabalhados (sem salário mensal nem desconto de falta).
+  payment_type: 'mensalista' | 'remoto' | 'diarista';
+  daily_rate: number;      // R$/dia (só diarista)
+  paid_days: number;       // dias pagos (diarista = dias com batida; senão worked_days)
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -128,7 +135,7 @@ export function calculateSalaryPayroll(
     : sal;
 
   let expectedMin = 0;        // esperado total dos dias úteis (inclui faltas) — só p/ relatório
-  let expectedPresentMin = 0; // esperado dos dias PRESENTES (falta excluída) — base do líquido
+  let expectedPresentMin = 0; // esperado dos dias PRESENTES (falta excluída) — p/ relatório
   let workedMin = 0;          // TUDO trabalhado (dias úteis presentes + fim de semana/feriado)
   let normalMin = 0;
   let premiumMin = 0;
@@ -136,6 +143,10 @@ export function calculateSalaryPayroll(
   let workedDays = 0;
   let faltaDays = 0;
   let pendingDays = 0;
+  // BRUTO por-dia (decisão do usuário 2026-06-19): HE e atraso acumulam POR DIA
+  // (excedente/déficit de cada dia), SEM compensação entre dias. Ver loop abaixo.
+  let heMin = 0;
+  let atrasoMin = 0;
 
   for (const d of days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -164,21 +175,20 @@ export function calculateSalaryPayroll(
       normalMin += sp.normal;
       premiumMin += sp.premium;
       expectedPresentMin += d.expectedMinutes;
+      // BRUTO por-dia: compara o trabalhado com o esperado DAQUELE dia. Excedente → HE;
+      // déficit → atraso. Sem compensação entre dias (um dia que sobrou NÃO apaga o
+      // atraso de outro). SUPERSEDE o modelo líquido de 2026-06-04.
+      const dayBal = worked - d.expectedMinutes;
+      if (dayBal > 0) heMin += dayBal;
+      else if (dayBal < 0) atrasoMin += -dayBal;
     } else if (worked > 0) {
-      // Dia NÃO útil (fim de semana/feriado) trabalhado: conta como trabalho e ABATE o
-      // déficit (vira hora extra só se, no fim, o total passar do esperado).
+      // Dia NÃO útil (fim de semana/feriado) trabalhado: esperado = 0 → TUDO é hora extra.
       workedMin += worked;
       normalMin += sp.normal;
       premiumMin += sp.premium;
+      heMin += worked;
     }
   }
-
-  // LÍQUIDO do período (decisão 2026-06-03): hora extra SÓ no excedente. Se o total
-  // trabalhado (já com fds/após-18h) passou do esperado dos dias presentes → o que passou
-  // é HE 1,5×; se ficou devendo → atraso. Quem não cumpriu a meta NÃO tem hora extra.
-  const balance = workedMin - expectedPresentMin;
-  const atrasoMin = balance < 0 ? -balance : 0;
-  const heMin = balance > 0 ? balance : 0;
 
   const faltaDesconto = faltaDays * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * valorHora;
@@ -210,6 +220,9 @@ export function calculateSalaryPayroll(
     total_proventos: round2(periodBase + heValue),
     gross_value: round2(gross),
     net_value: round2(gross - adv),
+    payment_type: 'mensalista',
+    daily_rate: 0,
+    paid_days: workedDays,
   };
 }
 
@@ -246,9 +259,11 @@ export interface PeriodFolhaInput {
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
   monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
   maxCoveredDate?: string | null;         // clamp: ignora dias após a última data importada
+  payRegime?: 'mensalista' | 'remoto' | 'diarista';  // regime de pagamento (default mensalista)
+  dailyRate?: number;                     // R$/dia (só diarista)
 }
 
-/** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha líquida. */
+/** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha. */
 export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   let dates = getDaysInRange(inp.from, inp.to);
   if (inp.maxCoveredDate) dates = dates.filter(d => d.date <= inp.maxCoveredDate!);
@@ -261,5 +276,36 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       punches: inp.punchesByDate.get(d.date) || [],
     };
   });
-  return calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays);
+  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays);
+  const regime = inp.payRegime || 'mensalista';
+  const adv = base.advances_total;
+
+  // ── REMOTO: não bate ponto → salário cheio do período, ZERO desconto/HE de ponto.
+  if (regime === 'remoto') {
+    return {
+      ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
+      worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
+      worked_days: 0, falta_days: 0, falta_desconto: 0,
+      atraso_minutes: 0, atraso_desconto: 0, he_minutes: 0, he_value: 0, pending_days: 0,
+      total_proventos: base.period_base, total_descontos: adv,
+      gross_value: base.period_base, net_value: round2(base.period_base - adv),
+    };
+  }
+
+  // ── DIARISTA: paga diária × dias trabalhados (dias com batida). Sem salário
+  // mensal, sem desconto de falta, sem atraso. (batida ímpar conta como presença.)
+  if (regime === 'diarista') {
+    const dr = Number(inp.dailyRate) || 0;
+    const paidDays = days.filter(d => (d.punches?.length || 0) >= 1).length;
+    const grossD = round2(dr * paidDays);
+    return {
+      ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
+      falta_days: 0, falta_desconto: 0, atraso_minutes: 0, atraso_desconto: 0,
+      he_minutes: 0, he_value: 0,
+      period_base: grossD, total_proventos: grossD, total_descontos: adv,
+      gross_value: grossD, net_value: round2(grossD - adv),
+    };
+  }
+
+  return base; // mensalista
 }

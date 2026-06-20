@@ -82,7 +82,7 @@ const normalizeCalculationMethod = (
 
 const emptyForm: ProductFormData = {
   name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0, unit: 'un', unit_price: 0, location: '', group_id: null, active: true, image_url: '', min_stock_grade: {}, stock_grade: {}, dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
-  purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un', min_order_quantity: 0,
+  purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un', min_order_quantity: 0, purchase_multiple: 0,
   safety_stock: 0, supplier_lead_time_days: 7,
   calculation_method: 'weight',
   supplier_id: null,
@@ -106,7 +106,7 @@ const PROPAGABLE_FIELDS = [
   'min_stock',
   'supplier_id',
   'purchase_unit', 'production_unit', 'conversion_rate',
-  'purchase_order_unit', 'min_order_quantity',
+  'purchase_order_unit', 'min_order_quantity', 'purchase_multiple',
   'safety_stock',
   'calculation_method',
   'is_chemical',
@@ -136,6 +136,7 @@ const PROPAGABLE_LABELS: Record<string, string> = {
   conversion_rate: 'Taxa de conversão',
   purchase_order_unit: 'Unidade de ordem de compra',
   min_order_quantity: 'Quantidade mínima',
+  purchase_multiple: 'Múltiplo de compra',
   safety_stock: 'Estoque de segurança',
   calculation_method: 'Método de cálculo',
   is_chemical: 'Material químico',
@@ -356,6 +357,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         conversion_rate: rest.conversion_rate ?? 1,
         purchase_order_unit: normalizeUnit(rest.purchase_unit || rest.purchase_order_unit),
         min_order_quantity: rest.min_order_quantity ?? 1,
+        purchase_multiple: (rest as any).purchase_multiple ?? 0,
         safety_stock: rest.safety_stock ?? 0,
         supplier_lead_time_days: rest.supplier_lead_time_days ?? 10,
         calculation_method: normalizeCalculationMethod(rest.calculation_method),
@@ -1557,6 +1559,23 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       />
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Em {form.purchase_unit || form.unit}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Múltiplo de Compra (embalagem)</Label>
+                      <NumberInput
+                        value={form.purchase_multiple ?? 0}
+                        onChange={v => update('purchase_multiple', v)}
+                        min={0}
+                        step="1"
+                        className="mt-1 h-9"
+                        placeholder="Ex: 50"
+                        unit={form.purchase_unit || form.unit}
+                      />
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Só vende em pacote fechado? Ao gerar a OC, a quantidade
+                        arredonda pra cima pro próximo múltiplo (ex.: 50 → 187 vira 200).
+                        Deixe 0 pra não arredondar.
                       </p>
                     </div>
                   </div>

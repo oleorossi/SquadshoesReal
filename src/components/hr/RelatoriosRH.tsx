@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
@@ -13,12 +14,12 @@ import {
   Clock, CurrencyDollar as DollarSign, CaretRight, CaretDown,
   Warning as AlertTriangle, Users as Users2, Printer,
   CalendarBlank as Calendar, IdentificationCard, DownloadSimple,
-  Scales,
+  Scales, PencilSimple, Check, X as XIcon,
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules, calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
 import { splitDayMinutes, MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
-import { computePeriodFolha, expectedDayMinutes, type SalaryPayrollResult } from '@/lib/salaryPayroll';
+import { computePeriodFolha, expectedDayMinutes, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import {
   printEmployeeTimesheet, printConsolidatedHoursReport,
   printEmployeeEvaluationDetailed, printFolhaComparativo,
@@ -99,6 +100,10 @@ export default function RelatoriosRH() {
   const [tab, setTab] = usePersistedState<string>('rh-relatorios-tab', 'ponto');
   const [scope, setScope] = useState<string>(ALL);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Edição inline de batidas (resolver pendência de horário direto no relatório).
+  // { empId, date } da linha em edição + o texto editável das batidas.
+  const [editPunch, setEditPunch] = useState<{ empId: string; date: string; value: string } | null>(null);
+  const qc = useQueryClient();
 
   const { data: employees = [] } = useEmployees();
   const { data: holidaysList = [] } = useHolidays();
@@ -111,15 +116,25 @@ export default function RelatoriosRH() {
     [holidaysList],
   );
   const monthDays = useMemo(() => getMonthDays(period), [period]);
-  const periodRange = useMemo(
-    () => ({ from: monthDays[0]?.date, to: monthDays[monthDays.length - 1]?.date }),
-    [monthDays],
+  const monthBounds = useMemo(
+    () => ({ from: monthDays[0]?.date || `${period}-01`, to: monthDays[monthDays.length - 1]?.date || `${period}-01` }),
+    [monthDays, period],
   );
+  // Intervalo SELECIONADO (dias). Default = mês inteiro; o usuário pode estreitar
+  // pra qualquer faixa de dias (De/Até + atalhos). O `period` (mês) segue valendo
+  // como referência da quinzena e do divisor proporcional do salário. (2026-06-19.)
+  const [range, setRange] = useState<{ from: string; to: string }>(monthBounds);
+  // Ao trocar o MÊS no seletor, realinha o range pro mês inteiro.
+  useEffect(() => { setRange(monthBounds); }, [monthBounds.from, monthBounds.to]);
+  const periodRange = range;
+  const rangeDays = useMemo(() => getDaysInRange(range.from, range.to), [range]);
+  const isFullMonth = range.from === monthBounds.from && range.to === monthBounds.to;
   const periodLabel = useMemo(() => {
     const [y, m] = period.split('-');
     const mi = Number(m) - 1;
-    return MONTHS_PT[mi] ? `${MONTHS_PT[mi]}/${y}` : period;
-  }, [period]);
+    const monthLbl = MONTHS_PT[mi] ? `${MONTHS_PT[mi]}/${y}` : period;
+    return isFullMonth ? monthLbl : `${fmtBR(range.from)} a ${fmtBR(range.to)}`;
+  }, [period, isFullMonth, range.from, range.to]);
   const { data: coverage } = useTimesheetCoverage(periodRange.from, periodRange.to);
 
   const { data: timeRecords = [], isLoading } = useQuery({
@@ -129,11 +144,11 @@ export default function RelatoriosRH() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('time_records')
-        .select('employee_external_id, employee_name, record_date, punches')
+        .select('id, employee_external_id, employee_name, record_date, punches')
         .gte('record_date', periodRange.from!)
         .lte('record_date', periodRange.to!);
       if (error) throw error;
-      return (data || []) as { employee_external_id: string | null; employee_name: string | null; record_date: string; punches: string[] }[];
+      return (data || []) as { id: string; employee_external_id: string | null; employee_name: string | null; record_date: string; punches: string[] }[];
     },
   });
 
@@ -155,6 +170,65 @@ export default function RelatoriosRH() {
     },
   });
 
+  // Lookup do id da row de time_records (UPDATE preciso). Casa por matrícula
+  // (external_id) ou nome — mesmo critério do relatório.
+  const recordIdByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of timeRecords) {
+      if (!r.id) continue;
+      if (r.employee_external_id) m.set(`x:${r.employee_external_id}::${r.record_date}`, r.id);
+      const nk = (r.employee_name || '').toLowerCase().trim();
+      if (nk) m.set(`n:${nk}::${r.record_date}`, r.id);
+    }
+    return m;
+  }, [timeRecords]);
+
+  const savePunches = useMutation({
+    mutationFn: async ({ recordId, ext, name, date, punches }: { recordId: string | null; ext?: string; name: string; date: string; punches: string[] }) => {
+      if (recordId) {
+        const { error } = await supabase.from('time_records').update({ punches }).eq('id', recordId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('time_records')
+          .insert({ employee_external_id: ext || null, employee_name: name, record_date: date, punches } as any);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      // Recálculo AUTOMÁTICO: invalida a base de batidas (e cobertura/pendências)
+      // — o motor (splitDayMinutes + computePeriodFolha) recomputa no refetch.
+      qc.invalidateQueries({ predicate: (q) => {
+        const k = String(q.queryKey?.[0] ?? '');
+        return k.startsWith('rh-report') || k.includes('coverage') || k.includes('timesheet') || k.includes('pend') || k.includes('time_record');
+      }});
+      toast.success('Batidas atualizadas — relatório recalculado.');
+      setEditPunch(null);
+    },
+    onError: (e: Error) => toast.error(`Erro ao salvar batidas: ${e.message}`),
+  });
+
+  // Texto "08:00 12:00 13:00 18:00" → array validado (HH:MM), par e ordenado.
+  const saveEditedPunches = (empId: string, ext: string | undefined, name: string, date: string, raw: string) => {
+    const tokens = raw.split(/[\s,;·]+/).map(t => t.trim()).filter(Boolean);
+    const norm: string[] = [];
+    for (const t of tokens) {
+      const mt = t.match(/^(\d{1,2}):(\d{2})$/);
+      if (!mt || Number(mt[1]) > 23 || Number(mt[2]) > 59) {
+        toast.error(`Horário inválido: "${t}" — use HH:MM (ex.: 08:00).`);
+        return;
+      }
+      norm.push(`${mt[1].padStart(2, '0')}:${mt[2]}`);
+    }
+    if (norm.length % 2 !== 0) {
+      toast.error('Número ÍMPAR de batidas — falta uma entrada/saída (cada turno = entrada + saída).');
+      return;
+    }
+    norm.sort();
+    const recordId = (ext && recordIdByKey.get(`x:${ext}::${date}`))
+      || recordIdByKey.get(`n:${name.toLowerCase().trim()}::${date}`) || null;
+    savePunches.mutate({ recordId, ext, name, date, punches: norm });
+  };
+
   const rows: EmpRow[] = useMemo(() => {
     // Mapas batida → dia, por matrícula e por nome (mesmo casamento da Folha).
     const byExternalId = new Map<string, Map<string, string[]>>();
@@ -174,9 +248,12 @@ export default function RelatoriosRH() {
     }
     // Clamp à cobertura: só conta até o último dia com ponto importado.
     const maxCov = coverage?.maxCovered || null;
-    const coveredDays = maxCov ? monthDays.filter(d => d.date <= maxCov) : monthDays;
-    // Limites do mês + quinzenas (1ª = 01–15, 2ª = 16–fim).
-    const monthFrom = monthDays[0]?.date || '';
+    // Itera sobre o INTERVALO selecionado (dias), não o mês inteiro.
+    const coveredDays = (maxCov ? rangeDays.filter(d => d.date <= maxCov) : rangeDays);
+    const rangeFrom = range.from;
+    const rangeTo = range.to;
+    // Limites do mês + quinzenas (1ª = 01–15, 2ª = 16–fim) — referência do mês
+    // do `period`, independente do intervalo escolhido.
     const monthTo = monthDays[monthDays.length - 1]?.date || '';
     const q2Days = Math.max(0, monthDays.length - 15);
     // Adiantamentos do período por funcionário (descontados do líquido, como na Folha).
@@ -210,14 +287,16 @@ export default function RelatoriosRH() {
           salary: Number(emp.salary) || 0, from, to,
           schedule: sch, holidaysSet, punchesByDate: empPunches,
           periodDays, monthDays: monthDays.length, maxCoveredDate: maxCov,
+          payRegime: ((emp as any).payment_type as 'mensalista' | 'remoto' | 'diarista') || 'mensalista',
+          dailyRate: Number((emp as any).daily_rate) || 0,
           advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
         });
-        const result = folha(monthFrom, monthTo);              // mês cheio (base = salário)
+        const result = folha(rangeFrom, rangeTo, rangeDays.length); // intervalo selecionado
         const q1 = folha(`${period}-01`, `${period}-15`, 15);  // 1ª quinzena (15/30)
         const q2 = folha(`${period}-16`, monthTo, q2Days);     // 2ª quinzena ((fim−15)/30)
-        const matchedDays = Array.from(empPunches.keys()).filter(d => d >= monthFrom && d <= monthTo).length;
+        const matchedDays = Array.from(empPunches.keys()).filter(d => d >= rangeFrom && d <= rangeTo).length;
         const advMes = empAdvances.reduce((s, a) => s + a.amount, 0);
-        const sit = computeSituacao(result, matchedDays, maxCov, monthTo);
+        const sit = computeSituacao(result, matchedDays, maxCov, rangeTo);
 
         return {
           id: emp.id, ext: extKey || undefined, name: emp.name,
@@ -225,7 +304,7 @@ export default function RelatoriosRH() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [employees, timeRecords, advancesList, monthDays, period, coverage, holidaysSet, schedules, defaultSchedule]);
+  }, [employees, timeRecords, advancesList, monthDays, period, range, rangeDays, coverage, holidaysSet, schedules, defaultSchedule]);
 
   // Linhas visíveis conforme o escopo (Todos ou 1 funcionário).
   const visibleRows = useMemo(() => (scope === ALL ? rows : rows.filter(r => r.id === scope)), [rows, scope]);
@@ -317,6 +396,9 @@ export default function RelatoriosRH() {
       hourlySalary: (Number(emp?.salary) || 0) / MONTHLY_HOURS_DIVISOR,
       overtimeHourlyRate: (emp as any)?.overtime_hourly_rate ?? null,
       expectedDayMin: expectedDayMinutes(sch),
+      paymentType: ((emp as any)?.payment_type as 'mensalista' | 'remoto' | 'diarista') || 'mensalista',
+      dailyRate: Number((emp as any)?.daily_rate) || 0,
+      monthlySalary: Number(emp?.salary) || 0,
     };
   };
 
@@ -397,9 +479,33 @@ export default function RelatoriosRH() {
     : tab === 'espelho' ? 'Imprimir espelho'
     : 'Imprimir';
 
+  // Atalhos de intervalo dentro do mês de referência.
+  const q1Bounds = { from: `${period}-01`, to: `${period}-15` };
+  const q2Bounds = { from: `${period}-16`, to: monthBounds.to };
+  const rangeShortcut = (b: { from: string; to: string }, label: string) => (
+    <Button
+      type="button" variant="outline" size="sm"
+      className={`h-9 px-2.5 text-xs ${range.from === b.from && range.to === b.to ? 'border-primary text-primary bg-primary/5' : ''}`}
+      onClick={() => setRange(b)}
+    >
+      {label}
+    </Button>
+  );
+
   const Toolbar = (
     <div className="flex flex-wrap items-center gap-2">
-      <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40 h-9" />
+      <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-32 h-9" title="Mês de referência" />
+      {/* Intervalo de DIAS dentro do mês (De/Até) + atalhos. Default = mês inteiro. */}
+      <div className="flex items-center gap-1">
+        <Input type="date" value={range.from} min={monthBounds.from} max={range.to}
+          onChange={e => setRange(r => ({ ...r, from: e.target.value }))} className="w-36 h-9" title="De" />
+        <span className="text-xs text-muted-foreground">até</span>
+        <Input type="date" value={range.to} min={range.from} max={monthBounds.to}
+          onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="w-36 h-9" title="Até" />
+      </div>
+      {rangeShortcut(monthBounds, 'Mês')}
+      {rangeShortcut(q1Bounds, '1ª quinz')}
+      {rangeShortcut(q2Bounds, '2ª quinz')}
       <Select value={scope} onValueChange={setScope}>
         <SelectTrigger className="w-56 h-9">
           <Users2 className="h-4 w-4 mr-1.5 text-muted-foreground" />
@@ -445,7 +551,7 @@ export default function RelatoriosRH() {
         <DollarSign className="h-4 w-4 shrink-0" />
         <span>
           <strong>Motor único</strong> — todos os relatórios partem da MESMA base por-dia (batidas + escala). Pagamento =
-          salário − descontos, hora extra só no excedente do período (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}).
+          salário − descontos, hora extra e atraso POR DIA, sem compensar entre dias (valor-hora = salário ÷ {MONTHLY_HOURS_DIVISOR}).
           Banco/Espelho usam a mesma base, agregando HE no regime semanal CLT (44h), assinável.
         </span>
       </div>
@@ -552,7 +658,43 @@ export default function RelatoriosRH() {
                                           <TableCell className="text-xs">
                                             {DAYS_PT[d.dow]}{d.isHoliday && <span className="ml-1 text-amber-600">feriado</span>}
                                           </TableCell>
-                                          <TableCell className="text-xs font-mono">{d.punches.map(cleanPunch).join(' · ')}</TableCell>
+                                          <TableCell className="text-xs font-mono">
+                                            {editPunch && editPunch.empId === r.id && editPunch.date === d.date ? (
+                                              <div className="flex items-center gap-1 font-sans">
+                                                <Input
+                                                  value={editPunch.value}
+                                                  onChange={e => setEditPunch({ ...editPunch, value: e.target.value })}
+                                                  className="h-7 text-xs font-mono w-52" placeholder="08:00 12:00 13:00 18:00" autoFocus
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') saveEditedPunches(r.id, r.ext, r.name, d.date, editPunch.value);
+                                                    if (e.key === 'Escape') setEditPunch(null);
+                                                  }}
+                                                />
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-600" disabled={savePunches.isPending}
+                                                  onClick={() => saveEditedPunches(r.id, r.ext, r.name, d.date, editPunch.value)} title="Salvar">
+                                                  <Check className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground"
+                                                  onClick={() => setEditPunch(null)} title="Cancelar">
+                                                  <XIcon className="h-3.5 w-3.5" />
+                                                </Button>
+                                              </div>
+                                            ) : (
+                                              <div className="flex items-center gap-2">
+                                                <span className={d.punches.length % 2 !== 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : ''}>
+                                                  {d.punches.map(cleanPunch).join(' · ')}
+                                                </span>
+                                                {d.punches.length % 2 !== 0 && (
+                                                  <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal text-[10px] px-1">ímpar</Badge>
+                                                )}
+                                                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                                  onClick={() => setEditPunch({ empId: r.id, date: d.date, value: d.punches.map(cleanPunch).join(' ') })}
+                                                  title="Editar batidas">
+                                                  <PencilSimple className="h-3 w-3" />
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </TableCell>
                                           <TableCell className="text-xs text-right tabular-nums">{fmtH(d.normal)}</TableCell>
                                           <TableCell className="text-xs text-right tabular-nums text-amber-700 dark:text-amber-400">{d.premium > 0 ? fmtH(d.premium) : '—'}</TableCell>
                                         </TableRow>
@@ -584,7 +726,7 @@ export default function RelatoriosRH() {
                 {[
                   { label: 'Funcionários', value: String(visibleRows.length) },
                   { label: 'Salários', value: fmtBRL(totals.salarioBase) },
-                  { label: 'Líquido Mês', value: fmtBRL(totals.liqMes), accent: true },
+                  { label: isFullMonth ? 'Líquido Mês' : 'Líquido período', value: fmtBRL(totals.liqMes), accent: true },
                   { label: 'Líq. 1ª quinz', value: fmtBRL(totals.liqQ1) },
                   { label: 'Líq. 2ª quinz', value: fmtBRL(totals.liqQ2) },
                 ].map(k => (
@@ -599,8 +741,9 @@ export default function RelatoriosRH() {
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Antes de pagar:</strong> hora extra conta só no <strong>excedente</strong> — quem não bateu a meta de horas do período
-                  NÃO tem HE; fim de semana / após-18h abatem o déficit; falta = −1 dia. Os valores refletem o ponto <strong>como foi importado</strong> —
+                  <strong>Antes de pagar:</strong> hora extra e atraso são contados <strong>por dia</strong> — cada dia que passou do esperado
+                  paga HE ×1,5 e cada dia que ficou abaixo desconta atraso, <strong>sem compensar entre dias</strong>; fim de semana / feriado
+                  trabalhado = tudo HE; falta = −1 dia. Os valores refletem o ponto <strong>como foi importado</strong> —
                   confira a coluna <strong>Situação</strong> e corrija o ponto antes de pagar.
                 </span>
               </div>
@@ -611,7 +754,7 @@ export default function RelatoriosRH() {
                     <DollarSign className="h-4 w-4" /> Folha {periodLabel} — Mês × 1ª × 2ª quinzena (líquido por funcionário)
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Mesmo motor da Folha (HE líquida), <strong>líquido já com adiantamentos pendentes descontados</strong>. Base da quinzena é
+                    Mesmo motor da Folha (HE/atraso por dia), <strong>líquido já com adiantamentos pendentes descontados</strong>. Base da quinzena é
                     <strong> proporcional aos dias</strong> (1ª = 15/30, 2ª = {monthDays.length - 15}/30).
                     <strong> Imprimir</strong>: Todos → esta tabela; um funcionário selecionado → o demonstrativo individual completo.
                   </p>
@@ -624,7 +767,7 @@ export default function RelatoriosRH() {
                           <TableHead className="w-16">Matríc.</TableHead>
                           <TableHead>Funcionário</TableHead>
                           <TableHead className="text-right">Salário</TableHead>
-                          <TableHead className="text-right">Mês (01–{monthDays.length})</TableHead>
+                          <TableHead className="text-right">{isFullMonth ? `Mês (01–${monthDays.length})` : 'Período'}</TableHead>
                           <TableHead className="text-right">1ª quinz (01–15)</TableHead>
                           <TableHead className="text-right">2ª quinz (16–{monthDays.length})</TableHead>
                           <TableHead>Situação</TableHead>

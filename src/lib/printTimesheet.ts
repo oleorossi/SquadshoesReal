@@ -34,6 +34,13 @@ export interface EmployeeTimesheetData {
   hourlySalary?: number;
   /** Per-employee overtime hourly rate (R$/hr). Overrides hourlySalary * multiplier when set. */
   overtimeHourlyRate?: number | null;
+  /** Regime: mensalista (padrão), remoto (salário cheio, ignora ponto) ou diarista
+   *  (diária × dias). Quando ausente = mensalista. */
+  paymentType?: 'mensalista' | 'remoto' | 'diarista';
+  /** Valor da diária (R$/dia) — só diarista. */
+  dailyRate?: number;
+  /** Salário mensal cheio (R$) — base do remoto. Default = hourlySalary × 220. */
+  monthlySalary?: number;
   /**
    * Jornada esperada por dia útil (min) vinda da ESCALA — saída − entrada − almoço
    * (ex.: 540 = 9h). É o MESMO "esperado" que a folha usa (expectedDayMinutes), pra
@@ -141,7 +148,7 @@ function employeeReportInnerHtml(emp: EmployeeTimesheetData, periodLabel: string
       <div><span class="label">Faltas:</span> <b style="color:#dc2626">${b.folhaFaltaCount > 0 ? b.folhaFaltaCount + ' = -' + formatMoney(b.folhaFalta) : '—'}</b></div>
       <div><span class="label">Líquido (HE − Desc.):</span> <b style="color:${b.folhaLiquido >= 0 ? '#16a34a' : '#dc2626'};font-size:14px">${(b.folhaLiquido >= 0 ? '+' : '-') + formatMoney(Math.abs(b.folhaLiquido))}</b></div>
     </div>
-    <p style="font-size:10px;color:#222;margin-top:4px">Pagamento pela mesma conta da Folha (salário − descontos, hora extra só no excedente do período). Hora extra/atraso/falta acima são o ajuste líquido; o total a receber está na aba <b>Folha</b>.</p>
+    <p style="font-size:10px;color:#222;margin-top:4px">Pagamento pela mesma conta da Folha (salário − descontos, hora extra e atraso POR DIA — sem compensar entre dias). Hora extra/atraso/falta acima são o ajuste; o total a receber está na aba <b>Folha</b>.</p>
     ` : ''}
 
     <h2>Registro Diário</h2>
@@ -428,12 +435,12 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
     </table>
 
     <div style="margin-top:6px;font-size:11px;color:#222;border:1px solid #ccc;padding:5px 8px;border-radius:4px">
-      <b>Pagamento pela mesma conta da Folha</b> (salário − descontos, hora extra só no excedente do período). A coluna "Líquido (HE−Desc.)" é o ajuste de hora extra menos faltas/atrasos; o valor TOTAL a receber (salário do período − descontos + HE) está na aba <b>Folha</b>. Espelho/Banco seguem o regime legal CLT.
+      <b>Pagamento pela mesma conta da Folha</b> (salário − descontos, hora extra e atraso POR DIA — sem compensar entre dias). A coluna "Líquido (HE−Desc.)" é o ajuste de hora extra menos faltas/atrasos; o valor TOTAL a receber (salário do período − descontos + HE) está na aba <b>Folha</b>. Espelho/Banco seguem o regime legal CLT.
     </div>
     <div style="margin-top:8px;font-size:10px;color:#222">
       <b>Legenda:</b> Colunas de HORAS (Trab./Normais/1,5×) = quanto cada um bateu (Valor/h = salário ÷ 220) ·
       Normais (1×) = horas em dia útil até as 18:00 · 1,5× = sábado, domingo, feriado ou após as 18:00 ·
-      <b>Líquido (HE−Desc.)</b> = conta da FOLHA: hora extra só no excedente do período (fds/após-18h abatem o déficit antes) menos faltas (salário÷30) e atrasos (× valor-hora) ·
+      <b>Líquido (HE−Desc.)</b> = conta da FOLHA: hora extra POR DIA (excedente de cada dia; fds/feriado = tudo HE) menos faltas (salário÷30) e atrasos por dia (× valor-hora) ·
       Incompl. = dias com nº ímpar de batidas (RH conferir).
     </div>
   `;
@@ -662,11 +669,12 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
   const valorDia = vh * (SALARY_HOUR_DIVISOR / SALARY_DAY_DIVISOR);  // = salário ÷ 30
   const schedExpected = emp.expectedDayMin && emp.expectedDayMin > 0 ? emp.expectedDayMin : null;
 
-  // Dia a dia: monta a linha de exibição (saldo do dia) E acumula o LÍQUIDO do período —
-  // tudo trabalhado (dias presentes + fim de semana/feriado) vs esperado dos dias
-  // presentes. Falta entra à parte (valor-dia). MESMA conta do motor da folha.
+  // Dia a dia: monta a linha de exibição (saldo do dia) E acumula HE/atraso BRUTO por-dia
+  // (excedente/déficit de CADA dia, SEM compensação entre dias) — MESMA conta do motor da
+  // folha (2026-06-19). Falta entra à parte (valor-dia); fds/feriado trabalhado = tudo HE.
   const dayRows: { date: string; dayOfWeek: number; punches: string[]; expected: number; worked: number; saldo: number; kind: EvalDayKind }[] = [];
   let faltaCount = 0, expectedPresentMin = 0, workedTotalMin = 0, pendingDays = 0;
+  let heMin = 0, atrasoMin = 0;
 
   for (const d of emp.days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -682,16 +690,32 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     if (isWorkday) {
       if (worked === 0) { faltaCount++; dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: 0, saldo: 0, kind: 'falta' }); continue; }
       expectedPresentMin += expected; workedTotalMin += worked;
+      // BRUTO por-dia: excedente do dia → HE, déficit do dia → atraso (sem compensar entre dias).
+      const dayBal = worked - expected;
+      if (dayBal > 0) heMin += dayBal; else if (dayBal < 0) atrasoMin += -dayBal;
       dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked, saldo: worked - expected, kind: worked >= expected ? 'ok' : 'curto' });
     } else if (worked > 0) {
-      workedTotalMin += worked;                                     // fds/feriado abate o déficit
+      workedTotalMin += worked; heMin += worked;                    // fds/feriado = tudo hora extra
       dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected: 0, worked, saldo: worked, kind: 'fds' });
     }
   }
 
-  const balance = workedTotalMin - expectedPresentMin;
-  const heMin = balance > 0 ? balance : 0;          // hora extra SÓ no excedente líquido
-  const atrasoMin = balance < 0 ? -balance : 0;     // déficit líquido (fds/após-18h já abateram)
+  const regime = emp.paymentType || 'mensalista';
+  const monthlySalary = emp.monthlySalary ?? vh * SALARY_HOUR_DIVISOR; // salário cheio (220h)
+
+  // ── REMOTO / DIARISTA: zera ajustes de ponto (sem falta/atraso/HE) ──
+  if (regime === 'remoto' || regime === 'diarista') {
+    const paidDays = dayRows.filter(r => (r.punches?.length || 0) >= 1).length;
+    const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : monthlySalary;
+    return {
+      vh, valorDia, dayRows, pendingDays,
+      faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, heValue: 0,
+      totalDesconto: 0, liquido: 0, hasSalary: paidBase > 0,
+      workedTotalMin, expectedPresentMin,
+      paymentType: regime, paidDays, dailyRate: emp.dailyRate || 0, paidBase,
+    };
+  }
+
   const faltaDesconto = faltaCount * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * vh;
   const heValue = (heMin / 60) * vh * PREMIUM_MULTIPLIER;
@@ -702,6 +726,8 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     faltaCount, faltaDesconto, atrasoMin, atrasoDesconto, heMin, heValue,
     totalDesconto, liquido: heValue - totalDesconto, hasSalary: vh > 0,
     workedTotalMin, expectedPresentMin,
+    paymentType: 'mensalista' as const, paidDays: dayRows.filter(r => r.kind === 'ok' || r.kind === 'curto' || r.kind === 'fds').length,
+    dailyRate: 0, paidBase: vh * SALARY_HOUR_DIVISOR,
   };
 }
 
@@ -737,19 +763,25 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
   const formatMoney = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
 
-  const base = e.vh * SALARY_HOUR_DIVISOR;             // salário do mês (220h) — referência da folha
+  const base = e.paidBase;                             // base do regime (mensalista=salário; diarista=diária×dias; remoto=salário cheio)
   const liquido = base + e.heValue - e.totalDesconto;  // base + HE − (faltas + atraso)
   const saldoMin = e.workedTotalMin - e.expectedPresentMin;
   const kindColor: Record<string, string> = { ok: '#16a34a', curto: '#dc2626', falta: '#dc2626', fds: '#2563eb', pendente: '#b45309' };
+  const baseLabel = e.paymentType === 'diarista'
+    ? `Diárias — ${e.paidDays} dia(s) × ${formatMoney(e.dailyRate)}`
+    : e.paymentType === 'remoto'
+    ? 'Salário (remoto — cheio, sem ponto)'
+    : 'Salário base (mês · 220h)';
+  const isMensal = (e.paymentType ?? 'mensalista') === 'mensalista';
 
   // ── Folha (holerite): base − descontos + HE = líquido ──
   const payBlock = e.hasSalary ? `
     <h2>Folha salarial — ${escapeHtml(periodLabel)}</h2>
     <table class="pay">
-      <tr><td class="lbl">Salário base (mês · 220h)</td><td class="amt">${formatMoney(base)}</td></tr>
-      <tr><td class="lbl neg">(−) Faltas — ${e.faltaCount} dia(s) × valor-dia</td><td class="amt neg">${e.faltaDesconto > 0 ? '− ' + formatMoney(e.faltaDesconto) : '—'}</td></tr>
-      <tr><td class="lbl neg">(−) Atrasos (líq.) — ${e.atrasoMin > 0 ? minutesToDisplay(e.atrasoMin) : '0:00'}</td><td class="amt neg">${e.atrasoDesconto > 0 ? '− ' + formatMoney(e.atrasoDesconto) : '—'}</td></tr>
-      <tr><td class="lbl pos">(+) Hora extra (líq. ×1,5) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>
+      <tr><td class="lbl">${baseLabel}</td><td class="amt">${formatMoney(base)}</td></tr>
+      ${isMensal ? `<tr><td class="lbl neg">(−) Faltas — ${e.faltaCount} dia(s) × valor-dia</td><td class="amt neg">${e.faltaDesconto > 0 ? '− ' + formatMoney(e.faltaDesconto) : '—'}</td></tr>
+      <tr><td class="lbl neg">(−) Atrasos (por dia) — ${e.atrasoMin > 0 ? minutesToDisplay(e.atrasoMin) : '0:00'}</td><td class="amt neg">${e.atrasoDesconto > 0 ? '− ' + formatMoney(e.atrasoDesconto) : '—'}</td></tr>
+      <tr><td class="lbl pos">(+) Hora extra (por dia ×1,5) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>` : ''}
       ${advance > 0 ? `<tr><td class="lbl neg">(−) Adiantamentos (vales do mês)</td><td class="amt neg">− ${formatMoney(advance)}</td></tr>` : ''}
       <tr class="net"><td>= Líquido a pagar</td><td class="amt">${formatMoney(liquido - advance)}</td></tr>
     </table>
@@ -773,7 +805,7 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
           <td class="text-right mono" style="color:#dc2626"><b>${d.kind === 'falta' ? minutesToDisplay(d.expected) + (e.hasSalary ? ' · −' + formatMoney(e.valorDia) : '') : minutesToDisplay(d.expected - d.worked)}</b></td>
         </tr>`).join('')}</tbody>
     </table>
-    <p class="note">Cada falta desconta 1 dia (salário ÷ 30). Os dias “curtos” somam déficit, mas o desconto de atraso é <b>líquido do período</b> (dias longos / fim de semana abatem) — o valor final é ${e.atrasoDesconto > 0 ? '<b>−' + formatMoney(e.atrasoDesconto) + '</b>' : '<b>sem atraso líquido</b>'}, já na folha acima.</p>
+    <p class="note">Cada falta desconta 1 dia (salário ÷ 30). Cada dia “curto” desconta seu atraso e cada dia “longo”/fds paga hora extra — <b>por dia, sem compensação entre dias</b> — atraso total ${e.atrasoDesconto > 0 ? '<b>−' + formatMoney(e.atrasoDesconto) + '</b>' : '<b>nenhum</b>'}, já na folha acima.</p>
   ` : `<h2>Faltas e dias fora do horário</h2><p class="note">Nenhuma falta ou dia abaixo do esperado no período. 👍</p>`;
 
   // ── Horas extras (dias com saldo positivo) ──

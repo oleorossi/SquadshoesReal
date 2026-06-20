@@ -15477,6 +15477,33 @@ export type Database = {
           },
         ]
       }
+      reference_sector_pricing: {
+        Row: {
+          created_at: string
+          id: string
+          lines: Json
+          reference: string
+          total_cost: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lines?: Json
+          reference?: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       representatives: {
         Row: {
           active: boolean

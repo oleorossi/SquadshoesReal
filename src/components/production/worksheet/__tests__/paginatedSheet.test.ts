@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { packBlocks, PAGE_CAPACITY_PX, BLOCK_GAP_PX } from '../PaginatedSheet';
+import { packBlocks, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE } from '../PaginatedSheet';
 
 // Capacidade/gap redondos pra facilitar a leitura dos casos.
 const CAP = 1000;
@@ -136,9 +136,22 @@ describe('packBlocks — paginação explícita das fichas', () => {
     expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1, 2, 3]]);
   });
 
+  it('PRINT_INFLATE: empacota prevendo a altura de IMPRESSÃO (~98% cheia → 2 ao inflar)', () => {
+    // A impressão rende ~3-4% mais alto que a tela; sem prever isso, a página
+    // CHEIA derrama o pé numa folha em branco (ACABAMENTO 1/2, PDF 2026-06-19).
+    const h = PAGE_CAPACITY_PX * 0.49; // 2 blocos = 98% da capacidade medida
+    // medido em tela: 98% ≤ 100% → 1 página
+    expect(packBlocks([h, h], PAGE_CAPACITY_PX, 0)).toHaveLength(1);
+    // prevendo impressão (× PRINT_INFLATE ≈ 104%) → 2 páginas: não derrama.
+    expect(packBlocks([h, h].map(x => x * PRINT_INFLATE), PAGE_CAPACITY_PX, 0)).toHaveLength(2);
+    expect(PRINT_INFLATE).toBeGreaterThan(1);
+    expect(PRINT_INFLATE).toBeLessThan(1.12); // sanidade: folga, não exagero
+  });
+
   it('constantes reais: capacidade A4 com margens internas é plausível', () => {
-    // 294mm − 6 − 8 − 8 (faixa) = 272mm ≈ 1028px @96dpi
-    expect(PAGE_CAPACITY_PX).toBeGreaterThan(1000);
+    // 288mm − 6 − 8 − 8 (faixa) = 266mm ≈ 1005px @96dpi (288 dá ~9mm de folga
+    // contra os 296.9mm que o Chrome usa pra A4 — mata o derrame em página cheia).
+    expect(PAGE_CAPACITY_PX).toBeGreaterThan(950);
     expect(PAGE_CAPACITY_PX).toBeLessThan(1100);
     expect(BLOCK_GAP_PX).toBeGreaterThan(0);
   });

@@ -41,10 +41,12 @@ export const MM_TO_PX = 96 / 25.4;
 /** Altura da caixa de página. O Chrome trata A4 como 841.8pt ≈ 296.9mm —
  *  com 296 a folga real era < 1mm e QUALQUER arredondamento sub-pixel
  *  derramava o pé da página numa folha em branco (PDF de 2026-06-12:
- *  20 páginas lógicas viraram 40 físicas). 294 dá ~3mm de folga real.
+ *  20 páginas lógicas viraram 40 físicas). 294 ainda DERRAMAVA em páginas
+ *  CHEIAS (delta tela-vs-impressão > 3mm → folhas 100% brancas, ex.: p3/p6/
+ *  p31/p33 do PDF de 2026-06-19); 288 dá ~9mm de folga real e absorve o delta.
  *  Em PRINT a caixa vira height:auto (CSS da PrintWorkSheetsPage) — a
  *  altura fixa existe só pro preview em tela parecer papel. */
-export const PAGE_HEIGHT_MM = 294;
+export const PAGE_HEIGHT_MM = 288;
 export const PAGE_PAD_TOP_MM = 6;
 export const PAGE_PAD_X_MM = 8;
 export const PAGE_PAD_BOTTOM_MM = 8;
@@ -57,18 +59,29 @@ export const PAGE_CAPACITY_PX =
   (PAGE_HEIGHT_MM - PAGE_PAD_TOP_MM - PAGE_PAD_BOTTOM_MM - HEADER_BAND_MM) * MM_TO_PX;
 export const BLOCK_GAP_PX = BLOCK_GAP_MM * MM_TO_PX;
 
-/* ── Auto-fit (2026-06-17) ──
- * Quando a ficha derrama POUCO na última página (usa menos que AUTO_FIT_SPILL
- * da capacidade dela), reduz fonte+tabela proporcionalmente (zoom no conteúdo
- * dos blocos) pra caber em UMA página a menos — elimina a folha quase em
- * branco. A redução é limitada por AUTO_FIT_FLOOR pra não comprometer a
- * legibilidade no chão de fábrica. A medição dos blocos sempre recupera a
- * altura em escala 1 (divide pelo zoom corrente), então não há loop de
- * re-medição nem deriva de paginação. */
-/** Última página usando menos que isto da capacidade ⇒ tenta encolher. */
-const AUTO_FIT_SPILL = 0.15;
-/** Redução máxima do auto-fit (0.85 = −15% de fonte/tabela). */
-const AUTO_FIT_FLOOR = 0.85;
+/** Inflação print-vs-tela (2026-06-19). A IMPRESSÃO renderiza o conteúdo ~3-4%
+ *  mais alto que a medição em TELA (métrica do line-height 8pt + arredondamento
+ *  de linhas de tabela, acumulado ao longo da página). Numa página CHEIA (ex.:
+ *  ACABAMENTO 1/2 a 99%) esse delta derramava o pé numa folha 100% branca mesmo
+ *  com a folga fixa de 288mm. Em vez de cortar mais a caixa (folga fixa, penaliza
+ *  toda página), EMPACOTAMOS prevendo a altura de impressão: altura medida ×
+ *  PRINT_INFLATE. Assim a folga é PROPORCIONAL ao conteúdo — página cheia ganha
+ *  ~16mm de respiro (não derrama), página vazia não muda. 1.06 cobre o delta
+ *  observado com margem. Aplicado em packBlocks (base + busca do auto-fit). */
+export const PRINT_INFLATE = 1.06;
+
+/* ── Auto-fit (2026-06-17; agressivo 2026-06-19) ──
+ * SEMPRE que reduzir fonte+tabela (zoom no conteúdo dos blocos) fizer a ficha
+ * caber em UMA página a menos, aplica a MENOR redução que consegue isso —
+ * elimina a folha quase em branco no fim do maço. Antes só tentava quando a
+ * última página usava < 15% da capacidade (gate AUTO_FIT_SPILL), o que deixava
+ * passar última-página meia-cheia (ex.: 46% no PDF de 2026-06-19); agora tenta
+ * sempre e o PISO (AUTO_FIT_FLOOR) é o único limite — protege a legibilidade no
+ * chão de fábrica. A medição dos blocos sempre recupera a altura em escala 1
+ * (divide pelo zoom corrente), então não há loop de re-medição nem deriva. */
+/** Redução máxima do auto-fit (0.80 = −20% de fonte/tabela). Pedido do dono em
+ *  2026-06-19: priorizar densidade (menos folhas) aceitando fonte menor. */
+const AUTO_FIT_FLOOR = 0.80;
 /** Passo da busca do fator de escala. */
 const AUTO_FIT_STEP = 0.01;
 
@@ -193,28 +206,43 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
   const [heights, setHeights] = useState<number[]>([]);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
-  // Fator de zoom corrente aplicado ao conteúdo dos blocos (auto-fit). A
-  // medição divide a altura medida por ele pra recuperar SEMPRE a altura em
-  // escala 1 (baseline) — assim o cálculo de paginação/escala é estável e não
-  // entra em loop quando o zoom muda o tamanho renderizado.
+  // Fator de zoom corrente do auto-fit (escolhido pelo useMemo). A medição NUNCA
+  // lê o DOM com zoom: `measure` só roda quando scaleRef===1 (baseline). Medir o
+  // DOM zoomado e dividir pelo zoom era INSTÁVEL (zoom reflui texto, não é linear)
+  // → measure↔auto-fit oscilavam e estouravam "Maximum update depth" (React #185).
+  // A paginação prevê o tamanho zoomado via heights*scale no useMemo.
   const scaleRef = useRef(1);
 
   const measure = useCallback(() => {
-    const s = scaleRef.current || 1;
+    // Mede SÓ a baseline (escala 1). Em escala <1 a baseline já foi capturada;
+    // re-medir o DOM zoomado realimentaria o auto-fit em loop infinito (#185).
+    if ((scaleRef.current || 1) !== 1) return;
     const next: number[] = [];
     for (let i = 0; i < blocks.length; i++) {
       const el = wrapperEls.current.get(i);
       if (!el) return; // render incompleto — espera o próximo ciclo
       // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
       // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
-      // Divide pelo zoom corrente pra normalizar à escala 1 (auto-fit).
-      next[i] = Math.ceil(el.getBoundingClientRect().height / s);
+      next[i] = Math.ceil(el.getBoundingClientRect().height);
     }
     setHeights(prev => {
       if (prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 1.5)) return prev;
       return next;
     });
   }, [blocks.length]);
+
+  // Conjunto de blocos mudou → volta pra escala 1 e re-mede a baseline (measure só
+  // roda em s=1; sem este reset a medição ficaria presa na escala antiga). Declarado
+  // ANTES do effect que chama measure, pra rodar primeiro no mesmo commit.
+  const blockSig = `${blocks.length}|${keepFlags.join('')}|${keepNextFlags.join('')}`;
+  const prevSigRef = useRef(blockSig);
+  useLayoutEffect(() => {
+    if (prevSigRef.current !== blockSig) {
+      prevSigRef.current = blockSig;
+      scaleRef.current = 1;
+      setHeights([]);
+    }
+  });
 
   // Mede SÍNCRONO após cada render (antes do paint) — a 1ª passada renderiza
   // tudo numa página flow só pra medir; a repaginação acontece antes do
@@ -266,29 +294,33 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
       // pelo useLayoutEffect antes do paint.
       return { pages: [{ blockIdxs: blocks.map((_, i) => i), flow: true, spanned: 1, startPage: 1 }], scale: 1 };
     }
-    const base = packBlocks(heights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
+    // Empacota prevendo a altura de IMPRESSÃO (medida × PRINT_INFLATE) — a
+    // impressão rende ~3-4% mais alto que a tela; sem isso a página cheia
+    // derrama numa folha em branco (ex.: ACABAMENTO 1/2 do PDF de 2026-06-19).
+    const packHeights = heights.map(h => h * PRINT_INFLATE);
+    const base = packBlocks(packHeights, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
     const baseTotal = base.reduce((s, p) => s + p.spanned, 0);
-    // Auto-fit: se a ÚLTIMA página usa < AUTO_FIT_SPILL da capacidade (derrama
-    // pouco), busca o MAIOR fator de escala (≥ AUTO_FIT_FLOOR) que faça a ficha
-    // caber em uma página a menos. Só encolhe quando realmente remove a folha
-    // quase vazia — senão mantém escala 1.
+    // Auto-fit: busca o MAIOR fator de escala (≥ AUTO_FIT_FLOOR) que faça a
+    // ficha caber em uma página a menos. Só encolhe quando realmente remove uma
+    // folha — senão mantém escala 1. (Sem gate de % da última página desde
+    // 2026-06-19: tenta sempre; o piso é o único limite.)
     if (baseTotal >= 2) {
       const last = base[base.length - 1];
       // Bloco "flow" (maior que 1 página) não é candidato — não dá pra
       // empacotar junto reduzindo só um pouco.
       if (!last.flow) {
-        const usedPx = last.blockIdxs.reduce(
-          (acc, bi, k) => acc + heights[bi] + (k > 0 ? BLOCK_GAP_PX : 0),
-          0,
-        );
-        if (usedPx / PAGE_CAPACITY_PX < AUTO_FIT_SPILL) {
-          const target = baseTotal - 1;
-          for (let s = 1 - AUTO_FIT_STEP; s >= AUTO_FIT_FLOOR - 1e-9; s -= AUTO_FIT_STEP) {
-            const scaled = heights.map(h => h * s);
-            const p = packBlocks(scaled, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
-            const t = p.reduce((a, q) => a + q.spanned, 0);
-            if (t <= target) return { pages: p, scale: +s.toFixed(2) };
-          }
+        // Tenta SEMPRE remover ≥1 página encolhendo dentro do piso (−20%). O
+        // "t <= target" garante que só encolhe quando de fato tira uma folha;
+        // se nem no piso couber em menos páginas, mantém escala 1 (não encolhe
+        // à toa). O gate antigo de <15% da última página foi removido em
+        // 2026-06-19 (deixava passar última-página meia-cheia).
+        const target = baseTotal - 1;
+        for (let s = 1 - AUTO_FIT_STEP; s >= AUTO_FIT_FLOOR - 1e-9; s -= AUTO_FIT_STEP) {
+          // mesma previsão de impressão (× PRINT_INFLATE) que a base
+          const scaled = heights.map(h => h * s * PRINT_INFLATE);
+          const p = packBlocks(scaled, PAGE_CAPACITY_PX, BLOCK_GAP_PX, keepFlags, keepNextFlags);
+          const t = p.reduce((a, q) => a + q.spanned, 0);
+          if (t <= target) return { pages: p, scale: +s.toFixed(2) };
         }
       }
     }
