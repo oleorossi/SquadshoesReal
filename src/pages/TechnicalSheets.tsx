@@ -184,7 +184,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, CaretUpDown as ChevronsUpDown, Ruler, Paperclip } from '@phosphor-icons/react';
+import { Check, CaretUpDown as ChevronsUpDown, Ruler, Paperclip, Handshake } from '@phosphor-icons/react';
+import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
@@ -2007,6 +2008,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <TabsTrigger value="media" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <History className="h-3.5 w-3.5" /> Fotos & Histórico
           </TabsTrigger>
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="terceirizados" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <Handshake className="h-3.5 w-3.5" /> Terceirizados
+          </TabsTrigger>
         </TabsList>
 
 
@@ -3496,6 +3501,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <VersionsTab sheetId={sheet.id} form={form} updateField={updateField} />
           <Separator />
           <TechnicalReferencePanel sheetId={sheet.id} sheetName={sheet.name || ''} />
+        </TabsContent>
+
+        {/* TAB: Terceirizados — serviços terceirizáveis desta referência */}
+        <TabsContent value="terceirizados" className="mt-4 space-y-4">
+          <ReferenceTerceirizacoesPanel sheetId={sheet.id} />
         </TabsContent>
       </Tabs>
     </div>
