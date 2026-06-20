@@ -250,7 +250,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
   );
 }
 
-export default function Contractors() {
+export default function Contractors({ embedded = false, activeTab, onActiveTabChange }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void } = {}) {
   const navigate = useNavigate();
   const { data: contractors = [], isLoading: loadingC } = useContractors();
   const { data: orders = [], isLoading: loadingO } = useServiceOrders();
@@ -1186,18 +1186,20 @@ export default function Contractors() {
   };
 
   if (loadingC || loadingO || loadingP) {
-    return <AppLayout><div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div></AppLayout>;
+    const spinner = <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return embedded ? spinner : <AppLayout>{spinner}</AppLayout>;
   }
 
-  return (
-    <AppLayout>
-      <div className="space-y-5 page-enter">
-        {/* Header */}
-        <EditorialPageHeader
-          sectionLabel="RH · TERCEIROS"
-          title="Terceirizados"
-          description="Gestão de prestadores, ordens de serviço e recibos"
-        />
+  const inner = (
+      <div className={cn("space-y-5", !embedded && "page-enter")}>
+        {/* Header — escondido quando embutido no hub /terceiros (o hub provê o seu) */}
+        {!embedded && (
+          <EditorialPageHeader
+            sectionLabel="RH · TERCEIROS"
+            title="Terceirizados"
+            description="Gestão de prestadores, ordens de serviço e recibos"
+          />
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1216,13 +1218,17 @@ export default function Contractors() {
           <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} color="bg-violet-600" />
         </div>
 
-        <Tabs defaultValue="orders">
-          <TabsList>
-            <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
-            <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
-            <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
-            <TabsTrigger value="recipes" className="gap-1.5"><FlaskConical className="h-3.5 w-3.5" /> Receitas Artesanais</TabsTrigger>
-          </TabsList>
+        <Tabs {...(embedded ? { value: activeTab ?? "orders", onValueChange: onActiveTabChange } : { defaultValue: "orders" })}>
+          {/* No hub /terceiros a navegação por aba é a barra única do hub —
+              a TabsList interna fica oculta e o painel ativo vem por props. */}
+          {!embedded && (
+            <TabsList>
+              <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
+              <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
+              <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
+              <TabsTrigger value="recipes" className="gap-1.5"><FlaskConical className="h-3.5 w-3.5" /> Receitas Artesanais</TabsTrigger>
+            </TabsList>
+          )}
 
           {/* ── ORDERS TAB ── */}
           <TabsContent value="orders" className="mt-3 space-y-3">
@@ -1689,7 +1695,10 @@ export default function Contractors() {
           </TabsContent>
         </Tabs>
       </div>
+  );
 
+  const overlays = (
+    <>
       {/* ── Artisanal Recipe Dialog ── */}
       <Dialog open={recipeDialog} onOpenChange={open => { setRecipeDialog(open); if (!open) { setEditingRecipe({ ...emptyRecipe }); setIsEditingRecipe(false); } }}>
         <DialogContent className="max-w-md">
@@ -2594,6 +2603,13 @@ export default function Contractors() {
         onGeneratePdf={() => handleGenerateOsPdf('selecao')}
         generating={osPdfBusy}
       />
-    </AppLayout>
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? inner : <AppLayout>{inner}</AppLayout>}
+      {overlays}
+    </>
   );
 }
