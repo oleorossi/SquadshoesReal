@@ -343,6 +343,67 @@ export function useCreatePurchaseOrder() {
 }
 
 
+/**
+ * Pagamento por OC, derivado de `accounts_payable`. A OC não carrega vencimento
+ * nem status de pagamento na própria linha — o vínculo real é o token
+ * `[OC#<id>]` em `accounts_payable.notes` (escrito por createAPEntries). Aqui
+ * fazemos UMA query (todas as AP com esse token), extraímos o uuid da OC e
+ * agregamos por OC. Usado pelo relatório de custos (pago/a pagar + vencimento).
+ */
+export interface PurchaseOrderPayment {
+  /** Tem ao menos uma conta a pagar (não-cancelada) vinculada. */
+  hasPayable: boolean;
+  /** Todas as parcelas não-canceladas estão pagas. */
+  isPaid: boolean;
+  /** Vencimento de referência: menor due_date pendente, senão o menor geral. */
+  dueDate: string | null;
+}
+
+const OC_TOKEN_RE = /\[OC#([0-9a-fA-F-]{36})\]/;
+
+export function usePurchaseOrderPayments() {
+  return useQuery({
+    queryKey: ['purchase_order_payments'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('accounts_payable')
+        .select('amount, due_date, status, notes')
+        .ilike('notes', '%[OC#%');
+      if (error) throw error;
+      // Acumula por OC, ignorando parcelas canceladas.
+      const acc = new Map<string, { all: string[]; paidCount: number; total: number; pendingDue: string[]; allDue: string[] }>();
+      for (const ap of (data || []) as any[]) {
+        const m = OC_TOKEN_RE.exec(ap.notes || '');
+        if (!m) continue;
+        const id = m[1];
+        const status = String(ap.status || '').toLowerCase();
+        if (status === 'cancelled' || status === 'cancelado' || status === 'estornado') continue;
+        let e = acc.get(id);
+        if (!e) { e = { all: [], paidCount: 0, total: 0, pendingDue: [], allDue: [] }; acc.set(id, e); }
+        e.total += 1;
+        const isPaid = status === 'paid' || status === 'pago';
+        if (isPaid) e.paidCount += 1;
+        if (ap.due_date) {
+          e.allDue.push(ap.due_date);
+          if (!isPaid) e.pendingDue.push(ap.due_date);
+        }
+      }
+      const map = new Map<string, PurchaseOrderPayment>();
+      for (const [id, e] of acc) {
+        const dueList = e.pendingDue.length > 0 ? e.pendingDue : e.allDue;
+        const dueDate = dueList.length > 0 ? dueList.slice().sort()[0] : null;
+        map.set(id, {
+          hasPayable: e.total > 0,
+          isPaid: e.total > 0 && e.paidCount === e.total,
+          dueDate,
+        });
+      }
+      return map;
+    },
+    staleTime: 30_000,
+  });
+}
+
 /** Resolve uuids → PV numbers ("PV-00001") em batch — usado em badges de OC/OS. */
 export function useSaleOrderNumbersByIds(ids: string[] | null | undefined) {
   return useQuery({
