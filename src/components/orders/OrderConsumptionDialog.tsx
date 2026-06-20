@@ -119,7 +119,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
       ] = await Promise.all([
         supabase
           .from('technical_sheets')
-          .select('id, upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, insole_material, insole_consumption, sole_material, sole_consumption, sole_color, sole_group_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption')
+          .select('id, upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, sole_material, sole_consumption, sole_color, sole_group_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption')
           .in('id', refIds),
         supabase
           .from('sheet_materials')
@@ -298,7 +298,14 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
           // Resolve sole product for this order's reference + color
           const soleProductId = soleColorMap.get(`${order.reference_id}::${orderColor}`) || null;
-          const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
+          // Consumo de forro por NUMERAÇÃO como primário (espelha o canônico
+          // orderConsumption.ts): lining_consumption_per_size quando preenchido.
+          const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
+          const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
+          const liningOverride = isPrincipalLining
+            ? (sheet?.lining_consumption_per_size && Object.keys(sheet.lining_consumption_per_size).length > 0 ? sheet.lining_consumption_per_size : null)
+            : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
+          const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption);
           addConsumptionRow(consumptionMap, {
             componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração',
             productUnit: 'metro', color: orderColor, totalQuantity: liningTotal,

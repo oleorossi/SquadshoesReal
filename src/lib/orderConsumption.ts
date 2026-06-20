@@ -129,6 +129,7 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   upper_consumption_per_size,
   lining_material,
   lining_consumption,
+  lining_consumption_per_size,
   insole_material,
   insole_consumption,
   insole_has_lining,
@@ -612,7 +613,16 @@ export function computeConsumptionForItems(
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
       const soleProductId = resolveSoleProductId(item.reference_id, orderColor);
-      const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', undefined, soleProductId, sheet?.sole_drives_consumption);
+      // Consumo por NUMERAÇÃO como primário (espelha o cabedal + o lado SQL):
+      // usa technical_sheets.lining_consumption_per_size quando preenchido; senão
+      // cai no escalar lining_consumption (via fallback dentro do helper). Antes a
+      // tela ignorava o per-size do forro → divergia do custeio/MRP. (2026-06-20)
+      const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
+      const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
+      const liningOverride = isPrincipalLining
+        ? (sheet?.lining_consumption_per_size && Object.keys(sheet.lining_consumption_per_size).length > 0 ? sheet.lining_consumption_per_size : null)
+        : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
+      const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption);
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração',
         groupName: liningMatch.group,
