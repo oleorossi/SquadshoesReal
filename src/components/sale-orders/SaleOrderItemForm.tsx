@@ -1697,7 +1697,7 @@ function TerceirizacaoItemSection({
       </div>
       {selectedIds.length > 0 && (
         <p className="text-[11px] text-muted-foreground">
-          {selectedIds.length} {selectedIds.length === 1 ? 'serviço será terceirizado' : 'serviços serão terceirizados'} — a Ordem de Serviço é criada/atualizada ao salvar o pedido.
+          {selectedIds.length} {selectedIds.length === 1 ? 'serviço marcado' : 'serviços marcados'} — isto é só a intenção. A Ordem de Serviço é criada quando você clicar <strong>Enviar para terceirizados</strong> no card de Terceirizações do pedido.
         </p>
       )}
     </div>
