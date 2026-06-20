@@ -914,10 +914,16 @@ export function useCreateSaleOrder() {
         .single();
       if (error) throw error;
 
+      let insertedItemIds: string[] = [];
       if (items.length > 0) {
-        const { error: itemsError } = await supabase
+        // Tira selected_terceirizacao_ids do INSERT base: a coluna pode ainda não
+        // existir (migration aplicada à parte do deploy do front) — não pode quebrar
+        // a criação do PV. A seleção é persistida num passo separado e GUARDADO logo
+        // abaixo. `.select('id')` devolve os IDs na ordem de inserção (= ordem de items).
+        const { data: insertedRows, error: itemsError } = await supabase
           .from('sale_order_items')
-          .insert(items.map(i => ({ ...i, sale_order_id: data.id, grade: i.grade })));
+          .insert(items.map(({ selected_terceirizacao_ids: _sel, ...i }) => ({ ...i, sale_order_id: data.id, grade: i.grade })))
+          .select('id');
         if (itemsError) {
           // Rollback: remove the parent order so we don't leave an empty/orphan PV
           const { error: cleanupErr } = await supabase.rpc('delete_empty_sale_order', { p_sale_order_id: data.id } as any);
@@ -926,19 +932,30 @@ export function useCreateSaleOrder() {
           }
           throw itemsError;
         }
+        insertedItemIds = (insertedRows || []).map((r: any) => r.id);
       }
 
       // Auto-sync financial records
       await syncFinancialRecords(data.id);
 
-      // Terceirização integrada: gera as Ordens de Serviço pras terceirizações
-      // marcadas nos itens (selected_terceirizacao_ids já foi persistido via spread
-      // acima). Non-fatal — o PV já foi salvo; falha aqui só vira aviso.
+      // Terceirização integrada: persiste a seleção nos itens (passo separado pra não
+      // quebrar a criação do PV se a coluna/RPC ainda não existir) e gera as Ordens de
+      // Serviço. Non-fatal — o PV já foi salvo; falha aqui só vira aviso.
       const anyTerceirizacao = items.some(
         (i) => Array.isArray(i.selected_terceirizacao_ids) && i.selected_terceirizacao_ids.length > 0,
       );
-      if (anyTerceirizacao) {
+      if (anyTerceirizacao && insertedItemIds.length === items.length) {
         try {
+          for (let idx = 0; idx < items.length; idx++) {
+            const sel = items[idx].selected_terceirizacao_ids;
+            if (Array.isArray(sel) && sel.length > 0) {
+              const { error: selErr } = await supabase
+                .from('sale_order_items')
+                .update({ selected_terceirizacao_ids: sel } as any)
+                .eq('id', insertedItemIds[idx]);
+              if (selErr) throw selErr;
+            }
+          }
           const { data: syncRes, error: syncErr } = await (supabase as any).rpc(
             'sync_sale_order_service_orders', { p_sale_order_id: data.id },
           );
