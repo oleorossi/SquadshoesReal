@@ -53,7 +53,6 @@ export const menuGroups = [
       { name: "Ficha Montadores", icon: ClipboardCheck,    path: "/fichas-montadores" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
-      { name: "Terceirizados",    icon: Truck,             path: "/terceirizados" },
     ],
   },
   {
@@ -132,10 +131,10 @@ export const menuGroups = [
     icon: Users,
     items: [
       { name: "Ponto & Folha",      icon: LayoutDashboard,path: "/rh" },
-      // "Terceirizados" (/contractors) foi unificado no hub "Terceirizados"
-      // (/terceirizados) do grupo Produção — cadastro de contratadas, OS,
-      // planejamento e receitas viraram abas lá. Item removido daqui pra
-      // não duplicar o mesmo conceito em dois lugares.
+      // "Terceirizados" (/terceirizados) movido do grupo Produção pro RH
+      // (pedido do dono 2026-06-20) — gestão de contratadas/terceirizados é
+      // função de RH. Rota = módulo 'terceirizados' (role RH já tem acesso).
+      { name: "Terceirizados",      icon: Truck,          path: "/terceirizados" },
     ],
   },
 ];
