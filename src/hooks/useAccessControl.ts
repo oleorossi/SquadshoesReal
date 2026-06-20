@@ -82,9 +82,13 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/optimized-production': 'producao',
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
-  '/terceiros': 'producao',            // hub Na Rua + Relatório (ambos producao)
-  '/terceiros-na-rua': 'producao',     // legado → redireciona pro hub
-  '/terceiros/relatorios': 'producao', // legado → redireciona pro hub
+  // Hub unificado de terceirização (Na Rua + OS + Planejamento + Prestadores +
+  // Receitas + Relatório). Governado pelo módulo 'terceirizados' (mesmo do antigo
+  // /contractors) — e o papel 'producao' recebe esse módulo em ROLE_MODULES, então
+  // quem acessava QUALQUER uma das duas telas antigas continua com acesso.
+  '/terceiros': 'terceirizados',
+  '/terceiros-na-rua': 'terceirizados',     // legado → redireciona pro hub
+  '/terceiros/relatorios': 'terceirizados', // legado → redireciona pro hub
   '/rh/pendencias-ponto': 'rh',
   '/rh/fechamento-semanal': 'rh',
   '/rh/ausencias': 'rh',
@@ -160,6 +164,11 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
   producao: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao',
+    // 'terceirizados': o hub /terceiros (Na Rua + cadastro de contratadas) é função
+    // operacional de produção. Antes a produção via /terceiros pelo módulo 'producao';
+    // como o hub passou a ser governado por 'terceirizados', concedemos aqui pra não
+    // tirar acesso de ninguém na unificação.
+    'terceirizados',
   ],
   almoxarifado: [
     'dashboard', 'estoque',

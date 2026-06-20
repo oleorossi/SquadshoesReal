@@ -799,8 +799,11 @@ const router = createBrowserRouter([
         element: <NfePage />,
       },
       {
+        // Unificado no hub /terceiros (cadastro de contratadas, OS, planejamento
+        // e receitas viraram abas). Mantido como redirect permanente pra não
+        // quebrar bookmarks/links/notificações antigas que apontam pra cá.
         path: "contractors",
-        element: <Contractors />,
+        element: <Navigate to="/terceiros?tab=orders" replace />,
       },
       {
         path: "artisanal-recipes",
