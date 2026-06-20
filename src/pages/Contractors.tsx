@@ -2,9 +2,9 @@ import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { toast } from 'sonner';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { SelectionTotalsBar } from '@/components/ui/selection-totals-bar';
+import { generateCostReportPdf } from '@/lib/costReportPdf';
+import { type CostReportRow, type DateBasis, summarizeRows, rowDateForBasis, inDateRange } from '@/lib/costReport';
 
 const emptyContractor: Partial<Contractor> = { name: '', trade_name: '', cnpj_cpf: '', phone: '', email: '', address: '', city: '', state: '', service_type: '', notes: '', active: true, payment_days: 15 };
 const emptyMaterial: MaterialSent = { material: '', color: '', meters: 0 };
@@ -271,6 +274,34 @@ export default function Contractors() {
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
   const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status-v2', 'active');
+
+  // ── Filtros do relatório de custos da OS, na URL (compartilháveis) ───────────
+  // contractor=id do prestador (vazio=todos), from/to=período, basis=base de data.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const contractorFilter = searchParams.get('contractor') ?? 'all';
+  const osFromDate = searchParams.get('from') ?? '';
+  const osToDate = searchParams.get('to') ?? '';
+  const osBasis: DateBasis = searchParams.get('basis') === 'criacao' ? 'criacao' : 'vencimento';
+  const setOsParam = useCallback((key: string, value: string | null) => {
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      if (value) p.set(key, value); else p.delete(key);
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
+  const hasOsReportFilters = !!(contractorFilter !== 'all' || osFromDate || osToDate);
+  const clearOsReportFilters = useCallback(() => {
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      ['contractor', 'from', 'to', 'basis'].forEach(k => p.delete(k));
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
+  const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
+  const [osPdfBusy, setOsPdfBusy] = useState(false);
+  const toggleOsSelect = useCallback((id: string) => {
+    setSelectedOsIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }, []);
   const [historyContractor, setHistoryContractor] = useState<Contractor | null>(null);
   const [ratesContractor, setRatesContractor] = useState<Contractor | null>(null);
   const [contractorDialog, setContractorDialog] = useState(false);
@@ -393,10 +424,73 @@ export default function Contractors() {
     return counts;
   }, [searchedOrders]);
 
+  // OS → linha do relatório de custos (pagamento/vencimento vêm do overview).
+  const toOsCostRow = useCallback((o: ServiceOrder): CostReportRow => {
+    const ov = osOverview?.get(o.id);
+    return {
+      id: o.id,
+      number: o.order_number,
+      provider: o.contractors?.name || '—',
+      description: o.description || o.artisanal_output_name || '—',
+      total: Number(o.total_value) || 0,
+      createdAt: o.created_at,
+      date: o.service_date || o.created_at,
+      dueDate: ov?.payment_due_date ?? null,
+      status: o.status,
+      statusLabel: osStatusLabel(o.status),
+      isPaid: ov?.is_paid ?? false,
+      isCancelled: isOsCancelled(o.status),
+    };
+  }, [osOverview]);
+
   const filteredOrders = useMemo(
-    () => searchedOrders.filter(o => matchesStatusChip(o.status, statusFilter)),
-    [searchedOrders, statusFilter],
+    () => searchedOrders.filter(o => {
+      if (!matchesStatusChip(o.status, statusFilter)) return false;
+      if (contractorFilter !== 'all' && o.contractor_id !== contractorFilter) return false;
+      if (osFromDate || osToDate) {
+        const r = toOsCostRow(o);
+        if (!inDateRange(rowDateForBasis(r, osBasis), osFromDate || null, osToDate || null)) return false;
+      }
+      return true;
+    }),
+    [searchedOrders, statusFilter, contractorFilter, osFromDate, osToDate, osBasis, toOsCostRow],
   );
+
+  const selectedOrders = useMemo(() => orders.filter(o => selectedOsIds.has(o.id)), [orders, selectedOsIds]);
+  const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
+  const allOsSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOsIds.has(o.id));
+  const toggleSelectAllOs = useCallback(() => {
+    setSelectedOsIds(prev => (filteredOrders.length > 0 && filteredOrders.every(o => prev.has(o.id))) ? new Set() : new Set(filteredOrders.map(o => o.id)));
+  }, [filteredOrders]);
+
+  const handleGenerateOsPdf = useCallback(async (scope: 'filtro' | 'selecao') => {
+    const src = scope === 'selecao' ? selectedOrders : filteredOrders;
+    if (src.length === 0) {
+      toast.error(scope === 'selecao' ? 'Selecione ≥1 OS pra gerar o relatório.' : 'Nenhuma OS no filtro atual.');
+      return;
+    }
+    setOsPdfBusy(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const providerName = contractorFilter !== 'all'
+        ? (contractors.find(c => c.id === contractorFilter)?.name ?? null)
+        : null;
+      await generateCostReportPdf({
+        kind: 'OS',
+        rows: src.map(toOsCostRow),
+        period: { from: osFromDate || null, to: osToDate || null },
+        basis: osBasis,
+        providerName,
+        generatedBy: auth?.user?.email || 'sistema',
+        scope,
+      });
+      toast.success('Relatório PDF gerado.');
+    } catch (err: any) {
+      toast.error(err.message || 'Falha ao gerar o PDF.');
+    } finally {
+      setOsPdfBusy(false);
+    }
+  }, [selectedOrders, filteredOrders, toOsCostRow, osFromDate, osToDate, osBasis, contractorFilter, contractors]);
 
   // ── Artisanal helpers ──────────────────────────────────────────────────────
   const findProductByNameColor = useCallback((name: string, color: string) => {
@@ -1160,11 +1254,47 @@ export default function Contractors() {
               </div>
             </div>
 
+            {/* Filtros do relatório: prestador + período + base de data + PDF */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={contractorFilter} onValueChange={v => setOsParam('contractor', v === 'all' ? null : v)}>
+                <SelectTrigger className="w-56 h-9">
+                  <span className="flex items-center gap-1.5 truncate"><Funnel className="h-3.5 w-3.5 shrink-0" /><SelectValue placeholder="Todos os prestadores" /></span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os prestadores</SelectItem>
+                  {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> De</Label>
+                <Input type="date" value={osFromDate} onChange={e => setOsParam('from', e.target.value || null)} className="h-9 w-[150px]" />
+                <Label className="text-xs text-muted-foreground">até</Label>
+                <Input type="date" value={osToDate} onChange={e => setOsParam('to', e.target.value || null)} className="h-9 w-[150px]" />
+              </div>
+              <Select value={osBasis} onValueChange={v => setOsParam('basis', v === 'criacao' ? 'criacao' : null)}>
+                <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vencimento">Por vencimento</SelectItem>
+                  <SelectItem value="criacao">Por criação</SelectItem>
+                </SelectContent>
+              </Select>
+              {hasOsReportFilters && (
+                <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={clearOsReportFilters}>
+                  <X className="h-3.5 w-3.5" /> Limpar filtros
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 ml-auto" disabled={osPdfBusy} onClick={() => handleGenerateOsPdf('filtro')}>
+                {osPdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                Relatório PDF ({filteredOrders.length})
+              </Button>
+            </div>
+
             <Panel flush>
                 <div className="rounded-md border-0 overflow-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead className="w-10"><Checkbox checked={allOsSelected} onCheckedChange={toggleSelectAllOs} aria-label="Selecionar todas as OS" /></TableHead>
                         <TableHead className="w-[90px]">Nº OS</TableHead>
                         <TableHead>Prestador</TableHead>
                         <TableHead className="w-[100px]">Pedido (PV)</TableHead>
@@ -1180,11 +1310,12 @@ export default function Contractors() {
                     </TableHeader>
                     <TableBody>
                       {filteredOrders.length === 0 ? (
-                        <TableRow><TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-12">Nenhuma OS encontrada</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={12} className="text-center text-sm text-muted-foreground py-12">Nenhuma OS encontrada</TableCell></TableRow>
                       ) : filteredOrders.map(o => {
                         const mats = getMaterials(o);
                         return (
-                          <TableRow key={o.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={e => { if ((e.target as HTMLElement).closest('button')) return; openEditOrder(o); }}>
+                          <TableRow key={o.id} className={cn("cursor-pointer hover:bg-muted/50 transition-colors", selectedOsIds.has(o.id) && 'bg-primary/5')} onClick={e => { if ((e.target as HTMLElement).closest('button')) return; openEditOrder(o); }}>
+                            <TableCell onClick={e => e.stopPropagation()}><Checkbox checked={selectedOsIds.has(o.id)} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} /></TableCell>
                             <TableCell className="text-sm font-mono font-medium">{o.order_number}</TableCell>
                             <TableCell className="text-sm font-medium">{o.contractors?.name || '—'}</TableCell>
                             <TableCell className="text-sm">
@@ -2451,6 +2582,17 @@ export default function Contractors() {
             onClick: handleBulkDeleteContractors,
           },
         ]}
+      />
+
+      {/* Rodapé fixo de seleção de OS: totais somados + relatório PDF */}
+      <SelectionTotalsBar
+        count={selectedOsIds.size}
+        total={osSelectionSummary.total}
+        paid={osSelectionSummary.paid}
+        pending={osSelectionSummary.pending}
+        onClear={() => setSelectedOsIds(new Set())}
+        onGeneratePdf={() => handleGenerateOsPdf('selecao')}
+        generating={osPdfBusy}
       />
     </AppLayout>
   );
