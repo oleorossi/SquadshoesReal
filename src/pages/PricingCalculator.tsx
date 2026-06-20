@@ -13,11 +13,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Calculator, FileText, Clock, Gauge } from '@phosphor-icons/react';
+import { Calculator, FileText, Clock } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import PricingCalculatorPanel from '@/components/financial/PricingCalculatorPanel';
 import PricingByTechnicalSheetPanel from '@/components/financial/PricingByTechnicalSheetPanel';
-import LaborCostCalculatorPanel from '@/components/financial/LaborCostCalculatorPanel';
 import SectorPricingCalculator from '@/components/financial/SectorPricingCalculator';
 
 export default function PricingCalculator() {
@@ -25,12 +24,17 @@ export default function PricingCalculator() {
   const requestedTab = searchParams.get('tab');
   const requestedSheet = searchParams.get('sheet');
 
-  const [activeTab, setActiveTab] = useState<string>(
-    requestedTab === 'by-sheet' || requestedSheet ? 'by-sheet' : 'manual'
-  );
+  // 'labor' (aba antiga "Mão de Obra" em horas/par) foi unificada na 'sector'
+  // (pares/hora) — links/legado com ?tab=labor caem na aba unificada.
+  const initialTab =
+    requestedTab === 'by-sheet' || requestedSheet ? 'by-sheet'
+      : requestedTab === 'labor' || requestedTab === 'sector' ? 'sector'
+      : 'manual';
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
 
   useEffect(() => {
     if (requestedTab === 'by-sheet' || requestedSheet) setActiveTab('by-sheet');
+    else if (requestedTab === 'labor' || requestedTab === 'sector') setActiveTab('sector');
   }, [requestedTab, requestedSheet]);
 
   return (
@@ -58,18 +62,11 @@ export default function PricingCalculator() {
             Por Ficha Técnica
           </TabsTrigger>
           <TabsTrigger
-            value="labor"
+            value="sector"
             className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
           >
             <Clock className="h-3.5 w-3.5" />
             Mão de Obra
-          </TabsTrigger>
-          <TabsTrigger
-            value="sector"
-            className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
-          >
-            <Gauge className="h-3.5 w-3.5" />
-            MOD por Setor
           </TabsTrigger>
         </TabsList>
 
@@ -79,10 +76,6 @@ export default function PricingCalculator() {
 
         <TabsContent value="by-sheet">
           <PricingByTechnicalSheetPanel initialSheetId={requestedSheet || undefined} />
-        </TabsContent>
-
-        <TabsContent value="labor">
-          <LaborCostCalculatorPanel />
         </TabsContent>
 
         <TabsContent value="sector">

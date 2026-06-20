@@ -1,7 +1,14 @@
 /**
  * Calculadora de custo de MÃO DE OBRA por par, detalhada por SETOR e baseada
- * em PRODUTIVIDADE (pares por hora). Aba "MOD por Setor" do Markup
+ * em PRODUTIVIDADE (pares por hora). É a aba "Mão de Obra" do Markup
  * (/pricing-calculator). Cálculo ISOLADO — não toca no preço do Markup.
+ *
+ * Unificação 2026-06-20: antes havia DUAS abas que faziam a MESMA conta — esta
+ * (pares/hora) e a antiga "Mão de Obra" (horas/par, labor_cost_results). Como
+ * `custo/par = custo-hora × horas = custo-hora ÷ (pares/hora)` (horas = 1/pares-hora),
+ * eram redundantes. Mantivemos o modelo pares/hora (mais completo: override por
+ * linha, capacidade→pares/hora, projeção de diária) e EMBUTIMOS aqui o cadastro
+ * de salário por setor (sector_labor_rates) que antes vivia na outra aba.
  *
  * Fórmula (src/lib/sectorPricing.ts é a fonte da verdade):
  *   custo/par do setor = custo-hora / pares_por_hora
@@ -24,7 +31,7 @@
  * Diferente da aba "Mão de Obra" (labor_cost_results), que trabalha em HORAS —
  * as duas convivem (retrocompat).
  */
-import { useState, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,7 +44,7 @@ import {
 import { toast } from 'sonner';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
-import { useSectorLaborRates } from '@/hooks/useSectorLaborRates';
+import { useSectorLaborRates, useUpsertSectorLaborRate, hourlyFromSalary } from '@/hooks/useSectorLaborRates';
 import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
@@ -101,9 +108,28 @@ function canonicalRows(startId: number): Row[] {
 
 export default function SectorPricingCalculator() {
   const { data: rateMap = {} } = useSectorLaborRates();
+  const upsert = useUpsertSectorLaborRate();
   const { data: results = [] } = useReferenceSectorPricing();
   const save = useSaveReferenceSectorPricing();
   const del = useDeleteReferenceSectorPricing();
+
+  // ── Cadastro de SALÁRIO por setor (sector_labor_rates) — embutido aqui depois
+  // que as abas "Mão de Obra" (horas/par) e "MOD por Setor" foram unificadas:
+  // faziam a MESMA conta, só mudando a unidade de entrada. Custo-hora = salário ÷ 220.
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const { key } of RATE_SECTORS) {
+        if (next[key] === undefined) next[key] = rateMap[key]?.monthly_salary ? String(rateMap[key]!.monthly_salary) : '';
+      }
+      return next;
+    });
+  }, [rateMap]);
+  const saveRate = (key: string) => {
+    const v = parseNum(draft[key]);
+    if (v !== (rateMap[key]?.monthly_salary ?? 0)) upsert.mutate({ sectorKey: key, monthlySalary: v });
+  };
 
   const rowId = useRef(1000);
   const [reference, setReference] = useState('');
@@ -244,17 +270,59 @@ export default function SectorPricingCalculator() {
 
   return (
     <div className="space-y-4">
-      {/* ── Aviso de configuração de salários ── */}
-      {noSalaries && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-xs">
-          <Warning className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-muted-foreground">
-            Nenhum setor tem salário cadastrado, então o custo-hora default é R$ 0,00. Cadastre o salário
-            mensal de cada setor na aba <strong>Mão de Obra → Salário por setor</strong> (custo-hora = salário ÷
-            {' '}{SALARY_HOUR_DIVISOR}) ou informe o custo-hora linha a linha aqui.
-          </p>
-        </div>
-      )}
+      {/* ── Config: salário por setor (custo-hora default) ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            Salário por setor
+          </CardTitle>
+          <CardDescription>
+            Cadastre o <strong>salário mensal</strong> de cada setor. O custo da hora é derivado
+            automaticamente = salário ÷ {SALARY_HOUR_DIVISOR} (mesma base da folha), <strong>sem encargos</strong>.
+            É o custo-hora default usado no cálculo abaixo (dá pra sobrescrever por linha).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {noSalaries && (
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs">
+              <Warning className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-muted-foreground">
+                Nenhum setor tem salário cadastrado ainda — preencha abaixo, ou informe o custo-hora
+                linha a linha no cálculo.
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {RATE_SECTORS.map(({ key, label }) => {
+              const hourly = hourlyFromSalary(parseNum(draft[key]));
+              return (
+                <div key={key} className="flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor={`rate-${key}`} className="text-xs font-medium truncate">{label}</Label>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs text-muted-foreground">R$</span>
+                      <Input
+                        id={`rate-${key}`}
+                        inputMode="decimal"
+                        className="h-8 w-24 text-right text-xs tabular-nums"
+                        value={draft[key] ?? ''}
+                        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                        onBlur={() => saveRate(key)}
+                        placeholder="0,00"
+                      />
+                      <span className="text-xs text-muted-foreground">/mês</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground text-right tabular-nums">
+                    custo-hora = {fmtBRL(hourly)}/h
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Cálculo por referência ── */}
       <Card>
