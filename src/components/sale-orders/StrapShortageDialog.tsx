@@ -287,7 +287,7 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
                         <SelectContent>
                           {contractors.length === 0 && (
                             <div className="px-3 py-2 text-xs text-muted-foreground">
-                              Nenhum contractor ativo. Cadastre em /contractors.
+                              Nenhum contractor ativo. Cadastre em Terceiros › Prestadores.
                             </div>
                           )}
                           {contractors.map(c => (

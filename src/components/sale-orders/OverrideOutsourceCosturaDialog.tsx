@@ -156,7 +156,7 @@ export function OverrideOutsourceCosturaDialog({ open, saleOrderId, onClose }: P
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
               Recomendado: contractor com service_type de Costura/Pesponto.
-              Cadastre mais em /contractors se a lista estiver vazia.
+              Cadastre mais em Terceiros › Prestadores se a lista estiver vazia.
             </p>
           </div>
 
