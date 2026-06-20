@@ -1006,11 +1006,21 @@ export default function SaleOrderForm() {
     setCapacityDialogOpen(false);
     if (!capacityResult) { doSubmit(); return; }
     try {
-      const res = await createOutsourceOrdersForOverloads(capacityResult.overloads);
+      const res = await createOutsourceOrdersForOverloads(capacityResult.overloads, isEdit ? id : undefined);
       if (res.created > 0) {
         toast.success(`${res.created} Ordem(ns) de Serviço terceirizada(s) criada(s) para suprir o excedente.`);
-      } else {
-        toast.warning('Nenhum terceirizado ativo encontrado — cadastre prestadores em Terceirizados.');
+      } else if (res.skippedDuplicate.length > 0 && res.skippedNoContractor.length === 0) {
+        toast.info('As OS de terceirização desses setores já existiam — nada duplicado.');
+      }
+      // Setores sem prestador cadastrado: NÃO jogamos a OS em um terceirizado
+      // qualquer (bug antigo). Avisamos pra cadastrar o prestador certo.
+      const semPrestador = [...new Set(res.skippedNoContractor)];
+      if (semPrestador.length > 0) {
+        toast.warning(
+          `Sem terceirizado p/ ${semPrestador.join(', ')} — nenhuma OS criada nesses setores. ` +
+          `Cadastre o prestador (com o setor no "tipo de serviço") em Terceirizados.`,
+          { duration: 8000 },
+        );
       }
     } catch (err: any) {
       toast.error(`Erro ao criar OS: ${err.message}`);
