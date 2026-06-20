@@ -7,6 +7,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
+import { PvGeneratedServiceOrdersCard } from '@/components/sale-orders/PvGeneratedServiceOrdersCard';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
@@ -52,6 +53,7 @@ const emptyForm: SaleOrderFormData = {
 
 const emptyItem: SaleOrderItemFormData = {
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1, observation: null,
+  selected_terceirizacao_ids: [],
 };
 
 const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
@@ -391,6 +393,8 @@ export default function SaleOrderForm() {
             // RPC update_sale_order_atomic JÁ persistem a coluna) → perda silenciosa
             // da variante de cor a cada edição. Auditoria 2026-06-14, Top10 #9.
             material_variant_id: (i as any).material_variant_id ?? null,
+            // Terceirização integrada: preserva a seleção ao reabrir o PV pra editar.
+            selected_terceirizacao_ids: ((i as any).selected_terceirizacao_ids as string[]) ?? [],
           };
         });
         // Sort items so that the same reference (and color) always appears together in editing
@@ -1131,6 +1135,13 @@ export default function SaleOrderForm() {
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
         />
+
+        {/* Terceirização integrada: OS geradas automaticamente a partir deste PV */}
+        {isEdit && id && (
+          <div className="mt-4">
+            <PvGeneratedServiceOrdersCard saleOrderId={id} />
+          </div>
+        )}
       </div>
 
       {/* Dialog de rascunho — opt-in pra restaurar / descartar */}

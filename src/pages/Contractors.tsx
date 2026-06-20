@@ -1326,11 +1326,17 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             <TableCell className="text-sm font-medium">{o.contractors?.name || '—'}</TableCell>
                             <TableCell className="text-sm">
                               {(() => {
-                                const so = o.sale_order_id ? saleOrders.find((s: any) => s.id === o.sale_order_id) : null;
+                                // Vínculo direto (legacy) OU vínculo de terceirização integrada (source_sale_order_id).
+                                const linkedPvId = o.sale_order_id || o.source_sale_order_id || null;
+                                const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
+                                const isAuto = !!o.source_sale_order_id;
                                 return so ? (
                                   <div>
                                     <span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>
                                     {so.client_order_number && <span className="text-xs text-muted-foreground block">{so.client_order_number}</span>}
+                                    {isAuto && (
+                                      <Badge variant="outline" className="mt-0.5 h-4 px-1.5 text-[9px] bg-primary/5 border-primary/30 text-primary">Vinculada a PV</Badge>
+                                    )}
                                   </div>
                                 ) : <span className="text-xs text-muted-foreground">—</span>;
                               })()}

@@ -72,6 +72,15 @@ export interface ServiceOrder {
   // pela migration 20260722180000_service-orders-delivered-at. Até regenerar o
   // types.ts, updates desta coluna usam `(supabase as any)`.
   delivered_at?: string | null;
+  // Terceirização integrada (gerada automaticamente a partir de um PV): vínculo
+  // com o pedido de venda de origem. Diferente do legacy sale_order_id, não passa
+  // por nenhum gating de produção — é só rastreabilidade/financeiro.
+  source_sale_order_id?: string | null;
+  source_sale_order_item_id?: string | null;
+  source_terceirizacao_id?: string | null;
+  source_item_key?: string | null;
+  payment_due_date?: string | null;
+  is_avulsa?: boolean | null;
   created_at: string;
   updated_at: string;
   contractors?: Contractor;
