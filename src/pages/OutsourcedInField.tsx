@@ -583,12 +583,12 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
       ) : (
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO · NA RUA"
-          title="Terceiros na Rua"
+          title="Terceirizados na Rua"
           description="Tudo o que está fora da fábrica agora — OSs de gargalo + OPs inteiras terceirizadas. Acompanhe prazo, atraso e recebimento num único lugar."
           actions={
             <>
               <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
-                <Link to="/terceiros?tab=relatorio">
+                <Link to="/terceirizados?tab=relatorio">
                   <BarChart3 className="h-3.5 w-3.5" />
                   Relatórios
                 </Link>

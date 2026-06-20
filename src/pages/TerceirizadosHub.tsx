@@ -1,7 +1,8 @@
 /**
- * Hub de Terceirização — UNIFICA num só módulo tudo que era espalhado entre
- * duas telas/itens de menu ("Terceiros" /terceiros e "Terceirizados"
- * /contractors). O usuário apontou que "é o mesmo conceito".
+ * Hub "Terceirizados" (rota canônica `/terceirizados`) — UNIFICA num só módulo
+ * tudo que era espalhado entre duas telas/itens de menu (o antigo "Terceiros"
+ * /terceiros e o "Terceirizados" /contractors). O dono apontou que "é o mesmo
+ * conceito" e nomeou o módulo unificado como **Terceirizados**.
  *
  * Uma única barra de abas (flat) engloba as duas funcionalidades:
  *   • Na Rua            → acompanhamento operacional (OutsourcedInField)
@@ -15,8 +16,8 @@
  * próprios — o header é deste hub). Contractors mantém seus 4 painéis, mas a
  * TabsList interna fica oculta: a aba ativa é controlada pela barra única daqui.
  *
- * Rotas antigas (/terceiros-na-rua, /terceiros/relatorios, /contractors)
- * redirecionam pra cá com a aba certa via ?tab=.
+ * Rotas antigas (/terceiros, /terceiros-na-rua, /terceiros/relatorios,
+ * /contractors) redirecionam pra cá com a aba certa via ?tab=.
  */
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -37,7 +38,7 @@ const CONTRACTOR_TABS = ['orders', 'planning', 'contractors', 'recipes'];
 const VALID_TABS = new Set(['rua', ...CONTRACTOR_TABS, 'relatorio']);
 const DEFAULT_TAB = 'rua';
 
-export default function Terceiros() {
+export default function TerceirizadosHub() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get('tab') ?? '';
   const [tab, setTab] = useState<string>(VALID_TABS.has(requested) ? requested : DEFAULT_TAB);
@@ -58,7 +59,7 @@ export default function Terceiros() {
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO"
-        title="Terceiros"
+        title="Terceirizados"
         description="Acompanhamento na rua, ordens de serviço, cadastro de contratadas e relatório — tudo num só lugar."
       />
       <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">

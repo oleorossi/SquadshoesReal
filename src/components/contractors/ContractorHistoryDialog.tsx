@@ -160,7 +160,7 @@ export function ContractorHistoryDialog({ contractorId, contractorName, open, on
             variant="ghost"
             size="sm"
             className="h-8 gap-1.5 text-xs text-muted-foreground"
-            onClick={() => { onOpenChange(false); navigate('/terceiros?tab=relatorio'); }}
+            onClick={() => { onOpenChange(false); navigate('/terceirizados?tab=relatorio'); }}
           >
             <ArrowSquareOut className="h-3.5 w-3.5" />
             Relatório completo (todas as contratadas)

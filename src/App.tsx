@@ -86,7 +86,7 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
-const Terceiros = lazy(() => import("./pages/Terceiros"));
+const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
 const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
@@ -687,21 +687,26 @@ const router = createBrowserRouter([
         element: <BottlenecksPage />,
       },
       {
-        // Hub de Terceirização — unifica "Na Rua" (operacional) e "Relatório"
-        // (analítico) em abas. Ver src/pages/Terceiros.tsx.
-        path: "terceiros",
-        element: <Terceiros />,
+        // Hub "Terceirizados" (rota canônica) — unifica Na Rua + OS +
+        // Planejamento + Prestadores + Receitas + Relatório em abas.
+        // Ver src/pages/TerceirizadosHub.tsx.
+        path: "terceirizados",
+        element: <TerceirizadosHub />,
       },
       {
         // Rotas antigas → redirecionam pro hub com a aba certa (deep-links e
-        // links internos preservados). OutsourcedInField/ContractorReports agora
-        // só renderizam embutidos no hub.
+        // links internos preservados). Inclui o nome canônico anterior
+        // (/terceiros) pra não quebrar bookmarks.
+        path: "terceiros",
+        element: <Navigate to="/terceirizados?tab=rua" replace />,
+      },
+      {
         path: "terceiros-na-rua",
-        element: <Navigate to="/terceiros?tab=rua" replace />,
+        element: <Navigate to="/terceirizados?tab=rua" replace />,
       },
       {
         path: "terceiros/relatorios",
-        element: <Navigate to="/terceiros?tab=relatorio" replace />,
+        element: <Navigate to="/terceirizados?tab=relatorio" replace />,
       },
       {
         // Pendências de ponto — dias com batidas inconsistentes/irregulares
@@ -803,7 +808,7 @@ const router = createBrowserRouter([
         // e receitas viraram abas). Mantido como redirect permanente pra não
         // quebrar bookmarks/links/notificações antigas que apontam pra cá.
         path: "contractors",
-        element: <Navigate to="/terceiros?tab=orders" replace />,
+        element: <Navigate to="/terceirizados?tab=orders" replace />,
       },
       {
         path: "artisanal-recipes",

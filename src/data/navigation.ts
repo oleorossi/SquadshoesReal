@@ -53,7 +53,7 @@ export const menuGroups = [
       { name: "Ficha Montadores", icon: ClipboardCheck,    path: "/fichas-montadores" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
       { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
-      { name: "Terceiros",        icon: Truck,             path: "/terceiros" },
+      { name: "Terceirizados",    icon: Truck,             path: "/terceirizados" },
     ],
   },
   {
@@ -132,8 +132,8 @@ export const menuGroups = [
     icon: Users,
     items: [
       { name: "Ponto & Folha",      icon: LayoutDashboard,path: "/rh" },
-      // "Terceirizados" (/contractors) foi unificado no hub "Terceiros"
-      // (/terceiros) do grupo Produção — cadastro de contratadas, OS,
+      // "Terceirizados" (/contractors) foi unificado no hub "Terceirizados"
+      // (/terceirizados) do grupo Produção — cadastro de contratadas, OS,
       // planejamento e receitas viraram abas lá. Item removido daqui pra
       // não duplicar o mesmo conceito em dois lugares.
     ],

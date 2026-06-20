@@ -82,11 +82,13 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/optimized-production': 'producao',
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
-  // Hub unificado de terceirização (Na Rua + OS + Planejamento + Prestadores +
-  // Receitas + Relatório). Governado pelo módulo 'terceirizados' (mesmo do antigo
-  // /contractors) — e o papel 'producao' recebe esse módulo em ROLE_MODULES, então
-  // quem acessava QUALQUER uma das duas telas antigas continua com acesso.
-  '/terceiros': 'terceirizados',
+  // Hub unificado "Terceirizados" (rota canônica /terceirizados): Na Rua + OS +
+  // Planejamento + Prestadores + Receitas + Relatório. Governado pelo módulo
+  // 'terceirizados' (mesmo do antigo /contractors) — e o papel 'producao' recebe
+  // esse módulo em ROLE_MODULES, então quem acessava QUALQUER uma das duas telas
+  // antigas continua com acesso.
+  '/terceirizados': 'terceirizados',
+  '/terceiros': 'terceirizados',            // nome canônico anterior → redireciona pro hub
   '/terceiros-na-rua': 'terceirizados',     // legado → redireciona pro hub
   '/terceiros/relatorios': 'terceirizados', // legado → redireciona pro hub
   '/rh/pendencias-ponto': 'rh',

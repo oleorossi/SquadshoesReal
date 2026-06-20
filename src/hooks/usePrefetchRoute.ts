@@ -47,10 +47,12 @@ const routeImports: Record<string, () => Promise<any>> = {
   // e /timesheet → /rh sejam instantâneos.
   '/employees': () => import('@/pages/RHHub'),
   '/timesheet': () => import('@/pages/RHHub'),
-  // /contractors foi unificado no hub /terceiros (redirect). Prefetch do hub
-  // pra que o redirect seja instantâneo, igual ao padrão /employees → /rh.
-  '/terceiros': () => import('@/pages/Terceiros'),
-  '/contractors': () => import('@/pages/Terceiros'),
+  // /contractors e o antigo /terceiros foram unificados no hub /terceirizados
+  // (redirects). Prefetch do hub pra que o redirect seja instantâneo, igual ao
+  // padrão /employees → /rh.
+  '/terceirizados': () => import('@/pages/TerceirizadosHub'),
+  '/terceiros': () => import('@/pages/TerceirizadosHub'),
+  '/contractors': () => import('@/pages/TerceirizadosHub'),
   '/pronta-entrega': () => import('@/pages/ProntaEntrega'),
   '/rh': () => import('@/pages/RHHub'),
   '/solados': () => import('@/pages/SolesHub'),
