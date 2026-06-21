@@ -604,7 +604,10 @@ export function calculateDaySummary(
   // histórico fica CONGELADO (folhas/saldos fechados não são recalculados).
   const isWorkday = worksOnDow(schedule, dayOfWeek) && !isHoliday;
   const expectedMinutes = isWorkday ? expectedDayMinutes(schedule) : 0;
-  const tolerance = schedule.tolerance_minutes ?? 10;
+  // schedule pode chegar NULL (ex.: escala ainda não carregada / funcionário sem
+  // escala e sem padrão). worksOnDow/expectedDayMinutes já tratam null; este acesso
+  // direto NÃO tratava e quebrava ("null is not an object (t.tolerance_minutes)").
+  const tolerance = schedule?.tolerance_minutes ?? 10;
 
   const sp = punches.length >= 2
     ? splitDayMinutes(punches, dayOfWeek, isHoliday)
