@@ -393,16 +393,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     );
   };
 
+  // PRODUTOS = FONTE ÚNICA de cor (2026-06-21). Antes mesclava group.colors (CSV
+  // legado), group_supplier_materials e group_colors (catálogo) — todos vazios ou
+  // já migrados pra produto. A cor de um material agora é SÓ o produto do grupo
+  // (exatamente o que o débito/consumo usa via resolve_material_product), então o
+  // seletor não mostra mais cor "fantasma" sem estoque.
   const mergeAllGroupColors = (group: any): string[] => {
-    const allColors: string[] = [];
-    if (group.colors) allColors.push(...group.colors.split(','));
-    allColors.push(...getColorsFromGroupSupplierMaterials(group.id));
-    allColors.push(...getColorsFromProducts(group.id));
-    // Include colors from the group_colors table
-    allGroupColors
-      .filter(gc => gc.group_id === group.id)
-      .forEach(gc => allColors.push(gc.color_name));
-    return uniqueSortedColors(allColors);
+    return getColorsFromProducts(group.id);
   };
 
   const getColorsFromGroupName = (groupName: string): string[] => {

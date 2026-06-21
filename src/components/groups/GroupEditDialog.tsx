@@ -3,7 +3,6 @@ import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, Mag
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
-import GroupColorsManager from '@/components/groups/GroupColorsManager';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
@@ -974,9 +973,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   </p>
                 </div>
                 )}
-                {show.colorsManager && (
-                  <GroupColorsManager groupId={group.id} groupName={group.name} />
-                )}
+                {/* "Cores da família" (catálogo group_colors) + "Fontes de cores"
+                    REMOVIDOS em 2026-06-21: a cor de material agora vive SÓ nos
+                    PRODUTOS do grupo (aba Itens / Gerenciar variantes), que é a
+                    fonte do débito/consumo. Catálogo de cores estava vazio. */}
 
               </div>
 
