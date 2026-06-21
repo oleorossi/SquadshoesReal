@@ -57,10 +57,16 @@ import {
   type ReferenceSectorPricing, type ReferenceSectorPricingLine,
 } from '@/hooks/useReferenceSectorPricing';
 
-// Mesma lista canônica do PCP: fluxo de fábrica (DISPLAY_SECTORS) + Expedição.
-const RATE_SECTORS: { key: SectorKey; label: string }[] = [
-  ...DISPLAY_SECTORS,
-  { key: 'expedicao' as SectorKey, label: SECTOR_LABELS.expedicao },
+// Setor EXCLUSIVO do cálculo de Mão de Obra (não é setor canônico de produção:
+// NÃO entra em sectors.ts/DISPLAY_SECTORS, então não mexe em PCP/fichas/ondas).
+// Pedido do dono 2026-06-20: custear a "Costura de Palmilha" à parte da "Costura".
+const COSTURA_PALMILHA = { key: 'costura_palmilha', label: 'Costura de Palmilha' };
+
+// Lista canônica do PCP (DISPLAY_SECTORS) + "Costura de Palmilha" (logo após a
+// Costura) + Expedição. Chave string-livre — sector_labor_rates é por texto.
+const RATE_SECTORS: { key: string; label: string }[] = [
+  ...DISPLAY_SECTORS.flatMap((s) => (s.key === 'costura' ? [s, COSTURA_PALMILHA] : [s])),
+  { key: 'expedicao', label: SECTOR_LABELS.expedicao },
 ];
 
 // Jornada-padrão da fábrica (horas/dia). Ajuste aqui se mudar — usada pra
@@ -78,6 +84,7 @@ function fmtNum(v: number, max = 2): string {
 }
 
 function sectorLabel(key: string): string {
+  if (key === COSTURA_PALMILHA.key) return COSTURA_PALMILHA.label;
   return SECTOR_LABELS[key as SectorKey] ?? key;
 }
 
