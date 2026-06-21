@@ -205,31 +205,16 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
    ────────────────────────────────────────────────── */
 function SoleYieldEditor({ groupId }: { groupId: string }) {
   const queryClient = useQueryClient();
-  const { data: allProducts = [] } = useProducts();
 
-  // Load sole products and group by model (strip color suffix)
-  const soleProducts = useMemo(() => allProducts.filter(p => p.category === 'Solado' && p.active), [allProducts]);
-
-  // Group soles by base model name (e.g. "01 - Preto" & "01 - Caramelo" → "01")
-  const soleModels = useMemo(() => {
-    const modelMap = new Map<string, { name: string; ids: string[] }>();
-    soleProducts.forEach(p => {
-      const baseName = getSoleModelName(p.name, p.color);
-      if (!modelMap.has(baseName)) {
-        modelMap.set(baseName, { name: baseName, ids: [] });
-      }
-      modelMap.get(baseName)!.ids.push(p.id);
-    });
-    return Array.from(modelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [soleProducts]);
-
-  // Load component sheets for this group
+  // Ficha de componente do grupo — dimensões do material (usadas na conversão
+  // dm²→metro/placa do consumo). Editar aqui aplica a TODAS as fichas do grupo.
+  // (O rendimento por numeração × solado saiu daqui — vive na gestão de Solados.)
   const { data: sheets = [], isLoading } = useQuery({
     queryKey: ['component_sheets_group', groupId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('component_sheets')
-        .select('id, product_id, yield_per_size, yield_per_sole, waste_pct, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
+        .select('id, waste_pct, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
         .eq('group_id', groupId);
       if (error) throw error;
       return data;
@@ -239,22 +224,12 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
   // Use the first sheet as the canonical one for group-level editing
   const sheet = sheets[0] as any;
 
-  const [selectedModelName, setSelectedModelName] = useState<string>('');
-  const [yieldGrid, setYieldGrid] = useState<Record<string, number>>({});
   const [wastePct, setWastePct] = useState(8);
   const [dimLength, setDimLength] = useState(0);
   const [dimWidth, setDimWidth] = useState(0);
   const [dimThickness, setDimThickness] = useState(0);
   const [dimUnit, setDimUnit] = useState('mm');
   const [saving, setSaving] = useState(false);
-
-  const selectedModel = useMemo(() => soleModels.find(m => m.name === selectedModelName), [soleModels, selectedModelName]);
-
-  // Current yield_per_sole map
-  const yieldPerSole = useMemo(() => {
-    if (!sheet?.yield_per_sole || typeof sheet.yield_per_sole !== 'object') return {} as Record<string, Record<string, number>>;
-    return sheet.yield_per_sole as Record<string, Record<string, number>>;
-  }, [sheet]);
 
   // Init dimensions from sheet
   useEffect(() => {
@@ -478,98 +453,6 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
         </CardContent>
       </Card>
 
-      {/* Sole-specific yield */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Footprints className="h-4 w-4" />
-            Rendimento por Numeração × Solado
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Soles with data badges */}
-          {modelsWithData.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {modelsWithData.map(model => (
-                <Badge
-                  key={model.name}
-                  variant={selectedModelName === model.name ? 'default' : 'secondary'}
-                  className="cursor-pointer text-xs"
-                  onClick={() => setSelectedModelName(model.name)}
-                >
-                  {model.name}
-                </Badge>
-              ))}
-            </div>
-          )}
-
-          <div>
-            <Label className="text-xs">Selecionar Solado (modelo)</Label>
-            <Select value={selectedModelName} onValueChange={setSelectedModelName}>
-              <SelectTrigger className="h-8 text-xs mt-1">
-                <SelectValue placeholder="Escolha o modelo de solado..." />
-              </SelectTrigger>
-              <SelectContent>
-                {soleModels.map(m => (
-                  <SelectItem key={m.name} value={m.name} className="text-xs">
-                    {m.name} ({m.ids.length} variante{m.ids.length > 1 ? 's' : ''})
-                    {modelsWithData.some(mwd => mwd.name === m.name) && ' ✓'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {selectedModelName ? (
-            <>
-              <p className="text-xs text-muted-foreground">
-                Consumo em dm² por par para o solado <strong>{selectedModelName}</strong>:
-              </p>
-              <div className="overflow-x-auto border rounded-md">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      {activeSizes.map(s => (
-                        <TableHead key={s} className="text-xs text-center px-2 min-w-[60px] font-bold">{s}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      {activeSizes.map(s => (
-                        <TableCell key={s} className="px-1 py-2">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={yieldGrid[s] || ''}
-                            onChange={e => handleYieldChange(s, e.target.value)}
-                            className="h-9 text-sm text-center w-16 px-1"
-                            placeholder="0"
-                          />
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button size="sm" variant="outline" onClick={handleFill} disabled={saving || !selectedModelName}>
-                  <Ruler className="h-3.5 w-3.5 mr-1" /> Preencher
-                </Button>
-                <Button size="sm" onClick={handleSaveYield} disabled={saving}>
-                  {saving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
-                  Salvar Rendimento
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center py-4">
-              Selecione um solado para definir o rendimento por numeração.
-            </p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -898,7 +781,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
             <TabsList className="grid w-full" style={{ gridTemplateColumns: showYieldTab ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)' }}>
               <TabsTrigger value="general">Geral</TabsTrigger>
-              {showYieldTab && <TabsTrigger value="specs">Rendimento / Solado</TabsTrigger>}
+              {showYieldTab && <TabsTrigger value="specs">Dimensões</TabsTrigger>}
               <TabsTrigger value="items">Itens ({products.length})</TabsTrigger>
             </TabsList>
 
