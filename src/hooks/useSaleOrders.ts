@@ -780,6 +780,9 @@ export type SaleOrderItemFormData = {
    *  terceirizar este item neste PV. Default [] = faz em casa (nada terceirizado).
    *  Ao salvar o PV, o RPC sync_sale_order_service_orders gera/atualiza as OS. */
   selected_terceirizacao_ids?: string[];
+  /** Quantidade PARCIAL a enviar por serviço terceirizado: { terceirizacao_id: pares }.
+   *  Ausente/vazio = envia o total do item (compat). Persistido junto da intenção. */
+  terceirizacao_quantities?: Record<string, number>;
 };
 
 export function useSaleOrders() {
@@ -922,7 +925,7 @@ export function useCreateSaleOrder() {
         // abaixo. `.select('id')` devolve os IDs na ordem de inserção (= ordem de items).
         const { data: insertedRows, error: itemsError } = await supabase
           .from('sale_order_items')
-          .insert(items.map(({ selected_terceirizacao_ids: _sel, ...i }) => ({ ...i, sale_order_id: data.id, grade: i.grade })))
+          .insert(items.map(({ selected_terceirizacao_ids: _sel, terceirizacao_quantities: _tq, ...i }) => ({ ...i, sale_order_id: data.id, grade: i.grade })))
           .select('id');
         if (itemsError) {
           // Rollback: remove the parent order so we don't leave an empty/orphan PV
@@ -950,9 +953,10 @@ export function useCreateSaleOrder() {
           for (let idx = 0; idx < items.length; idx++) {
             const sel = items[idx].selected_terceirizacao_ids;
             if (Array.isArray(sel) && sel.length > 0) {
+              const tq = items[idx].terceirizacao_quantities;
               const { error: selErr } = await supabase
                 .from('sale_order_items')
-                .update({ selected_terceirizacao_ids: sel } as any)
+                .update({ selected_terceirizacao_ids: sel, terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {} } as any)
                 .eq('id', insertedItemIds[idx]);
               if (selErr) throw selErr;
             }
@@ -2216,13 +2220,14 @@ export function useUpdateSaleOrder() {
       try {
         for (let idx = 0; idx < items.length; idx++) {
           const sel = items[idx]?.selected_terceirizacao_ids;
+          const tq = items[idx]?.terceirizacao_quantities;
           const newId = insertedIds[idx];
           if (newId && Array.isArray(sel) && sel.length > 0) {
             const { error: selErr } = await supabase
               .from('sale_order_items')
-              .update({ selected_terceirizacao_ids: sel } as any)
+              .update({ selected_terceirizacao_ids: sel, terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {} } as any)
               .eq('id', newId);
-            if (selErr) console.warn('[useUpdateSaleOrder] falha ao gravar selected_terceirizacao_ids:', selErr.message);
+            if (selErr) console.warn('[useUpdateSaleOrder] falha ao gravar terceirização:', selErr.message);
           }
         }
       } catch (e: any) {

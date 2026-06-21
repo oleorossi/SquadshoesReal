@@ -1430,8 +1430,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         <TerceirizacaoItemSection
           referenceId={item.reference_id}
           selectedIds={item.selected_terceirizacao_ids || []}
+          quantities={item.terceirizacao_quantities || {}}
           totalPairs={totalPairs}
           onChange={(ids) => onUpdate(index, 'selected_terceirizacao_ids', ids)}
+          onQtyChange={(q) => onUpdate(index, 'terceirizacao_quantities', q)}
         />
       </div>
 
@@ -1710,56 +1712,97 @@ function ReferencePickerControlled({
  * terceirização marcada. Default tudo desmarcado (faz em casa).
  */
 function TerceirizacaoItemSection({
-  referenceId, selectedIds, totalPairs, onChange,
+  referenceId, selectedIds, quantities, totalPairs, onChange, onQtyChange,
 }: {
   referenceId: string;
   selectedIds: string[];
+  quantities: Record<string, number>;
   totalPairs: number;
   onChange: (ids: string[]) => void;
+  onQtyChange: (q: Record<string, number>) => void;
 }) {
   const { data: terceirizacoes = [] } = useActiveReferenceTerceirizacoes(referenceId || null);
   if (!referenceId || terceirizacoes.length === 0) return null;
 
+  // Qtd a enviar de cada serviço. Sem entrada no mapa = total do item (compat).
+  const qtyFor = (id: string) => {
+    const v = quantities?.[id];
+    return (typeof v === 'number' && v >= 0) ? Math.min(Math.round(v), totalPairs) : totalPairs;
+  };
+
   const toggle = (id: string) => {
     const set = new Set(selectedIds);
-    if (set.has(id)) set.delete(id); else set.add(id);
+    const nextQ = { ...(quantities || {}) };
+    if (set.has(id)) { set.delete(id); delete nextQ[id]; }
+    else { set.add(id); nextQ[id] = totalPairs; }  // ao marcar, default = manda tudo
     onChange([...set]);
+    onQtyChange(nextQ);
+  };
+
+  const setQty = (id: string, raw: number) => {
+    const v = Math.max(0, Math.min(totalPairs, Math.round(Number(raw) || 0)));
+    onQtyChange({ ...(quantities || {}), [id]: v });
   };
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
       <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-        <Handshake className="h-3.5 w-3.5" /> Terceirização (opcional)
+        <Handshake className="h-3.5 w-3.5" /> Terceirização (opcional) — escolha quanto de cada serviço vai pra rua
       </div>
       <div className="space-y-1.5">
         {terceirizacoes.map((t) => {
           const checked = selectedIds.includes(t.id);
-          const total = (Number(t.value_per_pair) || 0) * (totalPairs || 0);
+          const sent = qtyFor(t.id);
+          const inHouse = Math.max(0, (totalPairs || 0) - sent);
+          const cost = (Number(t.value_per_pair) || 0) * sent;
+          const pct = totalPairs > 0 ? Math.round((sent / totalPairs) * 100) : 0;
           const contractor = t.contractors?.trade_name || t.contractors?.name || 'Contratada';
           return (
-            <label
+            <div
               key={t.id}
               className={cn(
-                'flex items-center gap-2.5 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
+                'rounded-md border px-2.5 py-2 transition-colors',
                 checked ? 'border-primary/40 bg-primary/5' : 'border-border/50 hover:bg-muted/40',
               )}
             >
-              <Checkbox checked={checked} onCheckedChange={() => toggle(t.id)} />
-              <div className="flex-1 min-w-0 text-xs">
-                <span className="font-medium text-foreground">{contractor}</span>
-                <span className="text-muted-foreground"> — {t.description}</span>
-              </div>
-              <div className="text-right text-xs tabular-nums shrink-0">
-                <span className="text-muted-foreground">{formatCurrency(t.value_per_pair)}/par × {totalPairs}</span>
-                <span className="ml-1.5 font-semibold text-foreground">= {formatCurrency(total)}</span>
-              </div>
-            </label>
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <Checkbox checked={checked} onCheckedChange={() => toggle(t.id)} />
+                <div className="flex-1 min-w-0 text-xs">
+                  <span className="font-medium text-foreground">{contractor}</span>
+                  <span className="text-muted-foreground"> — {t.description}</span>
+                </div>
+                <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{formatCurrency(t.value_per_pair)}/par</span>
+              </label>
+
+              {checked && (
+                <div className="mt-2 pl-7 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Enviar</span>
+                    <Input
+                      type="number" min={0} max={totalPairs} value={sent}
+                      onChange={(e) => setQty(t.id, Number(e.target.value))}
+                      className="h-7 w-16 text-xs text-center tabular-nums"
+                    />
+                    <span className="text-muted-foreground">de {totalPairs} pares</span>
+                    <span className="ml-auto font-semibold text-foreground tabular-nums">= {formatCurrency(cost)}</span>
+                  </div>
+                  {/* barra rua × fábrica */}
+                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] tabular-nums">
+                    <span className="text-primary font-medium">{sent} na rua</span>
+                    <span className="text-muted-foreground">{inHouse} na fábrica</span>
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
       {selectedIds.length > 0 && (
         <p className="text-[11px] text-muted-foreground">
-          {selectedIds.length} {selectedIds.length === 1 ? 'serviço marcado' : 'serviços marcados'} — isto é só a intenção. A Ordem de Serviço é criada quando você clicar <strong>Enviar para terceirizados</strong> no card de Terceirizações do pedido.
+          Só intenção — a Ordem de Serviço é criada <strong>com a quantidade escolhida</strong> quando você clicar <strong>Enviar para terceirizados</strong> no card de Terceirizações do pedido.
         </p>
       )}
     </div>

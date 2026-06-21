@@ -54,6 +54,7 @@ const emptyForm: SaleOrderFormData = {
 const emptyItem: SaleOrderItemFormData = {
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1, observation: null,
   selected_terceirizacao_ids: [],
+  terceirizacao_quantities: {},
 };
 
 const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
@@ -395,6 +396,8 @@ export default function SaleOrderForm() {
             material_variant_id: (i as any).material_variant_id ?? null,
             // Terceirização integrada: preserva a seleção ao reabrir o PV pra editar.
             selected_terceirizacao_ids: ((i as any).selected_terceirizacao_ids as string[]) ?? [],
+            // ...e a quantidade parcial por serviço (split fábrica × rua).
+            terceirizacao_quantities: ((i as any).terceirizacao_quantities as Record<string, number>) ?? {},
           };
         });
         // Sort items so that the same reference (and color) always appears together in editing
