@@ -206,6 +206,29 @@ export function useSetProductsGroup() {
   });
 }
 
+/**
+ * Aplica um MESMO preço/custo unitário (unit_price) a vários produtos de uma
+ * vez. Usado pela gestão de itens por grupo (página Grupos) pra corrigir o
+ * custo de vários itens do grupo num clique. Só mexe em unit_price — NÃO toca
+ * quantity/stock, então não dispara trigger de estoque/OC automática.
+ */
+export function useBulkSetProductPrice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, unit_price }: { ids: string[]; unit_price: number }) => {
+      if (!ids.length) return { count: 0 };
+      const { error } = await supabase.from('products').update({ unit_price }).in('id', ids);
+      if (error) throw error;
+      return { count: ids.length };
+    },
+    onSuccess: ({ count }) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      if (count) toast.success(`Preço aplicado em ${count} ${count === 1 ? 'item' : 'itens'}.`);
+    },
+    onError: (err: Error) => toast.error(`Erro ao aplicar preço: ${err.message}`),
+  });
+}
+
 export function useSyncSiblings() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -11,10 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import {
-  MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X,
+  MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X, Tag,
 } from '@phosphor-icons/react';
-import { useProducts, useUpdateProduct, useSetProductsGroup } from '@/hooks/useProducts';
+import { useProducts, useUpdateProduct, useSetProductsGroup, useBulkSetProductPrice } from '@/hooks/useProducts';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { Product, ProductFormData } from '@/types/inventory';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
@@ -37,11 +38,13 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
   const { data: products = [] } = useProducts();
   const setGroup = useSetProductsGroup();
   const updateProduct = useUpdateProduct();
+  const bulkSetPrice = useBulkSetProductPrice();
 
   const [mode, setMode] = useState<'list' | 'add'>('list');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveTarget, setMoveTarget] = useState<string>('');
+  const [bulkPrice, setBulkPrice] = useState<number>(0);
   const [addSearch, setAddSearch] = useState('');
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -50,7 +53,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
   // Reset quando troca de grupo ou reabre.
   useEffect(() => {
     setMode('list'); setSearch(''); setSelected(new Set());
-    setMoveTarget(''); setAddSearch(''); setAddSelected(new Set());
+    setMoveTarget(''); setBulkPrice(0); setAddSearch(''); setAddSelected(new Set());
   }, [group?.id, open]);
 
   const items = useMemo(() => {
@@ -89,6 +92,11 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
     setSelected(new Set());
   };
   const doRemoveOne = async (id: string) => { await setGroup.mutateAsync({ ids: [id], group_id: null }); };
+  const doApplyPrice = async () => {
+    if (selected.size === 0 || !(bulkPrice > 0)) return;
+    await bulkSetPrice.mutateAsync({ ids: [...selected], unit_price: bulkPrice });
+    setSelected(new Set()); setBulkPrice(0);
+  };
   const doAdd = async () => {
     if (addSelected.size === 0) return;
     await setGroup.mutateAsync({ ids: [...addSelected], group_id: group.id });
@@ -185,6 +193,17 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
                   <span className="text-sm font-medium">{selected.size} selecionado{selected.size === 1 ? '' : 's'}</span>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
+                    {/* Aplicar custo unitário em massa nos itens selecionados.
+                        Usa o CurrencyInput (limpa o zero ao focar). */}
+                    <div className="flex items-center gap-1.5 border-r border-border pr-2">
+                      <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Custo</span>
+                      <div className="w-32">
+                        <CurrencyInput value={bulkPrice} onChange={setBulkPrice} className="h-8 text-xs" />
+                      </div>
+                      <Button size="sm" className="h-8 gap-1.5" disabled={!(bulkPrice > 0) || bulkSetPrice.isPending} onClick={doApplyPrice}>
+                        <Tag className="h-3.5 w-3.5" /> Aplicar
+                      </Button>
+                    </div>
                     <Select value={moveTarget} onValueChange={setMoveTarget}>
                       <SelectTrigger className="h-8 w-52"><SelectValue placeholder="Mover para o grupo…" /></SelectTrigger>
                       <SelectContent>
