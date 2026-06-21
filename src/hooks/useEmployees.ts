@@ -203,3 +203,46 @@ export function useDeleteAdvance() {
     onError: (e: Error) => toast.error(e.message),
   });
 }
+
+/** Dá baixa (status='paid') ou reabre (status='pending') UM vale. "Dar baixa" =
+ *  o valor já foi descontado na folha, então sai do saldo a abater. */
+export function useSetAdvanceStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: 'pending' | 'paid' }) => {
+      const { error } = await supabase
+        .from('employee_advances')
+        .update({ status, updated_at: new Date().toISOString() } as any)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee_advances'] });
+      toast.success(v.status === 'paid' ? 'Vale baixado (já descontado em folha).' : 'Vale reaberto.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/** Dá baixa em TODOS os vales pendentes de um funcionário de uma vez (após a
+ *  folha descontar o saldo). Retorna quantos foram baixados. */
+export function useSettleEmployeeAdvances() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (employeeId: string) => {
+      const { data, error } = await supabase
+        .from('employee_advances')
+        .update({ status: 'paid', updated_at: new Date().toISOString() } as any)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .select('id');
+      if (error) throw error;
+      return (data || []).length;
+    },
+    onSuccess: (n) => {
+      qc.invalidateQueries({ queryKey: ['employee_advances'] });
+      toast.success(`${n} ${n === 1 ? 'vale baixado' : 'vales baixados'} (descontados em folha).`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}

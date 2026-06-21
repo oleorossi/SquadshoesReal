@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { CircleNotch as Loader2, Plus, Wallet, MagnifyingGlass as Search, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, Wallet, MagnifyingGlass as Search, Warning as AlertTriangle, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import {
   useEmployees, useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
+  useSetAdvanceStatus, useSettleEmployeeAdvances,
 } from '@/hooks/useEmployees';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { todayISO } from '@/lib/date';
@@ -40,6 +41,8 @@ export default function AdvancesPanel() {
   const { data: allAdvances = [], isLoading } = useEmployeeAdvances(null);
   const addAdvance = useAddAdvance();
   const deleteAdvance = useDeleteAdvance();
+  const setAdvanceStatus = useSetAdvanceStatus();
+  const settleEmployee = useSettleEmployeeAdvances();
 
   const empMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
 
@@ -204,6 +207,7 @@ export default function AdvancesPanel() {
                   <TableHead className="text-right">No mês</TableHead>
                   <TableHead className="text-right">Saldo aberto</TableHead>
                   <TableHead className="text-right">Vales pendentes</TableHead>
+                  <TableHead className="text-right">Ação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -216,6 +220,23 @@ export default function AdvancesPanel() {
                     </TableCell>
                     <TableCell className="text-right">
                       {b.pendingCount > 0 ? <Badge variant="outline" className="text-xs">{b.pendingCount}</Badge> : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {b.pendingCount > 0 ? (
+                        <Button
+                          size="sm" variant="outline"
+                          className="h-7 text-xs gap-1 border-emerald-400 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                          onClick={() => {
+                            if (window.confirm(`Dar baixa em ${b.pendingCount} vale(s) pendente(s) de ${b.name} (${fmt(b.pending)})? Use depois que a folha já descontou o saldo.`)) {
+                              settleEmployee.mutate(b.id);
+                            }
+                          }}
+                          disabled={settleEmployee.isPending}
+                          title="Dar baixa em todos os vales pendentes deste funcionário"
+                        >
+                          <Check className="h-3 w-3" /> Dar baixa
+                        </Button>
+                      ) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -277,10 +298,33 @@ export default function AdvancesPanel() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <DeleteConfirmButton
-                        onConfirm={() => deleteAdvance.mutate(a.id)}
-                        description={`Remover vale de ${fmt(Number(a.amount))} de ${emp?.name || ''}?`}
-                      />
+                      <div className="flex items-center justify-end gap-1">
+                        {a.status === 'pending' ? (
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-7 text-xs gap-1 border-emerald-400 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            onClick={() => setAdvanceStatus.mutate({ id: a.id, status: 'paid' })}
+                            disabled={setAdvanceStatus.isPending}
+                            title="Marcar como já descontado em folha"
+                          >
+                            <Check className="h-3 w-3" /> Dar baixa
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm" variant="ghost"
+                            className="h-7 text-xs gap-1 text-muted-foreground"
+                            onClick={() => setAdvanceStatus.mutate({ id: a.id, status: 'pending' })}
+                            disabled={setAdvanceStatus.isPending}
+                            title="Reabrir (voltar para pendente)"
+                          >
+                            <ArrowCounterClockwise className="h-3 w-3" /> Reabrir
+                          </Button>
+                        )}
+                        <DeleteConfirmButton
+                          onConfirm={() => deleteAdvance.mutate(a.id)}
+                          description={`Remover vale de ${fmt(Number(a.amount))} de ${emp?.name || ''}?`}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
