@@ -1117,52 +1117,25 @@ function TimesheetRecordsTab() {
         </div>
       )}
 
-      {/* All employees summary table */}
+      {/* Resumo de horas consolidado (todos os funcionários) REMOVIDO daqui em
+          2026-06-20: duplicava o RH → Relatórios → "Horas". O Ponto cuida da
+          ENTRADA (importar/lançar/pendências/escala); a visualização e a impressão
+          (Horas, Pagamento, Espelho legal, Calendário) ficam num lugar só. */}
       {selectedEmployee === '__all__' && allEmployeeSummaries.length > 0 && (
-        <Panel title="Resumo Geral — Todos os Funcionários" flush>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                  <TableHead>Funcionário</TableHead>
-                  <TableHead className="text-right">Dias</TableHead>
-                  <TableHead className="text-right">Trabalhadas</TableHead>
-                  <TableHead className="text-right">Esperadas</TableHead>
-                  <TableHead className="text-right">Horas Extras</TableHead>
-                  <TableHead className="text-right">Faltas</TableHead>
-                  <TableHead className="text-right">Incompletos</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allEmployeeSummaries.map(emp => (
-                  <TableRow key={emp.name} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedEmployee(emp.name)}>
-                    <TableCell className="font-medium text-sm">{emp.name}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{emp.days}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{minutesToDisplay(emp.worked)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{minutesToDisplay(emp.expected)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {emp.overtime > 0 ? <span className="text-amber-600 font-medium">{minutesToDisplay(emp.overtime)}</span> : '—'}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {emp.absent > 0 ? <span className="text-destructive font-medium">{emp.absent}</span> : '—'}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {emp.incomplete > 0 ? <Badge variant="outline" className="text-xs text-amber-600">{emp.incomplete}</Badge> : '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {/* Totals row */}
-                <TableRow className="bg-muted/30 font-semibold">
-                  <TableCell>TOTAL</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{allEmployeeSummaries.reduce((s, e) => s + e.days, 0)}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{minutesToDisplay(allEmployeeSummaries.reduce((s, e) => s + e.worked, 0))}</TableCell>
-                  <TableCell className="text-right font-mono text-sm text-muted-foreground">{minutesToDisplay(allEmployeeSummaries.reduce((s, e) => s + e.expected, 0))}</TableCell>
-                  <TableCell className="text-right font-mono text-sm text-amber-600">{minutesToDisplay(allEmployeeSummaries.reduce((s, e) => s + e.overtime, 0))}</TableCell>
-                  <TableCell className="text-right text-sm text-destructive">{allEmployeeSummaries.reduce((s, e) => s + e.absent, 0)}</TableCell>
-                  <TableCell className="text-right text-sm">{allEmployeeSummaries.reduce((s, e) => s + e.incomplete, 0)}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+        <Panel flush>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
+            <div className="text-sm">
+              <p className="font-medium">Resumo de horas por funcionário</p>
+              <p className="text-xs text-muted-foreground">
+                A visualização e a impressão (Horas, Pagamento, Espelho, Calendário) ficam em <strong>Relatórios</strong> — um lugar só. Selecione um funcionário acima para conferir as batidas do dia (verificação do import).
+              </p>
+            </div>
+            <Button
+              size="sm" variant="outline" className="gap-1.5 shrink-0"
+              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'relatorios'); return n; }, { replace: true })}
+            >
+              <FileText className="h-3.5 w-3.5" /> Ver em Relatórios
+            </Button>
           </div>
         </Panel>
       )}
