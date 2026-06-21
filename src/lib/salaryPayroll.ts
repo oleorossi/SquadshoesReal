@@ -154,7 +154,19 @@ export function calculateSalaryPayroll(
       ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday)
       : { normal: 0, premium: 0, incomplete: punches.length === 1 };
 
-    // Batida ímpar / inconsistente → PENDENTE: não desconta nem paga.
+    // ESPERADO é da ESCALA, não da batida: todo dia útil tem jornada esperada,
+    // INDEPENDENTE de a batida estar completa. Pendente (ímpar) e falta TAMBÉM
+    // contam pro esperado — senão a meta do período encolhe quando faltam batidas
+    // (bug 2026-06-20: 6 dias com batida ímpar sumiam do esperado e a quinzena de
+    // 90h aparecia como 36h). Só o WORKED/HE/atraso/falta depende de batida válida.
+    const isSchedWorkday = d.isWorkday && d.expectedMinutes > 0;
+    if (isSchedWorkday) {
+      expectedMin += d.expectedMinutes;
+      workdays++;
+    }
+
+    // Batida ímpar / inconsistente → PENDENTE: não desconta nem paga (o dia JÁ
+    // contou pro esperado/workdays acima — é dia de escala, só falta resolver a batida).
     if (sp.incomplete) {
       pendingDays++;
       continue;
@@ -162,9 +174,7 @@ export function calculateSalaryPayroll(
 
     const worked = sp.normal + sp.premium;
 
-    if (d.isWorkday && d.expectedMinutes > 0) {
-      expectedMin += d.expectedMinutes;
-      workdays++;
+    if (isSchedWorkday) {
       if (worked === 0) {
         // Falta: dia útil sem trabalho → desconta 1 valor-dia (fora da conta de horas).
         faltaDays++;

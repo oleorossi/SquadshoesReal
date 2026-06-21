@@ -59,12 +59,16 @@ describe('calculateSalaryPayroll', () => {
     expect(r.gross_value).toBeCloseTo(1850 + (423 / 60) * (1850 / 220) * 1.5, 2);
   });
 
-  it('batida ÍMPAR (pulou batida): PENDENTE — não desconta nem paga, conta pro alerta', () => {
+  it('batida ÍMPAR (pulou batida): PENDENTE — não desconta nem paga, MAS conta no esperado', () => {
     const r = calculateSalaryPayroll(2200, [work('2026-05-21', THU, ['08:21', '13:06', '18:30'])], 0);
     expect(r.pending_days).toBe(1);
     expect(r.falta_days).toBe(0);
     expect(r.atraso_minutes).toBe(0);
-    expect(r.workdays).toBe(0); // dia pendente não entra no esperado
+    // Esperado é da ESCALA: o dia útil pendente conta no esperado/workdays (senão a
+    // meta do período encolhe quando há batida ímpar). worked fica 0 até resolver.
+    expect(r.workdays).toBe(1);
+    expect(r.expected_minutes).toBe(540);
+    expect(r.worked_minutes).toBe(0);
     expect(r.gross_value).toBeCloseTo(2200, 2); // sem desconto enquanto não resolver
   });
 
