@@ -1130,7 +1130,7 @@ function TimesheetRecordsTab() {
                 {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas importadas neste período
               </p>
               <p className="text-xs text-muted-foreground">
-                Quanto cada um tem a receber (com base nessas batidas) fica na aba <strong>Folha</strong>. Batida ímpar/inconsistente? Resolva na sub-aba <strong>Pendências</strong> aqui do Ponto.
+                Quanto cada um tem a receber (com base nessas batidas) fica na aba <strong>Folha</strong>. Batida ímpar/inconsistente? Resolva na sub-aba <strong>Lançamento &amp; Pendências</strong> aqui do Ponto.
               </p>
             </div>
             <Button
@@ -1329,16 +1329,21 @@ export default function Timesheet() {
             jornada esperada. */}
         <HubTabsList tabs={[
           { value: 'records',     label: 'Ponto',        icon: FileSpreadsheet },
-          { value: 'manual',      label: 'Lançamento',   icon: ClipboardEdit },
-          { value: 'pending',     label: 'Pendências',   icon: AlertTriangle },
+          { value: 'manual',      label: 'Lançamento & Pendências', icon: ClipboardEdit },
           { value: 'calendario',  label: 'Calendário',   icon: Calendar },
           { value: 'config',      label: 'Configuração', icon: Clock },
         ]} />
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
-        <TabsContent value="manual"><ManualEntryTab /></TabsContent>
-        <TabsContent value="pending" className="space-y-6">
+        {/* Lançamento + Pendências UNIFICADOS (2026-06-21, pedido do dono): as duas
+            abas se complementavam — Pendências lista os dias com batida ímpar/faltando
+            (fix inline + "18:00 a todos"); o Lançamento é a grade livre pra editar
+            qualquer dia. Juntas numa tela só → vê o que falta e resolve no mesmo lugar.
+            Ordem: pendências (o que resolver) → grade (onde resolver) → exceções. */}
+        <TabsContent value="manual" className="space-y-6">
           <PendingTimeRecordsPanel />
+          <Separator />
+          <ManualEntryTab />
           <Separator />
           <ExceptionsTab />
         </TabsContent>
@@ -1358,7 +1363,8 @@ function mapLegacyTab(t: string): string {
   switch (t) {
     case 'overview':    return 'records';      // overview migrou pro Painel
     case 'late':
-    case 'occurrences': return 'pending';      // unificado em Pendências
+    case 'occurrences':
+    case 'pending':     return 'manual';       // Pendências unificada em Lançamento
     case 'reports':     return 'records';      // relatórios migraram pro RH > Relatórios
     case 'overtime':    return 'records';      // resolução HE aposentada (folha por hora)
     case 'history':
