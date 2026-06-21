@@ -554,6 +554,31 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return uniqueSortedColors(Array.from(colorSet));
   }, [item.material_variant_id, activeMaterialVariants, sheetSpecs, selectedRef?.colors, selectedRef?.has_straps, selectedRef?.strap_colors, refMaterials, productGroups, allProducts, groupSupplierMaterials, allGroupColors]);
 
+  // Cor da VARIAÇÃO do material (cabedal): products.color do produto apontado
+  // por upper_material_product_id da variante selecionada. É o "nome da variação
+  // de cor" que deve aparecer no item do PV, na NF-e e na etiqueta (pedido user
+  // 21/06/2026). Ex.: variante "NAPA SOFT" → produto NAPA SOFT MARROM → "MARROM".
+  // Normaliza UPPER pra casar com products.color (trigger normalize_product_color).
+  const variantCabedalColor = useMemo(() => {
+    if (!item.material_variant_id) return '';
+    const v = activeMaterialVariants.find(x => x.id === item.material_variant_id);
+    if (!v?.upper_material_product_id) return '';
+    const prod = (allProducts as any[]).find((p: any) => p.id === v.upper_material_product_id);
+    return (prod?.color || '').trim().toUpperCase();
+  }, [item.material_variant_id, activeMaterialVariants, allProducts]);
+
+  // "Tem tiras habilitadas": modelo com tiras na ficha OU tiras já no item.
+  // Regra de cor (user 21/06/2026): SEM tiras a sandália é de cor única
+  // (cabedal = forração), então a cor do item é travada na cor da variação do
+  // cabedal. COM tiras, forração/tiras podem divergir do cabedal — só
+  // pré-preenchemos quando a cor está vazia e mantemos editável pra não quebrar
+  // o débito da forração por cor.
+  const hasStrapsEffective = useMemo(() => {
+    const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
+    const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
+    return itemStraps.length > 0 || !!selectedRef?.has_straps || refStrapDefs.length > 0;
+  }, [item.strap_colors, selectedRef?.has_straps, selectedRef?.strap_colors]);
+
   // Controle da resolução de preço da tabela (com price-break por quantidade):
   // lastPricedColor evita reaplicar à toa; lastAppliedTablePrice guarda o último
   // preço de tabela aplicado p/ distinguir "preço da tabela" de "preço manual".
@@ -705,6 +730,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'strap_colors', updated);
     }
   }, [item.color, (item.strap_colors as any[])?.length]);
+
+  // Auto-preenche a Cor Principal com a cor da VARIAÇÃO do material (cabedal),
+  // garantindo que PV/NF/etiqueta mostrem o nome da variação de cor (user
+  // 21/06/2026). SEM tiras: sincroniza sempre (cabedal = forração = cor única) —
+  // a cor fica travada na variação. COM tiras: só quando a cor está vazia, pra
+  // preservar override manual (forração/tiras podem ter cor própria) e não
+  // quebrar o débito da forração por cor.
+  useEffect(() => {
+    if (!variantCabedalColor) return;
+    const current = (item.color || '').trim().toUpperCase();
+    const shouldSync = hasStrapsEffective ? current === '' : current !== variantCabedalColor;
+    if (shouldSync) {
+      const { index: idx, onUpdate: update } = latestRef.current;
+      update(idx, 'color', variantCabedalColor);
+    }
+  }, [variantCabedalColor, hasStrapsEffective, item.color]);
 
   useEffect(() => {
     if (totalPairs !== item.quantity) {
@@ -934,6 +975,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           {/* Cor — disabled until material is selected (when groups exist) */}
           {(() => {
             const isLocked = activeMaterialVariants.length > 0 && !item.material_variant_id;
+            // Sem tiras + variante com cor de cabedal resolvida: a cor fica
+            // TRAVADA na variação (read-only) — garante o nome da variação de cor
+            // no PV, NF-e e etiqueta. Com tiras, mantém o seletor (forração/tiras
+            // podem ter cor própria).
+            const lockedToVariation = !hasStrapsEffective && !!variantCabedalColor;
             return (
           <div className={cn(
             "md:col-span-3",
@@ -949,7 +995,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   🔒 Escolha o material primeiro
                 </span>
               )}
+              {!isLocked && lockedToVariation && (
+                <span
+                  className="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-bold border border-primary/20 normal-case"
+                  title="Sem tiras, a cor segue a variação do material (cabedal) — vai pro PV, NF-e e etiqueta"
+                >
+                  variação
+                </span>
+              )}
             </Label>
+            {lockedToVariation ? (
+              <div
+                className="h-9 px-3 rounded-md border bg-muted/30 flex items-center gap-2 text-xs"
+                title="Cor travada na variação do material (cabedal). Sem tiras, a sandália é de cor única — esta cor vai pro PV, NF-e e etiqueta."
+              >
+                <Palette className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                <span className="font-semibold text-foreground uppercase truncate">{variantCabedalColor}</span>
+                <span className="ml-auto text-xs text-muted-foreground/70 uppercase tracking-wider whitespace-nowrap">da variação</span>
+              </div>
+            ) : (
             <div className="flex gap-1">
               <ColorSearchSelect
                 colors={availableColors}
@@ -980,6 +1044,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </Button>
               )}
             </div>
+            )}
           </div>
             );
           })()}
