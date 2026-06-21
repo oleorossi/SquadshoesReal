@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Footprints, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2 } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2 } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
@@ -25,7 +25,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { getSoleModelName } from '@/lib/utils';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
@@ -87,8 +86,6 @@ function getVisibleFields(type: GroupType) {
     yieldTab:       isSole || isUpper || isInsole,
   };
 }
-
-const SIZES = ['15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
 function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
   open: boolean;
@@ -203,7 +200,7 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
 /* ──────────────────────────────────────────────────
    Sole-specific Yield Editor
    ────────────────────────────────────────────────── */
-function SoleYieldEditor({ groupId }: { groupId: string }) {
+function GroupDimensionsEditor({ groupId }: { groupId: string }) {
   const queryClient = useQueryClient();
 
   // Ficha de componente do grupo — dimensões do material (usadas na conversão
@@ -243,116 +240,6 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
     }
   }, [sheet]);
 
-  // When model selection changes, load yield grid from the first product ID of that model
-  useEffect(() => {
-    if (selectedModel && selectedModel.ids.length > 0) {
-      // Try to find existing yield data for any of the model's product IDs
-      const existingId = selectedModel.ids.find(id => yieldPerSole[id] && Object.values(yieldPerSole[id]).some(v => Number(v) > 0));
-      if (existingId) {
-        setYieldGrid({ ...yieldPerSole[existingId] });
-      } else {
-        setYieldGrid({});
-      }
-    }
-  }, [selectedModelName, yieldPerSole, selectedModel]);
-
-  const handleYieldChange = (size: string, value: string) => {
-    const num = parseFloat(value);
-    setYieldGrid(prev => ({
-      ...prev,
-      [size]: Number.isFinite(num) ? num : 0,
-    }));
-  };
-
-  // Get the grade sizes from the selected sole product — check sole_technical_specs first, then stock_grade
-  const { data: soleTechSizes } = useQuery({
-    queryKey: ['sole_tech_sizes', selectedModel?.ids],
-    enabled: !!selectedModel && selectedModel.ids.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sole_technical_specs')
-        .select('size')
-        .in('sole_id', selectedModel!.ids);
-      if (error) throw error;
-      return [...new Set((data || []).map(d => String(d.size)))].sort((a, b) => Number(a) - Number(b));
-    },
-  });
-
-  const soleGradeSizes = useMemo(() => {
-    // 1. Check sole_technical_specs sizes
-    if (soleTechSizes && soleTechSizes.length > 0) return soleTechSizes;
-    // 2. Fallback to stock_grade keys on the product
-    if (!selectedModel) return null;
-    const modelProducts = soleProducts.filter(p => selectedModel.ids.includes(p.id));
-    const gradeKeys = new Set<string>();
-    modelProducts.forEach(p => {
-      const grade = (p as any).stock_grade || (p as any).min_stock_grade;
-      if (grade && typeof grade === 'object') {
-        Object.keys(grade).forEach(k => {
-          if (SIZES.includes(k)) gradeKeys.add(k);
-        });
-      }
-    });
-    return gradeKeys.size > 0 ? Array.from(gradeKeys).sort((a, b) => Number(a) - Number(b)) : null;
-  }, [selectedModel, soleProducts, soleTechSizes]);
-
-  // Sizes restricted strictly by sole grade — only show sizes the sole covers
-  const activeSizes = useMemo(() => {
-    if (soleGradeSizes && soleGradeSizes.length > 0) return soleGradeSizes;
-    // No grade defined on sole: fallback to adult range
-    return SIZES.filter(s => Number(s) >= 33 && Number(s) <= 40);
-  }, [soleGradeSizes]);
-
-  // Fill handler: copy the first non-zero value to all other sizes in the grid
-  const handleFill = () => {
-    const firstValue = activeSizes.map(s => yieldGrid[s]).find(v => Number(v) > 0);
-    if (!firstValue) {
-      toast.info('Digite um valor em pelo menos uma numeração primeiro.');
-      return;
-    }
-    const filled: Record<string, number> = { ...yieldGrid };
-    activeSizes.forEach(s => {
-      if (!Number(filled[s])) filled[s] = firstValue;
-    });
-    setYieldGrid(filled);
-    toast.success('Grade preenchida!');
-  };
-
-  const handleSaveYield = async () => {
-    if (!selectedModel || !sheet) return;
-    setSaving(true);
-    try {
-      // Save the same yield grid for ALL product IDs of this sole model
-      const updated = { ...yieldPerSole };
-      selectedModel.ids.forEach(id => {
-        updated[id] = yieldGrid;
-      });
-
-      // Update ALL component sheets in this group
-      const sheetIds = sheets.map(s => s.id);
-      const { error } = await supabase
-        .from('component_sheets')
-        .update({
-          yield_per_sole: updated,
-          waste_pct: wastePct,
-          dimensions_length: dimLength,
-          dimensions_width: dimWidth,
-          dimensions_thickness: dimThickness,
-          dimensions_unit: dimUnit,
-        } as any)
-        .in('id', sheetIds);
-      if (error) throw error;
-
-      queryClient.invalidateQueries({ queryKey: ['component_sheets_group', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['component_sheets'] });
-      toast.success(`Rendimento salvo para o solado "${selectedModel.name}" (${selectedModel.ids.length} ${selectedModel.ids.length === 1 ? 'variante' : 'variantes'})!`);
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleSaveDimensions = async () => {
     if (!sheet) return;
     setSaving(true);
@@ -379,13 +266,6 @@ function SoleYieldEditor({ groupId }: { groupId: string }) {
       setSaving(false);
     }
   };
-
-  // Models that already have yield data
-  const modelsWithData = useMemo(() => {
-    return soleModels.filter(model =>
-      model.ids.some(id => yieldPerSole[id] && Object.values(yieldPerSole[id]).some(v => Number(v) > 0))
-    );
-  }, [soleModels, yieldPerSole]);
 
   if (isLoading) {
     return (
@@ -1162,7 +1042,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             {/* Tab: Specs / Yield per Sole */}
             {showYieldTab && (
               <TabsContent value="specs" className="mt-4">
-                <SoleYieldEditor groupId={group.id} />
+                <GroupDimensionsEditor groupId={group.id} />
               </TabsContent>
             )}
 
