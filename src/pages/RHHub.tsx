@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, FileText, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -11,7 +11,6 @@ import { cn } from '@/lib/utils';
 const Employees        = lazy(() => import('./Employees'));
 const Timesheet        = lazy(() => import('./Timesheet'));
 const FolhaConsolidada = lazy(() => import('@/components/hr/FolhaConsolidada'));
-const RelatoriosRH     = lazy(() => import('@/components/hr/RelatoriosRH'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -22,30 +21,31 @@ const TabLoader = () => (
 // Refocus 2026-06-01: RH é pagamento por hora trabalhada. Abas 'painel'
 // (KPIs de banco de horas) e 'fechamento' (HE/jornada esperada) foram
 // aposentadas — caem na 'folha' via LEGACY_TAB_MAP + guard.
-const TABS = ['funcionarios', 'ponto', 'folha', 'relatorios'] as const;
+const TABS = ['funcionarios', 'ponto', 'folha'] as const;
 type Tab = typeof TABS[number];
 
 const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { value: 'funcionarios', label: 'Funcionários', icon: Users },
   { value: 'ponto',        label: 'Ponto',        icon: AlarmClock },
   { value: 'folha',        label: 'Folha',        icon: DollarSign },
-  { value: 'relatorios',   label: 'Relatórios',   icon: FileText },
 ];
 
 const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
   funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe e adiantamentos' },
   ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
-  folha:        { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Pagamento por período (quinzena/mês) — salário proporcional menos descontos' },
-  relatorios:   { section: 'RH · RELATÓRIOS',    title: 'Relatórios',       description: 'Relógio de ponto e pagamento por horas' },
+  folha:        { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Quanto cada funcionário tem a receber, com base no ponto importado' },
 };
 
 // URLs/estado legados que apontavam pra abas aposentadas → folha/relatórios.
+// Relatórios foi removido (2026-06-21): folha é a tela única (ponto → quanto pagar).
+// URLs legadas que apontavam pra relatórios/abas aposentadas caem na folha.
 const LEGACY_TAB_MAP: Record<string, Tab> = {
   'painel':      'folha',
   'fechamento':  'folha',
   'banco-horas': 'folha',
-  'absenteismo': 'relatorios',
-  'headcount':   'relatorios',
+  'relatorios':  'folha',
+  'absenteismo': 'folha',
+  'headcount':   'funcionarios',
 };
 
 export default function RHHub() {
@@ -121,7 +121,6 @@ export default function RHHub() {
           <TabsContent value="funcionarios"><Employees /></TabsContent>
           <TabsContent value="ponto"><Timesheet /></TabsContent>
           <TabsContent value="folha"><FolhaConsolidada /></TabsContent>
-          <TabsContent value="relatorios"><RelatoriosRH /></TabsContent>
         </Suspense>
       </Tabs>
     </div>

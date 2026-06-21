@@ -791,10 +791,10 @@ function TimesheetRecordsTab() {
           {employeeNames.length > 0 && (
             <Button
               size="sm" variant="outline" className="gap-1.5"
-              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'relatorios'); return n; }, { replace: true })}
+              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'folha'); return n; }, { replace: true })}
             >
               <FileText className="h-4 w-4" />
-              Relatórios e impressão
+              Ver folha
             </Button>
           )}
         </div>
@@ -1130,14 +1130,14 @@ function TimesheetRecordsTab() {
                 {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas importadas neste período
               </p>
               <p className="text-xs text-muted-foreground">
-                Horas, pagamento, espelho legal e calendário ficam em <strong>Relatórios</strong> — um lugar só. Batidas inconsistentes aparecem na aba <strong>Pendências</strong>.
+                Quanto cada um tem a receber (com base nessas batidas) fica na aba <strong>Folha</strong>. Batida ímpar/inconsistente? Resolva na sub-aba <strong>Pendências</strong> aqui do Ponto.
               </p>
             </div>
             <Button
               size="sm" variant="outline" className="gap-1.5 shrink-0"
-              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'relatorios'); return n; }, { replace: true })}
+              onClick={() => setRhSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', 'folha'); return n; }, { replace: true })}
             >
-              <FileText className="h-3.5 w-3.5" /> Ver em Relatórios
+              <FileText className="h-3.5 w-3.5" /> Ver folha
             </Button>
           </div>
         </Panel>
