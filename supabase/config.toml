@@ -11,3 +11,11 @@ verify_jwt = false
 
 [functions.time-control]
 verify_jwt = false
+
+# Chamada pelo pg_cron (trigger_nfe_sync_cron, */30) SEM header Authorization —
+# autentica via X-Cron-Secret (validado contra get_nfe_sync_cron_secret no
+# handler) e tem fallback de JWT pra chamadas de usuário. Com verify_jwt=true
+# (default) o GATEWAY derrubava o cron com 401 ANTES da função rodar (sync de NF
+# parado, banco local atrás do GestaoClick). A função se protege sozinha.
+[functions.sync-nfe-from-provider]
+verify_jwt = false

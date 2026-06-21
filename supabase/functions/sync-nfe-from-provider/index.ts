@@ -1,9 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// ⚠ Esta função roda com verify_jwt=FALSE (supabase/config.toml). O pg_cron
+// (trigger_nfe_sync_cron, */30) chama SEM header Authorization, autenticando por
+// X-Cron-Secret (validado no handler contra get_nfe_sync_cron_secret); chamadas de
+// usuário caem no fallback de JWT. Com verify_jwt=true (default) o GATEWAY derrubava
+// o cron com 401 ANTES da função rodar — o sync de NF ficou parado e o banco local
+// atrasado vs o GestaoClick. Não reabilitar verify_jwt sem mover a auth do cron.
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
   "Vary": "Origin",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-cron-secret, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
   "Content-Type": "application/json",
 };
 
