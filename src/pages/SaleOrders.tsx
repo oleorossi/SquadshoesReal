@@ -2174,7 +2174,7 @@ export default function SaleOrders() {
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between w-full">
+            <DialogTitle className="flex items-center justify-between w-full flex-wrap gap-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <span>Pedido {selectedOrder?.order_number || ''}</span>
                 {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
@@ -2189,7 +2189,7 @@ export default function SaleOrders() {
                 )}
               </div>
               {selectedOrder && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {isAdmin && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
                       Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"

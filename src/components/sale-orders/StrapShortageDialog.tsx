@@ -15,7 +15,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Warning as AlertTriangle, Hammer, ShoppingBag, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, Hammer, ShoppingBag, CheckCircle as CheckCircle2, SkipForward } from '@phosphor-icons/react';
 import {
   detectStrapShortagesForSaleOrder,
   type StrapShortage,
@@ -121,6 +121,16 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
 
   const updateRow = (idx: number, patch: Partial<RowState>) => {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  };
+
+  /**
+   * Pular esta etapa: fecha SEM gerar OS/OC e SEM escolher quem faz as tiras.
+   * O PV já está salvo; as tiras em falta podem ser resolvidas depois (pelo card
+   * do PV / Terceirizados). Sempre disponível, mesmo com itens sem cor.
+   */
+  const handleSkip = () => {
+    toast.info('Etapa das tiras pulada — você pode gerar as OS/OC depois pelo PV.');
+    onClose();
   };
 
   const handleConfirm = async () => {
@@ -327,9 +337,10 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
           </div>
         )}
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={committing}>
-            Fechar
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button variant="ghost" onClick={handleSkip} disabled={committing} className="gap-2">
+            <SkipForward className="h-4 w-4" />
+            Pular esta etapa
           </Button>
           <Button
             onClick={handleConfirm}
