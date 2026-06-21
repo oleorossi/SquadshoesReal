@@ -1178,7 +1178,7 @@ export function useUpdateSaleOrderStatus() {
               p_order_id: op.id,
               p_reference_id: op.reference_id,
               p_order_quantity: op.quantity,
-              p_packaging_mode: (pvData as any)?.packaging_mode || 'individual_amarrado',
+              p_packaging_mode: (pvData as any)?.packaging_mode || 'colmeia',
               p_force_soft: true,
             } as any);
 
