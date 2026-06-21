@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 
 /**
  * Tarefas estruturadas vinculadas a uma nota (em /notas).
- * Auto-ordenadas por prioridade (alta → média → baixa), tiebreaker created_at.
+ * Auto-ordenadas por prioridade (alta → média → baixa); dentro da MESMA
+ * prioridade, a mais NOVA fica no topo (tiebreaker created_at DESC).
  * Migration 20260531170000_note_tasks_table.
  */
 
@@ -46,7 +47,9 @@ export function useAllNoteTasks() {
         if (a.done !== b.done) return a.done ? 1 : -1;
         const dp = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
         if (dp !== 0) return dp;
-        return (a.created_at || '').localeCompare(b.created_at || '');
+        // Mesma prioridade: a mais NOVA primeiro (created_at DESC) — tarefa que
+        // entra vai pro topo do seu grupo de prioridade.
+        return (b.created_at || '').localeCompare(a.created_at || '');
       });
     },
     staleTime: 30_000,
@@ -66,15 +69,16 @@ export function useNoteTasks(noteId: string | null | undefined) {
         .eq('note_id', noteId)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      // Ordena no client por (done ASC, priority ASC, created_at ASC):
+      // Ordena no client por (done ASC, priority ASC, created_at DESC):
       //   - Não-feitas primeiro (done=false)
       //   - Dentro dos não-feitos, alta antes de média antes de baixa
+      //   - Mesma prioridade: a mais NOVA no topo (tarefa que entra vai pro topo)
       //   - Feitas vão pro final (ainda agrupadas por prioridade)
       return ((data || []) as NoteTask[]).slice().sort((a, b) => {
         if (a.done !== b.done) return a.done ? 1 : -1;
         const dp = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
         if (dp !== 0) return dp;
-        return (a.created_at || '').localeCompare(b.created_at || '');
+        return (b.created_at || '').localeCompare(a.created_at || '');
       });
     },
     staleTime: 30_000,
