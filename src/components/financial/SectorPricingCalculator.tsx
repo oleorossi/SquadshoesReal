@@ -124,18 +124,32 @@ export default function SectorPricingCalculator() {
   // que as abas "Mão de Obra" (horas/par) e "MOD por Setor" foram unificadas:
   // faziam a MESMA conta, só mudando a unidade de entrada. Custo-hora = salário ÷ 220.
   const [draft, setDraft] = useState<Record<string, string>>({});
+  // Semeia os salários salvos (sector_labor_rates) nos campos.
+  // ⚠ NÃO guardar por `=== undefined`: no 1º render o rateMap ainda está vazio
+  // (query carregando), o efeito setava '' em TODOS os campos, e aí a condição
+  // `undefined` nunca mais disparava → os valores salvos NUNCA apareciam (form
+  // ficava 0,00 mesmo com salário no banco). Semeia sempre que o campo está
+  // vazio e o banco tem valor; não sobrescreve o que o usuário está digitando.
   useEffect(() => {
     setDraft((prev) => {
       const next = { ...prev };
       for (const { key } of RATE_SECTORS) {
-        if (next[key] === undefined) next[key] = rateMap[key]?.monthly_salary ? String(rateMap[key]!.monthly_salary) : '';
+        const dbVal = rateMap[key]?.monthly_salary;
+        if ((next[key] === undefined || next[key] === '') && dbVal) next[key] = String(dbVal);
       }
       return next;
     });
   }, [rateMap]);
   const saveRate = (key: string) => {
     const v = parseNum(draft[key]);
-    if (v !== (rateMap[key]?.monthly_salary ?? 0)) upsert.mutate({ sectorKey: key, monthlySalary: v });
+    if (v === (rateMap[key]?.monthly_salary ?? 0)) return; // nada mudou
+    upsert.mutate(
+      { sectorKey: key, monthlySalary: v },
+      {
+        onSuccess: () => toast.success(`Salário de ${sectorLabel(key)} salvo`),
+        onError: (e) => toast.error(`Não consegui salvar ${sectorLabel(key)}: ${(e as Error).message}`),
+      },
+    );
   };
 
   const rowId = useRef(1000);
