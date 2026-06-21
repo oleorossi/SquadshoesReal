@@ -1,6 +1,5 @@
-import AppLayout from "@/components/layout/AppLayout";
 import { useState } from 'react';
-import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +18,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { Switch } from '@/components/ui/switch';
 import SupplierPanel from '@/components/groups/SupplierPanel';
 import GroupEditDialog from '@/components/groups/GroupEditDialog';
+import GroupItemsManager from '@/components/groups/GroupItemsManager';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -60,6 +60,7 @@ export default function Groups() {
   const [form, setForm] = useState(emptyForm);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
+  const [itemsGroup, setItemsGroup] = useState<ProductGroup | null>(null);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (g: ProductGroup) => { setEditGroup(g); };
@@ -93,10 +94,10 @@ export default function Groups() {
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
-          sectionLabel="ENGENHARIA · GRUPOS"
+          sectionLabel="ESTOQUE · GRUPOS"
           title="Grupos de Produtos"
           description="Organize produtos em grupos com fornecedores, materiais e informações técnicas"
           actions={
@@ -118,7 +119,7 @@ export default function Groups() {
           </Panel>
         ) : (
         <Panel
-          eyebrow="ENGENHARIA · GRUPOS"
+          eyebrow="ESTOQUE · GRUPOS"
           title="Grupos de Produtos"
           subtitle={`${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'}`}
           flush
@@ -156,11 +157,16 @@ export default function Groups() {
                           <TableCell className="font-medium">{g.name}</TableCell>
                           <TableCell className="text-muted-foreground">{g.description || '—'}</TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline">{countProducts(g.id)}</Badge>
+                            <button type="button" onClick={() => setItemsGroup(g)} title="Gerir itens do grupo">
+                              <Badge variant="outline" className="cursor-pointer hover:bg-muted">{countProducts(g.id)}</Badge>
+                            </button>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(g)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerir itens" onClick={() => setItemsGroup(g)}>
+                                <Package className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar grupo" onClick={() => openEdit(g)}>
                                 <Pencil className="h-4 w-4" />
                               </Button>
                               <DeleteConfirmButton onConfirm={() => deleteGroup.mutate(g.id)} title="Excluir grupo?" size="h-8 w-8" iconSize="h-4 w-4" />
@@ -273,6 +279,13 @@ export default function Groups() {
         />
       )}
 
+      <GroupItemsManager
+        group={itemsGroup}
+        groups={groups}
+        open={!!itemsGroup}
+        onOpenChange={(open) => { if (!open) setItemsGroup(null); }}
+      />
+
       <BulkActionsBar
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
@@ -286,6 +299,6 @@ export default function Groups() {
           },
         ]}
       />
-    </AppLayout>
+    </>
   );
 }

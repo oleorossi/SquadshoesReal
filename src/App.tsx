@@ -45,6 +45,7 @@ const SaleOrderForm = lazy(() => import("./pages/SaleOrderForm"));
 const SaleOrdersConsumption = lazy(() => import("./pages/SaleOrdersConsumption"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
  const StockHistoryPage = lazy(() => import("./pages/StockHistory"));
+const Groups = lazy(() => import("./pages/Groups"));
 // SalesReport removido — funcionalidade unificada em /comercial (ComercialDashboard).
 const Settings = lazy(() => import("./pages/Settings"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
@@ -588,6 +589,11 @@ const router = createBrowserRouter([
            { path: "historico", element: <StockHistoryPage /> },
          ],
        },
+      {
+        // Gestão de grupos de produtos + itens dentro de cada grupo (página Grupos)
+        path: "grupos",
+        element: <Groups />,
+      },
       {
         path: "ajuste-estoque",
         element: <StockAdjustmentPage />,

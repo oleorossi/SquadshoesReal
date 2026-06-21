@@ -18,6 +18,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/dashboard': 'dashboard',
   '/pcp': 'producao',
   '/estoque': 'estoque',
+  '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',
   '/orders': 'ordens',
   '/setores': 'ordens',

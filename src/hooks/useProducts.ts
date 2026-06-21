@@ -181,6 +181,31 @@ export function useUpdateProduct() {
   });
 }
 
+/**
+ * Define (ou limpa) o grupo de um conjunto de produtos de uma vez.
+ * - mover item → group_id = grupo destino
+ * - remover do grupo → group_id = null
+ * - adicionar ao grupo → group_id = grupo alvo
+ * Usado pela gestão de itens por grupo (página Grupos).
+ */
+export function useSetProductsGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, group_id }: { ids: string[]; group_id: string | null }) => {
+      if (!ids.length) return { count: 0 };
+      const { error } = await supabase.from('products').update({ group_id }).in('id', ids);
+      if (error) throw error;
+      return { count: ids.length };
+    },
+    onSuccess: ({ count }) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product_groups'] });
+      if (count) toast.success(`${count} ${count === 1 ? 'item atualizado' : 'itens atualizados'}.`);
+    },
+    onError: (err: Error) => toast.error(`Erro ao mover itens: ${err.message}`),
+  });
+}
+
 export function useSyncSiblings() {
   const queryClient = useQueryClient();
   return useMutation({
