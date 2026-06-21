@@ -8,7 +8,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
@@ -16,6 +16,7 @@ import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/h
 import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printFolhaComparativo } from '@/lib/printTimesheet';
+import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -202,6 +203,59 @@ export default function Payroll() {
       periodTitle,
       `Folha_${compPeriod}.xlsx`,
     );
+  };
+
+  // Saldo de banco de horas do período por funcionário — pré-carregado pra o
+  // Espelho (Portaria 671) abrir SÍNCRONO no clique (sem await antes do window.open,
+  // senão o popup é bloqueado). O footer mostra '—' quando falha.
+  const espelhoIds = useMemo(() => comparativo.rows.map(r => r.id).join(','), [comparativo.rows]);
+  const { data: bankBalances } = useQuery({
+    queryKey: ['payroll-espelho-bank', appliedFrom, appliedTo, espelhoIds],
+    enabled: !!(appliedFrom && appliedTo) && comparativo.rows.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const m = new Map<string, number>();
+      await Promise.all(comparativo.rows.map(async (r) => {
+        try {
+          const { data } = await (supabase as any).rpc('calculate_employee_bank_balance', {
+            p_employee_id: r.id, p_from: appliedFrom, p_to: appliedTo, p_skip_missing: true,
+          });
+          const bal = (data as any)?.balance_min;
+          if (typeof bal === 'number') m.set(r.id, bal);
+        } catch { /* cai em '—' no rodapé */ }
+      }));
+      return m;
+    },
+  });
+
+  // Espelho de ponto legal (Portaria MTP 671) — documento individual assinável com
+  // batidas dia a dia, totais e saldo de banco. Usa o ponto do período selecionado
+  // (escolha "Mês" pro espelho mensal). Reusa o printData já calculado pelo comparativo.
+  const printEspelho = (empId: string) => {
+    const row = comparativo.rows.find(r => r.id === empId);
+    const emp = employeeMap.get(empId);
+    if (!row || !emp) { toast.error('Sem dados de ponto pra gerar o espelho deste funcionário.'); return; }
+    const days: TimeMirrorDay[] = row.printData.days.map((d: any) => ({
+      date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches,
+      workedMinutes: d.workedMinutes, expectedMinutes: d.expectedMinutes,
+      overtimeMinutes: d.overtimeMinutes, status: d.status as TimeMirrorDay['status'],
+      notes: d.isHoliday ? 'FERIADO' : '',
+    }));
+    printTimeMirror({
+      employee: {
+        name: emp.name,
+        external_id: (emp as any).external_id,
+        role: (emp as any).role,
+        department: (emp as any).department,
+        cpf: (emp as any).cpf,
+        pis: (emp as any).pis,
+        admission_date: (emp as any).admission_date,
+      },
+      company: { name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa' },
+      period: compPeriod,
+      days,
+      bankHoursBalance: bankBalances?.get(empId),
+    });
   };
 
   async function calculateAll() {
@@ -505,8 +559,11 @@ export default function Payroll() {
                   <TableCell><Badge variant={sb.variant}>{sb.label}</Badge></TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setDetailRun(r.id)}>
+                      <Button size="sm" variant="ghost" onClick={() => setDetailRun(r.id)} title="Demonstrativo de pagamento">
                         <Receipt className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => printEspelho(r.employee_id)} title="Espelho de ponto (Portaria 671) — documento legal assinável">
+                        <IdentificationCard className="h-4 w-4 text-muted-foreground" />
                       </Button>
                       {r.status === 'rascunho' && (
                         <Button
