@@ -41,6 +41,47 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// Busca o MAIOR número de NF-e já emitido no GestaoClick (por série) pra a
+// próxima sair como (maior + 1). Pedido do dono 2026-06-20: a NF deve seguir a
+// sequência REAL do GC — inclui notas emitidas manualmente no portal que o nosso
+// banco pode não ter (o sync-nfe-from-provider está com 401) — e não um "próximo
+// número" que o GC possa ter desconfigurado. Pagina TUDO pra pegar o máximo
+// GLOBAL (a base de NFs é pequena). Retorna null em QUALQUER falha → o caller não
+// manda `numero` (GC auto-atribui = comportamento atual) e a emissão nunca quebra
+// por causa disto. Se o GC ignorar o `numero` enviado, lemos o real de volta no
+// detalhe — então mandar é, no pior caso, inofensivo.
+async function gcMaxNfNumber(serie: string): Promise<number | null> {
+  const MAX_PAGES = 30;
+  let max = 0;
+  let found = false;
+  try {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const r = await gcFetch(`/notas_fiscais_produtos?page=${page}`);
+      if (!r.ok || r.json?.status === "error") break;
+      const list: any[] = Array.isArray(r.json?.data)
+        ? r.json.data
+        : Array.isArray(r.json?.data?.data)
+        ? r.json.data.data
+        : [];
+      if (list.length === 0) break;
+      for (const it of list) {
+        // Numeração é por SÉRIE. Se o item traz série diferente, ignora; se não
+        // traz série, conta mesmo assim (best-effort p/ quem tem 1 série só).
+        const itSerie = it?.serie != null ? String(it.serie).trim() : null;
+        if (itSerie !== null && itSerie !== String(serie).trim()) continue;
+        const nRaw = it?.numero ?? it?.numero_nf ?? "";
+        const n = Number(String(nRaw).replace(/\D/g, ""));
+        if (Number.isFinite(n) && n > 0) { found = true; if (n > max) max = n; }
+      }
+      const totalPages = r.json?.meta?.total_pages || r.json?.meta?.pagination?.total_pages;
+      if (totalPages && page >= Number(totalPages)) break;
+    }
+  } catch {
+    return found ? max : null;
+  }
+  return found ? max : null;
+}
+
 // Quando clients.endereco vem concatenado tipo "Rua X, PARTE GALPAO" (vírgula
 // como separador entre logradouro e complemento), o XML SEFAZ saía com o
 // complemento DENTRO do logradouro — fica feio no DANFE e tecnicamente
@@ -1178,6 +1219,27 @@ Deno.serve(async (req) => {
       transporteBlock.transportador = transportadorBlock;
     }
 
+    // ---------- Próximo número da NF = (maior número da série no GC) + 1 -------
+    // Em vez de deixar o GC auto-atribuir (que pode estar desconfigurado e gerar
+    // número errado/duplicado), buscamos o ÚLTIMO número emitido no GestaoClick e
+    // mandamos o próximo. Best-effort: se a busca falhar, não mandamos `numero` e
+    // o GC auto-atribui (comportamento atual). O número real volta no detalhe.
+    const serieAtual = String(fiscal.serie_nfe || "1");
+    let numeroProximo: string | null = null;
+    let numeroWarning: string | undefined;
+    try {
+      const maxGc = await gcMaxNfNumber(serieAtual);
+      if (maxGc && maxGc > 0) {
+        numeroProximo = String(maxGc + 1);
+        numeroWarning = `NF será emitida como nº ${numeroProximo} (próximo após o último nº ${maxGc} da série ${serieAtual} no GestaoClick).`;
+      } else {
+        numeroWarning = `Não foi possível ler o último número no GestaoClick — o número será atribuído automaticamente pelo provedor.`;
+      }
+      console.log(`[emit-nfe] número: maxGc(série ${serieAtual})=${maxGc ?? '∅'} → numero=${numeroProximo ?? 'auto (GC)'}`);
+    } catch (e) {
+      console.warn("[emit-nfe] falha ao buscar último número no GC — GC auto-atribui:", e instanceof Error ? e.message : String(e));
+    }
+
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
       tipo_nf: 1,
@@ -1196,6 +1258,9 @@ Deno.serve(async (req) => {
       codigo_cfop: resolvedCfop,
       modelo: "55",
       serie: fiscal.serie_nfe || "1",
+      // Número explícito = último da série no GC + 1 (gcMaxNfNumber acima). Quando
+      // null (busca falhou), omitimos e o GC auto-atribui.
+      ...(numeroProximo ? { numero: numeroProximo } : {}),
       finalidade_nf: "1",
       // tipo_emissao=1 ("Normal") — pedido em 16/05/2026. Antes não era
       // enviado; GestaoClick assumia default mas explícito blinda contra
@@ -1246,6 +1311,7 @@ Deno.serve(async (req) => {
     // antes de chamar a emissão real. Veja `isDryRun` no topo do handler.
     if (isDryRun) {
       const previewWarnings: string[] = [];
+      if (numeroWarning) previewWarnings.push(numeroWarning);
       if (weightWarning) previewWarnings.push(weightWarning);
       if (packagingModeWarning) previewWarnings.push(packagingModeWarning);
       if (!gcClientId) {
