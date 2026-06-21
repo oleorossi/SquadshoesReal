@@ -189,14 +189,23 @@ export default function SolesCadastroTab({ sole }: Props) {
       const grade = { ...(sole.stock_grade as any || {}), _size_from: from, _size_to: to };
       const { error } = await supabase.from('products').update({ stock_grade: grade } as any).eq('id', sole.id);
       if (error) throw error;
+      // Range de numeração é estrutural do MODELO → vale pra todas as cores
+      // (replicateToSiblings preserva o estoque/grade de cada cor; só move os
+      // marcadores _size_from/_size_to). Só o estoque é por cor.
+      const { count } = await replicateToSiblings({ gradeRange: { from, to } });
+      return { count };
     },
-    onSuccess: () => {
+    onSuccess: ({ count }) => {
       qc.invalidateQueries({ queryKey: ['soles_hub_products'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       // Idem update(): reflete o novo range na grade do PV / ficha técnica.
       qc.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
       qc.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
-      toast.success('Range de numeração atualizado!');
+      toast.success(
+        count > 0
+          ? `Range de numeração atualizado · propagado para ${count} ${count === 1 ? 'cor' : 'cores'}.`
+          : 'Range de numeração atualizado!',
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -337,33 +346,49 @@ export default function SolesCadastroTab({ sole }: Props) {
 
   const updateFacheteDm2 = useMutation({
     mutationFn: async (rows: Array<{ size: number; dm2: number }>) => {
-      // UPSERT em sole_technical_specs: 1 linha por (sole_id, size). Mantém
-      // lining_consumption_dm2/insole_consumption_dm2 existentes (não tocamos
-      // outras colunas no UPDATE).
-      for (const r of rows) {
-        const { data: existing } = await supabase
-          .from('sole_technical_specs')
-          .select('id')
-          .eq('sole_id', sole.id)
-          .eq('size', r.size)
-          .maybeSingle();
-        if (existing) {
-          const { error } = await supabase
+      // Consumo (fachete dm²/par por numeração) é do MODELO do solado → vale pra
+      // TODAS as cores (variação de cor é irrelevante pro consumo técnico; só o
+      // estoque é por cor). Replica em cada variante do grupo. UPSERT manual por
+      // (sole_id, size) pra NÃO zerar as outras colunas de consumo da linha
+      // (lining/insole_consumption_dm2).
+      let targetIds = [sole.id];
+      if (groupId) {
+        const { data: sibs } = await supabase.from('products').select('id').eq('group_id', groupId);
+        const ids = (sibs || []).map((s: any) => s.id);
+        if (ids.length > 0) targetIds = ids;
+      }
+      for (const sid of targetIds) {
+        for (const r of rows) {
+          const { data: existing } = await supabase
             .from('sole_technical_specs')
-            .update({ fachete_lining_consumption_dm2: r.dm2 } as any)
-            .eq('id', (existing as any).id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from('sole_technical_specs')
-            .insert({ sole_id: sole.id, size: r.size, fachete_lining_consumption_dm2: r.dm2 } as any);
-          if (error) throw error;
+            .select('id')
+            .eq('sole_id', sid)
+            .eq('size', r.size)
+            .maybeSingle();
+          if (existing) {
+            const { error } = await supabase
+              .from('sole_technical_specs')
+              .update({ fachete_lining_consumption_dm2: r.dm2 } as any)
+              .eq('id', (existing as any).id);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from('sole_technical_specs')
+              .insert({ sole_id: sid, size: r.size, fachete_lining_consumption_dm2: r.dm2 } as any);
+            if (error) throw error;
+          }
         }
       }
+      return { count: targetIds.length };
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sole_technical_specs', sole.id] });
-      toast.success('Consumo de fachete por numeração salvo');
+    onSuccess: ({ count }) => {
+      // Prefixo invalida todas as variantes (['sole_technical_specs', <qualquer sole_id>]).
+      qc.invalidateQueries({ queryKey: ['sole_technical_specs'] });
+      toast.success(
+        count > 1
+          ? `Consumo de fachete salvo · propagado para ${count} cores.`
+          : 'Consumo de fachete por numeração salvo',
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });

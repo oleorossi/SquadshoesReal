@@ -72,26 +72,36 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
     if (!product) return;
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('products')
-        .update({
-          supplier_id: supplierId || null,
-          supplier_lead_time_days: leadTime,
-          lead_time_days: leadTime,
-          sole_moq: moq,
-          unit_price: unitPrice,
-          heel_height: heelHeight,
-           sole_material: soleMaterial || null,
-           sole_technical_notes: notes || null,
-           is_standard_sole_item: isStandardItem,
-           is_fachetado: isFachetado,
-          insole_mode: insoleMode,
-          sole_classification: soleClassification,
-         } as any)
-        .eq('id', product.id);
+      // Dados técnicos do solado (fornecedor/lead time, MOQ, material, salto,
+      // fachete, classificação…) são do MODELO → valem pra TODAS as cores
+      // (variação de cor é só estoque). Propaga no grupo quando há group_id.
+      const groupId = (product as any)?.group_id || null;
+      const sharedFields = {
+        supplier_id: supplierId || null,
+        supplier_lead_time_days: leadTime,
+        lead_time_days: leadTime,
+        sole_moq: moq,
+        heel_height: heelHeight,
+        sole_material: soleMaterial || null,
+        sole_technical_notes: notes || null,
+        is_standard_sole_item: isStandardItem,
+        is_fachetado: isFachetado,
+        insole_mode: insoleMode,
+        sole_classification: soleClassification,
+      };
+      const { error } = groupId
+        ? await supabase.from('products').update(sharedFields as any).eq('group_id', groupId)
+        : await supabase.from('products').update(sharedFields as any).eq('id', product.id);
       if (error) throw error;
+      // Preço do solado (R$/par) segue POR VARIANTE (não propaga) — comportamento
+      // atual; só o estoque também é por cor.
+      const { error: priceErr } = await supabase
+        .from('products')
+        .update({ unit_price: unitPrice } as any)
+        .eq('id', product.id);
+      if (priceErr) throw priceErr;
       qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Dados técnicos do solado atualizados!');
+      toast.success(groupId ? 'Dados técnicos atualizados em todas as cores do solado!' : 'Dados técnicos do solado atualizados!');
       onOpenChange(false);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
