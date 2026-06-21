@@ -103,6 +103,10 @@ export default function RelatoriosRH() {
   // Edição inline de batidas (resolver pendência de horário direto no relatório).
   // { empId, date } da linha em edição + o texto editável das batidas.
   const [editPunch, setEditPunch] = useState<{ empId: string; date: string; value: string } | null>(null);
+  // Correção EM LOTE na aba Pendências: rascunho editável por dia (chave `empId::date`).
+  // Pré-preenchido com as batidas ímpares; o usuário insere a que falta e salva tudo junto.
+  const [pendEdits, setPendEdits] = useState<Record<string, string>>({});
+  const pendKey = (empId: string, date: string) => `${empId}::${date}`;
   const qc = useQueryClient();
 
   const { data: employees = [] } = useEmployees();
@@ -183,6 +187,33 @@ export default function RelatoriosRH() {
     return m;
   }, [timeRecords]);
 
+  // Recálculo AUTOMÁTICO: invalida a base de batidas (e cobertura/pendências)
+  // — o motor (splitDayMinutes + computePeriodFolha) recomputa no refetch.
+  const invalidatePontoQueries = () => qc.invalidateQueries({ predicate: (q) => {
+    const k = String(q.queryKey?.[0] ?? '');
+    return k.startsWith('rh-report') || k.includes('coverage') || k.includes('timesheet') || k.includes('pend') || k.includes('time_record');
+  }});
+
+  // Resolve o id da row de time_records (UPDATE preciso) — matrícula ou nome.
+  const resolveRecordId = (ext: string | undefined, name: string, date: string): string | null =>
+    (ext && recordIdByKey.get(`x:${ext}::${date}`))
+    || recordIdByKey.get(`n:${name.toLowerCase().trim()}::${date}`) || null;
+
+  // Texto "08:00 12:00 13:00 18:00" → batidas validadas (HH:MM, PAR, ordenadas) ou erro.
+  const parsePunchInput = (raw: string): { ok: boolean; punches: string[]; error?: string } => {
+    const tokens = raw.split(/[\s,;·]+/).map(t => t.trim()).filter(Boolean);
+    const norm: string[] = [];
+    for (const t of tokens) {
+      const mt = t.match(/^(\d{1,2}):(\d{2})$/);
+      if (!mt || Number(mt[1]) > 23 || Number(mt[2]) > 59) return { ok: false, punches: [], error: `Horário inválido: "${t}" — use HH:MM (ex.: 08:00).` };
+      norm.push(`${mt[1].padStart(2, '0')}:${mt[2]}`);
+    }
+    if (norm.length === 0) return { ok: false, punches: [], error: 'Sem batidas — informe entrada e saída.' };
+    if (norm.length % 2 !== 0) return { ok: false, punches: [], error: 'Número ÍMPAR de batidas — falta uma entrada/saída (cada turno = entrada + saída).' };
+    norm.sort();
+    return { ok: true, punches: norm };
+  };
+
   const savePunches = useMutation({
     mutationFn: async ({ recordId, ext, name, date, punches }: { recordId: string | null; ext?: string; name: string; date: string; punches: string[] }) => {
       if (recordId) {
@@ -195,39 +226,42 @@ export default function RelatoriosRH() {
       }
     },
     onSuccess: () => {
-      // Recálculo AUTOMÁTICO: invalida a base de batidas (e cobertura/pendências)
-      // — o motor (splitDayMinutes + computePeriodFolha) recomputa no refetch.
-      qc.invalidateQueries({ predicate: (q) => {
-        const k = String(q.queryKey?.[0] ?? '');
-        return k.startsWith('rh-report') || k.includes('coverage') || k.includes('timesheet') || k.includes('pend') || k.includes('time_record');
-      }});
+      invalidatePontoQueries();
       toast.success('Batidas atualizadas — relatório recalculado.');
       setEditPunch(null);
     },
     onError: (e: Error) => toast.error(`Erro ao salvar batidas: ${e.message}`),
   });
 
-  // Texto "08:00 12:00 13:00 18:00" → array validado (HH:MM), par e ordenado.
   const saveEditedPunches = (empId: string, ext: string | undefined, name: string, date: string, raw: string) => {
-    const tokens = raw.split(/[\s,;·]+/).map(t => t.trim()).filter(Boolean);
-    const norm: string[] = [];
-    for (const t of tokens) {
-      const mt = t.match(/^(\d{1,2}):(\d{2})$/);
-      if (!mt || Number(mt[1]) > 23 || Number(mt[2]) > 59) {
-        toast.error(`Horário inválido: "${t}" — use HH:MM (ex.: 08:00).`);
-        return;
-      }
-      norm.push(`${mt[1].padStart(2, '0')}:${mt[2]}`);
-    }
-    if (norm.length % 2 !== 0) {
-      toast.error('Número ÍMPAR de batidas — falta uma entrada/saída (cada turno = entrada + saída).');
-      return;
-    }
-    norm.sort();
-    const recordId = (ext && recordIdByKey.get(`x:${ext}::${date}`))
-      || recordIdByKey.get(`n:${name.toLowerCase().trim()}::${date}`) || null;
-    savePunches.mutate({ recordId, ext, name, date, punches: norm });
+    const parsed = parsePunchInput(raw);
+    if (!parsed.ok) { toast.error(parsed.error || 'Batidas inválidas.'); return; }
+    savePunches.mutate({ recordId: resolveRecordId(ext, name, date), ext, name, date, punches: parsed.punches });
   };
+
+  // Correção EM LOTE: grava todas as pendências EDITADAS de uma vez (1 chamada por
+  // dia, sequencial). Dias deixados ímpares/inválidos são pulados e listados no erro.
+  const saveBatchPunches = useMutation({
+    mutationFn: async (items: { recordId: string | null; ext?: string; name: string; date: string; punches: string[] }[]) => {
+      for (const it of items) {
+        if (it.recordId) {
+          const { error } = await supabase.from('time_records').update({ punches: it.punches }).eq('id', it.recordId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('time_records')
+            .insert({ employee_external_id: it.ext || null, employee_name: it.name, record_date: it.date, punches: it.punches } as any);
+          if (error) throw error;
+        }
+      }
+      return items.length;
+    },
+    onSuccess: (n) => {
+      invalidatePontoQueries();
+      toast.success(`${n} ${n === 1 ? 'dia corrigido' : 'dias corrigidos'} — relatório recalculado.`);
+      setPendEdits({});
+    },
+    onError: (e: Error) => toast.error(`Erro ao salvar em lote: ${e.message}`),
+  });
 
   const rows: EmpRow[] = useMemo(() => {
     // Mapas batida → dia, por matrícula e por nome (mesmo casamento da Folha).
@@ -357,9 +391,26 @@ export default function RelatoriosRH() {
   const pendencias = useMemo(
     () => visibleRows.flatMap(r => r.days
       .filter(d => d.punches.length >= 1 && d.punches.length % 2 === 1)
-      .map(d => ({ empId: r.id, emp: r.name, date: d.date, dow: d.dow, punches: d.punches }))),
+      .map(d => ({ empId: r.id, ext: r.ext, emp: r.name, date: d.date, dow: d.dow, punches: d.punches }))),
     [visibleRows],
   );
+
+  // Junta TODAS as pendências editadas e válidas e dispara o save em lote.
+  const saveAllPending = () => {
+    const items: { recordId: string | null; ext?: string; name: string; date: string; punches: string[] }[] = [];
+    const invalid: string[] = [];
+    for (const p of pendencias) {
+      const raw = pendEdits[pendKey(p.empId, p.date)];
+      if (raw === undefined) continue;                        // não mexeu nesse dia
+      if (raw.trim() === p.punches.map(cleanPunch).join(' ').trim()) continue; // sem mudança real
+      const parsed = parsePunchInput(raw);
+      if (!parsed.ok) { invalid.push(`${p.emp} ${fmtBR(p.date)}: ${parsed.error || 'inválido'}`); continue; }
+      items.push({ recordId: resolveRecordId(p.ext, p.emp, p.date), ext: p.ext, name: p.emp, date: p.date, punches: parsed.punches });
+    }
+    if (invalid.length) toast.error(`${invalid.length} dia(s) ainda sem corrigir:\n${invalid.slice(0, 6).join('\n')}`);
+    if (items.length === 0) { if (!invalid.length) toast.info('Nada novo pra salvar — edite as batidas primeiro.'); return; }
+    saveBatchPunches.mutate(items);
+  };
 
   // Formata saldo de banco (minutos, com sinal): +9h00 / −1h30 / 0h00.
   const fmtSaldo = (min: number) => {
@@ -919,38 +970,83 @@ export default function RelatoriosRH() {
           ) : (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" /> Pendências de ponto ({pendencias.length}) — resolver antes de fechar a folha
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Dias com nº <strong>ímpar de batidas</strong> (faltou entrada/saída): não somam horas nem descontam — corrija o ponto na aba <strong>Ponto</strong>.
-                </p>
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" /> Pendências de ponto ({pendencias.length})
+                      {scope !== ALL && scopedRow ? ` — ${scopedRow.name}` : ''}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Dia com nº <strong>ímpar de batidas</strong> (faltou entrada/saída). Insira a batida que falta em cada linha e clique <strong>Salvar todas</strong> — o relatório recalcula sozinho.
+                      {scope === ALL && <> Dica: selecione um funcionário na barra acima pra resolver só os dele.</>}
+                    </p>
+                  </div>
+                  {(() => {
+                    const readyCount = pendencias.reduce((acc, p) => {
+                      const raw = pendEdits[pendKey(p.empId, p.date)];
+                      if (raw === undefined || raw.trim() === p.punches.map(cleanPunch).join(' ').trim()) return acc;
+                      return parsePunchInput(raw).ok ? acc + 1 : acc;
+                    }, 0);
+                    return (
+                      <Button size="sm" className="gap-1.5 shrink-0" disabled={readyCount === 0 || saveBatchPunches.isPending}
+                        onClick={saveAllPending}>
+                        <Check className="h-4 w-4" /> Salvar todas{readyCount > 0 ? ` (${readyCount})` : ''}
+                      </Button>
+                    );
+                  })()}
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Funcionário</TableHead>
+                        {scope === ALL && <TableHead>Funcionário</TableHead>}
                         <TableHead>Data</TableHead>
                         <TableHead>Dia</TableHead>
-                        <TableHead>Batidas</TableHead>
+                        <TableHead>Batidas atuais</TableHead>
+                        <TableHead>Corrigir (entrada · saída)</TableHead>
+                        <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pendencias.map((p, i) => (
-                        <TableRow key={`${p.empId}-${p.date}-${i}`}>
-                          <TableCell className="font-medium">{p.emp}</TableCell>
-                          <TableCell className="tabular-nums text-xs">{fmtBR(p.date)}</TableCell>
-                          <TableCell className="text-xs">{DAYS_PT[p.dow]}</TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {p.punches.map(cleanPunch).join(' · ')}
-                            <Badge className="ml-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal">
-                              {p.punches.length} batida(s)
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {pendencias.map((p, i) => {
+                        const key = pendKey(p.empId, p.date);
+                        const original = p.punches.map(cleanPunch).join(' ');
+                        const draft = pendEdits[key] ?? original;
+                        const changed = draft.trim() !== original.trim();
+                        const valid = parsePunchInput(draft).ok;
+                        return (
+                          <TableRow key={`${p.empId}-${p.date}-${i}`}>
+                            {scope === ALL && <TableCell className="font-medium text-sm">{p.emp}</TableCell>}
+                            <TableCell className="tabular-nums text-xs">{fmtBR(p.date)}</TableCell>
+                            <TableCell className="text-xs">{DAYS_PT[p.dow]}</TableCell>
+                            <TableCell className="text-xs font-mono text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                              {original || '—'}
+                              <Badge className="ml-2 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-normal text-[10px] px-1">
+                                {p.punches.length} ímpar
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={draft}
+                                onChange={e => setPendEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                                onKeyDown={e => { if (e.key === 'Enter' && changed && valid) saveEditedPunches(p.empId, p.ext, p.emp, p.date, draft); }}
+                                placeholder="08:00 12:00 13:00 18:00"
+                                className={`h-8 text-xs font-mono w-56 ${changed ? (valid ? 'border-emerald-500/60 focus-visible:ring-emerald-500/30' : 'border-destructive/60 focus-visible:ring-destructive/30') : ''}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-600 disabled:opacity-30"
+                                disabled={!changed || !valid || savePunches.isPending || saveBatchPunches.isPending}
+                                title={!changed ? 'Edite as batidas primeiro' : !valid ? 'Nº ímpar de batidas / horário inválido' : 'Salvar este dia'}
+                                onClick={() => saveEditedPunches(p.empId, p.ext, p.emp, p.date, draft)}>
+                                <Check className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
