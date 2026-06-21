@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Clock, CurrencyDollar as DollarSign, CaretRight, CaretDown,
   Warning as AlertTriangle, Users as Users2, Printer,
-  CalendarBlank as Calendar, IdentificationCard, DownloadSimple,
+  CalendarBlank as Calendar, IdentificationCard,
   Scales, PencilSimple, Check, X as XIcon,
 } from '@phosphor-icons/react';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -22,12 +22,10 @@ import { splitDayMinutes, MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { computePeriodFolha, expectedDayMinutes, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import {
   printEmployeeTimesheet, printConsolidatedHoursReport,
-  printEmployeeEvaluationDetailed, printFolhaComparativo,
   printCalendarReport, printIndividualCalendarReport,
   type EmployeeTimesheetData,
 } from '@/lib/printTimesheet';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
-import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -98,6 +96,9 @@ export default function RelatoriosRH() {
   const today = new Date();
   const [period, setPeriod] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
   const [tab, setTab] = usePersistedState<string>('rh-relatorios-tab', 'ponto');
+  // A aba "Pagamento" foi consolidada na FOLHA (2026-06-21). Quem tinha ela salva
+  // no localStorage cai de volta em "Horas" (senão ficaria numa aba inexistente).
+  useEffect(() => { if (tab === 'pagamento') setTab('ponto'); }, [tab, setTab]);
   const [scope, setScope] = useState<string>(ALL);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Edição inline de batidas (resolver pendência de horário direto no relatório).
@@ -488,18 +489,6 @@ export default function RelatoriosRH() {
     if (tab === 'ponto') {
       if (scope === ALL) printConsolidatedHoursReport(allData, periodLabel);
       else if (scopedRow) printEmployeeTimesheet(buildPrintData(scopedRow), periodLabel);
-    } else if (tab === 'pagamento') {
-      if (scope === ALL) {
-        // Folha comparativa: Mês × 1ª × 2ª quinzena + Situação (1 tabela, paisagem).
-        printFolhaComparativo(
-          visibleRows.map(r => ({ ext: r.ext, name: r.name, salary: r.result.base_salary, mes: r.result.net_value, q1: r.q1.net_value, q2: r.q2.net_value, sit: r.sit })),
-          periodLabel,
-          { lastDay: monthDays.length, totals: { salarios: totals.salarioBase, mes: totals.liqMes, q1: totals.liqQ1, q2: totals.liqQ2 } },
-        );
-      } else if (scopedRow) {
-        // Demonstrativo individual completo (folha + faltas/atrasos + HE + jornada + adiantamentos).
-        printEmployeeEvaluationDetailed([buildPrintData(scopedRow)], periodLabel, [scopedRow.advMes]);
-      }
     } else if (tab === 'calendario') {
       if (scope === ALL) printCalendarReport(allData, periodLabel);
       else if (scopedRow) printIndividualCalendarReport(buildPrintData(scopedRow), periodLabel);
@@ -508,24 +497,10 @@ export default function RelatoriosRH() {
     }
   };
 
-  // Baixa o .xlsx com Resumo + Detalhe dia a dia (respeita o escopo: 1 funcionário ou todos).
-  const handleExport = () => {
-    if (visibleRows.length === 0) return;
-    exportFolhaExcel(
-      visibleRows.map(r => ({
-        ext: r.ext, name: r.name, data: buildPrintData(r),
-        mes: r.result, q1: r.q1, q2: r.q2, advMes: r.advMes, sit: r.sit.txt,
-      })),
-      periodLabel,
-      `Folha_${period}.xlsx`,
-    );
-  };
-
   const espelhoNeedsEmployee = tab === 'espelho' && scope === ALL;
   const noPrintTab = tab === 'banco' || tab === 'pendencias';
   const printDisabled = visibleRows.length === 0 || espelhoNeedsEmployee || noPrintTab;
   const printLabel = tab === 'ponto' ? 'Imprimir horas'
-    : tab === 'pagamento' ? (scope === ALL ? 'Imprimir folha (comparativo)' : 'Imprimir demonstrativo')
     : tab === 'calendario' ? 'Imprimir calendário'
     : tab === 'espelho' ? 'Imprimir espelho'
     : 'Imprimir';
@@ -567,10 +542,7 @@ export default function RelatoriosRH() {
           {rows.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Button size="sm" variant="outline" className="h-9 gap-1.5 ml-auto" onClick={handleExport} disabled={visibleRows.length === 0}>
-        <DownloadSimple className="h-4 w-4" /> Exportar Excel
-      </Button>
-      <Button size="sm" className="h-9 gap-1.5" onClick={handlePrint} disabled={printDisabled}>
+      <Button size="sm" className="h-9 gap-1.5 ml-auto" onClick={handlePrint} disabled={printDisabled}>
         <Printer className="h-4 w-4" /> {printLabel}
       </Button>
     </div>
@@ -631,7 +603,6 @@ export default function RelatoriosRH() {
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <HubTabsList tabs={[
           { value: 'ponto', label: 'Horas', icon: Clock },
-          { value: 'pagamento', label: 'Pagamento', icon: DollarSign },
           { value: 'calendario', label: 'Calendário', icon: Calendar },
           { value: 'espelho', label: 'Espelho (legal)', icon: IdentificationCard },
           { value: 'banco', label: 'Banco de Horas', icon: Scales },
@@ -766,105 +737,10 @@ export default function RelatoriosRH() {
           )}
         </TabsContent>
 
-        {/* ── PAGAMENTO: a MESMA conta da Folha (salário − descontos, HE líquida) ── */}
-        <TabsContent value="pagamento">
-          {isLoading ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">Carregando…</div>
-          ) : visibleRows.length === 0 ? Empty : (
-            <div className="space-y-3">
-              {/* KPIs do período */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                {[
-                  { label: 'Funcionários', value: String(visibleRows.length) },
-                  { label: 'Salários', value: fmtBRL(totals.salarioBase) },
-                  { label: isFullMonth ? 'Líquido Mês' : 'Líquido período', value: fmtBRL(totals.liqMes), accent: true },
-                  { label: 'Líq. 1ª quinz', value: fmtBRL(totals.liqQ1) },
-                  { label: 'Líq. 2ª quinz', value: fmtBRL(totals.liqQ2) },
-                ].map(k => (
-                  <div key={k.label} className={`rounded-md border p-2.5 ${k.accent ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/30'}`}>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{k.label}</p>
-                    <p className={`tabular-nums font-bold ${k.accent ? 'text-base text-primary' : 'text-sm'}`}>{k.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Aviso antes de pagar */}
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Antes de pagar:</strong> hora extra e atraso são contados <strong>por dia</strong> — cada dia que passou do esperado
-                  paga HE ×1,5 e cada dia que ficou abaixo desconta atraso, <strong>sem compensar entre dias</strong>; fim de semana / feriado
-                  trabalhado = tudo HE; falta = −1 dia. Os valores refletem o ponto <strong>como foi importado</strong> —
-                  confira a coluna <strong>Situação</strong> e corrija o ponto antes de pagar.
-                </span>
-              </div>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" /> Folha {periodLabel} — Mês × 1ª × 2ª quinzena (líquido por funcionário)
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Mesmo motor da Folha (HE/atraso por dia), <strong>líquido já com adiantamentos pendentes descontados</strong>. Base da quinzena é
-                    <strong> proporcional aos dias</strong> (1ª = 15/30, 2ª = {monthDays.length - 15}/30).
-                    <strong> Imprimir</strong>: Todos → esta tabela; um funcionário selecionado → o demonstrativo individual completo.
-                  </p>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-16">Matríc.</TableHead>
-                          <TableHead>Funcionário</TableHead>
-                          <TableHead className="text-right">Salário</TableHead>
-                          <TableHead className="text-right">{isFullMonth ? `Mês (01–${monthDays.length})` : 'Período'}</TableHead>
-                          <TableHead className="text-right">1ª quinz (01–15)</TableHead>
-                          <TableHead className="text-right">2ª quinz (16–{monthDays.length})</TableHead>
-                          <TableHead>Situação</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {visibleRows.map(r => (
-                          <TableRow key={r.id}>
-                            <TableCell className="tabular-nums text-xs text-muted-foreground">{r.ext || '—'}</TableCell>
-                            <TableCell className="font-medium">{r.name}</TableCell>
-                            <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(r.result.base_salary)}</TableCell>
-                            <TableCell className="text-right tabular-nums font-semibold">{fmtBRL(r.result.net_value)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{fmtBRL(r.q1.net_value)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{fmtBRL(r.q2.net_value)}</TableCell>
-                            <TableCell>
-                              <Badge className={`font-normal ${r.sit.tone === 'green' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' : r.sit.tone === 'red' ? 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'}`}>
-                                {r.sit.txt}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                      <tfoot>
-                        <TableRow className="border-t-2 font-semibold bg-muted/30">
-                          <TableCell />
-                          <TableCell>Total ({visibleRows.length})</TableCell>
-                          <TableCell className="text-right tabular-nums text-muted-foreground">{fmtBRL(totals.salarioBase)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{fmtBRL(totals.liqMes)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{fmtBRL(totals.liqQ1)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{fmtBRL(totals.liqQ2)}</TableCell>
-                          <TableCell />
-                        </TableRow>
-                      </tfoot>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>Nota:</strong> a base é proporcional aos dias do mês (salário × dias do período ÷ {monthDays.length}),
-                então 1ª ({15}/{monthDays.length}) + 2ª ({monthDays.length - 15}/{monthDays.length}) = salário exato; o mês cheio paga o salário.
-                O detalhe dia a dia de cada funcionário sai no <strong>demonstrativo individual</strong> (selecione um funcionário e clique Imprimir).
-              </p>
-            </div>
-          )}
-        </TabsContent>
+        {/* ── PAGAMENTO consolidado na FOLHA (2026-06-21): a folha (Mês × 1ª × 2ª),
+            imprimir e exportar Excel viraram a página RH → Folha (que também
+            aprova/marca pago/guarda histórico). Aqui sobram só os relatórios de
+            ponto (Horas/Calendário/Espelho/Banco/Pendências). ── */}
 
         {/* ── CALENDÁRIO: grade visual mês × dia (impressão) ── */}
         <TabsContent value="calendario">

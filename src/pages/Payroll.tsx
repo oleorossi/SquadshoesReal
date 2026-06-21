@@ -8,12 +8,15 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
+import { computeComparativoRows } from '@/lib/payrollComparativo';
+import { printFolhaComparativo } from '@/lib/printTimesheet';
+import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -145,6 +148,61 @@ export default function Payroll() {
     const advancesCount = runs.filter(r => (r.advances_total || 0) > 0).length;
     return { proventos, descontos, advances, liquido, advancesCount };
   }, [runs]);
+
+  // ── Comparativo Mês × 1ª × 2ª (pra IMPRIMIR / EXPORTAR a folha) ──────────────
+  // Mesma fórmula da folha (computePeriodFolha) via lib compartilhada. Antes vivia
+  // na aba Relatórios → Pagamento; consolidado aqui (2026-06-21).
+  const compPeriod = useMemo(() => (appliedFrom || '').slice(0, 7), [appliedFrom]);
+  const { data: compRecords = [] } = useQuery({
+    queryKey: ['payroll-comp-records', appliedFrom, appliedTo],
+    enabled: !!(appliedFrom && appliedTo),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('time_records')
+        .select('employee_external_id, employee_name, record_date, punches')
+        .gte('record_date', appliedFrom).lte('record_date', appliedTo);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+  const { data: compAdvances = [] } = useQuery({
+    queryKey: ['payroll-comp-advances', appliedFrom, appliedTo],
+    enabled: !!(appliedFrom && appliedTo),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employee_advances')
+        .select('employee_id, amount, advance_date, status, payroll_run_id')
+        .gte('advance_date', appliedFrom).lte('advance_date', appliedTo)
+        .or('payroll_run_id.is.null,status.eq.pending');
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+  const comparativo = useMemo(() => computeComparativoRows({
+    employees, schedules, defaultSchedule, holidaysSet,
+    timeRecords: compRecords, advancesList: compAdvances,
+    range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
+    maxCovered: coverage?.maxCovered || null,
+  }), [employees, schedules, defaultSchedule, holidaysSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
+
+  const handlePrintFolha = () => {
+    if (comparativo.rows.length === 0) { toast.error('Nada pra imprimir — calcule a folha / importe o ponto primeiro.'); return; }
+    printFolhaComparativo(
+      comparativo.rows.map(r => ({ ext: r.ext, name: r.name, salary: r.result.base_salary, mes: r.result.net_value, q1: r.q1.net_value, q2: r.q2.net_value, sit: r.sit })),
+      periodTitle,
+      { lastDay: comparativo.monthDays, totals: { salarios: comparativo.totals.salarios, mes: comparativo.totals.mes, q1: comparativo.totals.q1, q2: comparativo.totals.q2 } },
+    );
+  };
+  const handleExportExcel = () => {
+    if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
+    exportFolhaExcel(
+      comparativo.rows.map(r => ({ ext: r.ext, name: r.name, data: r.printData, mes: r.result, q1: r.q1, q2: r.q2, advMes: r.advMes, sit: r.sit.txt })),
+      periodTitle,
+      `Folha_${compPeriod}.xlsx`,
+    );
+  };
 
   async function calculateAll() {
     // Usa o intervalo IMEDIATO (o que está nos inputs agora), não o debounced.
@@ -344,6 +402,12 @@ export default function Payroll() {
           <Button size="sm" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha
+          </Button>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={handlePrintFolha} title="Imprimir folha comparativa (Mês × 1ª × 2ª quinzena)">
+            <Printer className="h-4 w-4" /> Imprimir folha
+          </Button>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={handleExportExcel} title="Exportar a folha em Excel (resumo + detalhe dia a dia)">
+            <DownloadSimple className="h-4 w-4" /> Exportar Excel
           </Button>
         </div>
       </div>
