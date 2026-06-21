@@ -105,8 +105,19 @@ export function CurrencyInput({ value, onChange, id, className, required }: Curr
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     setFocused(true);
-    // Seleciona tudo pra facilitar overwrite
-    setTimeout(() => e.target.select(), 0);
+    const el = e.currentTarget;
+    if (!value) {
+      // Valor 0: LIMPA o campo ao focar. Sem isso o "0,00" não some — e como o
+      // select() abaixo corre contra o cursor que o clique posiciona, ele falha
+      // com frequência. Digitar "5" sobre "0,00" virava "0,005" (=0.005): o zero
+      // não era excluído e a casa decimal ficava errada, então o custo "não
+      // deixava" ser alterado. Mesma estratégia do NumberInput.
+      setDisplayValue("");
+      return;
+    }
+    // Valor existente: seleciona tudo pra digitar por cima. setTimeout pra rodar
+    // DEPOIS do cursor que o clique posiciona (senão a seleção some na hora).
+    setTimeout(() => el.select(), 0);
   };
 
   return (
