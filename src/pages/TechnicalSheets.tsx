@@ -1080,14 +1080,14 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
           </div>
 
           <div className="md:col-span-2">
-            <Label htmlFor="qc-name" className="text-xs">Nome da Ficha / Referência <RequiredMark /></Label>
+            <Label htmlFor="qc-name" className="text-xs">Referência <RequiredMark /></Label>
             <Input
               id="qc-name"
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               required
               className={cn("mt-1 h-9", nameMissing && "border-red-500")}
-              placeholder="Ex: Sandália MONALISA"
+              placeholder="Ex.: DS20 / SP101"
               autoFocus
             />
           </div>
@@ -2031,7 +2031,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <FieldInput label="SKU / Código" value={form.code || ''} onChange={v => updateField('code', v)} placeholder="MON-893767-003" mono />
-              <FieldInput label="Nome do Modelo" value={form.name || ''} onChange={v => updateField('name', v)} placeholder="Sandália MONALISA" />
+              <FieldInput label="Referência" value={form.name || ''} onChange={v => updateField('name', v)} placeholder="Ex.: DS20 / SP101" />
               <FieldInput label="Marca" value={form.brand || ''} onChange={v => updateField('brand', v)} placeholder="Ex: Squad Shoes" />
               <FieldInput label="Modelo" value={form.model || ''} onChange={v => updateField('model', v)} placeholder="Ex: Air Max Style" />
               <div className="md:col-span-2">
