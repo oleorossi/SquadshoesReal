@@ -682,6 +682,7 @@ Deno.serve(async (req) => {
     // de conferência do EmitDialog.
     const produtosPreview: Array<{
       descricao: string;
+      codigo: string;
       ncm: string;
       cfop: string;
       quantidade: number;
@@ -701,6 +702,12 @@ Deno.serve(async (req) => {
       const price = effectivePrice(it);
       const baseName = ts?.name || prod?.name || "Produto";
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
+      // Código do produto na NF (cProd no XML / "CÓDIGO PRODUTO" no DANFE) = o
+      // SKU/Código da ficha (technical_sheets.code). Pedido do dono 2026-06-20:
+      // a NF deve mostrar o NOSSO código, não o codigo_interno auto do GestaoClick
+      // (ex.: 903927). Variante pode sobrescrever (variant.sku); NF avulsa usa o
+      // products.sku/code. Mandamos tanto na linha quanto no cadastro do produto.
+      const codigoNf = (variant?.sku || ts?.code || (prod as any)?.sku || (prod as any)?.code || "").toString().trim();
       // Unidade comercial na NF. Pedido do dono em 01/06/2026, validando contra
       // a NF #248 revisada pela contabilidade (o DANFE de referência sai com
       // "UN", não "PAR"): forçar "UN". Vale também p/ NF avulsa de standalone
@@ -771,7 +778,7 @@ Deno.serve(async (req) => {
             marca: itemBrand, // marca aparece no XML SEFAZ <prod><xMarca> — silk do solado
           };
           if (fullDesc) productPayload.descricao = fullDesc;
-          if (skuVariante) productPayload.codigo = skuVariante;
+          if (codigoNf) productPayload.codigo = codigoNf;
           if (gtinVariante) productPayload.gtin = gtinVariante;
           if (pesoKg > 0) {
             productPayload.peso_bruto = pesoKg.toFixed(3);
@@ -798,6 +805,10 @@ Deno.serve(async (req) => {
       const qty = Number(it.quantity) || 0;
       produtosGC.push({
         produto_id: gcProductId,
+        // Código do produto na linha da NF = nosso SKU/Código (ficha.code). Alguns
+        // endpoints do GestaoClick herdam o código do produto cadastrado; mandar na
+        // linha tb cobre o caso de a NF aceitar override por item.
+        ...(codigoNf ? { codigo: codigoNf } : {}),
         quantidade: qty.toFixed(2),
         // valor_venda é o preço UNITÁRIO — o GestaoClick multiplica por
         // quantidade internamente. Antes mandávamos (qtd × preço) e o
@@ -811,6 +822,7 @@ Deno.serve(async (req) => {
       });
       produtosPreview.push({
         descricao: nomeProduto,
+        codigo: codigoNf,
         ncm,
         cfop: resolvedCfop,
         quantidade: qty,
