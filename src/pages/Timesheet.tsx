@@ -1081,8 +1081,9 @@ function TimesheetRecordsTab() {
         </div>
       </div>
 
-      {/* Employee selector */}
-      {employeeNames.length > 0 && (
+      {/* Employee selector OCULTO (2026-06-20): o Ponto não mostra mais resumo
+          por funcionário — isso é visualização e vive no RH → Relatórios. */}
+      {false && employeeNames.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
           <div className="w-64">
             <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
@@ -1121,13 +1122,15 @@ function TimesheetRecordsTab() {
           2026-06-20: duplicava o RH → Relatórios → "Horas". O Ponto cuida da
           ENTRADA (importar/lançar/pendências/escala); a visualização e a impressão
           (Horas, Pagamento, Espelho legal, Calendário) ficam num lugar só. */}
-      {selectedEmployee === '__all__' && allEmployeeSummaries.length > 0 && (
+      {employeeNames.length > 0 && (
         <Panel flush>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
             <div className="text-sm">
-              <p className="font-medium">Resumo de horas por funcionário</p>
+              <p className="font-medium">
+                {employeeNames.length} funcionário{employeeNames.length === 1 ? '' : 's'} com batidas importadas neste período
+              </p>
               <p className="text-xs text-muted-foreground">
-                A visualização e a impressão (Horas, Pagamento, Espelho, Calendário) ficam em <strong>Relatórios</strong> — um lugar só. Selecione um funcionário acima para conferir as batidas do dia (verificação do import).
+                Horas, pagamento, espelho legal e calendário ficam em <strong>Relatórios</strong> — um lugar só. Batidas inconsistentes aparecem na aba <strong>Pendências</strong>.
               </p>
             </div>
             <Button
@@ -1140,100 +1143,9 @@ function TimesheetRecordsTab() {
         </Panel>
       )}
 
-      {/* Summary cards */}
-      {selectedEmployee && selectedEmployee !== '__all__' && summaries.length > 0 && (
-        <>
-          <StatGrid>
-            <StatCard label="Trabalhadas" value={minutesToDisplay(totalWorked)} />
-            <StatCard label="Esperadas" value={minutesToDisplay(totalExpected)} />
-            <StatCard label="Hora Extra" value={compensatedOvertime > 0 ? minutesToDisplay(compensatedOvertime) : '—'} tone="success" />
-            <StatCard label="Atraso" value={remainingDeficit > 0 ? minutesToDisplay(remainingDeficit) : '—'} tone="destructive" />
-            <StatCard label="Faltas" value={absences} tone="destructive" />
-            <StatCard label="Feriados Trab." value={holidayWorked} tone="primary" />
-          </StatGrid>
-
-          {/* Overtime value calculation */}
-          {getHourlySalary(selectedEmployee) > 0 && (compensatedOvertime > 0 || remainingDeficit > 0 || faltasFolha > 0) && (
-            <Card className="border-green-500/20 bg-green-50/30 dark:bg-green-950/10">
-              <CardContent className="p-4">
-                <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                  <DollarSign className="h-4 w-4 text-green-600" /> Cálculo de Hora Extra / Atraso (folha)
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground text-xs">Valor/hora base</span>
-                    <p className="font-mono tabular-nums font-medium">{formatCurrency(getHourlySalary(selectedEmployee))}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Hora extra ({minutesToDisplay(compensatedOvertime)})</span>
-                    <p className="font-mono tabular-nums font-bold text-green-600">{compensatedOvertime > 0 ? formatCurrency(heValueFolha) : '—'}</p>
-                  </div>
-                  {remainingDeficit > 0 && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Atraso ({minutesToDisplay(remainingDeficit)})</span>
-                      <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(atrasoDescontoFolha)}</p>
-                    </div>
-                  )}
-                  {faltasFolha > 0 && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Faltas ({faltasFolha})</span>
-                      <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(folhaInd?.falta_desconto ?? 0)}</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* "Dias com Hora Extra" REMOVIDO (auditoria 2026-06-17): HE é conceito
-              de PERÍODO (não diário) — calculateDaySummary.overtimeMinutes é sempre
-              0, então este bloco nunca tinha dado. A HE real (líquida do período)
-              aparece no card "Hora Extra" acima (motor da folha). */}
-
-          {/* Day-by-day table */}
-          <Panel title="Registro Diário Completo" flush>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                    <TableHead className="w-10"></TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Dia</TableHead>
-                    <TableHead>Batidas</TableHead>
-                    <TableHead className="text-right">Trabalhado</TableHead>
-                    <TableHead className="text-right">Esperado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {summaries.map(d => (
-                    <TableRow key={d.date} className={
-                      d.status === 'absent' ? 'bg-destructive/5' :
-                      d.status === 'overtime' ? 'bg-amber-500/5' :
-                      d.status === 'holiday' ? 'bg-blue-500/5' :
-                      d.status === 'weekend' ? 'bg-muted/30' :
-                      d.status === 'incomplete' ? 'bg-amber-500/5' : ''
-                    }>
-                      <TableCell>{statusIcon(d.status)}</TableCell>
-                      <TableCell className="font-mono text-sm">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
-                      <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {d.punches.map((p, i) => (
-                            <Badge key={i} variant="outline" className="text-xs font-mono">{p}</Badge>
-                          ))}
-                          {d.punches.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">{d.workedFormatted}</TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">{minutesToDisplay(d.expectedMinutes)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </Panel>
-        </>
-      )}
+      {/* Resumo/financeiro/registro-diário por funcionário REMOVIDOS do Ponto
+          (2026-06-20): tudo isso é visualização e vive no RH → Relatórios (Horas,
+          Pagamento, Espelho, Calendário). O Ponto é SÓ ENTRADA. */}
 
       {records.length === 0 && !preview && (
         <Panel flush>
