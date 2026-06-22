@@ -116,6 +116,11 @@ export default function PCPHub() {
                       >
                         {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
                         {tab.label}
+                        {value === "gargalo-diario" && (
+                          <span className="md:ml-auto text-[9px] font-bold uppercase tracking-wide leading-none rounded px-1 py-0.5 bg-primary/15 text-primary">
+                            novo
+                          </span>
+                        )}
                       </TabsTrigger>
                     );
                   })}
