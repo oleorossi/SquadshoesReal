@@ -141,17 +141,17 @@ function imprimirRelatorio(rows: AggRow[], label: string, intervalo: string, tot
     th{background:#f1f0ed;text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#444}
     td.n{text-align:right;font-variant-numeric:tabular-nums} tfoot td{font-weight:800;background:#f6f5f2}
     @page{size:A4 portrait;margin:12mm}`;
-  const body = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td><td class="n">${r.pares}</td><td class="n">${fmtBRL(r.pago)}</td></tr>`).join("");
+  const body = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td><td class="n">${r.pares}</td><td class="n">${fmtBRL(r.valorPar)}</td><td class="n">${fmtBRL(r.pago)}</td></tr>`).join("");
   openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Produtividade — Montadores</title><style>${css}</style></head><body>
     <h1>Produtividade dos Montadores</h1>
     <div class="sub">${esc(label)} · ${esc(intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <table><thead><tr><th>Montador</th><th style="text-align:right">Fichas</th><th style="text-align:right">Pares</th><th style="text-align:right">Pagamento</th></tr></thead>
-    <tbody>${body || '<tr><td colspan="4" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
-    <tfoot><tr><td>TOTAL (${rows.length} montador${rows.length === 1 ? "" : "es"})</td><td class="n">${totals.fichas}</td><td class="n">${totals.pares}</td><td class="n">${fmtBRL(totals.pago)}</td></tr></tfoot></table>
+    <table><thead><tr><th>Montador</th><th style="text-align:right">Fichas</th><th style="text-align:right">Pares</th><th style="text-align:right">Valor/par</th><th style="text-align:right">Pagamento</th></tr></thead>
+    <tbody>${body || '<tr><td colspan="5" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
+    <tfoot><tr><td>TOTAL (${rows.length} montador${rows.length === 1 ? "" : "es"})</td><td class="n">${totals.fichas}</td><td class="n">${totals.pares}</td><td class="n"></td><td class="n">${fmtBRL(totals.pago)}</td></tr></tfoot></table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
 
-interface AggRow { key: string; nome: string; fichas: number; pares: number; pago: number; }
+interface AggRow { key: string; nome: string; fichas: number; pares: number; pago: number; valorPar: number; }
 
 /* ---------- Componente ---------- */
 export default function FichaMontadoresPage() {
@@ -197,14 +197,34 @@ export default function FichaMontadoresPage() {
   });
 
   const total = useMemo(() => sumQ(qtys), [qtys]);
-  // Último valor/par lançado por montador → auto-preenche ao escolher o montador.
-  const lastValorPar = useMemo(() => {
-    const m = new Map<string, number>();
-    [...fichas].sort((a, b) => (b.criado_em || "").localeCompare(a.criado_em || "")).forEach((f) => {
-      if (f.montador_id && !m.has(f.montador_id)) m.set(f.montador_id, Number(f.valor_par) || 0);
-    });
+  // Valor/par por montador é definido no RELATÓRIO (aba Produtividade), não na
+  // ficha. O seed vem do MAIOR valor_par já gravado pra cada montador — reusa a
+  // coluna existente, sem migration. Fichas novas nascem com valor_par 0 (o MAX
+  // ignora o 0), e a aba Produtividade é a fonte da verdade do cálculo.
+  const aggKeyOf = (f: { montador_id?: string | null; montador?: string | null }) =>
+    f.montador_id || `txt:${(f.montador || "—").toLowerCase()}`;
+  const seedValorPorMontador = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const f of fichas) {
+      const key = aggKeyOf(f);
+      const v = Number(f.valor_par) || 0;
+      if (v > (m[key] || 0)) m[key] = v;
+    }
     return m;
   }, [fichas]);
+  // Valor/par editável por montador no relatório. Seed preenche só quem ainda
+  // não foi editado à mão (não sobrescreve edição do usuário, inclusive 0).
+  const [valorPorMontador, setValorPorMontador] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setValorPorMontador((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const key in seedValorPorMontador) {
+        if (next[key] == null) { next[key] = seedValorPorMontador[key]; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [seedValorPorMontador]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -230,9 +250,6 @@ export default function FichaMontadoresPage() {
     setMontadorId(id);
     const e = montadores.find((x) => x.id === id);
     setMontadorNome(e?.name ?? "");
-    // auto-preenche o valor/par do último lançamento desse montador (se houver e o atual estiver zerado)
-    const last = lastValorPar.get(id);
-    if (last != null && (!editingId || valorPar === 0)) setValorPar(last);
   }
   function pickSolado(id: string) {
     setSoladoId(id);
@@ -277,6 +294,16 @@ export default function FichaMontadoresPage() {
     if (error) setMsg({ type: "err", text: "Erro ao excluir: " + error.message });
     else { if (editingId === f.id) novaFicha(); await carregar(); }
   }
+  // Persiste o valor/par definido por montador no relatório. Reusa a coluna
+  // valor_par (sem migration): grava em TODAS as fichas daquele montador, pra o
+  // seed (MAX valor_par) sobreviver ao reload. Fichas sem montador_id ficam só
+  // em memória (não dá pra casar com segurança).
+  async function persistRateMontador(key: string, valor: number) {
+    if (key.startsWith("txt:")) return;
+    const { error } = await db.from("ficha_montadores").update({ valor_par: valor }).eq("montador_id", key);
+    if (error) { setMsg({ type: "err", text: "Erro ao salvar valor/par: " + error.message }); return; }
+    setFichas((fs) => fs.map((f) => (f.montador_id === key ? { ...f, valor_par: valor } : f)));
+  }
 
   // ── filtro de período (Produtividade + Fichas) ──
   const [pMode, setPMode] = useState<PeriodMode>("q1");
@@ -293,15 +320,20 @@ export default function FichaMontadoresPage() {
   const agg = useMemo<AggRow[]>(() => {
     const m = new Map<string, AggRow>();
     for (const f of fichasFiltradas) {
-      const key = f.montador_id || `txt:${(f.montador || "—").toLowerCase()}`;
+      const key = aggKeyOf(f);
       const pares = paresDaFicha(f);
-      const pago = pares * (Number(f.valor_par) || 0);
-      const cur = m.get(key) || { key, nome: f.montador || "(sem montador)", fichas: 0, pares: 0, pago: 0 };
-      cur.fichas += 1; cur.pares += pares; cur.pago += pago;
+      const cur = m.get(key) || { key, nome: f.montador || "(sem montador)", fichas: 0, pares: 0, pago: 0, valorPar: 0 };
+      cur.fichas += 1; cur.pares += pares;
       m.set(key, cur);
     }
-    return Array.from(m.values()).sort((a, b) => b.pares - a.pares);
-  }, [fichasFiltradas]);
+    // pago = pares × valor/par definido por montador NO RELATÓRIO.
+    const rows = Array.from(m.values());
+    for (const r of rows) {
+      r.valorPar = valorPorMontador[r.key] ?? 0;
+      r.pago = r.pares * r.valorPar;
+    }
+    return rows.sort((a, b) => b.pares - a.pares);
+  }, [fichasFiltradas, valorPorMontador]);
   const totals = useMemo(
     () => agg.reduce((s, r) => ({ fichas: s.fichas + r.fichas, pares: s.pares + r.pares, pago: s.pago + r.pago }), { fichas: 0, pares: 0, pago: 0 }),
     [agg],
@@ -393,10 +425,6 @@ export default function FichaMontadoresPage() {
               <label className={lbl}>Cor</label>
               <Input value={cor} placeholder="Cor da montagem" onChange={(e) => setCor(e.target.value)} />
             </div>
-            <div>
-              <label className={lbl}>Valor por par (R$)</label>
-              <CurrencyInput value={valorPar} onChange={setValorPar} />
-            </div>
           </div>
 
           {/* grade de numerações */}
@@ -441,7 +469,6 @@ export default function FichaMontadoresPage() {
             <div className="rounded-md border border-border bg-muted/30 px-3 py-1.5 text-xs">
               <span className="text-muted-foreground">Pares (total × cópias): </span>
               <strong className="text-foreground tabular-nums">{total * Math.max(1, copias)}</strong>
-              {valorPar > 0 && <> · <span className="text-muted-foreground">Pagamento: </span><strong className="text-foreground tabular-nums">{fmtBRL(total * Math.max(1, copias) * valorPar)}</strong></>}
             </div>
 
             <div className="ml-auto flex flex-wrap gap-2">
@@ -508,17 +535,31 @@ export default function FichaMontadoresPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <tr><th className="px-3 py-2 w-8">#</th><th className="px-3 py-2">Montador</th><th className="px-3 py-2 text-right">Fichas</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Pagamento</th></tr>
+                  <tr><th className="px-3 py-2 w-8">#</th><th className="px-3 py-2">Montador</th><th className="px-3 py-2 text-right">Fichas</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Valor/par</th><th className="px-3 py-2 text-right">Pagamento</th></tr>
                 </thead>
                 <tbody>
-                  {agg.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
+                  {agg.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
                   {agg.map((r, i) => (
                     <tr key={r.key} className="border-t border-border">
                       <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{r.nome}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.fichas}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-foreground">{r.pares.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(r.pago)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {/* Valor/par por montador — fonte do cálculo. Digita → recalcula
+                            na hora; sai do campo → persiste (reusa valor_par). */}
+                        <div
+                          className="ml-auto w-28"
+                          onBlur={() => persistRateMontador(r.key, valorPorMontador[r.key] ?? 0)}
+                        >
+                          <CurrencyInput
+                            value={valorPorMontador[r.key] ?? 0}
+                            onChange={(v) => setValorPorMontador((p) => ({ ...p, [r.key]: v }))}
+                            className="h-8 text-right"
+                          />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmtBRL(r.pago)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -528,6 +569,7 @@ export default function FichaMontadoresPage() {
                       <td className="px-3 py-2" /><td className="px-3 py-2">Total ({agg.length})</td>
                       <td className="px-3 py-2 text-right tabular-nums">{totals.fichas}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{totals.pares.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2" />
                       <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.pago)}</td>
                     </tr>
                   </tfoot>
