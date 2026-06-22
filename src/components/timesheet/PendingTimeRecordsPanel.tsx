@@ -233,6 +233,43 @@ function EmployeeCard({
     staleTime: 30_000,
   });
 
+  // Padrão de saída do PRÓPRIO funcionário (histórico de batidas, últimos ~90d) →
+  // sugere a saída provável de cada pendência pra o RH só aprovar/ajustar.
+  const sinceISO = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const { data: history = [] } = useQuery({
+    queryKey: ['exit-history', emp.name, sinceISO],
+    queryFn: () => listEmployeeExitHistory(emp.name, sinceISO),
+    enabled: expanded,
+    staleTime: 5 * 60_000,
+  });
+  const pattern = useMemo(() => computeExitPattern(history), [history]);
+
+  // batida_extra já é calculada (última batida = saída) — não precisa sugestão.
+  const suggestibles = pendings.filter((p) => p.issue_type !== 'batida_extra');
+  const [approvingAll, setApprovingAll] = useState(false);
+  const approveAll = async () => {
+    if (suggestibles.length === 0) return;
+    setApprovingAll(true);
+    let ok = 0;
+    for (const p of suggestibles) {
+      try {
+        await applyManualPunchCompletion({
+          timeRecordId: p.time_record_id,
+          punchTime: suggestExitTime(pattern, p.record_date).time,
+          reason: 'sugestão-automática (padrão do funcionário)',
+        });
+        ok++;
+      } catch { /* pula o que falhar, segue os demais */ }
+    }
+    setApprovingAll(false);
+    toast.success(`${ok} dia(s) preenchidos com a saída sugerida.`);
+    onSaved();
+  };
+
   return (
     <Card className={cn(expanded && 'ring-1 ring-amber-500/30')}>
       <CardHeader
@@ -282,8 +319,25 @@ function EmployeeCard({
             </p>
           ) : (
             <div className="space-y-2">
+              {suggestibles.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    Saída sugerida pelo padrão de batidas dele — revise e ajuste se precisar.
+                  </span>
+                  <Button size="sm" className="h-8 gap-1.5" disabled={approvingAll} onClick={approveAll}>
+                    {approvingAll ? <Clock className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    Aprovar todas ({suggestibles.length})
+                  </Button>
+                </div>
+              )}
               {pendings.map((p) => (
-                <PendingDayRow key={p.time_record_id} p={p} onSaved={onSaved} />
+                <PendingDayRow
+                  key={p.time_record_id}
+                  p={p}
+                  suggestion={p.issue_type === 'batida_extra' ? undefined : suggestExitTime(pattern, p.record_date)}
+                  onSaved={onSaved}
+                />
               ))}
             </div>
           )}
@@ -293,9 +347,15 @@ function EmployeeCard({
   );
 }
 
-function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => void }) {
+function PendingDayRow({ p, suggestion, onSaved }: { p: PendingTimeRecord; suggestion?: ExitSuggestion; onSaved: () => void }) {
   const [punchTime, setPunchTime] = useState('');
   const [reason, setReason] = useState('');
+  // Pré-preenche com a saída sugerida (padrão do funcionário) — só enquanto o campo
+  // está vazio; o RH aprova (Salvar) ou ajusta. Não sobrescreve edição manual.
+  useEffect(() => {
+    if (suggestion?.time && punchTime === '') setPunchTime(suggestion.time);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion?.time]);
   const apply = useMutation({
     mutationFn: () =>
       applyManualPunchCompletion({
@@ -346,6 +406,17 @@ function PendingDayRow({ p, onSaved }: { p: PendingTimeRecord; onSaved: () => vo
       <div className="flex-1" />
 
       <div className="flex items-center gap-1.5">
+        {suggestion && (
+          <span
+            className="text-[10px] text-muted-foreground flex items-center gap-0.5 whitespace-nowrap"
+            title={suggestion.source === 'default'
+              ? 'Sem histórico suficiente — padrão 18:00. Ajuste se precisar.'
+              : 'Sugestão baseada no padrão de batidas do próprio funcionário. Aprove ou ajuste.'}
+          >
+            <Sparkles className="w-2.5 h-2.5 text-primary" />
+            {suggestion.source === 'default' ? 'padrão' : 'sugerido'}
+          </span>
+        )}
         <Input
           type="time"
           value={punchTime}
