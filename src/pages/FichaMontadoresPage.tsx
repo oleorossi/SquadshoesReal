@@ -428,31 +428,37 @@ export default function FichaMontadoresPage() {
           </div>
 
           {/* grade de numerações */}
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full border-collapse text-center" style={{ minWidth: 520 }}>
-              <thead>
-                <tr>
-                  <th className="border border-border px-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ width: 110 }}>N°</th>
-                  {sizes.map((s, i) => (
-                    <th key={i} className="border border-border p-0">
-                      <input className="h-9 w-full bg-transparent text-center text-sm font-bold outline-none focus:bg-muted/50" value={s} onChange={(e) => setSize(i, e.target.value)} />
-                    </th>
-                  ))}
-                  <th className="border border-border text-[10px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ width: 64 }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="border border-border px-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Por ficha</td>
-                  {qtys.map((q, i) => (
-                    <td key={i} className="border border-border p-0">
-                      <input inputMode="numeric" className="h-10 w-full bg-transparent text-center text-base font-bold outline-none focus:bg-muted/50" value={q} onChange={(e) => setQty(i, e.target.value)} />
-                    </td>
-                  ))}
-                  <td className="border border-border bg-muted text-lg font-bold text-foreground">{total}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="mt-5">
+            <div className="mb-2 flex items-baseline justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Grade de numerações</span>
+              <span className="text-[11px] text-muted-foreground/70">pares por ficha</span>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-border shadow-sm">
+              <table className="w-full border-collapse text-center" style={{ minWidth: 520 }}>
+                <thead>
+                  <tr className="bg-muted/30">
+                    <th className="border-b border-r border-border px-3 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground" style={{ width: 110 }}>N°</th>
+                    {sizes.map((s, i) => (
+                      <th key={i} className="border-b border-r border-border p-0">
+                        <input className="h-9 w-full bg-transparent text-center text-sm font-bold text-foreground outline-none transition-colors focus:bg-primary/5" value={s} onChange={(e) => setSize(i, e.target.value)} />
+                      </th>
+                    ))}
+                    <th className="border-b border-border bg-primary/5 text-[10px] font-bold uppercase tracking-wider text-primary" style={{ width: 64 }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border-r border-border px-3 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Por ficha</td>
+                    {qtys.map((q, i) => (
+                      <td key={i} className="border-r border-border p-0">
+                        <input inputMode="numeric" className="h-11 w-full bg-transparent text-center text-base font-bold tabular-nums text-foreground outline-none transition-colors focus:bg-primary/5" value={q} onChange={(e) => setQty(i, e.target.value)} />
+                      </td>
+                    ))}
+                    <td className="bg-primary/5 text-lg font-bold tabular-nums text-primary">{total}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -466,9 +472,9 @@ export default function FichaMontadoresPage() {
               <Input type="number" min={1} value={copias} onChange={(e) => setCopias(Math.max(1, parseInt(e.target.value) || 1))} className="h-8 w-16 text-center" />
             </div>
             {/* prévia do rendimento desta ficha */}
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-1.5 text-xs">
-              <span className="text-muted-foreground">Pares (total × cópias): </span>
-              <strong className="text-foreground tabular-nums">{total * Math.max(1, copias)}</strong>
+            <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pares (total × cópias)</span>
+              <strong className="text-base font-bold tabular-nums text-primary leading-none">{total * Math.max(1, copias)}</strong>
             </div>
 
             <div className="ml-auto flex flex-wrap gap-2">
@@ -513,16 +519,16 @@ export default function FichaMontadoresPage() {
       {/* ════ PRODUTIVIDADE ════ */}
       {tab === "produtividade" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             {[
               { label: "Montadores", value: String(agg.length) },
               { label: "Fichas", value: String(totals.fichas) },
               { label: "Pares (total × cópias)", value: totals.pares.toLocaleString("pt-BR"), accent: true },
               { label: "Pagamento", value: fmtBRL(totals.pago) },
             ].map((k) => (
-              <div key={k.label} className={`rounded-md border p-2.5 ${k.accent ? "border-primary/30 bg-primary/5" : "border-border bg-muted/30"}`}>
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{k.label}</p>
-                <p className={`tabular-nums font-bold ${k.accent ? "text-base text-primary" : "text-sm"}`}>{k.value}</p>
+              <div key={k.label} className={`rounded-lg border p-3 transition-colors ${k.accent ? "border-primary/30 bg-primary/5" : "border-border bg-card hover:border-border"}`}>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{k.label}</p>
+                <p className={`mt-1 tabular-nums font-bold leading-none ${k.accent ? "text-2xl text-primary" : "text-xl text-foreground"}`}>{k.value}</p>
               </div>
             ))}
           </div>
