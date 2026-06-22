@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { escapeHtml } from "@/lib/htmlUtils";
 
 /** Download a string as a file */
 function downloadBlob(content: string, filename: string, mime: string) {
@@ -14,7 +15,14 @@ function downloadBlob(content: string, filename: string, mime: string) {
 
 /** Export rows as CSV */
 export function exportCSV(headers: string[], rows: string[][], filename: string) {
-  const escape = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
+  // Anti CSV-injection: célula iniciada por = + - @ (ou tab/CR) pode ser
+  // interpretada como fórmula executável pelo Excel/Sheets ao abrir o arquivo —
+  // prefixa com aspa simples pra neutralizar.
+  const sanitize = (v: string) => {
+    const s = v ?? "";
+    return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  };
+  const escape = (v: string) => `"${sanitize(v).replace(/"/g, '""')}"`;
   const lines = [headers.map(escape).join(";"), ...rows.map(r => r.map(escape).join(";"))];
   downloadBlob(lines.join("\n"), filename, "text/csv");
 }
@@ -23,7 +31,7 @@ export function exportCSV(headers: string[], rows: string[][], filename: string)
 export function exportPDF(title: string, headers: string[], rows: string[][], filename: string) {
   const now = format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR });
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>${title}</title>
+<title>${escapeHtml(title)}</title>
 <style>
   @page { size: A4 landscape; margin: 12mm; }
   body { font-family: Arial, sans-serif; font-size: 10px; color: #333; }
@@ -34,10 +42,10 @@ export function exportPDF(title: string, headers: string[], rows: string[][], fi
   td { padding: 3px 6px; border-bottom: 1px solid #e5e5e5; font-size: 9px; }
   tr:nth-child(even) { background: #f9f9f9; }
 </style></head><body>
-<h1>${title}</h1>
+<h1>${escapeHtml(title)}</h1>
 <div class="meta">Gerado em ${now}</div>
-<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-<tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c ?? ""}</td>`).join("")}</tr>`).join("")}</tbody></table>
+<table><thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+<tbody>${rows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(c ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table>
 </body></html>`;
 
   const w = window.open("", "_blank");

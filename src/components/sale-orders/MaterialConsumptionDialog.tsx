@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
+import { escapeHtml } from '@/lib/htmlUtils';
 import {
   fetchConsumptionContext,
   computeConsumptionForItems,
@@ -826,12 +827,12 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         return `
         <tr>
           <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb">
-            <div style="font-weight:600;font-size:10pt">${aplicacao}</div>
-            <div style="color:#6b7280;font-size:8.5pt">${row.groupName}${row.color && row.color !== '—' ? ` · ${row.color}` : ''}</div>
+            <div style="font-weight:600;font-size:10pt">${escapeHtml(aplicacao)}</div>
+            <div style="color:#6b7280;font-size:8.5pt">${escapeHtml(row.groupName)}${row.color && row.color !== '—' ? ` · ${escapeHtml(row.color)}` : ''}</div>
           </td>
           <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">
             ${row.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8.5pt">${formatUnit(row.productUnit)}</span>
-            ${row.artisanal ? `<div style="color:#6b7280;font-weight:400;font-size:7.5pt;white-space:nowrap">≈ ${row.artisanal.baseQty.toFixed(2)} m ${row.artisanal.baseName} · artesanal (1 m → ${row.artisanal.yieldPerMeter} m)</div>` : ''}
+            ${row.artisanal ? `<div style="color:#6b7280;font-weight:400;font-size:7.5pt;white-space:nowrap">≈ ${row.artisanal.baseQty.toFixed(2)} m ${escapeHtml(row.artisanal.baseName)} · artesanal (1 m → ${row.artisanal.yieldPerMeter} m)</div>` : ''}
           </td>
         </tr>
       `;
@@ -840,7 +841,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       cards.push(`
         <div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
           <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
-            <span>▌${componentType}</span>
+            <span>▌${escapeHtml(componentType)}</span>
             <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
           </div>
           <table style="width:100%;border-collapse:collapse;background:white">
@@ -875,14 +876,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
               const breakdownHtml = breakdown ? `<div style="font-size:7.5pt;opacity:.85">${breakdown}</div>` : '';
               const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
               return `<tr style="color:#dc2626">
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${r.groupName}${r.color && r.color !== '—' ? ` · ${r.color}` : ''}${larguraTxt}</td>
+                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
                 <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}${breakdownHtml}</td>
               </tr>`;
             }).join('')}</tbody>
           </table>
         </div>`;
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais — ${orderNumber}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais — ${escapeHtml(orderNumber)}</title>
       <style>
         /* Margem 8mm (não 6mm) + box-sizing global p/ as bordas não serem
            cortadas: com 6mm o conteúdo encostava na zona não-imprimível da
@@ -903,7 +904,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         }
       </style></head>
       <body>
-        <h1>Consumo de Materiais — ${orderNumber}</h1>
+        <h1>Consumo de Materiais — ${escapeHtml(orderNumber)}</h1>
         <p class="sub">${rows.length} item${rows.length !== 1 ? 'ns' : ''} · ${grouped.size} componente${grouped.size !== 1 ? 's' : ''} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
         <div class="totals-strip">${totalsHtml}</div>
         <div class="grid">${cards.join('')}</div>

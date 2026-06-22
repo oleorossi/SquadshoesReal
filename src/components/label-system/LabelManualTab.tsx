@@ -12,6 +12,7 @@ import { buildThermalLabelsHtml, buildBoxIdentificationHtml, DEFAULT_THERMAL_CON
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanies } from '@/hooks/useNfe';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
+import { escapeHtml } from '@/lib/htmlUtils';
 import { toast } from 'sonner';
 
 const FALLBACK_SIZES = [
@@ -723,11 +724,11 @@ body{font-family:Arial,sans-serif;background:#fff;color:#000;}
 
 function buildSingleHangtag(form: ManualForm, size: string, mainMaterial: string, fmtPrice: string): string {
   return `<div class="tag">
-    <p class="tag-ref">${form.referencia || '—'}</p>
-    <p class="tag-color">Cor: ${form.cor || '—'}</p>
-    ${mainMaterial ? `<p class="tag-material">${mainMaterial}</p>` : ''}
-    ${form.lote ? `<p class="tag-lote">Lote: ${form.lote}${form.obs ? ' — ' + form.obs : ''}</p>` : ''}
-    ${size ? `<div class="tag-size">${size}</div>` : ''}
-    ${fmtPrice ? `<p class="tag-price">${fmtPrice}</p>` : ''}
+    <p class="tag-ref">${escapeHtml(form.referencia) || '—'}</p>
+    <p class="tag-color">Cor: ${escapeHtml(form.cor) || '—'}</p>
+    ${mainMaterial ? `<p class="tag-material">${escapeHtml(mainMaterial)}</p>` : ''}
+    ${form.lote ? `<p class="tag-lote">Lote: ${escapeHtml(form.lote)}${form.obs ? ' — ' + escapeHtml(form.obs) : ''}</p>` : ''}
+    ${size ? `<div class="tag-size">${escapeHtml(size)}</div>` : ''}
+    ${fmtPrice ? `<p class="tag-price">${escapeHtml(fmtPrice)}</p>` : ''}
   </div>`;
 }

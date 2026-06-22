@@ -170,8 +170,8 @@ function printReceipt(order: ServiceOrder, contractor: Contractor | undefined) {
           <th style="text-align:right;padding:4px 8px;">Metros</th>
         </tr></thead>
         <tbody>${materials.map(m => `<tr>
-          <td style="padding:4px 8px;">${m.material || '—'}</td>
-          <td style="padding:4px 8px;">${m.color || '—'}</td>
+          <td style="padding:4px 8px;">${escapeHtml(m.material) || '—'}</td>
+          <td style="padding:4px 8px;">${escapeHtml(m.color) || '—'}</td>
           <td style="padding:4px 8px;text-align:right;font-family:monospace;">${Number(m.meters).toFixed(2)}m</td>
         </tr>`).join('')}</tbody>
       </table>
