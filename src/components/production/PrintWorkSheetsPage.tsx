@@ -1937,6 +1937,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           material: s?.group_name || '',
           qty: undefined,
           color: s?.color || '—',
+          // Medida da tira em CM por PAR (strap_colors[].consumption já é cm/par —
+          // ver GradingCadTab "comprimento base (cm)"). Mostrada na ficha p/ o
+          // operador cortar/medir.
+          cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
         }));
 
         colorMap.set(colorKey, {
