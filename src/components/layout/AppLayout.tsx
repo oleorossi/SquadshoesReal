@@ -97,7 +97,17 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // viviam só no localStorage e sumiam ao limpar cache / trocar de navegador /
   // mudar de domínio — esse era o motivo de "os favoritos sumiram". O hook
   // mantém o localStorage como cache e migra o que existir nele pro banco.
-  const { favorites, toggleFavorite: toggleFav } = useMenuFavorites();
+  const { favorites, toggleFavorite: toggleFav, reorderFavorites } = useMenuFavorites();
+  // DnD dos FAVORITOS — reordena dentro da lista de favoritos (persistência
+  // própria via useMenuFavorites, separada da ordem de grupos/itens do menu).
+  const [favDrag, setFavDrag] = React.useState<string | null>(null);
+  const [favDropTarget, setFavDropTarget] = React.useState<string | null>(null);
+  const handleFavDragStart = (path: string) => (e: React.DragEvent) => { setFavDrag(path); e.dataTransfer.effectAllowed = 'move'; };
+  const handleFavDragOver = (path: string) => (e: React.DragEvent) => { if (!favDrag || favDrag === path) return; e.preventDefault(); setFavDropTarget(path); };
+  const handleFavDrop = (path: string) => (e: React.DragEvent) => { e.preventDefault(); if (favDrag && favDrag !== path) reorderFavorites(favDrag, path); setFavDrag(null); setFavDropTarget(null); };
+  const clearFavDrag = () => { setFavDrag(null); setFavDropTarget(null); };
+  const favDropStyle = (path: string): React.CSSProperties | undefined =>
+    favDropTarget === path ? { boxShadow: 'inset 0 2px 0 0 hsl(var(--primary))' } : undefined;
 
   const filteredFavorites = React.useMemo(
     () => favorites.filter(item => canAccessRoute(item.path)),
@@ -436,11 +446,17 @@ export default function AppLayout({ children, printMode = false }: { children: R
                         <NavLink
                           key={item.path}
                           to={item.path}
+                          draggable={!mobile}
+                          onDragStart={!mobile ? handleFavDragStart(item.path) : undefined}
+                          onDragOver={!mobile ? handleFavDragOver(item.path) : undefined}
+                          onDrop={!mobile ? handleFavDrop(item.path) : undefined}
+                          onDragEnd={!mobile ? clearFavDrag : undefined}
                           onClick={mobile ? () => setMobileOpen(false) : undefined}
                           onMouseEnter={() => prefetch(item.path)}
                           onMouseLeave={cancelPrefetch}
                           onFocus={() => prefetch(item.path)}
-                          className={({ isActive }) => navItemClass(isActive)}
+                          style={favDropStyle(item.path)}
+                          className={({ isActive }) => cn(navItemClass(isActive), !mobile && "cursor-grab active:cursor-grabbing select-none")}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <Icon className="h-4 w-4 shrink-0" />

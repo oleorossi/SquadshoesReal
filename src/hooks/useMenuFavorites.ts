@@ -131,5 +131,23 @@ export function useMenuFavorites() {
     [favorites],
   );
 
-  return { favorites, toggleFavorite, isFavorite };
+  /**
+   * Reordena os favoritos (arrastar-e-soltar na sidebar): move `fromPath` para a
+   * posição de `toPath`. A ordem é a própria ordem do array persistido em JSONB.
+   */
+  const reorderFavorites = useCallback((fromPath: string, toPath: string) => {
+    if (!fromPath || fromPath === toPath) return;
+    const current =
+      (queryClient.getQueryData(queryKey) as MenuFavorite[] | undefined) ?? readLocal();
+    const fromIdx = current.findIndex((f) => f.path === fromPath);
+    const toIdx = current.findIndex((f) => f.path === toPath);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = [...current];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    void persist(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persist, queryClient]);
+
+  return { favorites, toggleFavorite, isFavorite, reorderFavorites };
 }
