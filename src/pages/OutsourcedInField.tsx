@@ -343,7 +343,7 @@ function GradeBreakdown({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean } = {}) {
+export default function OutsourcedInFieldPage({ embedded, onRequestCreateOS }: { embedded?: boolean; onRequestCreateOS?: (contractorId?: string) => void } = {}) {
   const { data: items = [], isLoading } = useOutsourcedInField();
   const { data: contractors = [] } = useContractors();
   const receiveItem = useReceiveOutsourcedItem();
@@ -553,6 +553,11 @@ export default function OutsourcedInFieldPage({ embedded }: { embedded?: boolean
   };
 
   const openCreate = (contractorId?: string) => {
+    // Unificação (2026-06-22): no hub /terceirizados, "Nova OS" abre o ÚNICO
+    // formulário canônico (o rico da aba "Ordens de Serviço") via callback do hub
+    // — evita o form duplicado/divergente. Fora do hub (sem callback), usa o
+    // dialog local como fallback.
+    if (onRequestCreateOS) { onRequestCreateOS(contractorId); return; }
     setCreateContractorId(contractorId);
     setCreateOpen(true);
   };

@@ -55,6 +55,16 @@ export default function TerceirizadosHub() {
     );
   };
 
+  // "Nova OS" UNIFICADA: qualquer aba (ex.: "Na Rua") que peça criar OS abre o
+  // ÚNICO formulário canônico, que vive na aba "Ordens de Serviço" (Contractors).
+  // Troca pra essa aba + sinaliza o Contractors a abrir o form (com contratada
+  // opcional pré-selecionada). Acaba com o formulário duplicado/divergente.
+  const [pendingCreateOS, setPendingCreateOS] = useState<{ contractorId?: string } | null>(null);
+  const requestCreateOS = (contractorId?: string) => {
+    setPendingCreateOS({ contractorId });
+    onTabChange('orders');
+  };
+
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
@@ -85,7 +95,7 @@ export default function TerceirizadosHub() {
         </TabsList>
 
         <TabsContent value="rua">
-          <OutsourcedInFieldPage embedded />
+          <OutsourcedInFieldPage embedded onRequestCreateOS={requestCreateOS} />
         </TabsContent>
         <TabsContent value="relatorio">
           <ContractorReportsPage embedded />
@@ -96,7 +106,13 @@ export default function TerceirizadosHub() {
             queries pesadas enquanto o usuário fica só no "Na Rua"). O painel
             ativo é dirigido por `activeTab`; a TabsList interna fica oculta. */}
         {CONTRACTOR_TABS.includes(tab) && (
-          <ContractorsPage embedded activeTab={tab} onActiveTabChange={onTabChange} />
+          <ContractorsPage
+            embedded
+            activeTab={tab}
+            onActiveTabChange={onTabChange}
+            openCreateOS={pendingCreateOS}
+            onCreateOSConsumed={() => setPendingCreateOS(null)}
+          />
         )}
       </Tabs>
     </div>

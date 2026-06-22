@@ -2,7 +2,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { escapeHtml } from '@/lib/htmlUtils';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck } from '@phosphor-icons/react';
@@ -251,7 +251,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
   );
 }
 
-export default function Contractors({ embedded = false, activeTab, onActiveTabChange }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void } = {}) {
+export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
   const navigate = useNavigate();
   const { data: contractors = [], isLoading: loadingC } = useContractors();
   const { data: orders = [], isLoading: loadingO } = useServiceOrders();
@@ -1164,6 +1164,17 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     setOrderDialog(true);
     resetArtisanal();
   };
+
+  // Sinal do hub (/terceirizados): "Nova OS" pedida por outra aba (ex.: Na Rua)
+  // abre o ÚNICO formulário canônico aqui — uma vez, e avisa o hub pra limpar o
+  // sinal (evita reabrir ao só navegar pra esta aba depois).
+  useEffect(() => {
+    if (openCreateOS) {
+      openNewOrder(openCreateOS.contractorId);
+      onCreateOSConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCreateOS]);
 
   const updateMaterial = (index: number, field: keyof MaterialSent, value: string | number | boolean) => {
     setEditingOrder(prev => { const mats = [...(prev.materials_sent || [])]; mats[index] = { ...mats[index], [field]: value }; return { ...prev, materials_sent: mats }; });
