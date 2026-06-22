@@ -1932,16 +1932,43 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           if (isFinite(ka) && isFinite(kb)) return ka - kb;
           return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
         });
-        const strapsAsComponents = strapsOrdered.map((s: any) => ({
-          name: s?.label || 'TIRA',
-          material: s?.group_name || '',
-          qty: undefined,
-          color: s?.color || '—',
-          // Medida da tira em CM por PAR (strap_colors[].consumption já é cm/par —
-          // ver GradingCadTab "comprimento base (cm)"). Mostrada na ficha p/ o
-          // operador cortar/medir.
-          cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
-        }));
+        // Resolução de faixa P/M/G do Aviamento (mesma do grid: override por ref →
+        // padrão global → sem faixa). Usada pra quebrar a MEDIDA da tira por faixa,
+        // porque cada numeração tem um comprimento (consumption_per_size).
+        const aviRangesStrap = aviamentoRangesByRef.get(sheetId) || null;
+        const useDefaultAviStrap = !aviRangesStrap && !aviamentoOptOutByRef.has(sheetId)
+          && Array.isArray(aviamentoDefaultBoundaries) && aviamentoDefaultBoundaries.length > 0;
+        const bandForSizeStrap = (size: string): string | null => {
+          if (aviRangesStrap) return aviRangesStrap.find(r => Array.isArray(r.sizes) && r.sizes.includes(size))?.label ?? null;
+          if (useDefaultAviStrap) return pmgLabelForSize(size, aviamentoDefaultBoundaries!);
+          return null;
+        };
+        const strapsAsComponents = strapsOrdered.map((s: any) => {
+          // Medida da tira em CM por PAR (strap_colors[].consumption[_per_size] já é
+          // cm/par — ver GradingCadTab "comprimento base (cm)"). Quebra por faixa
+          // P/M/G (cada tamanho tem um comprimento); usa o MAIOR cm da faixa.
+          const cps = (s?.consumption_per_size && typeof s.consumption_per_size === 'object')
+            ? (s.consumption_per_size as Record<string, any>) : {};
+          const bandCm: Record<string, number> = {};
+          const bandOrder: string[] = [];
+          for (const size of Object.keys(cps).sort((a, b) => Number(a) - Number(b))) {
+            const v = Number(cps[size]) || 0;
+            if (!(v > 0)) continue;
+            const band = bandForSizeStrap(size);
+            if (!band) continue;
+            if (!(band in bandCm)) bandOrder.push(band);
+            bandCm[band] = Math.max(bandCm[band] ?? 0, Math.round(v * 10) / 10);
+          }
+          const cmBands = bandOrder.map(b => ({ band: b, cm: bandCm[b] }));
+          return {
+            name: s?.label || 'TIRA',
+            material: s?.group_name || '',
+            qty: undefined,
+            color: s?.color || '—',
+            cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
+            cmBands: cmBands.length >= 2 ? cmBands : undefined,
+          };
+        });
 
         colorMap.set(colorKey, {
           color: colorName,

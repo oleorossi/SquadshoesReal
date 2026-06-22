@@ -63,7 +63,7 @@ export interface SilkColorGroup {
    *  o cortador só corta a forração na cor da palmilha. */
   hasStraps?: boolean;
   /** Componentes auxiliares (capa, tira, presilha, etc) — pra setor Aviamento/Mesa. */
-  components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number }>;
+  components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number; cmBands?: Array<{ band: string; cm: number }> }>;
   /** Lista de alertas específicos pra essa cor/setor (ex: "Modelo fachetado"). */
   alerts?: SectorAlert[];
   /** TRUE quando a palmilha desta cor PRECISA ser forrada (insole_has_lining
@@ -862,6 +862,12 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     ficha técnica (EXCEÇÃO mantida na simplificação 2026-06-12). */}
                 {(sector === 'Aviamento' || sector === 'Montagem') && cg.components && cg.components.length > 0 && (() => {
                   const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
+                  // Colunas de medida por faixa P/M/G (cada tamanho tem um comprimento).
+                  // Sem faixas cadastradas → coluna única "Medida".
+                  const strapBandCols: string[] | null = (() => {
+                    const wb = cg.components!.find(c => Array.isArray(c.cmBands) && c.cmBands.length >= 2);
+                    return wb?.cmBands ? wb.cmBands.map(b => b.band) : null;
+                  })();
                   // Lista curta (≤8) fica atômica; lista longa flui linha a
                   // linha (tr é atômico, thead repete) pra não pular página
                   // inteira deixando branco.
@@ -886,7 +892,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                               <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Tira</th>
                               <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Cor</th>
                               <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Material</th>
-                              <th className="section-label px-2 py-1 text-right" style={{ color: '#000', width: 72 }}>Medida</th>
+                              {strapBandCols
+                                ? strapBandCols.map((b) => (
+                                    <th key={b} className="section-label px-2 py-1 text-right" style={{ color: '#C00000', width: 52 }}>{b}</th>
+                                  ))
+                                : <th className="section-label px-2 py-1 text-right" style={{ color: '#C00000', width: 72 }}>Medida</th>}
                               <th className="section-label px-2 py-1 text-center" style={{ color: '#000', width: 32 }}>OK</th>
                             </tr>
                           </thead>
@@ -899,9 +909,20 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                                   {c.color || '—'}
                                 </td>
                                 <td className="px-2 py-1 text-black">{c.material || '—'}</td>
-                                <td className="px-2 py-1 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
-                                  {c.cm != null ? `${c.cm} cm` : '—'}
-                                </td>
+                                {strapBandCols
+                                  ? strapBandCols.map((b) => {
+                                      const v = c.cmBands?.find((x) => x.band === b)?.cm;
+                                      return (
+                                        <td key={b} className="px-2 py-1 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
+                                          {v != null ? `${v} cm` : '—'}
+                                        </td>
+                                      );
+                                    })
+                                  : (
+                                    <td className="px-2 py-1 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
+                                      {c.cm != null ? `${c.cm} cm` : '—'}
+                                    </td>
+                                  )}
                                 <td className="px-2 py-1 text-center">
                                   <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
                                 </td>
@@ -909,8 +930,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                             ))}
                           </tbody>
                         </table>
-                        <div className="text-black mt-0.5" style={{ fontSize: '9px', color: '#000' }}>
-                          Medida em cm — <strong>"do par"</strong> (o valor é por par).
+                        <div className="mt-0.5" style={{ fontSize: '9px', color: '#C00000', fontWeight: 700 }}>
+                          Medida em cm — <strong>"do par"</strong> (o valor é por par){strapBandCols ? ' · por faixa de numeração (P/M/G)' : ''}.
                         </div>
                         </>
                       ) : (
