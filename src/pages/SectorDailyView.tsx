@@ -115,6 +115,10 @@ export default function SectorDailyView() {
   const [date, setDate] = useState<string>(today);
   const [selected, setSelected] = useState<SectorDaily | null>(null);
 
+  // Métrica da "linha de produção": por padrão segue o dia (hoje = WIP real,
+  // outro dia = planejado). O toggle sobrepõe manualmente quando o usuário quer.
+  const [flowOverride, setFlowOverride] = useState<'planned' | 'wip' | null>(null);
+
   const { data, isLoading } = useSectorDailyLoad(date);
   const sectors = data?.sectors ?? [];
   const summary = data?.summary;
@@ -143,6 +147,7 @@ export default function SectorDailyView() {
   // mantém o sheet sincronizado quando muda o dia
   const selectedLive = selected ? sectors.find((s) => s.sector === selected.sector) ?? selected : null;
   const isToday = date === today;
+  const flowMode: 'planned' | 'wip' = flowOverride ?? (isToday ? 'wip' : 'planned');
 
   return (
     <div className="space-y-5 page-enter">
@@ -220,12 +225,41 @@ export default function SectorDailyView() {
       <Panel
         eyebrow="Linha de produção · fluxo →"
         title="Carga por etapa no dia"
-        subtitle="Altura da barra = pares planejados no dia · cor = utilização vs. capacidade · ● abaixo = pares em produção agora. Clique numa etapa pra detalhar."
+        subtitle={
+          flowMode === 'wip'
+            ? 'Altura da barra = pares em produção AGORA · cor = utilização vs. capacidade · ●N pl. = planejado no dia. Clique numa etapa pra detalhar.'
+            : 'Altura da barra = pares planejados no dia · cor = utilização vs. capacidade · ●N ag. = em produção agora. Clique numa etapa pra detalhar.'
+        }
+        actions={
+          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5 text-xs" role="group" aria-label="Métrica da barra">
+            {([['planned', 'Planejado'], ['wip', 'Agora']] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setFlowOverride(m)}
+                aria-pressed={flowMode === m}
+                className={cn(
+                  'px-2.5 py-1 rounded transition-colors',
+                  flowMode === m ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        }
       >
         {isLoading ? (
           <div className="py-10 text-center text-sm text-muted-foreground">Calculando carga do dia…</div>
         ) : (
-          <ProductionFlow sectors={sectors} worstKey={worst?.sector ?? null} maxPlanned={maxPlanned} onPick={setSelected} />
+          <ProductionFlow
+            sectors={sectors}
+            worstKey={worst?.sector ?? null}
+            mode={flowMode}
+            maxPlanned={maxPlanned}
+            maxWip={maxWip}
+            onPick={setSelected}
+          />
         )}
       </Panel>
 
@@ -307,20 +341,32 @@ function BottleneckCallout({ worst, onOpen }: { worst: SectorDaily; onOpen: () =
 
 // ── Linha de produção (mini bar chart em ordem de fluxo) ──────────────────────
 function ProductionFlow({
-  sectors, worstKey, maxPlanned, onPick,
+  sectors, worstKey, mode, maxPlanned, maxWip, onPick,
 }: {
   sectors: SectorDaily[];
   worstKey: string | null;
+  mode: 'planned' | 'wip';
   maxPlanned: number;
+  maxWip: number;
   onPick: (s: SectorDaily) => void;
 }) {
+  const isWip = mode === 'wip';
+  const maxVal = isWip ? maxWip : maxPlanned;
   return (
     <div className="overflow-x-auto pb-1">
       <div className="min-w-[620px] flex items-stretch gap-1">
         {sectors.map((s) => {
           const sev = SEV[s.severity];
           const isWorst = s.sector === worstKey;
-          const pct = s.plannedPairs > 0 ? Math.max(6, Math.round((s.plannedPairs / maxPlanned) * 100)) : 0;
+          const semantic = s.severity === 'ok' || s.severity === 'warning' || s.severity === 'critical';
+          const value = isWip ? s.realPairs : s.plannedPairs;        // altura da barra
+          const secondary = isWip ? s.plannedPairs : s.realPairs;    // mostrado embaixo (●)
+          const secTag = isWip ? 'pl.' : 'ag.';
+          const pct = value > 0 ? Math.max(6, Math.round((value / maxVal) * 100)) : 0;
+          // No modo WIP sem capacidade (cinza) a barra usaria muted e sumiria —
+          // usa foreground pra o acúmulo aparecer mesmo sem % de utilização.
+          const barColor = isWip && !semantic ? 'bg-foreground/60' : sev.bar;
+          const topColor = value > 0 ? (isWip ? 'text-foreground' : sev.text) : 'text-muted-foreground/40';
           return (
             <button
               key={s.sector}
@@ -333,24 +379,23 @@ function ProductionFlow({
                 isWorst ? 'bg-foreground/[0.04] ring-1 ring-inset ring-foreground/15' : 'hover:bg-muted/40',
               )}
             >
-              {/* valor planejado (sempre visível) */}
-              <span className={cn('text-[11px] font-mono font-bold tabular-nums leading-none mb-1',
-                s.plannedPairs > 0 ? sev.text : 'text-muted-foreground/40')}>
-                {s.plannedPairs > 0 ? s.plannedPairs : '—'}
+              {/* valor da métrica ativa (sempre visível) */}
+              <span className={cn('text-[11px] font-mono font-bold tabular-nums leading-none mb-1', topColor)}>
+                {value > 0 ? value : '—'}
               </span>
               {/* trilho + barra (cresce de baixo) */}
               <div className="w-full h-24 flex items-end justify-center">
                 <div className="relative w-7 h-full flex items-end rounded-md bg-muted/50 overflow-hidden">
                   <div
-                    className={cn('w-full rounded-t-md transition-all duration-500 motion-reduce:transition-none', sev.bar)}
+                    className={cn('w-full rounded-t-md transition-all duration-500 motion-reduce:transition-none', barColor)}
                     style={{ height: `${pct}%` }}
                   />
                 </div>
               </div>
-              {/* nó do fluxo + WIP atual */}
-              <span className={cn('mt-1.5 h-2 w-2 rounded-full', s.realPairs > 0 ? sev.dot : 'bg-border')} aria-hidden="true" />
+              {/* nó do fluxo + métrica secundária */}
+              <span className={cn('mt-1.5 h-2 w-2 rounded-full', secondary > 0 ? sev.dot : 'bg-border')} aria-hidden="true" />
               <span className="mt-1 text-[10px] font-mono tabular-nums text-foreground leading-none">
-                {s.realPairs > 0 ? <>●{s.realPairs}<span className="text-muted-foreground"> ag.</span></> : <span className="text-muted-foreground/40">—</span>}
+                {secondary > 0 ? <>●{secondary}<span className="text-muted-foreground"> {secTag}</span></> : <span className="text-muted-foreground/40">—</span>}
               </span>
               {/* rótulo */}
               <span className="mt-1 text-[9px] uppercase tracking-wide text-center text-muted-foreground leading-tight">
