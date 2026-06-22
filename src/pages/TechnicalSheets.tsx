@@ -3215,7 +3215,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
                   Defina quantas tiras este modelo possui, o <strong>material</strong> de cada uma
-                  (grupo de produto, ex: "Tiras Couro 25mm") e o consumo por numeração (em cm).
+                  (grupo de produto, ex: "Tiras Couro 25mm") e o consumo por numeração <strong>por pé</strong> (em cm).
+                  O sistema multiplica por <strong>2</strong> (par = 2 pés) ao calcular o consumo.
                   As <strong>cores</strong> de cada tira são escolhidas no lançamento do Pedido
                   de Venda — o material fica fixo aqui.
                 </p>
@@ -3269,7 +3270,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           );
                         })()}
                         <span className="text-xs text-muted-foreground ml-auto">
-                          Média: <strong>{safeToFixed(avgConsumption, 1)} cm</strong>/par
+                          Média: <strong>{safeToFixed(avgConsumption / 2, 1)} cm</strong>/pé
                         </span>
                         {(form.strap_colors || []).length > 1 && (
                           <Button
@@ -3314,7 +3315,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         )}
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Consumo por Numeração (cm/par)</Label>
+                        <Label className="text-xs text-muted-foreground">Consumo por Numeração (cm/pé)</Label>
                         <div className="flex flex-wrap gap-1.5">
                           {strapSizes.map(size => {
                             const sizeKey = String(size);
@@ -3322,13 +3323,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               <div key={size} className="flex flex-col items-center gap-0.5">
                                 <span className="text-xs font-mono text-muted-foreground">{size}</span>
                                 <NumberInput
-                                  value={consumptionPerSize[sizeKey] || 0}
-                                  onChange={(val) => {
+                                  // UI por PÉ; storage segue por PAR (÷2 ao exibir, ×2 ao salvar).
+                                  // Mantém motores/SQL/fichas do operador intactos (todos usam par).
+                                  value={Math.round(((consumptionPerSize[sizeKey] || 0) / 2) * 100) / 100}
+                                  onChange={(footVal) => {
+                                    const pairVal = (Number(footVal) || 0) * 2;
                                     const updated = [...(form.strap_colors || [])];
-                                    const newPerSize = { ...(updated[idx].consumption_per_size || {}), [sizeKey]: val };
-                                    const filled = strapSizes.filter(s => (s === size ? val : (newPerSize[String(s)] || 0)) > 0);
+                                    const newPerSize = { ...(updated[idx].consumption_per_size || {}), [sizeKey]: pairVal };
+                                    const filled = strapSizes.filter(s => (newPerSize[String(s)] || 0) > 0);
                                     const avg = filled.length > 0
-                                      ? filled.reduce((sum, s) => sum + (s === size ? val : (newPerSize[String(s)] || 0)), 0) / filled.length
+                                      ? filled.reduce((sum, s) => sum + (newPerSize[String(s)] || 0), 0) / filled.length
                                       : 0;
                                     updated[idx] = { ...updated[idx], consumption_per_size: newPerSize, consumption: Math.round(avg * 100) / 100 };
                                     updateField('strap_colors', updated);
