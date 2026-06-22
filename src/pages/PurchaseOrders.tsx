@@ -1100,100 +1100,107 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   };
 
   const st = STATUS_MAP[order.status] || STATUS_MAP.pending;
+  // Total dos itens (reflete edições em aberto) — âncora visual do resumo + rodapé.
+  const itemsTotal = items.reduce((s, it) => {
+    const e = editingItems[it.id];
+    return s + (e?.quantity ?? it.quantity) * (e?.unit_price ?? it.unit_price);
+  }, 0);
+  const lbl = "text-[10px] font-bold uppercase tracking-wider text-muted-foreground";
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <ShoppingCart className="h-5 w-5 text-primary" />
-            {order.order_number}
-            <Badge variant={st.variant} className="ml-2">{st.label}</Badge>
-            {order.auto_generated && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
-            {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
+          <DialogTitle className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <ShoppingCart className="h-5 w-5 text-primary shrink-0" />
+              <div className="min-w-0 leading-tight">
+                <span className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Compras · Ordem de Compra</span>
+                <span className="text-xl font-extrabold tracking-tight">{order.order_number}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge variant={st.variant}>{st.label}</Badge>
+              {order.auto_generated && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
+              {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
+            </div>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm bg-muted/20 rounded-lg p-4">
-          <div>
-            <Label className="text-xs text-muted-foreground">Fornecedor</Label>
-            <p className="font-medium">{order.supplier_name}</p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Valor Total</Label>
-            <p className="font-bold text-lg text-primary">{fmt(order.total_value)}</p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Criada em</Label>
-            <p>{format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')}</p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Atualizada em</Label>
-            <p>{format(new Date(order.updated_at), 'dd/MM/yyyy HH:mm')}</p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Origem</Label>
-            <p>{order.auto_generated ? 'Geração Automática (Demanda de Pedido)' : 'Manual'}</p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Qtd Itens</Label>
-            <p className="font-semibold">{items.length}</p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground flex items-center gap-1"><CalendarClock className="h-3 w-3" />Prazo Previsto do Fornecedor</Label>
-            <Input
-              type="date"
-              className="mt-1 h-8 text-sm"
-              value={order.promised_date || ''}
-              onChange={e => updateOrder.mutate({ id: order.id, data: { promised_date: e.target.value || null } })}
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Data de Recebimento</Label>
-            <Input
-              type="date"
-              className="mt-1 h-8 text-sm"
-              value={order.received_date || ''}
-              onChange={e => updateOrder.mutate({ id: order.id, data: { received_date: e.target.value || null } })}
-            />
-          </div>
-          <div className="col-span-2 sm:col-span-4">
-            <Label className="text-xs text-muted-foreground">Pedido(s) Vinculado(s)</Label>
-            {linkedSOs.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic mt-1">
-                Nenhum PV vinculado.
+        {/* Resumo — fornecedor + Valor Total (âncora) no topo; meta/datas abaixo. */}
+        <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-border/60">
+            <div className="min-w-0">
+              <p className={lbl}>Fornecedor</p>
+              <p className="text-lg font-bold truncate">{order.supplier_name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {order.auto_generated ? 'Geração automática · demanda de pedido' : order.source_type === 'manual_avulsa' ? 'Lançamento avulso' : 'Manual'}
               </p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {linkedSOs.map(so => (
-                  <Link
-                    key={so.id}
-                    to={`/pedidos/${so.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex"
-                  >
-                    <Badge variant="secondary" className="text-xs hover:bg-primary hover:text-primary-foreground cursor-pointer">
-                      {so.order_number}
-                      {so.client_order_number && (
-                        <span className="ml-1 opacity-70">· #{so.client_order_number}</span>
-                      )}
-                    </Badge>
-                  </Link>
-                ))}
+            </div>
+            <div className="text-right shrink-0">
+              <p className={lbl}>Valor Total</p>
+              <p className="text-3xl font-extrabold text-primary tabular-nums leading-none">{fmt(order.total_value)}</p>
+              <p className="text-xs text-muted-foreground mt-1">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 p-4 text-sm">
+            <div>
+              <p className={lbl}>Criada em</p>
+              <p className="tabular-nums">{format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')}</p>
+            </div>
+            <div>
+              <p className={lbl}>Atualizada em</p>
+              <p className="tabular-nums">{format(new Date(order.updated_at), 'dd/MM/yyyy HH:mm')}</p>
+            </div>
+            <div>
+              <p className={cn(lbl, "flex items-center gap-1")}><CalendarClock className="h-3 w-3" />Prazo do Fornecedor</p>
+              <Input
+                type="date"
+                className="mt-1 h-8 text-sm"
+                value={order.promised_date || ''}
+                onChange={e => updateOrder.mutate({ id: order.id, data: { promised_date: e.target.value || null } })}
+              />
+            </div>
+            <div>
+              <p className={lbl}>Data de Recebimento</p>
+              <Input
+                type="date"
+                className="mt-1 h-8 text-sm"
+                value={order.received_date || ''}
+                onChange={e => updateOrder.mutate({ id: order.id, data: { received_date: e.target.value || null } })}
+              />
+            </div>
+            <div className="col-span-2 sm:col-span-4">
+              <p className={lbl}>Pedido(s) Vinculado(s)</p>
+              {linkedSOs.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic mt-1">Nenhum PV vinculado.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {linkedSOs.map(so => (
+                    <Link key={so.id} to={`/pedidos/${so.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                      <Badge variant="secondary" className="text-xs hover:bg-primary hover:text-primary-foreground cursor-pointer">
+                        {so.order_number}
+                        {so.client_order_number && <span className="ml-1 opacity-70">· #{so.client_order_number}</span>}
+                      </Badge>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+            {order.notes && (
+              <div className="col-span-2 sm:col-span-4">
+                <p className={lbl}>Observações / Rastreabilidade</p>
+                <p className="text-sm bg-background rounded-md p-2.5 border border-border/60 mt-1 whitespace-pre-wrap">{order.notes}</p>
               </div>
             )}
           </div>
-          {order.notes && (
-            <div className="col-span-2 sm:col-span-4">
-              <Label className="text-xs text-muted-foreground">Observações / Rastreabilidade</Label>
-              <p className="text-sm bg-background rounded p-2 border mt-1 whitespace-pre-wrap">{order.notes}</p>
-            </div>
-          )}
         </div>
 
-        <div className="mt-2">
-          <h3 className="text-sm font-semibold mb-2">Itens da Ordem</h3>
+        <div className="mt-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Itens da Ordem · {items.length}</h3>
+            <span className="text-xs text-muted-foreground">Total <strong className="text-foreground tabular-nums">{fmt(itemsTotal)}</strong></span>
+          </div>
           <div className="rounded-lg border overflow-hidden">
             <Table>
               <TableHeader>
@@ -1307,6 +1314,12 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                     </TableRow>
                   );
                 })}
+                {!isLoading && items.length > 0 && (
+                  <TableRow className="bg-muted/30 border-t-2 border-border font-bold hover:bg-muted/30">
+                    <TableCell colSpan={6} className="text-right text-[11px] uppercase tracking-wider text-muted-foreground">Total da Ordem</TableCell>
+                    <TableCell className="text-right text-base text-primary tabular-nums">{fmt(itemsTotal)}</TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
