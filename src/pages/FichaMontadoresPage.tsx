@@ -29,6 +29,7 @@ interface Ficha {
   montador_id: string | null;
   solado: string | null;
   solado_id: string | null;
+  cor: string | null;
   grade: Grade;
   numeracoes: string[];
   quantidades: string[];
@@ -105,7 +106,7 @@ const PRINT_CSS = `
   .ppf-cell{background:#f1f0ed;font-size:13px}
   @page{size:A4 landscape;margin:8mm}
 `;
-function cardHTML(f: { dia: string; montador: string | null; solado: string | null; grade: Grade; numeracoes: string[]; quantidades: string[]; total: number }) {
+function cardHTML(f: { dia: string; montador: string | null; solado: string | null; cor?: string | null; grade: Grade; numeracoes: string[]; quantidades: string[]; total: number }) {
   const th = f.numeracoes.map((s) => `<th>${esc(s)}</th>`).join("");
   const td = f.quantidades.map((q) => `<td>${esc(q)}</td>`).join("");
   const tag = f.grade === "infantil" ? "Grade infantil" : "Grade adulta";
@@ -113,6 +114,7 @@ function cardHTML(f: { dia: string; montador: string | null; solado: string | nu
     <span class="page-num">1/1</span><span class="grade-tag${f.grade === "adulto" ? " adulto" : ""}">${tag}</span>
     <div class="head"><span class="lbl">Solado</span><div class="v-big">${esc(f.solado || "")}</div></div>
     <div class="meta"><div><span class="lbl">Montador</span><div class="v-mid">${esc(f.montador || "")}</div></div>
+      <div><span class="lbl">Cor</span><div class="v-mid">${esc(f.cor || "")}</div></div>
       <div><span class="lbl">Data</span><div class="v-mid">${fmtDia(f.dia)}</div></div></div>
     <table><thead><tr><th class="rowlabel">N°</th>${th}<th class="col-total">TOTAL</th></tr></thead>
       <tbody><tr><td class="rowlabel">Por ficha</td>${td}<td class="ppf-cell">${f.total}</td></tr></tbody></table>
@@ -162,6 +164,7 @@ export default function FichaMontadoresPage() {
   const [montadorNome, setMontadorNome] = useState("");
   const [soladoId, setSoladoId] = useState<string>("");
   const [soladoNome, setSoladoNome] = useState("");
+  const [cor, setCor] = useState("");
   const [valorPar, setValorPar] = useState(0);
   const [grade, setGrade] = useState<Grade>("adulto");
   const [sizes, setSizes] = useState<string[]>(DEFAULTS.adulto.sizes);
@@ -176,8 +179,12 @@ export default function FichaMontadoresPage() {
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const { data: employees = [] } = useEmployees();
+  // Só funcionários do CARGO montagem (montadores) entram no select — pedido do
+  // dono. Casa por cargo/role OU setor/department contendo "montagem"/"montador".
   const montadores = useMemo(
-    () => [...(employees as any[])].filter((e) => e.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    () => [...(employees as any[])]
+      .filter((e) => e.active && /montagem|montador/i.test(`${e.role || ""} ${e.department || ""}`))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [employees],
   );
   const { data: solados = [] } = useQuery({
@@ -210,7 +217,7 @@ export default function FichaMontadoresPage() {
 
   function novaFicha() {
     setEditingId(null); setDia(todayISO());
-    setMontadorId(""); setMontadorNome(""); setSoladoId(""); setSoladoNome(""); setValorPar(0);
+    setMontadorId(""); setMontadorNome(""); setSoladoId(""); setSoladoNome(""); setCor(""); setValorPar(0);
     setGrade("adulto"); setSizes(DEFAULTS.adulto.sizes); setQtys(DEFAULTS.adulto.qtys); setCopias(1); setMsg(null);
   }
   function trocarGrade(g: Grade) { setGrade(g); setSizes([...DEFAULTS[g].sizes]); setQtys([...DEFAULTS[g].qtys]); }
@@ -237,15 +244,22 @@ export default function FichaMontadoresPage() {
     if (!dia) { setMsg({ type: "err", text: "Informe a data da ficha." }); return; }
     if (!montadorId) { setMsg({ type: "err", text: "Selecione o montador." }); return; }
     setSaving(true); setMsg(null);
-    const payload = {
+    const payload: any = {
       dia, montador: montadorNome || null, montador_id: montadorId || null,
-      solado: soladoNome || null, solado_id: soladoId || null,
+      solado: soladoNome || null, solado_id: soladoId || null, cor: cor.trim() || null,
       grade, numeracoes: sizes, quantidades: qtys, total, copias, valor_par: valorPar || 0,
       atualizado_em: new Date().toISOString(),
     };
-    const { error } = editingId
-      ? await db.from("ficha_montadores").update(payload).eq("id", editingId)
-      : await db.from("ficha_montadores").insert(payload);
+    const save = (pl: any) => editingId
+      ? db.from("ficha_montadores").update(pl).eq("id", editingId)
+      : db.from("ficha_montadores").insert(pl);
+    let { error } = await save(payload);
+    // Resiliente: se a coluna `cor` ainda não existe no banco (migration pendente),
+    // grava sem ela em vez de quebrar a ficha (página de uso diário).
+    if (error && /['"\s]cor['"\s]|column .*cor|'cor'/i.test(error.message || "")) {
+      const { cor: _omit, ...semCor } = payload;
+      ({ error } = await save(semCor));
+    }
     if (error) setMsg({ type: "err", text: "Erro ao salvar: " + error.message });
     else { setMsg({ type: "ok", text: editingId ? "Ficha atualizada." : "Ficha salva." }); await carregar(); if (!editingId) novaFicha(); }
     setSaving(false);
@@ -253,7 +267,7 @@ export default function FichaMontadoresPage() {
   function abrir(f: Ficha) {
     setTab("lancamento"); setEditingId(f.id); setDia(f.dia);
     setMontadorId(f.montador_id ?? ""); setMontadorNome(f.montador ?? "");
-    setSoladoId(f.solado_id ?? ""); setSoladoNome(f.solado ?? ""); setValorPar(Number(f.valor_par) || 0);
+    setSoladoId(f.solado_id ?? ""); setSoladoNome(f.solado ?? ""); setCor((f as any).cor ?? ""); setValorPar(Number(f.valor_par) || 0);
     setGrade(f.grade); setSizes(f.numeracoes ?? []); setQtys(f.quantidades ?? []); setCopias(f.copias ?? 1); setMsg(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -343,7 +357,7 @@ export default function FichaMontadoresPage() {
                 ))}
               </div>
               <Button type="button" variant="outline" size="sm" className="gap-1.5"
-                onClick={() => imprimirFichas([{ id: "x", dia, montador: montadorNome || null, montador_id: montadorId || null, solado: soladoNome || null, solado_id: soladoId || null, grade, numeracoes: sizes, quantidades: qtys, total, copias, valor_par: valorPar }], true)}>
+                onClick={() => imprimirFichas([{ id: "x", dia, montador: montadorNome || null, montador_id: montadorId || null, solado: soladoNome || null, solado_id: soladoId || null, cor: cor || null, grade, numeracoes: sizes, quantidades: qtys, total, copias, valor_par: valorPar }], true)}>
                 <Printer className="h-4 w-4" /> Imprimir
               </Button>
             </div>
@@ -359,6 +373,9 @@ export default function FichaMontadoresPage() {
               <Select value={montadorId} onValueChange={pickMontador}>
                 <SelectTrigger><SelectValue placeholder="Selecione o montador" /></SelectTrigger>
                 <SelectContent>
+                  {montadores.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum funcionário com cargo "Montagem". Defina o cargo em Funcionários.</div>
+                  )}
                   {montadores.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -371,6 +388,10 @@ export default function FichaMontadoresPage() {
                   {(solados as any[]).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}{s.color ? ` · ${s.color}` : ""}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label className={lbl}>Cor</label>
+              <Input value={cor} placeholder="Cor da montagem" onChange={(e) => setCor(e.target.value)} />
             </div>
             <div>
               <label className={lbl}>Valor por par (R$)</label>
@@ -538,13 +559,14 @@ export default function FichaMontadoresPage() {
                 <div className="overflow-hidden rounded-lg border border-border">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
-                      <tr><th className="px-3 py-2">Montador</th><th className="px-3 py-2">Solado</th><th className="px-3 py-2">Grade</th><th className="px-3 py-2 text-center">Total</th><th className="px-3 py-2 text-center">Cópias</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Ações</th></tr>
+                      <tr><th className="px-3 py-2">Montador</th><th className="px-3 py-2">Solado</th><th className="px-3 py-2">Cor</th><th className="px-3 py-2">Grade</th><th className="px-3 py-2 text-center">Total</th><th className="px-3 py-2 text-center">Cópias</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Ações</th></tr>
                     </thead>
                     <tbody>
                       {lista.map((f) => (
                         <tr key={f.id} className="border-t border-border">
                           <td className="px-3 py-2 font-medium text-foreground">{f.montador || "—"}</td>
                           <td className="px-3 py-2 text-muted-foreground">{f.solado || "—"}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{(f as any).cor || "—"}</td>
                           <td className="px-3 py-2 capitalize text-muted-foreground">{f.grade}</td>
                           <td className="px-3 py-2 text-center font-semibold text-foreground">{f.total}</td>
                           <td className="px-3 py-2 text-center text-muted-foreground">{f.copias}</td>
