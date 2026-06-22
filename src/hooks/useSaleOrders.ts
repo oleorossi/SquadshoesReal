@@ -791,30 +791,20 @@ export function useSaleOrders() {
     queryFn: async () => {
       // Cap to the most recent 1000 sale orders to avoid loading the
       // entire historical base on every dashboard/list mount.
+      // client_number vem por EMBED (FK sale_orders.client_id → clients) em vez
+      // de uma 2ª query serial à tabela clients — corta 1 round-trip por mount
+      // da lista de PVs. (auditoria perf)
       const { data, error } = await supabase
         .from('sale_orders')
-        .select('*')
+        .select('*, clients(client_number)')
         .is('deleted_at', null) // soft delete: esconde PVs com deleted_at != null
         .order('created_at', { ascending: false })
         .limit(1000);
       if (error) throw error;
 
-      // Enrich with client_number from clients table
-      const clientIds = [...new Set((data || []).map((so: any) => so.client_id).filter(Boolean))];
-      let clientNumberMap: Record<string, string> = {};
-      if (clientIds.length > 0) {
-        const { data: clients } = await supabase
-          .from('clients')
-          .select('id, client_number')
-          .in('id', clientIds);
-        if (clients) {
-          clientNumberMap = Object.fromEntries(clients.map((c: any) => [c.id, c.client_number]));
-        }
-      }
-
       return (data || []).map((so: any) => ({
         ...so,
-        client_number: clientNumberMap[so.client_id] || null,
+        client_number: so.clients?.client_number || null,
       }));
     },
     staleTime: 5 * 60 * 1000,

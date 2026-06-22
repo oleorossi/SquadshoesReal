@@ -171,9 +171,11 @@ const versionJsonPlugin = (): Plugin => ({
             '@radix-ui/react-tooltip',
           ],
           'supabase-vendor': ['@supabase/supabase-js'],
-          // Recharts (~60KB gzip) usado em 14 pages — chunk próprio evita
-          // duplicação entre os bundles de cada page lazy.
-          'recharts-vendor': ['recharts'],
+          // Recharts (~114KB gzip) NÃO vai mais num manualChunk próprio: a forma
+          // de array criava aresta estática dura que arrastava recharts (e o clsx
+          // compartilhado) pro entry, carregando em TODA rota (inclusive /auth e
+          // /m mobile). Deixar o Rollup code-split natural põe recharts só nos
+          // chunks das ~20 pages de gráfico (que já são lazy). (auditoria perf)
         },
       },
     },

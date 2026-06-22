@@ -76,8 +76,12 @@ export function OvertimeResolutionPanel() {
 
   // Saldo de HE do mês via RPC calculate_employee_bank_balance
   const employeeIds = useMemo(() => (employees as any[]).map(e => e.id), [employees]);
+  // Query key ESTÁVEL: string ordenada em vez do array (cuja identidade muda a
+  // cada refetch de employees → reorder/duplicata trocava a chave e refazia a
+  // RPC à toa). Mesmo padrão de Payroll/useSaleOrdersWeightBatch. (auditoria perf)
+  const employeeIdsKey = useMemo(() => [...employeeIds].sort().join(','), [employeeIds]);
   const { data: overtimeData = [], isLoading } = useQuery({
-    queryKey: ['overtime_by_employee', month, employeeIds],
+    queryKey: ['overtime_by_employee', month, employeeIdsKey],
     enabled: employeeIds.length > 0,
     queryFn: async () => {
       const results = await Promise.all(

@@ -70,6 +70,15 @@ export default function ComissoesTab() {
       repMap.set(rep.name, { rep, orders: [], totalSales: 0, totalCommissionBase: 0, totalCommission: 0 });
     });
 
+    // Pré-indexa itens por sale_order_id pra lookup O(1) — antes era
+    // allItems.filter() por PV DENTRO do loop = O(PVs×itens) quadrático,
+    // travando o recálculo do useMemo em datasets grandes. (auditoria perf)
+    const itemsByOrder = new Map<string, any[]>();
+    (allItems as any[]).forEach((item: any) => {
+      const arr = itemsByOrder.get(item.sale_order_id);
+      if (arr) arr.push(item); else itemsByOrder.set(item.sale_order_id, [item]);
+    });
+
     // Match sale orders to representatives.
     // Prefer representative_id (FK) — sobrevive a renames; fallback pro nome
     // text em PVs legacy criados antes do campo FK ser populado.
@@ -96,7 +105,7 @@ export default function ComissoesTab() {
       if (!rep) return;
 
       // Calculate order total from items
-      const orderItems = allItems.filter((item: any) => item.sale_order_id === so.id);
+      const orderItems = itemsByOrder.get(so.id) || [];
       const orderTotal = orderItems.reduce((sum: number, item: any) => {
         const qty = item.quantity || 0;
         const price = item.unit_price || 0;
