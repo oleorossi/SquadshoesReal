@@ -2541,6 +2541,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           quantity: returnDialogOs.quantity,
           description: returnDialogOs.description,
           contractorName: returnDialogOs.contractors?.name ?? null,
+          dispatchTracked: (returnDialogOs as any).dispatch_tracked ?? false,
+          contractorId: returnDialogOs.contractor_id ?? null,
         } : null}
         onSaved={handleReturnSaved}
       />

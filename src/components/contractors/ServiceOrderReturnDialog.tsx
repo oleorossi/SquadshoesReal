@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useContractors } from '@/hooks/useContractors';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 
 /**
@@ -47,7 +49,12 @@ export interface ReturnDialogServiceOrder {
   quantity?: number | null;
   description?: string | null;
   contractorName?: string | null;
+  /** OS dividida entre prestadores → mostra seletor "de quem está voltando". */
+  dispatchTracked?: boolean | null;
+  contractorId?: string | null;
 }
+
+interface ContractorBal { contractor_id: string; qty_dispatched: number; qty_in_field: number; }
 
 interface Props {
   open: boolean;
@@ -67,37 +74,47 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
     queryKey: ['so_return_dialog', soId],
     enabled: open && !!soId,
     queryFn: async () => {
-      const [{ data: bal, error: balErr }, { data: rets, error: retErr }] = await Promise.all([
+      const [{ data: bal, error: balErr }, { data: rets, error: retErr }, { data: cbals }] = await Promise.all([
         (supabase as any).from('v_service_order_balance').select('*').eq('service_order_id', soId).maybeSingle(),
         (supabase as any)
           .from('service_order_returns')
           .select('id, returned_at, qty_good, qty_defect, qty_loss, defect_notes')
           .eq('service_order_id', soId)
           .order('returned_at', { ascending: false }),
+        (supabase as any).from('v_service_order_contractor_balance').select('contractor_id, qty_dispatched, qty_in_field').eq('service_order_id', soId),
       ]);
       if (balErr) throw balErr;
       if (retErr) throw retErr;
-      return { balance: (bal ?? null) as BalanceRow | null, returns: (rets ?? []) as ReturnRow[] };
+      return { balance: (bal ?? null) as BalanceRow | null, returns: (rets ?? []) as ReturnRow[], contractorBals: (cbals ?? []) as ContractorBal[] };
     },
   });
 
   const balance = data?.balance ?? null;
-  const inField = Math.max(0, Number(balance?.qty_in_field ?? serviceOrder?.quantity ?? 0));
+  const dispatchTracked = !!serviceOrder?.dispatchTracked;
+  const { data: contractors = [] } = useContractors();
+  const contractorBals = data?.contractorBals ?? [];
 
   const [qtyGood, setQtyGood] = useState(0);
   const [qtyDefect, setQtyDefect] = useState(0);
   const [qtyLoss, setQtyLoss] = useState(0);
   const [defectNotes, setDefectNotes] = useState('');
+  const [contractor, setContractor] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Caso comum (retorno total): pré-preenche BONS com o saldo → 2 cliques.
+  // Na rua = do PRESTADOR selecionado (OS dividida) OU total (OS normal).
+  const selBal = contractorBals.find(b => b.contractor_id === contractor);
+  const inField = dispatchTracked
+    ? Math.max(0, Number(selBal?.qty_in_field ?? 0))
+    : Math.max(0, Number(balance?.qty_in_field ?? serviceOrder?.quantity ?? 0));
+
+  // Reset (só na ABERTURA) — não mexe no prestador depois pra não reverter a escolha.
   useEffect(() => {
-    if (open) {
-      setQtyGood(inField);
-      setQtyDefect(0);
-      setQtyLoss(0);
-      setDefectNotes('');
-    }
+    if (open) { setQtyDefect(0); setQtyLoss(0); setDefectNotes(''); setContractor(serviceOrder?.contractorId || ''); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, serviceOrder?.contractorId]);
+  // Pré-preenche BONS com o saldo na rua (do prestador selecionado) — atualiza ao trocar.
+  useEffect(() => {
+    if (open) setQtyGood(inField);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, inField]);
 
@@ -109,6 +126,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
   const handleSave = async () => {
     if (!soId || saving) return;
+    if (dispatchTracked && !contractor) { toast.error('Selecione de qual prestador está voltando.'); return; }
     if (totalReturn <= 0) { toast.error('Informe ao menos 1 par devolvido.'); return; }
     if (exceeds) { toast.error(`Retorno excede o saldo na rua (${inField} pares).`); return; }
     setSaving(true);
@@ -119,6 +137,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
         qty_defect: qtyDefect,
         qty_loss: qtyLoss,
         defect_notes: defectNotes.trim() || null,
+        contractor_id: dispatchTracked ? (contractor || null) : null,
       });
       if (error) throw error;
 
@@ -171,6 +190,21 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
               </span>
             </div>
 
+            {dispatchTracked && (
+              <div>
+                <Label className="text-xs">De qual prestador está voltando?</Label>
+                <Select value={contractor} onValueChange={setContractor}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o prestador" /></SelectTrigger>
+                  <SelectContent>
+                    {contractorBals.filter(b => b.qty_dispatched > 0).map(b => {
+                      const c = (contractors as any[]).find(x => x.id === b.contractor_id);
+                      return <SelectItem key={b.contractor_id} value={b.contractor_id}>{(c?.trade_name || c?.name || 'Prestador')} — {Math.max(0, b.qty_in_field)} na rua</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs">Pares BONS</Label>
@@ -221,7 +255,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
         <DialogFooter>
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds}>
+          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds || (dispatchTracked && !contractor)}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Registrar retorno'}
           </Button>
         </DialogFooter>

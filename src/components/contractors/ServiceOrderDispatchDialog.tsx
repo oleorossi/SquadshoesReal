@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useContractors } from '@/hooks/useContractors';
 import { CircleNotch as Loader2, Truck, Package, Check } from '@phosphor-icons/react';
 
 /**
@@ -29,8 +31,8 @@ interface BalanceRow {
   qty_loss: number;
   qty_in_field: number;        // na rua = enviado − recebido
 }
-interface DispatchRow { id: string; dispatched_at: string; qty_dispatched: number; notes: string | null; }
-interface ReturnRow { id: string; returned_at: string; qty_good: number; qty_defect: number; qty_loss: number; }
+interface DispatchRow { id: string; dispatched_at: string; qty_dispatched: number; notes: string | null; contractor_id: string | null; }
+interface ReturnRow { id: string; returned_at: string; qty_good: number; qty_defect: number; qty_loss: number; contractor_id: string | null; }
 
 export interface DispatchDialogServiceOrder {
   id: string;
@@ -38,6 +40,7 @@ export interface DispatchDialogServiceOrder {
   quantity?: number | null;
   description?: string | null;
   contractorName?: string | null;
+  contractorId?: string | null;  // prestador padrão da OS (default do envio)
 }
 
 interface Props {
@@ -58,8 +61,8 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
     queryFn: async () => {
       const [{ data: bal, error: balErr }, { data: disp, error: dispErr }, { data: rets, error: retErr }] = await Promise.all([
         (supabase as any).from('v_service_order_balance').select('*').eq('service_order_id', soId).maybeSingle(),
-        (supabase as any).from('service_order_dispatches').select('id, dispatched_at, qty_dispatched, notes').eq('service_order_id', soId).order('dispatched_at', { ascending: false }),
-        (supabase as any).from('service_order_returns').select('id, returned_at, qty_good, qty_defect, qty_loss').eq('service_order_id', soId).order('returned_at', { ascending: false }),
+        (supabase as any).from('service_order_dispatches').select('id, dispatched_at, qty_dispatched, notes, contractor_id').eq('service_order_id', soId).order('dispatched_at', { ascending: false }),
+        (supabase as any).from('service_order_returns').select('id, returned_at, qty_good, qty_defect, qty_loss, contractor_id').eq('service_order_id', soId).order('returned_at', { ascending: false }),
       ]);
       if (balErr) throw balErr;
       if (dispErr) throw dispErr;
@@ -75,34 +78,43 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   const inField = Math.max(0, Number(balance?.qty_in_field ?? 0));
   const received = (balance?.qty_returned_good ?? 0) + (balance?.qty_returned_defect ?? 0) + (balance?.qty_loss ?? 0);
 
+  const { data: contractors = [] } = useContractors();
+  const contractorName = (id?: string | null) => {
+    const c = (contractors as any[]).find(x => x.id === id);
+    return c ? (c.trade_name || c.name || 'Prestador') : null;
+  };
+
   const [qty, setQty] = useState(0);
   const [notes, setNotes] = useState('');
+  const [contractor, setContractor] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
-  // Default: manda o que falta (1 clique pra mandar tudo de uma vez).
+  // Default: manda o que falta pro prestador padrão da OS (1 clique).
   useEffect(() => {
-    if (open) { setQty(toDispatch); setNotes(''); }
+    if (open) { setQty(toDispatch); setNotes(''); setContractor(serviceOrder?.contractorId || ''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, toDispatch]);
+  }, [open, toDispatch, serviceOrder?.contractorId]);
 
   const exceeds = qty > toDispatch;
   const fmtDate = useMemo(() => (s: string) => new Date(s).toLocaleDateString('pt-BR'), []);
 
   // Linha do tempo unificada (envios + recebimentos), mais recente primeiro.
   const timeline = useMemo(() => {
-    const a = (data?.dispatches ?? []).map(d => ({ kind: 'dispatch' as const, at: d.dispatched_at, qty: d.qty_dispatched, notes: d.notes }));
-    const b = (data?.returns ?? []).map(r => ({ kind: 'return' as const, at: r.returned_at, good: r.qty_good, defect: r.qty_defect, loss: r.qty_loss }));
+    const a = (data?.dispatches ?? []).map(d => ({ kind: 'dispatch' as const, at: d.dispatched_at, qty: d.qty_dispatched, notes: d.notes, who: d.contractor_id }));
+    const b = (data?.returns ?? []).map(r => ({ kind: 'return' as const, at: r.returned_at, good: r.qty_good, defect: r.qty_defect, loss: r.qty_loss, who: r.contractor_id }));
     return [...a, ...b].sort((x, y) => new Date(y.at).getTime() - new Date(x.at).getTime());
   }, [data]);
 
   const handleSave = async () => {
     if (!soId || saving) return;
+    if (!contractor) { toast.error('Selecione o prestador desta remessa.'); return; }
     if (qty <= 0) { toast.error('Informe ao menos 1 par pra enviar.'); return; }
     if (exceeds) { toast.error(`Envio excede o que falta (${toDispatch} pares a enviar).`); return; }
     setSaving(true);
     try {
       const { error } = await (supabase as any).from('service_order_dispatches').insert({
         service_order_id: soId, qty_dispatched: qty, notes: notes.trim() || null,
+        contractor_id: contractor || null,
       });
       if (error) throw error;
       const left = toDispatch - qty;
@@ -149,17 +161,25 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
               <div className="bg-amber-500" style={{ width: `${ordered > 0 ? (inField / ordered) * 100 : 0}%` }} />
             </div>
 
-            {/* Input de envio */}
+            {/* Input de envio — prestador + qtd (pode mandar pra prestadores diferentes) */}
             <div className="flex items-end gap-2">
+              <div className="flex-[2]">
+                <Label className="text-xs">Prestador (pra quem vai esta remessa)</Label>
+                <Select value={contractor} onValueChange={setContractor}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o prestador" /></SelectTrigger>
+                  <SelectContent>
+                    {(contractors as any[]).filter(c => c.active !== false).map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.trade_name || c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex-1">
-                <Label className="text-xs">Enviar agora (de {toDispatch} a enviar)</Label>
+                <Label className="text-xs">Enviar (de {toDispatch})</Label>
                 <NumberInput value={qty} onChange={v => setQty(Math.max(0, Math.min(toDispatch, Math.trunc(v ?? 0))))} min={0} className="h-9" />
               </div>
-              <div className="flex-[2]">
-                <Label className="text-xs">Observação (opcional)</Label>
-                <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={1} placeholder="Ex.: 1ª remessa" className="min-h-9" />
-              </div>
             </div>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={1} placeholder="Observação da remessa (opcional)" className="min-h-9" />
             {exceeds && <p className="text-xs text-red-600">Envio ({qty}) maior que o que falta enviar ({toDispatch}).</p>}
             {toDispatch === 0 && <p className="text-xs text-muted-foreground">Pedido todo enviado. Use <strong>Receber</strong> conforme a banca devolve.</p>}
 
@@ -174,8 +194,8 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
                       : <Check className="h-4 w-4 text-green-600 shrink-0" />}
                     <span className="flex-1">
                       {ev.kind === 'dispatch'
-                        ? <>Enviado <strong>{ev.qty}</strong> pares{ev.notes ? ` · ${ev.notes}` : ''}</>
-                        : <>Recebido <strong>{ev.good + ev.defect + ev.loss}</strong> · {ev.good} bom{ev.defect > 0 ? `, ${ev.defect} def.` : ''}{ev.loss > 0 ? `, ${ev.loss} perda` : ''}</>}
+                        ? <>Enviado <strong>{ev.qty}</strong>{contractorName(ev.who) ? <> pra {contractorName(ev.who)}</> : ''}{ev.notes ? ` · ${ev.notes}` : ''}</>
+                        : <>Recebido <strong>{ev.good + ev.defect + ev.loss}</strong>{contractorName(ev.who) ? <> de {contractorName(ev.who)}</> : ''} · {ev.good} bom{ev.defect > 0 ? `, ${ev.defect} def.` : ''}{ev.loss > 0 ? `, ${ev.loss} perda` : ''}</>}
                     </span>
                     <span className="text-muted-foreground whitespace-nowrap">{fmtDate(ev.at)}</span>
                   </div>
@@ -192,7 +212,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
             </Button>
           )}
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button className="h-9 gap-1.5" onClick={handleSave} disabled={saving || isLoading || qty <= 0 || exceeds}>
+          <Button className="h-9 gap-1.5" onClick={handleSave} disabled={saving || isLoading || qty <= 0 || exceeds || !contractor}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />} Enviar pra rua
           </Button>
         </DialogFooter>
