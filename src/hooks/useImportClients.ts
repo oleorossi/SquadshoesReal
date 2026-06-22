@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { invalidateAllClientQueries } from './useClients';
 
@@ -82,6 +81,7 @@ function findHeaderIndex(headers: string[], field: keyof ExtractedClient): numbe
 
 /** Parse Excel/CSV local com SheetJS. */
 export async function parseExcelOrCsv(file: File): Promise<ExtractedClient[]> {
+  const XLSX = await import('xlsx'); // lazy: não infla o chunk que importa este módulo
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const sheetName = wb.SheetNames[0];

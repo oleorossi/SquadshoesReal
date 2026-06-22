@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
 // Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
 import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
 
@@ -65,6 +64,9 @@ export interface ParsedEmployee {
 
 // ── Helper: read rows from either .xls or .xlsx ──────
 async function readSpreadsheetRows(file: File): Promise<any[][]> {
+  // xlsx (~424KB) carregado sob demanda — não infla o chunk da rota de Ponto,
+  // que importava a lib eager mesmo sem ninguém importar planilha. (auditoria perf)
+  const XLSX = await import('xlsx');
   const buffer = await file.arrayBuffer();
 
   // Use SheetJS for ALL spreadsheet formats (.xls, .xlsx, .csv, html-tables-as-xls)

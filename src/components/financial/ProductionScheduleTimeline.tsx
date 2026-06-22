@@ -13,7 +13,6 @@ import { Separator } from '@/components/ui/separator';
 import { CircleNotch as Loader2, Scissors, Hammer, Sparkle as Sparkles, ShoppingCart, Warehouse, CalendarCheck, MagnifyingGlass as Search, Warning as AlertTriangle, PencilLine as PenLine, FileText, Hand, Clock, FileArrowDown as FileDown, Stack as Layers, FlowArrow as Workflow, CheckCircle as CheckCircle2, Calendar } from '@phosphor-icons/react';
 import { format, parseISO, isBefore, isToday, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface ScheduleRow {
@@ -380,7 +379,8 @@ function DelayDetailDialog({ open, onClose, scope, focusRow, allRows }: DelayDia
   );
 }
 
-function exportLateOrdersToExcel(rows: ScheduleRow[]) {
+async function exportLateOrdersToExcel(rows: ScheduleRow[]) {
+  const XLSX = await import('xlsx'); // lazy: 424KB só ao exportar
   const fmtDate = (d: string | null | undefined) => {
     if (!d) return '';
     try { return format(parseISO(d), 'dd/MM/yyyy'); } catch { return d; }

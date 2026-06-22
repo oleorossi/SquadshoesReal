@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { evaluationDetail, type EmployeeTimesheetData } from './printTimesheet';
 import type { SalaryPayrollResult } from './salaryPayroll';
 
@@ -31,7 +30,8 @@ export interface FolhaExportRow {
  *   - "Como ler": notas (HE/atraso pago é líquido do período; falta = salário ÷ 30).
  * Tudo com o MESMO motor da folha (evaluationDetail reconcilia com computePeriodFolha).
  */
-export function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: string, filename: string): void {
+export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: string, filename: string): Promise<void> {
+  const XLSX = await import('xlsx'); // lazy: 424KB só ao exportar a Folha
   const wb = XLSX.utils.book_new();
 
   // ── Resumo (1 linha/funcionário) ──

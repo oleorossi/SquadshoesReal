@@ -1,4 +1,3 @@
-import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { BottleneckInfo } from './sectorBottleneck';
 
@@ -85,7 +84,8 @@ export function exportBottleneckCSV(orders: ExportableOrder[], filterLabel: stri
   URL.revokeObjectURL(url);
 }
 
-export function exportBottleneckPDF(orders: ExportableOrder[], filterLabel: string) {
+export async function exportBottleneckPDF(orders: ExportableOrder[], filterLabel: string) {
+  const { default: jsPDF } = await import('jspdf'); // lazy: 416KB só ao exportar PDF
   const rows = buildRows(orders);
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
 
