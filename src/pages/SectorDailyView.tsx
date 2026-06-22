@@ -32,6 +32,19 @@ const SECTOR_ICON: Record<string, React.ElementType> = {
   corte: Scissors,
 };
 
+// Rótulo curto pra cabeçalhos densos (linha de produção)
+const SHORT_LABEL: Record<string, string> = {
+  corte_palmilha: 'Corte Palm.',
+  corte_forracao: 'Corte Forr.',
+  mesa: 'Aviamento',
+  costura: 'Costura',
+  silk: 'Silk',
+  colagem: 'Colagem',
+  montagem: 'Montagem',
+  solagem: 'Solagem',
+  acabamento: 'Acabam.',
+};
+
 // ── Paleta de severidade (cores semânticas — permitidas pelo check:tokens) ────
 const SEV: Record<DailySeverity, {
   bar: string; text: string; chip: string; cardRing: string; dot: string; label: string;
@@ -62,6 +75,16 @@ const SEV: Record<DailySeverity, {
     cardRing: 'hover:border-amber-500/50', dot: 'bg-amber-500/60', label: 'sem capacidade',
   },
 };
+
+// O número-chave de cada setor pra exibir/comparar (utilização quando há
+// capacidade; senão os pares planejados do dia).
+function sectorMetric(s: SectorDaily): { value: string; label: string } {
+  if (s.severity === 'warning' || s.severity === 'critical' || s.severity === 'ok') {
+    return { value: `${s.utilizationPct}%`, label: 'utilização' };
+  }
+  if (s.realPairs > 0) return { value: String(s.realPairs), label: 'em produção' };
+  return { value: String(s.plannedPairs), label: 'pares planejados' };
+}
 
 // ── Datas (local, sem shift de fuso) ──────────────────────────────────────────
 function localISO(d: Date): string {
@@ -97,9 +120,28 @@ export default function SectorDailyView() {
   const summary = data?.summary;
   const unknownCount = sectors.filter((s) => s.severity === 'unknown').length;
 
+  // Gargalo do dia: alerta de capacidade primeiro; senão maior carga planejada;
+  // por fim maior WIP. Só conta setores com alguma carga.
+  const worst = useMemo<SectorDaily | null>(() => {
+    const withLoad = sectors.filter(
+      (s) => s.severity === 'warning' || s.severity === 'critical' || s.plannedPairs > 0 || s.realPairs > 0,
+    );
+    if (!withLoad.length) return null;
+    return [...withLoad].sort((a, b) => {
+      const aa = a.severity === 'warning' || a.severity === 'critical' ? 1 : 0;
+      const bb = b.severity === 'warning' || b.severity === 'critical' ? 1 : 0;
+      if (aa !== bb) return bb - aa;
+      if (aa === 1 && b.utilizationPct !== a.utilizationPct) return b.utilizationPct - a.utilizationPct;
+      if (b.plannedPairs !== a.plannedPairs) return b.plannedPairs - a.plannedPairs;
+      return b.realPairs - a.realPairs;
+    })[0];
+  }, [sectors]);
+
+  const maxPlanned = Math.max(1, ...sectors.map((s) => s.plannedPairs));
+  const maxWip = Math.max(1, ...sectors.map((s) => s.realPairs));
+
   // mantém o sheet sincronizado quando muda o dia
   const selectedLive = selected ? sectors.find((s) => s.sector === selected.sector) ?? selected : null;
-
   const isToday = date === today;
 
   return (
@@ -108,7 +150,7 @@ export default function SectorDailyView() {
         sectionLabel="PRODUÇÃO · GARGALO DIÁRIO"
         title="Setores por Dia"
         live={isToday}
-        description="Carga planejada (cronograma) do dia escolhido vs. o que está em produção agora. Bata o olho pra ver qual setor está em gargalo e clique pra ver as OPs."
+        description="Carga planejada (cronograma) do dia escolhido vs. o que está em produção agora. Bata o olho pra ver onde o trabalho acumula e clique num setor pra ver as OPs."
         actions={
           <div className="flex items-center gap-1.5">
             <Button variant="outline" size="icon" className="h-9 w-9 shrink-0"
@@ -116,7 +158,7 @@ export default function SectorDailyView() {
               <CaretLeft className="h-4 w-4" />
             </Button>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value || today)}
-              className="h-9 w-[150px] tabular-nums" />
+              className="h-9 w-[150px] tabular-nums" aria-label="Data" />
             <Button variant="outline" size="icon" className="h-9 w-9 shrink-0"
               onClick={() => setDate((d) => addDaysISO(d, 1))} aria-label="Próximo dia">
               <CaretRight className="h-4 w-4" />
@@ -133,7 +175,7 @@ export default function SectorDailyView() {
         }
       />
 
-      {/* Dia selecionado, legível */}
+      {/* Dia selecionado + legenda */}
       <div className="flex flex-wrap items-center justify-between gap-3 -mt-1">
         <p className="text-sm">
           <span className="text-muted-foreground">Programação de </span>
@@ -171,22 +213,39 @@ export default function SectorDailyView() {
         </div>
       )}
 
-      {/* Grade de setores — control room */}
+      {/* Callout: gargalo do dia (headline do que está acontecendo) */}
+      {!isLoading && worst && <BottleneckCallout worst={worst} onOpen={() => setSelected(worst)} />}
+
+      {/* Linha de produção — carga por etapa, na ordem do fluxo */}
       <Panel
-        eyebrow="Fluxo de fábrica"
-        title="Carga por setor"
-        subtitle="Planejado vs. capacidade do dia (média ponderada). Verde = folga · Âmbar = sobrecarga · Vermelho = crítico. Clique num setor pra detalhar."
+        eyebrow="Linha de produção · fluxo →"
+        title="Carga por etapa no dia"
+        subtitle="Altura da barra = pares planejados no dia · cor = utilização vs. capacidade · ● abaixo = pares em produção agora. Clique numa etapa pra detalhar."
       >
         {isLoading ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">Calculando carga do dia…</div>
+          <div className="py-10 text-center text-sm text-muted-foreground">Calculando carga do dia…</div>
         ) : (
-          <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
-            {sectors.map((s, i) => (
-              <SectorCard key={s.sector} data={s} index={i} onClick={() => setSelected(s)} />
-            ))}
-          </div>
+          <ProductionFlow sectors={sectors} worstKey={worst?.sector ?? null} maxPlanned={maxPlanned} onPick={setSelected} />
         )}
       </Panel>
+
+      {/* Grade detalhada de setores */}
+      {!isLoading && (
+        <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(248px,1fr))]">
+          {sectors.map((s, i) => (
+            <SectorCard
+              key={s.sector}
+              data={s}
+              index={i}
+              step={i + 1}
+              total={sectors.length}
+              maxWip={maxWip}
+              isWorst={worst?.sector === s.sector}
+              onClick={() => setSelected(s)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Drill por setor */}
       <Sheet open={!!selectedLive} onOpenChange={(open) => !open && setSelected(null)}>
@@ -198,12 +257,129 @@ export default function SectorDailyView() {
   );
 }
 
-// ── Card de setor ─────────────────────────────────────────────────────────────
-function SectorCard({ data, index, onClick }: { data: SectorDaily; index: number; onClick: () => void }) {
+// ── Callout do gargalo do dia ─────────────────────────────────────────────────
+function BottleneckCallout({ worst, onOpen }: { worst: SectorDaily; onOpen: () => void }) {
+  const sev = SEV[worst.severity];
+  const Icon = SECTOR_ICON[worst.sector] || Factory;
+  const m = sectorMetric(worst);
+  const tone =
+    worst.severity === 'critical'
+      ? 'border-red-500/50 bg-red-500/10'
+      : worst.severity === 'warning'
+        ? 'border-amber-500/50 bg-amber-500/10'
+        : 'border-border bg-muted/40';
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        'w-full text-left rounded-lg border p-3.5 flex items-center gap-3.5 transition-all duration-200',
+        'hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-background focus:ring-foreground/20',
+        tone,
+      )}
+    >
+      <span className={cn('h-10 w-10 rounded-lg flex items-center justify-center shrink-0', sev.bar, 'text-white')}>
+        <Icon className="h-5 w-5" weight="bold" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground flex items-center gap-1.5">
+          <Warning className="h-3 w-3" /> Gargalo do dia
+        </div>
+        <div className="text-base font-bold text-foreground truncate leading-tight">{worst.label}</div>
+        <div className="text-xs text-muted-foreground tabular-nums">
+          {worst.realOpsCount > 0
+            ? `${worst.realPairs} pares em produção · ${worst.realOpsCount} ${worst.realOpsCount === 1 ? 'OP' : 'OPs'}`
+            : `${worst.plannedPairs} pares planejados no dia`}
+          {worst.realDelayedCount > 0 && (
+            <span className="text-red-700 dark:text-red-400 font-medium"> · {worst.realDelayedCount} atrasada{worst.realDelayedCount > 1 ? 's' : ''}</span>
+          )}
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className={cn('font-mono font-bold tabular-nums text-2xl leading-none', sev.text)}>{m.value}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">{m.label}</div>
+      </div>
+      <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
+// ── Linha de produção (mini bar chart em ordem de fluxo) ──────────────────────
+function ProductionFlow({
+  sectors, worstKey, maxPlanned, onPick,
+}: {
+  sectors: SectorDaily[];
+  worstKey: string | null;
+  maxPlanned: number;
+  onPick: (s: SectorDaily) => void;
+}) {
+  return (
+    <div className="overflow-x-auto pb-1">
+      <div className="min-w-[620px] flex items-stretch gap-1">
+        {sectors.map((s) => {
+          const sev = SEV[s.severity];
+          const isWorst = s.sector === worstKey;
+          const pct = s.plannedPairs > 0 ? Math.max(6, Math.round((s.plannedPairs / maxPlanned) * 100)) : 0;
+          return (
+            <button
+              key={s.sector}
+              type="button"
+              onClick={() => onPick(s)}
+              aria-label={`${s.label}: ${s.plannedPairs} pares planejados, ${s.realPairs} em produção`}
+              className={cn(
+                'group flex-1 min-w-[62px] flex flex-col items-center rounded-md px-1 pt-1.5 pb-2 transition-colors',
+                'focus:outline-none focus:ring-2 focus:ring-foreground/20',
+                isWorst ? 'bg-foreground/[0.04] ring-1 ring-inset ring-foreground/15' : 'hover:bg-muted/40',
+              )}
+            >
+              {/* valor planejado (sempre visível) */}
+              <span className={cn('text-[11px] font-mono font-bold tabular-nums leading-none mb-1',
+                s.plannedPairs > 0 ? sev.text : 'text-muted-foreground/40')}>
+                {s.plannedPairs > 0 ? s.plannedPairs : '—'}
+              </span>
+              {/* trilho + barra (cresce de baixo) */}
+              <div className="w-full h-24 flex items-end justify-center">
+                <div className="relative w-7 h-full flex items-end rounded-md bg-muted/50 overflow-hidden">
+                  <div
+                    className={cn('w-full rounded-t-md transition-all duration-500 motion-reduce:transition-none', sev.bar)}
+                    style={{ height: `${pct}%` }}
+                  />
+                </div>
+              </div>
+              {/* nó do fluxo + WIP atual */}
+              <span className={cn('mt-1.5 h-2 w-2 rounded-full', s.realPairs > 0 ? sev.dot : 'bg-border')} aria-hidden="true" />
+              <span className="mt-1 text-[10px] font-mono tabular-nums text-foreground leading-none">
+                {s.realPairs > 0 ? <>●{s.realPairs}<span className="text-muted-foreground"> ag.</span></> : <span className="text-muted-foreground/40">—</span>}
+              </span>
+              {/* rótulo */}
+              <span className="mt-1 text-[9px] uppercase tracking-wide text-center text-muted-foreground leading-tight">
+                {SHORT_LABEL[s.sector] ?? s.label}
+              </span>
+              {isWorst && (
+                <span className="mt-1 text-[8px] font-bold uppercase tracking-wide rounded px-1 bg-foreground text-background leading-tight">
+                  gargalo
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Card de setor (detalhe) ───────────────────────────────────────────────────
+function SectorCard({
+  data, index, step, total, maxWip, isWorst, onClick,
+}: {
+  data: SectorDaily; index: number; step: number; total: number; maxWip: number; isWorst: boolean; onClick: () => void;
+}) {
   const sev = SEV[data.severity];
   const Icon = SECTOR_ICON[data.sector] || Factory;
   const fillPct = Math.min(100, Math.max(0, data.utilizationPct));
   const over = data.utilizationPct > 100;
+  const wipPct = data.realPairs > 0 ? Math.max(4, Math.round((data.realPairs / maxWip) * 100)) : 0;
 
   return (
     <button
@@ -211,10 +387,10 @@ function SectorCard({ data, index, onClick }: { data: SectorDaily; index: number
       onClick={onClick}
       style={{ animationDelay: `${Math.min(index * 40, 360)}ms` }}
       className={cn(
-        'group text-left bg-card border border-border rounded-lg overflow-hidden transition-all duration-200',
+        'group text-left bg-card border rounded-lg overflow-hidden transition-all duration-200',
         'hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-background focus:ring-foreground/20',
-        'animate-in fade-in slide-in-from-bottom-2',
-        sev.cardRing,
+        'animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none',
+        isWorst ? 'border-foreground/40 ring-1 ring-foreground/15' : cn('border-border', sev.cardRing),
       )}
     >
       {/* faixa de severidade no topo */}
@@ -223,51 +399,68 @@ function SectorCard({ data, index, onClick }: { data: SectorDaily; index: number
         {/* header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="h-8 w-8 flex items-center justify-center bg-muted text-muted-foreground rounded-md shrink-0">
+            <span className="h-8 w-8 flex items-center justify-center bg-muted text-muted-foreground rounded-md shrink-0 relative">
               <Icon className="h-4 w-4" />
+              <span className="absolute -top-1.5 -left-1.5 h-4 min-w-4 px-1 rounded-full bg-foreground text-background text-[9px] font-bold flex items-center justify-center tabular-nums leading-none">
+                {step}
+              </span>
             </span>
-            <span className="text-sm font-bold text-foreground truncate">{data.label}</span>
+            <div className="min-w-0">
+              <span className="text-sm font-bold text-foreground truncate block leading-tight">{data.label}</span>
+              <span className="text-[10px] text-muted-foreground tabular-nums">etapa {step}/{total}</span>
+            </div>
           </div>
-          <Badge variant="outline" className={cn('text-[11px] font-bold tabular-nums shrink-0', sev.chip)}>
-            {data.severity === 'idle' ? '—' : data.severity === 'unknown' ? 's/ cap.' : `${data.utilizationPct}%`}
-          </Badge>
-        </div>
-
-        {/* barra de utilização */}
-        <div>
-          <div className="h-2 w-full rounded-full bg-muted overflow-hidden relative">
-            <div className={cn('h-full rounded-full transition-all duration-500', sev.bar)} style={{ width: `${fillPct}%` }} />
-            {over && <div className="absolute inset-y-0 right-0 w-1.5 bg-red-600/70 animate-pulse" aria-hidden="true" />}
-          </div>
-          <div className="flex items-center justify-between mt-1.5 text-[11px] tabular-nums">
-            <span className="font-mono font-semibold text-foreground">
-              {data.plannedPairs}
-              <span className="text-muted-foreground font-normal"> pares</span>
-            </span>
-            <span className="text-muted-foreground">
-              cap. {data.capacityPerDay > 0 ? data.capacityPerDay : '—'}/dia
-            </span>
-          </div>
-        </div>
-
-        {/* sub-bloco: produção real */}
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/60 text-[11px]">
-          <span className="text-muted-foreground">
-            Em produção:{' '}
-            <span className="font-semibold text-foreground tabular-nums">{data.realPairs}</span>{' '}
-            {data.realOpsCount > 0 && (
-              <span className="text-muted-foreground">· {data.realOpsCount} {data.realOpsCount === 1 ? 'OP' : 'OPs'}</span>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {isWorst && (
+              <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-wide bg-foreground text-background border-foreground">
+                gargalo
+              </Badge>
             )}
-          </span>
-          {data.realDelayedCount > 0 ? (
+            <Badge variant="outline" className={cn('text-[11px] font-bold tabular-nums', sev.chip)}>
+              {data.severity === 'idle' ? '—' : data.severity === 'unknown' ? 's/ cap.' : `${data.utilizationPct}%`}
+            </Badge>
+          </div>
+        </div>
+
+        {/* barra de utilização (bullet: 100% = capacidade) */}
+        <div>
+          <div className="flex items-center justify-between mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>Planejado</span>
+            <span className="font-mono tabular-nums normal-case">
+              {data.plannedPairs}<span className="text-muted-foreground/70"> / cap. {data.capacityPerDay > 0 ? data.capacityPerDay : '—'}</span>
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden relative">
+            <div className={cn('h-full rounded-full transition-all duration-500 motion-reduce:transition-none', sev.bar)} style={{ width: `${fillPct}%` }} />
+            {/* marca de capacidade (alvo do bullet) a 100% */}
+            <div className="absolute inset-y-0 right-0 w-px bg-foreground/30" aria-hidden="true" />
+            {over && <div className="absolute inset-y-0 right-0 w-1.5 bg-red-600/70 animate-pulse motion-reduce:animate-none" aria-hidden="true" />}
+          </div>
+        </div>
+
+        {/* barra de WIP (em produção agora, relativa ao maior do dia) */}
+        <div>
+          <div className="flex items-center justify-between mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>Agora</span>
+            <span className="font-mono tabular-nums normal-case">
+              {data.realPairs} pares
+              {data.realOpsCount > 0 && <span className="text-muted-foreground/70"> · {data.realOpsCount} {data.realOpsCount === 1 ? 'OP' : 'OPs'}</span>}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+            <div className="h-full rounded-full bg-foreground/55 transition-all duration-500 motion-reduce:transition-none" style={{ width: `${wipPct}%` }} />
+          </div>
+        </div>
+
+        {/* rodapé: atraso */}
+        {data.realDelayedCount > 0 && (
+          <div className="flex items-center justify-end pt-0.5">
             <Badge variant="outline" className="text-[10px] gap-1 bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/40">
               <Warning className="h-3 w-3" />
               {data.realDelayedCount} atrasada{data.realDelayedCount > 1 ? 's' : ''}
             </Badge>
-          ) : (
-            <span className={cn('h-1.5 w-1.5 rounded-full', sev.dot)} aria-hidden="true" />
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </button>
   );
