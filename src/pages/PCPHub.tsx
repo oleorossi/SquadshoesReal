@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams, Link } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, Fragment } from "react";
+import { cn } from "@/lib/utils";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
 import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -46,6 +47,14 @@ const TabLoader = () => (
 ];
  const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
 
+// Menu lateral do PCP — agrupa as abas em seções (em vez de 1 lista corrida de 13).
+const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
+const TAB_GROUPS: { label: string; items: string[] }[] = [
+  { label: "Planejamento",   items: ["ondas", "planejamento", "cronograma", "lead-time", "capacidade", "rccp"] },
+  { label: "Chão de Fábrica", items: ["setores", "gargalo-diario", "picking", "lot-split"] },
+  { label: "Análise",        items: ["dashboard", "auditoria", "pos-op"] },
+];
+
 // Backward-compat: legacy URLs like ?tab=corte should land on the consolidated Setores tab
 const LEGACY_SECTOR_TABS = new Set(['corte', 'costura', 'silk', 'colagem', 'montagem', 'acabamento', 'expedicao']);
 
@@ -82,33 +91,58 @@ export default function PCPHub() {
           ))}
         </div>
       )}
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
-          <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
-            {tabs.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                {tab.icon && <tab.icon className="h-3.5 w-3.5" />}
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
+      <Tabs value={activeTab} onValueChange={handleTabChange} orientation="vertical">
+        <div className="flex flex-col md:flex-row md:gap-6">
+          {/* Menu lateral (desktop) / faixa rolável (mobile) */}
+          <div className="md:w-56 md:shrink-0 -mx-4 px-4 overflow-x-auto pb-2 md:mx-0 md:px-0 md:overflow-visible md:pb-0">
+            <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg md:flex md:flex-col md:w-full md:items-stretch md:gap-0.5 md:bg-transparent md:p-0 md:sticky md:top-4">
+              {TAB_GROUPS.map((group) => (
+                <Fragment key={group.label}>
+                  <div className="hidden md:block section-label px-2 pt-3 pb-1 first:pt-1">
+                    {group.label}
+                  </div>
+                  {group.items.map((value) => {
+                    const tab = TAB_BY_VALUE[value];
+                    if (!tab) return null;
+                    return (
+                      <TabsTrigger
+                        key={value}
+                        value={value}
+                        className={cn(
+                          "text-xs whitespace-nowrap gap-1.5 px-3 py-1.5 rounded-md",
+                          "data-[state=active]:bg-background data-[state=active]:shadow-sm",
+                          "md:w-full md:justify-start md:py-2 md:gap-2.5",
+                        )}
+                      >
+                        {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
+                        {tab.label}
+                      </TabsTrigger>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </TabsList>
+          </div>
 
-        <Suspense fallback={<TabLoader />}>
-          <TabsContent value="dashboard"><PCPDashboard /></TabsContent>
-          <TabsContent value="lead-time"><LeadTime /></TabsContent>
-           <TabsContent value="ondas"><ProductionWavesPage embedded /></TabsContent>
-           <TabsContent value="planejamento"><ProductionPlanning /></TabsContent>
-          <TabsContent value="cronograma"><ProductionScheduleTimeline /></TabsContent>
-           <TabsContent value="setores"><Setores /></TabsContent>
-          <TabsContent value="gargalo-diario"><SectorDailyView /></TabsContent>
-          <TabsContent value="capacidade"><CapacityPlanning /></TabsContent>
-          <TabsContent value="picking"><PickingListPage /></TabsContent>
-          <TabsContent value="auditoria"><OrderFlowAudit /></TabsContent>
-          <TabsContent value="rccp"><RCCPPlanning /></TabsContent>
-          <TabsContent value="pos-op"><PostOPAnalysis /></TabsContent>
-          <TabsContent value="lot-split"><Suspense fallback={<TabLoader />}><LotSplitPage /></Suspense></TabsContent>
-        </Suspense>
+          {/* Conteúdo da aba ativa */}
+          <div className="flex-1 min-w-0 mt-4 md:mt-0">
+            <Suspense fallback={<TabLoader />}>
+              <TabsContent value="dashboard" className="mt-0"><PCPDashboard /></TabsContent>
+              <TabsContent value="lead-time" className="mt-0"><LeadTime /></TabsContent>
+              <TabsContent value="ondas" className="mt-0"><ProductionWavesPage embedded /></TabsContent>
+              <TabsContent value="planejamento" className="mt-0"><ProductionPlanning /></TabsContent>
+              <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
+              <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
+              <TabsContent value="gargalo-diario" className="mt-0"><SectorDailyView /></TabsContent>
+              <TabsContent value="capacidade" className="mt-0"><CapacityPlanning /></TabsContent>
+              <TabsContent value="picking" className="mt-0"><PickingListPage /></TabsContent>
+              <TabsContent value="auditoria" className="mt-0"><OrderFlowAudit /></TabsContent>
+              <TabsContent value="rccp" className="mt-0"><RCCPPlanning /></TabsContent>
+              <TabsContent value="pos-op" className="mt-0"><PostOPAnalysis /></TabsContent>
+              <TabsContent value="lot-split" className="mt-0"><Suspense fallback={<TabLoader />}><LotSplitPage /></Suspense></TabsContent>
+            </Suspense>
+          </div>
+        </div>
       </Tabs>
     </div>
   );
