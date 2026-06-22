@@ -2696,6 +2696,9 @@ export function useDeleteSaleOrder() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
+      // As OPs do PV também somem (cascata no soft_delete_sale_order) — refaz a
+      // lista de OPs pra elas sumirem na hora, sem precisar dar refresh.
+      qc.invalidateQueries({ queryKey: ['orders'] });
     },
     onError: (err: Error) => toast.error(`Erro ao excluir: ${err.message}`),
   });
@@ -2713,6 +2716,8 @@ export function useRestoreSaleOrder() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
+      // Restaurar o PV reexibe as OPs escondidas pela cascata.
+      qc.invalidateQueries({ queryKey: ['orders'] });
       toast.success(`${data?.order_number || 'PV'} restaurado!`);
     },
     onError: (err: Error) => toast.error(`Erro ao restaurar: ${err.message}`),
