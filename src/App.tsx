@@ -143,9 +143,15 @@ const queryClient = new QueryClient({
         return failureCount < 2;
       },
       retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
-      staleTime: 30 * 1000,
+      staleTime: 60 * 1000,
       gcTime: 15 * 60 * 1000,
-      refetchOnWindowFocus: true,
+      // refetchOnWindowFocus DESLIGADO (perf): num ERP com 500+ useQuery, voltar
+      // pra aba re-disparava dezenas de fetches simultâneos — causa nº1 da
+      // lentidão geral / ao navegar. Seguro porque cada mutação já invalida as
+      // queries afetadas, e refetchOnMount/Reconnect garantem dado fresco ao
+      // navegar entre telas e ao reconectar. staleTime subiu 30s→60s pra cortar
+      // refetch redundante das ~228 queries que não definem staleTime próprio.
+      refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: true,
     },
