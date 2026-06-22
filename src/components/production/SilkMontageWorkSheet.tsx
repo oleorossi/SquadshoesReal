@@ -899,7 +899,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                                   {c.color || '—'}
                                 </td>
                                 <td className="px-2 py-1 text-black">{c.material || '—'}</td>
-                                <td className="px-2 py-1 text-right font-mono font-bold text-black" style={{ whiteSpace: 'nowrap' }}>
+                                <td className="px-2 py-1 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
                                   {c.cm != null ? `${c.cm} cm` : '—'}
                                 </td>
                                 <td className="px-2 py-1 text-center">
