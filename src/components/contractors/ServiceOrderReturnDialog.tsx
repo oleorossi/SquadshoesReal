@@ -41,6 +41,7 @@ interface BalanceRow {
   qty_returned_defect: number;
   qty_loss: number;
   qty_in_field: number;
+  dispatch_tracked?: boolean;
 }
 
 export interface ReturnDialogServiceOrder {
@@ -90,7 +91,9 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   });
 
   const balance = data?.balance ?? null;
-  const dispatchTracked = !!serviceOrder?.dispatchTracked;
+  // Detecta OS dividida pelo próprio saldo (vale em qualquer tela que abra o dialog,
+  // ex.: "Na Rua"), com o prop como dica enquanto o saldo carrega.
+  const dispatchTracked = !!((balance as any)?.dispatch_tracked ?? serviceOrder?.dispatchTracked);
   const { data: contractors = [] } = useContractors();
   const contractorBals = data?.contractorBals ?? [];
 

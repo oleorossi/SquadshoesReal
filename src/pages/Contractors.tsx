@@ -2556,6 +2556,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           quantity: dispatchDialogOs.quantity,
           description: dispatchDialogOs.description,
           contractorName: dispatchDialogOs.contractors?.name ?? null,
+          contractorId: dispatchDialogOs.contractor_id ?? null,
         } : null}
         onReceive={() => { const o = dispatchDialogOs; if (o) openReceiveDialog(o); }}
       />
