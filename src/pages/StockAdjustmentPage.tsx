@@ -1,5 +1,6 @@
  import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDebounce } from "use-debounce";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -155,6 +156,9 @@ export default function StockAdjustmentPage() {
   const qc = useQueryClient();
   const stored = loadStoredFilters();
   const [search, setSearch] = useState("");
+  // Debounce só pro filtro (re-render de toda a tabela de produtos por tecla).
+  // Input fica em `search` (responsivo); filtro roda 250ms após parar. (auditoria perf)
+  const [debouncedSearch] = useDebounce(search, 250);
   const [categoryFilter, setCategoryFilter] = useState(stored?.categoryFilter ?? "all");
   // Família (grupo filho, ex.: NAPA SOFT) dentro do grupo Pai (categoria).
   const [groupFilter, setGroupFilter] = useState(stored?.groupFilter ?? "all");
@@ -377,7 +381,7 @@ export default function StockAdjustmentPage() {
   }, [visibleGroupOptions, groupFilter]);
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
+    const q = normalizeForSearch(debouncedSearch);
     return products.filter((p) => {
       const matchSearch =
         !q ||
@@ -398,7 +402,7 @@ export default function StockAdjustmentPage() {
       else if (statusFilter === "pending") matchStatus = !!drafts[p.id] || !!soleDrafts[p.id];
       return matchSearch && matchCategory && matchGroup && matchUnit && matchType && matchStatus;
     });
-  }, [products, search, categoryFilter, groupFilter, unitFilter, typeFilter, statusFilter, drafts, soleDrafts]);
+  }, [products, debouncedSearch, categoryFilter, groupFilter, unitFilter, typeFilter, statusFilter, drafts, soleDrafts]);
 
   cellRefs.current = cellRefs.current.slice(0, filtered.length);
 

@@ -1,5 +1,6 @@
 import { parseDateOnly } from '@/lib/dateOnly';
 import { useState, useMemo } from 'react';
+import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -306,6 +307,10 @@ export default function SaleOrders() {
   };
   // Filter & selection states (persisted across navigation)
   const [searchTerm, setSearchTerm] = usePersistedState('searchTerm', '');
+  // Debounce só pra ALIMENTAR o filtro pesado (filteredOrders re-renderiza até
+  // 1000 linhas). O input segue ligado a searchTerm (digitação responsiva); o
+  // recálculo da lista só roda 250ms após parar de digitar. (auditoria perf)
+  const [debouncedSearchTerm] = useDebounce(searchTerm, 250);
   const [filterStatus, setFilterStatus] = usePersistedState<string>('filterStatus', 'all');
   const [filterRep, setFilterRep] = usePersistedState<string>('filterRep', 'all');
   const [filterGroup, setFilterGroup] = usePersistedState<string>('filterGroup', 'all');
@@ -407,7 +412,7 @@ export default function SaleOrders() {
       // estão na outra aba (78% ficam em Faturados). Os demais filtros
       // explícitos (status/rep/grupo/segmento/mês) continuam valendo.
       const isBilled = TERMINAL_BILLED_STATUSES.includes(order.status);
-      const searching = searchTerm.trim().length > 0;
+      const searching = debouncedSearchTerm.trim().length > 0;
       if (!searching) {
         if (mainTab === 'faturados') {
           if (!isBilled) return false;
@@ -426,8 +431,8 @@ export default function SaleOrders() {
         if (!segs || !segs.has(filterSegment as 'Adulto' | 'Infantil')) return false;
       }
       if (filterMonth !== 'all' && order.delivery_month !== filterMonth) return false;
-      if (searchTerm) {
-        const q = searchTerm.toLowerCase().trim();
+      if (debouncedSearchTerm) {
+        const q = debouncedSearchTerm.toLowerCase().trim();
         if (!q) return true;
 
         // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
@@ -481,7 +486,7 @@ export default function SaleOrders() {
       }
       return true;
     });
-  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, searchTerm, clientGroupMap, clientByName, itemsBySaleOrder, economicGroups, filterMonth]);
+  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, economicGroups, filterMonth]);
 
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
   // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm

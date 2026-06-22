@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useDebounce } from 'use-debounce';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
@@ -287,6 +288,10 @@ function getWeekOptions() {
 
   // Filters state (persisted across navigation) — filters panel is always visible
   const [searchTerm, setSearchTerm] = usePersistedState('searchTerm', '');
+  // Debounce só pra alimentar o filtro/agrupamento pesado (re-render de até
+  // 1000 OPs). Input segue em searchTerm (responsivo); o recálculo roda 250ms
+  // após parar de digitar. (auditoria perf)
+  const [debouncedSearchTerm] = useDebounce(searchTerm, 250);
   const [statusFilter, setStatusFilter] = usePersistedState<string>('statusFilter', 'active');
   const [referenceFilter, setReferenceFilter] = usePersistedState<string>('referenceFilter', 'all');
   const [colorFilter, setColorFilter] = usePersistedState<string>('colorFilter', 'all');
@@ -386,7 +391,7 @@ function getWeekOptions() {
 
   // Filter and group orders
   const filteredOrders = useMemo(() => {
-    const searchLower = normalizeForSearch(searchTerm);
+    const searchLower = normalizeForSearch(debouncedSearchTerm);
 
     return orders.filter(order => {
       const canonicalStatus = getCanonicalOrderStatus(order.status);
@@ -431,7 +436,7 @@ function getWeekOptions() {
           const d = term.replace(/\D/g, '');
           return searchMatchesAny(term, ...candidates) || (d.length >= 3 && cnpjDigits.includes(d));
         };
-        if (!splitSearchTerms(searchTerm).every(matchTerm)) return false;
+        if (!splitSearchTerms(debouncedSearchTerm).every(matchTerm)) return false;
       }
 
       // Reference filter
@@ -459,7 +464,7 @@ function getWeekOptions() {
 
       return true;
     });
-  }, [orders, saleOrderMetaById, searchTerm, normalizedStatusFilter, referenceFilter, colorFilter, weekFilter, segmentFilter, segmentByRefId]);
+  }, [orders, saleOrderMetaById, debouncedSearchTerm, normalizedStatusFilter, referenceFilter, colorFilter, weekFilter, segmentFilter, segmentByRefId]);
 
   // Marquee + multi-select (Cmd/Ctrl/Shift click, drag-select, Esc to clear).
   // Substitui o state local de seleção; expõe APIs `selectedOrderIds`/toggle/clear
