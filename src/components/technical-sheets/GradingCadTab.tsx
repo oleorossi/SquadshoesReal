@@ -158,9 +158,10 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
   const [strapBase, setStrapBase] = useState<Record<number, number>>({});
 
   const applyStrap = (idx: number) => {
-    const baseCm = Number(strapBase[idx]) || 0;
-    if (!(baseCm > 0)) { toast.error('Defina o comprimento base (cm) da tira'); return; }
-    const curve = scaleConsumptionBySize({ base: baseCm, baseSize, sizes: sortedSizes, mode: 'linear', decimals: 2, soleMetricPerSize: soleMetric });
+    const baseFootCm = Number(strapBase[idx]) || 0;
+    if (!(baseFootCm > 0)) { toast.error('Defina o comprimento base (cm/pé) da tira'); return; }
+    // Base digitada por PÉ; storage da tira segue por PAR (×2) — igual à ficha.
+    const curve = scaleConsumptionBySize({ base: baseFootCm * 2, baseSize, sizes: sortedSizes, mode: 'linear', decimals: 2, soleMetricPerSize: soleMetric });
     const next = straps.map((s, i) =>
       i === idx ? { ...s, consumption_per_size: curve, consumption: Math.round(avg(curve) * 100) / 100 } : s,
     );
@@ -337,7 +338,7 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
             <CardTitle className="flex items-center gap-2 text-base">
               <Path className="h-4 w-4 text-muted-foreground" /> Escalonar tiras
             </CardTitle>
-            <CardDescription>Comprimento base (cm) por tira no tamanho {baseSize} → escala linear por numeração.</CardDescription>
+            <CardDescription>Comprimento base (cm/pé) por tira no tamanho {baseSize} → escala linear por numeração (o sistema dobra p/ o par).</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {straps.map((s, idx) => (
@@ -347,11 +348,12 @@ export function GradingCadTab({ form, updateField, sizes, groups, products }: Gr
                 <div className="flex items-center gap-1 ml-auto">
                   <Label className="text-xs text-muted-foreground">Base</Label>
                   <NumberInput
-                    value={strapBase[idx] ?? (Number((s.consumption_per_size ?? {})[String(baseSize)]) || Number(s.consumption) || 0)}
+                    // pré-preenche por PÉ (storage é par → ÷2); applyStrap dobra de volta.
+                    value={strapBase[idx] ?? (Math.round(((Number((s.consumption_per_size ?? {})[String(baseSize)]) || Number(s.consumption) || 0) / 2) * 100) / 100)}
                     onChange={(v) => setStrapBase((p) => ({ ...p, [idx]: Number(v) || 0 }))}
                     step="0.5" min={0} decimals={2} className="h-8 w-20 text-right"
                   />
-                  <span className="text-xs text-muted-foreground">cm</span>
+                  <span className="text-xs text-muted-foreground">cm/pé</span>
                   <Button size="sm" variant="outline" className="h-8 ml-1" onClick={() => applyStrap(idx)}>Aplicar</Button>
                 </div>
               </div>
