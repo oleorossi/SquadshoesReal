@@ -77,9 +77,11 @@ function addDaysISO(iso: string, n: number): string {
   return localISO(d);
 }
 function longDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', {
+  const s = new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   });
+  // só a 1ª letra — CSS `capitalize` titularizaria os conectores ("De Junho De")
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function shortDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -93,6 +95,7 @@ export default function SectorDailyView() {
   const { data, isLoading } = useSectorDailyLoad(date);
   const sectors = data?.sectors ?? [];
   const summary = data?.summary;
+  const unknownCount = sectors.filter((s) => s.severity === 'unknown').length;
 
   // mantém o sheet sincronizado quando muda o dia
   const selectedLive = selected ? sectors.find((s) => s.sector === selected.sector) ?? selected : null;
@@ -105,7 +108,7 @@ export default function SectorDailyView() {
         sectionLabel="PRODUÇÃO · GARGALO DIÁRIO"
         title="Setores por Dia"
         live={isToday}
-        description="Carga planejada (cronograma) vs. o que está em produção no dia. Bata o olho pra ver qual setor está em gargalo e clique pra ver as OPs."
+        description="Carga planejada (cronograma) do dia escolhido vs. o que está em produção agora. Bata o olho pra ver qual setor está em gargalo e clique pra ver as OPs."
         actions={
           <div className="flex items-center gap-1.5">
             <Button variant="outline" size="icon" className="h-9 w-9 shrink-0"
@@ -134,7 +137,7 @@ export default function SectorDailyView() {
       <div className="flex flex-wrap items-center justify-between gap-3 -mt-1">
         <p className="text-sm">
           <span className="text-muted-foreground">Programação de </span>
-          <span className="font-semibold text-foreground capitalize">{longDate(date)}</span>
+          <span className="font-semibold text-foreground">{longDate(date)}</span>
           {isToday && <Badge variant="outline" className="ml-2 text-[10px]">hoje</Badge>}
         </p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -154,6 +157,19 @@ export default function SectorDailyView() {
         <StatCard label="OPs atrasadas" value={summary?.realDelayed ?? 0} icon={Lightning}
           tone={(summary?.realDelayed ?? 0) > 0 ? 'warning' : 'default'} hint="acima do tempo esperado" />
       </StatGrid>
+
+      {/* Aviso: setores sem capacidade cadastrada → sem cálculo de utilização */}
+      {unknownCount > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <Warning className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <strong>{unknownCount}</strong>{' '}
+            {unknownCount === 1 ? 'setor sem capacidade cadastrada' : 'setores sem capacidade cadastrada'} na ficha —
+            a utilização não é calculada (aparecem como “s/ cap.”). Cadastre a capacidade/dia em{' '}
+            <span className="font-medium">Ficha Técnica → Operações</span> pra acender o gargalo desses setores.
+          </span>
+        </div>
+      )}
 
       {/* Grade de setores — control room */}
       <Panel

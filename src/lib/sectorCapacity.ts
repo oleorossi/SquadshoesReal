@@ -476,6 +476,14 @@ function atMidnight(d: Date): number {
   return x.getTime();
 }
 
+/** YYYY-MM-DD em data LOCAL (toISOString shiftaria 1 dia em fuso ≥ UTC+0). */
+function localISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 /** Dia D cai dentro da janela [start, end) do setor E é dia útil? */
 function dayInWindow(day: Date, start: Date, end: Date): boolean {
   const d = atMidnight(day);
@@ -531,8 +539,8 @@ export function computeSectorDailyLoad(
           quantity: qty,
           pairs_per_day: Math.round(perDay * 10) / 10,
           capacity_per_day: cap,
-          window_start: w.start.toISOString().slice(0, 10),
-          window_end: w.end.toISOString().slice(0, 10),
+          window_start: localISODate(w.start),
+          window_end: localISODate(w.end),
           planned_delivery: op.planned_delivery,
         });
       }
@@ -550,9 +558,12 @@ export function computeSectorDailyLoad(
     } else if (capacityPerDay <= 0) {
       severity = 'unknown';            // setor sem capacidade cadastrada → não dá pra comparar
     } else {
-      utilizationPct = Math.round((b.pairs / capacityPerDay) * 100);
-      if (utilizationPct > 150) severity = 'critical';
-      else if (utilizationPct > 100) severity = 'warning';
+      // Compara a razão CRUA antes de arredondar (espelha v_sector_bottlenecks):
+      // 100,4% é gargalo (warning), não pode arredondar p/ 100 e cair em 'ok'.
+      const ratio = b.pairs / capacityPerDay;
+      utilizationPct = Math.round(ratio * 100); // só p/ exibição
+      if (ratio > 1.5) severity = 'critical';
+      else if (ratio > 1.0) severity = 'warning';
       else severity = 'ok';
     }
     return {

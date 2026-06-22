@@ -41,7 +41,7 @@ export interface RealStageOp {
 }
 
 export interface SectorDaily extends SectorDayLoad {
-  /** Pares ainda em produção fisicamente neste setor no dia (Σ restante). */
+  /** Pares em produção AGORA neste setor — etapa corrente das OPs (Σ restante). */
   realPairs: number;
   realOpsCount: number;
   /** Quantas dessas OPs estão atrasadas (gargalo em andamento). */
@@ -68,11 +68,13 @@ export function useSectorDailyLoad(dateISO: string) {
     queryFn: async () => {
       await loadHolidayCache();
 
-      // ── 1. OPs ativas (com prazo + quantidade) ──────────────────────────────
+      // ── 1. OPs ativas (quantidade > 0) ──────────────────────────────────────
+      // NÃO exige planned_delivery aqui: o REAL (em produção) precisa de TODAS as
+      // OPs ativas, mesmo sem prazo cadastrado. O PLANEJADO ignora sozinho as OPs
+      // sem planned_delivery (computeSectorDailyLoad pula quando falta o prazo).
       const { data: ordersRaw } = await supabase
         .from('orders')
         .select('id, order_number, reference_id, color, quantity, planned_delivery, status')
-        .not('planned_delivery', 'is', null)
         .gt('quantity', 0);
 
       const orders = (ordersRaw || []).filter(
@@ -118,33 +120,38 @@ export function useSectorDailyLoad(dateISO: string) {
       }));
       const planned = computeSectorDailyLoad(dateISO, ops, sheetMap);
 
-      // ── 4. REAL (order_stages cobrindo o dia) ───────────────────────────────
+      // ── 4. REAL (WIP atual: etapa CORRENTE de cada OP) ──────────────────────
+      // Neste schema as etapas abertas de order_stages NÃO têm started_at e não
+      // existe status 'em_andamento' — então a presença física é dada pela ETAPA
+      // CORRENTE (1ª não-concluída na ordem do fluxo), igual ao
+      // loadBottlenecksForOrders. É um retrato do AGORA (sem histórico por dia):
+      // ao trocar o dia, o planejado muda, o real continua sendo o estado atual.
       const orderIds = orders.map((o: any) => o.id);
       const { data: stagesRaw } = await supabase
         .from('order_stages')
-        .select('order_id, stage_name, status, started_at, completed_at, quantity_total, quantity_processed')
+        .select('order_id, stage_name, status, stage_order, quantity_total, quantity_processed')
         .in('order_id', orderIds)
-        .in('status', ['pendente', 'em_andamento']);
+        .neq('status', 'concluido')
+        .order('stage_order', { ascending: true });
 
-      // Agrupa por setor as etapas iniciadas (não concluídas) que cobrem o dia.
+      // Etapa corrente por OP = a 1ª aberta (menor stage_order). Uma OP entra em
+      // UM setor só → sem duplo-cont em realPairs.
+      const currentStageByOrder = new Map<string, any>();
+      for (const st of stagesRaw || []) {
+        const oid = (st as any).order_id;
+        if (!currentStageByOrder.has(oid)) currentStageByOrder.set(oid, st);
+      }
+
       const realBySector = new Map<SectorKey, RealStageOp[]>();
       const realOrderIds = new Set<string>();
-      for (const st of stagesRaw || []) {
-        const startedAt: string | null = (st as any).started_at;
-        if (!startedAt) continue;                                  // não entrou fisicamente
-        if (startedAt.slice(0, 10) > dateISO) continue;            // começou depois do dia
-        const completedAt: string | null = (st as any).completed_at;
-        if (completedAt && completedAt.slice(0, 10) < dateISO) continue; // saiu antes do dia
-
+      for (const [oid, st] of currentStageByOrder) {
         const key = normalizeSector((st as any).stage_name) as SectorKey;
         if (!DISPLAY_KEYS.has(key)) continue;
-
-        const ord = orderMap.get((st as any).order_id);
+        const ord = orderMap.get(oid);
         if (!ord) continue;
         const total = Number((st as any).quantity_total ?? ord.quantity ?? 0);
         const processed = Number((st as any).quantity_processed ?? 0);
         const remaining = Math.max(0, total - processed);
-
         const arr = realBySector.get(key) || [];
         arr.push({
           order_id: ord.id,
@@ -158,7 +165,7 @@ export function useSectorDailyLoad(dateISO: string) {
           bottleneck: null,
         });
         realBySector.set(key, arr);
-        realOrderIds.add(ord.id);
+        realOrderIds.add(oid);
       }
 
       // ── 5. Flag de atraso (gargalo em andamento) ────────────────────────────
