@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams, Link } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
-import { Gauge, FileText as FileBarChart, Scissors } from '@phosphor-icons/react';
+import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getSecondaryRoutesForGroup } from '@/data/navigation';
 
@@ -18,6 +18,7 @@ const LeadTime = lazy(() => import("./LeadTime"));
 const RCCPPlanning = lazy(() => import("@/components/production/RCCPPlanning"));
 const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis"));
 const LotSplitPage = lazy(() => import("./LotSplitPage"));
+const SectorDailyView = lazy(() => import("./SectorDailyView"));
 
 
 const TabLoader = () => (
@@ -35,6 +36,7 @@ const TabLoader = () => (
   { value: "lead-time", label: "Lead Time", icon: Clock },
    { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
    { value: "setores", label: "Setores", icon: Factory },
+  { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle },
   { value: "capacidade", label: "Capacidade", icon: BarChart3 },
   { value: "picking", label: "Picking Semanal", icon: Boxes },
   { value: "auditoria", label: "Auditoria", icon: History },
@@ -99,6 +101,7 @@ export default function PCPHub() {
            <TabsContent value="planejamento"><ProductionPlanning /></TabsContent>
           <TabsContent value="cronograma"><ProductionScheduleTimeline /></TabsContent>
            <TabsContent value="setores"><Setores /></TabsContent>
+          <TabsContent value="gargalo-diario"><SectorDailyView /></TabsContent>
           <TabsContent value="capacidade"><CapacityPlanning /></TabsContent>
           <TabsContent value="picking"><PickingListPage /></TabsContent>
           <TabsContent value="auditoria"><OrderFlowAudit /></TabsContent>

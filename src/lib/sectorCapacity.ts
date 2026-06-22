@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays } from './leadTime';
-import { sheetHasSector, SECTOR_LABELS, type SectorKey } from './sectors';
+import { sheetHasSector, SECTOR_LABELS, DISPLAY_SECTORS, type SectorKey } from './sectors';
 
 // Re-exporta a taxonomia da fonte única (./sectors) pra não quebrar imports
 // existentes `from '@/lib/sectorCapacity'`.
@@ -417,4 +417,153 @@ export function computeParallelWindows(
     solagem:        { start: solaStart,    end: solaEnd,    cap: Number(sheet.soling_capacity_per_day   || 0), required: Number(sheet.soling_capacity_per_day) > 0 },
     acabamento:     { start: acabStart,    end: acabEnd,    cap: Number(sheet.finishing_capacity_per_day|| 0), required: true },
   };
+}
+
+// =============================================================================
+// computeSectorDailyLoad — carga PLANEJADA por setor num DIA específico
+// =============================================================================
+// Deriva da MESMA cascata de computeParallelWindows (todos os 9 setores do fluxo,
+// paralelismo prep correto). Pro dia D, somamos pairs_per_day das OPs cujo
+// [start, end) do setor contém D (em dia útil). Capacidade do dia = média
+// ponderada por pares (mesma fórmula de v_sector_bottlenecks), pra o utilization%
+// bater com a tela semanal /gargalos. Usado pela tela "Setores por Dia" (PCP).
+//
+// É pura: recebe OPs + fichas já carregadas + o cache de feriados já populado
+// (loadHolidayCache no hook). Não toca rede.
+// =============================================================================
+
+export type DailySeverity = 'idle' | 'ok' | 'warning' | 'critical' | 'unknown';
+
+export interface DailyOpInput {
+  order_id: string;
+  order_number: string | null;
+  reference_id: string;
+  color: string | null;
+  quantity: number;
+  planned_delivery: string;          // ISO date (YYYY-MM-DD)
+  sheet_name?: string | null;
+}
+
+export interface SectorDayContribution {
+  order_id: string;
+  order_number: string | null;
+  reference_id: string;
+  sheet_name: string | null;
+  color: string | null;
+  quantity: number;
+  pairs_per_day: number;             // pares/dia desta OP neste setor
+  capacity_per_day: number;          // capacidade da ficha pra este setor
+  window_start: string;              // ISO
+  window_end: string;                // ISO
+  planned_delivery: string;          // ISO
+}
+
+export interface SectorDayLoad {
+  sector: SectorKey;
+  label: string;
+  plannedPairs: number;              // Σ pairs_per_day no dia (arredondado)
+  capacityPerDay: number;            // capacidade ponderada do setor no dia
+  utilizationPct: number;            // 0 quando idle/sem capacidade
+  severity: DailySeverity;           // idle (sem demanda) · ok · warning · critical · unknown (sem capacidade)
+  opsCount: number;
+  contributions: SectorDayContribution[];
+}
+
+/** Zera a hora pra comparar só a data (local). */
+function atMidnight(d: Date): number {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.getTime();
+}
+
+/** Dia D cai dentro da janela [start, end) do setor E é dia útil? */
+function dayInWindow(day: Date, start: Date, end: Date): boolean {
+  const d = atMidnight(day);
+  const s = atMidnight(start);
+  const e = atMidnight(end);
+  if (s === e) return d === s && isBusinessDay(day);   // janela degenerada (lead 0): só o dia inicial
+  if (d < s || d >= e) return false;                    // [start, end)
+  return isBusinessDay(day);
+}
+
+/**
+ * Carga planejada por setor num dia. Retorna SEMPRE os 9 setores do fluxo
+ * (DISPLAY_SECTORS), mesmo os ociosos (severity 'idle'), pra grade fixa na UI.
+ */
+export function computeSectorDailyLoad(
+  dateISO: string,
+  ops: DailyOpInput[],
+  sheetMap: Map<string, any>,
+): SectorDayLoad[] {
+  const day = new Date(dateISO + 'T00:00:00');
+
+  type Bucket = { pairs: number; capWeighted: number; qty: number; contribs: SectorDayContribution[] };
+  const acc = new Map<SectorKey, Bucket>();
+  for (const { key } of DISPLAY_SECTORS) acc.set(key, { pairs: 0, capWeighted: 0, qty: 0, contribs: [] });
+
+  if (!isNaN(day.getTime())) {
+    for (const op of ops) {
+      const sheet = sheetMap.get(op.reference_id);
+      if (!sheet) continue;
+      const qty = Number(op.quantity || 0);
+      if (qty <= 0 || !op.planned_delivery) continue;
+      const deadline = new Date(op.planned_delivery + 'T00:00:00');
+      if (isNaN(deadline.getTime())) continue;
+
+      const windows = computeParallelWindows(sheet, qty, deadline);
+      for (const { key } of DISPLAY_SECTORS) {
+        const w = windows[key as keyof ParallelWindows];
+        if (!w || !w.required) continue;
+        if (!dayInWindow(day, w.start, w.end)) continue;
+        const wd = businessDaysBetween(w.start, w.end);
+        const perDay = qty / wd;
+        const cap = Number(w.cap) || 0;
+        const b = acc.get(key)!;
+        b.pairs += perDay;
+        b.qty += qty;
+        b.capWeighted += cap * qty;
+        b.contribs.push({
+          order_id: op.order_id,
+          order_number: op.order_number,
+          reference_id: op.reference_id,
+          sheet_name: op.sheet_name ?? sheet.name ?? null,
+          color: op.color,
+          quantity: qty,
+          pairs_per_day: Math.round(perDay * 10) / 10,
+          capacity_per_day: cap,
+          window_start: w.start.toISOString().slice(0, 10),
+          window_end: w.end.toISOString().slice(0, 10),
+          planned_delivery: op.planned_delivery,
+        });
+      }
+    }
+  }
+
+  return DISPLAY_SECTORS.map(({ key, label }) => {
+    const b = acc.get(key)!;
+    const capacityPerDay = b.qty > 0 ? Math.round(b.capWeighted / b.qty) : 0;
+    const plannedPairs = Math.round(b.pairs);
+    let severity: DailySeverity;
+    let utilizationPct = 0;
+    if (b.contribs.length === 0) {
+      severity = 'idle';
+    } else if (capacityPerDay <= 0) {
+      severity = 'unknown';            // setor sem capacidade cadastrada → não dá pra comparar
+    } else {
+      utilizationPct = Math.round((b.pairs / capacityPerDay) * 100);
+      if (utilizationPct > 150) severity = 'critical';
+      else if (utilizationPct > 100) severity = 'warning';
+      else severity = 'ok';
+    }
+    return {
+      sector: key,
+      label,
+      plannedPairs,
+      capacityPerDay,
+      utilizationPct,
+      severity,
+      opsCount: b.contribs.length,
+      contributions: b.contribs.sort((a, c) => c.pairs_per_day - a.pairs_per_day),
+    };
+  });
 }
