@@ -20,6 +20,18 @@ describe('splitDayMinutes', () => {
     expect(r.incomplete).toBe(true);
   });
 
+  it('batida EXTRA (5 marcações): última batida = saída, calcula span − almoço (08..20 → 11h)', () => {
+    // 08:00,12:00,13:00,18:00,20:00 → span 08→20 (12h) − 1h almoço = 11h:
+    // 9h normal (até 18h) + 2h premium (18→20). Não vira pendência.
+    const r = splitDayMinutes(['08:00', '12:00', '13:00', '18:00', '20:00'], WED, false);
+    expect(r).toEqual({ normal: 540, premium: 120, incomplete: false });
+  });
+
+  it('nº ímpar n=3 continua pendente; n=5 (extra) não', () => {
+    expect(splitDayMinutes(['08:00', '13:00', '18:00'], WED, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['08:06', '12:01', '12:59', '18:09', '20:09'], WED, false).incomplete).toBe(false);
+  });
+
   it('só entrada+saída longa (08/18): deduz 1h almoço não-batido → 9h', () => {
     expect(splitDayMinutes(['08:00', '18:00'], WED, false)).toEqual({ normal: 540, premium: 0, incomplete: false });
   });

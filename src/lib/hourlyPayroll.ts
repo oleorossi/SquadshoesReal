@@ -94,14 +94,18 @@ export function splitDayMinutes(
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
   if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
-  // Nº ÍMPAR de batidas = pulou uma batida → dia INCONSISTENTE. Não dá pra saber as
-  // horas com segurança; retorna 0h + incomplete pra ficar de fora da folha e ser
-  // resolvido manualmente na aba Pendências (antes "chutava" pelo span 1º→último, o
-  // que gerava valor errado). Decisão do usuário 2026-06.
-  if (n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
+  // Nº ÍMPAR de batidas:
+  //  • n = 3 (FALTOU uma batida) → INCONSISTENTE: 0h + incomplete, resolve manual
+  //    em Pendências (não dá pra inferir com segurança qual batida faltou).
+  //  • n ≥ 5 (BATIDA EXTRA) → calcula tratando a ÚLTIMA batida como SAÍDA: se ele
+  //    bateu naquele último horário, foi quando foi embora (decisão do dono
+  //    2026-06-21). Cai no ramo de span 1º→último abaixo + desconto de almoço, em
+  //    vez de virar pendência. Antes qualquer ímpar zerava (decisão 2026-06).
+  if (n % 2 !== 0 && n < 5) return { normal: 0, premium: 0, incomplete: true };
   const allPremium = isHoliday || dayOfWeek === 0 || dayOfWeek === 6;
 
-  // Intervalos trabalhados: pares reais (4+) ou span do 1º ao último (2 batidas).
+  // Intervalos trabalhados: pares reais (par 4+) ou span do 1º ao último (2 batidas
+  // OU ímpar ≥5 = batida extra → última batida é a saída).
   let intervals: [number, number][];
   if (n >= 4 && n % 2 === 0) {
     intervals = [];
@@ -144,7 +148,9 @@ export function splitDayMinutes(
     premium = Math.max(0, premium - lunch);
   }
 
-  return { normal, premium, incomplete: n % 2 !== 0 };
+  // Aqui só chegam: par (≥2) e ímpar ≥5 (batida extra, já calculado via span). Ambos
+  // são considerados COMPLETOS — ímpar <5 (n=3) já retornou incomplete acima.
+  return { normal, premium, incomplete: false };
 }
 
 export function calculateHourlyPayroll(
