@@ -436,6 +436,17 @@ ${LABEL_PRINT_HARDENING}
      (área útil = 192mm). Borda direita saía cortada. Manter 192mm em
      print pra caber dentro da margem segura. */
   .label-cx-ext{width:192mm;height:132mm;}
+  /* Fix 2026-06-22: o LABEL_PRINT_HARDENING global aplica em @media print
+     "body *{overflow:visible;max-height:none}" pra impedir que containers
+     ANCESTRAIS cortem a etiqueta — mas isso também remove o overflow:hidden
+     da moldura da foto e o teto max-height:100% da imagem. Sem o teto, a foto
+     cresce até max-width:100% (altura = largura/proporção) e VAZA pra baixo,
+     por cima da grade + código de barras + VOLUME (bug reportado: "foto grande
+     demais, cortando"). Reafirmamos a contenção com especificidade de classe +
+     !important (mesma prioridade do "body *", classe vence o seletor universal),
+     restaurando o comportamento que já valia em tela. */
+  .label-cx-ext,.photo-frame{overflow:hidden !important;}
+  .photo-frame img{max-width:100% !important;max-height:100% !important;}
   .print-footer{display:none !important;}
 }
 
@@ -1015,6 +1026,12 @@ ${preloadLinks}
     body{padding:0 !important;margin:0 !important;}
     .preview-shell{display:block;padding:0;margin:0;}
     .print-page{box-shadow:none;border:0.4mm solid #000;}
+    /* Fix 2026-06-22: o LABEL_PRINT_HARDENING ("body *{overflow:visible;
+       max-height:none}") reabre o clip da moldura e tira o teto da imagem,
+       fazendo a foto do produto vazar pra fora do frame na impressão. Reafirma
+       a contenção (mesmo bug corrigido na etiqueta de caixa externa). */
+    .print-page,.label-shell,.label-image-frame{overflow:hidden !important;}
+    .label-img{max-width:100% !important;max-height:100% !important;}
     .print-setup-notice{display:none !important;}
   }
   @page{size:${W}mm ${H}mm;margin:0;}
@@ -1552,6 +1569,11 @@ export function buildIndividualLabelsHtml(items: LabelData[]): string {
       }
       @media print{
         body{padding:0;margin:0;}
+        /* Fix 2026-06-22: reafirma o teto da imagem no print (o
+           LABEL_PRINT_HARDENING zera o max-height de toda imagem via
+           "body *"), senão a foto vaza da célula sobre o texto da etiqueta. */
+        .label-cell{overflow:hidden !important;}
+        .label-cell img{max-width:100% !important;max-height:100% !important;}
       }
       @page{size:A4 portrait;margin:0;}
       ${LABEL_PRINT_HARDENING}
