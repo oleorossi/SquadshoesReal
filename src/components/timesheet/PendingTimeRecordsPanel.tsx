@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, CaretDown as ChevronDown, CaretRight as ChevronRight, FloppyDisk as Save, Users as Users2, Calendar, Funnel as Filter, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, CaretDown as ChevronDown, CaretRight as ChevronRight, FloppyDisk as Save, Users as Users2, Calendar, Funnel as Filter, MagnifyingGlass as Search, Sparkle as Sparkles } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,10 +10,11 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   listEmployeePendingSummary, listPendingTimeRecords, applyManualPunchCompletion,
-  bulkApplyDefaultExit,
+  bulkApplyDefaultExit, listEmployeeExitHistory,
   ISSUE_LABEL, ISSUE_HINT, DOW_LABEL,
   type EmployeePendingSummary, type PendingTimeRecord,
 } from '@/services/pendingTimeRecordsService';
+import { computeExitPattern, suggestExitTime, type ExitSuggestion } from '@/lib/ponto/exitSuggestion';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,

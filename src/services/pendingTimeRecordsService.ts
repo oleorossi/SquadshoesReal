@@ -74,6 +74,30 @@ export async function listPendingTimeRecords(employeeId?: string): Promise<Pendi
   })) as PendingTimeRecord[];
 }
 
+/**
+ * Histórico de batidas do funcionário (por NOME — time_records não tem employee_id)
+ * pra inferir o horário de saída típico. Janela recente; dias completos são filtrados
+ * no cálculo (computeExitPattern). Usado pelas Pendências p/ pré-preencher a saída provável.
+ */
+export async function listEmployeeExitHistory(
+  employeeName: string,
+  sinceISO: string,
+): Promise<{ record_date: string; punches: string[] }[]> {
+  if (!employeeName) return [];
+  const { data, error } = await supabase
+    .from('time_records')
+    .select('record_date, punches')
+    .eq('employee_name', employeeName)
+    .gte('record_date', sinceISO)
+    .order('record_date', { ascending: false })
+    .limit(180);
+  if (error) throw error;
+  return ((data ?? []) as any[]).map((r) => ({
+    record_date: r.record_date,
+    punches: Array.isArray(r.punches) ? r.punches : [],
+  }));
+}
+
 export async function applyManualPunchCompletion(args: {
   timeRecordId: string;
   punchTime: string; // HH:MM
