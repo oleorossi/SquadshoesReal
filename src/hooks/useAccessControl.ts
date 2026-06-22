@@ -89,6 +89,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // esse módulo em ROLE_MODULES, então quem acessava QUALQUER uma das duas telas
   // antigas continua com acesso.
   '/terceirizados': 'terceirizados',
+  '/ordens-servico': 'terceirizados',       // atalho no menu Compras → aba OS do hub
   '/terceiros': 'terceirizados',            // nome canônico anterior → redireciona pro hub
   '/terceiros-na-rua': 'terceirizados',     // legado → redireciona pro hub
   '/terceiros/relatorios': 'terceirizados', // legado → redireciona pro hub

@@ -697,6 +697,11 @@ const router = createBrowserRouter([
         element: <Navigate to="/pcp?tab=gargalo-semanal" replace />,
       },
       {
+        // Atalho no menu Compras → lista de Ordens de Serviço (aba do hub Terceirizados).
+        path: "ordens-servico",
+        element: <Navigate to="/terceirizados?tab=orders" replace />,
+      },
+      {
         // Hub "Terceirizados" (rota canônica) — unifica Na Rua + OS +
         // Planejamento + Prestadores + Receitas + Relatório em abas.
         // Ver src/pages/TerceirizadosHub.tsx.

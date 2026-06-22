@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Clock, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, ChartLine as GanttChartSquare, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Timer, Buildings, Gavel, Gauge, FolderOpen } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Clock, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, ChartLine as GanttChartSquare, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Timer, Buildings, Gavel, Gauge, FolderOpen, Wrench } from '@phosphor-icons/react';
 
 // ════════════════════════════════════════════════════════════════════════
 // SQUAD SHOES — Sidebar
@@ -86,6 +86,7 @@ export const menuGroups = [
       { name: "MRP (Necessidades)", icon: Boxes,         path: "/mrp-advanced" },
       { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
+      { name: "Ordens de Serviço", icon: Wrench,         path: "/ordens-servico" },
       { name: "Compras por Pedido", icon: ShoppingCart,  path: "/purchase-orders/per-pv" },
       { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
       { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
