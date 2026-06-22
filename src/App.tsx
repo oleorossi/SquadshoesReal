@@ -86,7 +86,6 @@ const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
-const BottlenecksPage = lazy(() => import("./pages/Bottlenecks"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
@@ -692,11 +691,10 @@ const router = createBrowserRouter([
         element: <PickingListPage />,
       },
       {
-        // Monitoramento de gargalos por setor (Costura, Aviamento, Corte).
-        // Detecta sobrecarga e oferece criar OS terceirizada pra costureira
-        // externa. Bloqueia OP de avançar pra Montagem até OS confirmar prazo.
+        // Unificado no PCP: "Gargalos" semanal virou aba do PCP (Chão de Fábrica).
+        // Mantém /gargalos como redirect pra não quebrar links/notificações antigos.
         path: "gargalos",
-        element: <BottlenecksPage />,
+        element: <Navigate to="/pcp?tab=gargalo-semanal" replace />,
       },
       {
         // Hub "Terceirizados" (rota canônica) — unifica Na Rua + OS +

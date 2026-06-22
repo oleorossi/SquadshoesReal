@@ -20,6 +20,7 @@ const RCCPPlanning = lazy(() => import("@/components/production/RCCPPlanning"));
 const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis"));
 const LotSplitPage = lazy(() => import("./LotSplitPage"));
 const SectorDailyView = lazy(() => import("./SectorDailyView"));
+const BottlenecksPage = lazy(() => import("./Bottlenecks"));
 
 
 const TabLoader = () => (
@@ -38,6 +39,7 @@ const TabLoader = () => (
    { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
    { value: "setores", label: "Setores", icon: Factory },
   { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle },
+  { value: "gargalo-semanal", label: "Gargalo Semanal", icon: AlertTriangle },
   { value: "capacidade", label: "Capacidade", icon: BarChart3 },
   { value: "picking", label: "Picking Semanal", icon: Boxes },
   { value: "auditoria", label: "Auditoria", icon: History },
@@ -51,7 +53,7 @@ const TabLoader = () => (
 const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
 const TAB_GROUPS: { label: string; items: string[] }[] = [
   { label: "Planejamento",   items: ["ondas", "planejamento", "cronograma", "lead-time", "capacidade", "rccp"] },
-  { label: "Chão de Fábrica", items: ["setores", "gargalo-diario", "picking", "lot-split"] },
+  { label: "Chão de Fábrica", items: ["setores", "gargalo-diario", "gargalo-semanal", "picking", "lot-split"] },
   { label: "Análise",        items: ["dashboard", "auditoria", "pos-op"] },
 ];
 
@@ -139,6 +141,7 @@ export default function PCPHub() {
               <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
               <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
               <TabsContent value="gargalo-diario" className="mt-0"><SectorDailyView /></TabsContent>
+              <TabsContent value="gargalo-semanal" className="mt-0"><BottlenecksPage /></TabsContent>
               <TabsContent value="capacidade" className="mt-0"><CapacityPlanning /></TabsContent>
               <TabsContent value="picking" className="mt-0"><PickingListPage /></TabsContent>
               <TabsContent value="auditoria" className="mt-0"><OrderFlowAudit /></TabsContent>

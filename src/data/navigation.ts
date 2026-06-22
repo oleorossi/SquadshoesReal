@@ -52,7 +52,6 @@ export const menuGroups = [
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       { name: "Ficha Montadores", icon: ClipboardCheck,    path: "/fichas-montadores" },
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
-      { name: "Gargalos",         icon: AlertTriangle,     path: "/gargalos" },
     ],
   },
   {
