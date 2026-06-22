@@ -478,7 +478,7 @@ ${LABEL_PRINT_HARDENING}
 .photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
 .photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FFE94A;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
 .cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
-.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;}
+.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;line-height:1.1;}
 
 /* TABELA grade ───────────────────── */
 /* Grade unificada num único grid: col 1 = rótulos, cols 2..N = valores.
