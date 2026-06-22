@@ -1,10 +1,11 @@
 import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
+import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -935,6 +936,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // bons/defeito/perda — o banco fecha a OS, grava delivered_at e gera a
   // conta a pagar pelos pares bons. Caso comum (retorno total) = 2 cliques.
   const [returnDialogOs, setReturnDialogOs] = useState<ServiceOrder | null>(null);
+  // Envio parcial em parcelas (checklist "Enviar pra rua" + movimentos).
+  const [dispatchDialogOs, setDispatchDialogOs] = useState<ServiceOrder | null>(null);
   const markDelivered = useCallback((o: ServiceOrder) => {
     setReturnDialogOs(o);
   }, []);
@@ -1461,6 +1464,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                   >
                                     <CheckCircle2 className="h-3 w-3" />
                                     Receber
+                                  </Button>
+                                )}
+                                {/* Envio em parcelas (OS do PV): checklist enviar pra rua / receber */}
+                                {(o as any).dispatch_tracked && isOsActive(o.status) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-1.5 text-xs gap-1"
+                                    onClick={e => { e.stopPropagation(); setDispatchDialogOs(o); }}
+                                  >
+                                    <Truck className="h-3 w-3" />
+                                    Enviar pra rua
                                   </Button>
                                 )}
                                 {/* Ações rápidas (1 clique, sem abrir o form) em OS ativa */}
@@ -2528,6 +2543,19 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           contractorName: returnDialogOs.contractors?.name ?? null,
         } : null}
         onSaved={handleReturnSaved}
+      />
+
+      <ServiceOrderDispatchDialog
+        open={!!dispatchDialogOs}
+        onOpenChange={(o) => { if (!o) setDispatchDialogOs(null); }}
+        serviceOrder={dispatchDialogOs ? {
+          id: dispatchDialogOs.id,
+          order_number: dispatchDialogOs.order_number,
+          quantity: dispatchDialogOs.quantity,
+          description: dispatchDialogOs.description,
+          contractorName: dispatchDialogOs.contractors?.name ?? null,
+        } : null}
+        onReceive={() => { const o = dispatchDialogOs; if (o) openReceiveDialog(o); }}
       />
 
           <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
