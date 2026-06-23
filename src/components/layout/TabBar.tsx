@@ -55,7 +55,8 @@ export function TabBar() {
   // Rola a aba ativa pra dentro da vista quando muda (ou quando a lista cresce).
   useEffect(() => {
     if (!activeId) return;
-    tabRefs.current[activeId]?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+    // `?.()` no método também — scrollIntoView não existe em alguns ambientes (jsdom/SSR).
+    tabRefs.current[activeId]?.scrollIntoView?.({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
   }, [activeId, tabs.length]);
 
   if (tabs.length === 0) return null;
