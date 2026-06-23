@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon, Scissors, CheckCircle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon, Scissors, CheckCircle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -966,9 +966,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-red-500/40 border border-red-500/60" /> em falta</span>
                 </span>
               </div>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrintPdf}>
-                <FileText className="h-4 w-4" /> Gerar PDF
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => loadConsumption()} disabled={loading}>
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Recalcular
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrintPdf}>
+                  <FileText className="h-4 w-4" /> Gerar PDF
+                </Button>
+              </div>
             </div>
 
             {Array.from(grouped.entries()).map(([componentType, componentRows]) => (
