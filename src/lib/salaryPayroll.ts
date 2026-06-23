@@ -86,6 +86,9 @@ export interface SalaryPayrollResult {
   he_minutes: number;
   he_value: number;        // R$ (he_minutes × valor-hora × 1,5)
   pending_days: number;    // dias com batida ímpar (inconsistente) — não entram no cálculo
+  /** Atraso/saída-cedo POR DIA (dias em que trabalhou menos que o esperado). Base
+   *  do relatório de atrasos. Vazio em remoto/diarista (não há desconto de atraso). */
+  late_days?: { date: string; minutes: number }[];
   advances_total: number;
   total_descontos: number; // faltas + atrasos + adiantamentos
   total_proventos: number; // salário + HE
@@ -147,6 +150,7 @@ export function calculateSalaryPayroll(
   // (excedente/déficit de cada dia), SEM compensação entre dias. Ver loop abaixo.
   let heMin = 0;
   let atrasoMin = 0;
+  const lateDays: { date: string; minutes: number }[] = [];  // atraso/saída-cedo por dia (relatório)
 
   for (const d of days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -190,7 +194,7 @@ export function calculateSalaryPayroll(
       // atraso de outro). SUPERSEDE o modelo líquido de 2026-06-04.
       const dayBal = worked - d.expectedMinutes;
       if (dayBal > 0) heMin += dayBal;
-      else if (dayBal < 0) atrasoMin += -dayBal;
+      else if (dayBal < 0) { atrasoMin += -dayBal; lateDays.push({ date: d.date, minutes: -dayBal }); }
     } else if (worked > 0) {
       // Dia NÃO útil (fim de semana/feriado) trabalhado: esperado = 0 → TUDO é hora extra.
       workedMin += worked;
@@ -222,6 +226,7 @@ export function calculateSalaryPayroll(
     falta_desconto: round2(faltaDesconto),
     atraso_minutes: atrasoMin,
     atraso_desconto: round2(atrasoDesconto),
+    late_days: lateDays,
     he_minutes: heMin,
     he_value: round2(heValue),
     pending_days: pendingDays,
@@ -296,7 +301,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
       worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
       worked_days: 0, falta_days: 0, falta_desconto: 0,
-      atraso_minutes: 0, atraso_desconto: 0, he_minutes: 0, he_value: 0, pending_days: 0,
+      atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_minutes: 0, he_value: 0, pending_days: 0,
       total_proventos: base.period_base, total_descontos: adv,
       gross_value: base.period_base, net_value: round2(base.period_base - adv),
     };
@@ -310,7 +315,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     const grossD = round2(dr * paidDays);
     return {
       ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
-      falta_days: 0, falta_desconto: 0, atraso_minutes: 0, atraso_desconto: 0,
+      falta_days: 0, falta_desconto: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [],
       he_minutes: 0, he_value: 0,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),
