@@ -259,9 +259,9 @@ export default function FichaMontadoresPage() {
   }
 
   async function salvar() {
-    if (!dia) { setMsg({ type: "err", text: "Informe a data da ficha." }); return; }
-    if (!montadorId) { setMsg({ type: "err", text: "Selecione o montador." }); return; }
-    setSaving(true); setMsg(null);
+    if (!dia) { toast.error("Informe a data da ficha."); return; }
+    if (!montadorId) { toast.error("Selecione o montador."); return; }
+    setSaving(true);
     const payload: any = {
       dia, montador: montadorNome || null, montador_id: montadorId || null,
       solado: soladoNome || null, solado_id: soladoId || null, cor: cor.trim() || null,
@@ -278,21 +278,21 @@ export default function FichaMontadoresPage() {
       const { cor: _omit, ...semCor } = payload;
       ({ error } = await save(semCor));
     }
-    if (error) setMsg({ type: "err", text: "Erro ao salvar: " + error.message });
-    else { setMsg({ type: "ok", text: editingId ? "Ficha atualizada." : "Ficha salva." }); await carregar(); if (!editingId) novaFicha(); }
+    if (error) toast.error("Erro ao salvar: " + error.message);
+    else { toast.success(editingId ? "Ficha atualizada." : "Ficha salva."); await carregar(); if (!editingId) novaFicha(); }
     setSaving(false);
   }
   function abrir(f: Ficha) {
     setTab("lancamento"); setEditingId(f.id); setDia(f.dia);
     setMontadorId(f.montador_id ?? ""); setMontadorNome(f.montador ?? "");
     setSoladoId(f.solado_id ?? ""); setSoladoNome(f.solado ?? ""); setCor((f as any).cor ?? ""); setValorPar(Number(f.valor_par) || 0);
-    setGrade(f.grade); setSizes(f.numeracoes ?? []); setQtys(f.quantidades ?? []); setCopias(f.copias ?? 1); setMsg(null);
+    setGrade(f.grade); setSizes(f.numeracoes ?? []); setQtys(f.quantidades ?? []); setCopias(f.copias ?? 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function excluir(f: Ficha) {
     if (!window.confirm("Excluir esta ficha?")) return;
     const { error } = await db.from("ficha_montadores").delete().eq("id", f.id);
-    if (error) setMsg({ type: "err", text: "Erro ao excluir: " + error.message });
+    if (error) toast.error("Erro ao excluir: " + error.message);
     else { if (editingId === f.id) novaFicha(); await carregar(); }
   }
   // Persiste o valor/par definido por montador no relatório. Reusa a coluna
@@ -302,7 +302,7 @@ export default function FichaMontadoresPage() {
   async function persistRateMontador(key: string, valor: number) {
     if (key.startsWith("txt:")) return;
     const { error } = await db.from("ficha_montadores").update({ valor_par: valor }).eq("montador_id", key);
-    if (error) { setMsg({ type: "err", text: "Erro ao salvar valor/par: " + error.message }); return; }
+    if (error) { toast.error("Erro ao salvar valor/par: " + error.message); return; }
     setFichas((fs) => fs.map((f) => (f.montador_id === key ? { ...f, valor_par: valor } : f)));
   }
 
@@ -371,10 +371,6 @@ export default function FichaMontadoresPage() {
           </button>
         ))}
       </div>
-
-      {msg && (
-        <div className={`rounded-md px-3 py-2 text-sm ${msg.type === "ok" ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>{msg.text}</div>
-      )}
 
       {/* ════ LANÇAMENTO ════ */}
       {tab === "lancamento" && (
@@ -520,19 +516,12 @@ export default function FichaMontadoresPage() {
       {/* ════ PRODUTIVIDADE ════ */}
       {tab === "produtividade" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            {[
-              { label: "Montadores", value: String(agg.length) },
-              { label: "Fichas", value: String(totals.fichas) },
-              { label: "Pares (total × cópias)", value: totals.pares.toLocaleString("pt-BR"), accent: true },
-              { label: "Pagamento", value: fmtBRL(totals.pago) },
-            ].map((k) => (
-              <div key={k.label} className={`rounded-lg border p-3 transition-colors ${k.accent ? "border-primary/30 bg-primary/5" : "border-border bg-card hover:border-border"}`}>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{k.label}</p>
-                <p className={`mt-1 tabular-nums font-bold leading-none ${k.accent ? "text-2xl text-primary" : "text-xl text-foreground"}`}>{k.value}</p>
-              </div>
-            ))}
-          </div>
+          <StatGrid>
+            <StatCard label="Montadores" value={String(agg.length)} icon={Users} />
+            <StatCard label="Fichas" value={String(totals.fichas)} icon={ClipboardText} />
+            <StatCard label="Pares (total × cópias)" value={totals.pares.toLocaleString("pt-BR")} icon={Package} tone="primary" />
+            <StatCard label="Pagamento" value={fmtBRL(totals.pago)} icon={CurrencyDollar} />
+          </StatGrid>
 
           <Panel
             eyebrow={`${periodLabel[pMode]} · ${fmtDia(range.from)}–${fmtDia(range.to)}`}
