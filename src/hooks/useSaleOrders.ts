@@ -2467,6 +2467,9 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['sale_order_items'] });
       qc.invalidateQueries({ queryKey: ['sale_order_items_all'] });
+      // Gatilho do modal de Consumo de Materiais: ao salvar o PV, o consumo
+      // recalcula sozinho (sem precisar reabrir / clicar Recalcular).
+      qc.invalidateQueries({ queryKey: ['consumption-source'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });

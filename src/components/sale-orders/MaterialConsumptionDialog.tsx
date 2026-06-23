@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -282,12 +282,30 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   const [contractorByKey, setContractorByKey] = useState<Record<string, string>>({});
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
 
+  // Gatilho de recálculo automático: invalidado pelo save do PV
+  // (useUpdateSaleOrder → invalidateQueries(['consumption-source'])). Ao salvar
+  // o pedido, esta query refetcha; o `dataUpdatedAt` muda e o efeito abaixo
+  // recarrega o consumo SOZINHO — sem fechar/reabrir nem clicar Recalcular.
+  const { dataUpdatedAt: pvTouchedAt } = useQuery({
+    queryKey: ['consumption-source', saleOrderId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('sale_orders')
+        .select('updated_at')
+        .eq('id', saleOrderId as string)
+        .maybeSingle();
+      return (data as any)?.updated_at ?? null;
+    },
+    enabled: open && !!saleOrderId,
+    staleTime: 0,
+  });
+
   useEffect(() => {
     if (!open || !saleOrderId) return;
     let cancelled = false;
     loadConsumption(() => cancelled);
     return () => { cancelled = true; };
-  }, [open, saleOrderId]);
+  }, [open, saleOrderId, pvTouchedAt]);
 
   const loadConsumption = async (isCancelled: () => boolean = () => false) => {
     if (!saleOrderId) return;
