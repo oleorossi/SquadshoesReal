@@ -30,6 +30,14 @@ interface TabsCtx {
   openTab: (path: string, title?: string) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
+  /** Reordena abas (arrastar-e-soltar). Move `fromId` pra antes/depois de `toId`. */
+  reorderTabs: (fromId: string, toId: string, pos: 'before' | 'after') => void;
+  /** Fecha todas menos a indicada (mantém só ela, ativa). */
+  closeOthers: (id: string) => void;
+  /** Fecha as abas à direita da indicada. */
+  closeToRight: (id: string) => void;
+  /** Fecha todas e volta pro Painel. */
+  closeAll: () => void;
 }
 
 const Context = createContext<TabsCtx | null>(null);
@@ -139,6 +147,14 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     saveToStorage(tabs, activeId);
   }, [tabs, activeId]);
 
+  // Orientação: sincroniza o título da aba do NAVEGADOR com a página ativa, pra
+  // o usuário saber onde está mesmo com várias janelas/abas do navegador abertas
+  // (antes ficava sempre "Squad Shoes" fixo, sem distinção por tela).
+  useEffect(() => {
+    const active = tabs.find(t => t.id === activeId);
+    document.title = active ? `${active.title} · Squad Shoes` : 'Squad Shoes';
+  }, [tabs, activeId]);
+
   // Auto-criar/promover aba ao navegar
   useEffect(() => {
     const path = location.pathname;
@@ -216,8 +232,51 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     });
   }, [navigate]);
 
+  const reorderTabs = useCallback((fromId: string, toId: string, pos: 'before' | 'after') => {
+    setState(prev => {
+      if (fromId === toId) return prev;
+      const from = prev.tabs.findIndex(t => t.id === fromId);
+      if (from < 0) return prev;
+      const arr = [...prev.tabs];
+      const [moved] = arr.splice(from, 1);
+      // recalcula o índice do alvo APÓS a remoção (pode ter deslocado)
+      const to = arr.findIndex(t => t.id === toId);
+      if (to < 0) return prev;
+      arr.splice(pos === 'after' ? to + 1 : to, 0, moved);
+      return { ...prev, tabs: arr };
+    });
+  }, []);
+
+  const closeOthers = useCallback((id: string) => {
+    setState(prev => {
+      const keep = prev.tabs.find(t => t.id === id);
+      if (!keep) return prev;
+      if (prev.activeId !== id) navigate(keep.path);
+      return { tabs: [keep], activeId: id };
+    });
+  }, [navigate]);
+
+  const closeToRight = useCallback((id: string) => {
+    setState(prev => {
+      const idx = prev.tabs.findIndex(t => t.id === id);
+      if (idx < 0) return prev;
+      const nextTabs = prev.tabs.slice(0, idx + 1);
+      // Se a ativa estava à direita (foi removida), a indicada vira a ativa.
+      if (!nextTabs.some(t => t.id === prev.activeId)) {
+        navigate(nextTabs[idx].path);
+        return { tabs: nextTabs, activeId: id };
+      }
+      return { ...prev, tabs: nextTabs };
+    });
+  }, [navigate]);
+
+  const closeAll = useCallback(() => {
+    setState({ tabs: [], activeId: null });
+    navigate('/dashboard'); // o efeito de auto-criar recria a aba do Painel
+  }, [navigate]);
+
   return (
-    <Context.Provider value={{ tabs, activeId, openTab, closeTab, setActiveTab }}>
+    <Context.Provider value={{ tabs, activeId, openTab, closeTab, setActiveTab, reorderTabs, closeOthers, closeToRight, closeAll }}>
       {children}
     </Context.Provider>
   );
@@ -233,6 +292,10 @@ export function useTabs(): TabsCtx {
       openTab: () => {},
       closeTab: () => {},
       setActiveTab: () => {},
+      reorderTabs: () => {},
+      closeOthers: () => {},
+      closeToRight: () => {},
+      closeAll: () => {},
     };
   }
   return ctx;
