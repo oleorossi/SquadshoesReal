@@ -15,7 +15,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-start gap-1 border-b-[1.5px] border-foreground/15 text-muted-foreground w-full",
+      "inline-flex h-11 items-center justify-start gap-1 border-b-[1.5px] border-foreground/15 text-muted-foreground w-full",
       className,
     )}
     {...props}
@@ -30,9 +30,10 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      // Eyebrow style nos labels (mono uppercase tracking widest). Active:
-      // underline vermelho squad + texto foreground. Hover sutil.
-      "inline-flex items-center justify-center whitespace-nowrap px-3 py-2 text-xs font-bold uppercase tracking-wider font-mono ring-offset-background transition-colors border-b-2 border-transparent -mb-[1.5px] hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      // Eyebrow style nos labels (mono uppercase tracking widest). Fonte maior
+      // (text-sm) e aba ATIVA na cor primária (vermelho squad) + underline pra
+      // ficar bem em evidência. Hover sutil. (pedido do dono 2026-06-23)
+      "inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-sm font-bold uppercase tracking-wider font-mono ring-offset-background transition-colors border-b-2 border-transparent -mb-[1.5px] hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
       className,
     )}
     {...props}
