@@ -491,49 +491,63 @@ export async function syncFinancialRecords(saleOrderId: string) {
 /**
  * After OPs are created and stock debited, check which products fell below min_stock.
  * Auto-generate Purchase Orders grouped by supplier to replenish to min_stock.
+ *
+ * Solados são EXCLUÍDOS deste caminho genérico: eles são repostos pela demanda do
+ * pedido (com grade por numeração) via autoCreateSolePO. Aqui entrava "1 par,
+ * grade={}" — perdia a especificidade que o dono pediu.
+ *
+ * `saleOrderId` (id do PV) habilita idempotência per-PV (não duplica quando os dois
+ * call-sites — Faturar + criar OP — rodam pro mesmo PV) e rastreabilidade
+ * (linked_sale_order_ids → some o badge "Sem PV").
  */
-async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNumber?: string, clientOrderNumber?: string) {
-  // Find all products below min_stock
+async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNumber?: string, clientOrderNumber?: string, saleOrderId?: string) {
+  // Find all products below min_stock (solados ficam de fora — ver doc acima)
   const { data: lowProducts, error: lowErr } = await supabase
     .from('products')
-    .select('id, name, sku, quantity, min_stock, max_stock, unit, unit_price, group_id, category, is_artisanal')
+    .select('id, name, sku, quantity, min_stock, max_stock, unit, unit_price, group_id, category, is_artisanal, supplier_id, color')
     .eq('active', true)
     .gt('min_stock', 0);
   if (lowErr || !lowProducts) return;
 
-  const needsRestock = lowProducts.filter(p => p.quantity < p.min_stock && !p.is_artisanal);
+  const isSoleCat = (c?: string | null) => (c || '').toLowerCase().includes('solado');
+  const needsRestock = lowProducts.filter(p => p.quantity < p.min_stock && !p.is_artisanal && !isSoleCat(p.category));
   if (needsRestock.length === 0) return;
 
-  // Get group IDs to find suppliers
+  // ── Resolução de fornecedor (espelha materialAutoPO): products.supplier_id →
+  //    suppliers; senão group_suppliers.supplier_id; senão "Sem Fornecedor". ──
+  const prodSupplierIds = [...new Set(needsRestock.map(p => p.supplier_id).filter(Boolean))] as string[];
   const groupIds = [...new Set(needsRestock.map(p => p.group_id).filter(Boolean))] as string[];
 
-  // Fetch first supplier for each group
-  let supplierMap = new Map<string, { supplier_id: string; supplier_name: string }>();
+  const supplierNameById = new Map<string, string>();
+  if (prodSupplierIds.length > 0) {
+    const { data: sups } = await supabase.from('suppliers').select('id, name').in('id', prodSupplierIds);
+    for (const s of (sups || []) as any[]) supplierNameById.set(s.id, s.name);
+  }
+  const groupSupplier = new Map<string, { supplier_id: string | null; supplier_name: string }>();
   if (groupIds.length > 0) {
-    const { data: suppliers } = await supabase
-      .from('group_suppliers')
-      .select('id, group_id, supplier_name')
-      .in('group_id', groupIds);
-    if (suppliers) {
-      for (const s of suppliers) {
-        if (!supplierMap.has(s.group_id)) {
-          supplierMap.set(s.group_id, { supplier_id: s.id, supplier_name: s.supplier_name });
-        }
-      }
+    const { data: gs } = await (supabase as any).from('group_suppliers')
+      .select('group_id, supplier_id, supplier_name')
+      .in('group_id', groupIds)
+      .order('created_at', { ascending: false });
+    for (const g of (gs || []) as any[]) {
+      if (!groupSupplier.has(g.group_id)) groupSupplier.set(g.group_id, { supplier_id: g.supplier_id || null, supplier_name: g.supplier_name });
     }
   }
-
-  // Group products by supplier
-  const bySupplier = new Map<string, { supplier_name: string; supplier_id: string; items: typeof needsRestock }>();
-
-  for (const p of needsRestock) {
-    const sup = p.group_id ? supplierMap.get(p.group_id) : null;
-    const key = sup?.supplier_id || '__sem_fornecedor';
-    const name = sup?.supplier_name || 'Sem Fornecedor';
-    if (!bySupplier.has(key)) {
-      bySupplier.set(key, { supplier_name: name, supplier_id: sup?.supplier_id || '', items: [] });
+  const resolveSupplier = (p: any): { key: string; supplier_id: string | null; supplier_name: string } => {
+    if (p.supplier_id && supplierNameById.has(p.supplier_id)) {
+      return { key: p.supplier_id, supplier_id: p.supplier_id, supplier_name: supplierNameById.get(p.supplier_id)! };
     }
-    bySupplier.get(key)!.items.push(p);
+    const gs = p.group_id ? groupSupplier.get(p.group_id) : null;
+    if (gs?.supplier_name) return { key: gs.supplier_id || `grp:${p.group_id}`, supplier_id: gs.supplier_id, supplier_name: gs.supplier_name };
+    return { key: '__sem_fornecedor', supplier_id: null, supplier_name: 'Sem Fornecedor' };
+  };
+
+  // Group products by supplier key
+  const bySupplier = new Map<string, { supplier_name: string; supplier_id: string | null; items: typeof needsRestock }>();
+  for (const p of needsRestock) {
+    const r = resolveSupplier(p);
+    if (!bySupplier.has(r.key)) bySupplier.set(r.key, { supplier_name: r.supplier_name, supplier_id: r.supplier_id, items: [] });
+    bySupplier.get(r.key)!.items.push(p);
   }
 
   // Build detailed notes with order traceability
@@ -543,23 +557,42 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
   if (!systemOrderNumber && !clientOrderNumber) noteParts.push(`Pedido ${saleOrderNumber}`);
   const notes = noteParts.join(' | ');
 
-  // Reuse existing pending POs per supplier or create new ones
+  // ── Reuso de OCs pendentes auto (uma OC "em pé" por fornecedor) ──
   let createdCount = 0;
   let updatedCount = 0;
 
-  // Fetch all pending auto-generated POs to check for reuse
-  const { data: existingPOs } = await supabase
+  const { data: existingPOs } = await (supabase as any)
     .from('purchase_orders')
-    .select('id, supplier_id, supplier_name, total_value')
+    .select('id, supplier_id, supplier_name, linked_sale_order_ids')
     .eq('status', 'pending')
-    .eq('auto_generated', true);
+    .eq('auto_generated', true)
+    .order('created_at', { ascending: false });
 
-  const pendingPOMap = new Map<string, { id: string; total_value: number }>();
-  if (existingPOs) {
-    for (const po of existingPOs) {
-      if (po.supplier_id) {
-        pendingPOMap.set(po.supplier_id, { id: po.id, total_value: po.total_value });
-      }
+  // IDEMPOTÊNCIA per-PV: se este PV já gerou OC auto (linkada), não reprocessa —
+  // bloqueia o double-fire (Faturar + criar OP) que criava 14 OCs idênticas.
+  if (saleOrderId && (existingPOs || []).some((po: any) => (po.linked_sale_order_ids || []).includes(saleOrderId))) {
+    return;
+  }
+
+  // Índice de reuso por chave estável (supplier_id real, ou o balde sem-fornecedor)
+  // — o balde "__sem_fornecedor" agora É reusado (antes ficava de fora e duplicava).
+  const reuseByKey = new Map<string, { id: string }>();
+  for (const po of (existingPOs || []) as any[]) {
+    const key = po.supplier_id || (po.supplier_name === 'Sem Fornecedor' ? '__sem_fornecedor' : `name:${po.supplier_name}`);
+    if (!reuseByKey.has(key)) reuseByKey.set(key, { id: po.id });
+  }
+
+  // Produtos já presentes em cada OC reusada — só adicionamos os AUSENTES (evita
+  // dobrar quantidade entre PVs distintos: o cesto global de "abaixo do mínimo" é
+  // praticamente o mesmo a cada disparo).
+  const existingItemsByPO = new Map<string, Set<string>>();
+  const reuseIds = [...new Set([...reuseByKey.values()].map(v => v.id))];
+  if (reuseIds.length > 0) {
+    const { data: eItems } = await supabase.from('purchase_order_items')
+      .select('purchase_order_id, product_id').in('purchase_order_id', reuseIds);
+    for (const it of (eItems || []) as any[]) {
+      const s = existingItemsByPO.get(it.purchase_order_id) || new Set<string>();
+      s.add(it.product_id); existingItemsByPO.set(it.purchase_order_id, s);
     }
   }
 
@@ -575,21 +608,21 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
         current_stock: p.quantity,
         min_stock: p.min_stock,
         max_stock: p.max_stock || 0,
+        color: p.color || null,
       };
     }).filter(i => i.quantity > 0);
 
     if (poItems.length === 0) continue;
 
-    const totalValue = poItems.reduce((s, i) => s + i.quantity * (i.unit_price || 0), 0);
-    const existingPO = group.supplier_id ? pendingPOMap.get(group.supplier_id) : null;
+    const reuse = reuseByKey.get(supplierKey);
 
-    if (existingPO) {
-      // Use upsert_po_item_atomic per item — locks PO header and updates total_value
-      // atomically, preventing the race where two concurrent approvals for the same
-      // supplier corrupt shared item rows or leave total_value stale.
-      for (const item of poItems) {
+    if (reuse) {
+      // Acumula só os produtos AINDA NÃO presentes na OC em pé (anti-double-count).
+      const present = existingItemsByPO.get(reuse.id) || new Set<string>();
+      const toAdd = poItems.filter(i => !present.has(i.product_id));
+      for (const item of toAdd) {
         const { error: rpcErr } = await supabase.rpc('upsert_po_item_atomic' as any, {
-          p_po_id:         existingPO.id,
+          p_po_id:         reuse.id,
           p_product_id:    item.product_id,
           p_qty_delta:     item.quantity,
           p_unit_price:    item.unit_price,
@@ -597,22 +630,30 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
           p_current_stock: item.current_stock,
           p_min_stock:     item.min_stock,
           p_max_stock:     item.max_stock || 0,
+          p_color:         item.color,
         });
-        if (rpcErr) {
-          console.error('Erro ao upsert item OC existente:', rpcErr.message);
-        }
+        if (rpcErr) console.error('Erro ao upsert item OC existente:', rpcErr.message);
+        else present.add(item.product_id);
       }
-      // Keep notes in sync (total_value updated by RPC above)
-      await supabase.from('purchase_orders').update({ notes }).eq('id', existingPO.id);
+      // Mantém notes + vincula este PV (rastreabilidade / some "Sem PV").
+      const upd: Record<string, any> = { notes };
+      if (saleOrderId) {
+        const existing = (existingPOs || []).find((p: any) => p.id === reuse.id);
+        const linked = new Set<string>([...((existing?.linked_sale_order_ids as string[]) || []), saleOrderId]);
+        upd.linked_sale_order_ids = [...linked];
+      }
+      await supabase.from('purchase_orders').update(upd).eq('id', reuse.id);
       updatedCount++;
     } else {
-      // Create new PO; total_value starts at 0 and is accumulated by upsert_po_item_atomic.
-      const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
+      // Cria nova OC; total_value parte de 0 e é acumulado pelo upsert_po_item_atomic.
+      const { data: po, error: poErr } = await (supabase as any).from('purchase_orders').insert({
         supplier_name: group.supplier_name,
         supplier_id: group.supplier_id || null,
         notes,
         total_value: 0,
         auto_generated: true,
+        linked_sale_order_ids: saleOrderId ? [saleOrderId] : null,
+        idempotency_key: `auto:${saleOrderId || saleOrderNumber}:${supplierKey}`,
       }).select('id').single();
 
       if (poErr || !po) continue;
@@ -628,6 +669,7 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
           p_current_stock: item.current_stock,
           p_min_stock:     item.min_stock,
           p_max_stock:     item.max_stock || 0,
+          p_color:         item.color,
         });
         if (rpcErr) {
           console.error('Erro ao inserir item OC nova:', rpcErr.message);
@@ -647,9 +689,9 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
         toast.warning(`OC criada parcialmente — verifique a OC ${po.id.slice(0, 8)}`);
       }
 
-      if (group.supplier_id) {
-        pendingPOMap.set(group.supplier_id, { id: po.id, total_value: totalValue });
-      }
+      // Registra a OC recém-criada pra reuso dentro do mesmo disparo.
+      reuseByKey.set(supplierKey, { id: po.id });
+      existingItemsByPO.set(po.id, new Set(poItems.map(i => i.product_id)));
       createdCount++;
     }
   }
@@ -1869,7 +1911,7 @@ export function useUpdateSaleOrderStatus() {
           // Auto-generate purchase orders for materials below min_stock
           // Fetch client order number for traceability
           const { data: soClientData } = await supabase.from('sale_orders').select('client_order_number').eq('id', id).single();
-          await generateAutoPurchaseOrders(soNumber, soNumber, soClientData?.client_order_number || undefined);
+          await generateAutoPurchaseOrders(soNumber, soNumber, soClientData?.client_order_number || undefined, id);
         }
       }
 
@@ -2445,7 +2487,8 @@ export function useUpdateSaleOrder() {
         await generateAutoPurchaseOrders(
           soForPO?.order_number || id,
           soForPO?.order_number || undefined,
-          soForPO?.client_order_number || order.client_order_number || undefined
+          soForPO?.client_order_number || order.client_order_number || undefined,
+          id
         );
 
         // Show consolidated MRP notification if POs were generated
