@@ -63,7 +63,7 @@ export interface SilkColorGroup {
    *  o cortador só corta a forração na cor da palmilha. */
   hasStraps?: boolean;
   /** Componentes auxiliares (capa, tira, presilha, etc) — pra setor Aviamento/Mesa. */
-  components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number; cmBands?: Array<{ band: string; cm: number }> }>;
+  components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number; cmBands?: Array<{ band: string; cm: number }>; cmBySize?: Record<string, number> }>;
   /** Lista de alertas específicos pra essa cor/setor (ex: "Modelo fachetado"). */
   alerts?: SectorAlert[];
   /** TRUE quando a palmilha desta cor PRECISA ser forrada (insole_has_lining
@@ -380,9 +380,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               medida em cm/par por faixa (P/M/G) nas MESMAS colunas dos pares.
               Vermelho + negrito pra destacar a medida. (pedido do dono 2026-06-23) */}
           {sector === 'Aviamento' && (() => {
-            const straps = (cg.components || []).filter(
-              c => /^TIRA(\s|$)/i.test(c.name || '') && Array.isArray(c.cmBands) && c.cmBands!.length > 0,
-            );
+            const hasData = (c: { cmBySize?: Record<string, number>; cmBands?: Array<{ band: string; cm: number }>; cm?: number }) =>
+              (!!c.cmBySize && Object.keys(c.cmBySize).length > 0) || (!!c.cmBands && c.cmBands.length > 0) || (c.cm != null && c.cm > 0);
+            const straps = (cg.components || []).filter(c => /^TIRA(\s|$)/i.test(c.name || '') && hasData(c));
             if (straps.length === 0) return null;
             return straps.map((c, i) => (
               <tr key={`strap-row-${i}`} style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}>
@@ -390,7 +390,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   {c.name}
                 </td>
                 {activeSizes.map(s => {
-                  const v = c.cmBands!.find(b => b.band === s)?.cm;
+                  // Preenche a coluna pela numeração crua (grade individual); cai pra
+                  // faixa P/M/G; por último a média (curva constante / só média cadastrada).
+                  const v = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
                   return (
                     <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
                       {v != null ? `${v}cm` : '—'}
@@ -435,9 +437,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           ⚠ grade por {usingAviamentoPmg ? 'faixa P/M/G' : 'faca'} não fecha com o total ({displayedSum} ≠ {cg.totalPairs} pares) — conferir mapeamento de numerações
         </p>
       )}
-      {sector === 'Aviamento' && (cg.components || []).some(c => /^TIRA(\s|$)/i.test(c.name || '') && (c.cmBands?.length ?? 0) > 0) && (
+      {sector === 'Aviamento' && (cg.components || []).some(c => /^TIRA(\s|$)/i.test(c.name || '') && ((c.cmBySize && Object.keys(c.cmBySize).length > 0) || (c.cmBands?.length ?? 0) > 0 || (c.cm != null && c.cm > 0))) && (
         <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
-          Linhas TIRA = medida em cm "do par" por faixa de numeração (P/M/G).
+          Linhas TIRA = medida em cm "do par" por numeração (ou faixa P/M/G, quando cadastrada).
         </p>
       )}
       </>

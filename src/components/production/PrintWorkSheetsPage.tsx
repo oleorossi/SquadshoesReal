@@ -1960,6 +1960,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             bandCm[band] = Math.max(bandCm[band] ?? 0, Math.round(v * 10) / 10);
           }
           const cmBands = bandOrder.map(b => ({ band: b, cm: bandCm[b] }));
+          // Medida crua por NUMERAÇÃO (cm/par). Quando a grade do Aviamento sai por
+          // numeração individual (ref sem faixa P/M/G cadastrada), o grid unificado
+          // usa isto pra preencher cada coluna (34, 35, …); o cmBands cobre o caso
+          // P/M/G. Sem isto, fichas sem faixa não mostravam medida nenhuma.
+          const cmBySize: Record<string, number> = {};
+          for (const size of Object.keys(cps)) {
+            const v = Number(cps[size]) || 0;
+            if (v > 0) cmBySize[size] = Math.round(v * 10) / 10;
+          }
           return {
             name: s?.label || 'TIRA',
             material: s?.group_name || '',
@@ -1967,6 +1976,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             color: s?.color || '—',
             cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
             cmBands: cmBands.length >= 2 ? cmBands : undefined,
+            cmBySize: Object.keys(cmBySize).length > 0 ? cmBySize : undefined,
           };
         });
 
