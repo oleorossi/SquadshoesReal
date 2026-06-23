@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CircleNotch as Loader2, Clock, Timer, Users, CheckCircle, CalendarBlank, CaretRight } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Clock, Timer, Users, CheckCircle, CalendarBlank, CaretRight, FilePdf } from '@phosphor-icons/react';
+import { printEmployeeAtraso, printAtrasoSummary } from '@/lib/atrasoReportPrint';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -99,9 +100,14 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
           </DialogTitle>
         </DialogHeader>
 
-        <p className="text-xs text-muted-foreground -mt-1">
-          Jornada esperada: <strong className="text-foreground">{expWindow}</strong> ({fmtMin(expMin)}/dia). Horários puxados direto do relógio de ponto.
-        </p>
+        <div className="flex items-start justify-between gap-3 -mt-1">
+          <p className="text-xs text-muted-foreground">
+            Jornada esperada: <strong className="text-foreground">{expWindow}</strong> ({fmtMin(expMin)}/dia). Horários puxados direto do relógio de ponto.
+          </p>
+          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={() => printEmployeeAtraso(row, from, to)}>
+            <FilePdf className="h-4 w-4" /> PDF
+          </Button>
+        </div>
 
         {/* Calendário(s) do período */}
         <div className="space-y-4">
@@ -312,7 +318,16 @@ export default function RelatorioAtrasos() {
         ))}
       </div>
 
-      <Panel eyebrow={`ATRASOS · ${fmtDia(from)}–${fmtDia(to)}`} title="Resumo por funcionário" subtitle="Clique num funcionário para ver o calendário e os horários do relógio">
+      <Panel
+        eyebrow={`ATRASOS · ${fmtDia(from)}–${fmtDia(to)}`}
+        title="Resumo por funcionário"
+        subtitle="Clique num funcionário para ver o calendário e os horários do relógio"
+        actions={rows.length > 0 ? (
+          <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => printAtrasoSummary(rows, from, to)}>
+            <FilePdf className="h-4 w-4" /> PDF do relatório
+          </Button>
+        ) : undefined}
+      >
         {isLoading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : rows.length === 0 ? (
