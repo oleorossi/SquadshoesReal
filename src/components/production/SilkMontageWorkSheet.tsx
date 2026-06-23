@@ -317,25 +317,38 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           </tr>
         </thead>
         <tbody>
-          {/* Linha "Por Ficha" só aparece quando TODAS as OPs do
-              grupo têm a mesma grade base. Quando há grades
-              mistas, omitimos pra evitar perCard × N ≠ Total
-              confundir o operador. */}
-          {cg.baseGrid && cg.baseGradeSum && !cg.mixedGrades && !usingBuckets && (
-            <tr style={{ borderBottom: '1.5px solid #000' }}>
-              <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
-                Por Ficha<br />({cg.baseGradeSum}p)
-              </td>
-              {activeSizes.map(s => (
-                <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
-                  {cg.baseGrid?.[s] || '—'}
+          {/* Linha "Por Ficha" — quantidade (P/M/G ou por numeração) em UMA ficha
+              padrão, pro funcionário MONTAR cada ficha. Só com grade uniforme
+              (sem mistas), senão perCard × N ≠ Total confunde o operador.
+              No modo banda (P/M/G) deriva de total_da_banda ÷ nº de fichas — exato
+              quando não-misto (total = base × fichas). Antes era escondido em
+              modo banda (`!usingBuckets`); o dono pediu pra exibir aqui também. */}
+          {!cg.mixedGrades && ((!usingBuckets && cg.baseGrid && cg.baseGradeSum) || (usingBuckets && !!cg.fichas && cg.fichas > 1)) && (() => {
+            const perFicha: Record<string, number> = {};
+            for (const s of activeSizes) {
+              perFicha[s] = usingBuckets
+                ? Math.round((Number(sourceGrid[s]) || 0) / (cg.fichas || 1))
+                : (Number(cg.baseGrid?.[s]) || 0);
+            }
+            const perFichaTotal = usingBuckets
+              ? activeSizes.reduce((sum, s) => sum + (perFicha[s] || 0), 0)
+              : (cg.baseGradeSum || 0);
+            return (
+              <tr style={{ borderBottom: '1.5px solid #000' }}>
+                <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
+                  Por Ficha<br />({perFichaTotal}p)
                 </td>
-              ))}
-              <td className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
-                {cg.baseGradeSum}
-              </td>
-            </tr>
-          )}
+                {activeSizes.map(s => (
+                  <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
+                    {perFicha[s] || '—'}
+                  </td>
+                ))}
+                <td className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
+                  {perFichaTotal}
+                </td>
+              </tr>
+            );
+          })()}
           <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
             <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
               {cg.fichasAproximadas
