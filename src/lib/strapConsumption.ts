@@ -76,10 +76,12 @@ export const calculateStrapConsumptionCm = (strap: StrapDefinition, context: Str
     }, 0);
 
     const gradeTotal = gradeEntries.reduce((sum, [, pairs]) => sum + (Number(pairs) || 0), 0);
-    // Match SQL: GREATEST(1, round(quantity / grade_total))
+    // Espelha o SQL (debit_strap_stock/check_stock_availability): GREATEST(1, ceil(quantity / grade_total)).
+    // Era Math.round — divergia do ceil do SQL (latente: fichas quase sempre vem
+    // pronto, mas alinhamos pra não subcontar 1 ficha em qty fracionária).
     let fichas = Number(context.fichas);
     if (!fichas) {
-      const inferred = gradeTotal > 0 && quantity > 0 ? Math.round(quantity / gradeTotal) : 1;
+      const inferred = gradeTotal > 0 && quantity > 0 ? Math.ceil(quantity / gradeTotal) : 1;
       fichas = Math.max(1, inferred);
     }
     return totalPerFicha * fichas;
