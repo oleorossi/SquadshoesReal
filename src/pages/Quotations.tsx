@@ -16,15 +16,17 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { cn, formatCurrency } from '@/lib/utils';
 
 type QuotationStatus = 'aberta' | 'enviada' | 'recebida' | 'analisada' | 'aprovada' | 'cancelada' | 'expirada';
 
+// Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS_COLOR: Record<string, string> = {
-  aberta: 'bg-blue-100 text-blue-700 border-blue-300',
-  enviada: 'bg-amber-100 text-amber-700 border-amber-300',
-  recebida: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-  analisada: 'bg-purple-100 text-purple-700 border-purple-300',
-  aprovada: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  aberta: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  enviada: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  recebida: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+  analisada: 'bg-violet-500/10 text-violet-600 border-violet-500/20',
+  aprovada: 'bg-green-500/10 text-green-600 border-green-500/20',
   cancelada: 'bg-muted text-muted-foreground border-border',
   expirada: 'bg-destructive/10 text-destructive border-destructive/30',
 };
@@ -69,7 +71,7 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
   return (
     <>
       <EditorialPageHeader
-        sectionLabel="COMERCIAL · COTAÇÕES"
+        sectionLabel="COMPRAS · COTAÇÕES"
         title="Cotações (RFQ)"
         description="Cotação multifornecedor — registre itens, respostas e escolha o vencedor."
         actions={
@@ -80,7 +82,9 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
       />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : items.length === 0 ? (
         <Panel flush>
           <EmptyState
@@ -91,17 +95,22 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
           />
         </Panel>
       ) : (
-        <div className="space-y-2">
-          {items.map((r: any) => (
-            <Card key={r.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onOpen(r.id)}>
-              <CardContent className="p-3 flex items-center gap-3">
+        <Panel flush>
+          <div className="divide-y divide-border/60">
+            {items.map((r: any) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onOpen(r.id)}
+                className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/40 transition-colors"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-xs">{r.quotation_number}</span>
-                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={cn('text-xs capitalize', STATUS_COLOR[r.status])}>
                       {r.status}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {format(new Date(r.created_at), 'dd/MM/yy HH:mm')}
                       {r.deadline && ` · prazo ${format(new Date(r.deadline), 'dd/MM')}`}
                     </span>
@@ -109,10 +118,10 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
                   <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{r.notes || '—'}</p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+        </Panel>
       )}
     </>
   );
@@ -240,31 +249,36 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: (e: Error) => toast.error(`Erro ao gerar OC: ${e.message}`),
   });
 
-  if (!q) return <p className="p-6 text-sm text-muted-foreground">Carregando…</p>;
+  if (!q) return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-primary" /> {q.quotation_number}
-              <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[q.status]}`}>{q.status}</Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Solicitada em {format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}
-              {q.deadline && ` · prazo ${format(new Date(q.deadline), 'dd/MM/yyyy')}`}
-              {q.suppliers?.name && ` · 🏆 ${q.suppliers.name}`}
-            </p>
+      <EditorialPageHeader
+        sectionLabel="COMPRAS · COTAÇÕES"
+        title={q.quotation_number}
+        description={
+          `Solicitada em ${format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}` +
+          (q.deadline ? ` · prazo ${format(new Date(q.deadline), 'dd/MM/yyyy')}` : '') +
+          (q.suppliers?.name ? ` · vencedor ${q.suppliers.name}` : '')
+        }
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Button>
+            <Badge variant="outline" className={cn('capitalize', STATUS_COLOR[q.status])}>{q.status}</Badge>
+            {(q.status === 'aprovada' || q.selected_supplier_id) && (
+              <Button onClick={() => genPo.mutate()} disabled={genPo.isPending} className="h-9 gap-1.5">
+                <FileSpreadsheet className="h-4 w-4" /> {genPo.isPending ? 'Gerando…' : 'Gerar OC do vencedor'}
+              </Button>
+            )}
           </div>
-        </div>
-        {(q.status === 'aprovada' || q.selected_supplier_id) && (
-          <Button onClick={() => genPo.mutate()} disabled={genPo.isPending} className="gap-1.5">
-            <FileSpreadsheet className="h-4 w-4" /> {genPo.isPending ? 'Gerando…' : 'Gerar OC do vencedor'}
-          </Button>
-        )}
-      </div>
+        }
+      />
 
       <Tabs defaultValue="items">
         <TabsList>
@@ -308,10 +322,10 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                           if (!p) return <td key={r.id} className="p-2 text-right text-muted-foreground">—</td>;
                           const line = Number(p.unit_price) * Number(it.quantity) * (1 - Number(p.discount_pct ?? 0) / 100);
                           return (
-                            <td key={r.id} className="p-2 text-right font-mono">
-                              R$ {Number(p.unit_price).toFixed(2)} / un
+                            <td key={r.id} className="p-2 text-right font-mono tabular-nums">
+                              {formatCurrency(Number(p.unit_price))} / un
                               <br/>
-                              <span className="text-xs text-muted-foreground">total R$ {line.toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground">total {formatCurrency(line)}</span>
                             </td>
                           );
                         })}
@@ -321,7 +335,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                       <td className="p-2">Frete</td>
                       <td />
                       {responses.map((r: any) => (
-                        <td key={r.id} className="p-2 text-right font-mono">R$ {Number(r.freight_value ?? 0).toFixed(2)}</td>
+                        <td key={r.id} className="p-2 text-right font-mono tabular-nums">{formatCurrency(Number(r.freight_value ?? 0))}</td>
                       ))}
                     </tr>
                     <tr className="bg-muted/50 font-bold">
@@ -332,8 +346,8 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                         const minTotal = Math.min(...Array.from(totalsByResponse.values()));
                         const isWinner = total === minTotal && total > 0;
                         return (
-                          <td key={r.id} className={`p-2 text-right ${isWinner ? 'text-emerald-600' : ''}`}>
-                            R$ {total.toFixed(2)} {isWinner && '🏆'}
+                          <td key={r.id} className={cn('p-2 text-right font-mono tabular-nums', isWinner && 'text-green-600 font-bold')}>
+                            {formatCurrency(total)} {isWinner && <Trophy className="inline h-3.5 w-3.5 text-amber-500" />}
                           </td>
                         );
                       })}
@@ -746,10 +760,10 @@ function ResponseEditDialog({
               <div className="flex items-end">
                 <Button
                   variant={editForm.responded ? 'default' : 'outline'}
-                  className="w-full"
+                  className="w-full gap-1.5"
                   onClick={() => setEditForm({ ...editForm, responded: !editForm.responded })}
                 >
-                  {editForm.responded ? '✓ Respondeu' : 'Marcar como respondida'}
+                  {editForm.responded ? <><CheckCircle2 className="h-4 w-4" /> Respondeu</> : 'Marcar como respondida'}
                 </Button>
               </div>
             </div>

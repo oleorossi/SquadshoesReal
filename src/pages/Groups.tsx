@@ -180,7 +180,7 @@ export default function Groups() {
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={4} className="p-0">
+                            <td colSpan={5} className="p-0">
                               <SupplierPanel groupId={g.id} />
                             </td>
                           </tr>
