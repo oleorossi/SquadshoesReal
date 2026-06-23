@@ -7,7 +7,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { usePurchaseOrders, usePurchaseOrderItems, usePurchaseOrderPayments, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder, type PurchaseOrder, type PurchaseOrderItem } from '@/hooks/usePurchaseOrders';
+import { usePurchaseOrders, usePurchaseOrderItems, usePurchaseOrderItemSummaries, usePurchaseOrderPayments, useUpdatePurchaseOrder, useUpdatePurchaseOrderItem, useDeletePurchaseOrder, type PurchaseOrder, type PurchaseOrderItem, type PurchaseOrderItemSummary, type POContentType } from '@/hooks/usePurchaseOrders';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -44,6 +44,49 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
 };
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// Badge de tipo de conteúdo da OC — cores semânticas dark-safe (bg-*-500/10).
+const CONTENT_TYPE_META: Record<POContentType, { label: string; cls: string }> = {
+  solado:   { label: 'Solado',   cls: 'bg-violet-500/10 text-violet-600 border-violet-500/20' },
+  material: { label: 'Material', cls: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+  palmilha: { label: 'Palmilha', cls: 'bg-teal-500/10 text-teal-600 border-teal-500/20' },
+  misto:    { label: 'Misto',    cls: 'bg-muted text-muted-foreground border-border' },
+  vazio:    { label: '—',        cls: 'bg-muted text-muted-foreground border-border' },
+};
+
+/** Célula "Itens" da lista de OC — surfa o que a OC compra (tipo + solado + resumo). */
+function OrderItemsCell({ summary }: { summary?: PurchaseOrderItemSummary }) {
+  if (!summary || summary.itemCount === 0) {
+    return <span className="text-xs text-muted-foreground/50">—</span>;
+  }
+  const meta = CONTENT_TYPE_META[summary.contentType];
+  const sole = summary.sole;
+  const extra = summary.itemCount > 1 ? ` +${summary.itemCount - 1}` : '';
+  // Linha principal: solado → modelo · cor; senão o item representativo.
+  const mainLabel = sole
+    ? `${sole.model}${sole.color ? ` · ${sole.color}` : ''}`
+    : `${summary.label}${summary.color ? ` · ${summary.color}` : ''}`;
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0 max-w-[260px]">
+      <div className="flex items-center gap-1.5">
+        <Badge variant="outline" className={cn('text-[10px] h-4 px-1.5 font-medium shrink-0', meta.cls)}>
+          {meta.label}
+        </Badge>
+        <span className="truncate text-sm" title={mainLabel}>{mainLabel}</span>
+        {extra && <span className="text-xs text-muted-foreground shrink-0">{extra}</span>}
+      </div>
+      {sole && (
+        sole.hasGrade && sole.sizeFrom != null ? (
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {sole.sizeFrom === sole.sizeTo ? `Nº${sole.sizeFrom}` : `${sole.sizeFrom}–${sole.sizeTo}`} · {sole.totalPares} pares
+          </span>
+        ) : (
+          <span className="text-[11px] text-amber-600">sem numeração</span>
+        )
+      )}
+    </div>
+  );
+}
 
 /**
  * M3 (auditoria 2026-06-09): recebimento de SOLADO com grade deve somar a grade
@@ -99,6 +142,7 @@ const PO_STATUS_OPTIONS: { value: string; label: string }[] = [
 
 export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = usePurchaseOrders();
+  const { data: itemSummaries } = usePurchaseOrderItemSummaries(orders.map(o => o.id));
   const { data: paymentsMap } = usePurchaseOrderPayments();
   const updateOrder = useUpdatePurchaseOrder();
   const deleteOrder = useDeletePurchaseOrder();
@@ -469,6 +513,7 @@ export default function PurchaseOrders() {
                     </TableHead>
                     <TableHead>Nº OC</TableHead>
                     <TableHead>Fornecedor</TableHead>
+                    <TableHead>Itens</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Valor Total</TableHead>
                     <TableHead>Prazo Previsto</TableHead>
@@ -479,9 +524,9 @@ export default function PurchaseOrders() {
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhuma ordem de compra encontrada</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhuma ordem de compra encontrada</TableCell></TableRow>
                   ) : filtered.map(o => {
                     const st = STATUS_MAP[o.status] || STATUS_MAP.pending;
                     const today = new Date().toISOString().slice(0, 10);
@@ -537,6 +582,7 @@ export default function PurchaseOrders() {
                           </div>
                         </TableCell>
                         <TableCell>{o.supplier_name}</TableCell>
+                        <TableCell><OrderItemsCell summary={itemSummaries?.get(o.id)} /></TableCell>
                         <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
                         <TableCell className="text-right font-medium">{fmt(o.total_value)}</TableCell>
                         <TableCell>
@@ -1232,7 +1278,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6 mt-1 text-xs"
+                              className="h-6 mt-1 text-xs text-amber-600 border-amber-500/40 hover:text-amber-700"
                               onClick={() => setGradeEditorItemId(item.id)}
                             >
                               <Footprints className="h-3 w-3 mr-1" />
@@ -1473,6 +1519,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               totalQuantity={target.quantity}
               availableSizes={sizes}
               currentGrade={(target.grade as Record<string, number>) || null}
+              linkedSaleOrderIds={linkedSoIds}
+              itemColor={target.color || target.product?.color}
             />
           );
         })()}

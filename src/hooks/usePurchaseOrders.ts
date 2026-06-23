@@ -79,6 +79,122 @@ export function usePurchaseOrderItems(orderId: string | null) {
   });
 }
 
+/** Tipo de conteúdo da OC, derivado das categorias dos itens. */
+export type POContentType = 'solado' | 'material' | 'palmilha' | 'misto' | 'vazio';
+
+/** Resumo dos itens de UMA OC, pra surfar especificidade na lista sem abrir o modal. */
+export type PurchaseOrderItemSummary = {
+  itemCount: number;
+  /** Nome do item representativo (solado quando houver, senão o primeiro). */
+  label: string;
+  color: string | null;
+  contentType: POContentType;
+  /** Detalhe do solado (quando a OC tem ao menos 1 item de solado). */
+  sole: {
+    model: string;
+    color: string | null;
+    /** Faixa de numeração quando a grade está distribuída (ex.: 34–40). */
+    sizeFrom: number | null;
+    sizeTo: number | null;
+    totalPares: number;
+    hasGrade: boolean;
+  } | null;
+};
+
+const isSoleCategory = (c?: string | null) => (c || '').toLowerCase().includes('solado');
+const isPalmilhaCategory = (c?: string | null) => (c || '').toLowerCase().includes('palmilha');
+
+/** Min/máx numérico das chaves da grade (suporta conjugadas "33/34"). */
+function gradeSizeRange(grade?: Record<string, number> | null): { from: number | null; to: number | null } {
+  const nums: number[] = [];
+  for (const k of Object.keys(grade || {})) {
+    if (k.startsWith('_')) continue;
+    if (!(Number(grade![k]) > 0)) continue;
+    for (const part of k.split('/')) {
+      const n = parseInt(part, 10);
+      if (Number.isFinite(n)) nums.push(n);
+    }
+  }
+  if (nums.length === 0) return { from: null, to: null };
+  return { from: Math.min(...nums), to: Math.max(...nums) };
+}
+
+/**
+ * Resumo de itens por OC (em lote). Gêmeo read-only de usePurchaseOrderItems,
+ * mas pra N ordens de uma vez — alimenta a coluna "Itens" + badge de tipo +
+ * resumo de solado na LISTA de OC, sem precisar abrir o detalhe de cada uma.
+ */
+export function usePurchaseOrderItemSummaries(orderIds: string[]) {
+  const ids = [...new Set((orderIds || []).filter(Boolean))];
+  return useQuery({
+    queryKey: ['purchase_order_item_summaries', ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchase_order_items')
+        .select('purchase_order_id, product_id, quantity, color, grade, products(name, category, color)')
+        .in('purchase_order_id', ids);
+      if (error) throw error;
+
+      const byOrder = new Map<string, any[]>();
+      for (const row of (data || []) as any[]) {
+        const arr = byOrder.get(row.purchase_order_id) || [];
+        arr.push(row);
+        byOrder.set(row.purchase_order_id, arr);
+      }
+
+      const summaries = new Map<string, PurchaseOrderItemSummary>();
+      for (const [orderId, items] of byOrder) {
+        const cats = new Set(items.map(i => ((i.products?.category || '') as string).toLowerCase()).filter(Boolean));
+        const hasSole = items.some(i => isSoleCategory(i.products?.category));
+        const allSole = items.length > 0 && items.every(i => isSoleCategory(i.products?.category));
+        const allPalmilha = items.length > 0 && items.every(i => isPalmilhaCategory(i.products?.category));
+
+        let contentType: POContentType = 'vazio';
+        if (items.length === 0) contentType = 'vazio';
+        else if (allSole) contentType = 'solado';
+        else if (hasSole) contentType = 'misto';
+        else if (allPalmilha) contentType = 'palmilha';
+        else if (cats.size > 1) contentType = 'misto';
+        else contentType = 'material';
+
+        // Item representativo: o solado quando houver, senão o primeiro.
+        const soleItem = items.find(i => isSoleCategory(i.products?.category)) || null;
+        const repItem = soleItem || items[0];
+        const repName = repItem?.products?.name || 'Item';
+        const repColor = repItem?.color || repItem?.products?.color || null;
+
+        let sole: PurchaseOrderItemSummary['sole'] = null;
+        if (soleItem) {
+          const grade = soleItem.grade as Record<string, number> | null;
+          const hasGrade = !!grade && Object.keys(grade).some(k => !k.startsWith('_') && Number(grade[k]) > 0);
+          const { from, to } = gradeSizeRange(grade);
+          const totalFromGrade = Object.entries(grade || {})
+            .filter(([k]) => !k.startsWith('_'))
+            .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+          sole = {
+            model: soleItem.products?.name || 'Solado',
+            color: soleItem.color || soleItem.products?.color || null,
+            sizeFrom: from,
+            sizeTo: to,
+            totalPares: hasGrade ? totalFromGrade : (Number(soleItem.quantity) || 0),
+            hasGrade,
+          };
+        }
+
+        summaries.set(orderId, {
+          itemCount: items.length,
+          label: repName,
+          color: repColor,
+          contentType,
+          sole,
+        });
+      }
+      return summaries;
+    },
+  });
+}
+
 export function useUpdatePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({

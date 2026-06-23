@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { CircleNotch as Loader2, FloppyDisk as Save } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, FloppyDisk as Save, DownloadSimple } from '@phosphor-icons/react';
 import { useUpdatePurchaseOrderItem } from '@/hooks/usePurchaseOrders';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface Props {
@@ -19,6 +20,10 @@ interface Props {
   availableSizes: string[];
   /** Grade atual do item (pode ser null ou objeto). */
   currentGrade?: Record<string, number> | null;
+  /** PVs vinculados à OC — fonte da "necessidade do pedido" pra puxar a numeração. */
+  linkedSaleOrderIds?: string[];
+  /** Cor do item (pra casar com a cor das OPs ao puxar a demanda). */
+  itemColor?: string | null;
 }
 
 /**
@@ -37,9 +42,12 @@ export function SoleGradeEditorDialog({
   totalQuantity,
   availableSizes,
   currentGrade,
+  linkedSaleOrderIds,
+  itemColor,
 }: Props) {
   const updateItem = useUpdatePurchaseOrderItem();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [pulling, setPulling] = useState(false);
 
   // Sincroniza estado quando abre / muda item
   useEffect(() => {
@@ -91,6 +99,63 @@ export function SoleGradeEditorDialog({
     setValues(next);
   };
 
+  /**
+   * Distribui usando o SHAPE da demanda dos PVs vinculados (a "necessidade do
+   * pedido", não o range do modelo): soma a grade das OPs (orders.grade = pares
+   * por numeração) que casam na cor, e rateia o total do item proporcionalmente
+   * por maior-resto. Total sempre fecha com o pedido.
+   */
+  const normColor = (s?: string | null) =>
+    (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+  const handlePullFromOrder = async () => {
+    if (!linkedSaleOrderIds || linkedSaleOrderIds.length === 0) return;
+    setPulling(true);
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('grade, color, status')
+        .in('sale_order_id', linkedSaleOrderIds);
+      if (error) throw error;
+      const rows = (data || []).filter((o: any) => o.status !== 'Cancelada' && o.status !== 'Cancelado');
+      const wanted = normColor(itemColor);
+      const colorRows = wanted ? rows.filter((o: any) => normColor(o.color) === wanted) : rows;
+      const src = colorRows.length ? colorRows : rows;
+
+      const demand: Record<string, number> = {};
+      for (const o of src) {
+        const g = (o.grade || {}) as Record<string, number>;
+        for (const [k, v] of Object.entries(g)) {
+          if (k.startsWith('_') || !availableSizes.includes(k)) continue;
+          demand[k] = (demand[k] || 0) + (Number(v) || 0);
+        }
+      }
+      const demandTotal = Object.values(demand).reduce((s, v) => s + v, 0);
+      if (demandTotal <= 0) {
+        toast.error('Os pedidos vinculados não têm numeração compatível com este solado.');
+        return;
+      }
+      // Rateio proporcional (maior resto) → soma exatamente totalQuantity.
+      const parts = availableSizes.map(s => {
+        const exact = ((demand[s] || 0) / demandTotal) * totalQuantity;
+        const base = Math.floor(exact);
+        return { s, base, frac: exact - base };
+      });
+      let remainder = totalQuantity - parts.reduce((acc, p) => acc + p.base, 0);
+      const order = [...parts].sort((a, b) => b.frac - a.frac);
+      const bonus = new Set<string>();
+      for (const p of order) { if (remainder <= 0) break; bonus.add(p.s); remainder--; }
+      const next: Record<string, string> = {};
+      for (const p of parts) next[p.s] = String(p.base + (bonus.has(p.s) ? 1 : 0));
+      setValues(next);
+      toast.success('Numeração puxada da demanda do pedido — ajuste se precisar.');
+    } catch (e: any) {
+      toast.error(e.message || 'Falha ao puxar a numeração do pedido.');
+    } finally {
+      setPulling(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -131,9 +196,17 @@ export function SoleGradeEditorDialog({
                 </span>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={handleDistEqual} type="button">
-              Distribuir igualmente
-            </Button>
+            <div className="flex items-center gap-2">
+              {linkedSaleOrderIds && linkedSaleOrderIds.length > 0 && (
+                <Button variant="outline" size="sm" onClick={handlePullFromOrder} type="button" disabled={pulling}>
+                  {pulling ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5 mr-1.5" />}
+                  Puxar do pedido
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={handleDistEqual} type="button">
+                Distribuir igualmente
+              </Button>
+            </div>
           </div>
         </div>
 
