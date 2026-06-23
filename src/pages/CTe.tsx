@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -15,14 +14,16 @@ import { Truck, Plus, CheckCircle, Trash as Trash2, CircleNotch as Loader2 } fro
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { cn, formatCurrency } from '@/lib/utils';
 
 type CteStatus = 'rascunho' | 'autorizado' | 'rejeitado' | 'cancelado';
 
+// Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS_COLOR: Record<string, string> = {
   rascunho: 'bg-muted text-muted-foreground border-border',
-  autorizado: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  autorizado: 'bg-green-500/10 text-green-600 border-green-500/20',
   rejeitado: 'bg-destructive/10 text-destructive border-destructive/30',
-  cancelado: 'bg-amber-100 text-amber-700 border-amber-300',
+  cancelado: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
 };
 
 const CTE_TYPES = [
@@ -114,7 +115,9 @@ export default function CTe() {
       />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : items.length === 0 ? (
         <Panel flush>
           <EmptyState
@@ -125,24 +128,24 @@ export default function CTe() {
           />
         </Panel>
       ) : (
-        <div className="space-y-2">
-          {items.map((r: any) => (
-            <Card key={r.id}>
-              <CardContent className="p-3 flex items-center gap-3">
+        <Panel flush>
+          <div className="divide-y divide-border/60">
+            {items.map((r: any) => (
+              <div key={r.id} className="px-4 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold">{r.cte_number}</span>
-                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={cn('text-xs capitalize', STATUS_COLOR[r.status])}>
                       {r.status}
                     </Badge>
                     <Badge variant="outline" className="text-xs capitalize">{r.cte_type}</Badge>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {format(new Date(r.emission_date), 'dd/MM/yy')} · {r.origin_uf} → {r.destination_uf}
                     </span>
                   </div>
                   <p className="text-sm mt-0.5">{r.transporter_name || '—'}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Frete: R$ {Number(r.freight_value || 0).toFixed(2)} · {r.freight_modality?.toUpperCase()}
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Frete: {formatCurrency(Number(r.freight_value || 0))} · {r.freight_modality?.toUpperCase()}
                     {r.protocol && ` · Protocolo: ${r.protocol}`}
                     {r.related_nfe_chaves?.length ? ` · ${r.related_nfe_chaves.length} NF-e(s) vinculada(s)` : ''}
                   </p>
@@ -160,10 +163,10 @@ export default function CTe() {
                     </>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
       )}
 
       <CteEditorDialog

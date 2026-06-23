@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -233,22 +234,6 @@ function printReceipt(order: ServiceOrder, contractor: Contractor | undefined) {
   </body></html>`);
   w.document.close();
   setTimeout(() => w.print(), 300);
-}
-
-/* ─── Stats Card ─── */
-function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
-  return (
-    <div className={cn("flex items-center gap-3 rounded-xl border p-4 bg-card shadow-sm")}>
-      <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0", color)}>
-        <Icon className="h-5 w-5 text-white" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-muted-foreground truncate">{label}</p>
-        <p className="text-lg font-bold leading-tight">{value}</p>
-        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-      </div>
-    </div>
-  );
 }
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
@@ -1216,21 +1201,21 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} sub={`${contractors.length} total`} color="bg-blue-600" />
-          <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} sub={`${stats.inProgressOrders} em andamento`} color="bg-amber-500" />
+        <StatGrid>
+          <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} hint={`${contractors.length} total`} />
+          <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} hint={`${stats.inProgressOrders} em andamento`} tone="warning" />
           {/* OS criadas por gargalo aguardando contratada confirmar prazo —
               cada uma dessas mantém uma OP bloqueada de avançar pra Montagem. */}
           <StatCard
             icon={AlertCircle}
             label="OS aguardando prazo"
             value={stats.pendingQuotes}
-            sub={stats.blockedOps > 0 ? `${stats.blockedOps} ${stats.blockedOps === 1 ? 'OP bloqueada' : 'OPs bloqueadas'}` : 'fluxo de gargalos'}
-            color={stats.pendingQuotes > 0 ? 'bg-red-600' : 'bg-muted'}
+            hint={stats.blockedOps > 0 ? `${stats.blockedOps} ${stats.blockedOps === 1 ? 'OP bloqueada' : 'OPs bloqueadas'}` : 'fluxo de gargalos'}
+            tone={stats.pendingQuotes > 0 ? 'destructive' : 'default'}
           />
-          <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} color="bg-emerald-600" />
-          <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} color="bg-violet-600" />
-        </div>
+          <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} tone="success" />
+          <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} />
+        </StatGrid>
 
         <Tabs {...(embedded ? { value: activeTab ?? "orders", onValueChange: onActiveTabChange } : { defaultValue: "orders" })}>
           {/* No hub /terceiros a navegação por aba é a barra única do hub —

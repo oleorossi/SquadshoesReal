@@ -11,13 +11,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { FileXls as FileSpreadsheet } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
 
+// Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS: Record<string, string> = {
-  gerado: 'bg-blue-100 text-blue-700',
-  enviado: 'bg-amber-100 text-amber-700',
-  retornado: 'bg-indigo-100 text-indigo-700',
-  processado: 'bg-emerald-100 text-emerald-700',
-  rejeitado: 'bg-destructive/10 text-destructive',
+  gerado: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  enviado: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  retornado: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+  processado: 'bg-green-500/10 text-green-600 border-green-500/20',
+  rejeitado: 'bg-destructive/10 text-destructive border-destructive/30',
 };
 
 const emptyForm = {
@@ -109,8 +111,8 @@ export default function CNAB() {
           { key: 'filename', label: 'Arquivo', render: r => <span className="font-mono text-xs">{r.filename}</span> },
           { key: 'cnab_layout', label: 'Layout', render: r => <Badge variant="outline" className="text-xs">{r.cnab_layout}</Badge> },
           { key: 'generated_at', label: 'Gerado', render: r => <span className="text-xs">{format(new Date(r.generated_at), 'dd/MM/yy HH:mm')}</span> },
-          { key: 'total_records', label: 'Registros', align: 'right' },
-          { key: 'total_value', label: 'Valor Total', align: 'right', render: r => <span className="font-mono text-xs font-bold">R$ {Number(r.total_value || 0).toFixed(2)}</span> },
+          { key: 'total_records', label: 'Registros', align: 'right', render: r => <span className="tabular-nums">{r.total_records}</span> },
+          { key: 'total_value', label: 'Valor Total', align: 'right', render: r => <span className="font-mono text-xs font-bold tabular-nums">{formatCurrency(Number(r.total_value || 0))}</span> },
           { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-xs capitalize`}>{r.status}</Badge> },
         ]}
       />
@@ -146,8 +148,8 @@ export default function CNAB() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label className="text-xs">Contas a Receber Pendentes ({arPendentes.length})</Label>
-                <span className="text-xs text-muted-foreground">
-                  {form.selected_ar.size} selecionada(s) · R$ {totalSelected.toFixed(2)}
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {form.selected_ar.size} selecionada(s) · {formatCurrency(totalSelected)}
                 </span>
               </div>
               {arPendentes.length === 0 ? (
@@ -165,7 +167,7 @@ export default function CNAB() {
                           Venc.: {ar.due_date ? format(new Date(ar.due_date), 'dd/MM/yy') : '—'}
                         </p>
                       </div>
-                      <span className="font-mono text-xs font-semibold">R$ {Number(ar.amount).toFixed(2)}</span>
+                      <span className="font-mono text-xs font-semibold tabular-nums">{formatCurrency(Number(ar.amount))}</span>
                     </label>
                   ))}
                 </div>

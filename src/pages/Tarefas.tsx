@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import {
   useAllNoteTasks, useBulkCreateNoteTasks, useUpdateNoteTask, useDeleteNoteTask,
@@ -112,12 +113,15 @@ export default function Tarefas() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : tasks.length === 0 ? (
-          <div className="text-center py-12">
-            <ListChecks className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground italic">Nenhuma tarefa criada ainda.</p>
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
+        ) : tasks.length === 0 ? (
+          <EmptyState
+            icon={ListChecks}
+            title="Nenhuma tarefa criada ainda"
+            description="Adicione tarefas no campo acima — uma por linha."
+          />
         ) : (
           <>
             <PriorityGroup label="Alta" priority="alta" tasks={tasksByPriority.alta} updateTask={updateTask} deleteTask={deleteTask} defaultOpen />

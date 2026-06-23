@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -12,20 +11,22 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText as FileCheck2, Plus, ArrowLeft, CircleNotch as Loader2, CaretRight as ChevronRight, Trash as Trash2, Truck, Package, MapPin, Lock, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
+import { FileText as FileCheck2, Plus, ArrowLeft, CircleNotch as Loader2, CaretRight as ChevronRight, Trash as Trash2, Truck, Package, MapPin, Lock, ArrowCounterClockwise as RotateCcw, User } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { useSaleOrderWeight } from '@/hooks/useSaleOrderWeight';
 import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { cn } from '@/lib/utils';
 
 type ManifestStatus = 'em_montagem' | 'liberado' | 'em_transito' | 'entregue' | 'cancelado';
 
+// Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS_COLOR: Record<string, string> = {
-  em_montagem: 'bg-blue-100 text-blue-700 border-blue-300',
-  liberado: 'bg-amber-100 text-amber-700 border-amber-300',
-  em_transito: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-  entregue: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  em_montagem: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  liberado: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  em_transito: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+  entregue: 'bg-green-500/10 text-green-600 border-green-500/20',
   cancelado: 'bg-muted text-muted-foreground border-border',
 };
 
@@ -77,7 +78,9 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
       />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : items.length === 0 ? (
         <Panel flush>
           <EmptyState
@@ -88,32 +91,47 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
           />
         </Panel>
       ) : (
-        <div className="space-y-2">
-          {items.map((r: any) => (
-            <Card key={r.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onOpen(r.id)}>
-              <CardContent className="p-3 flex items-center gap-3">
+        <Panel flush>
+          <div className="divide-y divide-border/60">
+            {items.map((r: any) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onOpen(r.id)}
+                className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/40 transition-colors"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-bold text-xs">{r.manifest_number}</span>
-                    <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[r.status]}`}>
+                    <Badge variant="outline" className={cn('text-xs capitalize', STATUS_COLOR[r.status])}>
                       {r.status.replace('_', ' ')}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {format(new Date(r.emission_date), 'dd/MM/yy')}
-                      {r.vehicle_plate && ` · 🚛 ${r.vehicle_plate}`}
                       {(r.transporters?.name || r.transporter_name) && ` · ${r.transporters?.name || r.transporter_name}`}
                     </span>
+                    {r.vehicle_plate && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Truck className="h-3 w-3" /> {r.vehicle_plate}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {r.total_volumes} volumes · {r.total_pairs} pares · {Number(r.total_weight_kg || 0).toFixed(1)} kg · {r.destinations_count} destino(s)
-                    {r.driver_name && ` · 👤 ${r.driver_name}`}
+                  <p className="text-xs text-muted-foreground mt-0.5 tabular-nums flex items-center gap-1 flex-wrap">
+                    <span>
+                      {r.total_volumes} volumes · {r.total_pairs} pares · {Number(r.total_weight_kg || 0).toFixed(1)} kg · {r.destinations_count} destino(s)
+                    </span>
+                    {r.driver_name && (
+                      <span className="inline-flex items-center gap-1">
+                        · <User className="h-3 w-3" /> {r.driver_name}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+        </Panel>
       )}
     </>
   );
@@ -199,56 +217,59 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shipping_manifest', id] }),
   });
 
-  if (!manifest) return <p className="p-6 text-sm text-muted-foreground">Carregando…</p>;
+  if (!manifest) return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
 
   const editable = !['cancelado', 'entregue'].includes(manifest.status);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <FileCheck2 className="h-5 w-5 text-primary" /> {manifest.manifest_number}
-              <Badge variant="outline" className={`text-xs capitalize ${STATUS_COLOR[manifest.status]}`}>
-                {manifest.status.replace('_', ' ')}
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {format(new Date(manifest.emission_date), 'dd/MM/yyyy')}
-              {manifest.vehicle_plate && ` · 🚛 ${manifest.vehicle_plate}`}
-              {manifest.driver_name && ` · 👤 ${manifest.driver_name}`}
-              {manifest.transporters?.name && ` · ${manifest.transporters.name}`}
-            </p>
+      <EditorialPageHeader
+        sectionLabel="FISCAL · MANIFESTOS"
+        title={manifest.manifest_number}
+        description={
+          format(new Date(manifest.emission_date), 'dd/MM/yyyy') +
+          (manifest.vehicle_plate ? ` · veículo ${manifest.vehicle_plate}` : '') +
+          (manifest.driver_name ? ` · motorista ${manifest.driver_name}` : '') +
+          (manifest.transporters?.name ? ` · ${manifest.transporters.name}` : '')
+        }
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Button>
+            <Badge variant="outline" className={cn('capitalize', STATUS_COLOR[manifest.status])}>
+              {manifest.status.replace('_', ' ')}
+            </Badge>
+            {manifest.status === 'em_montagem' && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => updateStatus.mutate('liberado')}>
+                <Lock className="h-3.5 w-3.5" /> Liberar
+              </Button>
+            )}
+            {manifest.status === 'liberado' && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => updateStatus.mutate('em_transito')}>
+                <Truck className="h-3.5 w-3.5" /> Em trânsito
+              </Button>
+            )}
+            {manifest.status === 'em_transito' && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => updateStatus.mutate('entregue')}>
+                <Package className="h-3.5 w-3.5" /> Entregue
+              </Button>
+            )}
+            {editable && (
+              <Button size="sm" variant="outline" className="h-9 gap-1.5 text-destructive" onClick={() => {
+                if (!confirm('Cancelar este romaneio?')) return;
+                updateStatus.mutate('cancelado');
+              }}>
+                <Trash2 className="h-3.5 w-3.5" /> Cancelar
+              </Button>
+            )}
           </div>
-        </div>
-        <div className="flex gap-1.5">
-          {manifest.status === 'em_montagem' && (
-            <Button size="sm" className="gap-1.5" onClick={() => updateStatus.mutate('liberado')}>
-              <Lock className="h-3.5 w-3.5" /> Liberar
-            </Button>
-          )}
-          {manifest.status === 'liberado' && (
-            <Button size="sm" className="gap-1.5" onClick={() => updateStatus.mutate('em_transito')}>
-              <Truck className="h-3.5 w-3.5" /> Em trânsito
-            </Button>
-          )}
-          {manifest.status === 'em_transito' && (
-            <Button size="sm" className="gap-1.5" onClick={() => updateStatus.mutate('entregue')}>
-              <Package className="h-3.5 w-3.5" /> Entregue
-            </Button>
-          )}
-          {editable && (
-            <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={() => {
-              if (!confirm('Cancelar este romaneio?')) return;
-              updateStatus.mutate('cancelado');
-            }}>
-              <Trash2 className="h-3.5 w-3.5" /> Cancelar
-            </Button>
-          )}
-        </div>
-      </div>
+        }
+      />
 
       <StatGrid>
         <StatCard label="Volumes" value={manifest.total_volumes} />
@@ -316,7 +337,7 @@ function VolumesTab({
               <tbody>
                 {volumes.map((v: any) => (
                   <tr key={v.id} className="border-b border-border/40">
-                    <td className="p-2 font-mono">{v.volume_number}</td>
+                    <td className="p-2 font-mono tabular-nums">{v.volume_number}</td>
                     <td className="p-2">
                       {v.sale_orders?.order_number ? (
                         <>
@@ -332,8 +353,8 @@ function VolumesTab({
                       </span>
                     </td>
                     <td className="p-2"><Badge variant="outline" className="text-xs capitalize">{v.volume_type?.replace('_', ' ')}</Badge></td>
-                    <td className="p-2 text-right font-mono">{v.total_pairs}</td>
-                    <td className="p-2 text-right font-mono">{Number(v.weight_kg).toFixed(1)} kg</td>
+                    <td className="p-2 text-right font-mono tabular-nums">{v.total_pairs}</td>
+                    <td className="p-2 text-right font-mono tabular-nums">{Number(v.weight_kg).toFixed(1)} kg</td>
                     <td className="p-2 font-mono text-xs">{v.ean || '—'}</td>
                     <td className="p-2 text-right">
                       {editable && (

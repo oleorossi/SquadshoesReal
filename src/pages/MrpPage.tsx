@@ -32,7 +32,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function MrpPage() {
-  const { data: suggestions = [], isLoading } = useMrpSuggestions();
+  const { data: suggestions = [] } = useMrpSuggestions();
   const { data: orders = [] } = useOrders();
   const { data: products = [] } = useProducts();
   const { data: sheets = [] } = useTechnicalSheets();
@@ -161,9 +161,9 @@ export default function MrpPage() {
                       <TableRow key={i}>
                         <TableCell className="font-medium">{alert.product.name}</TableCell>
                         <TableCell className="text-muted-foreground">{alert.product.sku}</TableCell>
-                        <TableCell className="text-right">{alert.available} {alert.product.unit}</TableCell>
-                        <TableCell className="text-right">{alert.product.min_stock}</TableCell>
-                        <TableCell className="text-right font-bold text-destructive">{alert.shortage}</TableCell>
+                        <TableCell className="text-right tabular-nums">{alert.available} {alert.product.unit}</TableCell>
+                        <TableCell className="text-right tabular-nums">{alert.product.min_stock}</TableCell>
+                        <TableCell className="text-right font-bold text-destructive tabular-nums">{alert.shortage}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={alert.available === 0 ? 'bg-destructive/15 text-destructive' : 'bg-warning/15 text-warning'}>
                             {alert.available === 0 ? 'Sem estoque' : 'Abaixo do mínimo'}
@@ -235,9 +235,9 @@ export default function MrpPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="font-medium">{s.product_name || s.products?.name || '-'}</TableCell>
-                        <TableCell className="text-right">{s.required_quantity}</TableCell>
-                        <TableCell className="text-right">{s.available_quantity}</TableCell>
-                        <TableCell className="text-right font-bold text-destructive">{s.shortage_quantity}</TableCell>
+                        <TableCell className="text-right tabular-nums">{s.required_quantity}</TableCell>
+                        <TableCell className="text-right tabular-nums">{s.available_quantity}</TableCell>
+                        <TableCell className="text-right font-bold text-destructive tabular-nums">{s.shortage_quantity}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={PRIORITY_COLORS[s.priority] || ''}>
                             {s.priority === 'rush' ? 'Urgente' : s.priority === 'low' ? 'Baixa' : 'Normal'}

@@ -1443,13 +1443,12 @@ export default function SaleOrders() {
 
   if (isError) {
     return (
-      
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <p className="text-destructive font-medium">Erro ao carregar pedidos</p>
-          <p className="text-sm text-muted-foreground">{error?.message || 'Tente recarregar a página'}</p>
-          <Button variant="outline" onClick={() => window.location.reload()}>Recarregar</Button>
-        </div>
-      
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <AlertTriangle className="h-8 w-8 text-destructive" />
+        <p className="text-destructive font-medium">Erro ao carregar pedidos</p>
+        <p className="text-sm text-muted-foreground">{error?.message || 'Tente recarregar a página'}</p>
+        <Button variant="outline" onClick={() => window.location.reload()}>Recarregar</Button>
+      </div>
     );
   }
 

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, CurrencyDollar as DollarSign, Calendar, Tag, PencilSimple as Pencil } from '@phosphor-icons/react';
+import { Plus, CurrencyDollar as DollarSign, Calendar, Tag, PencilSimple as Pencil, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -133,7 +133,11 @@ export default function PriceLists() {
         }
       />
 
-      {isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
+      {isLoading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
 
       {!isLoading && lists.length === 0 && (
         <Panel flush>

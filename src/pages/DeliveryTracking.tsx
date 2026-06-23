@@ -3,15 +3,16 @@ import { Badge } from '@/components/ui/badge';
 import { Pulse as Activity } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 
+// Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS: Record<string, string> = {
-  aguardando_coleta: 'bg-blue-100 text-blue-700',
-  coletado: 'bg-indigo-100 text-indigo-700',
-  em_transito: 'bg-amber-100 text-amber-700',
-  saiu_para_entrega: 'bg-purple-100 text-purple-700',
-  entregue: 'bg-emerald-100 text-emerald-700',
-  devolvido: 'bg-amber-100 text-amber-700',
-  extraviado: 'bg-destructive/10 text-destructive',
-  recusa: 'bg-destructive/10 text-destructive',
+  aguardando_coleta: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  coletado: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+  em_transito: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  saiu_para_entrega: 'bg-violet-500/10 text-violet-600 border-violet-500/20',
+  entregue: 'bg-green-500/10 text-green-600 border-green-500/20',
+  devolvido: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  extraviado: 'bg-destructive/10 text-destructive border-destructive/30',
+  recusa: 'bg-destructive/10 text-destructive border-destructive/30',
 };
 
 export default function DeliveryTracking() {

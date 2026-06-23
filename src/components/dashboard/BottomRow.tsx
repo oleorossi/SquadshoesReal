@@ -14,9 +14,9 @@ const STATUS_DOT: Record<OPStatus, string> = {
 };
 
 const STATUS_TAG: Record<OPStatus, string> = {
-  ok:   "bg-green-500/10 text-green-700 border-green-200",
-  warn: "bg-amber-500/10 text-amber-700 border-amber-200",
-  err:  "bg-red-500/10  text-red-700   border-red-200",
+  ok:   "bg-green-500/10 text-green-600 border-green-500/20",
+  warn: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+  err:  "bg-red-500/10   text-red-600   border-red-500/20",
 };
 
 const STATUS_LABEL: Record<string, string> = {

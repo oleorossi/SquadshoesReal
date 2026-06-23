@@ -4,11 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, MagnifyingGlass as Search, Image as ImageIcon, User, Users as UsersIcon, FloppyDisk as Save, Upload, X, Footprints } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProducts } from '@/hooks/useProducts';
@@ -212,15 +213,20 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
       </div>
 
       <Card>
-        <CardHeader className="pb-0" />
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={ImageIcon}
+              title="Nenhum registro encontrado"
+              description="Cadastre a arte/silk de um solado para começar."
+            />
           ) : (
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>Solado</TableHead>
                   <TableHead>Categoria</TableHead>
@@ -230,14 +236,7 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                      Nenhum registro encontrado.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((reg: any) => {
+                {filtered.map((reg: any) => {
                     const product = products.find((p: any) => p.id === reg.sole_product_id);
                     const displayName = reg.sole_type || (product ? getBaseName(product.name) : 'N/A');
                     return (
@@ -298,8 +297,7 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                )}
+                  })}
               </TableBody>
             </Table>
           )}
@@ -446,7 +444,7 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
               </div>
             )}
             {scope === 'default' && (
-              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-600">
                 <strong>Padrão do solado:</strong> esta silk será usada por padrão quando nenhum cliente
                 ou grupo econômico tiver silk própria cadastrada.
               </div>

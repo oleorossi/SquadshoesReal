@@ -47,38 +47,40 @@ export default function Setores() {
    return (
      <div className="space-y-4">
        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-10 max-w-7xl">
-           <TabsTrigger value="corte" className="gap-1.5">
-             <Scissors className="h-4 w-4" /> Corte Palmilha
-           </TabsTrigger>
-            <TabsTrigger value="forracao" className="gap-1.5">
-              <Cloud className="h-4 w-4" /> Corte Forração
-            </TabsTrigger>
-            <TabsTrigger value="costura" className="gap-1.5">
-              <Pen className="h-4 w-4" /> Costura
-            </TabsTrigger>
-            <TabsTrigger value="aviamento" className="gap-1.5">
-              <Paperclip className="h-4 w-4" /> Aviamento
-            </TabsTrigger>
-            <TabsTrigger value="silk" className="gap-1.5">
-              <Palette className="h-4 w-4" /> Silk
-            </TabsTrigger>
-            <TabsTrigger value="colagem" className="gap-1.5">
-              <Flame className="h-4 w-4" /> Colagem
-            </TabsTrigger>
-            <TabsTrigger value="montagem" className="gap-1.5">
-              <Wrench className="h-4 w-4" /> Montagem
-            </TabsTrigger>
-            <TabsTrigger value="solagem" className="gap-1.5">
-              <Footprints className="h-4 w-4" /> Solagem
-            </TabsTrigger>
-            <TabsTrigger value="acabamento" className="gap-1.5">
-              <Sparkles className="h-4 w-4" /> Acabamento
-            </TabsTrigger>
-            <TabsTrigger value="expedicao" className="gap-1.5">
-              <Package className="h-4 w-4" /> Expedição
-            </TabsTrigger>
-         </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
+            <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
+             <TabsTrigger value="corte" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+               <Scissors className="h-4 w-4" /> Corte Palmilha
+             </TabsTrigger>
+              <TabsTrigger value="forracao" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Cloud className="h-4 w-4" /> Corte Forração
+              </TabsTrigger>
+              <TabsTrigger value="costura" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Pen className="h-4 w-4" /> Costura
+              </TabsTrigger>
+              <TabsTrigger value="aviamento" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Paperclip className="h-4 w-4" /> Aviamento
+              </TabsTrigger>
+              <TabsTrigger value="silk" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Palette className="h-4 w-4" /> Silk
+              </TabsTrigger>
+              <TabsTrigger value="colagem" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Flame className="h-4 w-4" /> Colagem
+              </TabsTrigger>
+              <TabsTrigger value="montagem" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Wrench className="h-4 w-4" /> Montagem
+              </TabsTrigger>
+              <TabsTrigger value="solagem" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Footprints className="h-4 w-4" /> Solagem
+              </TabsTrigger>
+              <TabsTrigger value="acabamento" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Sparkles className="h-4 w-4" /> Acabamento
+              </TabsTrigger>
+              <TabsTrigger value="expedicao" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Package className="h-4 w-4" /> Expedição
+              </TabsTrigger>
+           </TabsList>
+          </div>
 
          <TabsContent value="corte">
           <Suspense fallback={<TabLoader />}>

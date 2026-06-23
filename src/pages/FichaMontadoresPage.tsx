@@ -15,8 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { useEmployees } from "@/hooks/useEmployees";
-import { Printer, Plus, ChartBar, ClipboardText, ListChecks } from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { Printer, Plus, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar } from "@phosphor-icons/react";
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
@@ -176,7 +178,6 @@ export default function FichaMontadoresPage() {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const { data: employees = [] } = useEmployees();
   // Só funcionários do CARGO montagem (montadores) entram no select — pedido do
@@ -229,7 +230,7 @@ export default function FichaMontadoresPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     const { data, error } = await db.from("ficha_montadores").select("*").order("dia", { ascending: false }).order("criado_em", { ascending: false });
-    if (error) setMsg({ type: "err", text: "Erro ao carregar: " + error.message });
+    if (error) toast.error("Erro ao carregar: " + error.message);
     else setFichas((data ?? []) as Ficha[]);
     setLoading(false);
   }, [db]);
@@ -238,7 +239,7 @@ export default function FichaMontadoresPage() {
   function novaFicha() {
     setEditingId(null); setDia(todayISO());
     setMontadorId(""); setMontadorNome(""); setSoladoId(""); setSoladoNome(""); setCor(""); setValorPar(0);
-    setGrade("adulto"); setSizes(DEFAULTS.adulto.sizes); setQtys(DEFAULTS.adulto.qtys); setCopias(1); setMsg(null);
+    setGrade("adulto"); setSizes(DEFAULTS.adulto.sizes); setQtys(DEFAULTS.adulto.qtys); setCopias(1);
   }
   function trocarGrade(g: Grade) { setGrade(g); setSizes([...DEFAULTS[g].sizes]); setQtys([...DEFAULTS[g].qtys]); }
   const setSize = (i: number, v: string) => setSizes((a) => a.map((x, j) => (j === i ? v : x)));

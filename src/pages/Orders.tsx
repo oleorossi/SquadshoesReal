@@ -1135,7 +1135,7 @@ function getWeekOptions() {
           </div>
 
           {/* Status pills */}
-          <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1 shrink-0">
+          <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1 shrink-0 h-9">
             {[
               { value: 'active',      label: 'Abertas' },
               { value: 'Em Produção', label: 'Em Prod.' },
@@ -1161,7 +1161,7 @@ function getWeekOptions() {
           </div>
 
           {/* View mode toggle: Lista | Kanban */}
-          <div className="inline-flex rounded-md border bg-muted/30 p-0.5 shrink-0">
+          <div className="inline-flex items-center rounded-md border bg-muted/30 p-0.5 shrink-0 h-9">
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
@@ -1279,17 +1279,16 @@ function getWeekOptions() {
 
         {/* ── Painel de filtros (colapsável) ── */}
         {filtersOpen && (
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filtros e Agrupamento</span>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground gap-1 px-2">
-                  <X className="h-3 w-3" /> Limpar
-                </Button>
-              )}
-            </div>
-
+        <Panel
+          eyebrow="Filtros"
+          title="Filtros e Agrupamento"
+          actions={hasActiveFilters ? (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground gap-1 px-2">
+              <X className="h-3 w-3" /> Limpar
+            </Button>
+          ) : undefined}
+          bodyClassName="space-y-3"
+        >
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               {/* Status */}
               <Select value={normalizedStatusFilter} onValueChange={setStatusFilter}>
@@ -1379,9 +1378,7 @@ function getWeekOptions() {
                 Grupo Econômico
               </Button>
             </div>
-
-          </CardContent>
-        </Card>
+        </Panel>
         )}
 
         {/* ── Barra de resumo + seleção ── */}

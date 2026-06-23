@@ -13,12 +13,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Link } from 'react-router-dom';
+import { formatCurrency } from '@/lib/utils';
 
+// Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS: Record<string, string> = {
-  em_andamento: 'bg-blue-100 text-blue-700',
-  conciliada: 'bg-emerald-100 text-emerald-700',
-  divergencia: 'bg-amber-100 text-amber-700',
-  cancelada: 'bg-muted text-muted-foreground',
+  em_andamento: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  conciliada: 'bg-green-500/10 text-green-600 border-green-500/20',
+  divergencia: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  cancelada: 'bg-muted text-muted-foreground border-border',
 };
 
 const emptyForm = {
@@ -65,14 +67,14 @@ export default function BankReconciliation() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-blue-500/30 bg-blue-500/5">
+      <Card className="border-blue-500/20 bg-blue-500/10">
         <CardContent className="py-3 px-4 flex items-start gap-3">
-          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
           <div className="flex-1 text-sm">
-            <p className="font-medium text-blue-900 dark:text-blue-200">
+            <p className="font-medium text-blue-600">
               Histórico de conciliações persistidas
             </p>
-            <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Use "Nova Conciliação" pra registrar uma sessão. Pra fazer o match detalhado
               contra AR/AP (com import OFX/CSV), abra a aba <span className="font-medium">Conciliação</span> dentro de Financeiro.
             </p>
@@ -99,10 +101,10 @@ export default function BankReconciliation() {
         columns={[
           { key: 'reconciliation_date', label: 'Data', render: r => format(new Date(r.reconciliation_date), 'dd/MM/yy') },
           { key: 'bank_account', label: 'Conta', render: r => <span className="text-xs font-mono">{r.bank_account || '—'}</span> },
-          { key: 'total_credits', label: 'Créditos', align: 'right', render: r => <span className="text-emerald-600 font-mono text-xs">R$ {Number(r.total_credits).toFixed(2)}</span> },
-          { key: 'total_debits', label: 'Débitos', align: 'right', render: r => <span className="text-destructive font-mono text-xs">R$ {Number(r.total_debits).toFixed(2)}</span> },
-          { key: 'matched_count', label: 'Conciliados', align: 'right' },
-          { key: 'unmatched_count', label: 'Pendentes', align: 'right', render: r => <span className={r.unmatched_count > 0 ? 'text-amber-600 font-bold' : ''}>{r.unmatched_count}</span> },
+          { key: 'total_credits', label: 'Créditos', align: 'right', render: r => <span className="text-green-600 font-mono text-xs tabular-nums">{formatCurrency(Number(r.total_credits))}</span> },
+          { key: 'total_debits', label: 'Débitos', align: 'right', render: r => <span className="text-destructive font-mono text-xs tabular-nums">{formatCurrency(Number(r.total_debits))}</span> },
+          { key: 'matched_count', label: 'Conciliados', align: 'right', render: r => <span className="tabular-nums">{r.matched_count}</span> },
+          { key: 'unmatched_count', label: 'Pendentes', align: 'right', render: r => <span className={`tabular-nums ${r.unmatched_count > 0 ? 'text-amber-600 font-bold' : ''}`}>{r.unmatched_count}</span> },
           { key: 'status', label: 'Status', render: r => <Badge variant="outline" className={`${STATUS[r.status]} text-xs capitalize`}>{r.status.replace('_',' ')}</Badge> },
         ]}
       />

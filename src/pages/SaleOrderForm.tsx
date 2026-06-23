@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { PvGeneratedServiceOrdersCard } from '@/components/sale-orders/PvGeneratedServiceOrdersCard';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
@@ -1078,46 +1079,36 @@ export default function SaleOrderForm() {
 
   if (loading) {
     return (
-      
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
     <>
       <div className="w-full space-y-6 pb-20">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-background/80 backdrop-blur-md sticky top-0 z-10 py-4 -mx-4 px-4 sm:mx-0 sm:px-0">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => navigate('/sales')} className="rounded-full h-10 w-10" aria-label="Voltar para Pedidos de Venda">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <span className="section-label">COMERCIAL · Pedido de Venda</span>
-              <div className="flex items-center gap-2">
-                <h2 className="display text-xl tracking-tight">
-                  {isEdit ? 'Editar Pedido' : 'Novo Pedido'}
-                </h2>
-                {/* Audit visual #16: mostra order_number (PV-2026-XXXXX) em vez
-                    de UUID truncado no header. UUID é interno e irrelevante
-                    pra usuário. Cai no UUID truncado só se ainda não carregou. */}
-                {isEdit && (form?.order_number || id) && (
-                  <Badge variant="secondary" className="font-mono">
-                    {form?.order_number || id?.substring(0, 8)}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {isEdit ? 'Atualize os dados e itens do pedido comercial' : 'Preencha os dados para criar um novo pedido comercial'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-             <Button variant="ghost" onClick={() => navigate('/sales')}>Cancelar</Button>
-          </div>
-        </div>
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · Pedido de Venda"
+          title={isEdit ? 'Editar Pedido' : 'Novo Pedido'}
+          description={isEdit ? 'Atualize os dados e itens do pedido comercial' : 'Preencha os dados para criar um novo pedido comercial'}
+          actions={
+            <>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => navigate('/sales')}>
+                <ArrowLeft className="h-4 w-4" /> Voltar
+              </Button>
+              {/* Audit visual #16: mostra order_number (PV-2026-XXXXX) em vez
+                  de UUID truncado no header. UUID é interno e irrelevante
+                  pra usuário. Cai no UUID truncado só se ainda não carregou. */}
+              {isEdit && (form?.order_number || id) && (
+                <Badge variant="secondary" className="font-mono">
+                  {form?.order_number || id?.substring(0, 8)}
+                </Badge>
+              )}
+              <Button variant="ghost" size="sm" className="h-9" onClick={() => navigate('/sales')}>Cancelar</Button>
+            </>
+          }
+        />
 
         <SaleOrderFormPanel
           form={form}

@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
@@ -268,13 +269,16 @@ export default function BankHours() {
 
   return (
     <div className="space-y-4 pb-8 page-enter">
-      {/* Header removido — vive no RHHub. Apenas ação topo. */}
-      <div className="flex items-center justify-end">
-        <Dialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-2" />Novo lançamento</Button>
-          </DialogTrigger>
-          <DialogContent>
+      <EditorialPageHeader
+        sectionLabel="RH · BANCO DE HORAS"
+        title="Banco de Horas"
+        description="Saldo por funcionário e setor, com lançamentos manuais e derivação das batidas de ponto."
+        actions={
+          <Dialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="h-9"><Plus className="h-4 w-4 mr-2" />Novo lançamento</Button>
+            </DialogTrigger>
+            <DialogContent>
               <DialogHeader><DialogTitle>Novo lançamento no banco de horas</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 <div>
@@ -356,8 +360,9 @@ export default function BankHours() {
                 </Button>
               </div>
               </DialogContent>
-        </Dialog>
-      </div>
+          </Dialog>
+        }
+      />
 
       {/* KPIs */}
         <StatGrid>
