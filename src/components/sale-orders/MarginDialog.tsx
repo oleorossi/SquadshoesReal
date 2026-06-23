@@ -96,6 +96,13 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                   if (sqlWarnings.includes('no_active_cost_policy')) {
                     errs.push(`${tag}: sem cost_policies ativa — overhead/embalagem zerados`);
                   }
+                  // A3: tira com cor não cadastrada no grupo → custo da tira não somado.
+                  const strapColors = sqlWarnings
+                    .filter((w) => w.startsWith('strap_color_not_registered:'))
+                    .map((w) => w.slice('strap_color_not_registered:'.length));
+                  if (strapColors.length > 0) {
+                    errs.push(`${tag}: tira sem produto cadastrado na cor ${strapColors.join(', ')} — custo da tira não somado`);
+                  }
                   if (conversionIssues.length > 0) {
                     errs.push(`${tag}: unidade incompatível em ${conversionIssues.join(', ')}`);
                   }
