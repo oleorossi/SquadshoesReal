@@ -61,11 +61,20 @@ import {
 // NÃO entra em sectors.ts/DISPLAY_SECTORS, então não mexe em PCP/fichas/ondas).
 // Pedido do dono 2026-06-20: custear a "Costura de Palmilha" à parte da "Costura".
 const COSTURA_PALMILHA = { key: 'costura_palmilha', label: 'Costura de Palmilha' };
+// Setor REAL das fichas de operador (GroupedSector) que NÃO é canônico em
+// sectors.ts/DISPLAY_SECTORS — entra só aqui no custeio de MO, sem mexer em
+// PCP/ondas/fichas. Pedido do dono 2026-06-23: custear "Corte Cabedal" à parte.
+const CORTE_CABEDAL = { key: 'corte_cabedal', label: 'Corte Cabedal' };
 
-// Lista canônica do PCP (DISPLAY_SECTORS) + "Costura de Palmilha" (logo após a
+// Lista canônica do PCP (DISPLAY_SECTORS) + "Corte Cabedal" (logo após Corte
+// Forração, agrupando os três cortes) + "Costura de Palmilha" (logo após a
 // Costura) + Expedição. Chave string-livre — sector_labor_rates é por texto.
 const RATE_SECTORS: { key: string; label: string }[] = [
-  ...DISPLAY_SECTORS.flatMap((s) => (s.key === 'costura' ? [s, COSTURA_PALMILHA] : [s])),
+  ...DISPLAY_SECTORS.flatMap((s) => {
+    if (s.key === 'corte_forracao') return [s, CORTE_CABEDAL];
+    if (s.key === 'costura') return [s, COSTURA_PALMILHA];
+    return [s];
+  }),
   { key: 'expedicao', label: SECTOR_LABELS.expedicao },
 ];
 
@@ -85,6 +94,7 @@ function fmtNum(v: number, max = 2): string {
 
 function sectorLabel(key: string): string {
   if (key === COSTURA_PALMILHA.key) return COSTURA_PALMILHA.label;
+  if (key === CORTE_CABEDAL.key) return CORTE_CABEDAL.label;
   return SECTOR_LABELS[key as SectorKey] ?? key;
 }
 
