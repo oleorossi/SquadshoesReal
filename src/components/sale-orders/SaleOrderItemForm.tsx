@@ -641,7 +641,23 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             consumption_per_size: refStrap.consumption_per_size || {},
           };
         });
-        if (updatedStraps.length !== currentStraps.length || !currentStraps.every(s => refStrapIds.has(s.id))) {
+        // Re-propaga também quando o MATERIAL da tira mudou na ficha (mesma id,
+        // mas trocou group/consumo/label) — antes só repropagava mudança de
+        // ESTRUTURA (qtd/ids), então editar o material da tira na ficha (ex.:
+        // 11mm→8mm) nunca chegava nos PVs já criados. A cor é sempre preservada
+        // (o PV só escolhe cor; o material vem da ficha).
+        const materialChanged = updatedStraps.some((u: any) => {
+          const c = currentStraps.find(s => s.id === u.id);
+          if (!c) return true;
+          return (c.group_id || '') !== (u.group_id || '')
+            || (c.group_name || '') !== (u.group_name || '')
+            || (c.label || '') !== (u.label || '')
+            || Number(c.consumption || 0) !== Number(u.consumption || 0)
+            || JSON.stringify(c.consumption_per_size || {}) !== JSON.stringify(u.consumption_per_size || {});
+        });
+        if (updatedStraps.length !== currentStraps.length
+            || !currentStraps.every(s => refStrapIds.has(s.id))
+            || materialChanged) {
           update(idx, 'strap_colors', updatedStraps);
         }
       }
