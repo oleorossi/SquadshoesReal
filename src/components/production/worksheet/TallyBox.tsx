@@ -73,19 +73,28 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
     return '7.5px';
   };
 
-  // Fix 22/05/2026: tally >60 caixinhas estourava 1 A4 e aplicar keep-together
-  // no bloco inteiro forçava quebras horríveis. Solução antiga: removia
-  // keep-together → quadrados quebravam entre linhas (uma caixinha aparecia
-  // em 2 páginas, operadora pulava/contava 2×).
-  // Fix novo (auditoria mai/2026): divide em CHUNKS de 60. Cada chunk vira
-  // um `.keep-together` independente. Resultado: tally de 213 = 4 chunks
-  // (60+60+60+33) e cada chunk ocupa ~63mm; browser quebra ENTRE chunks
-  // (nunca no meio de um chunk), preservando contagem visual.
-  const CHUNK = 60;
-  const chunks: number[][] = [];
-  for (let i = 0; i < count; i += CHUNK) {
-    chunks.push(
-      Array.from({ length: Math.min(CHUNK, count - i) }, (_, j) => i + j + 1),
+  // Paginação por LINHA (2026-06-23). Histórico: o tally era fatiado em CHUNKS
+  // fixos de 60 quadrados, cada chunk um `.keep-together` grande (~3 linhas).
+  // Quando o último chunk não cabia no resto da folha, ele não podia ser
+  // fatiado → pulava INTEIRO pra folha nova, deixando-a quase vazia (defeito
+  // reportado: 90 caixas → folha com 1-60 + folha quase vazia só com 61-90; o
+  // corte sempre caía no múltiplo de 60). Agora cada LINHA de quadrados é um
+  // `.keep-together` independente e o container é quebrável → o browser quebra
+  // ENTRE LINHAS, empacotando cada folha até o fim. Nenhuma caixinha cruza a
+  // quebra (a linha é atômica) e a folha final só tem o resto real, não um
+  // chunk inteiro encalhado. Mesmo mecanismo já provado nos `.flow-card`.
+  const gapPx = size === 'sm' ? 2 : 4;
+  // Largura útil conservadora de UMA linha (px @96dpi). A4 = 210mm; descontando
+  // o padding lateral da página (2×8mm) e o padding/borda do card que costuma
+  // envolver o tally (Palmilha/Silk/Aviamento) sobram ~188mm ≈ 710px. O teto
+  // conservador garante que a linha (sem wrap, nº fixo de colunas) NUNCA estoure
+  // na horizontal — seja no tally top-level (Expedição) ou aninhado num card.
+  const ROW_WIDTH_PX = 710;
+  const cols = Math.max(1, Math.floor((ROW_WIDTH_PX + gapPx) / (boxPx + gapPx)));
+  const rows: number[][] = [];
+  for (let i = 0; i < count; i += cols) {
+    rows.push(
+      Array.from({ length: Math.min(cols, count - i) }, (_, j) => i + j + 1),
     );
   }
 
@@ -97,36 +106,32 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
         </span>
         <span className="font-mono text-[10px] text-black tracking-widest uppercase">
           {count}× · {footerTotal} {unit}
-          {chunks.length > 1 && (
-            <span className="ml-2" style={{ color: '#666' }}>· {chunks.length} grupos</span>
-          )}
         </span>
       </div>
-      <div className={cn('border-t border-black space-y-1.5', size === 'sm' ? 'pt-1' : 'pt-2')}>
-        {chunks.map((chunk, ci) => (
-          <div key={ci} className="keep-together">
-            {chunks.length > 1 && (
-              <div className="text-[8px] font-mono mb-1 uppercase tracking-widest" style={{ color: '#666' }}>
-                {chunk[0]} – {chunk[chunk.length - 1]}
+      {/* Container quebrável (break-inside:auto por padrão) — o browser pode
+          quebrar página ENTRE as linhas. Cada linha abaixo é `.keep-together`
+          (atômica), então a quebra nunca parte um quadrado. */}
+      <div
+        className={cn('border-t border-black', size === 'sm' ? 'pt-1' : 'pt-2')}
+        style={{ display: 'flex', flexDirection: 'column', gap: gapPx }}
+      >
+        {rows.map((row, ri) => (
+          <div key={ri} className="keep-together" style={{ display: 'flex', gap: gapPx }}>
+            {row.map((n) => (
+              <div
+                key={n}
+                className="flex items-center justify-center bg-white text-black font-mono font-bold leading-none"
+                style={{
+                  width: boxPx,
+                  height: boxPx,
+                  border: '1.5px solid #000',
+                  fontSize: getFontSize(n),
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {n}
               </div>
-            )}
-            <div className={cn('flex flex-wrap', size === 'sm' ? 'gap-0.5' : 'gap-1')}>
-              {chunk.map((n) => (
-                <div
-                  key={n}
-                  className="flex items-center justify-center bg-white text-black font-mono font-bold leading-none"
-                  style={{
-                    width: boxPx,
-                    height: boxPx,
-                    border: '1.5px solid #000',
-                    fontSize: getFontSize(n),
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {n}
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
         ))}
       </div>
