@@ -747,10 +747,10 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                     >
                       <TableCell className="px-3">
                         {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 && typeof sheet.images[0] === 'string' ? (
-                          <SignedImage src={sheet.images[0]} alt={sheet.name} className="h-10 w-10 rounded-md object-cover border bg-muted/30" />
+                          <SignedImage src={sheet.images[0]} alt={sheet.name} className="h-16 w-16 rounded-md object-cover border bg-muted/30" />
                         ) : (
-                          <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center border">
-                            <Package className="h-4 w-4 text-muted-foreground/30" />
+                          <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center border">
+                            <Package className="h-6 w-6 text-muted-foreground/30" />
                           </div>
                         )}
                       </TableCell>

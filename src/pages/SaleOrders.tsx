@@ -2374,7 +2374,7 @@ export default function SaleOrders() {
                           <div key={key}>
                             {/* Cabeçalho da referência (uma vez por grupo) */}
                             <div className="flex items-center gap-3 bg-muted/40 px-4 py-2.5">
-                              {g.refImage ? <img src={g.refImage} alt={g.refName} className="h-11 w-11 rounded object-cover border shrink-0" /> : <div className="h-11 w-11 rounded bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
+                              {g.refImage ? <img src={g.refImage} alt={g.refName} className="h-16 w-16 rounded-md object-cover border shrink-0" /> : <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
                               <div className="min-w-0 flex-1">
                                 {g.refId ? (
                                   <button type="button" onClick={() => { setDetailDialogOpen(false); navigate(`/fichas-tecnicas?ref=${g.refId}`); }} title="Abrir ficha técnica desta referência" className="group inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline text-left">

@@ -781,7 +781,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             />
           )}
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded border bg-muted overflow-hidden flex-shrink-0">
+            <div className="h-16 w-16 rounded-md border bg-muted overflow-hidden flex-shrink-0">
               {(() => {
                 // Priority: ref images[] → ref image_url
                 // (color variant images removidas — variante de cor não existe mais)
@@ -794,7 +794,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   <img src={imgSrc} alt={selectedRef?.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                    <Package className="h-5 w-5" />
+                    <Package className="h-7 w-7" />
                   </div>
                 );
               })()}
@@ -1595,12 +1595,12 @@ function ReferenceSearch({
               )}
             >
               <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className="h-10 w-10 rounded border bg-muted overflow-hidden flex-shrink-0">
+                <div className="h-14 w-14 rounded-md border bg-muted overflow-hidden flex-shrink-0">
                   {ref.image_url ? (
                     <img src={ref.image_url} alt={ref.name} className="h-full w-full object-cover" />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center text-muted-foreground/30">
-                      <Package className="h-4 w-4" />
+                      <Package className="h-5 w-5" />
                     </div>
                   )}
                 </div>
