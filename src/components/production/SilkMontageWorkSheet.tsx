@@ -376,6 +376,32 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             </td>
           </tr>
 
+          {/* Tiras por faixa (Aviamento — layout unificado): cada tira numa linha,
+              medida em cm/par por faixa (P/M/G) nas MESMAS colunas dos pares.
+              Vermelho + negrito pra destacar a medida. (pedido do dono 2026-06-23) */}
+          {sector === 'Aviamento' && (() => {
+            const straps = (cg.components || []).filter(
+              c => /^TIRA(\s|$)/i.test(c.name || '') && Array.isArray(c.cmBands) && c.cmBands!.length > 0,
+            );
+            if (straps.length === 0) return null;
+            return straps.map((c, i) => (
+              <tr key={`strap-row-${i}`} style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}>
+                <td className="py-1 font-mono font-bold uppercase tracking-wider" style={{ borderRight: '1px solid #000', padding: '4px 6px', fontSize: '9px', color: '#C00000' }}>
+                  {c.name}
+                </td>
+                {activeSizes.map(s => {
+                  const v = c.cmBands!.find(b => b.band === s)?.cm;
+                  return (
+                    <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
+                      {v != null ? `${v}cm` : '—'}
+                    </td>
+                  );
+                })}
+                <td className="py-1" />
+              </tr>
+            ));
+          })()}
+
           {/* Etapas de Aviamento — campos fillable por etapa × numeração.
               A lista vem da ficha técnica (cg.aviamentoSteps).
               Fallback pro comportamento antigo (Frente+Traseira)
@@ -407,6 +433,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}
         >
           ⚠ grade por {usingAviamentoPmg ? 'faixa P/M/G' : 'faca'} não fecha com o total ({displayedSum} ≠ {cg.totalPairs} pares) — conferir mapeamento de numerações
+        </p>
+      )}
+      {sector === 'Aviamento' && (cg.components || []).some(c => /^TIRA(\s|$)/i.test(c.name || '') && (c.cmBands?.length ?? 0) > 0) && (
+        <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
+          Linhas TIRA = medida em cm "do par" por faixa de numeração (P/M/G).
         </p>
       )}
       </>
@@ -860,7 +891,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 {/* Sequência de Tiras / componentes auxiliares (Aviamento /
                     Montagem) — insumo de execução, com ordem das tiras da
                     ficha técnica (EXCEÇÃO mantida na simplificação 2026-06-12). */}
-                {(sector === 'Aviamento' || sector === 'Montagem') && cg.components && cg.components.length > 0 && (() => {
+                {/* Aviamento: tiras foram pro grid unificado (P/M/G). Aqui só Montagem. */}
+                {sector === 'Montagem' && cg.components && cg.components.length > 0 && (() => {
                   const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
                   // Colunas de medida por faixa P/M/G (cada tamanho tem um comprimento).
                   // Sem faixas cadastradas → coluna única "Medida".
