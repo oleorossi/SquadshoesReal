@@ -1974,10 +1974,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               {sheetMaterials.length}
             </Badge>
           </TabsTrigger>
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
-          <TabsTrigger value="range-aviamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Paperclip className="h-3.5 w-3.5" /> Range Aviamento
-          </TabsTrigger>
+          {/* Aba só existe quando o modelo TEM tiras (config de tiras + range P/M/G). */}
+          {form.has_straps && (
+            <>
+              <Separator orientation="vertical" className="h-5 mx-0.5" />
+              <TabsTrigger value="range-aviamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+                <Paperclip className="h-3.5 w-3.5" /> Range Aviamento
+              </TabsTrigger>
+            </>
+          )}
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="escalonamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Ruler className="h-3.5 w-3.5" /> Escalonamento
@@ -3212,6 +3217,87 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <Label htmlFor="has-straps" className="text-sm font-medium">Habilitar tiras neste modelo</Label>
             </div>
             {form.has_straps && (
+              <p className="text-xs text-muted-foreground">
+                As tiras agora são configuradas na aba <strong className="text-foreground">Range Aviamento</strong>.
+              </p>
+            )}
+ 
+             {/* ═══ SECTION: Harmonização de Cores (Mapeamentos) ═══ */}
+             <div className="space-y-4">
+               <div className="flex items-center gap-2">
+                 <Wand2 className="h-4 w-4 text-primary" />
+                 <h3 className="text-sm font-semibold">Harmonização de Cores</h3>
+               </div>
+               <div className="grid grid-cols-1 gap-6">
+                 {/* Palmilha Mapping */}
+                  <PalmilhaColorMappingPanel
+                    sheetId={sheet.id}
+                    corPredominanteId={form.cor_predominante_id}
+                    corSoladoId={form.cor_solado_id}
+                    insoleGroupName={form.insole_material || ''}
+                    palmilhaColorMappings={palmilhaColorMappings}
+                    upsertPalmilha={upsertPalmilhaColor}
+                    products={products}
+                    groups={groups}
+                  />
+ 
+                 {/* Forração Mapping */}
+                 <ForracaoColorMappingPanel
+                   sheetId={sheet.id}
+                   corPredominanteId={form.cor_predominante_id}
+                   liningGroupName={form.lining_material || ''}
+                   liningColorMappings={liningColorMappings}
+                   upsertLining={upsertLiningColor}
+                   products={products}
+                   groups={groups}
+                 />
+               </div>
+             </div>
+          </div>
+
+          {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
+          <div className="rounded-lg border bg-card p-4">
+            <SheetBOM sheetId={sheet.id} lossPct={form.consumption_loss_pct} safetyPct={form.safety_margin_pct}
+              onLossChange={v => updateField('consumption_loss_pct', v)} onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
+          </div>
+
+          {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
+            <div className="rounded-lg border bg-card p-4">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Consumos Técnicos
+                </h3>
+              </div>
+              <ComponentSheets
+                embedded
+                filterProductIds={sheetMaterials.map((m: any) => m.product_id).filter(Boolean)}
+                hideSoles={true}
+              />
+            </div>
+
+            {/* ═══ SECTION 5: Análise de Custos Unificada ═══ */}
+            <div className="rounded-lg border bg-card p-4 h-full">
+              <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* TAB: Range Aviamento — faixas P/M/G próprias do setor de Aviamento */}
+        <TabsContent value="range-aviamento" className="mt-4 space-y-4">
+          <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
+            <Paperclip className="h-4 w-4 text-primary shrink-0" />
+            <div>
+              <div className="text-sm font-bold">Range Aviamento</div>
+              <div className="text-xs text-muted-foreground">
+                Define as faixas P/M/G do setor de Aviamento. A ficha de operador de Aviamento agrupa as numerações
+                por faixa (segmento próprio, independente das facas de Corte Cabedal).
+              </div>
+            </div>
+          </div>
+            {form.has_straps && (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
                   Defina quantas tiras este modelo possui, o <strong>material</strong> de cada uma
@@ -3401,82 +3487,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                  <CatalogModelsPanel sheetId={sheet.id} strapColors={form.strap_colors || []} />
                </div>
              )}
- 
-             {/* ═══ SECTION: Harmonização de Cores (Mapeamentos) ═══ */}
-             <div className="space-y-4">
-               <div className="flex items-center gap-2">
-                 <Wand2 className="h-4 w-4 text-primary" />
-                 <h3 className="text-sm font-semibold">Harmonização de Cores</h3>
-               </div>
-               <div className="grid grid-cols-1 gap-6">
-                 {/* Palmilha Mapping */}
-                  <PalmilhaColorMappingPanel
-                    sheetId={sheet.id}
-                    corPredominanteId={form.cor_predominante_id}
-                    corSoladoId={form.cor_solado_id}
-                    insoleGroupName={form.insole_material || ''}
-                    palmilhaColorMappings={palmilhaColorMappings}
-                    upsertPalmilha={upsertPalmilhaColor}
-                    products={products}
-                    groups={groups}
-                  />
- 
-                 {/* Forração Mapping */}
-                 <ForracaoColorMappingPanel
-                   sheetId={sheet.id}
-                   corPredominanteId={form.cor_predominante_id}
-                   liningGroupName={form.lining_material || ''}
-                   liningColorMappings={liningColorMappings}
-                   upsertLining={upsertLiningColor}
-                   products={products}
-                   groups={groups}
-                 />
-               </div>
-             </div>
-          </div>
-
-          {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
-          <div className="rounded-lg border bg-card p-4">
-            <SheetBOM sheetId={sheet.id} lossPct={form.consumption_loss_pct} safetyPct={form.safety_margin_pct}
-              onLossChange={v => updateField('consumption_loss_pct', v)} onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
-          </div>
-
-          {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
-                  Consumos Técnicos
-                </h3>
-              </div>
-              <ComponentSheets
-                embedded
-                filterProductIds={sheetMaterials.map((m: any) => m.product_id).filter(Boolean)}
-                hideSoles={true}
-              />
-            </div>
-
-            {/* ═══ SECTION 5: Análise de Custos Unificada ═══ */}
-            <div className="rounded-lg border bg-card p-4 h-full">
-              <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* TAB: Range Aviamento — faixas P/M/G próprias do setor de Aviamento */}
-        <TabsContent value="range-aviamento" className="mt-4 space-y-4">
-          <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
-            <Paperclip className="h-4 w-4 text-primary shrink-0" />
-            <div>
-              <div className="text-sm font-bold">Range Aviamento</div>
-              <div className="text-xs text-muted-foreground">
-                Define as faixas P/M/G do setor de Aviamento. A ficha de operador de Aviamento agrupa as numerações
-                por faixa (segmento próprio, independente das facas de Corte Cabedal).
-              </div>
-            </div>
-          </div>
           <AviamentoRangeTab form={form} updateField={updateField} />
         </TabsContent>
 
