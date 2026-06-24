@@ -199,7 +199,17 @@ export default function PrintWorkSheets() {
   // order.id; sem isso, OperatorWorkSheet quebrava com .id.split('-') no
   // 'Imprimir tudo' e as queries de order_stages/order_costs ficavam vazias.
   const selectedOrders = useMemo(() => {
-    return rows
+    // CRÍTICO: deriva de `filtered`, NÃO de `rows`. `selectedIds` PERSISTE entre
+    // buscas — o campo de busca não limpa a seleção (só os filtros de status/PV
+    // limpam). Se derivasse de `rows` (até 500 OPs carregadas), uma OP marcada
+    // numa busca ANTERIOR e agora ESCONDIDA pela busca atual continuava entrando
+    // no lote: "Gerar fichas" puxava OPs de vários pedidos que o usuário não vê
+    // mais (bug 2026-06-24: buscou "ELIANE", 1 OP visível marcada, mas o lote
+    // saía com 3 OPs / 2388 pares — os 2208 pares extras eram seleções antigas
+    // invisíveis). Escopar à lista filtrada garante: só gera o que está VISÍVEL
+    // e marcado — coerente com o header "selecionar todas" e o toggleAll, que já
+    // operam sobre `filtered`/`allFilteredIds`.
+    return filtered
       .filter(r => selectedIds.has(r.id))
       .map(r => ({
         id: r.id,
@@ -229,7 +239,7 @@ export default function PrintWorkSheets() {
           ? r.sale_order_items!.strap_colors
           : [],
       }));
-  }, [rows, selectedIds]);
+  }, [filtered, selectedIds]);
 
   if (showPrintView) {
     return (
@@ -340,7 +350,10 @@ export default function PrintWorkSheets() {
             </Select>
             <div className="text-xs text-muted-foreground ml-2">
               {filtered.length} OP{filtered.length === 1 ? '' : 's'} encontrada{filtered.length === 1 ? '' : 's'}
-              {selectedIds.size > 0 && ` · ${selectedIds.size} selecionada${selectedIds.size === 1 ? '' : 's'} · ${totalPairs} pares`}
+              {/* Conta a seleção VISÍVEL (selectedOrders já está escopado a
+                  `filtered`), não selectedIds.size — que pode carregar seleções
+                  de buscas anteriores escondidas pelo filtro atual. */}
+              {selectedOrders.length > 0 && ` · ${selectedOrders.length} selecionada${selectedOrders.length === 1 ? '' : 's'} · ${totalPairs} pares`}
             </div>
           </div>
 
