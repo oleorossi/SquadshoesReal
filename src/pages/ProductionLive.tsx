@@ -88,20 +88,36 @@ function Ring({ value, color, size = 56, stroke = 4 }: {
   );
 }
 
-/** Hook que conta movimentos de saída na última hora pra estimar pares/h. */
+/**
+ * Ritmo da última hora (A5). PRIMÁRIO: etapas de setor concluídas na última hora
+ * (sinal de FLUXO real — agora que `completed_at` é carimbado pelo trigger em
+ * toda baixa). FALLBACK: saídas de estoque (proxy antigo, usado quando ainda não
+ * houve apontamento de conclusão na janela). */
 function useLastHourPairsRate() {
   return useQuery({
     queryKey: ['live_pairs_rate'],
     queryFn: async () => {
       const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data, error } = await supabase
-        .from('stock_movements')
-        .select('quantity, movement_type, created_at')
-        .gte('created_at', since)
-        .in('movement_type', ['out', 'consumption']);
-      if (error) throw error;
-      const totalPairs = (data || []).reduce((s, m) => s + (Number(m.quantity) || 0), 0);
-      return Math.round(totalPairs);
+      const [stagesRes, stockRes] = await Promise.all([
+        supabase
+          .from('order_stages')
+          .select('quantity_processed, quantity_total, completed_at')
+          .eq('status', 'concluido')
+          .gte('completed_at', since),
+        supabase
+          .from('stock_movements')
+          .select('quantity, movement_type, created_at')
+          .gte('created_at', since)
+          .in('movement_type', ['out', 'consumption']),
+      ]);
+      const stagePairs = (stagesRes.data || []).reduce(
+        (s, r: any) => s + (Number(r.quantity_processed) || Number(r.quantity_total) || 0), 0);
+      const stockPairs = (stockRes.data || []).reduce((s, m: any) => s + (Number(m.quantity) || 0), 0);
+      return {
+        stageCount: (stagesRes.data || []).length,
+        stagePairs: Math.round(stagePairs),
+        stockPairs: Math.round(stockPairs),
+      };
     },
     staleTime: 60_000,
     refetchInterval: 120_000, // refresh a cada 2min
@@ -119,7 +135,10 @@ export default function ProductionLive() {
   );
   const orderIds = activeOrders.map(o => o.id);
   const { data: stages = [] } = useAllOrderStages(orderIds);
-  const { data: pairsLastHour = 0 } = useLastHourPairsRate();
+  const { data: rate } = useLastHourPairsRate();
+  const stageCount = rate?.stageCount ?? 0;
+  const usingStageSignal = stageCount > 0;
+  const pairsLastHour = usingStageSignal ? (rate?.stagePairs ?? 0) : (rate?.stockPairs ?? 0);
 
   const stagesByOrderId = useMemo(() => {
     const map = new Map<string, OrderStage[]>();
@@ -162,7 +181,9 @@ export default function ProductionLive() {
                 <span className="font-mono text-sm text-muted-foreground">pares/h</span>
               </div>
               <div className="text-xs text-muted-foreground mt-2">
-                Baseado em movimentos de saída registrados
+                {usingStageSignal
+                  ? `${stageCount} etapa(s) de setor concluída(s) na última hora`
+                  : 'Sem apontamento de conclusão na última hora — baseado em saídas de estoque'}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-8">
