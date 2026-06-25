@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Scissors, Footprints, Sparkle as Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen } from '@phosphor-icons/react';
+import { Scissors, Footprints, Sparkle as Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen, Kanban } from '@phosphor-icons/react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { SectorStatusBoard } from '@/components/production/SectorStatusBoard';
 
 const Corte = lazy(() => import('./Corte'));
 const Forracao = lazy(() => import('./Costura')); // legado: Costura.tsx é "Corte Forração"
@@ -22,7 +23,7 @@ const TabLoader = () => (
   </div>
 );
 
- const SECTOR_TABS = ['corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
+ const SECTOR_TABS = ['quadro', 'corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
 
 export default function Setores() {
    // Removido 'ordens' como sub-aba — lista global vive no menu lateral em /orders
@@ -49,6 +50,9 @@ export default function Setores() {
        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
             <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
+             <TabsTrigger value="quadro" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+               <Kanban className="h-4 w-4" /> Quadro
+             </TabsTrigger>
              <TabsTrigger value="corte" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
                <Scissors className="h-4 w-4" /> Corte Palmilha
              </TabsTrigger>
@@ -81,6 +85,10 @@ export default function Setores() {
               </TabsTrigger>
            </TabsList>
           </div>
+
+         <TabsContent value="quadro">
+           <SectorStatusBoard />
+         </TabsContent>
 
          <TabsContent value="corte">
           <Suspense fallback={<TabLoader />}>
