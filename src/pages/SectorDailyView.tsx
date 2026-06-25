@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   CaretLeft, CaretRight, Warning, Calendar, Package,
   Lightning, Factory, Gauge,
@@ -112,7 +113,24 @@ function shortDate(iso: string): string {
 
 export default function SectorDailyView() {
   const today = useMemo(todayISO, []);
-  const [date, setDate] = useState<string>(today);
+  // Data persistida na URL (?date=YYYY-MM-DD): sobrevive ao reload e vira link
+  // compartilhável ("o gargalo daquele dia"). Antes era useState(today) e
+  // resetava pra hoje a cada recarga. Quando a data é hoje, removemos o param
+  // pra manter a URL limpa (o default já é hoje).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = searchParams.get('date') || today;
+  const setDate = useCallback((next: string | ((d: string) => string)) => {
+    const value = typeof next === 'function' ? next(date) : next;
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (!value || value === today) p.delete('date');
+        else p.set('date', value);
+        return p;
+      },
+      { replace: true },
+    );
+  }, [date, today, setSearchParams]);
   const [selected, setSelected] = useState<SectorDaily | null>(null);
 
   // Métrica da "linha de produção": por padrão segue o dia (hoje = WIP real,

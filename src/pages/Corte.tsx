@@ -12,6 +12,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrders } from '@/hooks/useOrders';
@@ -621,9 +622,12 @@ if (totalPairsAll !== palmTotal) {
                       ) : null; })()}
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-xs">
-                    {(order.status || '').toString()}
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <SectorStageActions stage={corteStage} orderNumber={order.order_number} />
+                    <Badge variant="outline" className="text-xs">
+                      {(order.status || '').toString()}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               {isExpanded && (

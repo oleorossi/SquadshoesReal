@@ -12,6 +12,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -693,7 +694,10 @@ export default function Solagem() {
                               ) : null;
                             })()}
                           </div>
-                          <span className="text-xs font-bold">{totalPairs} pares</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <SectorStageActions stage={solagemStage} orderNumber={order.order_number} />
+                            <span className="text-xs font-bold">{totalPairs} pares</span>
+                          </div>
                         </div>
                         {(() => {
                           const so = saleOrders.find((s: any) => s.id === order.sale_order_id);

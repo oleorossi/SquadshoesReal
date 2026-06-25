@@ -11,6 +11,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -610,9 +611,12 @@ export default function Acabamento() {
                           </p>
                         ) : null; })()}
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {(order.status || '').toString()}
-                      </Badge>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <SectorStageActions stage={acabamentoStage} orderNumber={order.order_number} />
+                        <Badge variant="outline" className="text-xs">
+                          {(order.status || '').toString()}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
 

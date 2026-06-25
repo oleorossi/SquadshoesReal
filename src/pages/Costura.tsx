@@ -11,6 +11,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueryClient } from '@tanstack/react-query';
@@ -417,6 +418,7 @@ export default function Costura() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1.5">
+                                  <SectorStageActions stage={stage} orderNumber={order.order_number} />
                                   <Badge
                                     variant={stageStatus === 'concluido' ? 'default' : stageStatus === 'em_andamento' ? 'secondary' : 'outline'}
                                     className="text-xs"

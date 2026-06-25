@@ -10,6 +10,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueryClient } from '@tanstack/react-query';
@@ -697,9 +698,12 @@ export default function Colagem() {
                             ) : null; })()}
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {(order.status || '').toString()}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <SectorStageActions stage={aviamentoStage} orderNumber={order.order_number} />
+                          <Badge variant="outline" className="text-xs">
+                            {(order.status || '').toString()}
+                          </Badge>
+                        </div>
                       </div>
                     </CardHeader>
 

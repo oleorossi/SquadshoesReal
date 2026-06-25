@@ -135,11 +135,19 @@ export function useSectorDailyLoad(dateISO: string) {
         .order('stage_order', { ascending: true });
 
       // Etapa corrente por OP = a 1ª aberta (menor stage_order). Uma OP entra em
-      // UM setor só → sem duplo-cont em realPairs.
+      // UM setor só → sem duplo-cont em realPairs. Prefere a etapa `em_andamento`
+      // (trabalho realmente apontado pelo operador) à 1ª pendente — assim, quando
+      // alguém aponta o início de um setor adiante, o WIP real reflete onde o
+      // trabalho está, não a 1ª etapa ainda não tocada.
       const currentStageByOrder = new Map<string, any>();
       for (const st of stagesRaw || []) {
         const oid = (st as any).order_id;
-        if (!currentStageByOrder.has(oid)) currentStageByOrder.set(oid, st);
+        const existing = currentStageByOrder.get(oid);
+        if (!existing) {
+          currentStageByOrder.set(oid, st);
+        } else if (existing.status !== 'em_andamento' && (st as any).status === 'em_andamento') {
+          currentStageByOrder.set(oid, st);
+        }
       }
 
       const realBySector = new Map<SectorKey, RealStageOp[]>();
