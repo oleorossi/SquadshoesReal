@@ -40,6 +40,8 @@ type Props = {
  */
 export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds, pvNumbers, onGenerated }: Props) {
   const [netOfStock, setNetOfStock] = useState(false);
+  // GUARD: cor não cadastrada bloqueia gerar OC; override consciente p/ casos benignos.
+  const [overrideColorMismatch, setOverrideColorMismatch] = useState(false);
   const { data: needs = [], isLoading, isError, error } = useMaterialsPerPv(open ? pvIds : null);
   const { data: products = [] } = useProducts();
   const generate = useGeneratePerPvPurchaseOrders();
@@ -153,6 +155,32 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               </div>
             )}
 
+            {/* GUARD — cor não cadastrada (fallback silencioso de cor) bloqueia gerar */}
+            {summary.colorMismatchCount > 0 && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <strong>{summary.colorMismatchCount} item(ns) com cor não cadastrada.</strong>{' '}
+                    A cor pedida não tem produto nesse material — o consumo caiu numa cor <strong>diferente</strong>,
+                    então a compra/débito sairiam errados. Cadastre a cor no material antes de gerar
+                    (ou marque o override abaixo se for um material sem cor, ex.: base).
+                    <ul className="mt-1.5 list-disc pl-5 text-xs space-y-0.5">
+                      {drafts.flatMap((d) => d.items.filter((i) => i.color_mismatch).map((i) => (
+                        <li key={`${i.material_id}-${i.color ?? ''}`}>
+                          {i.product_name} · <strong>{i.color || '—'}</strong>
+                        </li>
+                      )))}
+                    </ul>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
+                  <Checkbox checked={overrideColorMismatch} onCheckedChange={(v) => setOverrideColorMismatch(!!v)} />
+                  Gerar mesmo assim (entendo que a cor cairá num produto de outra cor)
+                </label>
+              </div>
+            )}
+
             {/* Grupos por fornecedor */}
             {drafts.map((d) => (
               <Collapsible key={d.supplier_id ?? '__none__'} defaultOpen className="rounded-lg border">
@@ -188,8 +216,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                         return (
                         <Fragment key={`${it.material_id}::${it.color ?? ''}`}>
                         <TableRow className={gradeSizes.length > 0 ? '[&>td]:border-b-0' : ''}>
-                          <TableCell className="font-medium">{it.product_name}</TableCell>
-                          <TableCell className="text-muted-foreground">{it.color || '—'}</TableCell>
+                          <TableCell className={`font-medium ${it.color_mismatch ? 'text-destructive' : ''}`}>
+                            {it.product_name}
+                            {it.color_mismatch && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide">⚠ cor não cadastrada</span>}
+                          </TableCell>
+                          <TableCell className={it.color_mismatch ? 'text-destructive font-semibold' : 'text-muted-foreground'}>{it.color || '—'}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">
                             {it.needed_qty.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
                           </TableCell>
@@ -255,7 +286,12 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generate.isPending}>
               Cancelar
             </Button>
-            <Button onClick={handleGenerate} disabled={generate.isPending || drafts.length === 0} className="gap-2">
+            <Button
+              onClick={handleGenerate}
+              disabled={generate.isPending || drafts.length === 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch)}
+              title={summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : undefined}
+              className="gap-2"
+            >
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
               Confirmar e Gerar
             </Button>

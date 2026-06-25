@@ -45,6 +45,26 @@ describe('grade do solado', () => {
   });
 });
 
+describe('guard color_mismatch', () => {
+  it('propaga a flag e conta no resumo (bloqueia gerar)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'napa', color: 'MARROM', needed_qty: 10, color_mismatch: true }),
+      need({ material_id: 'cola', color: null, needed_qty: 2 }),
+    ]);
+    const item = drafts.flatMap((d) => d.items).find((i) => i.material_id === 'napa')!;
+    expect(item.color_mismatch).toBe(true);
+    expect(summarizePerPvDrafts(drafts).colorMismatchCount).toBe(1);
+  });
+
+  it('OR ao mesclar mesmo material+cor (qualquer linha mismatch marca)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'napa', color: 'MARROM', needed_qty: 5, color_mismatch: false }),
+      need({ material_id: 'napa', color: 'MARROM', needed_qty: 5, color_mismatch: true }),
+    ]);
+    expect(drafts[0].items[0].color_mismatch).toBe(true);
+  });
+});
+
 describe('buildPerPvPurchaseOrders', () => {
   it('1 PV, 1 material, 1 fornecedor → 1 OC com 1 item', () => {
     const drafts = buildPerPvPurchaseOrders([
