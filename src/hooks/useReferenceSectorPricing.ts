@@ -46,7 +46,10 @@ export interface ReferenceSectorPricing {
   id: string;
   reference: string;
   lines: ReferenceSectorPricingLine[];
+  /** Custo de MO por par já AJUSTADO pela eficiência (= Σ line.cost ÷ efficiency). */
   total_cost: number;
+  /** Eficiência produtiva aplicada (%). Linhas legadas (sem a coluna) ⇒ 100 (bruto). */
+  efficiency_pct: number;
   created_at: string;
   updated_at: string;
 }
@@ -59,7 +62,7 @@ export function useReferenceSectorPricing() {
     queryFn: async (): Promise<ReferenceSectorPricing[]> => {
       const { data, error } = await supabase
         .from('reference_sector_pricing')
-        .select('id, reference, lines, total_cost, created_at, updated_at')
+        .select('id, reference, lines, total_cost, efficiency_pct, created_at, updated_at')
         .order('updated_at', { ascending: false });
       if (error) throw error;
       return (data ?? []).map((r) => ({
@@ -67,6 +70,8 @@ export function useReferenceSectorPricing() {
         reference: r.reference,
         lines: Array.isArray(r.lines) ? (r.lines as unknown[]).map(normalizeLine) : [],
         total_cost: Number(r.total_cost) || 0,
+        // Linhas anteriores à coluna não têm o campo ⇒ 100 (total já era bruto).
+        efficiency_pct: Number((r as { efficiency_pct?: number }).efficiency_pct) || 100,
         created_at: r.created_at,
         updated_at: r.updated_at,
       }));
@@ -78,19 +83,22 @@ export interface SaveReferenceSectorPricingInput {
   id?: string | null;
   reference: string;
   lines: ReferenceSectorPricingLine[];
+  /** Total já AJUSTADO pela eficiência (o custo de MO real por par). */
   total: number;
+  /** Eficiência produtiva aplicada (%). Default 100 = sem ajuste (retrocompat). */
+  efficiencyPct?: number;
 }
 
 /** Insere (sem id) ou atualiza (com id). Retorna o id salvo. */
 export function useSaveReferenceSectorPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, reference, lines, total }: SaveReferenceSectorPricingInput): Promise<string> => {
+    mutationFn: async ({ id, reference, lines, total, efficiencyPct = 100 }: SaveReferenceSectorPricingInput): Promise<string> => {
       const linesJson = lines as unknown as never; // jsonb
       if (id) {
         const { data, error } = await supabase
           .from('reference_sector_pricing')
-          .update({ reference, lines: linesJson, total_cost: total, updated_at: new Date().toISOString() })
+          .update({ reference, lines: linesJson, total_cost: total, efficiency_pct: efficiencyPct, updated_at: new Date().toISOString() })
           .eq('id', id)
           .select('id')
           .single();
@@ -99,7 +107,7 @@ export function useSaveReferenceSectorPricing() {
       }
       const { data, error } = await supabase
         .from('reference_sector_pricing')
-        .insert({ reference, lines: linesJson, total_cost: total })
+        .insert({ reference, lines: linesJson, total_cost: total, efficiency_pct: efficiencyPct })
         .select('id')
         .single();
       if (error) throw error;

@@ -49,8 +49,8 @@ import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
   sectorCostPerPair, pairsPerHourFromCapacity, totalModPerPair, countActiveSectors,
-  pairsPerDay, dailyRate, totalDailyRate,
-  DEFAULT_HOURS_PER_DAY, type SectorPricingRow,
+  pairsPerDay, dailyRate, totalDailyRate, adjustForEfficiency,
+  DEFAULT_HOURS_PER_DAY, DEFAULT_EFFICIENCY_PCT, type SectorPricingRow,
 } from '@/lib/sectorPricing';
 import {
   useReferenceSectorPricing, useSaveReferenceSectorPricing, useDeleteReferenceSectorPricing,
@@ -166,6 +166,11 @@ export default function SectorPricingCalculator() {
   const [reference, setReference] = useState('');
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>(() => canonicalRows(0));
+  // Eficiência produtiva (%): horas pagas / capacidade teórica não viram 100% de
+  // pares (absenteísmo, setup, paradas, refugo). É o ÚNICO carregamento sobre a MO
+  // (operadores MEI ⇒ sem encargos). Default 85%; ajustável por referência.
+  const [efficiency, setEfficiency] = useState(String(DEFAULT_EFFICIENCY_PCT));
+  const efficiencyPct = parseNum(efficiency);
 
   // ── Custo-hora efetivo (override da linha OU default do setor) ──
   const defaultHourly = (sectorKey: string) => rateMap[sectorKey]?.hourly_rate ?? 0;
@@ -181,6 +186,8 @@ export default function SectorPricingCalculator() {
   const rowCostBrl = (row: Row) => sectorCostPerPair(parseNum(row.pairsPerHour), effectiveHourly(row));
 
   const total = useMemo(() => totalModPerPair(rows.filter((r) => r.sectorKey).map(toModel)), [rows, rateMap]);
+  // Total AJUSTADO pela eficiência = o custo de MO real por par (bruto ÷ η).
+  const totalAdjusted = useMemo(() => adjustForEfficiency(total, efficiencyPct), [total, efficiencyPct]);
   const activeCount = useMemo(
     () => countActiveSectors(rows.filter((r) => r.sectorKey).map(toModel)),
     [rows, rateMap],
@@ -238,7 +245,11 @@ export default function SectorPricingCalculator() {
     if (!ref) { toast.error('Preencha a referência antes de salvar'); return; }
     const lines = buildLines();
     if (lines.length === 0) { toast.error('Preencha os pares por hora de ao menos um setor'); return; }
-    const totalSnapshot = lines.reduce((a, l) => a + l.cost, 0);
+    // line.cost é o BRUTO por setor (custo-hora ÷ pares/hora); o total salvo já é
+    // AJUSTADO pela eficiência, e guardamos o % pra reconstruir na leitura.
+    const grossSnapshot = lines.reduce((a, l) => a + l.cost, 0);
+    const effToSave = efficiencyPct > 0 && efficiencyPct <= 100 ? efficiencyPct : 100;
+    const totalSnapshot = adjustForEfficiency(grossSnapshot, effToSave);
 
     let targetId = loadedId;
     if (!targetId) {
@@ -247,7 +258,7 @@ export default function SectorPricingCalculator() {
     }
 
     save.mutate(
-      { id: targetId, reference: ref, lines, total: totalSnapshot },
+      { id: targetId, reference: ref, lines, total: totalSnapshot, efficiencyPct: effToSave },
       {
         onSuccess: (id) => { setLoadedId(id); toast.success(targetId ? 'MOD atualizada' : 'MOD salva'); },
         onError: () => toast.error('Erro ao salvar'),
@@ -258,6 +269,7 @@ export default function SectorPricingCalculator() {
   const onLoad = (r: ReferenceSectorPricing) => {
     setReference(r.reference);
     setLoadedId(r.id);
+    setEfficiency(String(r.efficiency_pct ?? 100));
     setRows(
       r.lines.length
         ? r.lines.map((l) => ({
@@ -279,6 +291,7 @@ export default function SectorPricingCalculator() {
   const onNew = () => {
     setReference('');
     setLoadedId(null);
+    setEfficiency(String(DEFAULT_EFFICIENCY_PCT));
     setRows(canonicalRows(rowId.current));
     rowId.current += RATE_SECTORS.length;
   };
@@ -367,7 +380,9 @@ export default function SectorPricingCalculator() {
               <CardDescription>
                 Custo-hora ÷ pares por hora = custo de MO por par. Custo-hora default vem do salário
                 do setor (÷ {SALARY_HOUR_DIVISOR}); edite por linha pra sobrescrever. Os pares/hora podem ser
-                derivados da capacidade (pares/dia ÷ {JORNADA_HORAS}h). <strong>Pares/dia</strong> e{' '}
+                derivados da capacidade (pares/dia ÷ {JORNADA_HORAS}h). O custo bruto é dividido pela{' '}
+                <strong>eficiência produtiva</strong> — horas pagas / capacidade teórica não viram 100% de
+                pares (absenteísmo, setup, paradas, refugo). <strong>Pares/dia</strong> e{' '}
                 <strong>Diária (R$)</strong> são projeções pra jornada de {JORNADA_HORAS}h — pra avaliar
                 rendimento de prestador diarista.
               </CardDescription>
@@ -391,6 +406,23 @@ export default function SectorPricingCalculator() {
                 className="h-9"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sp-eff" className="text-xs font-medium flex items-center gap-1">
+                <Gauge className="h-3.5 w-3.5 text-muted-foreground" /> Eficiência produtiva
+              </Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  id="sp-eff"
+                  inputMode="decimal"
+                  value={efficiency}
+                  onChange={(e) => setEfficiency(e.target.value)}
+                  placeholder={String(DEFAULT_EFFICIENCY_PCT)}
+                  title="Horas pagas / capacidade teórica que viram pares. 100% = sem ajuste (ex.: pares/hora já medidos no chão de fábrica)."
+                  className="h-9 w-20 text-right text-sm tabular-nums"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
             <Button variant="outline" size="sm" onClick={restoreDefaults} className="h-8 gap-1.5">
               <ArrowClockwise className="h-3.5 w-3.5" /> Restaurar setores padrão
             </Button>
@@ -412,7 +444,8 @@ export default function SectorPricingCalculator() {
           <div className="space-y-2">
             {rows.map((row) => {
               const hourly = effectiveHourly(row);
-              const cost = rowCostBrl(row);
+              // Custo/par exibido já ajustado pela eficiência (soma dá o total ajustado).
+              const cost = adjustForEfficiency(rowCostBrl(row), efficiencyPct);
               const pph = parseNum(row.pairsPerHour);
               const ppd = pairsPerDay(pph, JORNADA_HORAS);     // derivado: pares/dia
               const dailyBrl = dailyRate(hourly, JORNADA_HORAS); // derivado: diária equivalente
@@ -521,11 +554,12 @@ export default function SectorPricingCalculator() {
                   MOD por par{reference ? ` · ${reference}` : ''}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {activeCount} {activeCount === 1 ? 'setor' : 'setores'} · soma do custo de mão de obra
+                  {activeCount} {activeCount === 1 ? 'setor' : 'setores'} · bruto {fmtBRL(total)}
+                  {efficiencyPct > 0 && efficiencyPct < 100 ? ` ÷ ${fmtNum(efficiencyPct, 1)}% eficiência` : ''}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <p className="display text-2xl tabular-nums text-primary">{fmtBRL(total)}</p>
+                <p className="display text-2xl tabular-nums text-primary">{fmtBRL(totalAdjusted)}</p>
                 <div className="flex items-center gap-1.5">
                   {loadedId && (
                     <Button variant="ghost" size="sm" onClick={onNew} className="h-9">Novo</Button>
@@ -594,7 +628,9 @@ export default function SectorPricingCalculator() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{r.reference}</p>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {resultSummary(r) || 'sem setores'} · {new Date(r.updated_at).toLocaleDateString('pt-BR')}
+                      {resultSummary(r) || 'sem setores'}
+                      {r.efficiency_pct > 0 && r.efficiency_pct < 100 ? ` · ${fmtNum(r.efficiency_pct, 1)}% efic.` : ''}
+                      {' · '}{new Date(r.updated_at).toLocaleDateString('pt-BR')}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

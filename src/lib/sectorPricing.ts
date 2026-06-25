@@ -33,6 +33,18 @@
 /** Jornada-padrão da fábrica (horas/dia) usada na conversão capacidade→pares/hora. */
 export const DEFAULT_HOURS_PER_DAY = 8;
 
+/**
+ * Eficiência produtiva default da fábrica (%). Hora paga (e capacidade teórica)
+ * NÃO viram 100% de pares: absenteísmo, setup/troca, paradas de máquina, retrabalho
+ * e refugo comem parte da jornada. O custo de MO se diluiu em MENOS pares do que a
+ * capacidade nominal sugere — por isso o custo/par real é MAIOR que o bruto.
+ *
+ * Sem encargos (todos os operadores são MEI), este é o único carregamento aplicado
+ * sobre a MO. 85% é um ponto de partida típico de chão de fábrica calçadista; ajuste
+ * por referência na UI conforme a realidade medida do setor.
+ */
+export const DEFAULT_EFFICIENCY_PCT = 85;
+
 /** Coage qualquer entrada a um número finito ≥ 0 (vazio/NaN/negativo → 0). */
 function nonNeg(v: unknown): number {
   const n = Number(v);
@@ -104,6 +116,27 @@ export function totalModPerPair(rows: SectorPricingRow[]): number {
 /** Quantos setores têm contribuição real (> 0) — pro resumo "(Y setores)". */
 export function countActiveSectors(rows: SectorPricingRow[]): number {
   return (rows ?? []).filter((r) => rowCost(r) > 0).length;
+}
+
+/**
+ * Fração de eficiência (0–1] a partir do %. Entrada inválida / ≤ 0 / > 100 ⇒ 1
+ * (sem ajuste) — nunca produz custo infinito (η=0) nem desconto (η>1).
+ */
+export function efficiencyFactor(pct: unknown): number {
+  const n = Number(pct);
+  if (!Number.isFinite(n) || n <= 0 || n > 100) return 1;
+  return n / 100;
+}
+
+/**
+ * Ajusta um custo/par BRUTO pela eficiência produtiva: bruto ÷ η.
+ * η = 85% ⇒ custo real ≈ bruto ÷ 0,85 ≈ bruto × 1,176 (a MO se dilui em menos pares).
+ * η inválido/≥100% ⇒ retorna o bruto inalterado.
+ */
+export function adjustForEfficiency(grossCostPerPair: number, efficiencyPct: unknown): number {
+  const g = nonNeg(grossCostPerPair);
+  const f = efficiencyFactor(efficiencyPct);
+  return f > 0 ? g / f : g;
 }
 
 /**
