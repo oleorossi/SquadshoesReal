@@ -1,82 +1,85 @@
 /**
- * Production Flow — quadro kanban ARRASTÁVEL das OPs por setor.
- * "Onde está cada ordem": cada OP cai na coluna do seu setor atual; arrastar pra
- * outra coluna empurra a OP pelo fluxo. Clicar abre o resumo da OP.
+ * Production Flow — "Onde está cada ordem": MATRIZ DE STATUS POR SETOR.
  *
- * Dados REAIS de order_stages (não mais o mock/production_step legado). Arrastar
- * chama a RPC advance_order_to_sector (atômica): conclui o que vem antes do alvo
- * NO FLUXO e inicia o alvo, respeitando o guard de pré-requisito e carimbando
- * started_at/completed_at via trigger.
- *
- * ⚠ A ordem das colunas é o FLUXO real (topológico), não o stage_order — na base
- * Costura tem stage_order 3 mas depende de Aviamento (4).
- *
- * UX (skills frontend-design + ui-ux-pro-max, 2026-06-25): cards clicáveis e
- * teclável (role=button, Enter/Espaço, aria-label) com feedback de pressão; foto
- * da referência com aspect-ratio reservado (sem CLS) + lazy; tokens semânticos
- * (dark-mode safe); painel lateral (Sheet) que anima da origem com escape.
+ * Por que matriz (e não kanban de 1 card): o fluxo calçadista é CONVERGENTE —
+ * cabedal, palmilha, aviamentos e silk são preparados EM PARALELO e só se casam
+ * na montagem. No banco, 46/60 OPs ativas têm as 10 etapas abertas ao mesmo
+ * tempo; a ordem dos setores no roteiro nem é consistente entre fichas. Logo a
+ * OP NÃO está "num setor" — está em vários. O padrão da indústria (shop-floor
+ * control / MES apparel: Aptean Exenta, Prodio, Kontrollis) é rastrear por
+ * OPERAÇÃO com % de conclusão, e apontar POR SETOR. É o que esta tela faz:
+ *   - linha = OP; coluna = setor; célula = status (✓ concluído / ● em andamento /
+ *     ○ pendente / – não passa).
+ *   - clicar numa célula abre o apontamento DAQUELE setor (SectorStageDialog →
+ *     mutation guardada + guard de pré-requisito + trigger de timestamp).
+ *   - clicar na identidade da OP abre o resumo (foto/ref/cliente/pedido/faturamento).
+ * Sem "avançar linear" (que era conceitualmente errado pra fluxo paralelo).
  */
-import { useMemo, useRef, useState } from 'react';
-import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useOrders } from '@/hooks/useOrders';
 import { useAllOrderStages, type OrderStage } from '@/hooks/useOrderStages';
+import SectorStageDialog from '@/components/orders/SectorStageDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { SignedImage } from '@/components/ui/signed-image';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { normalizeForSearch } from '@/lib/searchUtils';
 import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import {
-  DotsSixVertical, Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, ArrowRight, CircleNotch as Loader2,
+  Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, MagnifyingGlass as Search,
+  Check, CircleNotch as Loader2, Circle, Minus,
 } from '@phosphor-icons/react';
 
-const FLOW: { name: string; label: string; colorVar: string }[] = [
-  { name: 'Corte Palmilha', label: 'Corte Palmilha', colorVar: 'var(--stage-cut)' },
-  { name: 'Corte Forração', label: 'Corte Forração', colorVar: 'var(--stage-cut)' },
-  { name: 'Aviamento',      label: 'Aviamento',      colorVar: 'var(--stage-cut)' },
-  { name: 'Costura',        label: 'Costura',        colorVar: 'var(--stage-sew)' },
-  { name: 'Silk',           label: 'Silk',           colorVar: 'var(--stage-sew)' },
-  { name: 'Colagem',        label: 'Colagem',        colorVar: 'var(--stage-assy)' },
-  { name: 'Montagem',       label: 'Montagem',       colorVar: 'var(--stage-assy)' },
-  { name: 'Solagem',        label: 'Solagem',        colorVar: 'var(--stage-fin)' },
-  { name: 'Acabamento',     label: 'Acabamento',     colorVar: 'var(--stage-fin)' },
-  { name: 'Expedição',      label: 'Expedição',      colorVar: 'var(--stage-pack)' },
+// Setores do fluxo, na ordem de exibição. `phase` só agrupa visualmente:
+// preparação (paralela) → montagem (convergência) → final.
+const SECTORS: { name: string; label: string; short: string; phase: 1 | 2 | 3 }[] = [
+  { name: 'Corte Palmilha', label: 'Corte Palmilha', short: 'C.Palm', phase: 1 },
+  { name: 'Corte Forração', label: 'Corte Forração', short: 'C.Forr', phase: 1 },
+  { name: 'Costura',        label: 'Costura',        short: 'Cost',   phase: 1 },
+  { name: 'Aviamento',      label: 'Aviamento',      short: 'Aviam',  phase: 1 },
+  { name: 'Silk',           label: 'Silk',           short: 'Silk',   phase: 1 },
+  { name: 'Colagem',        label: 'Colagem',        short: 'Colag',  phase: 2 },
+  { name: 'Montagem',       label: 'Montagem',       short: 'Mont',   phase: 2 },
+  { name: 'Solagem',        label: 'Solagem',        short: 'Solag',  phase: 2 },
+  { name: 'Acabamento',     label: 'Acabamento',     short: 'Acab',   phase: 3 },
+  { name: 'Expedição',      label: 'Expedição',      short: 'Exped',  phase: 3 },
 ];
-const FLOW_NAMES = FLOW.map(f => f.name);
 const ACTIVE_STATUS = new Set(['reservado', 'em produção', 'em producao', 'em_producao', 'producao']);
 
-function flowIndex(stageName: string): number {
+/** índice do setor (coluna) pro stage_name; 'Mesa' (legado) = 'Aviamento'. */
+function sectorIndexOf(stageName: string): number {
   const n = stageName === 'Mesa' ? 'Aviamento' : stageName;
-  return FLOW_NAMES.indexOf(n);
+  return SECTORS.findIndex(s => s.name === n);
 }
 const fmtDate = (iso?: string | null) => {
   if (!iso) return '—';
   try { return format(parseISO(iso), 'dd/MM/yyyy', { locale: ptBR }); } catch { return iso; }
 };
 
-interface FlowOp {
+interface FlowRow {
   id: string;
-  order_number: string;
-  modelo: string;
+  op: string;
+  ref: string;
+  code: string | null;
   color: string | null;
   pairs: number;
-  col: number;
-  prog: number;
-  currentStatus: string;
+  client: string;
+  pv: string | null;
+  deadline: string | null;
   late: boolean;
+  prog: number;
+  bySector: Map<number, OrderStage>;
 }
 
 export default function ProductionFlow() {
-  const qc = useQueryClient();
   const { data: orders = [] } = useOrders();
-  const [selected, setSelected] = useState<FlowOp | null>(null);
-  const justDragged = useRef(false);
+  const [search, setSearch] = useState('');
+  const [apontStage, setApontStage] = useState<{ stage: OrderStage; op: string } | null>(null);
+  const [summary, setSummary] = useState<FlowRow | null>(null);
 
   const activeOrders = useMemo(
     () => (orders as any[]).filter(o => ACTIVE_STATUS.has(String(o.status || '').toLowerCase().trim())),
@@ -84,6 +87,27 @@ export default function ProductionFlow() {
   );
   const orderIds = useMemo(() => activeOrders.map(o => o.id), [activeOrders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+
+  // PVs das OPs ativas → cliente + nº do pedido + data de faturamento.
+  const soIds = useMemo(
+    () => Array.from(new Set(activeOrders.map(o => o.sale_order_id).filter(Boolean))) as string[],
+    [activeOrders],
+  );
+  const { data: soMap } = useQuery({
+    queryKey: ['flow-sale-orders', soIds.slice().sort().join(',')],
+    enabled: soIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select('id, order_number, client_name, delivery_deadline')
+        .in('id', soIds);
+      if (error) throw error;
+      const m = new Map<string, any>();
+      (data || []).forEach((s: any) => m.set(s.id, s));
+      return m;
+    },
+  });
 
   const stagesByOrder = useMemo(() => {
     const m = new Map<string, OrderStage[]>();
@@ -96,271 +120,263 @@ export default function ProductionFlow() {
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
 
-  const ops = useMemo<FlowOp[]>(() => {
-    const out: FlowOp[] = [];
+  const rows = useMemo<FlowRow[]>(() => {
+    const out: FlowRow[] = [];
     for (const o of activeOrders) {
       const stages = stagesByOrder.get(o.id) || [];
-      const inFlow = stages.filter(s => flowIndex(s.stage_name) >= 0);
+      const bySector = new Map<number, OrderStage>();
+      for (const s of stages) {
+        const k = sectorIndexOf(s.stage_name);
+        if (k >= 0 && !bySector.has(k)) bySector.set(k, s);
+      }
+      const inFlow = Array.from(bySector.values());
       if (inFlow.length === 0) continue;
-      const open = inFlow.filter(s => s.status !== 'concluido');
-      if (open.length === 0) continue;
-      const inProg = open.filter(s => s.status === 'em_andamento');
-      const current = inProg.length
-        ? inProg.reduce((a, b) => (flowIndex(b.stage_name) > flowIndex(a.stage_name) ? b : a))
-        : open.reduce((a, b) => (flowIndex(b.stage_name) < flowIndex(a.stage_name) ? b : a));
       const done = inFlow.filter(s => s.status === 'concluido').length;
-      const plannedDelivery = o.planned_delivery || null;
+      if (done === inFlow.length) continue; // tudo concluído → não está mais em produção
+      const prog = Math.round((done / inFlow.length) * 100);
+      const so = o.sale_order_id ? soMap?.get(o.sale_order_id) : null;
+      const deadline = so?.delivery_deadline || o.planned_delivery || null;
       out.push({
         id: o.id,
-        order_number: o.order_number || o.id.slice(0, 8),
-        modelo: o.technical_sheets?.name || '—',
+        op: o.order_number || o.id.slice(0, 8),
+        ref: o.technical_sheets?.name || '—',
+        code: o.technical_sheets?.code ?? null,
         color: o.color ?? null,
         pairs: Number(o.quantity) || 0,
-        col: flowIndex(current.stage_name),
-        prog: inFlow.length > 0 ? Math.round((done / inFlow.length) * 100) : 0,
-        currentStatus: current.status,
-        late: !!plannedDelivery && new Date(plannedDelivery + 'T00:00:00') < today,
+        client: so?.client_name || '—',
+        pv: so?.order_number ?? null,
+        deadline,
+        late: !!deadline && new Date(deadline + 'T00:00:00') < today && prog < 100,
+        prog,
+        bySector,
       });
     }
-    return out;
-  }, [activeOrders, stagesByOrder, today]);
+    // Urgência: atrasadas primeiro, depois por prazo (mais cedo primeiro, sem prazo no fim).
+    return out.sort((a, b) => {
+      if (a.late !== b.late) return a.late ? -1 : 1;
+      const da = a.deadline || '9999', db = b.deadline || '9999';
+      return da < db ? -1 : da > db ? 1 : a.op.localeCompare(b.op);
+    });
+  }, [activeOrders, stagesByOrder, soMap, today]);
 
-  const advance = useMutation({
-    mutationFn: async ({ orderId, target }: { orderId: string; target: string }) => {
-      const operator = (() => { try { return localStorage.getItem('sector_operator_employee_id') || null; } catch { return null; } })();
-      const { error } = await (supabase as any).rpc('advance_order_to_sector', { p_order_id: orderId, p_target: target, p_operator: operator });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('OP movida no fluxo');
-    },
-    onError: (e: any) => toast.error(e?.message || 'Não foi possível mover a OP'),
-  });
+  const filteredRows = useMemo(() => {
+    const q = normalizeForSearch(search);
+    if (!q) return rows;
+    return rows.filter(r => normalizeForSearch([r.op, r.ref, r.code, r.color, r.client, r.pv].filter(Boolean).join(' ')).includes(q));
+  }, [rows, search]);
 
-  // Detalhe da OP (resumo) — carregado sob demanda ao clicar no card.
+  // WIP por setor (cabeçalho de coluna): em andamento + pendente entre as OPs visíveis.
+  const sectorWip = useMemo(() => SECTORS.map((_, i) => {
+    let andamento = 0, aberto = 0;
+    for (const r of filteredRows) {
+      const st = r.bySector.get(i);
+      if (!st || st.status === 'concluido') continue;
+      aberto++;
+      if (st.status === 'em_andamento') andamento++;
+    }
+    return { andamento, aberto };
+  }), [filteredRows]);
+
+  const lateCount = filteredRows.filter(r => r.late).length;
+
+  // Resumo (foto etc.) — carregado sob demanda ao abrir.
   const { data: detail, isLoading: detailLoading } = useQuery({
-    queryKey: ['flow-op-detail', selected?.id],
-    enabled: !!selected?.id,
+    queryKey: ['flow-op-detail', summary?.id],
+    enabled: !!summary?.id,
     staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, quantity, color, grade, planned_delivery, sale_order_id, technical_sheets:reference_id(name, code, image_url, images, reference_color_variants(color, image_url)), sale_orders!sale_order_id(order_number, client_order_number, client_name, delivery_deadline)')
-        .eq('id', selected!.id)
-        .maybeSingle();
+        .select('id, color, grade, technical_sheets:reference_id(name, code, image_url, images, reference_color_variants(color, image_url))')
+        .eq('id', summary!.id).maybeSingle();
       if (error) throw error;
       return data as any;
     },
   });
-
-  const stageStats = useMemo(() =>
-    FLOW.map((s, i) => {
-      const colOps = ops.filter(o => o.col === i);
-      return { ...s, count: colOps.length, pairs: colOps.reduce((a, o) => a + o.pairs, 0) };
-    }), [ops]);
-
-  // Foto da referência: variante na cor da OP, senão a foto mestra da ficha.
   const detailPhoto = useMemo(() => {
     const ts = detail?.technical_sheets;
     if (!ts) return null;
     const variants: any[] = ts.reference_color_variants || [];
     const c = String(detail?.color || '').toLowerCase().trim();
     const variant = variants.find(v => String(v.color || '').toLowerCase().trim() === c && v.image_url);
-    // Resolução canônica (igual Corte/SaleOrderItemForm): variante na cor →
-    // images[0] da ficha → image_url legado. A foto mora em `images` (array), não
-    // em image_url (que costuma ser null).
     const imagesArr: string[] = Array.isArray(ts.images) ? ts.images.filter(Boolean) : [];
     return variant?.image_url || imagesArr[0] || ts.image_url || null;
   }, [detail]);
-
-  const openOp = (o: FlowOp) => { if (justDragged.current) return; setSelected(o); };
-
   const activeGrade: Record<string, number> = (detail?.grade as any) || {};
   const gradeSizes = Object.keys(activeGrade).filter(k => Number(activeGrade[k]) > 0)
     .sort((a, b) => { const na = parseFloat(a), nb = parseFloat(b); return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb; });
-
-  // Próxima etapa = 1º setor do fluxo, depois do atual, que a OP tem e não está
-  // concluído. Avançar conclui o atual (e o que faltar antes) e inicia o próximo.
-  const selStages = selected ? (stagesByOrder.get(selected.id) || []) : [];
-  const nextStage = selected
-    ? selStages.filter(s => flowIndex(s.stage_name) > selected.col && s.status !== 'concluido')
-        .sort((a, b) => flowIndex(a.stage_name) - flowIndex(b.stage_name))[0]
-    : undefined;
-  const nextLabel = nextStage ? (FLOW[flowIndex(nextStage.stage_name)]?.label || nextStage.stage_name) : null;
-  const onNext = async () => {
-    if (!selected || !nextStage) return;
-    try { await advance.mutateAsync({ orderId: selected.id, target: nextStage.stage_name }); setSelected(null); }
-    catch { /* erro já mostrado em toast */ }
-  };
 
   return (
     <div className="space-y-4 page-enter">
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · FLUXO"
         title="Onde está cada ordem"
-        description="Arraste a OP pra outra coluna pra empurrá-la pelo fluxo — conclui o que vem antes e inicia o setor de destino (respeitando o pré-requisito). Clique no card pra ver o resumo. Vermelho = atraso."
+        description="Cada OP aparece em TODOS os seus setores ao mesmo tempo (a preparação roda em paralelo). Clique numa célula pra apontar aquele setor; clique na OP pra ver o resumo. Vermelho = atraso."
       />
 
-      <StatGrid>
-        {stageStats.slice(0, 6).map((s) => (
-          <StatCard key={s.name} label={s.label} value={s.count.toLocaleString('pt-BR')} unit="OPs" hint={`${s.pairs.toLocaleString('pt-BR')} pares`} />
-        ))}
-      </StatGrid>
-
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <div className="eyebrow">Quadro de fluxo</div>
-            <div className="display text-lg mt-1">{ops.length} ordens em produção</div>
-          </div>
-          {advance.isPending && (
-            <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> movendo…</span>
-          )}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input className="pl-8 h-9" placeholder="Buscar OP, referência, cliente, PV…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-
-        <div className="overflow-x-auto -mx-1 px-1 pb-1">
-          <div className="flex gap-2.5 min-w-max">
-            {FLOW.map((s, i) => {
-              const colOps = ops.filter(o => o.col === i);
-              return (
-                <div
-                  key={s.name}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData('text/plain');
-                    if (id) advance.mutate({ orderId: id, target: s.name });
-                  }}
-                  className="bg-muted/30 rounded-xl p-2.5 min-h-[480px] w-[212px] shrink-0 transition-colors"
-                  style={{ borderTop: `2.5px solid ${s.colorVar}` }}
-                >
-                  <div className="flex items-center gap-2 pb-2 border-b border-border/70 mb-2.5">
-                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.colorVar }} aria-hidden />
-                    <div className="flex-1 min-w-0">
-                      <div className="display text-sm tracking-[0.03em] truncate leading-tight">{s.label}</div>
-                      <div className="font-mono text-[10px] text-muted-foreground tabular-nums">{String(i + 1).padStart(2, '0')} / {FLOW.length}</div>
-                    </div>
-                    <span className="font-mono text-xs font-bold text-muted-foreground tabular-nums">{colOps.length}</span>
-                  </div>
-
-                  {colOps.length === 0 ? (
-                    <div className="text-center text-xs text-muted-foreground/50 italic py-8">Nenhuma OP nesta etapa</div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {colOps.map((o) => (
-                        <div
-                          key={o.id}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`OP ${o.order_number}, ${o.modelo}, ${o.pairs} pares${o.late ? ', atrasada' : ''}. Clique para ver o resumo.`}
-                          draggable
-                          onDragStart={(e) => { justDragged.current = true; e.dataTransfer.setData('text/plain', o.id); e.dataTransfer.effectAllowed = 'move'; }}
-                          onDragEnd={() => { setTimeout(() => { justDragged.current = false; }, 60); }}
-                          onClick={() => openOp(o)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(o); } }}
-                          className="group bg-card rounded-lg p-2.5 relative overflow-hidden cursor-pointer outline-none transition-all duration-150
-                                     border hover:border-foreground/30 hover:shadow-sm active:scale-[0.98]
-                                     focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-                          style={{ borderColor: o.late ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
-                        >
-                          {o.late && (
-                            <div className="absolute top-0 right-0" style={{ width: 0, height: 0, borderLeft: '14px solid transparent', borderTop: '14px solid hsl(var(--primary))' }} aria-hidden />
-                          )}
-                          <div className="flex justify-between items-center gap-1">
-                            <span className="font-mono text-xs text-muted-foreground inline-flex items-center gap-1 min-w-0">
-                              <DotsSixVertical className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0 group-hover:text-muted-foreground/70 transition-colors" weight="bold" />
-                              <span className="truncate">{o.order_number}</span>
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={`text-[9px] px-1 py-0 shrink-0 ${o.currentStatus === 'em_andamento' ? 'border-amber-500/40 text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
-                            >
-                              {o.currentStatus === 'em_andamento' ? 'em and.' : 'pend.'}
-                            </Badge>
-                          </div>
-                          <div className="text-[12.5px] font-semibold mt-1 leading-tight truncate">{o.modelo}</div>
-                          {o.color && <div className="text-[10px] text-muted-foreground truncate">Cor: {o.color}</div>}
-                          <div className="flex items-baseline gap-1 mt-1">
-                            <span className="display text-xl tabular-nums">{o.pairs}</span>
-                            <span className="font-mono text-[10px] text-muted-foreground">pares</span>
-                          </div>
-                          <div className="h-[3px] bg-border rounded-full mt-2 overflow-hidden" role="progressbar" aria-valuenow={o.prog} aria-valuemin={0} aria-valuemax={100}>
-                            <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${o.prog}%`, background: o.late ? 'hsl(var(--primary))' : s.colorVar }} />
-                          </div>
-                          <div className="flex justify-between mt-1.5">
-                            <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{o.prog}%</span>
-                            {o.late && <span className="font-mono text-[10px] font-bold" style={{ color: 'hsl(var(--primary))' }}>ATRASADA</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        <div className="text-xs text-muted-foreground">
+          <span className="font-bold text-foreground tabular-nums">{filteredRows.length}</span> OPs em produção
+          {lateCount > 0 && <span className="ml-2 text-destructive">· {lateCount} atrasada{lateCount === 1 ? '' : 's'}</span>}
+        </div>
+        {/* Legenda */}
+        <div className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5 text-success" weight="bold" />concluído</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />em andamento</span>
+          <span className="inline-flex items-center gap-1"><Circle className="h-3 w-3 text-muted-foreground/50" />pendente</span>
+          <span className="inline-flex items-center gap-1"><Minus className="h-3.5 w-3.5 text-muted-foreground/40" />não passa</span>
         </div>
       </div>
 
-      {/* Resumo da OP — modal centralizado (igual a prévia do pedido de venda) */}
-      <Dialog open={!!selected} onOpenChange={(v) => { if (!v) setSelected(null); }}>
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-muted/40">
+                <th className="sticky left-0 z-20 bg-muted/40 text-left p-2 min-w-[220px] border-b border-border">
+                  <span className="section-label">OP · Referência</span>
+                </th>
+                {SECTORS.map((s, i) => (
+                  <th
+                    key={s.name}
+                    className={`p-1.5 text-center border-b border-border align-bottom ${i > 0 && SECTORS[i - 1].phase !== s.phase ? 'border-l-2 border-l-border' : ''}`}
+                    title={s.label}
+                  >
+                    <div className="font-bold text-[10px] uppercase tracking-wide text-foreground whitespace-nowrap">{s.short}</div>
+                    <div className="font-mono text-[9px] text-muted-foreground tabular-nums mt-0.5">
+                      {sectorWip[i].andamento > 0 ? <span className="text-amber-600 dark:text-amber-400">{sectorWip[i].andamento}▸</span> : null}
+                      {sectorWip[i].aberto > 0 ? <span className={sectorWip[i].andamento > 0 ? 'ml-1' : ''}>{sectorWip[i].aberto}</span> : <span className="text-muted-foreground/40">0</span>}
+                    </div>
+                  </th>
+                ))}
+                <th className="p-1.5 text-center border-b border-border border-l-2 border-l-border"><span className="section-label">%</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.length === 0 ? (
+                <tr><td colSpan={SECTORS.length + 2} className="text-center text-sm text-muted-foreground italic py-10">Nenhuma OP em produção.</td></tr>
+              ) : (
+                filteredRows.map((r) => (
+                  <tr key={r.id} className="border-b border-border/50 hover:bg-muted/20">
+                    {/* Identidade da OP (sticky) — clique abre o resumo */}
+                    <th
+                      scope="row"
+                      className="sticky left-0 z-10 bg-card hover:bg-muted/30 text-left p-2 cursor-pointer transition-colors"
+                      onClick={() => setSummary(r)}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Resumo da OP ${r.op}, ${r.ref}`}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSummary(r); } }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold">{r.op}</span>
+                        {r.late && <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title="Atrasada" />}
+                      </div>
+                      <div className="font-medium text-foreground truncate max-w-[200px]">{r.ref}{r.color ? <span className="text-muted-foreground font-normal"> · {r.color}</span> : null}</div>
+                      <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">
+                        {r.client} · <span className="tabular-nums">{r.pairs}p</span>{r.deadline ? <> · {fmtDate(r.deadline)}</> : null}
+                      </div>
+                    </th>
+                    {/* Células por setor */}
+                    {SECTORS.map((s, i) => {
+                      const st = r.bySector.get(i);
+                      const divider = i > 0 && SECTORS[i - 1].phase !== s.phase ? 'border-l-2 border-l-border' : '';
+                      if (!st) {
+                        return <td key={s.name} className={`text-center text-muted-foreground/30 ${divider}`} aria-label={`${s.label}: não passa`}>–</td>;
+                      }
+                      const isDone = st.status === 'concluido';
+                      const isProg = st.status === 'em_andamento';
+                      const stLabel = isDone ? 'concluído' : isProg ? 'em andamento' : 'pendente';
+                      return (
+                        <td key={s.name} className={`p-0.5 text-center ${divider}`}>
+                          <button
+                            type="button"
+                            onClick={() => setApontStage({ stage: st, op: r.op })}
+                            aria-label={`OP ${r.op} · ${s.label}: ${stLabel}. Clique para apontar.`}
+                            className={`w-full h-8 inline-flex items-center justify-center rounded-md transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring
+                              ${isDone ? 'bg-success/15 text-success hover:bg-success/25'
+                                : isProg ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/40 hover:bg-amber-500/25'
+                                : 'text-muted-foreground/50 hover:bg-muted/60 hover:text-foreground'}`}
+                          >
+                            {isDone ? <Check className="h-4 w-4" weight="bold" /> : isProg ? <span className="h-2.5 w-2.5 rounded-full bg-current" /> : <Circle className="h-3.5 w-3.5" />}
+                          </button>
+                        </td>
+                      );
+                    })}
+                    {/* Progresso */}
+                    <td className="p-1.5 text-center border-l-2 border-l-border min-w-[64px]">
+                      <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${r.prog}%`, background: r.late ? 'hsl(var(--primary))' : 'hsl(var(--success))' }} />
+                      </div>
+                      <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{r.prog}%</span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        ▸ no cabeçalho = OPs com o setor <strong>em andamento</strong>; o outro número = total <strong>aberto</strong> naquele setor.
+        Os setores de <strong>preparação</strong> (até a 1ª divisória) rodam em paralelo e convergem na <strong>Montagem</strong> — por isso a OP aparece em vários ao mesmo tempo.
+      </p>
+
+      {/* Apontamento de UM setor (per-work-center) — reusa o diálogo guardado */}
+      {apontStage && (
+        <SectorStageDialog
+          stage={apontStage.stage}
+          open={!!apontStage}
+          onOpenChange={(v) => { if (!v) setApontStage(null); }}
+          orderNumber={apontStage.op}
+        />
+      )}
+
+      {/* Resumo da OP — modal centralizado */}
+      <Dialog open={!!summary} onOpenChange={(v) => { if (!v) setSummary(null); }}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-          {selected && (
+          {summary && (
             <>
               <DialogHeader className="text-left">
-                <DialogTitle className="flex items-center gap-2 font-mono text-base flex-wrap">
-                  {selected.order_number}
-                  <Badge variant="outline" className={`text-[10px] ${selected.currentStatus === 'em_andamento' ? 'border-amber-500/40 text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                    {FLOW[selected.col]?.label} · {selected.currentStatus === 'em_andamento' ? 'em andamento' : 'pendente'}
-                  </Badge>
-                </DialogTitle>
+                <DialogTitle className="font-mono text-base">{summary.op}</DialogTitle>
                 <DialogDescription>Resumo da ordem de produção.</DialogDescription>
               </DialogHeader>
-
               <div className="grid gap-4 sm:grid-cols-[190px_1fr]">
-                {/* Foto da referência — aspect reservado (sem layout shift) + lazy */}
                 <div className="rounded-lg border border-border bg-muted/30 overflow-hidden aspect-square flex items-center justify-center">
                   {detailLoading ? (
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   ) : detailPhoto ? (
-                    <SignedImage src={detailPhoto} alt={`Foto da referência ${detail?.technical_sheets?.name || ''}`} fit="contain" loading="lazy" className="w-full h-full" />
+                    <SignedImage src={detailPhoto} alt={`Foto da referência ${summary.ref}`} fit="contain" loading="lazy" className="w-full h-full" />
                   ) : (
                     <div className="flex flex-col items-center gap-1.5 text-muted-foreground/50">
-                      <ImageIcon className="h-8 w-8" />
-                      <span className="text-xs">Sem foto da referência</span>
+                      <ImageIcon className="h-8 w-8" /><span className="text-xs">Sem foto da referência</span>
                     </div>
                   )}
                 </div>
-
                 <dl className="space-y-3 text-sm min-w-0">
                   <Field icon={Package} label="Referência">
-                    <span className="font-semibold text-foreground">{detail?.technical_sheets?.name || selected.modelo}</span>
-                    {detail?.technical_sheets?.code && <span className="ml-2 font-mono text-xs text-muted-foreground">{detail.technical_sheets.code}</span>}
-                    {selected.color && <div className="text-xs text-muted-foreground mt-0.5">Cor: <span className="font-medium text-foreground">{selected.color}</span></div>}
+                    <span className="font-semibold text-foreground">{summary.ref}</span>
+                    {summary.code && <span className="ml-2 font-mono text-xs text-muted-foreground">{summary.code}</span>}
+                    {summary.color && <div className="text-xs text-muted-foreground mt-0.5">Cor: <span className="font-medium text-foreground">{summary.color}</span></div>}
                   </Field>
-                  <Field icon={Buildings} label="Cliente">
-                    <span className="font-medium text-foreground">{detail?.sale_orders?.client_name || '—'}</span>
-                  </Field>
-                  <Field icon={Receipt} label="Pedido">
-                    <span className="font-mono font-medium text-foreground">{detail?.sale_orders?.order_number || '—'}</span>
-                    {detail?.sale_orders?.client_order_number && (
-                      <div className="text-xs text-muted-foreground mt-0.5">Ped. cliente: <span className="font-mono text-foreground">{detail.sale_orders.client_order_number}</span></div>
-                    )}
-                  </Field>
+                  <Field icon={Buildings} label="Cliente"><span className="font-medium text-foreground">{summary.client}</span></Field>
+                  <Field icon={Receipt} label="Pedido"><span className="font-mono font-medium text-foreground">{summary.pv || '—'}</span></Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field icon={Package} label="Quantidade">
-                      <span className="display text-xl tabular-nums text-foreground">{(detail?.quantity ?? selected.pairs).toLocaleString('pt-BR')}</span>
+                      <span className="display text-xl tabular-nums text-foreground">{summary.pairs.toLocaleString('pt-BR')}</span>
                       <span className="ml-1 text-xs text-muted-foreground">pares</span>
                     </Field>
                     <Field icon={CalendarBlank} label="Faturamento">
-                      <span className="font-medium text-foreground tabular-nums">{fmtDate(detail?.sale_orders?.delivery_deadline)}</span>
+                      <span className="font-medium text-foreground tabular-nums">{fmtDate(summary.deadline)}</span>
                     </Field>
                   </div>
                 </dl>
               </div>
-
               {gradeSizes.length > 0 && (
                 <div>
                   <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Grade (numeração)</div>
@@ -374,29 +390,9 @@ export default function ProductionFlow() {
                   </div>
                 </div>
               )}
-
-              <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Progresso</div>
-                <div className="h-2 bg-border rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${selected.prog}%`, background: selected.late ? 'hsl(var(--primary))' : FLOW[selected.col]?.colorVar }} />
-                </div>
-                <span className="text-xs text-muted-foreground tabular-nums mt-1 inline-block">{selected.prog}% das etapas concluídas</span>
-              </div>
-
-              <DialogFooter className="mt-1">
-                {nextStage ? (
-                  <Button
-                    onClick={onNext}
-                    disabled={advance.isPending}
-                    className="w-full sm:w-auto gap-2 bg-success text-success-foreground hover:bg-success/90"
-                  >
-                    {advance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" weight="bold" />}
-                    Próxima etapa{nextLabel ? `: ${nextLabel}` : ''}
-                  </Button>
-                ) : (
-                  <Button variant="outline" disabled className="w-full sm:w-auto">Última etapa do fluxo</Button>
-                )}
-              </DialogFooter>
+              <p className="text-[11px] text-muted-foreground border-t border-border pt-2">
+                Para apontar (iniciar/concluir) um setor desta OP, clique na célula correspondente no quadro.
+              </p>
             </>
           )}
         </DialogContent>
@@ -405,7 +401,6 @@ export default function ProductionFlow() {
   );
 }
 
-/** Linha de campo do resumo (ícone + label + valor). */
 function Field({ icon: Icon, label, children }: { icon: any; label: string; children: React.ReactNode }) {
   return (
     <div>
