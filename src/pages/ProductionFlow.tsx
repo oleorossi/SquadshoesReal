@@ -29,10 +29,11 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Badge } from '@/components/ui/badge';
 import { SignedImage } from '@/components/ui/signed-image';
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from '@/components/ui/sheet';
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import {
-  DotsSixVertical, Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, CircleNotch as Loader2,
+  DotsSixVertical, Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, ArrowRight, CircleNotch as Loader2,
 } from '@phosphor-icons/react';
 
 const FLOW: { name: string; label: string; colorVar: string }[] = [
@@ -146,7 +147,7 @@ export default function ProductionFlow() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, quantity, color, grade, planned_delivery, sale_order_id, technical_sheets:reference_id(name, code, image_url, reference_color_variants(color, image_url)), sale_orders!sale_order_id(order_number, client_order_number, client_name, delivery_deadline)')
+        .select('id, order_number, quantity, color, grade, planned_delivery, sale_order_id, technical_sheets:reference_id(name, code, image_url, images, reference_color_variants(color, image_url)), sale_orders!sale_order_id(order_number, client_order_number, client_name, delivery_deadline)')
         .eq('id', selected!.id)
         .maybeSingle();
       if (error) throw error;
@@ -167,7 +168,11 @@ export default function ProductionFlow() {
     const variants: any[] = ts.reference_color_variants || [];
     const c = String(detail?.color || '').toLowerCase().trim();
     const variant = variants.find(v => String(v.color || '').toLowerCase().trim() === c && v.image_url);
-    return variant?.image_url || ts.image_url || null;
+    // Resolução canônica (igual Corte/SaleOrderItemForm): variante na cor →
+    // images[0] da ficha → image_url legado. A foto mora em `images` (array), não
+    // em image_url (que costuma ser null).
+    const imagesArr: string[] = Array.isArray(ts.images) ? ts.images.filter(Boolean) : [];
+    return variant?.image_url || imagesArr[0] || ts.image_url || null;
   }, [detail]);
 
   const openOp = (o: FlowOp) => { if (justDragged.current) return; setSelected(o); };
@@ -175,6 +180,20 @@ export default function ProductionFlow() {
   const activeGrade: Record<string, number> = (detail?.grade as any) || {};
   const gradeSizes = Object.keys(activeGrade).filter(k => Number(activeGrade[k]) > 0)
     .sort((a, b) => { const na = parseFloat(a), nb = parseFloat(b); return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb; });
+
+  // Próxima etapa = 1º setor do fluxo, depois do atual, que a OP tem e não está
+  // concluído. Avançar conclui o atual (e o que faltar antes) e inicia o próximo.
+  const selStages = selected ? (stagesByOrder.get(selected.id) || []) : [];
+  const nextStage = selected
+    ? selStages.filter(s => flowIndex(s.stage_name) > selected.col && s.status !== 'concluido')
+        .sort((a, b) => flowIndex(a.stage_name) - flowIndex(b.stage_name))[0]
+    : undefined;
+  const nextLabel = nextStage ? (FLOW[flowIndex(nextStage.stage_name)]?.label || nextStage.stage_name) : null;
+  const onNext = async () => {
+    if (!selected || !nextStage) return;
+    try { await advance.mutateAsync({ orderId: selected.id, target: nextStage.stage_name }); setSelected(null); }
+    catch { /* erro já mostrado em toast */ }
+  };
 
   return (
     <div className="space-y-4 page-enter">
@@ -285,91 +304,103 @@ export default function ProductionFlow() {
         </div>
       </div>
 
-      {/* Resumo da OP — painel lateral */}
-      <Sheet open={!!selected} onOpenChange={(v) => { if (!v) setSelected(null); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+      {/* Resumo da OP — modal centralizado (igual a prévia do pedido de venda) */}
+      <Dialog open={!!selected} onOpenChange={(v) => { if (!v) setSelected(null); }}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           {selected && (
             <>
-              <SheetHeader className="text-left">
-                <SheetTitle className="flex items-center gap-2 font-mono text-base">
+              <DialogHeader className="text-left">
+                <DialogTitle className="flex items-center gap-2 font-mono text-base flex-wrap">
                   {selected.order_number}
                   <Badge variant="outline" className={`text-[10px] ${selected.currentStatus === 'em_andamento' ? 'border-amber-500/40 text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
                     {FLOW[selected.col]?.label} · {selected.currentStatus === 'em_andamento' ? 'em andamento' : 'pendente'}
                   </Badge>
-                </SheetTitle>
-                <SheetDescription>Resumo da ordem de produção.</SheetDescription>
-              </SheetHeader>
+                </DialogTitle>
+                <DialogDescription>Resumo da ordem de produção.</DialogDescription>
+              </DialogHeader>
 
-              {/* Foto da referência — aspect-ratio reservado (sem layout shift) */}
-              <div className="mt-4 rounded-lg border border-border bg-muted/30 overflow-hidden aspect-[4/3] flex items-center justify-center">
-                {detailLoading ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                ) : detailPhoto ? (
-                  <SignedImage src={detailPhoto} alt={`Foto da referência ${detail?.technical_sheets?.name || ''}`} fit="contain" loading="lazy" className="w-full h-full" />
-                ) : (
-                  <div className="flex flex-col items-center gap-1.5 text-muted-foreground/50">
-                    <ImageIcon className="h-8 w-8" />
-                    <span className="text-xs">Sem foto da referência</span>
+              <div className="grid gap-4 sm:grid-cols-[190px_1fr]">
+                {/* Foto da referência — aspect reservado (sem layout shift) + lazy */}
+                <div className="rounded-lg border border-border bg-muted/30 overflow-hidden aspect-square flex items-center justify-center">
+                  {detailLoading ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  ) : detailPhoto ? (
+                    <SignedImage src={detailPhoto} alt={`Foto da referência ${detail?.technical_sheets?.name || ''}`} fit="contain" loading="lazy" className="w-full h-full" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1.5 text-muted-foreground/50">
+                      <ImageIcon className="h-8 w-8" />
+                      <span className="text-xs">Sem foto da referência</span>
+                    </div>
+                  )}
+                </div>
+
+                <dl className="space-y-3 text-sm min-w-0">
+                  <Field icon={Package} label="Referência">
+                    <span className="font-semibold text-foreground">{detail?.technical_sheets?.name || selected.modelo}</span>
+                    {detail?.technical_sheets?.code && <span className="ml-2 font-mono text-xs text-muted-foreground">{detail.technical_sheets.code}</span>}
+                    {selected.color && <div className="text-xs text-muted-foreground mt-0.5">Cor: <span className="font-medium text-foreground">{selected.color}</span></div>}
+                  </Field>
+                  <Field icon={Buildings} label="Cliente">
+                    <span className="font-medium text-foreground">{detail?.sale_orders?.client_name || '—'}</span>
+                  </Field>
+                  <Field icon={Receipt} label="Pedido">
+                    <span className="font-mono font-medium text-foreground">{detail?.sale_orders?.order_number || '—'}</span>
+                    {detail?.sale_orders?.client_order_number && (
+                      <div className="text-xs text-muted-foreground mt-0.5">Ped. cliente: <span className="font-mono text-foreground">{detail.sale_orders.client_order_number}</span></div>
+                    )}
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field icon={Package} label="Quantidade">
+                      <span className="display text-xl tabular-nums text-foreground">{(detail?.quantity ?? selected.pairs).toLocaleString('pt-BR')}</span>
+                      <span className="ml-1 text-xs text-muted-foreground">pares</span>
+                    </Field>
+                    <Field icon={CalendarBlank} label="Faturamento">
+                      <span className="font-medium text-foreground tabular-nums">{fmtDate(detail?.sale_orders?.delivery_deadline)}</span>
+                    </Field>
                   </div>
-                )}
+                </dl>
               </div>
 
-              <dl className="mt-4 space-y-3 text-sm">
-                <Field icon={Package} label="Referência">
-                  <span className="font-semibold text-foreground">{detail?.technical_sheets?.name || selected.modelo}</span>
-                  {detail?.technical_sheets?.code && <span className="ml-2 font-mono text-xs text-muted-foreground">{detail.technical_sheets.code}</span>}
-                  {selected.color && <div className="text-xs text-muted-foreground mt-0.5">Cor: <span className="font-medium text-foreground">{selected.color}</span></div>}
-                </Field>
-
-                <Field icon={Buildings} label="Cliente">
-                  <span className="font-medium text-foreground">{detail?.sale_orders?.client_name || '—'}</span>
-                </Field>
-
-                <Field icon={Receipt} label="Pedido">
-                  <span className="font-mono font-medium text-foreground">{detail?.sale_orders?.order_number || '—'}</span>
-                  {detail?.sale_orders?.client_order_number && (
-                    <div className="text-xs text-muted-foreground mt-0.5">Ped. cliente: <span className="font-mono text-foreground">{detail.sale_orders.client_order_number}</span></div>
-                  )}
-                </Field>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Field icon={Package} label="Quantidade">
-                    <span className="display text-xl tabular-nums text-foreground">{(detail?.quantity ?? selected.pairs).toLocaleString('pt-BR')}</span>
-                    <span className="ml-1 text-xs text-muted-foreground">pares</span>
-                  </Field>
-                  <Field icon={CalendarBlank} label="Faturamento">
-                    <span className="font-medium text-foreground tabular-nums">{fmtDate(detail?.sale_orders?.delivery_deadline)}</span>
-                  </Field>
-                </div>
-
-                {gradeSizes.length > 0 && (
-                  <div>
-                    <dt className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Grade (numeração)</dt>
-                    <dd className="flex flex-wrap gap-1">
-                      {gradeSizes.map((sz) => (
-                        <span key={sz} className="inline-flex flex-col items-center rounded-md border border-border bg-muted/40 px-2 py-1 leading-none">
-                          <span className="text-[10px] font-mono text-muted-foreground">{sz}</span>
-                          <span className="text-sm font-bold tabular-nums text-foreground">{activeGrade[sz]}</span>
-                        </span>
-                      ))}
-                    </dd>
-                  </div>
-                )}
-
+              {gradeSizes.length > 0 && (
                 <div>
-                  <dt className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Progresso</dt>
-                  <dd>
-                    <div className="h-2 bg-border rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${selected.prog}%`, background: selected.late ? 'hsl(var(--primary))' : FLOW[selected.col]?.colorVar }} />
-                    </div>
-                    <span className="text-xs text-muted-foreground tabular-nums mt-1 inline-block">{selected.prog}% das etapas concluídas</span>
-                  </dd>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Grade (numeração)</div>
+                  <div className="flex flex-wrap gap-1">
+                    {gradeSizes.map((sz) => (
+                      <span key={sz} className="inline-flex flex-col items-center rounded-md border border-border bg-muted/40 px-2 py-1 leading-none">
+                        <span className="text-[10px] font-mono text-muted-foreground">{sz}</span>
+                        <span className="text-sm font-bold tabular-nums text-foreground">{activeGrade[sz]}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </dl>
+              )}
+
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Progresso</div>
+                <div className="h-2 bg-border rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${selected.prog}%`, background: selected.late ? 'hsl(var(--primary))' : FLOW[selected.col]?.colorVar }} />
+                </div>
+                <span className="text-xs text-muted-foreground tabular-nums mt-1 inline-block">{selected.prog}% das etapas concluídas</span>
+              </div>
+
+              <DialogFooter className="mt-1">
+                {nextStage ? (
+                  <Button
+                    onClick={onNext}
+                    disabled={advance.isPending}
+                    className="w-full sm:w-auto gap-2 bg-success text-success-foreground hover:bg-success/90"
+                  >
+                    {advance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" weight="bold" />}
+                    Próxima etapa{nextLabel ? `: ${nextLabel}` : ''}
+                  </Button>
+                ) : (
+                  <Button variant="outline" disabled className="w-full sm:w-auto">Última etapa do fluxo</Button>
+                )}
+              </DialogFooter>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
