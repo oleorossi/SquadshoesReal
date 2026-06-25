@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { computeForwardSchedule, setHolidayCache } from '@/lib/sectorCapacity';
+import { computeForwardSchedule, setHolidayCache, checkSectorCapacity, SECTOR_LABELS } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { Panel } from '@/components/ui/panel';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ArrowRight, CalendarCheck, Clock } from '@phosphor-icons/react';
+import { ArrowRight, CalendarCheck, Clock, Warning } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -67,6 +67,20 @@ export function ForwardScheduleTool() {
     return computeForwardSchedule(sheet, qty, d);
   }, [sheet, qty, startISO]);
 
+  // B2 (advisory, capacidade finita): checa se algum setor JÁ está sobrecarregado
+  // na janela projetada (carga das outras OPs ativas), reusando o MESMO motor
+  // checkSectorCapacity. A entrega-lead-time acima é "capacidade infinita"; isto
+  // avisa quando a realidade da fila pode empurrar a data.
+  const { data: capCheck } = useQuery({
+    queryKey: ['forward-capcheck', sheetId, qty, schedule?.finishISO],
+    enabled: !!sheet && qty > 0 && !!schedule,
+    staleTime: 60_000,
+    queryFn: () => checkSectorCapacity(
+      [{ reference_id: sheetId, reference_label: sheet!.name, quantity: qty }],
+      schedule!.finishISO,
+    ),
+  });
+
   return (
     <Panel
       eyebrow="PCP · CRONOGRAMA DIRETO"
@@ -122,6 +136,25 @@ export function ForwardScheduleTool() {
               </div>
             ))}
           </div>
+          {capCheck?.hasOverload && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <Warning className="h-4 w-4 shrink-0" weight="fill" />
+                <span className="text-xs font-semibold uppercase tracking-wider">Capacidade apertada nessa janela</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                A data acima assume capacidade livre. Com a carga das outras OPs ativas, estes setores estouram
+                a capacidade na janela — a entrega real pode atrasar:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {capCheck.overloads.map((o, i) => (
+                  <Badge key={i} variant="outline" className="text-[10px] text-amber-700 dark:text-amber-400 border-amber-500/40">
+                    {SECTOR_LABELS[o.sector] ?? o.sector}: +{o.shortfall_pairs}p
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-[11px] text-muted-foreground">
             Os 3 setores de preparação (Corte Palmilha · Corte Forração · Aviamento) rodam em paralelo;
             a Costura só arranca quando o último deles termina. Lead time de cada setor = ⌈pares ÷ capacidade/dia⌉.
