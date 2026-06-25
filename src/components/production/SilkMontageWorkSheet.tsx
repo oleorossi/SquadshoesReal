@@ -737,6 +737,23 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     >
                       {cg.color}
                     </span>
+                    {/* Referência(s) ao lado da cor — o operador identifica a
+                        qual modelo aquela cor pertence (pedido user 2026-06-25).
+                        Some quando a ficha inteira já é de uma referência
+                        (groupKind 'reference' — Aviamento), pra não repetir. */}
+                    {group.groupKind !== 'reference' && cg.refs && cg.refs.length > 0 && (
+                      <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                        {cg.refs.map((r) => (
+                          <span
+                            key={r.code || r.name}
+                            className="inline-block bg-black text-white font-bold px-1.5 py-0.5 whitespace-nowrap uppercase"
+                            style={{ fontSize: '10px', letterSpacing: '0.04em' }}
+                          >
+                            {r.name || r.code || '—'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-end gap-3 shrink-0">
                     {cg.lotInfo && cg.lotInfo.total > 1 && (
