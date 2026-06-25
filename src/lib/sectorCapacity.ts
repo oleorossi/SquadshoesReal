@@ -420,6 +420,100 @@ export function computeParallelWindows(
 }
 
 // =============================================================================
+// computeForwardSchedule — agendamento PRA FRENTE ("começo hoje, entrego quando?")
+// =============================================================================
+// Dual EXATO da cascata reversa de computeParallelWindows, mas pra frente:
+//   - os 3 prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento/Mesa) começam JUNTOS
+//     na data de início; cada um termina em início + SEU lead.
+//   - Costura só pode começar quando o ÚLTIMO prep terminar (ponto de
+//     convergência = max dos fins de prep).
+//   - Pós-prep sequencial: Costura → Silk → Colagem → Montagem → Solagem →
+//     Acabamento (→ Expedição). A entrega estimada = fim do último setor.
+// Reusa computeSectorLeadTimeDays + addBusinessDays (positivo) → MESMOS lead times
+// e MESMA topologia da cascata reversa (sem motor novo, sem divergência).
+//
+// `setupDaysBySector` (opcional, B3): dias extras de setup/troca somados ao lead
+// daquele setor (advisory — não altera a cascata persistida). Default vazio.
+// =============================================================================
+
+export interface ForwardSectorStep {
+  key: SectorKey;
+  label: string;
+  startISO: string;
+  endISO: string;
+  leadDays: number;
+  required: boolean;
+}
+
+export interface ForwardSchedule {
+  startISO: string;
+  finishISO: string;            // entrega estimada se começar em startISO
+  totalBusinessDays: number;    // dias úteis do início ao fim
+  steps: ForwardSectorStep[];   // só os setores requeridos, na ordem do fluxo
+}
+
+const FORWARD_PREP: SectorKey[] = ['corte_palmilha', 'corte_forracao', 'mesa'];
+const FORWARD_SEQ: SectorKey[] = ['costura', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'];
+
+/** YYYY-MM-DD (data local) — reusa o helper local. */
+function fwdISO(d: Date): string { return localISODate(d); }
+
+export function computeForwardSchedule(
+  sheet: any,
+  qty: number,
+  startDate: Date,
+  setupDaysBySector: Partial<Record<SectorKey, number>> = {},
+): ForwardSchedule {
+  const setup = (k: SectorKey) => Math.max(0, Number(setupDaysBySector[k] || 0));
+  // required espelha computeParallelWindows (mesma lógica de hasSector + caps).
+  const w = computeParallelWindows(sheet, qty, startDate); // só pra reaproveitar `required`/`cap`
+  const required = (k: SectorKey): boolean => {
+    if (k === 'expedicao') return sheetHasSector(sheet, 'Expedição');
+    const pw = (w as any)[k];
+    return pw ? !!pw.required : false;
+  };
+  const lead = (k: SectorKey): number =>
+    required(k) ? computeSectorLeadTimeDays(k, qty, sheet, null) + setup(k) : 0;
+
+  const steps: ForwardSectorStep[] = [];
+  const pushStep = (k: SectorKey, start: Date, end: Date, ld: number) => {
+    if (!required(k)) return;
+    steps.push({ key: k, label: SECTOR_LABELS[k] ?? k, startISO: fwdISO(start), endISO: fwdISO(end), leadDays: ld, required: true });
+  };
+
+  // Prep paralelo: todos começam em startDate.
+  let convergence = new Date(startDate);
+  for (const k of FORWARD_PREP) {
+    const ld = lead(k);
+    const end = addBusinessDays(startDate, ld);
+    pushStep(k, startDate, end, ld);
+    if (required(k) && end.getTime() > convergence.getTime()) convergence = end;
+  }
+
+  // Sequencial pós-prep, encadeado a partir da convergência.
+  let cursor = new Date(convergence);
+  for (const k of FORWARD_SEQ) {
+    if (!required(k)) continue;
+    const ld = lead(k);
+    const end = addBusinessDays(cursor, ld);
+    pushStep(k, cursor, end, ld);
+    cursor = end;
+  }
+
+  // Ordena os steps na ordem canônica do fluxo (prep primeiro, depois seq).
+  const order = [...FORWARD_PREP, ...FORWARD_SEQ];
+  steps.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+
+  const finish = steps.length > 0 ? cursor : new Date(startDate);
+  return {
+    startISO: fwdISO(startDate),
+    finishISO: fwdISO(finish),
+    totalBusinessDays: businessDaysBetween(startDate, finish),
+    steps,
+  };
+}
+
+// =============================================================================
 // computeSectorDailyLoad — carga PLANEJADA por setor num DIA específico
 // =============================================================================
 // Deriva da MESMA cascata de computeParallelWindows (todos os 9 setores do fluxo,
