@@ -46,6 +46,8 @@ export interface SectorDaily extends SectorDayLoad {
   realOpsCount: number;
   /** Quantas dessas OPs estão atrasadas (gargalo em andamento). */
   realDelayedCount: number;
+  /** OPs em produção neste setor SEM início apontado (started_at nulo). */
+  realUnstartedCount: number;
   realOps: RealStageOp[];
 }
 
@@ -57,6 +59,8 @@ export interface SectorDailyResult {
     sectorsAlert: number;   // setores em warning + critical (planejado)
     realPairs: number;
     realDelayed: number;
+    /** Total de OPs em produção sem início apontado (adoção do apontamento). */
+    realUnstarted: number;
   };
 }
 
@@ -86,9 +90,9 @@ export function useSectorDailyLoad(dateISO: string) {
         sectors: DISPLAY_SECTORS.map((s) => ({
           sector: s.key, label: s.label, plannedPairs: 0, capacityPerDay: 0,
           utilizationPct: 0, severity: 'idle', opsCount: 0, contributions: [],
-          realPairs: 0, realOpsCount: 0, realDelayedCount: 0, realOps: [],
+          realPairs: 0, realOpsCount: 0, realDelayedCount: 0, realUnstartedCount: 0, realOps: [],
         })),
-        summary: { plannedPairs: 0, sectorsAlert: 0, realPairs: 0, realDelayed: 0 },
+        summary: { plannedPairs: 0, sectorsAlert: 0, realPairs: 0, realDelayed: 0, realUnstarted: 0 },
       };
       if (orders.length === 0) return emptyResult;
 
@@ -192,11 +196,13 @@ export function useSectorDailyLoad(dateISO: string) {
         const realDelayedCount = realOps.filter(
           (r) => r.bottleneck && r.bottleneck.severity !== 'ok',
         ).length;
+        const realUnstartedCount = realOps.filter((r) => r.bottleneck?.unstarted).length;
         return {
           ...p,
           realPairs,
           realOpsCount: realOps.length,
           realDelayedCount,
+          realUnstartedCount,
           realOps: realOps.sort((a, b) => b.remaining - a.remaining),
         };
       });
@@ -209,6 +215,7 @@ export function useSectorDailyLoad(dateISO: string) {
           sectorsAlert: sectors.filter((x) => x.severity === 'warning' || x.severity === 'critical').length,
           realPairs: sectors.reduce((s, x) => s + x.realPairs, 0),
           realDelayed: sectors.reduce((s, x) => s + x.realDelayedCount, 0),
+          realUnstarted: sectors.reduce((s, x) => s + x.realUnstartedCount, 0),
         },
       };
     },

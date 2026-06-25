@@ -236,6 +236,19 @@ export default function SectorDailyView() {
         </div>
       )}
 
+      {/* Aviso: OPs em produção sem apontamento de início → gargalo/atraso cegos */}
+      {(summary?.realUnstarted ?? 0) > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <Warning className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <strong>{summary!.realUnstarted}</strong>{' '}
+            {summary!.realUnstarted === 1 ? 'OP em produção sem início apontado' : 'OPs em produção sem início apontado'} —
+            o gargalo/atraso só acende com o apontamento. Use <span className="font-medium">Iniciar</span> nas telas de
+            setor ou o <span className="font-medium">Quadro</span> (em Setores) pra registrar o início.
+          </span>
+        </div>
+      )}
+
       {/* Callout: gargalo do dia (headline do que está acontecendo) */}
       {!isLoading && worst && <BottleneckCallout worst={worst} onOpen={() => setSelected(worst)} />}
 
