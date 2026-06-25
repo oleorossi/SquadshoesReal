@@ -197,9 +197,9 @@ describe('efficiencyFactor', () => {
     expect(efficiencyFactor(100)).toBe(1);
   });
 
-  it('default da fábrica é 85%', () => {
-    expect(DEFAULT_EFFICIENCY_PCT).toBe(85);
-    expect(efficiencyFactor(DEFAULT_EFFICIENCY_PCT)).toBeCloseTo(0.85, 9);
+  it('default da fábrica é 100% (neutro — o dono baixa por referência)', () => {
+    expect(DEFAULT_EFFICIENCY_PCT).toBe(100);
+    expect(efficiencyFactor(DEFAULT_EFFICIENCY_PCT)).toBe(1);
   });
 
   it('inválido / ≤ 0 / > 100 ⇒ 1 (sem ajuste, nunca custo infinito)', () => {

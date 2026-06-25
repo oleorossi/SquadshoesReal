@@ -168,7 +168,7 @@ export default function SectorPricingCalculator() {
   const [rows, setRows] = useState<Row[]>(() => canonicalRows(0));
   // Eficiência produtiva (%): horas pagas / capacidade teórica não viram 100% de
   // pares (absenteísmo, setup, paradas, refugo). É o ÚNICO carregamento sobre a MO
-  // (operadores MEI ⇒ sem encargos). Default 85%; ajustável por referência.
+  // (operadores MEI ⇒ sem encargos). Default 100% = neutro; o dono baixa por referência.
   const [efficiency, setEfficiency] = useState(String(DEFAULT_EFFICIENCY_PCT));
   const efficiencyPct = parseNum(efficiency);
 

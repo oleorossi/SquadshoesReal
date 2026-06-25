@@ -40,10 +40,11 @@ export const DEFAULT_HOURS_PER_DAY = 8;
  * capacidade nominal sugere — por isso o custo/par real é MAIOR que o bruto.
  *
  * Sem encargos (todos os operadores são MEI), este é o único carregamento aplicado
- * sobre a MO. 85% é um ponto de partida típico de chão de fábrica calçadista; ajuste
- * por referência na UI conforme a realidade medida do setor.
+ * sobre a MO. Default 100% = NEUTRO (custo = bruto, idêntico ao cálculo sem ajuste);
+ * o dono baixa por referência na UI conforme a realidade medida do setor (um chão de
+ * fábrica calçadista costuma rodar ~80–90%).
  */
-export const DEFAULT_EFFICIENCY_PCT = 85;
+export const DEFAULT_EFFICIENCY_PCT = 100;
 
 /** Coage qualquer entrada a um número finito ≥ 0 (vazio/NaN/negativo → 0). */
 function nonNeg(v: unknown): number {
