@@ -80,7 +80,9 @@ const SECTOR_TO_CAPACITY_COLUMN: Record<string, string> = {
   'Montagem':       'assembly_capacity_per_day',
   'Solagem':        'soling_capacity_per_day',
   'Acabamento':     'finishing_capacity_per_day',
-  'Expedição':      'finishing_capacity_per_day',
+  // Expedição ganhou capacidade própria (B4): expedition_capacity_per_day, com
+  // fallback pra finishing_capacity_per_day quando não cadastrada (sem regressão).
+  'Expedição':      'expedition_capacity_per_day',
   // Pre-rename names kept for historical stage rows.
   // 'Mesa' foi renomeado pra 'Aviamento' (PR 1).
   // 'Costura' antes da PR 2 era apelido de Corte Forração; após PR 2 virou setor próprio
@@ -160,7 +162,7 @@ export async function loadBottlenecksForOrders(
       .select(
         // costura_capacity_per_day incluído (auditoria 2026-06-14): sem ele o
         // setor Costura mapeava p/ coluna ausente → cap=0 → nunca era gargalo.
-        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, costura_capacity_per_day',
+        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, costura_capacity_per_day',
       )
       .in('id', refIds);
     (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
@@ -234,7 +236,9 @@ export async function loadBottlenecksForOrders(
     }
 
     const capCol = SECTOR_TO_CAPACITY_COLUMN[current.stage_name as string];
-    const cap = capCol ? Number(sheet[capCol] || 0) : 0;
+    let cap = capCol ? Number(sheet[capCol] || 0) : 0;
+    // Expedição: cai pra finishing_capacity_per_day quando não tem capacidade própria.
+    if (cap === 0 && current.stage_name === 'Expedição') cap = Number(sheet.finishing_capacity_per_day || 0);
     const qty = Number(ord.quantity || 0);
 
     const info: BottleneckInfo =
@@ -263,7 +267,8 @@ export async function loadBottlenecksForOrders(
 
     if (next) {
       const nextCapCol = SECTOR_TO_CAPACITY_COLUMN[next.stage_name as string];
-      const nextCap = nextCapCol ? Number(sheet[nextCapCol] || 0) : 0;
+      let nextCap = nextCapCol ? Number(sheet[nextCapCol] || 0) : 0;
+      if (nextCap === 0 && next.stage_name === 'Expedição') nextCap = Number(sheet.finishing_capacity_per_day || 0);
       if (nextCap > 0) {
         const queuedPairs = sectorQueuedPairs.get(next.stage_name) || qty;
         const queueDays = Math.ceil(queuedPairs / nextCap);
