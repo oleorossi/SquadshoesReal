@@ -8,7 +8,10 @@ import {
   pairsPerDay,
   dailyRate,
   totalDailyRate,
+  efficiencyFactor,
+  adjustForEfficiency,
   DEFAULT_HOURS_PER_DAY,
+  DEFAULT_EFFICIENCY_PCT,
   type SectorPricingRow,
 } from '../sectorPricing';
 
@@ -182,6 +185,68 @@ describe('totalDailyRate', () => {
   it('robusto a undefined/null', () => {
     expect(totalDailyRate(undefined as unknown as SectorPricingRow[])).toBe(0);
     expect(totalDailyRate(null as unknown as SectorPricingRow[])).toBe(0);
+  });
+});
+
+describe('efficiencyFactor', () => {
+  it('85% ⇒ 0,85', () => {
+    expect(efficiencyFactor(85)).toBeCloseTo(0.85, 9);
+  });
+
+  it('100% ⇒ 1 (sem ajuste)', () => {
+    expect(efficiencyFactor(100)).toBe(1);
+  });
+
+  it('default da fábrica é 85%', () => {
+    expect(DEFAULT_EFFICIENCY_PCT).toBe(85);
+    expect(efficiencyFactor(DEFAULT_EFFICIENCY_PCT)).toBeCloseTo(0.85, 9);
+  });
+
+  it('inválido / ≤ 0 / > 100 ⇒ 1 (sem ajuste, nunca custo infinito)', () => {
+    expect(efficiencyFactor(0)).toBe(1);
+    expect(efficiencyFactor(-10)).toBe(1);
+    expect(efficiencyFactor(150)).toBe(1);
+    expect(efficiencyFactor(Number.NaN)).toBe(1);
+    expect(efficiencyFactor(undefined)).toBe(1);
+    expect(efficiencyFactor('abc')).toBe(1);
+  });
+
+  it('aceita string numérica (entrada de input)', () => {
+    expect(efficiencyFactor('90')).toBeCloseTo(0.9, 9);
+  });
+});
+
+describe('adjustForEfficiency', () => {
+  it('bruto ÷ η: R$ 4,85 a 85% ⇒ ≈ R$ 5,71', () => {
+    expect(adjustForEfficiency(4.85, 85)).toBeCloseTo(4.85 / 0.85, 9);
+    expect(adjustForEfficiency(4.85, 85)).toBeCloseTo(5.7059, 4);
+  });
+
+  it('100% ⇒ retorna o bruto inalterado', () => {
+    expect(adjustForEfficiency(4.85, 100)).toBeCloseTo(4.85, 9);
+  });
+
+  it('eficiência inválida ⇒ sem ajuste (retorna o bruto)', () => {
+    expect(adjustForEfficiency(10, 0)).toBeCloseTo(10, 9);
+    expect(adjustForEfficiency(10, Number.NaN)).toBeCloseTo(10, 9);
+    expect(adjustForEfficiency(10, 200)).toBeCloseTo(10, 9);
+  });
+
+  it('bruto negativo/NaN ⇒ 0 (clamp)', () => {
+    expect(adjustForEfficiency(-5, 85)).toBe(0);
+    expect(adjustForEfficiency(Number.NaN, 85)).toBe(0);
+  });
+
+  it('aplicar ao total = aplicar por linha e somar (η global é distributivo)', () => {
+    const rows: SectorPricingRow[] = [
+      { sectorKey: 'corte_palmilha', pairsPerHour: 20, costPerHour: 12 },
+      { sectorKey: 'costura', pairsPerHour: 6, costPerHour: 13.5 },
+      { sectorKey: 'montagem', pairsPerHour: 7.5, costPerHour: 15 },
+    ];
+    const eff = 85;
+    const totalAdjusted = adjustForEfficiency(totalModPerPair(rows), eff);
+    const perRowSum = rows.reduce((a, r) => a + adjustForEfficiency(rowCost(r), eff), 0);
+    expect(totalAdjusted).toBeCloseTo(perRowSum, 9);
   });
 });
 

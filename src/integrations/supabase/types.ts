@@ -15480,6 +15480,7 @@ export type Database = {
       reference_sector_pricing: {
         Row: {
           created_at: string
+          efficiency_pct: number
           id: string
           lines: Json
           reference: string
@@ -15488,6 +15489,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          efficiency_pct?: number
           id?: string
           lines?: Json
           reference: string
@@ -15496,6 +15498,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          efficiency_pct?: number
           id?: string
           lines?: Json
           reference?: string
