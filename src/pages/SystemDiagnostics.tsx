@@ -30,6 +30,35 @@ type DiagnosticItem = {
 type ConsistencyRow = { check_name: string; severity: string; item_count: number; sample: string | null };
 type ParityRow = { case_name: string; ok: boolean; message: string | null };
 
+/** Linha de check (consistência de consumo OU frescor do PCP) — mesma forma.
+ *  item_count=0 → passou (verde); >0 destaca por severidade ('alto'/'error' = erro,
+ *  'medio'/'warn' = aviso). */
+function CheckRow({ row }: { row: ConsistencyRow }) {
+  const clean = (row.item_count ?? 0) === 0;
+  const sev = (row.severity || '').toLowerCase();
+  const isErr = !clean && (sev.includes('alto') || sev.includes('error') || sev.includes('crit'));
+  const isWarn = !clean && (sev.includes('med') || sev.includes('méd') || sev.includes('warn'));
+  const tone = clean ? 'text-success' : isErr ? 'text-destructive' : isWarn ? 'text-warning' : 'text-muted-foreground';
+  const icon = clean
+    ? <CheckCircle2 className="h-4 w-4 text-success" />
+    : isErr ? <XCircle className="h-4 w-4 text-destructive" />
+    : isWarn ? <AlertTriangle className="h-4 w-4 text-warning" />
+    : <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+      <div className="mt-0.5">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-semibold text-foreground">{row.check_name}</p>
+          <Badge variant="outline" className={`text-xs uppercase ${tone}`}>{row.severity}</Badge>
+          <Badge variant="secondary" className="text-xs">{row.item_count} item(ns)</Badge>
+        </div>
+        {row.sample && row.sample !== '—' && <p className="text-xs text-muted-foreground mt-0.5 break-all">{row.sample}</p>}
+      </div>
+    </div>
+  );
+}
+
 export default function SystemDiagnostics() {
   const [diag, setDiag] = useState<DiagnosticItem[]>([]);
   const [running, setRunning] = useState(false);
@@ -41,17 +70,21 @@ export default function SystemDiagnostics() {
   // o contrato TS×SQL do motor de consumo. Sob demanda (botão) — são varreduras.
   const [consChecks, setConsChecks] = useState<ConsistencyRow[] | null>(null);
   const [parityChecks, setParityChecks] = useState<ParityRow[] | null>(null);
+  const [freshChecks, setFreshChecks] = useState<ConsistencyRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
     try {
-      const [consRes, parRes] = await Promise.all([
+      const [consRes, parRes, freshRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
+        // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
+        (supabase as any).rpc('pcp_freshness_report'),
       ]);
       if (consRes.error) throw consRes.error;
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
+      setFreshChecks((freshRes?.error ? [] : (freshRes?.data ?? [])) as ConsistencyRow[]);
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
         setParityChecks([]);
@@ -437,33 +470,23 @@ export default function SystemDiagnostics() {
             {consChecks !== null && consChecks.length === 0 && !consRunning && (
               <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhuma inconsistência de cadastro encontrada.</div>
             )}
-            {(consChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => {
-              // item_count=0 → check passou (verde), independe da severidade-rótulo.
-              // Severidades vêm em PT ('alto'/'medio') além de en ('error'/'warn').
-              const clean = (c.item_count ?? 0) === 0;
-              const sev = (c.severity || '').toLowerCase();
-              const isErr = !clean && (sev.includes('alto') || sev.includes('error') || sev.includes('crit'));
-              const isWarn = !clean && (sev.includes('med') || sev.includes('méd') || sev.includes('warn'));
-              const tone = clean ? 'text-success' : isErr ? 'text-destructive' : isWarn ? 'text-warning' : 'text-muted-foreground';
-              const icon = clean
-                ? <CheckCircle2 className="h-4 w-4 text-success" />
-                : isErr ? <XCircle className="h-4 w-4 text-destructive" />
-                : isWarn ? <AlertTriangle className="h-4 w-4 text-warning" />
-                : <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
-              return (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
-                  <div className="mt-0.5">{icon}</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-foreground">{c.check_name}</p>
-                      <Badge variant="outline" className={`text-xs uppercase ${tone}`}>{c.severity}</Badge>
-                      <Badge variant="secondary" className="text-xs">{c.item_count} item(ns)</Badge>
-                    </div>
-                    {c.sample && <p className="text-xs text-muted-foreground mt-0.5 break-all">{c.sample}</p>}
-                  </div>
-                </div>
-              );
-            })}
+            {(consChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · FRESCOR"
+            title="Frescor — custo & compra"
+            subtitle="Custo congelado desatualizado (ficha mudou depois do snapshot → recalcular/reabrir) e ondas com prazo de compra vencido/iminente. Fonte: pcp_freshness_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {freshChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir o frescor de custo/compra.</p>
+            )}
+            {(freshChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
           </Panel>
 
           <Panel
