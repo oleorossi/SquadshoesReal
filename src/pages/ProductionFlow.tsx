@@ -1,250 +1,227 @@
 /**
- * Production Flow — quadro tipo kanban das OPs por estágio.
- * Tela-chave do handoff Novidade (`screen-production-flow.jsx`).
+ * Production Flow — quadro kanban ARRASTÁVEL das OPs por setor.
+ * "Onde está cada ordem": cada OP cai na coluna do seu setor atual; arrastar pra
+ * outra coluna empurra a OP pelo fluxo.
  *
- * Visualização vertical (5 colunas):
- *   CORTE → COSTURA → MONTAGEM → ACABAMENTO → EXPEDIÇÃO
+ * Dados REAIS de order_stages (não mais o mock/production_step legado). Arrastar
+ * chama a RPC advance_order_to_sector (atômica): conclui o que vem antes do alvo
+ * NO FLUXO e inicia o alvo, respeitando o guard de pré-requisito
+ * (fn_guard_manual_stage_transition) e carimbando started_at/completed_at via
+ * trigger. Se faltar pré-requisito, o guard reverte tudo e a mensagem aparece.
  *
- * Cada OP é um cartão na coluna do seu estágio atual, com:
- *   - ID (mono pequeno)
- *   - Chip da linha (A1, B2, C1...)
- *   - Modelo (bold)
- *   - Pares (Anton 22px)
- *   - Barra de progresso colorida pelo estágio
- *   - Status do prazo (mono pequeno)
- *   - Marca vermelha (canto sup.) se urgente / late
- *
- * Header: 5 KPIs (1 por estágio) com contagem de OPs e total de pares.
- *
- * **Wiring**: hoje usa dados mock fiel ao handoff. Pra produção, troque
- * `useOpsMock()` por `useOrders({ status: 'Em Produção' })` e mapeie o
- * `production_step` da OP para a coluna (`getColForStep`).
+ * ⚠ A ordem das colunas é o FLUXO real (topológico), não o stage_order — na base
+ * Costura tem stage_order 3 mas depende de Aviamento (4). Ordem: 3 prep → Costura
+ * → Silk → Colagem → Montagem → Solagem → Acabamento → Expedição.
  */
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Funnel as Filter, Plus } from '@phosphor-icons/react';
-import { Corte, Costura, Montagem, Acabamento, Embalagem } from '@/components/icons/SectorIcons';
-import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { useOrders } from '@/hooks/useOrders';
+import { useAllOrderStages, type OrderStage } from '@/hooks/useOrderStages';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { Badge } from '@/components/ui/badge';
+import { DotsSixVertical } from '@phosphor-icons/react';
 
-// Kanban segue a taxonomia canônica de productionSectors (5 macro-etapas).
-// A coluna final é "Expedição" — antes chamada de "Embalagem" no kanban,
-// mas o setor real Embalagens é uma sub-etapa de Expedição (vide /expedicao).
-const STAGES = [
-  { key: 'CORTE',      icon: Corte,      colorVar: 'var(--stage-cut)',  label: 'Corte' },
-  { key: 'COSTURA',    icon: Costura,    colorVar: 'var(--stage-sew)',  label: 'Costura' },
-  { key: 'MONTAGEM',   icon: Montagem,   colorVar: 'var(--stage-assy)', label: 'Montagem' },
-  { key: 'ACABAMENTO', icon: Acabamento, colorVar: 'var(--stage-fin)',  label: 'Acabamento' },
-  { key: 'EXPEDICAO',  icon: Embalagem,  colorVar: 'var(--stage-pack)', label: 'Expedição' },
-] as const;
+// Ordem TOPOLÓGICA do fluxo (= ordem das colunas), alinhada ao guard e à
+// computeParallelWindows. Cada coluna reusa uma CSS var de estágio (tematizada).
+const FLOW: { name: string; label: string; colorVar: string }[] = [
+  { name: 'Corte Palmilha', label: 'Corte Palmilha', colorVar: 'var(--stage-cut)' },
+  { name: 'Corte Forração', label: 'Corte Forração', colorVar: 'var(--stage-cut)' },
+  { name: 'Aviamento',      label: 'Aviamento',      colorVar: 'var(--stage-cut)' },
+  { name: 'Costura',        label: 'Costura',        colorVar: 'var(--stage-sew)' },
+  { name: 'Silk',           label: 'Silk',           colorVar: 'var(--stage-sew)' },
+  { name: 'Colagem',        label: 'Colagem',        colorVar: 'var(--stage-assy)' },
+  { name: 'Montagem',       label: 'Montagem',       colorVar: 'var(--stage-assy)' },
+  { name: 'Solagem',        label: 'Solagem',        colorVar: 'var(--stage-fin)' },
+  { name: 'Acabamento',     label: 'Acabamento',     colorVar: 'var(--stage-fin)' },
+  { name: 'Expedição',      label: 'Expedição',      colorVar: 'var(--stage-pack)' },
+];
+const FLOW_NAMES = FLOW.map(f => f.name);
+const ACTIVE_STATUS = new Set(['reservado', 'em produção', 'em producao', 'em_producao', 'producao']);
 
-type Op = {
-  id: string;
-  modelo: string;
-  pairs: number;
-  col: number;     // 0..4 índice da coluna (= estágio)
-  prog: number;    // 0..100
-  due: string;
-  late: boolean;
-  hot: boolean;    // urgente / hoje / vermelho
-  line: string;
-};
-
-/** Mapeia step canônico do schema (Squad Shoes) pra coluna do flow board (0..4). */
-function getColForStep(step: string | null | undefined): number {
-  if (!step) return 0;
-  const s = step.toLowerCase();
-  if (s.includes('corte') || s.includes('mesa') || s.includes('forração')) return 0;
-  if (s.includes('costura') || s.includes('aviamento')) return 1;
-  if (s.includes('montagem') || s.includes('colagem') || s.includes('silk')) return 2;
-  if (s.includes('acabamento') || s.includes('solagem')) return 3;
-  if (s.includes('embalagem') || s.includes('expedição') || s.includes('expedicao')) return 4;
-  return 0;
+/** 'Mesa' (legado) === 'Aviamento'; devolve o índice no fluxo ou -1. */
+function flowIndex(stageName: string): number {
+  const n = stageName === 'Mesa' ? 'Aviamento' : stageName;
+  return FLOW_NAMES.indexOf(n);
 }
 
-function useOps() {
-  return useQuery<Op[]>({
-    queryKey: ['production_flow_ops'],
-    staleTime: 30_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, order_number, quantity, production_step, status, created_at')
-        .in('status', ['Reservado', 'Em Produção', 'Em produção'])
-        .order('created_at', { ascending: false })
-        .limit(40);
-      if (error) throw error;
-      const rows = (data || []).map((o, idx): Op => ({
-        id: o.order_number || o.id.slice(0, 8),
-        modelo: '—',
-        pairs: Number(o.quantity) || 0,
-        col: getColForStep((o as any).production_step),
-        prog: Math.min(100, Math.max(10, ((idx % 5) + 1) * 18)),
-        due: '—',
-        late: false,
-        hot: false,
-        line: ['A1', 'A2', 'B1', 'B2', 'C1'][idx % 5],
-      }));
-      // Fallback mock se a fábrica ainda não tem OPs ativas
-      if (rows.length === 0) {
-        return [
-          { id: 'OP-2847', modelo: 'Mocassim Verona', pairs: 420, col: 1, prog: 62, due: 'Hoje 18:00', late: false, hot: true,  line: 'A1' },
-          { id: 'OP-2849', modelo: 'Scarpin Bianca',   pairs: 280, col: 0, prog: 28, due: 'Amanhã',    late: false, hot: false, line: 'A2' },
-          { id: 'OP-2851', modelo: 'Sandália Leila',   pairs: 540, col: 2, prog: 78, due: '08/05',     late: false, hot: false, line: 'B1' },
-          { id: 'OP-2843', modelo: 'Bota Aurora',      pairs: 180, col: 3, prog: 91, due: 'Hoje 14:00',late: true,  hot: true,  line: 'B2' },
-          { id: 'OP-2855', modelo: 'Tênis Nova',       pairs: 320, col: 4, prog: 96, due: '07/05',     late: false, hot: false, line: 'C1' },
-          { id: 'OP-2841', modelo: 'Mule Capri',       pairs: 240, col: 1, prog: 44, due: '09/05',     late: false, hot: false, line: 'A1' },
-          { id: 'OP-2853', modelo: 'Anabela Sole',     pairs: 360, col: 2, prog: 55, due: '10/05',     late: false, hot: false, line: 'B1' },
-        ];
-      }
-      return rows;
-    },
-  });
+interface FlowOp {
+  id: string;
+  order_number: string;
+  modelo: string;
+  color: string | null;
+  pairs: number;
+  col: number;          // índice da coluna (setor atual)
+  prog: number;         // 0..100 (etapas concluídas / total)
+  currentStatus: string;
+  late: boolean;
 }
 
 export default function ProductionFlow() {
-  const { data: ops = [] } = useOps();
+  const qc = useQueryClient();
+  const { data: orders = [] } = useOrders();
 
-  const stageStats = useMemo(() => {
-    return STAGES.map((s, i) => {
+  const activeOrders = useMemo(
+    () => (orders as any[]).filter(o => ACTIVE_STATUS.has(String(o.status || '').toLowerCase().trim())),
+    [orders],
+  );
+  const orderIds = useMemo(() => activeOrders.map(o => o.id), [activeOrders]);
+  const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+
+  const stagesByOrder = useMemo(() => {
+    const m = new Map<string, OrderStage[]>();
+    for (const s of allStages) {
+      const arr = m.get(s.order_id);
+      if (arr) arr.push(s); else m.set(s.order_id, [s]);
+    }
+    return m;
+  }, [allStages]);
+
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+
+  const ops = useMemo<FlowOp[]>(() => {
+    const out: FlowOp[] = [];
+    for (const o of activeOrders) {
+      const stages = stagesByOrder.get(o.id) || [];
+      const inFlow = stages.filter(s => flowIndex(s.stage_name) >= 0);
+      if (inFlow.length === 0) continue;
+      const open = inFlow.filter(s => s.status !== 'concluido');
+      if (open.length === 0) continue; // tudo concluído → não está mais "em produção"
+      const inProg = open.filter(s => s.status === 'em_andamento');
+      const current = inProg.length
+        ? inProg.reduce((a, b) => (flowIndex(b.stage_name) > flowIndex(a.stage_name) ? b : a))
+        : open.reduce((a, b) => (flowIndex(b.stage_name) < flowIndex(a.stage_name) ? b : a));
+      const done = inFlow.filter(s => s.status === 'concluido').length;
+      const plannedDelivery = o.planned_delivery || null;
+      const late = !!plannedDelivery && new Date(plannedDelivery + 'T00:00:00') < today;
+      out.push({
+        id: o.id,
+        order_number: o.order_number || o.id.slice(0, 8),
+        modelo: o.technical_sheets?.name || '—',
+        color: o.color ?? null,
+        pairs: Number(o.quantity) || 0,
+        col: flowIndex(current.stage_name),
+        prog: inFlow.length > 0 ? Math.round((done / inFlow.length) * 100) : 0,
+        currentStatus: current.status,
+        late,
+      });
+    }
+    return out;
+  }, [activeOrders, stagesByOrder, today]);
+
+  const advance = useMutation({
+    mutationFn: async ({ orderId, target }: { orderId: string; target: string }) => {
+      const operator = (() => { try { return localStorage.getItem('sector_operator_employee_id') || null; } catch { return null; } })();
+      const { error } = await (supabase as any).rpc('advance_order_to_sector', {
+        p_order_id: orderId, p_target: target, p_operator: operator,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['order_stages'] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('OP movida no fluxo');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Não foi possível mover a OP'),
+  });
+
+  const stageStats = useMemo(() =>
+    FLOW.map((s, i) => {
       const colOps = ops.filter(o => o.col === i);
-      return {
-        ...s,
-        count: colOps.length,
-        pairs: colOps.reduce((a, o) => a + o.pairs, 0),
-      };
-    });
-  }, [ops]);
+      return { ...s, count: colOps.length, pairs: colOps.reduce((a, o) => a + o.pairs, 0) };
+    }), [ops]);
 
   return (
     <div className="space-y-4 page-enter">
-      {/* Header editorial */}
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · FLUXO"
         title="Onde está cada ordem"
-        description="Quadro tipo kanban: cada OP cai na coluna do seu estágio atual. Vermelho = atraso."
-        actions={<>
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Filter className="h-3.5 w-3.5" /> Filtrar
-          </Button>
-          <Button variant="outline" size="sm">Linha A · B · C</Button>
-          <Button size="sm" className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" /> Nova OP
-          </Button>
-        </>}
+        description="Arraste a OP pra outra coluna pra empurrá-la pelo fluxo. Conclui o que vem antes e inicia o setor de destino (respeitando o pré-requisito). Vermelho = atraso."
       />
 
-      {/* KPIs por estágio */}
       <StatGrid>
-        {stageStats.map((s) => (
-          <StatCard
-            key={s.key}
-            label={s.key}
-            value={s.count.toLocaleString('pt-BR')}
-            unit="OPs"
-            hint={`${s.pairs.toLocaleString('pt-BR')} pares`}
-            icon={s.icon}
-          />
+        {stageStats.slice(0, 6).map((s) => (
+          <StatCard key={s.name} label={s.label} value={s.count.toLocaleString('pt-BR')} unit="OPs" hint={`${s.pairs.toLocaleString('pt-BR')} pares`} />
         ))}
       </StatGrid>
 
-      {/* Quadro de fluxo (5 colunas) */}
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="eyebrow">Quadro de fluxo</div>
             <div className="display text-lg mt-1">{ops.length} ordens em produção</div>
           </div>
+          {advance.isPending && <span className="text-xs text-muted-foreground animate-pulse">movendo…</span>}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
-          {STAGES.map((s, i) => {
-            const Icon = s.icon;
-            const colOps = ops.filter(o => o.col === i);
-            return (
-              <div
-                key={s.key}
-                className="bg-muted/40 rounded-lg p-2.5 min-h-[480px]"
-              >
-                {/* column header */}
-                <div className="flex items-center gap-2 pb-2 border-b border-border mb-2.5">
-                  <div
-                    className="h-7 w-7 rounded flex items-center justify-center bg-card border border-border"
-                    style={{ color: s.colorVar }}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="display text-sm tracking-[0.06em]">{s.key}</div>
-                    <div className="font-mono text-xs text-muted-foreground">
-                      {String(i + 1).padStart(2, '0')} / 05
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="flex gap-2.5 min-w-max">
+            {FLOW.map((s, i) => {
+              const colOps = ops.filter(o => o.col === i);
+              return (
+                <div
+                  key={s.name}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData('text/plain');
+                    if (id) advance.mutate({ orderId: id, target: s.name });
+                  }}
+                  className="bg-muted/40 rounded-lg p-2.5 min-h-[480px] w-[210px] shrink-0"
+                  style={{ borderTop: `2px solid ${s.colorVar}` }}
+                >
+                  <div className="flex items-center gap-2 pb-2 border-b border-border mb-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="display text-sm tracking-[0.04em] truncate">{s.label}</div>
+                      <div className="font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, '0')} / {FLOW.length}</div>
                     </div>
+                    <span className="font-mono text-xs font-bold text-muted-foreground">{colOps.length}</span>
                   </div>
-                  <span className="font-mono text-xs font-bold text-muted-foreground">{colOps.length}</span>
-                </div>
 
-                {/* OP cards */}
-                {colOps.length === 0 ? (
-                  <div className="text-center text-xs text-muted-foreground/50 italic py-6">
-                    Nenhuma OP nesta etapa
-                  </div>
-                ) : (
-                  colOps.map((o, j) => (
-                    <div
-                      key={`${o.id}-${j}`}
-                      className="bg-card rounded-md p-2.5 mb-1.5 relative overflow-hidden"
-                      style={{
-                        border: `1px solid ${o.late ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`,
-                      }}
-                    >
-                      {o.hot && (
-                        <div
-                          className="absolute top-0 right-0"
-                          style={{
-                            width: 0,
-                            height: 0,
-                            borderLeft: '14px solid transparent',
-                            borderTop: '14px solid hsl(var(--primary))',
-                          }}
-                        />
-                      )}
-                      <div className="flex justify-between items-center">
-                        <span className="font-mono text-xs text-muted-foreground">{o.id}</span>
-                        <span className="font-mono text-xs text-muted-foreground border border-border rounded px-1 py-px">
-                          {o.line}
-                        </span>
+                  {colOps.length === 0 ? (
+                    <div className="text-center text-xs text-muted-foreground/50 italic py-6">Nenhuma OP nesta etapa</div>
+                  ) : (
+                    colOps.map((o) => (
+                      <div
+                        key={o.id}
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData('text/plain', o.id)}
+                        className="bg-card rounded-md p-2.5 mb-1.5 relative overflow-hidden cursor-grab active:cursor-grabbing"
+                        style={{ border: `1px solid ${o.late ? 'hsl(var(--primary))' : 'hsl(var(--border))'}` }}
+                      >
+                        {o.late && (
+                          <div className="absolute top-0 right-0" style={{ width: 0, height: 0, borderLeft: '14px solid transparent', borderTop: '14px solid hsl(var(--primary))' }} />
+                        )}
+                        <div className="flex justify-between items-center gap-1">
+                          <span className="font-mono text-xs text-muted-foreground flex items-center gap-1">
+                            <DotsSixVertical className="h-3 w-3 text-muted-foreground/40" />{o.order_number}
+                          </span>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0">
+                            {o.currentStatus === 'em_andamento' ? '🔄' : '⏳'}
+                          </Badge>
+                        </div>
+                        <div className="text-[12.5px] font-semibold mt-1 leading-tight truncate">{o.modelo}</div>
+                        {o.color && <div className="text-[10px] text-muted-foreground truncate">Cor: {o.color}</div>}
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="display text-xl tabular-nums">{o.pairs}</span>
+                          <span className="font-mono text-xs text-muted-foreground">pares</span>
+                        </div>
+                        <div className="h-[3px] bg-border rounded-sm mt-2 overflow-hidden">
+                          <div className="h-full" style={{ width: `${o.prog}%`, background: o.late ? 'hsl(var(--primary))' : s.colorVar }} />
+                        </div>
+                        <div className="flex justify-between mt-1.5">
+                          <span className="font-mono text-xs text-muted-foreground">{o.prog}%</span>
+                          {o.late && <span className="font-mono text-xs" style={{ color: 'hsl(var(--primary))' }}>ATRASADA</span>}
+                        </div>
                       </div>
-                      <div className="text-[12.5px] font-semibold mt-1.5 leading-tight">{o.modelo}</div>
-                      <div className="flex items-baseline gap-1 mt-1">
-                        <span className="display text-xl tabular-nums">{o.pairs}</span>
-                        <span className="font-mono text-xs text-muted-foreground">pares</span>
-                      </div>
-                      <div className="h-[3px] bg-border rounded-sm mt-2 overflow-hidden">
-                        <div
-                          className="h-full"
-                          style={{
-                            width: `${o.prog}%`,
-                            background: o.late ? 'hsl(var(--primary))' : s.colorVar,
-                          }}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-1.5">
-                        <span className="font-mono text-xs text-muted-foreground">{o.prog}%</span>
-                        <span
-                          className="font-mono text-xs"
-                          style={{ color: o.late ? 'hsl(var(--primary))' : undefined }}
-                        >
-                          {o.late ? 'ATRASADA' : o.due}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            );
-          })}
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
