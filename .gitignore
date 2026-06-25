@@ -44,3 +44,11 @@ supabase/.temp/
 
 # Scratch/saída de typecheck e auditoria (não versionar)
 *_audit_out.txt
+
+# Artefatos de skill-authoring (Claude Code) — NÃO versionar no repo do app, que
+# auto-deploya na Vercel. Skills empacotadas (.skill), o diretório solto de skill
+# no root e o zip temporário do instalador. Se for pra versionar uma skill, ela
+# mora em .claude/skills/<nome>/, não na raiz.
+*.skill
+/custo-producao-squadshoes/
+/zix92Yv2
