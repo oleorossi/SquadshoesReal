@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -183,8 +183,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {d.items.map((it) => (
-                        <TableRow key={`${it.material_id}::${it.color ?? ''}`}>
+                      {d.items.map((it) => {
+                        const gradeSizes = it.grade ? Object.keys(it.grade).filter((k) => (it.grade![k] ?? 0) > 0) : [];
+                        return (
+                        <Fragment key={`${it.material_id}::${it.color ?? ''}`}>
+                        <TableRow className={gradeSizes.length > 0 ? '[&>td]:border-b-0' : ''}>
                           <TableCell className="font-medium">{it.product_name}</TableCell>
                           <TableCell className="text-muted-foreground">{it.color || '—'}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">
@@ -208,7 +211,24 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                           <TableCell className="text-right tabular-nums text-muted-foreground">{formatCurrency(it.unit_price)}</TableCell>
                           <TableCell className="text-right tabular-nums">{formatCurrency(it.quantity * it.unit_price)}</TableCell>
                         </TableRow>
-                      ))}
+                        {gradeSizes.length > 0 && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={8} className="pt-0">
+                              <div className="flex flex-wrap items-center gap-1 pl-1">
+                                <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Grade · numeração</span>
+                                {gradeSizes.sort((a, b) => parseFloat(a) - parseFloat(b)).map((sz) => (
+                                  <span key={sz} className="inline-flex items-baseline gap-1 rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[11px]">
+                                    <span className="font-mono text-muted-foreground">{sz}</span>
+                                    <span className="font-semibold tabular-nums">{(it.grade![sz] ?? 0).toLocaleString('pt-BR')}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        </Fragment>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </CollapsibleContent>

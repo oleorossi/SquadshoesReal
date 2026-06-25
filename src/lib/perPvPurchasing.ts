@@ -33,6 +33,10 @@ export interface PvMaterialNeed {
   is_artisanal?: boolean;
   /** Múltiplo de compra (embalagem): qtd arredonda pra cima. Enriquecido pela UI. */
   purchase_multiple?: number | null;
+  /** Grade do SOLADO por numeração (total de pares por número). Só vem preenchida
+   *  nas linhas de solado; demais materiais vêm null. Exibida na OC como no
+   *  consumo de materiais. */
+  grade?: Record<string, number> | null;
 }
 
 export interface DraftPurchaseOrderItem {
@@ -49,6 +53,19 @@ export interface DraftPurchaseOrderItem {
   /** Excedente comprado a mais por causa do múltiplo de compra (qtd − necessidade
    *  pré-arredondamento). 0 quando não houve arredondamento. Exibido em azul. */
   rounding_surplus?: number;
+  /** Grade do solado por numeração (total de pares). Só em linhas de solado. */
+  grade?: Record<string, number> | null;
+}
+
+/** Soma duas grades por numeração (chaves = números/conjugados). */
+function mergeGrade(
+  a: Record<string, number> | null | undefined,
+  b: Record<string, number> | null | undefined,
+): Record<string, number> | null {
+  if (!a && !b) return null;
+  const out: Record<string, number> = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) out[k] = (out[k] || 0) + (Number(v) || 0);
+  return out;
 }
 
 export interface DraftPurchaseOrder {
@@ -113,6 +130,7 @@ export function buildPerPvPurchaseOrders(
       existing.stock_qty = round3(existing.stock_qty + stock);
       // mantém o maior preço conhecido (mais conservador pra estimativa)
       existing.unit_price = Math.max(existing.unit_price, price);
+      existing.grade = mergeGrade(existing.grade, n.grade);
     } else {
       merged.set(key, {
         material_id: n.material_id,
@@ -124,6 +142,7 @@ export function buildPerPvPurchaseOrders(
         stock_qty: round3(stock),
         unit_price: price,
         purchase_multiple: n.purchase_multiple ?? null,
+        grade: n.grade ?? null,
         supplier_id: n.supplier_id ?? null,
         supplier_name: n.supplier_name ?? null,
       });
@@ -169,6 +188,7 @@ export function buildPerPvPurchaseOrders(
       unit_price: it.unit_price,
       purchase_multiple: it.purchase_multiple,
       rounding_surplus: it.rounding_surplus,
+      grade: it.grade ?? null,
     });
   }
 
