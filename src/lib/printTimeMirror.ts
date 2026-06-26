@@ -96,7 +96,16 @@ export function printTimeMirror(params: {
   const totalOT = days.reduce((s, d) => s + dayHe(d), 0);
   const valorHora = (Number(monthlySalary) || 0) / SALARY_HOUR_DIVISOR;
   const heValue = (totalOT / 60) * valorHora * PREMIUM_MULTIPLIER;
-  const totalAbsent = days.filter(d => d.status === 'absent').length;
+  // ATRASO/saída-cedo por dia = déficit do esperado num dia útil PRESENTE (worked>0).
+  // Espelha o ramo dayBal<0 da folha. Dia útil sem batida nenhuma = FALTA (não atraso).
+  const dayAtraso = (d: TimeMirrorDay): number =>
+    d.expectedMinutes > 0 && d.workedMinutes > 0 ? Math.max(0, d.expectedMinutes - d.workedMinutes) : 0;
+  // FALTA de verdade só quando NÃO houve trabalho no dia útil. Dias parciais (com
+  // batida, mas < esperado) são ATRASO — calculateDaySummary marca os dois como
+  // 'absent', então aqui separamos pra não rotular/contar parcial como falta.
+  const isFalta = (d: TimeMirrorDay): boolean => d.status === 'absent' && d.workedMinutes === 0;
+  const totalAbsent = days.filter(isFalta).length;
+  const totalAtraso = days.reduce((s, d) => s + dayAtraso(d), 0);
   const periodLabel = (() => {
     const [y, m] = period.split('-');
     return `${m.padStart(2, '0')}/${y}`;
@@ -128,7 +137,7 @@ export function printTimeMirror(params: {
       if (!day) return '<td style="text-align:center;color:#999;padding:6px;vertical-align:top">—</td>';
       const dt = new Date(d + 'T12:00:00');
       const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-      const bgColor = day.status === 'absent' ? '#fecaca'
+      const bgColor = day.status === 'absent' ? (day.workedMinutes === 0 ? '#fecaca' : '#fef3c7')
         : day.status === 'overtime' ? '#fde68a'
         : day.status === 'holiday' ? '#bfdbfe'
         : day.status === 'incomplete' ? '#fed7aa'
@@ -150,12 +159,16 @@ export function printTimeMirror(params: {
       const overtimeStr = heMin > 0
         ? `<div style="font-size:11px;color:#15803d;font-weight:800;font-family:monospace;margin-top:2px;border-top:1px dashed #86efac;padding-top:2px">+${fmtMin(heMin)} HE</div>`
         : '';
-      const statusLabel = day.status === 'absent' ? '<div style="font-size:10px;color:#7f1d1d;font-weight:800;margin-bottom:3px">FALTA</div>'
+      const atrasoMin = dayAtraso(day);
+      const atrasoStr = atrasoMin > 0
+        ? `<div style="font-size:11px;color:#b45309;font-weight:800;font-family:monospace;margin-top:2px;border-top:1px dashed #fcd34d;padding-top:2px">−${fmtMin(atrasoMin)} atraso</div>`
+        : '';
+      const statusLabel = isFalta(day) ? '<div style="font-size:10px;color:#7f1d1d;font-weight:800;margin-bottom:3px">FALTA</div>'
         : day.status === 'incomplete' ? '<div style="font-size:10px;color:#9a3412;font-weight:800;margin-bottom:3px">INCOMPLETO</div>'
         : day.status === 'holiday' ? '<div style="font-size:10px;color:#1e3a8a;font-weight:800;margin-bottom:3px">FERIADO</div>'
         : '';
 
-      return `<td style="text-align:center;vertical-align:top;padding:5px 4px;background:${bgColor} !important;border:1px solid #999;">${statusLabel}${punchesStr}${workedStr}${expectedStr}${overtimeStr}</td>`;
+      return `<td style="text-align:center;vertical-align:top;padding:5px 4px;background:${bgColor} !important;border:1px solid #999;">${statusLabel}${punchesStr}${workedStr}${expectedStr}${overtimeStr}${atrasoStr}</td>`;
     }).join('');
 
     // Preenche slots vazios pra completar 7 colunas (semana parcial)
@@ -196,7 +209,7 @@ export function printTimeMirror(params: {
   .legend { font-size:9px; color:#444; margin:6px 0 8px; padding:4px 8px; border-top:1px solid #ccc; border-bottom:1px solid #ccc; }
   .legend .item { display:inline-block; margin-right:14px; }
   .legend .swatch { display:inline-block; width:10px; height:10px; vertical-align:middle; margin-right:3px; border:1px solid #999; }
-  .totals { display:grid; grid-template-columns:repeat(6, 1fr); border:2px solid #111; padding:6px 10px; margin-top:6px; font-size:11px; page-break-inside:avoid; }
+  .totals { display:grid; grid-template-columns:repeat(7, 1fr); border:2px solid #111; padding:6px 10px; margin-top:6px; font-size:11px; page-break-inside:avoid; }
   .totals .cell { text-align:center; }
   .totals .label { font-size:9px; text-transform:uppercase; color:#666; font-weight:700; letter-spacing:0.3px; }
   .totals .value { font-size:16px; font-weight:900; font-family:monospace; }
@@ -238,6 +251,8 @@ ${calendarSections}
   <span class="item"><span class="swatch" style="background:#fecaca"></span>Falta</span>
   <span class="item"><span class="swatch" style="background:#fde68a"></span>HE</span>
   <span class="item"><span style="color:#15803d;font-weight:800">+HH:MM HE</span> = hora extra do dia (1,5×)</span>
+  <span class="item"><span style="color:#b45309;font-weight:800">−HH:MM atraso</span> = déficit do dia</span>
+  <span class="item"><span class="swatch" style="background:#fef3c7"></span>Atraso (parcial)</span>
   <span class="item"><span class="swatch" style="background:#bfdbfe"></span>Feriado</span>
   <span class="item"><span class="swatch" style="background:#fed7aa"></span>Incompleto</span>
   <span class="item"><span class="swatch" style="background:#e5e7eb"></span>Fim de semana</span>
@@ -249,6 +264,7 @@ ${calendarSections}
   <!-- HORA EXTRA por dia (mesma conta da folha: excedente/dia, sem compensar). -->
   <div class="cell"><div class="label">Hora Extra</div><div class="value" style="color:#15803d;">${totalOT > 0 ? '+' + fmtMin(totalOT) : '—'}</div></div>
   <div class="cell"><div class="label">Valor HE (1,5×)</div><div class="value" style="color:#15803d;font-size:14px;">${monthlySalary ? formatMoney(heValue) : '—'}</div></div>
+  <div class="cell"><div class="label">Atraso</div><div class="value" style="color:#b45309;">${totalAtraso > 0 ? '−' + fmtMin(totalAtraso) : '—'}</div></div>
   <div class="cell"><div class="label">Faltas</div><div class="value" style="color:#c00;">${totalAbsent}</div></div>
   <div class="cell"><div class="label">Banco (período)</div><div class="value">${bankHoursBalance !== undefined ? fmtMin(bankHoursBalance) : '—'}</div></div>
 </div>
