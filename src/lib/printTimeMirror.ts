@@ -1,4 +1,6 @@
 import { printHtml } from './printOrder';
+import { SALARY_HOUR_DIVISOR } from './salaryPayroll';
+import { PREMIUM_MULTIPLIER } from './hourlyPayroll';
 
 export interface TimeMirrorDay {
   date: string;          // YYYY-MM-DD
@@ -41,6 +43,10 @@ function fmtMin(min: number): string {
   return `${sign}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+function formatMoney(v: number): string {
+  return `R$ ${(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
@@ -73,11 +79,23 @@ export function printTimeMirror(params: {
   days: TimeMirrorDay[];
   bankHoursBalance?: number; // saldo do banco em minutos
   observations?: string;
+  /** Salário mensal — pra calcular o R$ da hora extra (salário÷220 × 1,5). */
+  monthlySalary?: number;
 }): void {
-  const { employee, company, period, days, bankHoursBalance, observations } = params;
+  const { employee, company, period, days, bankHoursBalance, observations, monthlySalary } = params;
   const totalWorked = days.reduce((s, d) => s + d.workedMinutes, 0);
   const totalExpected = days.reduce((s, d) => s + d.expectedMinutes, 0);
-  const totalOT = days.reduce((s, d) => s + d.overtimeMinutes, 0);
+  // HORA EXTRA POR DIA — MESMA conta da folha (salaryPayroll): excedente do
+  // esperado em dia útil presente, ou o dia inteiro em fds/feriado; sem
+  // compensação entre dias. NÃO usa d.overtimeMinutes (legado semanal = 0 nos
+  // relatórios) — isso fazia o calendário esconder a HE que a folha paga.
+  const dayHe = (d: TimeMirrorDay): number => {
+    if (!['normal', 'overtime', 'holiday', 'weekend'].includes(d.status)) return 0;
+    return d.expectedMinutes > 0 ? Math.max(0, d.workedMinutes - d.expectedMinutes) : d.workedMinutes;
+  };
+  const totalOT = days.reduce((s, d) => s + dayHe(d), 0);
+  const valorHora = (Number(monthlySalary) || 0) / SALARY_HOUR_DIVISOR;
+  const heValue = (totalOT / 60) * valorHora * PREMIUM_MULTIPLIER;
   const totalAbsent = days.filter(d => d.status === 'absent').length;
   const periodLabel = (() => {
     const [y, m] = period.split('-');
@@ -128,8 +146,9 @@ export function printTimeMirror(params: {
       const expectedStr = day.expectedMinutes > 0
         ? `<div style="font-size:10px;color:#374151;font-weight:600;font-family:monospace">Esp: ${fmtMin(day.expectedMinutes)}</div>`
         : '';
-      const overtimeStr = day.overtimeMinutes > 0
-        ? `<div style="font-size:11px;color:#7c2d12;font-weight:800;font-family:monospace">+${fmtMin(day.overtimeMinutes)} HE</div>`
+      const heMin = dayHe(day);
+      const overtimeStr = heMin > 0
+        ? `<div style="font-size:11px;color:#15803d;font-weight:800;font-family:monospace;margin-top:2px;border-top:1px dashed #86efac;padding-top:2px">+${fmtMin(heMin)} HE</div>`
         : '';
       const statusLabel = day.status === 'absent' ? '<div style="font-size:10px;color:#7f1d1d;font-weight:800;margin-bottom:3px">FALTA</div>'
         : day.status === 'incomplete' ? '<div style="font-size:10px;color:#9a3412;font-weight:800;margin-bottom:3px">INCOMPLETO</div>'
@@ -177,7 +196,7 @@ export function printTimeMirror(params: {
   .legend { font-size:9px; color:#444; margin:6px 0 8px; padding:4px 8px; border-top:1px solid #ccc; border-bottom:1px solid #ccc; }
   .legend .item { display:inline-block; margin-right:14px; }
   .legend .swatch { display:inline-block; width:10px; height:10px; vertical-align:middle; margin-right:3px; border:1px solid #999; }
-  .totals { display:grid; grid-template-columns:repeat(5, 1fr); border:2px solid #111; padding:6px 10px; margin-top:6px; font-size:11px; page-break-inside:avoid; }
+  .totals { display:grid; grid-template-columns:repeat(6, 1fr); border:2px solid #111; padding:6px 10px; margin-top:6px; font-size:11px; page-break-inside:avoid; }
   .totals .cell { text-align:center; }
   .totals .label { font-size:9px; text-transform:uppercase; color:#666; font-weight:700; letter-spacing:0.3px; }
   .totals .value { font-size:16px; font-weight:900; font-family:monospace; }
@@ -218,6 +237,7 @@ ${calendarSections}
   <strong>Legenda:</strong>
   <span class="item"><span class="swatch" style="background:#fecaca"></span>Falta</span>
   <span class="item"><span class="swatch" style="background:#fde68a"></span>HE</span>
+  <span class="item"><span style="color:#15803d;font-weight:800">+HH:MM HE</span> = hora extra do dia (1,5×)</span>
   <span class="item"><span class="swatch" style="background:#bfdbfe"></span>Feriado</span>
   <span class="item"><span class="swatch" style="background:#fed7aa"></span>Incompleto</span>
   <span class="item"><span class="swatch" style="background:#e5e7eb"></span>Fim de semana</span>
@@ -226,8 +246,9 @@ ${calendarSections}
 <div class="totals">
   <div class="cell"><div class="label">Trabalhadas</div><div class="value">${fmtMin(totalWorked)}</div></div>
   <div class="cell"><div class="label">Esperadas</div><div class="value">${fmtMin(totalExpected)}</div></div>
-  <!-- "Horas extras" (Σ overtimeMinutes diário) REMOVIDO: era sempre 0 (HE é do
-       período, não diária). O saldo do período vai em "Banco (período)". (2026-06-17) -->
+  <!-- HORA EXTRA por dia (mesma conta da folha: excedente/dia, sem compensar). -->
+  <div class="cell"><div class="label">Hora Extra</div><div class="value" style="color:#15803d;">${totalOT > 0 ? '+' + fmtMin(totalOT) : '—'}</div></div>
+  <div class="cell"><div class="label">Valor HE (1,5×)</div><div class="value" style="color:#15803d;font-size:14px;">${monthlySalary ? formatMoney(heValue) : '—'}</div></div>
   <div class="cell"><div class="label">Faltas</div><div class="value" style="color:#c00;">${totalAbsent}</div></div>
   <div class="cell"><div class="label">Banco (período)</div><div class="value">${bankHoursBalance !== undefined ? fmtMin(bankHoursBalance) : '—'}</div></div>
 </div>
