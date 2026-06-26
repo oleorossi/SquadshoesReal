@@ -33,6 +33,14 @@ export interface PvMaterialNeed {
   is_artisanal?: boolean;
   /** Múltiplo de compra (embalagem): qtd arredonda pra cima. Enriquecido pela UI. */
   purchase_multiple?: number | null;
+  /** Grade do SOLADO por numeração (total de pares por número). Só vem preenchida
+   *  nas linhas de solado; demais materiais vêm null. Exibida na OC como no
+   *  consumo de materiais. */
+  grade?: Record<string, number> | null;
+  /** TRUE quando a cor pedida não tem produto cadastrado e o consumo caiu numa
+   *  cor diferente (matched_by='color_mismatch'). GUARD: a OC marca a linha e
+   *  bloqueia a geração até cadastrar a cor. */
+  color_mismatch?: boolean | null;
 }
 
 export interface DraftPurchaseOrderItem {
@@ -49,6 +57,21 @@ export interface DraftPurchaseOrderItem {
   /** Excedente comprado a mais por causa do múltiplo de compra (qtd − necessidade
    *  pré-arredondamento). 0 quando não houve arredondamento. Exibido em azul. */
   rounding_surplus?: number;
+  /** Grade do solado por numeração (total de pares). Só em linhas de solado. */
+  grade?: Record<string, number> | null;
+  /** Cor pedida sem produto cadastrado (caiu noutra cor). Bloqueia a OC. */
+  color_mismatch?: boolean;
+}
+
+/** Soma duas grades por numeração (chaves = números/conjugados). */
+function mergeGrade(
+  a: Record<string, number> | null | undefined,
+  b: Record<string, number> | null | undefined,
+): Record<string, number> | null {
+  if (!a && !b) return null;
+  const out: Record<string, number> = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) out[k] = (out[k] || 0) + (Number(v) || 0);
+  return out;
 }
 
 export interface DraftPurchaseOrder {
@@ -113,6 +136,8 @@ export function buildPerPvPurchaseOrders(
       existing.stock_qty = round3(existing.stock_qty + stock);
       // mantém o maior preço conhecido (mais conservador pra estimativa)
       existing.unit_price = Math.max(existing.unit_price, price);
+      existing.grade = mergeGrade(existing.grade, n.grade);
+      existing.color_mismatch = !!existing.color_mismatch || !!n.color_mismatch;
     } else {
       merged.set(key, {
         material_id: n.material_id,
@@ -124,6 +149,8 @@ export function buildPerPvPurchaseOrders(
         stock_qty: round3(stock),
         unit_price: price,
         purchase_multiple: n.purchase_multiple ?? null,
+        grade: n.grade ?? null,
+        color_mismatch: !!n.color_mismatch,
         supplier_id: n.supplier_id ?? null,
         supplier_name: n.supplier_name ?? null,
       });
@@ -169,6 +196,8 @@ export function buildPerPvPurchaseOrders(
       unit_price: it.unit_price,
       purchase_multiple: it.purchase_multiple,
       rounding_surplus: it.rounding_surplus,
+      grade: it.grade ?? null,
+      color_mismatch: !!it.color_mismatch,
     });
   }
 
@@ -193,6 +222,8 @@ export interface PerPvDraftSummary {
   itemCount: number;        // total de itens (linhas)
   noSupplierItemCount: number;
   total: number;            // valor estimado somado
+  /** Nº de itens com cor não cadastrada (caíram noutra cor) — GUARD bloqueia gerar. */
+  colorMismatchCount: number;
 }
 
 export function summarizePerPvDrafts(drafts: DraftPurchaseOrder[]): PerPvDraftSummary {
@@ -204,6 +235,7 @@ export function summarizePerPvDrafts(drafts: DraftPurchaseOrder[]): PerPvDraftSu
     itemCount: drafts.reduce((s, d) => s + d.items.length, 0),
     noSupplierItemCount: noSupplier ? noSupplier.items.length : 0,
     total: round3(drafts.reduce((s, d) => s + d.total, 0)),
+    colorMismatchCount: drafts.reduce((s, d) => s + d.items.filter((i) => i.color_mismatch).length, 0),
   };
 }
 

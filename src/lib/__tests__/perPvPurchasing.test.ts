@@ -28,6 +28,43 @@ const need = (over: Partial<PvMaterialNeed>): PvMaterialNeed => ({
   ...over,
 });
 
+describe('grade do solado', () => {
+  it('mescla a grade por numeração ao somar o mesmo solado+cor', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par', needed_qty: 1104, supplier_id: null, supplier_name: null, grade: { '34': 92, '36': 184 } }),
+      need({ material_id: 'sol-01', product_name: '01', color: 'CARAMELO', unit: 'par', needed_qty: 1104, supplier_id: null, supplier_name: null, grade: { '34': 92, '38': 100 } }),
+    ]);
+    const item = drafts[0].items.find((i) => i.material_id === 'sol-01')!;
+    expect(item.quantity).toBe(2208);
+    expect(item.grade).toEqual({ '34': 184, '36': 184, '38': 100 });
+  });
+
+  it('material sem grade fica com grade null', () => {
+    const drafts = buildPerPvPurchaseOrders([need({ material_id: 'napa', needed_qty: 20 })]);
+    expect(drafts[0].items[0].grade ?? null).toBeNull();
+  });
+});
+
+describe('guard color_mismatch', () => {
+  it('propaga a flag e conta no resumo (bloqueia gerar)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'napa', color: 'MARROM', needed_qty: 10, color_mismatch: true }),
+      need({ material_id: 'cola', color: null, needed_qty: 2 }),
+    ]);
+    const item = drafts.flatMap((d) => d.items).find((i) => i.material_id === 'napa')!;
+    expect(item.color_mismatch).toBe(true);
+    expect(summarizePerPvDrafts(drafts).colorMismatchCount).toBe(1);
+  });
+
+  it('OR ao mesclar mesmo material+cor (qualquer linha mismatch marca)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'napa', color: 'MARROM', needed_qty: 5, color_mismatch: false }),
+      need({ material_id: 'napa', color: 'MARROM', needed_qty: 5, color_mismatch: true }),
+    ]);
+    expect(drafts[0].items[0].color_mismatch).toBe(true);
+  });
+});
+
 describe('buildPerPvPurchaseOrders', () => {
   it('1 PV, 1 material, 1 fornecedor → 1 OC com 1 item', () => {
     const drafts = buildPerPvPurchaseOrders([

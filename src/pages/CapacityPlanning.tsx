@@ -17,6 +17,7 @@ import { useHolidays } from '@/hooks/useTimesheet';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ForwardScheduleTool } from '@/components/production/ForwardScheduleTool';
 
 // ─── TYPES & CONFIG ──────────────────────────────────────────────────────────
 
@@ -382,6 +383,8 @@ export default function CapacityPlanning() {
         lateOps={lateOps}
         unscheduled={unscheduledCount}
       />
+
+      <ForwardScheduleTool />
 
       <HotspotsSection
         hotspots={hotspots}

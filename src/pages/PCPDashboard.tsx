@@ -100,6 +100,27 @@ export default function PCPDashboard() {
     return { pending, consumed, total: pending + consumed };
   }, [reservations]);
 
+  // Apontamento (adoção do sinal real — keystone): % das OPs em produção cuja
+  // etapa corrente está apontada como em_andamento COM started_at. Mede se o chão
+  // registra o início; sem isso gargalo/atraso/lead-time real ficam cegos.
+  const apontamento = useMemo(() => {
+    const ids = new Set(productionOrders.map(o => o.id));
+    const byOrder = new Map<string, typeof allStages>();
+    for (const s of allStages) {
+      if (!ids.has(s.order_id)) continue;
+      const arr = byOrder.get(s.order_id);
+      if (arr) arr.push(s); else byOrder.set(s.order_id, [s]);
+    }
+    let total = 0, apontadas = 0;
+    for (const sts of byOrder.values()) {
+      const current = [...sts].filter(s => s.status !== 'concluido').sort((a, b) => a.stage_order - b.stage_order)[0];
+      if (!current) continue;
+      total++;
+      if (current.status === 'em_andamento' && current.started_at) apontadas++;
+    }
+    return { total, apontadas, rate: total > 0 ? (apontadas / total) * 100 : 0 };
+  }, [allStages, productionOrders]);
+
   // Status distribution for pie chart
   const statusDistribution = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -168,6 +189,13 @@ export default function PCPDashboard() {
             value={materialStats.pending}
             icon={AlertTriangle}
             tone="warning"
+          />
+          <StatCard
+            label="Apontamento"
+            value={`${apontamento.rate.toFixed(0)}%`}
+            icon={CheckCircle2}
+            tone={apontamento.rate >= 60 ? 'success' : apontamento.rate >= 30 ? 'warning' : 'destructive'}
+            hint={`${apontamento.apontadas}/${apontamento.total} OPs com início apontado`}
           />
         </StatGrid>
 

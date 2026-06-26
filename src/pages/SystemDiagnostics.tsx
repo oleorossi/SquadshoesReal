@@ -27,9 +27,78 @@ type DiagnosticItem = {
   hint?: string;
 };
 
+type ConsistencyRow = { check_name: string; severity: string; item_count: number; sample: string | null };
+type ParityRow = { case_name: string; ok: boolean; message: string | null };
+
+/** Linha de check (consistência de consumo OU frescor do PCP) — mesma forma.
+ *  item_count=0 → passou (verde); >0 destaca por severidade ('alto'/'error' = erro,
+ *  'medio'/'warn' = aviso). */
+function CheckRow({ row }: { row: ConsistencyRow }) {
+  const clean = (row.item_count ?? 0) === 0;
+  const sev = (row.severity || '').toLowerCase();
+  const isErr = !clean && (sev.includes('alto') || sev.includes('error') || sev.includes('crit'));
+  const isWarn = !clean && (sev.includes('med') || sev.includes('méd') || sev.includes('warn'));
+  const tone = clean ? 'text-success' : isErr ? 'text-destructive' : isWarn ? 'text-warning' : 'text-muted-foreground';
+  const icon = clean
+    ? <CheckCircle2 className="h-4 w-4 text-success" />
+    : isErr ? <XCircle className="h-4 w-4 text-destructive" />
+    : isWarn ? <AlertTriangle className="h-4 w-4 text-warning" />
+    : <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+      <div className="mt-0.5">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-semibold text-foreground">{row.check_name}</p>
+          <Badge variant="outline" className={`text-xs uppercase ${tone}`}>{row.severity}</Badge>
+          <Badge variant="secondary" className="text-xs">{row.item_count} item(ns)</Badge>
+        </div>
+        {row.sample && row.sample !== '—' && <p className="text-xs text-muted-foreground mt-0.5 break-all">{row.sample}</p>}
+      </div>
+    </div>
+  );
+}
+
 export default function SystemDiagnostics() {
   const [diag, setDiag] = useState<DiagnosticItem[]>([]);
   const [running, setRunning] = useState(false);
+
+  // C3 (2026-06-25): expõe na UI os guards de consumo que já existiam só em SQL/
+  // testes — consumption_consistency_report() lista lacunas de cadastro que
+  // reintroduzem consumo errado (largura faltando, palmilha pronta inconsistente,
+  // solado sem specs, fachete sem consumo) e run_consumption_parity_tests() trava
+  // o contrato TS×SQL do motor de consumo. Sob demanda (botão) — são varreduras.
+  const [consChecks, setConsChecks] = useState<ConsistencyRow[] | null>(null);
+  const [parityChecks, setParityChecks] = useState<ParityRow[] | null>(null);
+  const [freshChecks, setFreshChecks] = useState<ConsistencyRow[] | null>(null);
+  const [consRunning, setConsRunning] = useState(false);
+
+  const runConsumptionChecks = async () => {
+    setConsRunning(true);
+    try {
+      const [consRes, parRes, freshRes] = await Promise.all([
+        supabase.rpc('consumption_consistency_report'),
+        supabase.rpc('run_consumption_parity_tests'),
+        // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
+        (supabase as any).rpc('pcp_freshness_report'),
+      ]);
+      if (consRes.error) throw consRes.error;
+      setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
+      setFreshChecks((freshRes?.error ? [] : (freshRes?.data ?? [])) as ConsistencyRow[]);
+      // Paridade pode depender de flags/dados de integração — tolera falha.
+      if (parRes.error) {
+        setParityChecks([]);
+        toast.message('Paridade indisponível', { description: parRes.error.message });
+      } else {
+        setParityChecks((parRes.data ?? []) as ParityRow[]);
+      }
+      toast.success('Verificação de consumo concluída');
+    } catch (e: any) {
+      toast.error('Falha na verificação de consumo: ' + e.message);
+    } finally {
+      setConsRunning(false);
+    }
+  };
 
   const { data: migrations, isLoading: migLoading, refetch: refetchMig } = useQuery({
     queryKey: ['system-diag', 'migrations'],
@@ -269,6 +338,7 @@ export default function SystemDiagnostics() {
           <TabsTrigger value="diagnostics"><Stethoscope className="h-4 w-4 mr-1.5" />Diagnóstico</TabsTrigger>
           <TabsTrigger value="schema"><Database className="h-4 w-4 mr-1.5" />Schema</TabsTrigger>
           <TabsTrigger value="migrations"><FileCode className="h-4 w-4 mr-1.5" />Migrations</TabsTrigger>
+          <TabsTrigger value="consumo"><Database className="h-4 w-4 mr-1.5" />Consumo</TabsTrigger>
         </TabsList>
 
         {/* DIAGNÓSTICO */}
@@ -377,6 +447,72 @@ export default function SystemDiagnostics() {
                   ))}
                 </div>
               </ScrollArea>
+          </Panel>
+        </TabsContent>
+
+        {/* CONSUMO — guards de consistência + paridade do motor de consumo */}
+        <TabsContent value="consumo" className="space-y-4">
+          <Panel
+            eyebrow="PCP · CONSUMO"
+            title="Consistência de consumo"
+            subtitle="Lacunas de cadastro que reintroduzem consumo errado (largura faltando, palmilha pronta inconsistente, solado sem specs, fachete sem consumo). Fonte: consumption_consistency_report()."
+            actions={
+              <Button size="sm" onClick={runConsumptionChecks} disabled={consRunning}>
+                {consRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Stethoscope className="h-4 w-4 mr-2" />}
+                Executar
+              </Button>
+            }
+            bodyClassName="space-y-2"
+          >
+            {consChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Clique em “Executar” para varrer as inconsistências de cadastro que distorcem o consumo.</p>
+            )}
+            {consChecks !== null && consChecks.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhuma inconsistência de cadastro encontrada.</div>
+            )}
+            {(consChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · FRESCOR"
+            title="Frescor — custo & compra"
+            subtitle="Custo congelado desatualizado (ficha mudou depois do snapshot → recalcular/reabrir) e ondas com prazo de compra vencido/iminente. Fonte: pcp_freshness_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {freshChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir o frescor de custo/compra.</p>
+            )}
+            {(freshChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · CONSUMO"
+            title="Paridade do motor de consumo (TS × SQL)"
+            subtitle="Trava o contrato do cálculo de consumo entre o lado SQL e o TS. Fonte: run_consumption_parity_tests()."
+            bodyClassName="space-y-2"
+          >
+            {parityChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima para incluir os testes de paridade.</p>
+            )}
+            {parityChecks !== null && parityChecks.length === 0 && !consRunning && (
+              <p className="text-sm text-muted-foreground">Sem casos de paridade retornados.</p>
+            )}
+            {(parityChecks ?? []).map((p, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="mt-0.5">{p.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-destructive" />}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">{p.case_name}</p>
+                    <Badge variant="outline" className={`text-xs uppercase ${p.ok ? 'text-success' : 'text-destructive'}`}>{p.ok ? 'ok' : 'falhou'}</Badge>
+                  </div>
+                  {p.message && <p className="text-xs text-muted-foreground mt-0.5 break-all">{p.message}</p>}
+                </div>
+              </div>
+            ))}
           </Panel>
         </TabsContent>
       </Tabs>

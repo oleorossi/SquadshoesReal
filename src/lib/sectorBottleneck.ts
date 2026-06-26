@@ -24,6 +24,11 @@ export interface BottleneckInfo {
   reason: string;            // texto curto p/ tooltip
   /** Detalhes da próxima etapa, quando aplicável. */
   nextStage?: NextStageEstimate | null;
+  /** TRUE quando a OP está no setor mas a etapa não tem `started_at` (operador
+   *  não apontou o início). Sem o timestamp não dá pra medir idade da fila, então
+   *  a severidade fica 'ok' (não infla "atrasadas"), mas a flag deixa a UI cobrar
+   *  o apontamento em vez de descartar a OP silenciosamente. */
+  unstarted?: boolean;
 }
 
 /** Estimativa de gargalo na próxima etapa de produção. */
@@ -75,7 +80,9 @@ const SECTOR_TO_CAPACITY_COLUMN: Record<string, string> = {
   'Montagem':       'assembly_capacity_per_day',
   'Solagem':        'soling_capacity_per_day',
   'Acabamento':     'finishing_capacity_per_day',
-  'Expedição':      'finishing_capacity_per_day',
+  // Expedição ganhou capacidade própria (B4): expedition_capacity_per_day, com
+  // fallback pra finishing_capacity_per_day quando não cadastrada (sem regressão).
+  'Expedição':      'expedition_capacity_per_day',
   // Pre-rename names kept for historical stage rows.
   // 'Mesa' foi renomeado pra 'Aviamento' (PR 1).
   // 'Costura' antes da PR 2 era apelido de Corte Forração; após PR 2 virou setor próprio
@@ -155,7 +162,7 @@ export async function loadBottlenecksForOrders(
       .select(
         // costura_capacity_per_day incluído (auditoria 2026-06-14): sem ele o
         // setor Costura mapeava p/ coluna ausente → cap=0 → nunca era gargalo.
-        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, costura_capacity_per_day',
+        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, costura_capacity_per_day',
       )
       .in('id', refIds);
     (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
@@ -208,10 +215,30 @@ export async function loadBottlenecksForOrders(
     if (!sheet) continue;
     const stagesOfOrder = byOrder.get(orderId) || [];
     const current = stagesOfOrder.find((s: any) => s.status !== 'concluido');
-    if (!current || !current.started_at) continue;
+    if (!current) continue;
+    // Antes: `if (!current.started_at) continue;` — a OP sumia de QUALQUER alerta,
+    // deixando o KPI "OPs atrasadas" cego (todas as OPs sem apontamento contavam
+    // como no prazo). Agora marcamos `unstarted` (severidade 'ok', não infla
+    // atraso) pra UI poder cobrar o apontamento. Some assim que o operador clica
+    // "Iniciar" (started_at) ou o backfill estima a data.
+    if (!current.started_at) {
+      out.set(orderId, {
+        severity: 'ok',
+        unstarted: true,
+        daysOver: 0,
+        expectedDays: 0,
+        elapsedDays: 0,
+        capacityPerDay: 0,
+        reason: `${current.stage_name}: em produção sem início apontado`,
+        nextStage: null,
+      });
+      continue;
+    }
 
     const capCol = SECTOR_TO_CAPACITY_COLUMN[current.stage_name as string];
-    const cap = capCol ? Number(sheet[capCol] || 0) : 0;
+    let cap = capCol ? Number(sheet[capCol] || 0) : 0;
+    // Expedição: cai pra finishing_capacity_per_day quando não tem capacidade própria.
+    if (cap === 0 && current.stage_name === 'Expedição') cap = Number(sheet.finishing_capacity_per_day || 0);
     const qty = Number(ord.quantity || 0);
 
     const info: BottleneckInfo =
@@ -240,7 +267,8 @@ export async function loadBottlenecksForOrders(
 
     if (next) {
       const nextCapCol = SECTOR_TO_CAPACITY_COLUMN[next.stage_name as string];
-      const nextCap = nextCapCol ? Number(sheet[nextCapCol] || 0) : 0;
+      let nextCap = nextCapCol ? Number(sheet[nextCapCol] || 0) : 0;
+      if (nextCap === 0 && next.stage_name === 'Expedição') nextCap = Number(sheet.finishing_capacity_per_day || 0);
       if (nextCap > 0) {
         const queuedPairs = sectorQueuedPairs.get(next.stage_name) || qty;
         const queueDays = Math.ceil(queuedPairs / nextCap);

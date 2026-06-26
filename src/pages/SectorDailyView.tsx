@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   CaretLeft, CaretRight, Warning, Calendar, Package,
   Lightning, Factory, Gauge,
@@ -112,7 +113,24 @@ function shortDate(iso: string): string {
 
 export default function SectorDailyView() {
   const today = useMemo(todayISO, []);
-  const [date, setDate] = useState<string>(today);
+  // Data persistida na URL (?date=YYYY-MM-DD): sobrevive ao reload e vira link
+  // compartilhável ("o gargalo daquele dia"). Antes era useState(today) e
+  // resetava pra hoje a cada recarga. Quando a data é hoje, removemos o param
+  // pra manter a URL limpa (o default já é hoje).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = searchParams.get('date') || today;
+  const setDate = useCallback((next: string | ((d: string) => string)) => {
+    const value = typeof next === 'function' ? next(date) : next;
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (!value || value === today) p.delete('date');
+        else p.set('date', value);
+        return p;
+      },
+      { replace: true },
+    );
+  }, [date, today, setSearchParams]);
   const [selected, setSelected] = useState<SectorDaily | null>(null);
 
   // Métrica da "linha de produção": por padrão segue o dia (hoje = WIP real,
@@ -214,6 +232,19 @@ export default function SectorDailyView() {
             {unknownCount === 1 ? 'setor sem capacidade cadastrada' : 'setores sem capacidade cadastrada'} na ficha —
             a utilização não é calculada (aparecem como “s/ cap.”). Cadastre a capacidade/dia em{' '}
             <span className="font-medium">Ficha Técnica → Operações</span> pra acender o gargalo desses setores.
+          </span>
+        </div>
+      )}
+
+      {/* Aviso: OPs em produção sem apontamento de início → gargalo/atraso cegos */}
+      {(summary?.realUnstarted ?? 0) > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <Warning className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <strong>{summary!.realUnstarted}</strong>{' '}
+            {summary!.realUnstarted === 1 ? 'OP em produção sem início apontado' : 'OPs em produção sem início apontado'} —
+            o gargalo/atraso só acende com o apontamento. Use <span className="font-medium">Iniciar</span> nas telas de
+            setor ou o <span className="font-medium">Quadro</span> (em Setores) pra registrar o início.
           </span>
         </div>
       )}

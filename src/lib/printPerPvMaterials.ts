@@ -59,20 +59,41 @@ export function printPerPvMaterials(input: PerPvPrintInput): boolean {
       const border = isNoSupplier ? '#fca5a5' : '#1f2937';
 
       const rowsHtml = d.items
-        .map(
-          (it) => `
+        .map((it) => {
+          const gradeSizes = it.grade
+            ? Object.keys(it.grade).filter((k) => (it.grade![k] ?? 0) > 0).sort((a, b) => parseFloat(a) - parseFloat(b))
+            : [];
+          const bb = gradeSizes.length ? 'none' : '1px solid #e5e7eb';
+          // Grade do solado por numeração (total de pares) — espelho do consumo.
+          const gradeRow = gradeSizes.length
+            ? `
         <tr>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb">
+          <td colspan="6" style="padding:0 6px 4px;border-bottom:1px solid #e5e7eb">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+              <span style="font-size:7pt;text-transform:uppercase;letter-spacing:.3px;color:#6b7280;font-weight:700;margin-right:2px">Grade · numeração</span>
+              ${gradeSizes
+                .map(
+                  (sz) =>
+                    `<span style="border:1px solid #d1d5db;background:#f3f4f6;border-radius:3px;padding:1px 5px;font-size:8pt"><span style="color:#6b7280;font-family:monospace">${esc(sz)}</span> <strong style="font-family:monospace">${num(it.grade![sz])}</strong></span>`,
+                )
+                .join('')}
+            </div>
+          </td>
+        </tr>`
+            : '';
+          return `
+        <tr>
+          <td style="padding:3px 6px;border-bottom:${bb}">
             <div style="font-weight:600;font-size:10pt">${esc(it.product_name)}</div>
             ${it.color ? `<div style="color:#6b7280;font-size:8.5pt">${esc(it.color)}</div>` : ''}
           </td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${num(it.needed_qty)}</td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${num(it.stock_qty)}</td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">${num(it.quantity)} <span style="color:#6b7280;font-weight:400;font-size:8pt">${esc(it.unit)}</span></td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${esc(formatCurrency(it.unit_price))}</td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-size:9.5pt">${esc(formatCurrency(it.quantity * it.unit_price))}</td>
-        </tr>`,
-        )
+          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${num(it.needed_qty)}</td>
+          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${num(it.stock_qty)}</td>
+          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;font-weight:700;font-size:10pt">${num(it.quantity)} <span style="color:#6b7280;font-weight:400;font-size:8pt">${esc(it.unit)}</span></td>
+          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${esc(formatCurrency(it.unit_price))}</td>
+          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;font-size:9.5pt">${esc(formatCurrency(it.quantity * it.unit_price))}</td>
+        </tr>${gradeRow}`;
+        })
         .join('');
 
       // 1 tabela por fornecedor. O <thead> (banda + rótulos) repete por página.

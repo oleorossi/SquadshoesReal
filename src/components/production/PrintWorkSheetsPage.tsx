@@ -650,6 +650,36 @@ function bucketSizeKey(size: string, conjugations: Array<{ size_key: string; siz
   return conj ? conj.size_key : size;
 }
 
+// Raízes de queryKey que REALMENTE alimentam a impressão (queries desta página
+// + a fonte de OPs do pai `print_worksheets_orders` + os lotes). O banner de
+// "consulta falhou" só conta erros DESTAS — sem isso ele lia o cache global do
+// react-query e qualquer poller de fundo sempre montado (sino de notificações,
+// useMrp 60s, PvOutdatedBadge 30s, NfeBillingHealthCard…) ou query em erro de
+// uma tela visitada antes disparava o aviso e BLOQUEAVA a impressão, alegando
+// falsamente "fichas incompletas" mesmo com todos os dados desta tela OK.
+// ⚠ Ao adicionar/renomear uma query desta página, espelhe a raiz aqui — senão
+// a falha dela deixa de ser detectada pelo banner.
+const PRINT_OWNED_QUERY_KEY_ROOTS = new Set<string>([
+  'print_worksheets_orders',          // pai: fonte das OPs (PrintWorkSheets.tsx)
+  'order_lots_batch',                 // lotes (useOrderLotsBatch)
+  'sole_silk_registrations',
+  'sale_orders_for_worksheets_v5',
+  'order_stages_for_report',
+  'clients_for_expedicao_v3',
+  'economic_groups_for_silk',
+  'nfe_emitidas_for_expedicao',
+  'sale_orders_transport',
+  'sole_ref_mappings_v4',
+  'ref_color_variants_for_print',
+  'ref_technical_sheets_image_v2',
+  'palmilha_ref_mappings',
+  'sheet_insole_lining_v3',
+  'sole_color_conjugations_for_print',
+  'sole_size_conjugations_for_print',
+  'sole_group_products_for_print',
+  'sole_group_packaging_v3',
+]);
+
 const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheetsPageProps) => {
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
   // substitui o antigo dropdown single + bool printAll + prop selectedSectors.
@@ -671,11 +701,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // ficha saía incompleta (sem cliente, sem solado, sem consumo) SEM nenhum
   // sinal. Conta queries em estado de erro via cache do react-query e mostra
   // banner — o usuário decide recarregar antes de imprimir.
+  //
+  // ⚠ Só contam as queries que ALIMENTAM a impressão (PRINT_OWNED_QUERY_KEY_ROOTS).
+  // Antes lia o cache global e qualquer poller de fundo sempre montado (sino de
+  // notificações, useMrp, PvOutdatedBadge…) ou query em erro de outra tela já
+  // disparava o banner e BLOQUEAVA o botão Imprimir — falso positivo, já que os
+  // dados desta página estavam completos.
   const queryClient = useQueryClient();
   const [failedQueries, setFailedQueries] = useState(0);
   useEffect(() => {
     const cache = queryClient.getQueryCache();
-    const update = () => setFailedQueries(cache.getAll().filter(q => q.state.status === 'error').length);
+    const update = () => setFailedQueries(
+      cache.getAll().filter(q =>
+        q.state.status === 'error' &&
+        PRINT_OWNED_QUERY_KEY_ROOTS.has(q.queryKey?.[0] as string)
+      ).length
+    );
     update();
     return cache.subscribe(update);
   }, [queryClient]);

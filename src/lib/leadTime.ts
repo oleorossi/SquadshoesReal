@@ -43,10 +43,12 @@ interface SheetCapacityRow {
   silk_capacity_per_day?: number | null;
   gluing_capacity_per_day?: number | null;
   soling_capacity_per_day?: number | null;
+  expedition_capacity_per_day?: number | null;
   lead_time_corte_dias?: number | null;
   lead_time_costura_dias?: number | null;
   lead_time_montagem_dias?: number | null;
   lead_time_acabamento_dias?: number | null;
+  lead_time_expedicao_dias?: number | null;
   shoe_category?: string | null;
 }
 
@@ -60,10 +62,12 @@ interface CategoryDefaultsRow {
   assembly_capacity_per_day?: number | null;
   soling_capacity_per_day?: number | null;
   finishing_capacity_per_day?: number | null;
+  expedition_capacity_per_day?: number | null;
   lead_time_corte_dias?: number | null;
   lead_time_costura_dias?: number | null;
   lead_time_montagem_dias?: number | null;
   lead_time_acabamento_dias?: number | null;
+  lead_time_expedicao_dias?: number | null;
 }
 
 // HISTÓRICO IMPORTANTE — nomes de colunas vs. setores atuais:
@@ -83,6 +87,10 @@ interface CategoryDefaultsRow {
 // sem migração de dados.
 const SECTOR_CONFIG: Record<SectorKey, {
   capField: keyof SheetCapacityRow;
+  /** Coluna de capacidade alternativa quando a principal não está cadastrada
+   *  (ex.: Expedição usa expedition_capacity_per_day, mas cai pra
+   *  finishing_capacity_per_day — comportamento legado — quando vazia). */
+  fallbackCapField?: keyof SheetCapacityRow;
   ltField: keyof SheetCapacityRow;
   hardFallbackDays: number;
 }> = {
@@ -100,7 +108,7 @@ const SECTOR_CONFIG: Record<SectorKey, {
   montagem:       { capField: 'assembly_capacity_per_day',  ltField: 'lead_time_montagem_dias',   hardFallbackDays: 2 },
   solagem:        { capField: 'soling_capacity_per_day',    ltField: 'lead_time_montagem_dias',   hardFallbackDays: 1 },
   acabamento:     { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 1 },
-  expedicao:      { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 0 },
+  expedicao:      { capField: 'expedition_capacity_per_day', fallbackCapField: 'finishing_capacity_per_day', ltField: 'lead_time_expedicao_dias', hardFallbackDays: 0 },
   // Legacy alias — 'corte' was renamed to corte_palmilha
   corte:          { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
 };
@@ -123,7 +131,16 @@ export function getEffectiveCapacityPerDay(
   const cfg = SECTOR_CONFIG[sector];
   const fromSheet = num(sheet?.[cfg.capField]);
   if (fromSheet > 0) return fromSheet;
+  // Coluna de capacidade alternativa na ficha (ex.: Expedição → finishing).
+  if (cfg.fallbackCapField) {
+    const fromSheetFb = num(sheet?.[cfg.fallbackCapField]);
+    if (fromSheetFb > 0) return fromSheetFb;
+  }
   const fromCategory = num(categoryDefaults?.[cfg.capField as keyof CategoryDefaultsRow]);
+  if (fromCategory > 0) return fromCategory;
+  if (cfg.fallbackCapField) {
+    return num(categoryDefaults?.[cfg.fallbackCapField as keyof CategoryDefaultsRow]);
+  }
   return fromCategory;
 }
 
