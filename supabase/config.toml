@@ -19,3 +19,8 @@ verify_jwt = false
 # parado, banco local atrás do GestaoClick). A função se protege sozinha.
 [functions.sync-nfe-from-provider]
 verify_jwt = false
+
+# Webhook do agente WhatsApp (Evolution API POSTa SEM JWT do Supabase). A
+# função se protege com allowlist de número + WA_WEBHOOK_SECRET opcional.
+[functions.wa-agent]
+verify_jwt = false
