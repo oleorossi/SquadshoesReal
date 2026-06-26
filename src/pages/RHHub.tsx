@@ -31,7 +31,7 @@ const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
 ];
 
 const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
-  funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe e adiantamentos' },
+  funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe' },
   ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
   folha:        { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Quanto cada funcionário tem a receber, com base no ponto importado' },
 };
