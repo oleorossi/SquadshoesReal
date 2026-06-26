@@ -6,16 +6,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CircleNotch as Loader2, Plus, Wallet, MagnifyingGlass as Search, Warning as AlertTriangle, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import {
   useEmployees, useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
   useSetAdvanceStatus, useSettleEmployeeAdvances,
 } from '@/hooks/useEmployees';
+import { EmployeeCombobox } from '@/components/hr/EmployeeCombobox';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { todayISO } from '@/lib/date';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { cn } from '@/lib/utils';
+
+const DESC_PRESETS = ['Vale farmácia', 'Adiantamento mensal', 'Vale alimentação', 'Vale transporte', 'Empréstimo'];
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -62,13 +66,12 @@ export default function AdvancesPanel() {
     });
   }, [periodAdvances, filterStatus, search, empMap]);
 
-  // Saldo aberto por funcionário (todos os adiantamentos pendentes)
-  const balancesByEmp = useMemo(() => {
-    const map = new Map<string, { name: string; pending: number; pendingCount: number; thisMonth: number }>();
+  // Saldo aberto por funcionário (todos os adiantamentos pendentes) — fonte única
+  // reaproveitada pela tabela de saldos, pelo combobox e pelo card de contexto do modal.
+  const balanceMap = useMemo(() => {
+    const map = new Map<string, { pending: number; pendingCount: number; thisMonth: number }>();
     for (const a of allAdvances) {
-      const emp = empMap.get(a.employee_id);
-      if (!emp) continue;
-      const cur = map.get(a.employee_id) || { name: emp.name, pending: 0, pendingCount: 0, thisMonth: 0 };
+      const cur = map.get(a.employee_id) || { pending: 0, pendingCount: 0, thisMonth: 0 };
       if (a.status === 'pending') {
         cur.pending += Number(a.amount) || 0;
         cur.pendingCount++;
@@ -78,11 +81,25 @@ export default function AdvancesPanel() {
       }
       map.set(a.employee_id, cur);
     }
-    return Array.from(map.entries())
-      .map(([id, v]) => ({ id, ...v }))
+    return map;
+  }, [allAdvances, filterPeriod]);
+
+  // Saldo de vales pendentes por funcionário (pra badge do combobox).
+  const pendingByEmployee = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const [id, v] of balanceMap) if (v.pending > 0) m.set(id, v.pending);
+    return m;
+  }, [balanceMap]);
+
+  const balancesByEmp = useMemo(() => {
+    return Array.from(balanceMap.entries())
+      .filter(([id]) => empMap.has(id))
+      .map(([id, v]) => ({ id, name: empMap.get(id)!.name, ...v }))
       .filter(b => b.pending > 0 || b.thisMonth > 0)
       .sort((a, b) => b.pending - a.pending);
-  }, [allAdvances, empMap, filterPeriod]);
+  }, [balanceMap, empMap]);
+
+  const selectedBalance = form.employee_id ? balanceMap.get(form.employee_id) : undefined;
 
   const stats = useMemo(() => {
     const total = periodAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
@@ -102,6 +119,21 @@ export default function AdvancesPanel() {
     });
   };
 
+  // Abre o modal limpo (opcionalmente já com o funcionário pré-selecionado pela
+  // tabela de saldos), evitando carregar resíduo de um lançamento anterior.
+  const openNew = (employeeId = '') => {
+    setForm({
+      employee_id: employeeId,
+      amount: 0,
+      advance_date: todayISO(),
+      time: new Date().toTimeString().split(' ')[0],
+      description: '',
+      receipt_url: '',
+      status: 'pending',
+    });
+    setDialogOpen(true);
+  };
+
   if (isLoading) return <Loader2 className="h-6 w-6 animate-spin mx-auto my-12 text-muted-foreground" />;
 
   return (
@@ -115,24 +147,45 @@ export default function AdvancesPanel() {
             Vales pagos no período, saldo a abater na próxima folha.
           </p>
         </div>
+        <Button size="sm" className="gap-1.5" onClick={() => openNew()}><Plus className="h-4 w-4" /> Novo vale</Button>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5"><Plus className="h-4 w-4" /> Novo vale</Button>
-          </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>Registrar vale</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div>
                 <Label>Funcionário</Label>
-                <Select value={form.employee_id} onValueChange={v => setForm(f => ({ ...f, employee_id: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    {employees.filter(e => e.active).map(e => (
-                      <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1">
+                  <EmployeeCombobox
+                    value={form.employee_id}
+                    onChange={v => setForm(f => ({ ...f, employee_id: v }))}
+                    employees={employees}
+                    pendingByEmployee={pendingByEmployee}
+                  />
+                </div>
               </div>
+
+              {/* Contexto de saldo do funcionário selecionado — registrar com visão do que já deve */}
+              {form.employee_id && (
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="eyebrow">Saldo aberto</p>
+                      <p className={cn('display text-base tabular-nums', (selectedBalance?.pending ?? 0) > 0 ? 'text-rose-600' : 'text-muted-foreground')}>
+                        {fmt(selectedBalance?.pending ?? 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="eyebrow">Pendentes</p>
+                      <p className="display text-base tabular-nums">{selectedBalance?.pendingCount ?? 0}</p>
+                    </div>
+                    <div>
+                      <p className="eyebrow">Neste mês</p>
+                      <p className="display text-base tabular-nums">{fmt(selectedBalance?.thisMonth ?? 0)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Valor</Label>
@@ -146,6 +199,22 @@ export default function AdvancesPanel() {
               <div>
                 <Label>Descrição</Label>
                 <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Ex.: vale farmácia, adiantamento mensal..." />
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {DESC_PRESETS.map(p => (
+                    <button
+                      key={p} type="button"
+                      onClick={() => setForm(f => ({ ...f, description: f.description === p ? '' : p }))}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                        form.description === p
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <Label>Status</Label>
@@ -222,21 +291,31 @@ export default function AdvancesPanel() {
                       {b.pendingCount > 0 ? <Badge variant="outline" className="text-xs">{b.pendingCount}</Badge> : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="text-right">
-                      {b.pendingCount > 0 ? (
+                      <div className="flex items-center justify-end gap-1">
                         <Button
-                          size="sm" variant="outline"
-                          className="h-7 text-xs gap-1 border-emerald-400 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                          onClick={() => {
-                            if (window.confirm(`Dar baixa em ${b.pendingCount} vale(s) pendente(s) de ${b.name} (${fmt(b.pending)})? Use depois que a folha já descontou o saldo.`)) {
-                              settleEmployee.mutate(b.id);
-                            }
-                          }}
-                          disabled={settleEmployee.isPending}
-                          title="Dar baixa em todos os vales pendentes deste funcionário"
+                          size="sm" variant="ghost"
+                          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => openNew(b.id)}
+                          title={`Registrar novo vale para ${b.name}`}
                         >
-                          <Check className="h-3 w-3" /> Dar baixa
+                          <Plus className="h-3 w-3" /> Vale
                         </Button>
-                      ) : <span className="text-muted-foreground">—</span>}
+                        {b.pendingCount > 0 && (
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-7 text-xs gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                            onClick={() => {
+                              if (window.confirm(`Dar baixa em ${b.pendingCount} vale(s) pendente(s) de ${b.name} (${fmt(b.pending)})? Use depois que a folha já descontou o saldo.`)) {
+                                settleEmployee.mutate(b.id);
+                              }
+                            }}
+                            disabled={settleEmployee.isPending}
+                            title="Dar baixa em todos os vales pendentes deste funcionário"
+                          >
+                            <Check className="h-3 w-3" /> Dar baixa
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
