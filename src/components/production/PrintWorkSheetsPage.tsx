@@ -3213,9 +3213,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             }
             // Enriquecimento por grupo: clientes + faixa etária (selo do
             // sub-header). Faixa agregada do setor vai no header.
+            // Consumo (motor canônico = modal do PV) anexado SÓ nos setores de
+            // corte — a ficha mostra o bloco "Consumo · Corte do Rolo" filtrando
+            // pelo componente (forro no Corte Forração, cabedal no Corte Cabedal).
+            const attachConsumo = sectorName === 'Corte Forração' || sectorName === 'Corte Cabedal';
             const enriched = groupsForSector.map(g => ({
               ...withClientNames(g),
               sizeBand: bandForOps(g.colorGroups.flatMap(cg => cg.opNumbers || [])),
+              ...(attachConsumo
+                ? {
+                    colorGroups: g.colorGroups.map(cg => ({
+                      ...cg,
+                      consumption: consumptionForOpNumbers(cg.opNumbers, cg.totalPairs),
+                    })),
+                  }
+                : {}),
             }));
             return [
               <div key={`${sectorName}-maco`} className="page-break">
