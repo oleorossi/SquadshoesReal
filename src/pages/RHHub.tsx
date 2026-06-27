@@ -1,16 +1,17 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2, LinkSimple } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { usePendingTotal } from '@/hooks/useTimePendings';
 import { cn } from '@/lib/utils';
 
-const Employees        = lazy(() => import('./Employees'));
-const Timesheet        = lazy(() => import('./Timesheet'));
-const FolhaConsolidada = lazy(() => import('@/components/hr/FolhaConsolidada'));
+const Employees           = lazy(() => import('./Employees'));
+const Timesheet           = lazy(() => import('./Timesheet'));
+const FolhaConsolidada    = lazy(() => import('@/components/hr/FolhaConsolidada'));
+const PunchReconciliation = lazy(() => import('./PunchReconciliationPage'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -21,19 +22,21 @@ const TabLoader = () => (
 // Refocus 2026-06-01: RH é pagamento por hora trabalhada. Abas 'painel'
 // (KPIs de banco de horas) e 'fechamento' (HE/jornada esperada) foram
 // aposentadas — caem na 'folha' via LEGACY_TAB_MAP + guard.
-const TABS = ['funcionarios', 'ponto', 'folha'] as const;
+const TABS = ['funcionarios', 'ponto', 'reconciliacao', 'folha'] as const;
 type Tab = typeof TABS[number];
 
 const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
-  { value: 'funcionarios', label: 'Funcionários', icon: Users },
-  { value: 'ponto',        label: 'Ponto',        icon: AlarmClock },
-  { value: 'folha',        label: 'Folha',        icon: DollarSign },
+  { value: 'funcionarios',  label: 'Funcionários',   icon: Users },
+  { value: 'ponto',         label: 'Ponto',          icon: AlarmClock },
+  { value: 'reconciliacao', label: 'Reconciliação',  icon: LinkSimple },
+  { value: 'folha',         label: 'Folha',          icon: DollarSign },
 ];
 
 const TAB_HEADERS: Record<Tab, { section: string; title: string; description: string }> = {
-  funcionarios: { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe' },
-  ponto:        { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
-  folha:        { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Quanto cada funcionário tem a receber, com base no ponto importado' },
+  funcionarios:  { section: 'RH · COLABORADORES', title: 'Funcionários',    description: 'Gestão de equipe' },
+  ponto:         { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
+  reconciliacao: { section: 'RH · PONTO',         title: 'Reconciliação de prestadores', description: 'Vincular cada ID do relógio ao prestador certo' },
+  folha:         { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Quanto cada funcionário tem a receber, com base no ponto importado' },
 };
 
 // URLs/estado legados que apontavam pra abas aposentadas → folha/relatórios.
@@ -120,6 +123,7 @@ export default function RHHub() {
         <Suspense fallback={<TabLoader />}>
           <TabsContent value="funcionarios"><Employees /></TabsContent>
           <TabsContent value="ponto"><Timesheet /></TabsContent>
+          <TabsContent value="reconciliacao"><PunchReconciliation /></TabsContent>
           <TabsContent value="folha"><FolhaConsolidada /></TabsContent>
         </Suspense>
       </Tabs>
