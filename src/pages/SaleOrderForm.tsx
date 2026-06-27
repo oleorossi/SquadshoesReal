@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,18 @@ export default function SaleOrderForm() {
 
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
   const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
+
+  // Itens com cor não cadastrada (cabedal/forração/tira) — BLOQUEIA o save até
+  // cadastrar. Reportado por cada SaleOrderItemForm via onColorIssueChange.
+  const [colorIssues, setColorIssues] = useState<Record<number, { color: string; materials: string[] }>>({});
+  const handleColorIssueChange = useCallback((idx: number, info: { color: string; materials: string[] } | null) => {
+    setColorIssues(prev => {
+      if (!info) { if (!(idx in prev)) return prev; const n = { ...prev }; delete n[idx]; return n; }
+      const ex = prev[idx];
+      if (ex && ex.color === info.color && ex.materials.join(',') === info.materials.join(',')) return prev;
+      return { ...prev, [idx]: info };
+    });
+  }, []);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [packagingProductId, setPackagingProductId] = useState<string>('');
   const [packagingQuantity, setPackagingQuantity] = useState<number>(0);
@@ -663,6 +675,23 @@ export default function SaleOrderForm() {
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
+    // GUARD: bloqueia salvar com cor não cadastrada no material (cabedal/forração/
+    // tira). Sem produto na cor, o débito é pulado (ruptura). Cadastre antes.
+    {
+      const pendentes = Object.entries(colorIssues).filter(([k]) => {
+        const i = Number(k);
+        return i < items.length && !!items[i]?.reference_id;
+      });
+      if (pendentes.length > 0) {
+        const [, first] = pendentes[0];
+        toast.error(
+          `Cor "${first.color}" não cadastrada em ${first.materials.join(', ')}. ` +
+          `Use o botão "Cadastrar" no item para registrar a cor antes de salvar o pedido.`,
+          { duration: 8000 },
+        );
+        return;
+      }
+    }
     if (!f.delivery_month) { toast.error('Selecione o mês de faturamento.'); return; }
     if (!f.delivery_week) { toast.error('Selecione a semana de faturamento.'); return; }
     if (f.is_factoring && !f.factoring_config_id) {
@@ -1138,6 +1167,7 @@ export default function SaleOrderForm() {
           onSaveStateAndNavigate={!isEdit ? handleSaveStateAndNavigate : undefined}
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
+          onColorIssueChange={handleColorIssueChange}
         />
 
         {/* Terceirização integrada: OS geradas automaticamente a partir deste PV */}

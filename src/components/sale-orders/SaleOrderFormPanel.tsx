@@ -89,6 +89,8 @@ interface Props {
   minBillingISO?: string | null;
   /** True enquanto recalcula a data mínima (mostra spinner em vez de alerta). */
   computingMinBilling?: boolean;
+  /** Reporta itens com cor não cadastrada — pra o pai BLOQUEAR o salvamento. */
+  onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
 }
 
 const emptyItem: SaleOrderItemFormData = {
@@ -364,7 +366,7 @@ export default function SaleOrderFormPanel({
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, isPending, submitLabel,
    packagingProductId, onPackagingProductChange, packagingQuantity: _packagingQuantity, onPackagingQuantityChange,
    onSaveStateAndNavigate,
-   minBillingISO, computingMinBilling,
+   minBillingISO, computingMinBilling, onColorIssueChange,
  }: Props) {
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
@@ -1597,6 +1599,7 @@ export default function SaleOrderFormPanel({
               <SaleOrderItemForm
                 item={item}
                 index={idx}
+                onColorIssueChange={onColorIssueChange}
                 references={references}
                 canRemove={items.length > 1}
                 isAdmin={isAdmin}

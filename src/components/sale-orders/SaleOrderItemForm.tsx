@@ -57,6 +57,9 @@ interface Props {
   priceLookup?: PriceLookup;
   /** Desconto máximo permitido (clients.max_discount_pct) — avisa quando furar. */
   maxDiscountPct?: number;
+  /** Reporta ao pai se este item tem cor não cadastrada (cabedal/forração/tira),
+   *  pra BLOQUEAR o salvamento do PV até cadastrar. null = sem pendência. */
+  onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
 }
 
 function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): number[] {
@@ -75,7 +78,7 @@ function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): nu
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0 }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, onColorIssueChange }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
   const fichas = item.fichas || 1;
@@ -463,6 +466,55 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
     return null;
   }, [item.material_variant_id, activeMaterialVariants, allProducts, refMaterials, sheetSpecs, productGroups]);
+
+  // ── Cor não cadastrada (BLOQUEIA salvar o PV) ────────────────────────────
+  // Materiais de área (cabedal/forração) cuja cor principal NÃO tem produto no
+  // grupo (gerido por cor) → débito PULA (vira ruptura). Carrega o group_id pra
+  // cadastrar inline. Fonte única do aviso amarelo + do report ao pai.
+  const coverColorIssues = useMemo<{ name: string; groupId: string }[]>(() => {
+    const color = (item.color || '').trim().toLowerCase();
+    if (!color) return [];
+    const matNames = Array.from(new Set(
+      [sheetSpecs?.lining_material, sheetSpecs?.upper_material]
+        .map((n: any) => (n || '').trim()).filter(Boolean),
+    ));
+    const out: { name: string; groupId: string }[] = [];
+    for (const name of matNames) {
+      const grp = (productGroups as any[]).find((g: any) => (g.name || '').trim().toLowerCase() === String(name).toLowerCase());
+      if (!grp) continue;
+      const groupProds = (allProducts as any[]).filter((p: any) => p.group_id === grp.id && p.active !== false);
+      const colorManaged = groupProds.some((p: any) => (p.color || '').trim() !== '');
+      if (!colorManaged) continue; // grupo sem cores = genérico → débito ok
+      const hasColor = groupProds.some((p: any) => (p.color || '').trim().toLowerCase() === color);
+      if (!hasColor) out.push({ name: String(name), groupId: grp.id });
+    }
+    return out;
+  }, [item.color, sheetSpecs, productGroups, allProducts]);
+
+  // Tiras com cor escolhida mas SEM produto no grupo (group_id + color).
+  const strapMissing = useMemo<{ idx: number; color: string; group_name: string; group_id: string }[]>(() => {
+    const straps = (item.strap_colors as any[]) || [];
+    return straps.map((s: any, idx: number) => {
+      if (!s?.color || !s?.group_id) return null;
+      const target = s.color.trim().toLowerCase();
+      const hasProduct = (allProducts as any[]).some((p: any) =>
+        p.group_id === s.group_id && (p.color || '').trim().toLowerCase() === target && p.active !== false);
+      return hasProduct ? null : { idx, color: s.color, group_name: s.group_name || '', group_id: s.group_id };
+    }).filter(Boolean) as any;
+  }, [item.strap_colors, allProducts]);
+
+  const hasColorIssue = coverColorIssues.length > 0 || strapMissing.length > 0;
+  const colorIssueKey = hasColorIssue
+    ? `${item.color}|${coverColorIssues.map(i => i.name).join(',')}|${strapMissing.map(s => s.color).join(',')}`
+    : '';
+
+  // Reporta a pendência ao pai (chave estável evita churn) + limpa no unmount.
+  useEffect(() => {
+    onColorIssueChange?.(index, hasColorIssue
+      ? { color: item.color || '', materials: [...coverColorIssues.map(i => i.name), ...strapMissing.map(s => `tira ${s.color}`)] }
+      : null);
+  }, [colorIssueKey, index]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onColorIssueChange?.(index, null), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const availableColors: string[] = useMemo(() => {
     // When a material group is selected and has specific colors defined, use those exclusively.
@@ -1246,34 +1298,35 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             gerido por cor mas a cor não existe, o débito PULA o material
             (vira ruptura) em vez de baixar a cor errada. Avisar aqui evita
             a surpresa só na produção. */}
-        {!!item.color && (() => {
-          const matNames = Array.from(new Set(
-            [sheetSpecs?.lining_material, sheetSpecs?.upper_material]
-              .map((n: any) => (n || '').trim()).filter(Boolean),
-          ));
-          if (matNames.length === 0) return null;
-          const target = item.color.trim().toLowerCase();
-          const issues = matNames.map((name: string) => {
-            const grp = (productGroups as any[]).find(
-              (g: any) => (g.name || '').trim().toLowerCase() === name.toLowerCase());
-            if (!grp) return null;
-            const groupProds = (allProducts as any[]).filter(
-              (p: any) => p.group_id === grp.id && p.active !== false);
-            // Grupo SEM cores = material genérico → débito ok (não avisa).
-            const colorManaged = groupProds.some((p: any) => (p.color || '').trim() !== '');
-            if (!colorManaged) return null;
-            const hasColor = groupProds.some(
-              (p: any) => (p.color || '').trim().toLowerCase() === target);
-            return hasColor ? null : name;
-          }).filter(Boolean) as string[];
-          if (issues.length === 0) return null;
-          return (
-            <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-400">
-              <strong>⚠ Cor "{item.color}" não cadastrada</strong> no estoque {issues.length === 1 ? 'do material' : 'dos materiais'}:{' '}
-              <strong>{issues.join(', ')}</strong>. O débito da forração/cabedal será <strong>pulado</strong> (vira ruptura) em vez de baixar a cor errada. Cadastre essa cor em Estoque pra debitar certo.
+        {coverColorIssues.length > 0 && (
+          <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-400 space-y-2">
+            <p>
+              <strong>⚠ Cor "{item.color}" não cadastrada</strong> no estoque {coverColorIssues.length === 1 ? 'do material' : 'dos materiais'}:{' '}
+              <strong>{coverColorIssues.map(i => i.name).join(', ')}</strong>. Sem produto nessa cor o débito é <strong>pulado</strong> (vira ruptura) — e o pedido <strong>não salva</strong> até cadastrar:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {coverColorIssues.map(iss => (
+                <Button
+                  key={iss.groupId}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  onClick={() => {
+                    setPendingStrapGroupId(iss.groupId);
+                    setPendingStrapGroupName(iss.name);
+                    setPendingStrapColor(item.color || '');
+                    setPendingStrapIndex(-1); // sentinela: cor PRINCIPAL do item
+                    setCreateStrapDialog(true);
+                  }}
+                  title={`Cadastrar produto "${iss.name} - ${item.color}" no estoque`}
+                >
+                  <Plus className="h-3 w-3" /> Cadastrar "{iss.name}"
+                </Button>
+              ))}
             </div>
-          );
-        })()}
+          </div>
+        )}
 
         {/* Straps Section — fluxo sequencial: só abre após cor principal definida.
             Sem isso, ao selecionar referência com tiras o user via cor principal +
@@ -1302,18 +1355,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           // Detecta tiras com cor escolhida mas SEM produto no estoque (group_id + color)
           // Antes o operador só descobria isso quando OP entrava em produção e
           // debit_strap_stock falhava. Agora alertamos no momento da escolha.
-          const missing = straps
-            .map((s: any, idx: number) => {
-              if (!s?.color || !s?.group_id) return null;
-              const targetColor = s.color.trim().toLowerCase();
-              const hasProduct = (allProducts as any[]).some(
-                (p: any) => p.group_id === s.group_id &&
-                  (p.color || '').trim().toLowerCase() === targetColor &&
-                  p.active !== false,
-              );
-              return hasProduct ? null : { idx, color: s.color, group_name: s.group_name };
-            })
-            .filter(Boolean) as Array<{ idx: number; color: string; group_name: string }>;
+          const missing = strapMissing;
           const hasMissing = missing.length > 0;
 
           return (
