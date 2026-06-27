@@ -4,9 +4,10 @@ import { useDebounce } from 'use-debounce';
 import { useNavigate } from 'react-router-dom';
 import {
   MagnifyingGlass as Search, ClipboardText as ClipboardList, Users, Package, FileText,
-  X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock,
+  X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock, Star,
 } from '@phosphor-icons/react';
 import { menuGroups, secondaryRoutes } from '@/data/navigation';
+import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
@@ -367,6 +368,30 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     navigate(path);
   }, [navigate]);
 
+  // Favoritos de menu (mesma fonte da sidebar — persistido por usuário).
+  const { favorites, toggleFavorite, isFavorite } = useMenuFavorites();
+
+  /** Estrela de favoritar uma página, embutida numa CommandItem. Para o clique
+   *  ANTES do cmdk pra não navegar ao favoritar (mouseDown + click). */
+  const FavStar = ({ name, path }: { name: string; path: string }) => {
+    const fav = isFavorite(path);
+    return (
+      <button
+        type="button"
+        aria-label={fav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+        title={fav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+        className={cn(
+          'shrink-0 rounded p-1 transition-colors',
+          fav ? 'text-amber-400 hover:text-amber-500' : 'text-muted-foreground/50 hover:text-amber-500',
+        )}
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(name, path); }}
+      >
+        <Star className="h-3.5 w-3.5" weight={fav ? 'fill' : 'regular'} />
+      </button>
+    );
+  };
+
   const isLoading = searchEnabled && (
     ordersQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching ||
     saleOrdersQuery.isFetching || referencesQuery.isFetching || suppliersQuery.isFetching
@@ -471,6 +496,16 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                       <Home className="mr-2 h-3.5 w-3.5 text-primary" />
                       Início (Dashboard)
                     </CommandItem>
+                    {favorites.map((fav) => (
+                      <CommandItem key={fav.path} onSelect={() => goTo(fav.path)}>
+                        <Star className="mr-2 h-3.5 w-3.5 text-amber-400" weight="fill" />
+                        <span className="text-sm">{fav.name}</span>
+                        <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                          <FavStar name={fav.name} path={fav.path} />
+                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        </span>
+                      </CommandItem>
+                    ))}
                   </CommandGroup>
                   {menuGroups.map((group) => (
                     <CommandGroup key={group.label} heading={group.label}>
@@ -478,6 +513,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                         <CommandItem key={item.path} onSelect={() => goTo(item.path)}>
                           <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                           {item.name}
+                          <span className="ml-auto shrink-0">
+                            <FavStar name={item.name} path={item.path} />
+                          </span>
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -604,7 +642,10 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                       <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs font-medium"><Highlight text={item.name} term={q} /></span>
                       <span className="ml-2 text-xs text-muted-foreground">{item.groupLabel}</span>
-                      <ArrowRight className="ml-auto h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                        <FavStar name={item.name} path={item.path} />
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
