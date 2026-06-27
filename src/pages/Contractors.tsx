@@ -5,7 +5,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -308,6 +308,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   };
   const [orderTab, setOrderTab] = useState('dados');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Busca do seletor de pedido (PV/OP) — filtro manual (shouldFilter=false) sobre
+  // TODOS os pedidos, sem corte de 50 nem filtro de status que escondia pedidos.
+  const [pvSearch, setPvSearch] = useState('');
+  const [pvOpen, setPvOpen] = useState(false);
   // Artisanal OS state
   const [isArtisanal, setIsArtisanal] = useState(false);
   const [artRecipeId, setArtRecipeId] = useState('');
@@ -1917,12 +1921,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           <Tabs value={orderTab} onValueChange={setOrderTab}>
             <TabsList className="w-full">
               <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
-              <TabsTrigger value="artesanal" className="flex-1 gap-1"><Sparkles className="h-3.5 w-3.5" /> Artesanal</TabsTrigger>
               <TabsTrigger value="foto" className="flex-1 gap-1"><Upload className="h-3.5 w-3.5" /> Foto Assinada</TabsTrigger>
             </TabsList>
 
             <TabsContent value="dados" className="mt-3">
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 flex items-center gap-2.5">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Prestador &amp; Vínculo</span>
+                  <span className="h-px flex-1 bg-border/70" />
+                </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Prestador *</Label>
                   <Select value={editingOrder.contractor_id || ''} onValueChange={v => setEditingOrder(p => ({ ...p, contractor_id: v }))}>
@@ -1949,36 +1956,45 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       </span>
                     )}
                   </Label>
-                  <Popover>
+                  <Popover open={pvOpen} onOpenChange={(o) => { setPvOpen(o); if (!o) setPvSearch(''); }}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
+                      <Button variant="outline" role="combobox" aria-expanded={pvOpen} className="h-9 w-full justify-between text-sm font-normal">
                         {editingOrder.sale_order_id
-                          ? (() => { const so = saleOrders.find((s: any) => s.id === editingOrder.sale_order_id); return so ? `${so.order_number}${so.client_order_number ? ` — ${so.client_order_number}` : ''} (${so.client_name || ''})` : 'Selecione'; })()
+                          ? (() => { const so = saleOrders.find((s: any) => s.id === editingOrder.sale_order_id); return so ? `${so.order_number}${so.client_order_number ? ` — ${so.client_order_number}` : ''}${so.client_name ? ` (${so.client_name})` : ''}` : 'Selecione'; })()
                           : 'Nenhum (opcional)'}
                         <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[400px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Buscar PV, cliente..." />
+                    {/* shouldFilter=false + filtro manual sobre TODOS os pedidos + value=id
+                        estável: corrige o seletor que não achava/selecionava o pedido
+                        (antes filtrava por 3 status e cortava em 50 ANTES da busca). */}
+                    <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[340px] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput placeholder="Buscar por PV, cliente ou pedido do cliente..." value={pvSearch} onValueChange={setPvSearch} />
                         <CommandList>
                           <CommandEmpty>Nenhum pedido encontrado.</CommandEmpty>
                           <CommandGroup>
-                            <CommandItem value="__none__" onSelect={() => setEditingOrder(p => ({ ...p, sale_order_id: null }))}>
+                            <CommandItem value="__none__" onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: null })); setPvOpen(false); setPvSearch(''); }}>
                               <Check className={cn("mr-2 h-3.5 w-3.5", !editingOrder.sale_order_id ? "opacity-100" : "opacity-0")} />
-                              Nenhum
+                              Nenhum (sem vínculo)
                             </CommandItem>
-                            {saleOrders
-                              .filter((s: any) => s.status === 'Aprovado' || s.status === 'Em produção' || s.status === 'Produção')
-                              .slice(0, 50)
-                              .map((so: any) => (
-                                <CommandItem key={so.id} value={`${so.order_number} ${so.client_order_number || ''} ${so.client_name || ''}`} onSelect={() => setEditingOrder(p => ({ ...p, sale_order_id: so.id }))}>
+                            {(() => {
+                              const q = normalizeForSearch(pvSearch);
+                              const matches = (saleOrders as any[]).filter((so) => {
+                                if (!q) return true;
+                                return normalizeForSearch(so.order_number).includes(q)
+                                  || normalizeForSearch(so.client_order_number || '').includes(q)
+                                  || normalizeForSearch(so.client_name || '').includes(q);
+                              });
+                              return matches.slice(0, 80).map((so: any) => (
+                                <CommandItem key={so.id} value={so.id} onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: so.id })); setPvOpen(false); setPvSearch(''); }}>
                                   <Check className={cn("mr-2 h-3.5 w-3.5", editingOrder.sale_order_id === so.id ? "opacity-100" : "opacity-0")} />
                                   <span className="font-mono font-semibold mr-2">{so.order_number}</span>
                                   {so.client_order_number && <span className="text-muted-foreground mr-2">({so.client_order_number})</span>}
                                   <span className="text-sm truncate">{so.client_name || ''}</span>
                                 </CommandItem>
-                              ))}
+                              ));
+                            })()}
                           </CommandGroup>
                         </CommandList>
                       </Command>
@@ -2133,11 +2149,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   )}
                 </div>
 
-                <Separator className="col-span-2" />
                 {/* Materials section — hidden in artisanal mode (auto-computed) */}
                 {!isArtisanal && (
-                <div className="col-span-2 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Materiais Enviados</p>
+                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Materiais Enviados</span>
+                  <span className="h-px flex-1 bg-border/70" />
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addMaterial}><Plus className="h-3 w-3" /> Adicionar</Button>
                 </div>
                 )}
@@ -2146,9 +2162,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <div className="col-span-2 space-y-2">
                   {(editingOrder.materials_sent || []).map((mat, idx) => (
                     <div key={idx} className={cn("flex items-end gap-2 p-3 rounded-lg border bg-muted/20 transition-colors", mat.completed ? "border-green-300 bg-green-50/50 dark:bg-green-950/20" : "border-border")}>
+                      {/* Check de "dar baixa" só faz sentido editando uma OS existente —
+                          numa OS nova ainda não há o que baixar. */}
+                      {isEditing && (
                       <button type="button" className="shrink-0 self-center mb-1 hover:scale-110 transition-transform" title={mat.completed ? 'Marcar como pendente' : 'Dar baixa'} onClick={() => updateMaterial(idx, 'completed', !mat.completed)}>
                         {mat.completed ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Circle className="h-5 w-5 text-muted-foreground" />}
                       </button>
+                      )}
                       <div className={cn("flex-1 space-y-1.5", mat.completed && "opacity-60")}>
                         <Label className="text-xs text-muted-foreground">Material</Label>
                         <Popover>
@@ -2201,7 +2221,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   </div>
                 )}
 
-                <Separator className="col-span-2" />
+                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Cobrança</span>
+                  <span className="h-px flex-1 bg-border/70" />
+                </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Data</Label>
@@ -2250,21 +2273,26 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     className="h-9 font-mono"
                   />
                 </div>
-                <div className="col-span-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    Total {!isArtisanal && (
-                      <span className="text-muted-foreground/80 font-normal">
+                <div className="col-span-2 flex items-end justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3.5 py-3">
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-semibold uppercase tracking-wide text-foreground">Total</span>
+                    {!isArtisanal && (
+                      <span className="mt-0.5 block">
                         = {(editingOrder.quantity || 1).toLocaleString('pt-BR')} × {formatCurrency(editingOrder.unit_price || 0)}
                       </span>
                     )}
-                  </Label>
-                  <p className="display text-xl tabular-nums font-mono text-primary mt-1">
+                  </div>
+                  <p className="display text-2xl leading-none tabular-nums text-foreground">
                     {formatCurrency(
                       isArtisanal
                         ? (editingOrder.total_value || editingOrder.unit_price || 0)
                         : ((editingOrder.quantity || 1) * (editingOrder.unit_price || 0))
                     )}
                   </p>
+                </div>
+                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Status &amp; Observações</span>
+                  <span className="h-px flex-1 bg-border/70" />
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Status</Label>
@@ -2282,219 +2310,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
                   <Textarea value={editingOrder.notes || ''} onChange={e => setEditingOrder(p => ({ ...p, notes: e.target.value }))} rows={2} className="resize-none" />
                 </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="artesanal" className="mt-3">
-              <div className="space-y-3">
-                <div className="rounded-lg border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 p-3">
-                  <p className="text-xs text-amber-900 dark:text-amber-200">
-                    <Sparkles className="h-3.5 w-3.5 inline mr-1" />
-                    Use esta aba quando o terceirizado <strong>transforma</strong> uma matéria-prima em um produto artesanal
-                    (ex.: couro liso → couro trançado). Ao concluir a OS, o sistema debita a MP e gera a entrada do produto artesanal no estoque.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Receita Artesanal</Label>
-                  <Select
-                    value={editingOrder.artisanal_recipe_id || '__none__'}
-                    onValueChange={(v) => {
-                      if (v === '__none__') {
-                        setEditingOrder((p) => ({
-                          ...p,
-                          artisanal_recipe_id: null,
-                          artisanal_output_name: '',
-                        }));
-                        return;
-                      }
-                      const r = artisanalRecipes.find((x) => x.id === v);
-                      setEditingOrder((p) => ({
-                        ...p,
-                        artisanal_recipe_id: v,
-                        artisanal_output_name: r?.artisanal_product_name || '',
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Selecione a receita (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Nenhuma (OS comum)</SelectItem>
-                      {artisanalRecipes.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name} — {r.base_product_name} → {r.artisanal_product_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {editingOrder.artisanal_recipe_id && (() => {
-                  const recipe = artisanalRecipes.find((r) => r.id === editingOrder.artisanal_recipe_id);
-                  if (!recipe) return null;
-                  const output = Number(editingOrder.artisanal_output_meters) || 0;
-                  const yieldRate = Number(recipe.yield_per_meter) || 1;
-                  const baseNeeded = output / yieldRate;
-                  const forOrder = Number(editingOrder.artisanal_for_order_meters) || 0;
-                  const forStock = Number(editingOrder.artisanal_for_stock_meters) || 0;
-                  const totalSplit = forOrder + forStock;
-                  const splitOk = output > 0 && Math.abs(totalSplit - output) < 0.01;
-                  return (
-                    <>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">MP Base</Label>
-                          <Input value={recipe.base_product_name} disabled className="h-9 bg-muted/40" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">Cor da MP Base</Label>
-                          <Input
-                            value={editingOrder.artisanal_output_color || ''}
-                            disabled
-                            className="h-9 bg-muted/40"
-                          />
-                          <p className="text-[11px] text-muted-foreground">= cor do produto (a tira é cortada da NAPA da mesma cor).</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">Produto Artesanal</Label>
-                          <Input
-                            value={editingOrder.artisanal_output_name || ''}
-                            onChange={(e) => setEditingOrder((p) => ({ ...p, artisanal_output_name: e.target.value }))}
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">Cor do Produto Artesanal</Label>
-                          <Input
-                            placeholder="Ex.: Caramelo Trançado"
-                            value={editingOrder.artisanal_output_color || ''}
-                            onChange={(e) => setEditingOrder((p) => ({ ...p, artisanal_output_color: e.target.value }))}
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">
-                            Metros Produzidos (saída)
-                          </Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min={0}
-                            value={editingOrder.artisanal_output_meters ?? ''}
-                            onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                            onChange={(e) =>
-                              setEditingOrder((p) => ({ ...p, artisanal_output_meters: Number(e.target.value) || 0 }))
-                            }
-                            className="h-9 font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">
-                            Rendimento (m artesanal / m base)
-                          </Label>
-                          <Input value={yieldRate.toFixed(3)} disabled className="h-9 font-mono bg-muted/40" />
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">MP base necessária:</span>
-                          <span className="font-mono font-semibold">{baseNeeded.toFixed(2)} m</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Custo MO (R$/m):</span>
-                          <span className="font-mono">
-                            {formatCurrency(Number(recipe.labor_cost_per_meter) || 0)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm border-t pt-2">
-                          <span className="text-muted-foreground">Custo total MO:</span>
-                          <span className="font-mono font-semibold text-primary">
-                            {formatCurrency(output * (Number(recipe.labor_cost_per_meter) || 0))}
-                          </span>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Destino da produção
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs flex items-center gap-1">
-                              <ArrowRight className="h-3 w-3" /> Para o pedido (m)
-                            </Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min={0}
-                              value={editingOrder.artisanal_for_order_meters ?? ''}
-                              onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                              onChange={(e) =>
-                                setEditingOrder((p) => ({
-                                  ...p,
-                                  artisanal_for_order_meters: Number(e.target.value) || 0,
-                                }))
-                              }
-                              className="h-9 font-mono"
-                              disabled={!editingOrder.sale_order_id}
-                            />
-                            {!editingOrder.sale_order_id && (
-                              <p className="text-xs text-muted-foreground">Vincule um PV na aba Dados</p>
-                            )}
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs flex items-center gap-1">
-                              <Package className="h-3 w-3" /> Para estoque (m)
-                            </Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min={0}
-                              value={editingOrder.artisanal_for_stock_meters ?? ''}
-                              onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                              onChange={(e) =>
-                                setEditingOrder((p) => ({
-                                  ...p,
-                                  artisanal_for_stock_meters: Number(e.target.value) || 0,
-                                }))
-                              }
-                              className="h-9 font-mono"
-                            />
-                          </div>
-                        </div>
-                        {output > 0 && (
-                          <div
-                            className={cn(
-                              'text-xs px-3 py-2 rounded-md font-mono',
-                              splitOk
-                                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300',
-                            )}
-                          >
-                            {splitOk
-                              ? `✓ Soma ${totalSplit.toFixed(2)}m = produzido`
-                              : `⚠ Soma ${totalSplit.toFixed(2)}m ≠ produzido ${output.toFixed(2)}m`}
-                          </div>
-                        )}
-                      </div>
-
-                      {editingOrder.artisanal_stock_entry_done && (
-                        <div className="text-xs px-3 py-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-medium">
-                          ✓ Entrada de estoque já processada para esta OS
-                        </div>
-                      )}
-
-                      <p className="text-xs text-muted-foreground italic">
-                        A baixa da MP e a entrada do produto artesanal ocorrem automaticamente quando a OS é marcada como{' '}
-                        <strong>Concluído</strong>.
-                      </p>
-                    </>
-                  );
-                })()}
               </div>
             </TabsContent>
 
