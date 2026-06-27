@@ -985,6 +985,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }
   }, [updateOrder, queryClient, produceArtisanalOutput]);
 
+  const confirmAndDeleteOs = useCallback((o: ServiceOrder) => {
+    if (window.confirm(`Excluir a OS ${o.order_number}? Esta ação não pode ser desfeita.`)) {
+      deleteOrder.mutate(o.id);
+    }
+  }, [deleteOrder]);
+
   const handleSaveOrder = () => {
     if (!editingOrder.contractor_id) return;
     const recipe = isArtisanal ? recipes.find(r => r.id === artRecipeId) : null;
