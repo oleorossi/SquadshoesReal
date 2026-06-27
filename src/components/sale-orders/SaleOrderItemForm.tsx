@@ -482,6 +482,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     for (const name of matNames) {
       const grp = (productGroups as any[]).find((g: any) => (g.name || '').trim().toLowerCase() === String(name).toLowerCase());
       if (!grp) continue;
+      if (grp.is_color_agnostic) continue; // material base (EVA/cola): cor não se aplica
       const groupProds = (allProducts as any[]).filter((p: any) => p.group_id === grp.id && p.active !== false);
       const colorManaged = groupProds.some((p: any) => (p.color || '').trim() !== '');
       if (!colorManaged) continue; // grupo sem cores = genérico → débito ok
@@ -496,12 +497,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     const straps = (item.strap_colors as any[]) || [];
     return straps.map((s: any, idx: number) => {
       if (!s?.color || !s?.group_id) return null;
+      const grp = (productGroups as any[]).find((g: any) => g.id === s.group_id);
+      if (grp?.is_color_agnostic) return null; // material base: cor não se aplica
       const target = s.color.trim().toLowerCase();
       const hasProduct = (allProducts as any[]).some((p: any) =>
         p.group_id === s.group_id && (p.color || '').trim().toLowerCase() === target && p.active !== false);
       return hasProduct ? null : { idx, color: s.color, group_name: s.group_name || '', group_id: s.group_id };
     }).filter(Boolean) as any;
-  }, [item.strap_colors, allProducts]);
+  }, [item.strap_colors, allProducts, productGroups]);
 
   const hasColorIssue = coverColorIssues.length > 0 || strapMissing.length > 0;
   const colorIssueKey = hasColorIssue
