@@ -46,6 +46,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
+import { printOperatorFichas } from '@/lib/printOperatorFichas';
 import { autoCreateSolePO } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { resolveSenderCnpj } from '@/lib/companySender';
@@ -2272,6 +2273,7 @@ export default function SaleOrders() {
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printOperatorFichas(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }} title="Fichas de operador (Costura / Aviamento / Montagem) geradas do pedido — pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Fichas Operador</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
                   {/* Botão "Etiquetas" — abre /etiquetas pré-filtrado pelo PV.
                       Antes printava térmica direto (perdia acesso a caixa externa,
