@@ -2,7 +2,8 @@
 // "Ficha de Montadores": lançamento diário de fichas de corte/montagem +
 // PRODUTIVIDADE por montador (filtros dia/semana/quinzena, pares e pagamento por
 // par) + relatório. Tabela public.ficha_montadores (montador_id→employees,
-// solado_id→products, valor_par). Não está nos tipos gerados → cast (supabase as any).
+// reference_id→technical_sheets + referencia texto; solado_id/solado = LEGADO,
+// valor_par). Não está nos tipos gerados → cast (supabase as any).
 //
 // Print (PRINT_CSS/cardHTML/relatório) abre em window próprio com cores hardcoded
 // de propósito — papel A4 precisa de tons garantidos (igual aos demais prints).
@@ -29,8 +30,10 @@ interface Ficha {
   dia: string;
   montador: string | null;
   montador_id: string | null;
-  solado: string | null;
-  solado_id: string | null;
+  referencia: string | null;
+  reference_id: string | null;
+  solado: string | null;       // LEGADO (fichas antigas) — exibido como fallback
+  solado_id: string | null;    // LEGADO
   cor: string | null;
   grade: Grade;
   numeracoes: string[];
@@ -108,13 +111,13 @@ const PRINT_CSS = `
   .ppf-cell{background:#f1f0ed;font-size:13px}
   @page{size:A4 landscape;margin:8mm}
 `;
-function cardHTML(f: { dia: string; montador: string | null; solado: string | null; cor?: string | null; grade: Grade; numeracoes: string[]; quantidades: string[]; total: number }) {
+function cardHTML(f: { dia: string; montador: string | null; referencia?: string | null; solado?: string | null; cor?: string | null; grade: Grade; numeracoes: string[]; quantidades: string[]; total: number }) {
   const th = f.numeracoes.map((s) => `<th>${esc(s)}</th>`).join("");
   const td = f.quantidades.map((q) => `<td>${esc(q)}</td>`).join("");
   const tag = f.grade === "infantil" ? "Grade infantil" : "Grade adulta";
   return `<div class="print-card"><div class="card">
     <span class="page-num">1/1</span><span class="grade-tag${f.grade === "adulto" ? " adulto" : ""}">${tag}</span>
-    <div class="head"><span class="lbl">Solado</span><div class="v-big">${esc(f.solado || "")}</div></div>
+    <div class="head"><span class="lbl">Referência</span><div class="v-big">${esc(f.referencia || f.solado || "")}</div></div>
     <div class="meta"><div><span class="lbl">Montador</span><div class="v-mid">${esc(f.montador || "")}</div></div>
       <div><span class="lbl">Cor</span><div class="v-mid">${esc(f.cor || "")}</div></div>
       <div><span class="lbl">Data</span><div class="v-mid">${fmtDia(f.dia)}</div></div></div>
@@ -164,8 +167,8 @@ export default function FichaMontadoresPage() {
   const [dia, setDia] = useState(todayISO());
   const [montadorId, setMontadorId] = useState<string>("");
   const [montadorNome, setMontadorNome] = useState("");
-  const [soladoId, setSoladoId] = useState<string>("");
-  const [soladoNome, setSoladoNome] = useState("");
+  const [referenciaId, setReferenciaId] = useState<string>("");
+  const [referenciaNome, setReferenciaNome] = useState("");
   const [cor, setCor] = useState("");
   const [valorPar, setValorPar] = useState(0);
   const [grade, setGrade] = useState<Grade>("adulto");
@@ -188,12 +191,13 @@ export default function FichaMontadoresPage() {
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [employees],
   );
-  const { data: solados = [] } = useQuery({
-    queryKey: ["solados-list-montadores"],
+  // Referências (fichas técnicas) — o montador monta uma REFERÊNCIA, não um solado.
+  const { data: references = [] } = useQuery({
+    queryKey: ["references-list-montadores"],
     queryFn: async () => {
-      const { data, error } = await db.from("products").select("id,name,color").eq("category", "Solado").eq("active", true).order("name");
+      const { data, error } = await db.from("technical_sheets").select("id,code,name").order("name");
       if (error) throw error;
-      return (data || []) as { id: string; name: string; color: string | null }[];
+      return (data || []) as { id: string; code: string | null; name: string | null }[];
     },
   });
 
@@ -238,7 +242,7 @@ export default function FichaMontadoresPage() {
 
   function novaFicha() {
     setEditingId(null); setDia(todayISO());
-    setMontadorId(""); setMontadorNome(""); setSoladoId(""); setSoladoNome(""); setCor(""); setValorPar(0);
+    setMontadorId(""); setMontadorNome(""); setReferenciaId(""); setReferenciaNome(""); setCor(""); setValorPar(0);
     setGrade("adulto"); setSizes(DEFAULTS.adulto.sizes); setQtys(DEFAULTS.adulto.qtys); setCopias(1);
   }
   function trocarGrade(g: Grade) { setGrade(g); setSizes([...DEFAULTS[g].sizes]); setQtys([...DEFAULTS[g].qtys]); }
@@ -252,10 +256,10 @@ export default function FichaMontadoresPage() {
     const e = montadores.find((x) => x.id === id);
     setMontadorNome(e?.name ?? "");
   }
-  function pickSolado(id: string) {
-    setSoladoId(id);
-    const s = (solados as any[]).find((x) => x.id === id);
-    setSoladoNome(s ? `${s.name}${s.color ? " " + s.color : ""}` : "");
+  function pickReferencia(id: string) {
+    setReferenciaId(id);
+    const r = (references as any[]).find((x) => x.id === id);
+    setReferenciaNome(r ? (r.name || r.code || "") : "");
   }
 
   async function salvar() {
@@ -264,7 +268,7 @@ export default function FichaMontadoresPage() {
     setSaving(true);
     const payload: any = {
       dia, montador: montadorNome || null, montador_id: montadorId || null,
-      solado: soladoNome || null, solado_id: soladoId || null, cor: cor.trim() || null,
+      referencia: referenciaNome || null, reference_id: referenciaId || null, cor: cor.trim() || null,
       grade, numeracoes: sizes, quantidades: qtys, total, copias, valor_par: valorPar || 0,
       atualizado_em: new Date().toISOString(),
     };
@@ -272,11 +276,16 @@ export default function FichaMontadoresPage() {
       ? db.from("ficha_montadores").update(pl).eq("id", editingId)
       : db.from("ficha_montadores").insert(pl);
     let { error } = await save(payload);
-    // Resiliente: se a coluna `cor` ainda não existe no banco (migration pendente),
-    // grava sem ela em vez de quebrar a ficha (página de uso diário).
-    if (error && /['"\s]cor['"\s]|column .*cor|'cor'/i.test(error.message || "")) {
-      const { cor: _omit, ...semCor } = payload;
-      ({ error } = await save(semCor));
+    // Resiliente: se alguma coluna nova ainda não existe no banco (migration
+    // pendente), regrava só sem a(s) coluna(s) faltante(s) — não quebra a ficha
+    // (página de uso diário). Aplica a 'cor', 'referencia' e 'reference_id'.
+    if (error && /column|could not find/i.test(error.message || "")) {
+      const msg = (error.message || "").toLowerCase();
+      const retry: any = { ...payload };
+      if (msg.includes("reference_id")) delete retry.reference_id;
+      if (msg.includes("referencia")) delete retry.referencia;
+      if (msg.includes("'cor'") || /column\s+"?cor"?/.test(msg)) delete retry.cor;
+      ({ error } = await save(retry));
     }
     if (error) toast.error("Erro ao salvar: " + error.message);
     else { toast.success(editingId ? "Ficha atualizada." : "Ficha salva."); await carregar(); if (!editingId) novaFicha(); }
@@ -285,7 +294,7 @@ export default function FichaMontadoresPage() {
   function abrir(f: Ficha) {
     setTab("lancamento"); setEditingId(f.id); setDia(f.dia);
     setMontadorId(f.montador_id ?? ""); setMontadorNome(f.montador ?? "");
-    setSoladoId(f.solado_id ?? ""); setSoladoNome(f.solado ?? ""); setCor((f as any).cor ?? ""); setValorPar(Number(f.valor_par) || 0);
+    setReferenciaId(f.reference_id ?? ""); setReferenciaNome(f.referencia ?? f.solado ?? ""); setCor((f as any).cor ?? ""); setValorPar(Number(f.valor_par) || 0);
     setGrade(f.grade); setSizes(f.numeracoes ?? []); setQtys(f.quantidades ?? []); setCopias(f.copias ?? 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -386,7 +395,7 @@ export default function FichaMontadoresPage() {
                 ))}
               </div>
               <Button type="button" variant="outline" size="sm" className="gap-1.5"
-                onClick={() => imprimirFichas([{ id: "x", dia, montador: montadorNome || null, montador_id: montadorId || null, solado: soladoNome || null, solado_id: soladoId || null, cor: cor || null, grade, numeracoes: sizes, quantidades: qtys, total, copias, valor_par: valorPar }], true)}>
+                onClick={() => imprimirFichas([{ id: "x", dia, montador: montadorNome || null, montador_id: montadorId || null, referencia: referenciaNome || null, reference_id: referenciaId || null, solado: null, solado_id: null, cor: cor || null, grade, numeracoes: sizes, quantidades: qtys, total, copias, valor_par: valorPar }], true)}>
                 <Printer className="h-4 w-4" /> Imprimir
               </Button>
             </div>
@@ -410,11 +419,11 @@ export default function FichaMontadoresPage() {
               </Select>
             </div>
             <div>
-              <label className={lbl}>Solado</label>
-              <Select value={soladoId} onValueChange={pickSolado}>
-                <SelectTrigger><SelectValue placeholder="Selecione o solado" /></SelectTrigger>
+              <label className={lbl}>Referência</label>
+              <Select value={referenciaId} onValueChange={pickReferencia}>
+                <SelectTrigger><SelectValue placeholder="Selecione a referência" /></SelectTrigger>
                 <SelectContent>
-                  {(solados as any[]).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}{s.color ? ` · ${s.color}` : ""}</SelectItem>)}
+                  {(references as any[]).map((r) => <SelectItem key={r.id} value={r.id}>{r.name || r.code}{r.name && r.code ? ` · ${r.code}` : ""}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -597,13 +606,13 @@ export default function FichaMontadoresPage() {
                 <div className="overflow-hidden rounded-lg border border-border">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
-                      <tr><th className="px-3 py-2">Montador</th><th className="px-3 py-2">Solado</th><th className="px-3 py-2">Cor</th><th className="px-3 py-2">Grade</th><th className="px-3 py-2 text-center">Total</th><th className="px-3 py-2 text-center">Cópias</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Ações</th></tr>
+                      <tr><th className="px-3 py-2">Montador</th><th className="px-3 py-2">Referência</th><th className="px-3 py-2">Cor</th><th className="px-3 py-2">Grade</th><th className="px-3 py-2 text-center">Total</th><th className="px-3 py-2 text-center">Cópias</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Ações</th></tr>
                     </thead>
                     <tbody>
                       {lista.map((f) => (
                         <tr key={f.id} className="border-t border-border">
                           <td className="px-3 py-2 font-medium text-foreground">{f.montador || "—"}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{f.solado || "—"}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{f.referencia || f.solado || "—"}</td>
                           <td className="px-3 py-2 text-muted-foreground">{(f as any).cor || "—"}</td>
                           <td className="px-3 py-2 capitalize text-muted-foreground">{f.grade}</td>
                           <td className="px-3 py-2 text-center font-semibold text-foreground">{f.total}</td>
