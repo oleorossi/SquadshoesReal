@@ -451,6 +451,8 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   // consumo/valor/dimensões. Persiste em product_groups.shared_specs. (O state havia sido
   // removido por engano no cleanup a089022, deixando o JSX órfão → crash "sharedSpecs is not defined".)
   const [sharedSpecs, setSharedSpecs] = useState<boolean>(group.shared_specs ?? false);
+  // Material base sem cor (EVA, cola): desliga o color_mismatch no consumo/débito.
+  const [isColorAgnostic, setIsColorAgnostic] = useState<boolean>(group.is_color_agnostic ?? false);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [location, setLocation] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -486,6 +488,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setName(group.name);
     setDescription(group.description || '');
     setIsBomColorSource(group.is_bom_color_source);
+    setIsColorAgnostic(group.is_color_agnostic ?? false);
     setConsumptionUnit(group.consumption_unit || '__none__');
     setSharedSpecs(group.shared_specs ?? false);
     setParentGroupId(group.parent_group_id || '');
@@ -545,6 +548,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           name,
           description,
           is_bom_color_source: isBomColorSource,
+          is_color_agnostic: isColorAgnostic,
           consumption_unit: finalUnit,
           shared_specs: sharedSpecs,
           parent_group_id: parentGroupId || null,
@@ -680,6 +684,22 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <Switch checked={isBomColorSource} onCheckedChange={setIsBomColorSource} />
                 </div>
               )}
+
+              {/* Cor não se aplica (material base) — desliga o guard "cor não cadastrada" */}
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-4">
+                <div className="flex items-start gap-3">
+                  <Palette className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Cor não se aplica (material base)</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ative para materiais cuja COR não importa no consumo (ex.: <strong>palmilha/EVA</strong>, <strong>cola</strong>): o
+                      consumo/débito resolvem pelo grupo e o item <strong>não</strong> dispara o aviso "cor não cadastrada".
+                      Mantenha desativado para materiais por cor (ex.: <strong>napa</strong>, forração).
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={isColorAgnostic} onCheckedChange={setIsColorAgnostic} />
+              </div>
 
               {/* Especificações Compartilhadas */}
               {show.sharedSpecs && (
