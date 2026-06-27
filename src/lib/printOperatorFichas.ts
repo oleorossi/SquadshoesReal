@@ -3,8 +3,8 @@ import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 /**
  * Fichas de operador AUTOMÁTICAS a partir do pedido (PV) — só pros setores
- * Costura, Aviamento e Montagem. Pra cada item (referência + cor) gera 1 ficha
- * por setor que esteja em `technical_sheets.production_sectors`. Setor ausente
+ * Costura, Aviamento e Montagem. Pra cada item (referência + cor) gera 2 vias
+ * (OPERADOR + SUPERVISOR) por setor que esteja em `technical_sheets.production_sectors`. Setor ausente
  * na ficha técnica → NÃO gera (decisão do usuário 2026-06-27). A grade mostra
  * DUAS linhas: "por ficha" (grade base) e "total pedido" (escalada à quantidade).
  * Print A4 num window.open próprio (inline styles + #000, regra de print).
@@ -32,24 +32,32 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+type Via = 'OPERADOR' | 'SUPERVISOR';
+
 function fichaHtml(params: {
-  sector: Sector; pv: string; client: string; date: string;
+  sector: Sector; via: Via; pv: string; client: string; date: string;
   refCode: string; refName: string; color: string;
   sizes: string[]; base: Record<string, number>; scaled: Record<string, number>;
   baseSum: number; total: number;
 }): string {
-  const { sector, pv, client, date, refCode, refName, color, sizes, base, scaled, baseSum, total } = params;
+  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, scaled, baseSum, total } = params;
   const th = SECTOR_THEME[sector];
   const head = sizes.map(s => `<th>${esc(s)}</th>`).join('');
   const baseRow = sizes.map(s => `<td>${base[s] || 0}</td>`).join('');
   const scaledRow = sizes.map(s => `<td>${scaled[s] || 0}</td>`).join('');
   const nFichas = baseSum > 0 ? Math.round(total / baseSum) : 0;
+  // Selo de via bem distinto pra não misturar: operador = cor do setor; supervisor = preto.
+  const viaStyle = via === 'SUPERVISOR' ? 'background:#0f172a;color:#fff' : `background:${th.fg};color:#fff`;
+  const signLeft = via === 'SUPERVISOR'
+    ? 'Conferido por (supervisor): ____________________'
+    : 'Executado por (operador): ____________________';
   return `
   <div class="ficha">
     <div class="band" style="background:${th.bg};color:${th.fg}">
-      <span class="bt">FICHA DE OPERADOR · ${esc(sector.toUpperCase())}</span>
-      <span class="bs">${esc(pv)} · ${esc(client)} · ${esc(date)}</span>
+      <span class="bt">${esc(sector.toUpperCase())}</span>
+      <span class="via" style="${viaStyle}">VIA · ${esc(via)}</span>
     </div>
+    <div class="subline">Ficha de produção · ${esc(pv)} · ${esc(client)} · ${esc(date)}</div>
     <div class="meta">
       <div><span class="ml">Referência</span><span class="mv">${esc(refName)}${refCode ? ` · ${esc(refCode)}` : ''}</span></div>
       <div><span class="ml">Cor</span><span class="mv">${esc(color || '—')}</span></div>
@@ -63,7 +71,7 @@ function fichaHtml(params: {
         <tr><td class="rh">Total pedido</td>${scaledRow}<td class="tc tot">${total}</td></tr>
       </tbody>
     </table>
-    <div class="sign"><span>Executado por: ____________________</span><span>Data: ____ / ____</span><span>Visto: __________</span></div>
+    <div class="sign"><span>${signLeft}</span><span>Data: ____ / ____</span><span>Visto: __________</span></div>
   </div>`;
 }
 
@@ -115,12 +123,15 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
       const multiplier = total / baseSum;
       const scaled = scaleGradeWithLargestRemainder(grade, multiplier, total);
       const sizes = Object.keys(grade).filter(s => Number(grade[s]) > 0).sort((a, b) => Number(a) - Number(b));
-      sectorFichas.push(fichaHtml({
+      const common = {
         sector, pv, client, date,
         refCode: sheet.code, refName: sheet.name, color: it.color || '',
         sizes, base: grade, scaled, baseSum, total,
-      }));
-      generated++;
+      };
+      // 2 vias por ficha: operador + supervisor (adjacentes pra separar fácil).
+      sectorFichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
+      sectorFichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
+      generated += 2;
     }
     if (sectorFichas.length > 0) {
       blocks.push(`<div class="sector-group">${sectorFichas.join('')}</div>`);
@@ -141,8 +152,9 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
   @page{size:A4 portrait;margin:10mm}
   .ficha{width:190mm;max-width:100%;margin:0 auto 10px;background:#fff;border:1.5px solid #000;break-inside:avoid;page-break-inside:avoid}
   .band{padding:8px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid #000}
-  .band .bt{font-size:15px;font-weight:800;letter-spacing:1px}
-  .band .bs{font-size:11px;font-weight:700}
+  .band .bt{font-size:16px;font-weight:800;letter-spacing:1px}
+  .via{font-size:11px;font-weight:800;letter-spacing:1px;padding:3px 11px;border-radius:3px}
+  .subline{padding:4px 12px;border-bottom:1px solid #000;font-size:10px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:.5px}
   .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:8px 12px;border-bottom:1px solid #000}
   .meta>div{display:flex;flex-direction:column}
   .ml{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#555}
