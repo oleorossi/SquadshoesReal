@@ -17,9 +17,12 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePerPvPurchasing';
 import { useProducts } from '@/hooks/useProducts';
+import { useGroups } from '@/hooks/useGroups';
 import { effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
 import { buildPerPvPurchaseOrders, summarizePerPvDrafts, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
+import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 type Props = {
@@ -44,7 +47,17 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   const [overrideColorMismatch, setOverrideColorMismatch] = useState(false);
   const { data: needs = [], isLoading, isError, error } = useMaterialsPerPv(open ? pvIds : null);
   const { data: products = [] } = useProducts();
+  const { data: groups = [] } = useGroups();
   const generate = useGeneratePerPvPurchaseOrders();
+  const qc = useQueryClient();
+  // Cadastro 1-clique da cor faltante: resolve o grupo a partir do produto (material_id).
+  const [createTarget, setCreateTarget] = useState<{ groupId: string; groupName: string; color: string } | null>(null);
+  const resolveGroupForMaterial = (materialId: string): { groupId: string; groupName: string } | null => {
+    const prod = (products as any[]).find((p) => p.id === materialId);
+    if (!prod?.group_id) return null;
+    const grp = (groups as any[]).find((g) => g.id === prod.group_id);
+    return grp ? { groupId: grp.id, groupName: grp.name } : null;
+  };
 
   // Enriquece cada necessidade com o múltiplo de compra efetivo (item→grupo),
   // pra buildPerPvPurchaseOrders arredondar a quantidade pra cima (187 → 200).
@@ -87,6 +100,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto">
         <DialogHeader>
@@ -165,12 +179,25 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                     A cor pedida não tem produto nesse material — o consumo caiu numa cor <strong>diferente</strong>,
                     então a compra/débito sairiam errados. Cadastre a cor no material antes de gerar
                     (ou marque o override abaixo se for um material sem cor, ex.: base).
-                    <ul className="mt-1.5 list-disc pl-5 text-xs space-y-0.5">
-                      {drafts.flatMap((d) => d.items.filter((i) => i.color_mismatch).map((i) => (
-                        <li key={`${i.material_id}-${i.color ?? ''}`}>
-                          {i.product_name} · <strong>{i.color || '—'}</strong>
-                        </li>
-                      )))}
+                    <ul className="mt-1.5 space-y-1">
+                      {drafts.flatMap((d) => d.items.filter((i) => i.color_mismatch).map((i) => {
+                        const grp = resolveGroupForMaterial(i.material_id);
+                        return (
+                          <li key={`${i.material_id}-${i.color ?? ''}`} className="flex items-center gap-2 text-xs">
+                            <span className="leading-none">{i.product_name} · <strong>{i.color || '—'}</strong></span>
+                            {grp && (i.color || '').trim() && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-[11px] gap-1 border-destructive/40"
+                                onClick={() => setCreateTarget({ groupId: grp.groupId, groupName: grp.groupName, color: (i.color || '').trim() })}
+                              >
+                                <Package className="h-3 w-3" /> Cadastrar
+                              </Button>
+                            )}
+                          </li>
+                        );
+                      }))}
                     </ul>
                   </div>
                 </div>
@@ -299,5 +326,22 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {createTarget && (
+      <CreateStrapProductDialog
+        open
+        onOpenChange={(o) => { if (!o) setCreateTarget(null); }}
+        groupId={createTarget.groupId}
+        groupName={createTarget.groupName}
+        color={createTarget.color}
+        onCreated={() => {
+          setCreateTarget(null);
+          setOverrideColorMismatch(false);
+          qc.invalidateQueries({ queryKey: ['materials_per_pv'] });
+          qc.invalidateQueries({ queryKey: ['products'] });
+        }}
+      />
+    )}
+    </>
   );
 }
