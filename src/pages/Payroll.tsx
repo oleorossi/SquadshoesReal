@@ -255,6 +255,7 @@ export default function Payroll() {
       period: compPeriod,
       days,
       bankHoursBalance: bankBalances?.get(empId),
+      monthlySalary: Number((emp as any).salary) || 0,
     });
   };
 

@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -19,8 +18,7 @@ import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
-  useEmployeeAdvances, useAddAdvance, useDeleteAdvance,
-  Employee, EmployeeAdvance,
+  Employee,
 } from '@/hooks/useEmployees';
 import { MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { toast } from 'sonner';
@@ -38,33 +36,17 @@ const emptyEmployee = {
   admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
 };
 
-const emptyAdvance = {
-  employee_id: '',
-  amount: 0,
-  advance_date: new Date().toISOString().split('T')[0],
-  time: new Date().toTimeString().split(' ')[0],
-  description: '',
-  receipt_url: '',
-  status: 'pending'
-};
-
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function Employees() {
   const { data: employees = [], isLoading, isError } = useEmployees();
-  const { data: advances = [] } = useEmployeeAdvances(null);
   const addEmployee = useAddEmployee();
   const updateEmployee = useUpdateEmployee();
   const deleteEmployee = useDeleteEmployee();
-  const addAdvance = useAddAdvance();
-  const deleteAdvance = useDeleteAdvance();
 
-  const [tab, setTab] = usePersistedState('emp-tab', 'list');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [advanceDialogOpen, setAdvanceDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [form, setForm] = useState(emptyEmployee);
-  const [advanceForm, setAdvanceForm] = useState(emptyAdvance);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
   const [deptFilter, setDeptFilter] = usePersistedState('emp-dept-filter', 'all');
@@ -110,13 +92,6 @@ export default function Employees() {
   const activeEmployees = employees.filter(e => e.active);
   const totalMonthlyPayroll = activeEmployees.reduce((s, e) => s + (e.salary || 0), 0);
 
-  // Advances grouped by employee
-  const advancesByEmp = new Map<string, number>();
-  advances.forEach(a => {
-    advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + (a.amount ?? 0));
-  });
-  const totalAdvances = advances.reduce((s, a) => s + (a.amount ?? 0), 0);
-
   const handleSave = () => {
     // A3 da auditoria 2026-05-28: warn em demissão retroativa.
     // Marcar termination_date no passado pode quebrar cálculo de saldo de
@@ -144,12 +119,6 @@ export default function Employees() {
     setEditing(null);
   };
 
-  const handleSaveAdvance = () => {
-    addAdvance.mutate(advanceForm);
-    setAdvanceDialogOpen(false);
-    setAdvanceForm(emptyAdvance);
-  };
-
   if (isLoading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   if (isError) {
@@ -170,9 +139,6 @@ export default function Employees() {
         <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2" size="sm">
           <Plus className="h-4 w-4" /> Novo Funcionário
         </Button>
-        <Button onClick={() => setAdvanceDialogOpen(true)} variant="outline" className="gap-2" size="sm">
-          <DollarSign className="h-4 w-4" /> Novo Adiantamento
-        </Button>
       </div>
 
       {/* KPI Cards */}
@@ -186,22 +152,9 @@ export default function Employees() {
             icon={UserCheck}
           />
           <StatCard label="Folha Mensal" value={fmt(totalMonthlyPayroll)} hint="ativos" icon={DollarSign} />
-          <StatCard
-            label="Adiantamentos"
-            value={fmt(totalAdvances)}
-            hint={`${advances.length} registros`}
-            tone="warning"
-            icon={DollarSign}
-          />
         </StatGrid>
 
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="list" className="gap-2"><Users2 className="h-4 w-4" /> Equipe</TabsTrigger>
-            <TabsTrigger value="advances" className="gap-2"><DollarSign className="h-4 w-4" /> Adiantamentos</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="list" className="space-y-3 mt-4">
+        <div className="space-y-3 mt-4">
             {/* Filters */}
             <div className="flex flex-wrap gap-2 items-center">
               <div className="relative flex-1 min-w-[180px] max-w-xs">
@@ -348,73 +301,7 @@ export default function Employees() {
                 </div>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="advances" className="mt-4 space-y-3">
-            <Panel flush>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                    <TableHead>Data</TableHead>
-                    <TableHead>Funcionário</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {advances.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="p-0">
-                        <EmptyState icon={DollarSign} title="Nenhum adiantamento registrado" description="Registre um adiantamento para a equipe." />
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {advances.map(a => {
-                    const emp = employees.find(e => e.id === a.employee_id);
-                    return (
-                      <TableRow key={a.id}>
-                        <TableCell className="text-sm">{new Date(a.advance_date).toLocaleDateString('pt-BR')}</TableCell>
-                        <TableCell className="font-medium">{emp?.name || '—'}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{a.description || '—'}</TableCell>
-                        <TableCell className="text-right font-mono tabular-nums font-semibold">{fmt(a.amount)}</TableCell>
-                        <TableCell className="text-right">
-                          <DeleteConfirmButton onConfirm={() => deleteAdvance.mutate(a.id)} size="icon" />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {advances.length > 0 && (
-                    <TableRow className="bg-muted/30 font-semibold">
-                      <TableCell colSpan={3} className="text-sm">Total</TableCell>
-                      <TableCell className="text-right font-mono">{fmt(totalAdvances)}</TableCell>
-                      <TableCell />
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </Panel>
-
-            {/* Per-employee advance summary */}
-            {advances.length > 0 && (
-              <Panel title="Resumo por Funcionário">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {Array.from(advancesByEmp.entries())
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([empId, total]) => {
-                      const emp = employees.find(e => e.id === empId);
-                      return (
-                        <div key={empId} className="flex justify-between items-center text-sm bg-muted/30 rounded px-3 py-2">
-                          <span className="font-medium truncate mr-2">{emp?.name || '—'}</span>
-                          <span className="font-mono text-amber-700 dark:text-amber-400 shrink-0">{fmt(total)}</span>
-                        </div>
-                      );
-                    })}
-                </div>
-              </Panel>
-            )}
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
 
       {/* Employee Form Dialog */}
@@ -512,20 +399,6 @@ export default function Employees() {
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave}>Salvar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Advance Dialog */}
-      <Dialog open={advanceDialogOpen} onOpenChange={setAdvanceDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Novo Adiantamento</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div><Label>Funcionário</Label><Select value={advanceForm.employee_id} onValueChange={v => setAdvanceForm(f => ({ ...f, employee_id: v }))}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{employees.filter(e => e.active).map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label>Valor (R$)</Label><CurrencyInput value={advanceForm.amount} onChange={v => setAdvanceForm(f => ({ ...f, amount: v }))} /></div>
-            <div><Label>Data</Label><Input type="date" value={advanceForm.advance_date} onChange={e => setAdvanceForm(f => ({ ...f, advance_date: e.target.value }))} /></div>
-            <div><Label>Descrição</Label><Textarea value={advanceForm.description} onChange={e => setAdvanceForm(f => ({ ...f, description: e.target.value }))} /></div>
-            <Button onClick={handleSaveAdvance} className="w-full">Registrar Adiantamento</Button>
           </div>
         </DialogContent>
       </Dialog>

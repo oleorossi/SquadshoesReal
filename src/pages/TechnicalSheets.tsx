@@ -151,6 +151,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FichaCortePrintTab } from '@/components/technical-sheets/FichaCortePrintTab';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -2014,6 +2015,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <History className="h-3.5 w-3.5" /> Fotos & Histórico
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
+          <TabsTrigger value="ficha-corte" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
+            <Scissors className="h-3.5 w-3.5" /> Ficha Imprimível
+          </TabsTrigger>
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="terceirizados" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Handshake className="h-3.5 w-3.5" /> Terceirizados
           </TabsTrigger>
@@ -3597,6 +3602,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         {/* TAB: Terceirizados — serviços terceirizáveis desta referência */}
         <TabsContent value="terceirizados" className="mt-4 space-y-4">
           <ReferenceTerceirizacoesPanel sheetId={sheet.id} />
+        </TabsContent>
+
+        <TabsContent value="ficha-corte" className="mt-0">
+          <FichaCortePrintTab sheet={sheet} />
         </TabsContent>
       </Tabs>
     </div>

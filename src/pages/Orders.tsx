@@ -229,7 +229,7 @@ function getWeekOptions() {
 
  export default function Orders({ hideHeader = false }: { hideHeader?: boolean }) {
   const navigate = useNavigate();
-  const { data: orders = [], isLoading, isError } = useOrders();
+  const { data: orders = [], isLoading, isError, refetch, isFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const { data: products = [] } = useProducts();
   
@@ -1100,7 +1100,11 @@ function getWeekOptions() {
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
         <AlertTriangle className="h-10 w-10 text-destructive" />
         <p className="font-semibold text-foreground">Falha ao carregar ordens de produção</p>
-        <p className="text-sm text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente — sem precisar recarregar a página.</p>
+        <Button onClick={() => refetch()} disabled={isFetching} className="mt-1 gap-1.5">
+          {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {isFetching ? 'Carregando…' : 'Tentar novamente'}
+        </Button>
       </div>
     );
   }
