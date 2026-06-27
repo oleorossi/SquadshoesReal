@@ -1,23 +1,26 @@
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * Fichas de operador AUTOMÁTICAS a partir do pedido (PV) ou de OPs selecionadas —
- * só pros setores Costura, Aviamento e Montagem. Pra cada item (referência + cor)
- * gera 2 vias (OPERADOR + SUPERVISOR) por setor que esteja em
- * `technical_sheets.production_sectors`. Setor ausente → NÃO gera (decisão do
- * usuário 2026-06-27). A ficha mostra a grade POR FICHA (cada 12 pares) — sem o
- * total do pedido (decisão 2026-06-27). Print A4 num window.open (inline + #000).
+ * Fichas de operador a partir do pedido (PV) ou de OPs selecionadas — pros setores
+ * Corte Forração, Aviamento e Montagem. Pra cada item (referência + cor), gera N
+ * fichas REPETIDAS (N = total ÷ pares-por-ficha; ex.: 1104 ÷ 12 = 92), cada uma com
+ * a grade BASE (12 pares) numerada "Ficha f/N" — porque cada papel acompanha uma
+ * fornada física. Cada fornada sai em 2 vias (OPERADOR + SUPERVISOR). Setor ausente
+ * em `technical_sheets.production_sectors` → NÃO gera. (Regras do usuário 2026-06-27.)
+ * Print A4 num window.open próprio (inline styles + #000, regra de print).
  */
 
-const SECTORS = ['Costura', 'Aviamento', 'Montagem'] as const;
+const SECTORS = ['Corte Forração', 'Aviamento', 'Montagem'] as const;
 type Sector = typeof SECTORS[number];
 type Via = 'OPERADOR' | 'SUPERVISOR';
 
 const SECTOR_THEME: Record<Sector, { bg: string; fg: string }> = {
-  Costura: { bg: '#E1F5EE', fg: '#085041' },
-  Aviamento: { bg: '#FAEEDA', fg: '#633806' },
-  Montagem: { bg: '#EEEDFE', fg: '#3C3489' },
+  'Corte Forração': { bg: '#E1F5EE', fg: '#085041' },
+  'Aviamento': { bg: '#FAEEDA', fg: '#633806' },
+  'Montagem': { bg: '#EEEDFE', fg: '#3C3489' },
 };
+
+const PAPER_WARN_LIMIT = 1000;
 
 interface FichaInput {
   pv: string;
@@ -25,9 +28,9 @@ interface FichaInput {
   refCode: string;
   refName: string;
   color: string;
-  grade: Record<string, number>;
-  quantity: number;
-  sectors: string[];
+  grade: Record<string, number>; // grade BASE (1 ficha)
+  quantity: number;              // total de pares do item/OP
+  sectors: string[];             // production_sectors da ficha técnica
 }
 
 function esc(s: unknown): string {
@@ -39,9 +42,10 @@ function esc(s: unknown): string {
 function fichaHtml(p: {
   sector: Sector; via: Via; pv: string; client: string; date: string;
   refCode: string; refName: string; color: string;
-  sizes: string[]; base: Record<string, number>; baseSum: number; nFichas: number;
+  sizes: string[]; base: Record<string, number>; baseSum: number;
+  fornada: number; nFichas: number;
 }): string {
-  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, nFichas } = p;
+  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, fornada, nFichas } = p;
   const th = SECTOR_THEME[sector];
   const head = sizes.map(s => `<th>${esc(s)}</th>`).join('');
   const baseRow = sizes.map(s => `<td>${base[s] || 0}</td>`).join('');
@@ -59,8 +63,8 @@ function fichaHtml(p: {
     <div class="meta">
       <div><span class="ml">Referência</span><span class="mv">${esc(refName)}${refCode ? ` · ${esc(refCode)}` : ''}</span></div>
       <div><span class="ml">Cor</span><span class="mv">${esc(color || '—')}</span></div>
-      <div><span class="ml">Nº de fichas</span><span class="mv">${nFichas}</span></div>
-      <div><span class="ml">Pares por ficha</span><span class="mv tot">${baseSum} pares</span></div>
+      <div><span class="ml">Ficha</span><span class="mv tot">${fornada} / ${nFichas}</span></div>
+      <div><span class="ml">Pares por ficha</span><span class="mv">${baseSum} pares</span></div>
     </div>
     <table class="grade">
       <thead><tr><th class="rh">Nº</th>${head}<th class="tc">Total</th></tr></thead>
@@ -74,32 +78,38 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   const date = new Date().toLocaleDateString('pt-BR');
   const blocks: string[] = [];
   let generated = 0;
-  // Agrupa por SETOR (cada setor recebe seu maço de fichas).
+  // Agrupa por SETOR (cada setor recebe seu maço).
   for (const sector of SECTORS) {
     const fichas: string[] = [];
     for (const it of inputs) {
       if (!it.sectors.includes(sector)) continue; // setor ausente → não gera
-      const grade = it.grade || {};
-      const baseSum = Object.values(grade).reduce((s, v) => s + Number(v || 0), 0);
+      const base = it.grade || {};
+      const baseSum = Object.values(base).reduce((s, v) => s + Number(v || 0), 0);
       if (baseSum <= 0) continue;
       const total = Number(it.quantity) || baseSum;
-      const nFichas = Math.round(total / baseSum);
-      const sizes = Object.keys(grade).filter(s => Number(grade[s]) > 0).sort((a, b) => Number(a) - Number(b));
-      const common = {
-        sector, pv: it.pv, client: it.client, date,
-        refCode: it.refCode, refName: it.refName, color: it.color,
-        sizes, base: grade, baseSum, nFichas,
-      };
-      // 2 vias por ficha: operador + supervisor (adjacentes pra separar fácil).
-      fichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
-      fichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
-      generated += 2;
+      const nFichas = Math.max(1, Math.round(total / baseSum));
+      const sizes = Object.keys(base).filter(s => Number(base[s]) > 0).sort((a, b) => Number(a) - Number(b));
+      // N fichas REPETIDAS; cada fornada em 2 vias (operador + supervisor, adjacentes).
+      for (let f = 1; f <= nFichas; f++) {
+        const common = {
+          sector, pv: it.pv, client: it.client, date,
+          refCode: it.refCode, refName: it.refName, color: it.color,
+          sizes, base, baseSum, fornada: f, nFichas,
+        };
+        fichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
+        fichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
+        generated += 2;
+      }
     }
     if (fichas.length > 0) blocks.push(`<div class="sector-group">${fichas.join('')}</div>`);
   }
 
   if (generated === 0) {
-    alert('Nenhuma ficha gerada — os itens selecionados não têm Costura, Aviamento ou Montagem na ficha técnica (ou estão sem grade).');
+    alert('Nenhuma ficha gerada — os itens selecionados não têm Corte Forração, Aviamento ou Montagem na ficha técnica (ou estão sem grade).');
+    return;
+  }
+  if (generated > PAPER_WARN_LIMIT &&
+      !window.confirm(`Isso vai gerar ${generated} fichas (papéis), 2 vias por fornada de 12 pares. Continuar?`)) {
     return;
   }
 
@@ -147,7 +157,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   w.document.close();
 }
 
-/** Fichas de operador de UM pedido (PV) inteiro — usa os itens do PV. */
+/** Fichas de operador de UM pedido (PV) inteiro — usa os itens do PV (grade base). */
 export async function printOperatorFichas(saleOrderId: string, orderNumberHint?: string): Promise<void> {
   const { data: so, error: soErr } = await supabase
     .from('sale_orders').select('order_number, client_name').eq('id', saleOrderId).single();
@@ -173,26 +183,34 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
 }
 
 /**
- * Fichas de operador a partir de OPs SELECIONADAS (tela Imprimir Fichas). Recebe
- * as linhas já carregadas (reference_id, cor, grade, total, PV, cliente) e só
- * busca os production_sectors das referências.
+ * Fichas de operador a partir de OPs SELECIONADAS (tela Imprimir Fichas). A OP guarda
+ * a grade ESCALADA (real); a grade BASE (1 ficha) vem de `sale_order_items` pelo
+ * `sale_order_item_id` (fallback: deriva a base pelo MDC da grade escalada).
  */
 export async function printOperatorFichasFromRows(rows: Array<{
   reference_id: string | null; reference_name?: string; reference_code?: string;
   color?: string; total_pairs?: number | null; grid?: Record<string, number>;
-  sale_order_number?: string; client_name?: string;
+  sale_order_number?: string; client_name?: string; sale_order_item_id?: string | null;
 }>): Promise<void> {
   const valid = rows.filter(r => r.reference_id);
   if (valid.length === 0) { alert('Selecione ao menos uma OP.'); return; }
 
   const sheets = await fetchSectorsByRef(valid.map(r => r.reference_id));
+
+  const itemIds = [...new Set(valid.map(r => r.sale_order_item_id).filter(Boolean))] as string[];
+  const baseByItem = new Map<string, Record<string, number>>();
+  if (itemIds.length > 0) {
+    const { data } = await supabase.from('sale_order_items').select('id, grade').in('id', itemIds);
+    (data || []).forEach((it: any) => baseByItem.set(it.id, (it.grade || {}) as Record<string, number>));
+  }
+
   const inputs: FichaInput[] = valid.map(r => {
     const sheet = sheetsByRef(sheets, r.reference_id);
+    const base = (r.sale_order_item_id && baseByItem.get(r.sale_order_item_id)) || deriveBaseFromScaled(r.grid || {});
     return {
       pv: r.sale_order_number || '', client: (r.client_name || '').trim(),
       refCode: r.reference_code || sheet.code, refName: r.reference_name || sheet.name,
-      color: r.color || '', grade: r.grid || {}, quantity: Number(r.total_pairs) || 0,
-      sectors: sheet.sectors,
+      color: r.color || '', grade: base, quantity: Number(r.total_pairs) || 0, sectors: sheet.sectors,
     };
   });
   const pvs = [...new Set(valid.map(r => r.sale_order_number).filter(Boolean))];
@@ -216,4 +234,21 @@ async function fetchSectorsByRef(refIds: (string | null)[]): Promise<Map<string,
 
 function sheetsByRef(map: Map<string, SheetInfo>, refId: string | null): SheetInfo {
   return (refId && map.get(refId)) || { code: '', name: '', sectors: [] };
+}
+
+function gcd(a: number, b: number): number {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) { [a, b] = [b, a % b]; }
+  return a || 1;
+}
+
+/** Deriva a grade base (1 ficha) de uma grade escalada pelo MDC dos valores. */
+function deriveBaseFromScaled(scaled: Record<string, number>): Record<string, number> {
+  const vals = Object.values(scaled).map(v => Math.round(Number(v) || 0)).filter(v => v > 0);
+  if (vals.length === 0) return scaled;
+  const g = vals.reduce((acc, v) => gcd(acc, v));
+  if (g <= 1) return scaled;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(scaled)) out[k] = Math.round((Number(v) || 0) / g);
+  return out;
 }

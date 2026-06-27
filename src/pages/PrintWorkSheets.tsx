@@ -286,9 +286,9 @@ export default function PrintWorkSheets() {
             <FileText className="h-4 w-4" />
             Selecionar tudo e imprimir ({filtered.length})
           </Button>
-          {/* Ficha de Operador (Costura/Aviamento/Montagem) das OPs selecionadas —
-              gera direto o A4 (2 vias por setor, grade por ficha). Pula setor que
-              a referência não tem na ficha técnica. */}
+          {/* Ficha de Operador (Corte Forração/Aviamento/Montagem) das OPs selecionadas —
+              gera direto o A4: N fichas repetidas por fornada de 12 pares, 2 vias cada.
+              Pula setor que a referência não tem na ficha técnica. */}
           <Button
             variant="outline"
             disabled={selectedOrders.length === 0}
@@ -297,7 +297,7 @@ export default function PrintWorkSheets() {
               catch (err: any) { toast.error(err?.message || 'Falha ao gerar fichas de operador.'); }
             }}
             className="gap-2"
-            title="Gera as fichas de operador (Costura / Aviamento / Montagem) das OPs selecionadas — pula setor que a referência não tem na ficha técnica"
+            title="Gera as fichas de operador (Corte Forração / Aviamento / Montagem) das OPs selecionadas — N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"
           >
             <Printer className="h-4 w-4" />
             Ficha de Operador ({selectedOrders.length})
