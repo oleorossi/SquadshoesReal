@@ -15,7 +15,7 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { useEmployees } from "@/hooks/useEmployees";
 import { toast } from "sonner";
@@ -200,6 +200,22 @@ export default function FichaMontadoresPage() {
       return (data || []) as { id: string; code: string | null; name: string | null }[];
     },
   });
+
+  // Cores já usadas (autocomplete do campo Cor, busca livre): catálogo de
+  // products.color + histórico das fichas já lançadas. Datalist aceita cor nova.
+  const { data: coresCatalogo = [] } = useQuery({
+    queryKey: ["cores-distinct-montadores"],
+    queryFn: async () => {
+      const { data, error } = await db.from("products").select("color").not("color", "is", null);
+      if (error) throw error;
+      return (data || []).map((r: any) => (r.color || "").trim()).filter(Boolean) as string[];
+    },
+  });
+  const coresSugeridas = useMemo(() => {
+    const s = new Set<string>(coresCatalogo);
+    for (const f of fichas) { const c = ((f as any).cor || "").trim(); if (c) s.add(c); }
+    return [...s].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [coresCatalogo, fichas]);
 
   const total = useMemo(() => sumQ(qtys), [qtys]);
   // Valor/par por montador é definido no RELATÓRIO (aba Produtividade), não na
@@ -408,28 +424,34 @@ export default function FichaMontadoresPage() {
             </div>
             <div>
               <label className={lbl}>Montador *</label>
-              <Select value={montadorId} onValueChange={pickMontador}>
-                <SelectTrigger><SelectValue placeholder="Selecione o montador" /></SelectTrigger>
-                <SelectContent>
-                  {montadores.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum funcionário com cargo "Montagem". Defina o cargo em Funcionários.</div>
-                  )}
-                  {montadores.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={montadorId}
+                onChange={pickMontador}
+                options={montadores.map((e) => ({ value: e.id, label: e.name, description: [e.role, e.department].filter(Boolean).join(" · ") || undefined }))}
+                placeholder="Selecione o montador"
+                searchPlaceholder="Buscar por nome, cargo ou setor..."
+                emptyText={montadores.length === 0 ? 'Nenhum funcionário com cargo "Montagem". Defina em Funcionários.' : "Nenhum montador encontrado."}
+                icon={<Users className="h-3.5 w-3.5" />}
+              />
             </div>
             <div>
               <label className={lbl}>Referência</label>
-              <Select value={referenciaId} onValueChange={pickReferencia}>
-                <SelectTrigger><SelectValue placeholder="Selecione a referência" /></SelectTrigger>
-                <SelectContent>
-                  {(references as any[]).map((r) => <SelectItem key={r.id} value={r.id}>{r.name || r.code}{r.name && r.code ? ` · ${r.code}` : ""}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={referenciaId}
+                onChange={pickReferencia}
+                options={(references as any[]).map((r) => ({ value: r.id, label: r.name || r.code || "", description: r.name && r.code ? r.code : undefined, keywords: r.code || undefined }))}
+                placeholder="Selecione a referência"
+                searchPlaceholder="Buscar referência ou código..."
+                emptyText="Nenhuma referência encontrada."
+                icon={<Package className="h-3.5 w-3.5" />}
+              />
             </div>
             <div>
               <label className={lbl}>Cor</label>
-              <Input value={cor} placeholder="Cor da montagem" onChange={(e) => setCor(e.target.value)} />
+              <Input value={cor} placeholder="Cor da montagem" onChange={(e) => setCor(e.target.value)} list="cores-montagem" autoComplete="off" />
+              <datalist id="cores-montagem">
+                {coresSugeridas.map((c) => <option key={c} value={c} />)}
+              </datalist>
             </div>
           </div>
 
@@ -508,15 +530,16 @@ export default function FichaMontadoresPage() {
               <div><label className={lbl}>Até</label><Input type="date" value={cTo} onChange={(e) => setCTo(e.target.value)} className="h-9 w-40" /></div>
             </div>
           )}
-          <div className="min-w-[200px]">
+          <div className="min-w-[220px]">
             <label className={lbl}>Montador</label>
-            <Select value={filtroMontador} onValueChange={setFiltroMontador}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Todos os montadores</SelectItem>
-                {montadores.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={filtroMontador}
+              onChange={setFiltroMontador}
+              options={[{ value: "__all__", label: "Todos os montadores" }, ...montadores.map((e) => ({ value: e.id, label: e.name, description: [e.role, e.department].filter(Boolean).join(" · ") || undefined }))]}
+              placeholder="Todos os montadores"
+              searchPlaceholder="Buscar montador..."
+              emptyText="Nenhum montador encontrado."
+            />
           </div>
           <div className="ml-auto text-xs text-muted-foreground">{fmtDia(range.from)} – {fmtDia(range.to)}</div>
         </div>
