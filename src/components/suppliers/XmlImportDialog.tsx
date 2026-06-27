@@ -49,6 +49,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       quantity: number | null;
       unit_price: number | null;
       unit?: string | null;
+      color?: string | null;
       group_id?: string | null;
       supplier_id?: string | null;
       package_weight_kg?: number | null;
@@ -58,7 +59,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
     for (let from = 0; ; from += pageSize) {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, quantity, unit_price, unit, group_id, supplier_id, conversion_rate, product_groups!products_group_id_fkey(package_weight_kg)')
+        .select('id, name, sku, quantity, unit_price, unit, color, group_id, supplier_id, conversion_rate, product_groups!products_group_id_fkey(package_weight_kg)')
         .order('id', { ascending: true })
         .range(from, from + pageSize - 1);
 
@@ -268,6 +269,22 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
         return n.replace(/\s+/g, ' ').trim();
       };
 
+      /**
+       * Desambigua por COR quando vários produtos casam o mesmo nome-base (ex.:
+       * "NAPA TITANIUM" existe em OFF WHITE, ROSADO, PRETO — diferindo SÓ na coluna
+       * `color`). O fuzzy por nome ignora cor, e o products.find() pegava o PRIMEIRO
+       * → creditava a cor errada (bug NF 21686: AMENDOA caiu na OFF WHITE).
+       * Regra: 1 candidato → usa; vários → exige a COR do produto presente no nome
+       * da NF; se nenhum/ambíguo → SEM match (cai pra vínculo manual no "Lançar no
+       * Estoque" — NUNCA chuta a cor).
+       */
+      const disambiguateByColor = (candidates: typeof products, nfName: string) => {
+        if (candidates.length <= 1) return candidates[0] ?? undefined;
+        const nfNorm = norm(nfName);
+        const byColor = candidates.filter(p => p.color && nfNorm.includes(norm(p.color)));
+        return byColor.length === 1 ? byColor[0] : undefined;
+      };
+
       for (const invItem of pendingItems) {
         try {
           // 1) Exact SKU match (case-insensitive)
@@ -276,10 +293,10 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
             p.sku.trim().toLowerCase() === invItem.product_code.trim().toLowerCase()
           );
 
-          // 2) Exact normalized name match
+          // 2) Exact normalized name match (desambiguado por cor)
           if (!match) {
             const normName = norm(invItem.product_name);
-            match = products.find(p => norm(p.name) === normName);
+            match = disambiguateByColor(products.filter(p => norm(p.name) === normName), invItem.product_name);
           }
 
           // 3) Match with "NAME: COLOR" pattern
@@ -297,28 +314,33 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
             });
           }
 
-          // 4) Stripped noise matching — product name is short, NF name is long/verbose
+          // 4) Stripped noise matching — product name is short, NF name is long/verbose.
+          //    Desambiguado por COR: vários produtos do mesmo nome-base (napa em N
+          //    cores) não podem cair no primeiro — exige a cor do produto no nome da NF.
           if (!match) {
             const stripped = stripNoise(invItem.product_name);
             if (stripped.length >= 3) {
-              match = products.find(p => {
+              const cands = products.filter(p => {
                 const pStripped = stripNoise(p.name);
                 return pStripped.length >= 3 && (
                   stripped.includes(pStripped) || pStripped.includes(stripped)
                 );
               });
+              match = disambiguateByColor(cands, invItem.product_name);
             }
           }
 
           // 5) Contains-based matching — NF name contains product name or vice-versa
+          //    (também desambiguado por cor).
           if (!match) {
             const normName = norm(invItem.product_name);
-            match = products.find(p => {
+            const cands = products.filter(p => {
               const pName = norm(p.name);
               return pName.length >= 4 && normName.length >= 4 && (
                 normName.includes(pName) || pName.includes(normName)
               );
             });
+            match = disambiguateByColor(cands, invItem.product_name);
           }
 
           if (match) {
