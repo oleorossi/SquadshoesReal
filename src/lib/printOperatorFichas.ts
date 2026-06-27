@@ -1,17 +1,17 @@
 import { supabase } from '@/integrations/supabase/client';
-import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 /**
- * Fichas de operador AUTOMÁTICAS a partir do pedido (PV) — só pros setores
- * Costura, Aviamento e Montagem. Pra cada item (referência + cor) gera 2 vias
- * (OPERADOR + SUPERVISOR) por setor que esteja em `technical_sheets.production_sectors`. Setor ausente
- * na ficha técnica → NÃO gera (decisão do usuário 2026-06-27). A grade mostra
- * DUAS linhas: "por ficha" (grade base) e "total pedido" (escalada à quantidade).
- * Print A4 num window.open próprio (inline styles + #000, regra de print).
+ * Fichas de operador AUTOMÁTICAS a partir do pedido (PV) ou de OPs selecionadas —
+ * só pros setores Costura, Aviamento e Montagem. Pra cada item (referência + cor)
+ * gera 2 vias (OPERADOR + SUPERVISOR) por setor que esteja em
+ * `technical_sheets.production_sectors`. Setor ausente → NÃO gera (decisão do
+ * usuário 2026-06-27). A ficha mostra a grade POR FICHA (cada 12 pares) — sem o
+ * total do pedido (decisão 2026-06-27). Print A4 num window.open (inline + #000).
  */
 
 const SECTORS = ['Costura', 'Aviamento', 'Montagem'] as const;
 type Sector = typeof SECTORS[number];
+type Via = 'OPERADOR' | 'SUPERVISOR';
 
 const SECTOR_THEME: Record<Sector, { bg: string; fg: string }> = {
   Costura: { bg: '#E1F5EE', fg: '#085041' },
@@ -19,11 +19,15 @@ const SECTOR_THEME: Record<Sector, { bg: string; fg: string }> = {
   Montagem: { bg: '#EEEDFE', fg: '#3C3489' },
 };
 
-interface ItemRow {
-  color: string | null;
-  grade: Record<string, number> | null;
-  quantity: number | null;
-  reference_id: string | null;
+interface FichaInput {
+  pv: string;
+  client: string;
+  refCode: string;
+  refName: string;
+  color: string;
+  grade: Record<string, number>;
+  quantity: number;
+  sectors: string[];
 }
 
 function esc(s: unknown): string {
@@ -32,21 +36,15 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-type Via = 'OPERADOR' | 'SUPERVISOR';
-
-function fichaHtml(params: {
+function fichaHtml(p: {
   sector: Sector; via: Via; pv: string; client: string; date: string;
   refCode: string; refName: string; color: string;
-  sizes: string[]; base: Record<string, number>; scaled: Record<string, number>;
-  baseSum: number; total: number;
+  sizes: string[]; base: Record<string, number>; baseSum: number; nFichas: number;
 }): string {
-  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, scaled, baseSum, total } = params;
+  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, nFichas } = p;
   const th = SECTOR_THEME[sector];
   const head = sizes.map(s => `<th>${esc(s)}</th>`).join('');
   const baseRow = sizes.map(s => `<td>${base[s] || 0}</td>`).join('');
-  const scaledRow = sizes.map(s => `<td>${scaled[s] || 0}</td>`).join('');
-  const nFichas = baseSum > 0 ? Math.round(total / baseSum) : 0;
-  // Selo de via bem distinto pra não misturar: operador = cor do setor; supervisor = preto.
   const viaStyle = via === 'SUPERVISOR' ? 'background:#0f172a;color:#fff' : `background:${th.fg};color:#fff`;
   const signLeft = via === 'SUPERVISOR'
     ? 'Conferido por (supervisor): ____________________'
@@ -61,90 +59,52 @@ function fichaHtml(params: {
     <div class="meta">
       <div><span class="ml">Referência</span><span class="mv">${esc(refName)}${refCode ? ` · ${esc(refCode)}` : ''}</span></div>
       <div><span class="ml">Cor</span><span class="mv">${esc(color || '—')}</span></div>
-      <div><span class="ml">Fichas</span><span class="mv">${nFichas} × ${baseSum}/ficha</span></div>
-      <div><span class="ml">Total</span><span class="mv tot">${total} pares</span></div>
+      <div><span class="ml">Nº de fichas</span><span class="mv">${nFichas}</span></div>
+      <div><span class="ml">Pares por ficha</span><span class="mv tot">${baseSum} pares</span></div>
     </div>
     <table class="grade">
       <thead><tr><th class="rh">Nº</th>${head}<th class="tc">Total</th></tr></thead>
-      <tbody>
-        <tr><td class="rh">Por ficha</td>${baseRow}<td class="tc">${baseSum}</td></tr>
-        <tr><td class="rh">Total pedido</td>${scaledRow}<td class="tc tot">${total}</td></tr>
-      </tbody>
+      <tbody><tr><td class="rh">Pares</td>${baseRow}<td class="tc tot">${baseSum}</td></tr></tbody>
     </table>
     <div class="sign"><span>${signLeft}</span><span>Data: ____ / ____</span><span>Visto: __________</span></div>
   </div>`;
 }
 
-export async function printOperatorFichas(saleOrderId: string, orderNumberHint?: string): Promise<void> {
-  const { data: so, error: soErr } = await supabase
-    .from('sale_orders')
-    .select('order_number, client_name, created_at')
-    .eq('id', saleOrderId)
-    .single();
-  if (soErr) throw new Error(`Falha ao carregar o pedido: ${soErr.message}`);
-
-  const { data: items, error: itErr } = await supabase
-    .from('sale_order_items')
-    .select('color, grade, quantity, reference_id')
-    .eq('sale_order_id', saleOrderId);
-  if (itErr) throw new Error(`Falha ao carregar itens: ${itErr.message}`);
-
-  const refIds = [...new Set((items || []).map((i: any) => i.reference_id).filter(Boolean))] as string[];
-  const sheetsById = new Map<string, { code: string; name: string; production_sectors: string[] }>();
-  if (refIds.length > 0) {
-    const { data: sheets } = await supabase
-      .from('technical_sheets')
-      .select('id, code, name, production_sectors')
-      .in('id', refIds);
-    (sheets || []).forEach((s: any) => sheetsById.set(s.id, {
-      code: s.code || '', name: s.name || '',
-      production_sectors: Array.isArray(s.production_sectors) ? s.production_sectors.map(String) : [],
-    }));
-  }
-
-  const pv = so?.order_number || orderNumberHint || '';
-  const client = (so?.client_name || '').trim();
+function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   const date = new Date().toLocaleDateString('pt-BR');
-
-  // Agrupa por SETOR (cada setor recebe seu maço de fichas).
   const blocks: string[] = [];
   let generated = 0;
+  // Agrupa por SETOR (cada setor recebe seu maço de fichas).
   for (const sector of SECTORS) {
-    const sectorFichas: string[] = [];
-    for (const it of (items || []) as ItemRow[]) {
-      if (!it.reference_id) continue;
-      const sheet = sheetsById.get(it.reference_id);
-      if (!sheet) continue;
-      if (!sheet.production_sectors.includes(sector)) continue; // setor ausente → não gera
+    const fichas: string[] = [];
+    for (const it of inputs) {
+      if (!it.sectors.includes(sector)) continue; // setor ausente → não gera
       const grade = it.grade || {};
       const baseSum = Object.values(grade).reduce((s, v) => s + Number(v || 0), 0);
       if (baseSum <= 0) continue;
       const total = Number(it.quantity) || baseSum;
-      const multiplier = total / baseSum;
-      const scaled = scaleGradeWithLargestRemainder(grade, multiplier, total);
+      const nFichas = Math.round(total / baseSum);
       const sizes = Object.keys(grade).filter(s => Number(grade[s]) > 0).sort((a, b) => Number(a) - Number(b));
       const common = {
-        sector, pv, client, date,
-        refCode: sheet.code, refName: sheet.name, color: it.color || '',
-        sizes, base: grade, scaled, baseSum, total,
+        sector, pv: it.pv, client: it.client, date,
+        refCode: it.refCode, refName: it.refName, color: it.color,
+        sizes, base: grade, baseSum, nFichas,
       };
       // 2 vias por ficha: operador + supervisor (adjacentes pra separar fácil).
-      sectorFichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
-      sectorFichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
+      fichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
+      fichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
       generated += 2;
     }
-    if (sectorFichas.length > 0) {
-      blocks.push(`<div class="sector-group">${sectorFichas.join('')}</div>`);
-    }
+    if (fichas.length > 0) blocks.push(`<div class="sector-group">${fichas.join('')}</div>`);
   }
 
   if (generated === 0) {
-    alert('Nenhuma ficha gerada — os itens deste pedido não têm Costura, Aviamento ou Montagem na ficha técnica (ou estão sem grade).');
+    alert('Nenhuma ficha gerada — os itens selecionados não têm Costura, Aviamento ou Montagem na ficha técnica (ou estão sem grade).');
     return;
   }
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>Fichas de operador · ${esc(pv)}</title>
+<title>Fichas de operador · ${esc(titleHint)}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:#e8e6e1;font-family:Arial,Helvetica,sans-serif;color:#000}
@@ -167,7 +127,6 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
   table.grade .tc{font-weight:800}
   table.grade .tot{font-size:13px}
   .sign{display:flex;gap:18px;justify-content:space-between;padding:7px 12px;border-top:1px solid #000;font-size:10px;color:#333}
-  .sector-group{break-before:auto}
   .print-bar{max-width:190mm;margin:14px auto 0;text-align:center}
   .print-bar button{font:inherit;font-size:12px;font-weight:600;padding:9px 22px;border-radius:4px;cursor:pointer;border:0}
   .print-bar .go{background:#0f172a;color:#fff}
@@ -186,4 +145,75 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
   w.document.open();
   w.document.write(html);
   w.document.close();
+}
+
+/** Fichas de operador de UM pedido (PV) inteiro — usa os itens do PV. */
+export async function printOperatorFichas(saleOrderId: string, orderNumberHint?: string): Promise<void> {
+  const { data: so, error: soErr } = await supabase
+    .from('sale_orders').select('order_number, client_name').eq('id', saleOrderId).single();
+  if (soErr) throw new Error(`Falha ao carregar o pedido: ${soErr.message}`);
+
+  const { data: items, error: itErr } = await supabase
+    .from('sale_order_items').select('color, grade, quantity, reference_id').eq('sale_order_id', saleOrderId);
+  if (itErr) throw new Error(`Falha ao carregar itens: ${itErr.message}`);
+
+  const sheets = await fetchSectorsByRef((items || []).map((i: any) => i.reference_id));
+  const pv = so?.order_number || orderNumberHint || '';
+  const client = (so?.client_name || '').trim();
+
+  const inputs: FichaInput[] = (items || []).map((it: any) => {
+    const sheet = sheetsByRef(sheets, it.reference_id);
+    return {
+      pv, client,
+      refCode: sheet.code, refName: sheet.name, color: it.color || '',
+      grade: it.grade || {}, quantity: Number(it.quantity) || 0, sectors: sheet.sectors,
+    };
+  });
+  renderAndOpen(inputs, pv);
+}
+
+/**
+ * Fichas de operador a partir de OPs SELECIONADAS (tela Imprimir Fichas). Recebe
+ * as linhas já carregadas (reference_id, cor, grade, total, PV, cliente) e só
+ * busca os production_sectors das referências.
+ */
+export async function printOperatorFichasFromRows(rows: Array<{
+  reference_id: string | null; reference_name?: string; reference_code?: string;
+  color?: string; total_pairs?: number | null; grid?: Record<string, number>;
+  sale_order_number?: string; client_name?: string;
+}>): Promise<void> {
+  const valid = rows.filter(r => r.reference_id);
+  if (valid.length === 0) { alert('Selecione ao menos uma OP.'); return; }
+
+  const sheets = await fetchSectorsByRef(valid.map(r => r.reference_id));
+  const inputs: FichaInput[] = valid.map(r => {
+    const sheet = sheetsByRef(sheets, r.reference_id);
+    return {
+      pv: r.sale_order_number || '', client: (r.client_name || '').trim(),
+      refCode: r.reference_code || sheet.code, refName: r.reference_name || sheet.name,
+      color: r.color || '', grade: r.grid || {}, quantity: Number(r.total_pairs) || 0,
+      sectors: sheet.sectors,
+    };
+  });
+  const pvs = [...new Set(valid.map(r => r.sale_order_number).filter(Boolean))];
+  renderAndOpen(inputs, pvs.length === 1 ? pvs[0]! : `${valid.length} OPs`);
+}
+
+type SheetInfo = { code: string; name: string; sectors: string[] };
+
+async function fetchSectorsByRef(refIds: (string | null)[]): Promise<Map<string, SheetInfo>> {
+  const ids = [...new Set(refIds.filter(Boolean))] as string[];
+  const map = new Map<string, SheetInfo>();
+  if (ids.length === 0) return map;
+  const { data } = await supabase
+    .from('technical_sheets').select('id, code, name, production_sectors').in('id', ids);
+  (data || []).forEach((s: any) => map.set(s.id, {
+    code: s.code || '', name: s.name || '',
+    sectors: Array.isArray(s.production_sectors) ? s.production_sectors.map(String) : [],
+  }));
+  return map;
+}
+
+function sheetsByRef(map: Map<string, SheetInfo>, refId: string | null): SheetInfo {
+  return (refId && map.get(refId)) || { code: '', name: '', sectors: [] };
 }

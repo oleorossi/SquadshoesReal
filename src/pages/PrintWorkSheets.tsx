@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -283,6 +285,22 @@ export default function PrintWorkSheets() {
           >
             <FileText className="h-4 w-4" />
             Selecionar tudo e imprimir ({filtered.length})
+          </Button>
+          {/* Ficha de Operador (Costura/Aviamento/Montagem) das OPs selecionadas —
+              gera direto o A4 (2 vias por setor, grade por ficha). Pula setor que
+              a referência não tem na ficha técnica. */}
+          <Button
+            variant="outline"
+            disabled={selectedOrders.length === 0}
+            onClick={async () => {
+              try { await printOperatorFichasFromRows(selectedOrders); }
+              catch (err: any) { toast.error(err?.message || 'Falha ao gerar fichas de operador.'); }
+            }}
+            className="gap-2"
+            title="Gera as fichas de operador (Costura / Aviamento / Montagem) das OPs selecionadas — pula setor que a referência não tem na ficha técnica"
+          >
+            <Printer className="h-4 w-4" />
+            Ficha de Operador ({selectedOrders.length})
           </Button>
           <Button
             disabled={selectedOrders.length === 0}
