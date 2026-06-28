@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Play, Package, MagnifyingGlass as Search, Funnel as Filter, Stack as Layers, CalendarBlank as CalendarDays, Users, Warning as AlertTriangle, CaretDown as ChevronDown, CaretRight as ChevronRight, XCircle, Eye, Truck, ClipboardText as ClipboardList, Factory, CheckCircle as CheckCircle2, Clock, ChartLine as GanttChart } from '@phosphor-icons/react';
+import { Plus, Play, Package, MagnifyingGlass as Search, Funnel as Filter, Stack as Layers, CalendarBlank as CalendarDays, Users, Warning as AlertTriangle, CaretDown as ChevronDown, CaretRight as ChevronRight, XCircle, Eye, Truck, ClipboardText as ClipboardList, Factory, CheckCircle as CheckCircle2, Clock } from '@phosphor-icons/react';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -262,17 +262,6 @@ function WaveRow({
               <TooltipContent>Ver detalhes completos</TooltipContent>
             </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button asChild variant="ghost" size="icon" className="h-7 w-7">
-                  <Link to={`/pcp/ondas/${wave.id}/timeline`}>
-                    <GanttChart className="w-4 h-4" />
-                  </Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Linha do tempo</TooltipContent>
-            </Tooltip>
-
             {canStart && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -342,18 +331,25 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
   const startWave = useStartWave();
   const cancelWave = useCancelWave();
 
+  // Métricas (auditoria 2026-06-28): ondas CANCELADAS não entram em nenhum KPI
+  // (eram contadas no "Total" e nos "Pares totais", inflando os números-âncora).
+  // Pares: separa o PIPELINE ATIVO (planning+running+finished) do RASCUNHO (draft,
+  // ainda não comprometido) — antes os 2 eram somados como se fossem produção.
   const metrics = useMemo(() => {
     const m = {
-      total: waves.length,
+      total: 0,                         // ondas ativas (exclui canceladas)
       planning: 0, running: 0, finished: 0, cancelled: 0,
-      totalPairs: 0,
+      activePairs: 0,                   // pares em pipeline comprometido
+      draftPairs: 0,                    // pares só em rascunho
     };
     for (const w of waves) {
-      if (w.status === 'draft' || w.status === 'planning') m.planning++;
-      else if (w.status === 'running')   m.running++;
-      else if (w.status === 'finished')  m.finished++;
-      else if (w.status === 'cancelled') m.cancelled++;
-      m.totalPairs += Number(w.total_pairs ?? 0);
+      const pairs = Number(w.total_pairs ?? 0);
+      if (w.status === 'cancelled') { m.cancelled++; continue; }
+      m.total++;
+      if (w.status === 'draft')         { m.planning++; m.draftPairs += pairs; }
+      else if (w.status === 'planning') { m.planning++; m.activePairs += pairs; }
+      else if (w.status === 'running')  { m.running++;  m.activePairs += pairs; }
+      else if (w.status === 'finished') { m.finished++; m.activePairs += pairs; }
     }
     return m;
   }, [waves]);
@@ -440,11 +436,11 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
 
       {/* Métricas */}
       <StatGrid>
-        <StatCard label="Total" value={metrics.total} />
+        <StatCard label="Ondas ativas" value={metrics.total} hint={metrics.cancelled > 0 ? `${metrics.cancelled} canceladas` : undefined} />
         <StatCard label="Planejadas" value={metrics.planning} icon={Clock} tone="warning" />
         <StatCard label="Em produção" value={metrics.running} icon={Factory} tone="primary" />
         <StatCard label="Finalizadas" value={metrics.finished} icon={CheckCircle2} tone="success" />
-        <StatCard label="Pares totais" value={metrics.totalPairs.toLocaleString('pt-BR')} icon={Layers} />
+        <StatCard label="Pares em produção" value={metrics.activePairs.toLocaleString('pt-BR')} icon={Layers} hint={metrics.draftPairs > 0 ? `+${metrics.draftPairs.toLocaleString('pt-BR')} em rascunho` : undefined} />
       </StatGrid>
 
       {/* Filtros */}

@@ -343,9 +343,10 @@ export async function checkSectorCapacity(
 // =============================================================================
 // computeParallelWindows — single source of truth pras janelas por setor
 // =============================================================================
-// D2+D3: telas frontend (ProductionDailySchedule, ProductionCapacityCalendar,
-// CapacityPlanning) calculavam cascata SEQUENCIAL e ignoravam o setor Costura,
-// divergindo do SQL compute_wave_timeline (PR 3 + PR 2 paralelos).
+// D2+D3: telas frontend (CapacityPlanning; e as extintas ProductionDailySchedule
+// / ProductionCapacityCalendar, removidas em 2026-06-28) calculavam cascata
+// SEQUENCIAL e ignoravam o setor Costura, divergindo do SQL compute_wave_timeline
+// (PR 3 + PR 2 paralelos).
 //
 // Esta função espelha exatamente o que checkSectorCapacity.computeWindows faz
 // internamente (e o que update_wave_timeline grava no banco):
