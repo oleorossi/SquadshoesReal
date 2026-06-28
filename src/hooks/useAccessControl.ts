@@ -20,6 +20,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/estoque': 'estoque',
   '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',
+  '/escalonamento': 'produtos',
   '/orders': 'ordens',
   '/setores': 'ordens',
   '/shop-floor': 'ordens',

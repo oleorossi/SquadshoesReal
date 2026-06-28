@@ -172,7 +172,6 @@ import { TechnicalReferencePanel } from '@/components/technical-sheets/Technical
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
-import { GradingCadTab } from '@/components/technical-sheets/GradingCadTab';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
@@ -185,7 +184,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, CaretUpDown as ChevronsUpDown, Ruler, Paperclip, Handshake } from '@phosphor-icons/react';
+import { Check, CaretUpDown as ChevronsUpDown, Paperclip, Handshake } from '@phosphor-icons/react';
 import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
@@ -1984,10 +1983,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </TabsTrigger>
             </>
           )}
-          <Separator orientation="vertical" className="h-5 mx-0.5" />
-          <TabsTrigger value="escalonamento" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Ruler className="h-3.5 w-3.5" /> Escalonamento
-          </TabsTrigger>
+          {/* Aba "Escalonamento" movida pra menu lateral (/escalonamento) em 2026-06-28
+              — virou calculadora independente (EscalonamentoCadPage). */}
           <Separator orientation="vertical" className="h-5 mx-0.5" />
           <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Factory className="h-3.5 w-3.5" /> Produção
@@ -3792,10 +3789,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         </TabsContent>
 
          {/* TAB: Produção & Embalagens */}
-        <TabsContent value="escalonamento" className="mt-4 space-y-4">
-          <GradingCadTab form={form} updateField={updateField} sizes={soleSizeKeysNumeric} groups={groups} products={products} />
-        </TabsContent>
-
          <TabsContent value="production" className="mt-4 space-y-4">
            {/* Header explicativo — orienta o usuário do que essa aba faz */}
            <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
