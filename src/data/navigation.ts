@@ -50,7 +50,8 @@ export const menuGroups = [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
-      { name: "Ficha Montadores", icon: ClipboardCheck,    path: "/fichas-montadores" },
+      // "Ficha Montadores" movida pro grupo RH (2026-06-28): é produtividade das
+      // PESSOAS que montam, então vive perto de Funcionários/Folha, não em Produção.
       { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
     ],
   },
@@ -134,10 +135,17 @@ export const menuGroups = [
     label: "RH",
     icon: Users,
     items: [
-      { name: "Ponto & Folha",      icon: LayoutDashboard,path: "/rh" },
+      // "Pessoas" = hub INTERNO (Funcionários/Ponto/Reconciliação/Folha em /rh).
+      // Renomeado de "Ponto & Folha" (2026-06-28, pedido do dono): o nome antigo
+      // escondia que ali mora o cadastro de Funcionários. Dois hubs distintos no
+      // setor RH — "Pessoas" (interno) e "Terceirizados" (externo) — de propósito.
+      { name: "Pessoas",            icon: Users,          path: "/rh" },
+      // "Ficha Montadores" trazida de Produção (2026-06-28): produtividade das
+      // pessoas que montam → fica no setor de gente.
+      { name: "Ficha Montadores",   icon: ClipboardCheck, path: "/fichas-montadores" },
       // "Terceirizados" (/terceirizados) movido do grupo Produção pro RH
       // (pedido do dono 2026-06-20) — gestão de contratadas/terceirizados é
-      // função de RH. Rota = módulo 'terceirizados' (role RH já tem acesso).
+      // função de RH. Mantido SEPARADO de "Pessoas" (externo ≠ interno).
       { name: "Terceirizados",      icon: Truck,          path: "/terceirizados" },
     ],
   },
