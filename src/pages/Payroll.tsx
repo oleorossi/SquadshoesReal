@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
-import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange, SALARY_DAY_DIVISOR } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
@@ -755,7 +755,7 @@ export default function Payroll() {
                 value: periodBase, type: 'p' as const, always: true,
               },
               { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
-              { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.base_salary || 0) / 30)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
+              { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.base_salary || 0) / SALARY_DAY_DIVISOR)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
               { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
               { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
             ].filter(l => l.value > 0 || (l as any).always);

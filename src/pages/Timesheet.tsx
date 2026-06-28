@@ -29,7 +29,7 @@ import {
   WorkSchedule, Holiday, TimeRecord, ParsedEmployee, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
-import { computePeriodFolha } from '@/lib/salaryPayroll';
+import { computePeriodFolha, SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
@@ -747,7 +747,7 @@ function TimesheetRecordsTab() {
   const getHourlySalary = (empName: string) => {
     const emp = findBestEmployeeMatch(empName);
     if (!emp || !emp.salary) return 0;
-    return emp.salary / 220; // CLT: 220h/mês
+    return emp.salary / SALARY_HOUR_DIVISOR; // valor-hora = salário ÷ 220
   };
 
   // ── Impressão de relatórios de ponto migrou para RH → Relatórios ──

@@ -667,6 +667,8 @@ export type EvalDayKind = 'ok' | 'curto' | 'falta' | 'fds' | 'pendente';
 export function evaluationDetail(emp: EmployeeTimesheetData) {
   const vh = emp.hourlySalary || 0;                                 // valor-hora = salário ÷ 220
   const valorDia = vh * (SALARY_HOUR_DIVISOR / SALARY_DAY_DIVISOR);  // = salário ÷ 30
+  // Multiplicador de HE da escala (default 1,5×) — antes era PREMIUM_MULTIPLIER fixo.
+  const premiumMultiplier = Number(emp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);
   const schedExpected = emp.expectedDayMin && emp.expectedDayMin > 0 ? emp.expectedDayMin : null;
 
   // Dia a dia: monta a linha de exibição (saldo do dia) E acumula HE/atraso BRUTO por-dia
@@ -708,7 +710,7 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     const paidDays = dayRows.filter(r => (r.punches?.length || 0) >= 1).length;
     const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : monthlySalary;
     return {
-      vh, valorDia, dayRows, pendingDays,
+      vh, valorDia, premiumMultiplier, dayRows, pendingDays,
       faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, heValue: 0,
       totalDesconto: 0, liquido: 0, hasSalary: paidBase > 0,
       workedTotalMin, expectedPresentMin,
@@ -718,11 +720,11 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
 
   const faltaDesconto = faltaCount * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * vh;
-  const heValue = (heMin / 60) * vh * PREMIUM_MULTIPLIER;
+  const heValue = (heMin / 60) * vh * premiumMultiplier;
   const totalDesconto = faltaDesconto + atrasoDesconto;
 
   return {
-    vh, valorDia, dayRows, pendingDays,
+    vh, valorDia, premiumMultiplier, dayRows, pendingDays,
     faltaCount, faltaDesconto, atrasoMin, atrasoDesconto, heMin, heValue,
     totalDesconto, liquido: heValue - totalDesconto, hasSalary: vh > 0,
     workedTotalMin, expectedPresentMin,

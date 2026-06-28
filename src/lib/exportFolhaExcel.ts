@@ -63,7 +63,7 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     for (const d of e.dayRows) {
       const deficitMin = d.kind === 'falta' ? d.expected : (d.kind === 'curto' ? Math.max(0, d.expected - d.worked) : 0);
       const descontoDia = d.kind === 'falta' ? e.valorDia : (d.kind === 'curto' ? (deficitMin / 60) * e.vh : 0);
-      const excedenteDia = d.saldo > 0 ? (d.saldo / 60) * e.vh * 1.5 : 0;
+      const excedenteDia = d.saldo > 0 ? (d.saldo / 60) * e.vh * e.premiumMultiplier : 0;
       detalhe.push({
         'Matrícula': r.ext || '',
         'Funcionário': r.name,
