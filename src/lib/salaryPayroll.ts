@@ -137,6 +137,12 @@ export function calculateSalaryPayroll(
    * aplica a política (10min) é computePeriodFolha, lendo da escala.
    */
   toleranceMin: number = 0,
+  /**
+   * Multiplicador da hora extra (work_schedules.overtime_multiplier). Default 1,5×
+   * (decisão do dono: 1,5× flat, sem premium de feriado). Quem aplica a política lendo
+   * da escala é computePeriodFolha — antes era a constante PREMIUM_MULTIPLIER hardcoded.
+   */
+  premiumMultiplier: number = PREMIUM_MULTIPLIER,
 ): SalaryPayrollResult {
   const sal = Number(salary) || 0;
   const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
@@ -225,7 +231,7 @@ export function calculateSalaryPayroll(
 
   const faltaDesconto = faltaDays * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * valorHora;
-  const heValue = (heMin / 60) * valorHora * PREMIUM_MULTIPLIER;
+  const heValue = (heMin / 60) * valorHora * premiumMultiplier;
   const adv = Number(advancesTotal) || 0;
   const gross = periodBase - faltaDesconto - atrasoDesconto + heValue;
 
@@ -313,7 +319,10 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   });
   // Tolerância da escala (default 10min) — espelha useTimesheet (`tolerance_minutes ?? 10`).
   const tolerance = Number(inp.schedule?.tolerance_minutes ?? 10);
-  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance);
+  // Multiplicador de HE da escala (default 1,5×) — antes era PREMIUM_MULTIPLIER fixo.
+  // A partir daqui, editar "Multiplicador HE" na escala (Ponto→Escalas) altera a folha.
+  const premiumMult = Number(inp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);
+  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance, premiumMult);
   const regime = inp.payRegime || 'mensalista';
   const adv = base.advances_total;
 
