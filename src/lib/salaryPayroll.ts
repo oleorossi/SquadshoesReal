@@ -16,6 +16,9 @@
  *     (um dia que sobrou NÃO apaga o atraso de outro). Dia não-útil (fds/feriado)
  *     trabalhado = tudo hora extra. Falta (dia útil sem trabalho) = −1 valor-dia à parte.
  *   - Falta NÃO tira o DSR (desconta só o dia).
+ *   - Tolerância (work_schedules.tolerance_minutes, default 10min): se |trabalhado −
+ *     esperado| do dia ≤ tolerância, o dia é NORMAL (zera atraso E hora extra), igual
+ *     à classificação da tela do Ponto (useTimesheet). Acima dela, conta o saldo cheio.
  *   - Dia com nº ÍMPAR de batidas = INCONSISTENTE → fica PENDENTE: não desconta nem
  *     paga, conta só pra alerta (resolver na aba Pendências de Ponto antes de fechar).
  *
@@ -127,6 +130,13 @@ export function calculateSalaryPayroll(
    * pagar "1 dia a mais" num mês de 31). Sem monthDays, cai no legado (÷30).
    */
   monthDays?: number,
+  /**
+   * Tolerância de atraso/HE em minutos (work_schedules.tolerance_minutes). Se o saldo
+   * do dia |trabalhado − esperado| ≤ tolerância, o dia é NORMAL (zera atraso E hora
+   * extra), igual à tela do Ponto. Default 0 (sem tolerância) p/ caller direto — quem
+   * aplica a política (10min) é computePeriodFolha, lendo da escala.
+   */
+  toleranceMin: number = 0,
 ): SalaryPayrollResult {
   const sal = Number(salary) || 0;
   const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
@@ -197,7 +207,10 @@ export function calculateSalaryPayroll(
       // BRUTO por-dia: compara o trabalhado com o esperado DAQUELE dia. Excedente → HE;
       // déficit → atraso. Sem compensação entre dias (um dia que sobrou NÃO apaga o
       // atraso de outro). SUPERSEDE o modelo líquido de 2026-06-04.
-      const dayBal = worked - d.expectedMinutes;
+      // Tolerância bilateral all-or-nothing: dentro da janela o dia é normal (0 atraso,
+      // 0 HE), igual à classificação da tela (useTimesheet:644). Fora dela, saldo cheio.
+      const rawBal = worked - d.expectedMinutes;
+      const dayBal = Math.abs(rawBal) <= toleranceMin ? 0 : rawBal;
       if (dayBal > 0) { heMin += dayBal; heDays.push({ date: d.date, minutes: dayBal }); }
       else if (dayBal < 0) { atrasoMin += -dayBal; lateDays.push({ date: d.date, minutes: -dayBal }); }
     } else if (worked > 0) {
@@ -298,7 +311,9 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       punches: inp.punchesByDate.get(d.date) || [],
     };
   });
-  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays);
+  // Tolerância da escala (default 10min) — espelha useTimesheet (`tolerance_minutes ?? 10`).
+  const tolerance = Number(inp.schedule?.tolerance_minutes ?? 10);
+  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance);
   const regime = inp.payRegime || 'mensalista';
   const adv = base.advances_total;
 

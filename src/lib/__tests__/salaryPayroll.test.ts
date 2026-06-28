@@ -269,3 +269,41 @@ describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => 
     expect(r.gross_value).toBeCloseTo(200, 2);
   });
 });
+
+describe('computePeriodFolha — tolerância 10min (P2) e ordenação de batidas (D18)', () => {
+  const sched = (tol: number) => ({ ...SCHED, tolerance_minutes: tol });
+
+  it('atraso de 8min com tolerância 10 → dia NORMAL (sem desconto)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:08', '12:00', '13:00', '18:00']]]); // déficit 8min
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+    expect(r.gross_value).toBeCloseTo(2200, 2);
+  });
+
+  it('atraso de 20min com tolerância 10 → conta o atraso CHEIO (20min)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:20', '12:00', '13:00', '18:00']]]);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.atraso_minutes).toBe(20);
+  });
+
+  it('HE de 5min com tolerância 10 → dia NORMAL (sem hora extra)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '18:05']]]); // +5min
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.he_minutes).toBe(0);
+  });
+
+  it('default 10min quando a escala não define tolerance_minutes', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:07', '12:00', '13:00', '18:00']]]); // 7min
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.atraso_minutes).toBe(0);
+  });
+
+  it('batidas fora de ordem são ordenadas (D18): 08,18,12,13 = 9h, não 11h', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '18:00', '12:00', '13:00']]]);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.worked_minutes).toBe(540); // 9h (almoço deduzido), não 660
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+  });
+});

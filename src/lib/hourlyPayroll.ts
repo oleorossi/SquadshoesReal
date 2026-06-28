@@ -94,6 +94,12 @@ export function splitDayMinutes(
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
   if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
+  // Ordena as batidas numericamente antes de parear: o relógio pode entregar fora de
+  // ordem e, sem ordenar, os pares saem trocados e o almoço deixa de ser deduzido
+  // (ex.: 08,18,12,13 → [08→18]+[12→13] = 11h em vez de 9h). A validação já ordena
+  // (timeValidationRules), mas o motor não — contrato silencioso. Numérico, não lexical
+  // (tolera '12:37*'). Idempotente em batidas já ordenadas.
+  const ps = [...punches].sort((a, b) => timeToMin(a) - timeToMin(b));
   // Nº ÍMPAR de batidas:
   //  • n = 3 (FALTOU uma batida) → INCONSISTENTE: 0h + incomplete, resolve manual
   //    em Pendências (não dá pra inferir com segurança qual batida faltou).
@@ -109,9 +115,9 @@ export function splitDayMinutes(
   let intervals: [number, number][];
   if (n >= 4 && n % 2 === 0) {
     intervals = [];
-    for (let i = 0; i + 1 < n; i += 2) intervals.push([timeToMin(punches[i]), timeToMin(punches[i + 1])]);
+    for (let i = 0; i + 1 < n; i += 2) intervals.push([timeToMin(ps[i]), timeToMin(ps[i + 1])]);
   } else {
-    intervals = [[timeToMin(punches[0]), timeToMin(punches[n - 1])]];
+    intervals = [[timeToMin(ps[0]), timeToMin(ps[n - 1])]];
   }
 
   // Classifica normal × 1,5× (corte às 18:00; tudo 1,5× em sáb/dom/feriado).
@@ -130,8 +136,8 @@ export function splitDayMinutes(
   }
 
   // Almoço mínimo de 1h dentro de 12:00–14:00, em dia longo que cruza o meio-dia.
-  const first = timeToMin(punches[0]);
-  const last = timeToMin(punches[n - 1]);
+  const first = timeToMin(ps[0]);
+  const last = timeToMin(ps[n - 1]);
   const spansLunch = last > first && first < 13 * 60 && last > 13 * 60 && (last - first) > LONG_DAY_MIN;
   if (spansLunch) {
     const onShiftInWin = Math.max(0, Math.min(last, LUNCH_WINDOW_END) - Math.max(first, LUNCH_WINDOW_START));
