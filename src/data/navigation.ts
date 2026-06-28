@@ -86,7 +86,10 @@ export const menuGroups = [
       { name: "MRP (Necessidades)", icon: Boxes,         path: "/mrp-advanced" },
       { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
-      { name: "Ordens de Serviço", icon: Wrench,         path: "/ordens-servico" },
+      // "Ordens de Serviço" removido da sidebar (auditoria 2026-06-28): era porta
+      // DUPLICADA pro hub /terceirizados (a rota /ordens-servico continua como
+      // redirect de bookmark em App.tsx → /terceirizados?tab=orders). A gestão de
+      // OS de terceirização vive em RH → Terceirizados.
       { name: "Compras por Pedido", icon: ShoppingCart,  path: "/purchase-orders/per-pv" },
       { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
       { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
