@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { Scissors, Warning } from '@phosphor-icons/react';
 import {
   ROLO_COMPRIMENTO_M,
+  ROLO_LARGURA_CM,
   ROLO_LARGURA_MM,
   rollBreakdownLabel,
   type ArtisanalStrapCutRow,
+  type StrapRollCutResult,
 } from '@/lib/strapRollCut';
 
 /**
@@ -21,51 +23,131 @@ import {
  * mostra, abaixo do cm total, o breakdown "N rolos completos + X cm do próximo"
  * (`rollBreakdownLabel`). Abaixo de 137 cm, só o cm — sem breakdown.
  *
- * Layout LEVE e texto-only (sem barras coloridas) — o bloco é reusado em página de
- * impressão (Lista de Separação), então precisa imprimir limpo em P&B.
+ * Cada linha válida traz uma BARRA visual do rolo (`StrapRollGauge`): a faixa É a
+ * largura útil do rolo (137 cm) e o preenchido (com hachura de bandas) é quanto se
+ * corta; rolos cheios viram mini-blocos antes da faixa do último rolo. Na tela a
+ * barra é vermelha; na impressão degrada pra P&B (hachura preta) via `@media print`
+ * em `index.css` (`.strap-roll-gauge`). A Lista de Separação impressa monta seu
+ * próprio HTML B&W em `PickingListPage.handlePrint`.
  */
 
-/** Uma linha de tira (grupo+cor já agregados): nome + cm a cortar + breakdown (ou aviso). */
+/**
+ * Barra visual do corte do rolo. A faixa representa UM rolo (137 cm de largura útil).
+ * Rolos INTEIROS consumidos aparecem como mini-blocos hachurados antes da faixa, que
+ * mostra o ÚLTIMO rolo (parcial ou cheio). Abaixo de 1 rolo, a sobra fica hachurada
+ * com a costura marcando o fim do corte. Só renderiza quando `cut.valid`.
+ */
+function StrapRollGauge({ cut }: { cut: StrapRollCutResult }) {
+  const full = cut.n_rolos_completos;
+  const last = cut.cm_no_ultimo_rolo;
+  const overflow = full >= 1;
+  // A faixa mostra o ÚLTIMO rolo: parcial (last/137) ou cheio quando múltiplo exato.
+  const lastPct = last > 0 ? Math.min(100, (last / ROLO_LARGURA_CM) * 100) : 100;
+  // Mini-blocos = rolos cheios que NÃO são a faixa (a faixa já é 1 rolo).
+  const fullMini = last > 0 ? full : Math.max(0, full - 1);
+  const MAX_MINI = 6;
+  const miniShown = Math.min(fullMini, MAX_MINI);
+  const miniExtra = fullMini - miniShown;
+  const totalRolos = fullMini + 1;
+  const sobra = last > 0 ? Math.max(0, ROLO_LARGURA_CM - last) : 0;
+  const stripe = 'repeating-linear-gradient(90deg, rgba(255,255,255,0.28) 0 1px, transparent 1px 6px)';
+  const hatch = 'repeating-linear-gradient(45deg, hsl(var(--border)) 0 1px, transparent 1px 7px)';
+  const caption = overflow
+    ? rollBreakdownLabel(cut)
+    : `usa ${Math.round(lastPct)}% do rolo · sobra ${sobra.toFixed(0)} cm`;
+
+  return (
+    <div className="strap-roll-gauge">
+      <div className="flex items-center gap-1">
+        {Array.from({ length: miniShown }).map((_, i) => (
+          <div
+            key={i}
+            className="srg-roll h-6 w-3 shrink-0 rounded-sm border border-red-500/30"
+            style={{ backgroundColor: '#E24B4A', backgroundImage: stripe }}
+            title="rolo cheio"
+          />
+        ))}
+        {miniExtra > 0 && (
+          <span className="shrink-0 font-mono text-[10px] text-red-600/70 dark:text-red-400/70">+{miniExtra}</span>
+        )}
+        <div className="srg-track relative h-6 flex-1 overflow-hidden rounded-md border border-red-500/30 bg-red-500/[0.04]">
+          <div
+            className="srg-fill absolute inset-y-0 left-0"
+            style={{ width: `${lastPct}%`, backgroundColor: '#E24B4A', backgroundImage: stripe }}
+          />
+          {!overflow && lastPct < 100 && (
+            <>
+              <div
+                className="srg-left absolute inset-y-0 right-0"
+                style={{ left: `${lastPct}%`, backgroundImage: hatch }}
+              />
+              <div
+                className="srg-seam absolute inset-y-0 w-px bg-red-700/70 dark:bg-red-400/70"
+                style={{ left: `${lastPct}%` }}
+              />
+            </>
+          )}
+          <div className="pointer-events-none absolute inset-0">
+            {[25, 50, 75].map((p) => (
+              <div key={p} className="absolute top-0 h-1 w-px bg-red-500/20" style={{ left: `${p}%` }} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-0.5 flex items-center justify-between gap-2">
+        <span className="truncate text-[10.5px] text-red-600/80 dark:text-red-400/80">{caption}</span>
+        <span className="shrink-0 font-mono text-[10px] text-red-600/45 dark:text-red-400/45">
+          {overflow ? `${totalRolos} rolos · ` : ''}{ROLO_LARGURA_CM} cm/rolo
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Uma linha de tira (grupo+cor já agregados): nome + cm a cortar + barra do rolo (ou aviso). */
 function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
   const { cut } = row;
-  const breakdown = rollBreakdownLabel(cut);
   return (
-    <div className="flex items-start justify-between gap-3 px-3 py-2 hover:bg-red-500/5">
-      <div className="min-w-0 text-sm text-red-700 dark:text-red-300">
-        <span className="font-medium">{row.groupName}</span>
-        {row.color && row.color !== '—' && (
-          <span className="text-red-600/70 dark:text-red-400/70"> · {row.color}</span>
-        )}
-        {!cut.widthMissing && row.largura_mm > 0 && (
-          <span className="text-red-600/60 dark:text-red-400/60"> · largura {row.largura_mm.toFixed(0)} mm</span>
-        )}
-      </div>
+    <div className="px-3 py-2.5 hover:bg-red-500/5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 text-sm text-red-700 dark:text-red-300">
+          <span className="font-medium">{row.groupName}</span>
+          {row.color && row.color !== '—' && (
+            <span className="text-red-600/70 dark:text-red-400/70"> · {row.color}</span>
+          )}
+          {!cut.widthMissing && row.largura_mm > 0 && (
+            <span className="text-red-600/60 dark:text-red-400/60"> · largura {row.largura_mm.toFixed(0)} mm</span>
+          )}
+          {cut.valid && (
+            <span className="text-red-600/50 dark:text-red-400/50"> · {cut.n_bandas} banda{cut.n_bandas === 1 ? '' : 's'}</span>
+          )}
+        </div>
 
-      {cut.valid ? (
-        <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-          <div className="flex items-baseline gap-1.5">
+        {cut.valid ? (
+          <div className="flex shrink-0 items-baseline gap-1.5">
             <span className="text-xs uppercase tracking-wide text-red-600/70 dark:text-red-400/70">Cortar</span>
             <span className="font-mono text-lg font-bold text-red-600 dark:text-red-400">
               {cut.cm_a_cortar.toFixed(1)}
               <span className="text-xs font-normal text-red-600/70 dark:text-red-400/70"> cm</span>
             </span>
           </div>
-          {breakdown && (
-            <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[11px] font-medium text-red-600/90 dark:text-red-400/90">
-              {breakdown}
+        ) : (
+          <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+            <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+              <Warning className="h-3.5 w-3.5" /> {cut.warning}
             </span>
-          )}
-        </div>
-      ) : (
-        <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-          <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-            <Warning className="h-3.5 w-3.5" /> {cut.warning}
-          </span>
-          {cut.widthMissing && (
-            <Link to="/artisanal-recipes" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
-              Cadastrar largura em Receitas → Produtos artesanais →
-            </Link>
-          )}
+            {cut.widthMissing && (
+              <Link to="/artisanal-recipes" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
+                Cadastrar largura em Receitas → Produtos artesanais →
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
+
+      {cut.valid && (
+        <div className="mt-2">
+          <StrapRollGauge cut={cut} />
         </div>
       )}
     </div>
