@@ -86,12 +86,17 @@ export type SheetFormData = {
   status_ficha: string;
   // Technical fields
   upper_material: string;
+  /** Pin do SKU exato do Cabedal Material 1 (2026-06-28). Precedência no débito:
+   *  variante > este pin > grupo+cor. null = resolve pela cor do PV. */
+  upper_material_product_id?: string | null;
   upper_thickness: string;
   /** Corte a fio (2026-06-12): true = cabedal sem costura (borda crua do
    *  corte) — NÃO gera ficha de operador 'Costura Cabedal'; false = cabedal
    *  vai para costura. Só camada de impressão — não afeta fluxo/ondas. */
   upper_corte_a_fio: boolean;
   lining_material: string;
+  /** Pin do SKU exato da Forração Material 1 (2026-06-28). Mesma precedência. */
+  lining_material_product_id?: string | null;
   /** Grupo de material da forração de salto (fachete) — usado quando o solado
    *  é fachetado. Consumo por numeração vem do cadastro do solado. Segue o
    *  mesmo padrão de lining_material (nome do grupo, coluna text no DB). */
@@ -175,9 +180,9 @@ export const emptySheetForm: SheetFormData = {
   collection: '', sale_price: 0, has_straps: false, strap_colors: [],
   cor_predominante_id: null, cor_solado_id: null, box_type_id: null,
   status_ficha: 'rascunho',
-  upper_material: '', upper_thickness: '',
+  upper_material: '', upper_material_product_id: null, upper_thickness: '',
   upper_corte_a_fio: false,
-  lining_material: '',
+  lining_material: '', lining_material_product_id: null,
   fachete_material: '',
   insole_material: '',
   sole_type: '', sole_material: '', sole_color: '', sole_process: '', sole_group_id: null, insole_color: '', insole_plate_product: '',
