@@ -1,10 +1,10 @@
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSearchParams, Link } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { cn } from "@/lib/utils";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
-import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle, Kanban } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getSecondaryRoutesForGroup } from '@/data/navigation';
 
@@ -23,12 +23,61 @@ const LotSplitPage = lazy(() => import("./LotSplitPage"));
 const SectorDailyView = lazy(() => import("./SectorDailyView"));
 const BottlenecksPage = lazy(() => import("./Bottlenecks"));
 const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
+// Quadro de Produção (fusão 2026-06-28): os 4 visuais do MESMO dado (order_stages)
+// viram MODOS de uma só tela, em vez de 4 rotas separadas na stripe.
+const ProductionFlow = lazy(() => import("./ProductionFlow"));
+const ProductionLive = lazy(() => import("./ProductionLive"));
+const ProductionTimeline = lazy(() => import("./ProductionTimeline"));
+const SectorAggregatedView = lazy(() => import("./SectorAggregatedView"));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-12">
     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
   </div>
 );
+
+// Rotas da stripe antiga que viraram MODOS do Quadro de Produção (não duplicar
+// como link externo — continuam acessíveis por URL pra deep-link).
+const FUSED_VIEW_PATHS = new Set([
+  '/producao/fluxo', '/producao/live', '/producao/timeline', '/producao/visao-agregada',
+]);
+
+// "Quadro de Produção" — 1 tela, 4 modos do mesmo dado (order_stages). Substitui
+// as 4 rotas separadas (Fluxo/Live/Timeline/Visão Agregada) que poluíam a stripe.
+const QUADRO_MODES: { key: string; label: string }[] = [
+  { key: 'matriz', label: 'Matriz' },
+  { key: 'cartoes', label: 'Cartões' },
+  { key: 'timeline', label: 'Timeline' },
+  { key: 'lote', label: 'Lote agregado' },
+];
+function QuadroProducao() {
+  const [mode, setMode] = useState('matriz');
+  return (
+    <div className="space-y-3">
+      <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-muted/50 p-1">
+        {QUADRO_MODES.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => setMode(m.key)}
+            className={cn(
+              "h-6 rounded px-3 text-xs font-medium transition-colors",
+              mode === m.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <Suspense fallback={<TabLoader />}>
+        {mode === 'matriz' && <ProductionFlow embedded />}
+        {mode === 'cartoes' && <ProductionLive embedded />}
+        {mode === 'timeline' && <ProductionTimeline embedded />}
+        {mode === 'lote' && <SectorAggregatedView embedded />}
+      </Suspense>
+    </div>
+  );
+}
 
 // Single hub for all production sectors — Setores aggregates Corte, Costura,
 // Solagem, Aviamento, Montagem and Acabamento internally.
@@ -38,6 +87,7 @@ const tabs: { value: string; label: string; icon: any; description: string }[] =
   { value: "cronograma", label: "Cronograma Reverso", icon: Workflow, description: "Calcula as datas de início de cada setor a partir do prazo de entrega (de trás pra frente)." },
   { value: "lead-time", label: "Lead Time", icon: Clock, description: "Tempo total de atravessamento da fábrica por produto e por setor." },
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, description: "Indicadores gerais do PCP num relance." },
+  { value: "quadro", label: "Quadro de Produção", icon: Kanban, description: "Onde está cada OP agora — alterne entre Matriz, Cartões, Timeline e Lote agregado (mesma fonte, 4 visões)." },
   { value: "setores", label: "Setores", icon: Factory, description: "Acompanhamento setor a setor (Corte, Costura, Solagem, Montagem...)." },
   { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle, description: "Onde está apertando hoje: planejado vs. realizado do dia." },
   { value: "gargalo-semanal", label: "Gargalo Semanal", icon: AlertTriangle, description: "Capacidade vs. demanda por setor ao longo da semana." },

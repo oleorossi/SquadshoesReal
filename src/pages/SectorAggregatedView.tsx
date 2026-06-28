@@ -59,17 +59,19 @@ const SECTORS: SectorConfig[] = [
   },
 ];
 
-export default function SectorAggregatedView() {
+export default function SectorAggregatedView({ embedded = false }: { embedded?: boolean } = {}) {
   const [activeTab, setActiveTab] = useState<string>(SECTORS[0].key);
   const active = SECTORS.find(s => s.key === activeTab) || SECTORS[0];
 
   return (
     <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · VISÃO AGREGADA"
-        title="Visão Agregada por Setor"
-        description="Carga ativa de cada setor consolidada por modelo (e cor onde faz sentido). Em vez de N cartões individuais de 12 pares, o operador vê o LOTE consolidado — costura faz a grade inteira sem trocar setup, corte usa o mesmo molde por todas as cores."
-      />
+      {!embedded && (
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · VISÃO AGREGADA"
+          title="Visão Agregada por Setor"
+          description="Carga ativa de cada setor consolidada por modelo (e cor onde faz sentido). Em vez de N cartões individuais de 12 pares, o operador vê o LOTE consolidado — costura faz a grade inteira sem trocar setup, corte usa o mesmo molde por todas as cores."
+        />
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid grid-cols-4 lg:grid-cols-8 h-auto">
