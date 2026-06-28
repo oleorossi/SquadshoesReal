@@ -29,6 +29,22 @@ function IndicatorCard({ label, value, sub, color = 'primary' }: { label: string
   );
 }
 
+/** Pílula de saúde da margem real: verde ≥15% · âmbar 8–15% · vermelho <8%/negativa.
+ *  Cores por token (hsl(var(--success/warning/destructive))) → adapta ao tema. */
+function MarginHealthPill({ pct }: { pct: number }) {
+  const token = pct >= 15 ? 'var(--success)' : pct >= 8 ? 'var(--warning)' : 'var(--destructive)';
+  const label = pct >= 15 ? 'Saudável' : pct >= 8 ? 'Apertada' : 'Crítica';
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide"
+      style={{ background: `hsl(${token} / 0.2)`, color: `hsl(${token})` }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: `hsl(${token})` }} />
+      {fmt(pct)}% {label}
+    </span>
+  );
+}
+
 // Paleta puxada dos tokens (handoff Novidade). Antes tinha um verde primário
 // hardcoded que desencaixava do resto do sistema (vermelho Squad).
 const COLORS = [
@@ -503,53 +519,74 @@ export default function PricingCalculatorPanel() {
             </div>
           ) : results.suggestedPrice > 0 ? (
             <>
-              {/* Indicadores */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <IndicatorCard label="Preço Sugerido" value={`R$ ${fmt(results.suggestedPrice)}`} sub={`a prazo (${formatDaysLabel(days)})`} color="primary" />
-                <IndicatorCard label="Preço à Vista" value={`R$ ${fmt(results.cashPrice)}`} sub="pagamento em 7 dias" color="primary" />
-                <IndicatorCard label="Custo Base" value={`R$ ${fmt(results.totalCost)}`} sub={`MP ${fmt(parseFloat(cost)||0)} + Rateio ${fmt(results.numOverhead)} + Frete ${fmt(results.numFreight)}`} color="muted" />
-                <IndicatorCard label="Lucro Líquido" value={`R$ ${fmt(results.realProfit)}`} sub="por unidade" color="success" />
-              </div>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                <IndicatorCard label="Antecipação" value={`${fmt(results.factoringTotalPct)}%`} sub={formatDaysLabel(days)} color="warning" />
-                <IndicatorCard label="Comissão" value={`R$ ${fmt(results.commissionValue)}`} sub={`${commissionPct || '0'}% s/ venda`} color="muted" />
-                <IndicatorCard label="Markup Total" value={`${fmt(results.totalMarkupPct)}%`} sub="impostos+juros+comissão+lucro" color="muted" />
-              </div>
-
-              {/* Gráfico pizza composição */}
-              {simulatorPieData.length > 0 && (
-                <Card className="border-dashed">
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <div className="flex items-center gap-2">
-                      <PieChart className="h-4 w-4 text-muted-foreground" />
-                      <CardTitle className="text-sm">Composição do Preço</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4">
-                    <div className="flex items-center gap-6">
-                      <div className="w-44 h-44">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <RePieChart>
-                            <Pie data={simulatorPieData} cx="50%" cy="50%" innerRadius={35} outerRadius={65} dataKey="value" strokeWidth={2} stroke="hsl(var(--card))">
-                              {simulatorPieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                            </Pie>
-                           <RechartsTooltip formatter={(v: number) => `R$ ${fmt(v)}`} />
-                          </RePieChart>
-                        </ResponsiveContainer>
+              {/* ── Ticket de resultado (layout "Painel + Ticket") ──
+                  Bloco escuro adaptativo (bg-foreground/text-background) com o PREÇO
+                  como herói, à vista × markup × saúde da margem, e a composição do
+                  preço como barra 100% (substitui a pizza — ui-ux-pro-max desaconselha
+                  pizza >5 categorias; aqui são 7). */}
+              {(() => {
+                const custoMP = parseFloat(cost) || 0;
+                const realMarginPct = results.suggestedPrice > 0 ? (results.realProfit / results.suggestedPrice) * 100 : 0;
+                const segs = [
+                  { label: 'Custo MP', value: custoMP, color: 'hsl(var(--background) / 0.62)' },
+                  { label: 'Rateio', value: results.numOverhead, color: 'hsl(var(--background) / 0.44)' },
+                  { label: 'Frete', value: results.numFreight, color: 'hsl(var(--background) / 0.30)' },
+                  { label: 'Impostos', value: results.taxValue, color: 'hsl(var(--primary) / 0.55)' },
+                  { label: 'Comissão', value: results.commissionValue, color: 'hsl(var(--primary) / 0.75)' },
+                  { label: 'Antecipação', value: results.factoringValue, color: 'hsl(var(--primary))' },
+                  { label: 'Lucro', value: Math.max(0, results.realProfit), color: 'hsl(var(--success))' },
+                ].filter((s) => s.value > 0);
+                const segTotal = segs.reduce((s, x) => s + x.value, 0) || 1;
+                return (
+                  <div className="rounded-2xl bg-foreground p-5 text-background sm:p-6">
+                    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+                      <div className="min-w-0">
+                        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-background/55">
+                          Preço de venda sugerido · a prazo ({formatDaysLabel(days)})
+                        </p>
+                        <p className="display mt-1 leading-[0.82] text-background" style={{ fontSize: 'clamp(38px, 8vw, 58px)' }}>
+                          <span className="align-top font-mono font-bold text-background/45" style={{ fontSize: '0.3em' }}>R$ </span>
+                          {fmt(results.suggestedPrice)}
+                        </p>
                       </div>
-                      <div className="space-y-2 text-sm">
-                        {simulatorPieData.map((d, i) => (
-                          <div key={d.name} className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                            <span className="text-muted-foreground">{d.name}:</span>
-                            <span className="font-medium font-mono">R$ {fmt(d.value)}</span>
-                          </div>
+                      <div className="flex items-end gap-5">
+                        <div>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">À vista · 7d</p>
+                          <p className="font-mono text-base font-bold tabular-nums">R$ {fmt(results.cashPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">Markup</p>
+                          <p className="font-mono text-base font-bold tabular-nums">{fmt(results.totalMarkupPct)}%</p>
+                        </div>
+                        <MarginHealthPill pct={realMarginPct} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-background/55">Composição do preço</p>
+                        <p className="font-mono text-[10px] text-background/55">
+                          Custo base R$ {fmt(results.totalCost)} · Lucro R$ {fmt(results.realProfit)}/par
+                        </p>
+                      </div>
+                      <div className="mt-2 flex h-4 overflow-hidden rounded-md" style={{ border: '1px solid hsl(var(--background) / 0.25)' }}>
+                        {segs.map((s) => (
+                          <div key={s.label} style={{ width: `${(s.value / segTotal) * 100}%`, background: s.color }} title={`${s.label}: R$ ${fmt(s.value)}`} />
+                        ))}
+                      </div>
+                      <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                        {segs.map((s) => (
+                          <span key={s.label} className="flex items-center gap-1.5 font-mono text-[11px] text-background/80">
+                            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
+                            {s.label}
+                            <span className="font-bold">{((s.value / segTotal) * 100).toFixed(0)}%</span>
+                          </span>
                         ))}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
+                );
+              })()}
 
               {/* DRE Simplificado do Simulador */}
               {results.suggestedPrice > 0 && (
