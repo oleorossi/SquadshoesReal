@@ -2462,17 +2462,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <div className="space-y-6">
               {/* Cabedal */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Layers className="h-3.5 w-3.5 text-amber-600" />
-                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cabedal</span>
-                 </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-3.5 w-3.5 text-amber-600" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cabedal</span>
+                  </div>
+                  {(() => {
+                    if (form.has_straps) {
+                      return (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          Modelo de tiras
+                        </span>
+                      );
+                    }
+                    const ups = (form as any).upper_consumption_per_size || {};
+                    const vals = Object.values(ups).map(Number).filter((v: number) => v > 0);
+                    const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.upper_consumption) || 0);
+                    const complete = !!form.upper_material && avg > 0;
+                    return complete ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle className="h-3 w-3" weight="fill" /> Completo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="h-3 w-3" weight="fill" /> {!form.upper_material ? 'Falta material' : 'Falta consumo'}
+                      </span>
+                    );
+                  })()}
+                </div>
                  {isSoleFachetado && (
-                   <div className="p-3 border border-amber-200 bg-amber-50/30 rounded-lg space-y-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                   <div className="p-3 border border-amber-500/30 bg-amber-500/10 rounded-lg space-y-2 animate-in fade-in slide-in-from-left-2 duration-300">
                      <div className="flex items-center gap-2">
-                       <div className="h-5 w-5 rounded bg-amber-100 flex items-center justify-center">
-                         <Wand2 className="h-3 w-3 text-amber-600" />
+                       <div className="h-5 w-5 rounded bg-amber-500/15 flex items-center justify-center">
+                         <Wand2 className="h-3 w-3 text-amber-600 dark:text-amber-400" />
                        </div>
-                       <Label className="text-xs font-bold text-amber-800">Forração de Salto (Fachete)</Label>
+                       <Label className="text-xs font-bold text-amber-700 dark:text-amber-400">Forração de Salto (Fachete)</Label>
                      </div>
                      <div>
                        <Label className="text-xs text-muted-foreground uppercase">Material do Fachete</Label>
@@ -2480,7 +2504,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                          value={form.fachete_material || ''}
                          onValueChange={v => updateField('fachete_material', v)}
                        >
-                         <SelectTrigger className="h-8 text-xs mt-1">
+                         <SelectTrigger className="h-9 text-xs mt-1">
                            <SelectValue placeholder="Selecionar grupo..." />
                          </SelectTrigger>
                          <SelectContent>
@@ -2489,9 +2513,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                            ))}
                          </SelectContent>
                        </Select>
-                       <p className="text-xs text-muted-foreground mt-1">
-                         Consumo de fachete por numeração é configurado em <strong>Solados → Cadastro</strong>.
-                       </p>
+                       {!form.fachete_material ? (
+                         <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 flex items-start gap-1">
+                           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" weight="fill" />
+                           <span>Selecione o material do fachete — senão o forro do salto <strong>não é consumido</strong> no custeio.</span>
+                         </p>
+                       ) : (
+                         <p className="text-xs text-muted-foreground mt-1">
+                           Consumo de fachete por numeração é configurado em <strong>Solados → Cadastro</strong>.
+                         </p>
+                       )}
                      </div>
                    </div>
                  )}
@@ -2529,6 +2560,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   if (dimsFallback) return dimsFallback;
                   return 'un';
                 };
+                // Aviso do quebra-silencioso nº 1: material de ÁREA (napa/couro,
+                // cortado de bobina) cujo grupo NÃO tem largura cadastrada → o consumo
+                // (gravado em dm²/par) não converte pra metro e infla ~100× no
+                // PV/custeio. Detecta: produto linear (m/cm) + sinal de bobina
+                // (consumption_unit de área OU comprimento de rolo) + largura ausente.
+                // Materiais lineares NATIVOS (elástico, tira) NÃO disparam.
+                const cabedalWidthWarning = (groupName?: string): boolean => {
+                  const name = (groupName || '').trim();
+                  if (!name) return false;
+                  const g: any = (groups || []).find((x: any) => (x.name || '').trim() === name);
+                  if (!g) return false;
+                  const prod: any = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
+                    || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
+                  const prodUnit = (prod?.unit || '').toString().trim().toLowerCase();
+                  if (!['m', 'cm', 'metro', 'metros', 'mt'].includes(prodUnit)) return false;
+                  const consUnit = (g?.consumption_unit || '').toString().trim().toLowerCase().replace(/2/g, '²');
+                  const isAreaConsumption = ['dm²', 'm²', 'cm²'].includes(consUnit);
+                  const hasRollDims = Number(g?.dimensions_length) > 0;
+                  const width = Number(g?.dimensions_width) || 0;
+                  return (isAreaConsumption || hasRollDims) && width <= 0;
+                };
+                const renderWidthWarn = (groupName?: string) =>
+                  cabedalWidthWarning(groupName) ? (
+                    <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" weight="fill" />
+                      <span className="text-[11px] leading-snug text-amber-700 dark:text-amber-400">
+                        Sem largura cadastrada — o consumo pode inflar ~100×. Cadastre a largura em <strong>Materiais → Ficha de Componente (Dimensões)</strong>.
+                      </span>
+                    </div>
+                  ) : null;
                 // Tamanhos numéricos individuais (35, 36, 37...) e a versão
                 // com conjugações aplicadas (substitui 23,24 → "23/24" quando
                 // o solado tem conjugação cadastrada). Usar a lista conjugada
@@ -2557,15 +2618,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   return (
                     <div className={`mt-2 p-2.5 rounded-md border bg-muted/30 ${colorClass}`}>
                       <div className="flex items-center justify-between mb-1.5">
-                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Consumo desta Opção ({unit}/par) — custo por cor/material
-                        </Label>
+                        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+                          Por numeração
+                        </span>
                         {/* Quando o modelo tem TIRAS, o consumo é número-a-número
                             (cada tira tem seu cm/par). A "média" é enganosa nesse
                             caso — ocultamos pra evitar leitura errada. */}
                         {!form.has_straps && (
                           <span className="text-xs text-muted-foreground">
-                            Média: <strong>{avg.toFixed(4)}</strong>
+                            Média <strong className="tabular-nums text-foreground">{avg.toFixed(4)}</strong> {unit}/par
                           </span>
                         )}
                       </div>
@@ -2581,7 +2642,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   const next = { ...perSize, [sizeKey]: v };
                                   onChangeGrid(next);
                                 }}
-                                className="w-[58px] h-7 text-xs text-center"
+                                className="w-[58px] h-8 text-xs text-center tabular-nums"
                                 placeholder="0"
                                 step="0.0001"
                               />
@@ -2593,7 +2654,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-8 text-xs"
+                            title="Preenche a grade com a numeração do solado (não sobrescreve valores já digitados)"
                             onClick={async () => {
                               const grid = await fetchSoleGradeForCabedal();
                               if (grid) {
@@ -2610,7 +2672,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-8 text-xs"
+                            title="Copia o valor do 1º número preenchido para todas as numerações"
                             onClick={() => {
                               const firstFilled = cabedalSizes.map(s => perSize[String(s)] || 0).find(v => v > 0);
                               if (!firstFilled || firstFilled <= 0) {
@@ -2661,6 +2724,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         )}
                       </div>
+
+                      {renderWidthWarn(form.upper_material)}
 
                       {/* Tabela de consumo por numeração INLINE — quando o cabedal é
                           selecionado, o usuário precisa preencher quanto consome
@@ -2781,11 +2846,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         Ex: Napa principal (dm²) + Elástico Traseiro 6mm (m) +
                         Elástico Frente 8mm (m) + Tira reforço (m).
                         Cada componente tem label livre pra distinguir na ficha. */}
-                    <div className="mt-3 pt-3 border-t border-dashed border-emerald-300 dark:border-emerald-800">
+                    <div className="mt-3 pt-3 border-t border-dashed border-amber-300 dark:border-amber-800">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <Plus className="h-3.5 w-3.5 text-emerald-600" />
-                          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                          <Plus className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
                             Materiais do Cabedal
                           </span>
                           <span className="text-xs text-muted-foreground">
@@ -2795,7 +2860,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 gap-1.5 text-xs"
+                          className="h-8 gap-1.5 text-xs"
                           onClick={() => {
                             const arr = [...(form.components_accessories || [])];
                             arr.push({ material: '', mandatory: true, label: '', consumption: 0, consumption_per_size: {} });
@@ -2810,16 +2875,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         const mandatoryItems = (form.components_accessories || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx })).filter(({ extra }) => extra.mandatory === true);
                         if (mandatoryItems.length === 0) {
                           return (
-                            <p className="text-xs text-muted-foreground italic px-2 py-3">
-                              Só o Material 1. Use o botão acima pra adicionar Material 2, 3… quando o cabedal
-                              for composto por vários materiais (cada um com seu próprio consumo).
-                            </p>
+                            <div className="flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/20 px-3 py-2.5">
+                              <Layers className="h-4 w-4 shrink-0 text-muted-foreground/60 mt-0.5" />
+                              <p className="text-xs text-muted-foreground">
+                                Só o <strong>Material 1</strong>. Adicione Material 2, 3… quando o cabedal tiver mais de um
+                                material — cada um com seu próprio consumo e débito de estoque.
+                              </p>
+                            </div>
                           );
                         }
                         return mandatoryItems.map(({ extra, rawIdx }, displayIdx) => {
                           const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
                           return (
-                            <div key={rawIdx} className="space-y-2 border-l-2 border-emerald-400/60 pl-3 mb-4">
+                            <div key={rawIdx} className="space-y-2 border-l-2 border-amber-400/60 pl-3 mb-4">
                               {/* Material (grupo) + remover. Campo de nome livre removido —
                                   o material selecionado já identifica (Material 1, 2, 3…). */}
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
@@ -2857,6 +2925,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
+
+                              {renderWidthWarn(extra.material)}
 
                               {/* Linha 2b: Item específico (opcional). Fixa o produto exato
                                   pro débito; em branco = resolve pela cor do PV (padrão). */}
@@ -2924,7 +2994,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       arr[rawIdx] = { ...arr[rawIdx], consumption_per_size: next, consumption: Number(avg.toFixed(4)), mandatory: true };
                                       updateField('components_accessories', arr);
                                     },
-                                    'emerald',
+                                    'amber',
                                   )}
                                 </div>
                               )}
