@@ -67,7 +67,7 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
   return (
     <>
       <EditorialPageHeader
-        sectionLabel="FISCAL · MANIFESTOS"
+        sectionLabel="LOGÍSTICA · ROMANEIOS"
         title="Romaneios de Carga"
         description="Controle interno de viagens — agrupa volumes por veículo/motorista, com destinos múltiplos."
         actions={
@@ -228,7 +228,7 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
   return (
     <div className="space-y-4">
       <EditorialPageHeader
-        sectionLabel="FISCAL · MANIFESTOS"
+        sectionLabel="LOGÍSTICA · ROMANEIOS"
         title={manifest.manifest_number}
         description={
           format(new Date(manifest.emission_date), 'dd/MM/yyyy') +

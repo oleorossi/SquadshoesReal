@@ -36,6 +36,7 @@ const DesignPreview = lazy(() => import("./pages/DesignPreview"));
 // Rota /imagens-cores agora redireciona pra /fichas-tecnicas.
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
  const TechnicalSheets = lazy(() => import("./pages/TechnicalSheets"));
+const EscalonamentoCadPage = lazy(() => import("./pages/EscalonamentoCadPage"));
 const Silks = lazy(() => import("./pages/Silks"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Orders = lazy(() => import("./pages/Orders"));
@@ -75,7 +76,6 @@ const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
 
 const PCPDashboard = lazy(() => import("./pages/PCPDashboard"));
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
-const MrpPage = lazy(() => import("./pages/MrpPage"));
 const MrpAdvancedPage = lazy(() => import("./pages/MrpAdvancedPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
 const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
@@ -623,6 +623,12 @@ const router = createBrowserRouter([
        {
          path: "fichas-tecnicas",
          element: <TechnicalSheets />,
+       },
+       {
+         // Escalonamento / CAD — calculadora independente (saiu da ficha técnica
+         // em 2026-06-28). Escaneia molde / importa DXF → curva de consumo por nº.
+         path: "escalonamento",
+         element: <EscalonamentoCadPage />,
        },
        {
          path: "silks",

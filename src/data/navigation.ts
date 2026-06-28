@@ -40,7 +40,7 @@ export const menuGroups = [
       { name: "CRM",              icon: HeartHandshake,   path: "/crm" },
       { name: "Tarefas",          icon: ListChecks,       path: "/tarefas" },
       { name: "Tabelas de Preço", icon: DollarSign,       path: "/price-lists" },
-      { name: "Notas",            icon: FileText,         path: "/notas" },
+      { name: "Anotações",        icon: FileText,         path: "/notas" },
     ],
   },
   {
@@ -50,22 +50,23 @@ export const menuGroups = [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
-      // "Ficha Montadores" movida pro grupo RH (2026-06-28): é produtividade das
-      // PESSOAS que montam, então vive perto de Funcionários/Folha, não em Produção.
-      { name: "Capacidade",       icon: BarChart3,         path: "/capacity-planning" },
+      // Saíram daqui (2026-06-28): "Capacidade" (/capacity-planning) já é aba do PCP
+      // (Planejar→Capacidade) — evitava o mesmo destino por dois caminhos; "Ficha
+      // Montadores" foi pro grupo RH (produtividade das pessoas que montam).
     ],
   },
   {
     label: "Estoque",
     icon: Package,
     items: [
-      { name: "Estoque",          icon: Package,        path: "/estoque" },
-      { name: "Grupos",           icon: FolderOpen,     path: "/grupos" },
-      { name: "MRP",              icon: Boxes,          path: "/mrp" },
-      { name: "Ajustes",          icon: Boxes,          path: "/ajuste-estoque" },
-      { name: "Qualidade",        icon: ShieldCheck,  path: "/estoque/qualidade" },
-      { name: "Histórico",        icon: History,      path: "/estoque/historico" },
-      { name: "Inventário ABC",   icon: BarChart3,    path: "/estoque/inventario" },
+      { name: "Estoque",            icon: Package,      path: "/estoque" },
+      { name: "Grupos",             icon: FolderOpen,   path: "/grupos" },
+      // Saíram do Estoque (2026-06-28): "MRP" (/mrp) era redirect pro Planejamento de
+      // Compras (?tab=mrp) — duplicava aquela aba e MRP é suprimentos, não estoque;
+      // "Histórico" (/estoque/historico) já é aba dentro de /estoque.
+      { name: "Ajustes",            icon: Boxes,        path: "/ajuste-estoque" },
+      { name: "Qualidade de Estoque", icon: ShieldCheck, path: "/estoque/qualidade" },
+      { name: "Inventário ABC",     icon: BarChart3,    path: "/estoque/inventario" },
     ],
   },
   {
@@ -73,6 +74,7 @@ export const menuGroups = [
     icon: Ruler,
     items: [
       { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
+      { name: "Escalonamento",    icon: Calculator,   path: "/escalonamento" },
       { name: "Solados",          icon: Footprints,   path: "/solados" },
       { name: "Silks",            icon: Sparkles,     path: "/silks" },
       { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
@@ -114,10 +116,11 @@ export const menuGroups = [
     icon: Wallet,
     items: [
       { name: "Financeiro",       icon: Wallet,          path: "/financeiro" },
-      { name: "Contas (AR/AP)",   icon: DollarSign,      path: "/financeiro?tab=accounts" },
-      { name: "Conciliação",      icon: Scale,           path: "/bank-reconciliation" },
+      // "Contas (AR/AP)" removido (2026-06-28): era só deep-link da aba "Contas" do
+      // próprio /financeiro — a aba continua lá dentro do hub.
+      { name: "Conciliação Bancária", icon: Scale,       path: "/bank-reconciliation" },
       { name: "CNAB / Boletos",   icon: FileSpreadsheet, path: "/cnab" },
-      { name: "Markup / Pricing", icon: Calculator,      path: "/pricing-calculator" },
+      { name: "Markup",           icon: Calculator,      path: "/pricing-calculator" },
     ],
   },
   {
@@ -178,7 +181,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Timeline",             icon: GanttChartSquare, path: "/producao/timeline",      group: "Produção" },
   { name: "Visão Agregada",       icon: Kanban,           path: "/producao/visao-agregada", group: "Produção" },
   { name: "Centro de Controle",   icon: AlertTriangle,    path: "/centro-controle",        group: "Produção" },
-  { name: "Qualidade",            icon: ShieldCheck,      path: "/quality",                group: "Produção" },
+  { name: "Qualidade de Produção", icon: ShieldCheck,     path: "/quality",                group: "Produção" },
   { name: "Cronoanálise",         icon: Timer,            path: "/cronoanalise",           group: "Produção" },
   { name: "Paradas & OEE",        icon: Gauge,            path: "/producao/paradas",       group: "Produção" },
   { name: "Tempos de Setup",      icon: Clock,            path: "/producao/setup-times",   group: "Produção" },

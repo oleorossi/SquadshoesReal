@@ -8,7 +8,6 @@ import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle, Ka
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getSecondaryRoutesForGroup } from '@/data/navigation';
 
-const Orders = lazy(() => import("./Orders"));
 const ProductionScheduleTimeline = lazy(() => import("@/components/financial/ProductionScheduleTimeline").then(m => ({ default: m.ProductionScheduleTimeline })));
 const Setores = lazy(() => import("./Setores"));
 const CapacityPlanning = lazy(() => import("./CapacityPlanning"));
