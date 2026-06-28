@@ -14,7 +14,7 @@
  *
  * Header tem 3 botões: Hoje · Semana · Mês (escopo de filtro de OPs)
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, Fragment } from 'react';
 import { CircleNotch as Loader2, ClipboardText as ClipboardList } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Panel } from '@/components/ui/panel';
@@ -101,7 +101,7 @@ function formatDeadline(order: Order): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-export default function ProductionTimeline() {
+export default function ProductionTimeline({ embedded = false }: { embedded?: boolean } = {}) {
   const [scope, setScope] = useState<Scope>('semana');
   const { data: orders = [], isLoading } = useOrders();
 
@@ -142,13 +142,16 @@ export default function ProductionTimeline() {
 
   const totalPairs = filtered.reduce((s, o) => s + o.quantity, 0);
 
+  const Wrapper = embedded ? Fragment : AppLayout;
   return (
-    <AppLayout>
+    <Wrapper>
       <div className="space-y-5 pb-12">
-        <EditorialPageHeader
-          sectionLabel="PCP · TIMELINE OP"
-          title="Onde está cada ordem"
-        />
+        {!embedded && (
+          <EditorialPageHeader
+            sectionLabel="PCP · TIMELINE OP"
+            title="Onde está cada ordem"
+          />
+        )}
 
         <Panel
           eyebrow="Visão de chão"
@@ -298,6 +301,6 @@ export default function ProductionTimeline() {
             )}
         </Panel>
       </div>
-    </AppLayout>
+    </Wrapper>
   );
 }
