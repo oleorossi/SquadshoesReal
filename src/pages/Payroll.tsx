@@ -8,16 +8,17 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, Files } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
-import { printFolhaComparativo } from '@/lib/printTimesheet';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
+import { printPayrollBundle } from '@/lib/printPayrollBundle';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -105,6 +106,10 @@ export default function Payroll() {
   // Visão do Relatório consolidado: tabela (Folha) · calendário de tempo · holerites.
   const [view, setView] = useState<'folha' | 'calendario' | 'holerite'>('folha');
   const [calEmp, setCalEmp] = useState<string>('');
+  // Botão único "Gerar documentos": tipos selecionados × escopo (todos / um funcionário).
+  const [docDialogOpen, setDocDialogOpen] = useState(false);
+  const [docSel, setDocSel] = useState({ folha: true, calendario: false, holerite: false });
+  const [docScope, setDocScope] = useState<string>('all'); // 'all' ou employee_id
 
   // Intervalo APLICADO (debounced 450ms): enquanto o usuário digita a data, as queries,
   // o título e os avisos só recarregam DEPOIS que ele para de digitar — senão a página
@@ -191,14 +196,6 @@ export default function Payroll() {
     maxCovered: coverage?.maxCovered || null,
   }), [employees, schedules, defaultSchedule, holidaysSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
 
-  const handlePrintFolha = () => {
-    if (comparativo.rows.length === 0) { toast.error('Nada pra imprimir — calcule a folha / importe o ponto primeiro.'); return; }
-    printFolhaComparativo(
-      comparativo.rows.map(r => ({ ext: r.ext, name: r.name, salary: r.result.base_salary, mes: r.result.net_value, q1: r.q1.net_value, q2: r.q2.net_value, sit: r.sit })),
-      periodTitle,
-      { lastDay: comparativo.monthDays, totals: { salarios: comparativo.totals.salarios, mes: comparativo.totals.mes, q1: comparativo.totals.q1, q2: comparativo.totals.q2 } },
-    );
-  };
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
     exportFolhaExcel(
@@ -206,6 +203,27 @@ export default function Payroll() {
       periodTitle,
       `Folha_${compPeriod}.xlsx`,
     );
+  };
+
+  // Botão único: monta os funcionários do escopo (run financeiro + dias do calendário) e
+  // gera UM documento com os tipos marcados — sem abrir N popups. Reusa runs + comparativo.
+  const handleGenerateDocs = () => {
+    if (!docSel.folha && !docSel.calendario && !docSel.holerite) { toast.error('Selecione ao menos um documento.'); return; }
+    const scoped = docScope === 'all' ? runs : runs.filter(r => r.employee_id === docScope);
+    if (scoped.length === 0) { toast.error('Nada pra gerar — calcule a folha do período primeiro.'); return; }
+    const emps = scoped.map(r => {
+      const emp = employeeMap.get(r.employee_id);
+      const crow = comparativo.rows.find(cr => cr.id === r.employee_id) as any;
+      return {
+        id: r.employee_id,
+        name: emp?.name || (r as any).employee_name || '—',
+        role: (emp as any)?.role, department: (emp as any)?.department,
+        run: r as any,
+        days: (crow?.printData?.days || []) as any[],
+      };
+    });
+    printPayrollBundle({ periodTitle, docs: docSel, employees: emps as any });
+    setDocDialogOpen(false);
   };
 
   // Saldo de banco de horas do período por funcionário — pré-carregado pra o
@@ -461,8 +479,8 @@ export default function Payroll() {
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha
           </Button>
-          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={handlePrintFolha} title="Imprimir folha comparativa (Mês × 1ª × 2ª quinzena)">
-            <Printer className="h-4 w-4" /> Imprimir folha
+          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={() => setDocDialogOpen(true)} title="Gerar documentos (Folha · Calendário de tempo · Holerite) — todos os funcionários ou um">
+            <Files className="h-4 w-4" /> Gerar documentos
           </Button>
           <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={handleExportExcel} title="Exportar a folha em Excel (resumo + detalhe dia a dia)">
             <DownloadSimple className="h-4 w-4" /> Exportar Excel
@@ -571,12 +589,8 @@ export default function Payroll() {
                   <TableCell><Badge variant={sb.variant}>{sb.label}</Badge></TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setDetailRun(r.id)} title="Demonstrativo de pagamento">
-                        <Receipt className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => printEspelho(r.employee_id)} title="Espelho de ponto (Portaria 671) — documento legal assinável">
-                        <IdentificationCard className="h-4 w-4 text-muted-foreground" />
-                      </Button>
+                      {/* Documentos (holerite/espelho/folha) saíram daqui pro botão único
+                          "Gerar documentos" no topo (2026-06-28). Sobram só ações de status. */}
                       {r.status === 'rascunho' && (
                         <Button
                           size="sm" variant="ghost"
@@ -794,6 +808,37 @@ export default function Payroll() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Botão único — gera Folha/Calendário/Holerite (× todos ou um funcionário) num só documento */}
+      <Dialog open={docDialogOpen} onOpenChange={setDocDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Gerar documentos</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Documentos</p>
+              <div className="space-y-2.5">
+                {([['folha', 'Folha'], ['calendario', 'Calendário de tempo'], ['holerite', 'Holerite']] as const).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-2.5 cursor-pointer text-sm">
+                    <Checkbox checked={docSel[k]} onCheckedChange={(v) => setDocSel(s => ({ ...s, [k]: !!v }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Funcionário</p>
+              <select value={docScope} onChange={e => setDocScope(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
+                <option value="all">Todos os funcionários ({runs.length})</option>
+                {runs.map(r => <option key={r.id} value={r.employee_id}>{employeeMap.get(r.employee_id)?.name || '—'}</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button size="sm" variant="outline" onClick={() => setDocDialogOpen(false)}>Cancelar</Button>
+              <Button size="sm" onClick={handleGenerateDocs} className="gap-1.5"><Files className="h-4 w-4" /> Gerar</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
