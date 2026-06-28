@@ -34,6 +34,7 @@ export const menuGroups = [
     label: "Comercial",
     icon: ShoppingCart,
     items: [
+      { name: "Visão Geral",      icon: BarChart3,        path: "/comercial" },
       { name: "Pedidos de Venda", icon: FileText,         path: "/sales" },
       { name: "Pronta-Entrega",   icon: Box,              path: "/pronta-entrega" },
       { name: "Clientes",         icon: Users,            path: "/clients" },
@@ -104,8 +105,13 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: Package,        path: "/expedicao" },
-      { name: "Picking",          icon: ClipboardCheck, path: "/picking" },
-      { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
+      // "Transporte" (/transporte) exposto (2026-06-28): hub de baús/embalagens/
+      // tarifas/simulador/rotas — era órfão (só alcançável por cards da Expedição).
+      { name: "Transporte",       icon: Truck,          path: "/transporte" },
+      // Picking/Conferência renomeados pra deixar a ORDEM do fluxo clara (são 3
+      // etapas distintas, não duplicatas): Lista → (Bipagem EAN, em atalhos) → Saída.
+      { name: "Separação · Lista", icon: ClipboardCheck, path: "/picking" },
+      { name: "Conferência · Saída", icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
       { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
@@ -187,7 +193,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "Tempos de Setup",      icon: Clock,            path: "/producao/setup-times",   group: "Produção" },
   // Logística
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
-  { name: "Sessões de Picking",   icon: ClipboardCheck,   path: "/picking-sessions",       group: "Logística" },
+  { name: "Separação · Bipagem (EAN)", icon: ClipboardCheck, path: "/picking-sessions",   group: "Logística" },
   { name: "Rastreamento",         icon: Activity,         path: "/delivery-tracking",      group: "Logística" },
   // "Etiquetas" (/label-system) tem grupo próprio "Etiquetas" no topo do menu.
   // Financeiro (visíveis na barra: Financeiro/Contas/Conciliação/CNAB/Pricing)

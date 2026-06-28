@@ -1619,6 +1619,22 @@ a:focus-visible {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
+
+  /* Barra do corte do rolo (tiras artesanais) — degrada pra P&B garantido:
+     vermelho/hachura-de-token viram hachura PRETA sobre branco, com outline
+     preto, pra sair fiel em impressora monocromática. O preenchido (a cortar)
+     fica hachurado; a sobra fica branca. Ver ArtisanalStrapRollCutBlock.tsx. */
+  .strap-roll-gauge .srg-track { border-color: #000 !important; background: #fff !important; }
+  .strap-roll-gauge .srg-fill,
+  .strap-roll-gauge .srg-roll {
+    background-color: #fff !important;
+    background-image: repeating-linear-gradient(45deg, #000 0 1.2px, transparent 1.2px 5px) !important;
+    border: 1px solid #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .strap-roll-gauge .srg-left { background-image: none !important; }
+  .strap-roll-gauge .srg-seam { background: #000 !important; }
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
