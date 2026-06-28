@@ -1,7 +1,7 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSearchParams, Link } from "react-router-dom";
-import { lazy, Suspense, Fragment } from "react";
+import { lazy, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
 import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
@@ -22,7 +22,7 @@ const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis
 const LotSplitPage = lazy(() => import("./LotSplitPage"));
 const SectorDailyView = lazy(() => import("./SectorDailyView"));
 const BottlenecksPage = lazy(() => import("./Bottlenecks"));
-
+const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-12">
@@ -32,30 +32,35 @@ const TabLoader = () => (
 
 // Single hub for all production sectors — Setores aggregates Corte, Costura,
 // Solagem, Aviamento, Montagem and Acabamento internally.
- const tabs: { value: string; label: string; icon: any; description: string }[] = [
-   { value: "ondas", label: "Ondas", icon: Waves, description: "Agrupa as ordens em ondas de produção pra disparar a fábrica em lotes." },
-   { value: "planejamento", label: "Planejamento", icon: ClipboardList, description: "Distribui a carga de trabalho prevista entre os setores." },
-   { value: "cronograma", label: "Cronograma Reverso", icon: Workflow, description: "Calcula as datas de início de cada setor a partir do prazo de entrega (de trás pra frente)." },
+const tabs: { value: string; label: string; icon: any; description: string }[] = [
+  { value: "ondas", label: "Ondas", icon: Waves, description: "Agrupa as ordens em ondas de produção pra disparar a fábrica em lotes." },
+  { value: "planejamento", label: "Planejamento", icon: ClipboardList, description: "Distribui a carga de trabalho prevista entre os setores." },
+  { value: "cronograma", label: "Cronograma Reverso", icon: Workflow, description: "Calcula as datas de início de cada setor a partir do prazo de entrega (de trás pra frente)." },
   { value: "lead-time", label: "Lead Time", icon: Clock, description: "Tempo total de atravessamento da fábrica por produto e por setor." },
-   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, description: "Indicadores gerais do PCP num relance." },
-   { value: "setores", label: "Setores", icon: Factory, description: "Acompanhamento setor a setor (Corte, Costura, Solagem, Montagem...)." },
+  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, description: "Indicadores gerais do PCP num relance." },
+  { value: "setores", label: "Setores", icon: Factory, description: "Acompanhamento setor a setor (Corte, Costura, Solagem, Montagem...)." },
   { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle, description: "Onde está apertando hoje: planejado vs. realizado do dia." },
   { value: "gargalo-semanal", label: "Gargalo Semanal", icon: AlertTriangle, description: "Capacidade vs. demanda por setor ao longo da semana." },
   { value: "capacidade", label: "Capacidade", icon: BarChart3, description: "Capacidade instalada x ocupação de cada setor." },
-  { value: "picking", label: "Picking Semanal", icon: Boxes, description: "Separação semanal dos materiais para as ordens da semana." },
-  { value: "auditoria", label: "Auditoria", icon: History, description: "Histórico de mudanças no fluxo de produção." },
+  { value: "picking", label: "Separação Semanal", icon: Boxes, description: "Separação semanal dos materiais para as ordens da semana." },
+  { value: "auditoria", label: "Auditoria de Fluxo", icon: History, description: "Histórico de mudanças no fluxo de produção." },
   { value: "rccp", label: "RCCP", icon: Gauge, description: "Rough-Cut Capacity Planning: checagem grosseira de capacidade vs. plano de produção." },
   { value: "pos-op", label: "Análise Pós-OP", icon: FileBarChart, description: "Análise de desempenho depois que as OPs fecham." },
   { value: "lot-split", label: "Split de Lotes", icon: Scissors, description: "Divide um lote grande em sublotes pra paralelizar os setores." },
 ];
- const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
-
-// Menu lateral do PCP — agrupa as abas em seções (em vez de 1 lista corrida de 13).
 const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
-const TAB_GROUPS: { label: string; items: string[] }[] = [
-  { label: "Planejamento",   items: ["ondas", "planejamento", "cronograma", "lead-time", "capacidade", "rccp"] },
-  { label: "Chão de Fábrica", items: ["setores", "gargalo-diario", "gargalo-semanal", "picking", "lot-split"] },
-  { label: "Análise",        items: ["dashboard", "auditoria", "pos-op"] },
+
+// Auditoria 2026-06-28: de 14 abas (sidebar vertical) + 9 rotas (stripe
+// "Visualizações" flutuante) = 23 destinos em 2 trilhos empilhados, pra 1 TRILHO
+// de 3 SEGMENTOS (padrão MES: Planejar / Produzir / Analisar). Os "Quadros" de
+// produção (rotas externas) entram contextualmente no segmento Produzir, não mais
+// flutuando acima de tudo. "pos-op" sai do menu (KPIs zerados — sem apontamento de
+// tempo; rota segue acessível por URL). RCCP fica em Planejar até ser fundido em
+// Capacidade (passo futuro — CapacityPlanning está em edição por outra sessão).
+const SEGMENTS: { key: string; label: string; items: string[] }[] = [
+  { key: "planejar", label: "Planejar", items: ["ondas", "planejamento", "cronograma", "capacidade", "rccp", "lead-time"] },
+  { key: "produzir", label: "Produzir", items: ["setores", "gargalo-diario", "gargalo-semanal", "picking", "lot-split"] },
+  { key: "analisar", label: "Analisar", items: ["dashboard", "auditoria"] },
 ];
 
 // Backward-compat: legacy URLs like ?tab=corte should land on the consolidated Setores tab
@@ -63,12 +68,15 @@ const LEGACY_SECTOR_TABS = new Set(['corte', 'costura', 'silk', 'colagem', 'mont
 
 export default function PCPHub() {
   const [searchParams, setSearchParams] = useSearchParams();
-   const rawTab = searchParams.get("tab") || "ondas";
+  const rawTab = searchParams.get("tab") || "ondas";
   const activeTab = LEGACY_SECTOR_TABS.has(rawTab) ? "setores" : rawTab;
+  const activeSegment = SEGMENTS.find((s) => s.items.includes(activeTab)) ?? SEGMENTS[0];
 
   const handleTabChange = (value: string) => {
     setSearchParams({ tab: value }, { replace: true });
   };
+
+  const prodViews = getSecondaryRoutesForGroup('Produção');
 
   return (
     <div className="space-y-5 page-enter editorial-stagger">
@@ -77,88 +85,101 @@ export default function PCPHub() {
         title="Planejamento"
         description="Planejamento, controle e produção da fábrica"
       />
-      {/* Atalhos pra visualizações de produção que não estão no sidebar (Fluxo/Live/Timeline/etc).
-          Stripe discreto pra discoverability — só aparece se houver rotas no grupo. */}
-      {getSecondaryRoutesForGroup('Produção').length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 -mt-2 mb-1 text-xs text-muted-foreground">
-          <span className="font-medium uppercase tracking-wider text-xs text-muted-foreground/70">Visualizações</span>
-          {getSecondaryRoutesForGroup('Produção').map((r) => (
-            <Link
-              key={r.path}
-              to={r.path}
-              className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 hover:bg-muted/50 hover:text-foreground transition-colors"
-            >
-              <r.icon className="h-3 w-3" />
-              <span>{r.name}</span>
-            </Link>
-          ))}
-        </div>
-      )}
-      <Tabs value={activeTab} onValueChange={handleTabChange} orientation="vertical">
-        <div className="flex flex-col md:flex-row md:gap-6">
-          {/* Menu lateral (desktop) / faixa rolável (mobile) */}
-          <div className="md:w-56 md:shrink-0 -mx-4 px-4 overflow-x-auto pb-2 md:mx-0 md:px-0 md:overflow-visible md:pb-0">
-            <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg md:flex md:flex-col md:w-full md:items-stretch md:gap-0.5 md:bg-transparent md:p-0 md:sticky md:top-4">
-              {TAB_GROUPS.map((group) => (
-                <Fragment key={group.label}>
-                  <div className="hidden md:block section-label px-2 pt-3 pb-1 first:pt-1">
-                    {group.label}
-                  </div>
-                  {group.items.map((value) => {
-                    const tab = TAB_BY_VALUE[value];
-                    if (!tab) return null;
-                    return (
-                      <Tooltip key={value} delayDuration={350}>
-                        <TooltipTrigger asChild>
-                          <TabsTrigger
-                            value={value}
-                            className={cn(
-                              "text-xs whitespace-nowrap gap-1.5 px-3 py-1.5 rounded-md",
-                              "data-[state=active]:bg-background data-[state=active]:shadow-sm",
-                              "md:w-full md:justify-start md:py-2 md:gap-2.5",
-                            )}
-                          >
-                            {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
-                            {tab.label}
-                            {value === "gargalo-diario" && (
-                              <span className="md:ml-auto text-[9px] font-bold uppercase tracking-wide leading-none rounded px-1 py-0.5 bg-primary/15 text-primary">
-                                novo
-                              </span>
-                            )}
-                          </TabsTrigger>
-                        </TooltipTrigger>
-                        {(tab as any).description && (
-                          <TooltipContent side="right" sideOffset={8} className="max-w-[230px] text-xs">
-                            {(tab as any).description}
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    );
-                  })}
-                </Fragment>
-              ))}
-            </TabsList>
-          </div>
 
-          {/* Conteúdo da aba ativa */}
-          <div className="flex-1 min-w-0 mt-4 md:mt-0">
-            <Suspense fallback={<TabLoader />}>
-              <TabsContent value="dashboard" className="mt-0"><PCPDashboard /></TabsContent>
-              <TabsContent value="lead-time" className="mt-0"><LeadTime /></TabsContent>
-              <TabsContent value="ondas" className="mt-0"><ProductionWavesPage embedded /></TabsContent>
-              <TabsContent value="planejamento" className="mt-0"><ProductionPlanning /></TabsContent>
-              <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
-              <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
-              <TabsContent value="gargalo-diario" className="mt-0"><SectorDailyView /></TabsContent>
-              <TabsContent value="gargalo-semanal" className="mt-0"><BottlenecksPage /></TabsContent>
-              <TabsContent value="capacidade" className="mt-0"><CapacityPlanning /></TabsContent>
-              <TabsContent value="picking" className="mt-0"><PickingListPage /></TabsContent>
-              <TabsContent value="auditoria" className="mt-0"><OrderFlowAudit /></TabsContent>
-              <TabsContent value="rccp" className="mt-0"><RCCPPlanning /></TabsContent>
-              <TabsContent value="pos-op" className="mt-0"><PostOPAnalysis /></TabsContent>
-              <TabsContent value="lot-split" className="mt-0"><Suspense fallback={<TabLoader />}><LotSplitPage /></Suspense></TabsContent>
-            </Suspense>
-          </div>
+      {/* Trilho único: 3 segmentos (Planejar / Produzir / Analisar) */}
+      <div className="inline-flex h-9 items-center gap-1 rounded-lg bg-muted/50 p-1">
+        {SEGMENTS.map((seg) => (
+          <button
+            key={seg.key}
+            type="button"
+            onClick={() => handleTabChange(seg.items[0])}
+            className={cn(
+              "h-7 rounded-md px-4 text-sm font-medium transition-colors",
+              activeSegment.key === seg.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {seg.label}
+          </button>
+        ))}
+      </div>
+
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        {/* Sub-navegação do segmento ativo */}
+        <div className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
+          {activeSegment.items.map((value) => {
+            const tab = TAB_BY_VALUE[value];
+            if (!tab) return null;
+            const isActive = activeTab === value;
+            return (
+              <Tooltip key={value} delayDuration={350}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange(value)}
+                    className={cn(
+                      "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    )}
+                  >
+                    {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
+                    {tab.label}
+                    {value === "gargalo-diario" && (
+                      <span className="ml-0.5 rounded bg-primary/15 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-primary">
+                        novo
+                      </span>
+                    )}
+                  </button>
+                </TooltipTrigger>
+                {tab.description && (
+                  <TooltipContent side="bottom" sideOffset={8} className="max-w-[230px] text-xs">
+                    {tab.description}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            );
+          })}
+
+          {/* Quadros de produção (Fluxo / Live / Timeline / etc.) — contextuais no
+              segmento Produzir, em vez de uma stripe flutuante acima de tudo. */}
+          {activeSegment.key === "produzir" && prodViews.length > 0 && (
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Quadros</span>
+              {prodViews.map((r) => (
+                <Link
+                  key={r.path}
+                  to={r.path}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border/60 px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                >
+                  <r.icon className="h-3 w-3" />
+                  <span>{r.name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Conteúdo da aba ativa */}
+        <div className="mt-4 min-w-0">
+          <Suspense fallback={<TabLoader />}>
+            <TabsContent value="dashboard" className="mt-0"><PCPDashboard /></TabsContent>
+            <TabsContent value="lead-time" className="mt-0"><LeadTime /></TabsContent>
+            <TabsContent value="ondas" className="mt-0"><ProductionWavesPage embedded /></TabsContent>
+            <TabsContent value="planejamento" className="mt-0"><ProductionPlanning /></TabsContent>
+            <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
+            <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
+            <TabsContent value="gargalo-diario" className="mt-0"><SectorDailyView /></TabsContent>
+            <TabsContent value="gargalo-semanal" className="mt-0"><BottlenecksPage /></TabsContent>
+            <TabsContent value="capacidade" className="mt-0"><CapacityPlanning /></TabsContent>
+            <TabsContent value="picking" className="mt-0"><PickingListPage /></TabsContent>
+            <TabsContent value="auditoria" className="mt-0"><OrderFlowAudit embedded /></TabsContent>
+            <TabsContent value="rccp" className="mt-0"><RCCPPlanning /></TabsContent>
+            <TabsContent value="pos-op" className="mt-0"><PostOPAnalysis /></TabsContent>
+            <TabsContent value="lot-split" className="mt-0"><LotSplitPage /></TabsContent>
+          </Suspense>
         </div>
       </Tabs>
     </div>

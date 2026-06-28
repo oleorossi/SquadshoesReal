@@ -39,6 +39,21 @@ interface OrderAudit {
   overallStatus: StepStatus;
 }
 
+// Rank canônico do status do PV (PT-BR; tolera legado em inglês). Usado pra decidir
+// se cada etapa do fluxo "já deveria ter acontecido". -1 = cancelado.
+//   0 Rascunho · 1 Aprovado/Reservado · 2 Em Produção · 3 Faturado · 4 Entregue
+// Antes o código comparava com strings inglesas ('production'/'invoiced'/...) que NUNCA
+// batem com o status PT-BR do banco → toda etapa dava "pending" falso em massa.
+function statusRank(status: string | null | undefined): number {
+  const s = (status || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  if (s.includes('cancel')) return -1;
+  if (s.includes('entreg') || s.includes('deliver')) return 4;
+  if (s.includes('fatur') || s.includes('invoic')) return 3;
+  if (s.includes('produc')) return 2;
+  if (s.includes('aprovad') || s.includes('approved') || s.includes('reservad')) return 1;
+  return 0;
+}
+
 function useOrderFlowAudit() {
   return useQuery({
     queryKey: ['order-flow-audit'],
@@ -82,6 +97,7 @@ function useOrderFlowAudit() {
         const soStages = stages.filter(s => soOpIds.includes(s.order_id));
 
         const steps: FlowStep[] = [];
+        const soRank = statusRank(so.status);
 
         // 1. Pedido de Venda criado
         steps.push({
@@ -94,7 +110,7 @@ function useOrderFlowAudit() {
 
         // 2. OPs geradas
         const opsStatus: StepStatus = soOps.length > 0 ? 'ok'
-          : ['approved', 'production', 'invoiced', 'delivered'].includes(so.status) ? 'error' : 'pending';
+          : soRank >= 1 ? 'error' : 'pending';
         steps.push({
           id: 'ops_created',
           label: 'Ordens de Produção',
@@ -129,7 +145,7 @@ function useOrderFlowAudit() {
         const giReversed = soGI.filter(g => g.status === 'reversed');
         const giStatus: StepStatus = soOps.length === 0 ? 'pending'
           : giConfirmed.length > 0 ? 'ok'
-          : ['production', 'invoiced', 'delivered'].includes(so.status) ? 'warning' : 'pending';
+          : soRank >= 2 ? 'warning' : 'pending';
         steps.push({
           id: 'goods_issue',
           label: 'Goods Issue (MP → WIP)',
@@ -183,7 +199,7 @@ function useOrderFlowAudit() {
         const totalScrap = soFGR.reduce((s, f) => s + (f.quantity_scrap || 0), 0);
         const fgrStatus: StepStatus = soOps.length === 0 ? 'pending'
           : approvedFGR.length > 0 ? 'ok'
-          : ['invoiced', 'delivered'].includes(so.status) ? 'error' : 'pending';
+          : soRank >= 3 ? 'error' : 'pending';
         steps.push({
           id: 'fg_receipt',
           label: 'Recebimento PA',
@@ -195,14 +211,13 @@ function useOrderFlowAudit() {
         });
 
         // 8. Faturamento / NF
-        const nfStatus: StepStatus = ['invoiced', 'delivered'].includes(so.status) ? 'ok'
-          : so.status === 'production' ? 'pending' : 'pending';
+        const nfStatus: StepStatus = soRank >= 3 ? 'ok' : 'pending';
         steps.push({
           id: 'invoicing',
           label: 'Faturamento / NF',
           icon: <FileText className="h-4 w-4" />,
           status: nfStatus,
-          detail: ['invoiced', 'delivered'].includes(so.status)
+          detail: soRank >= 3
             ? `Faturado — R$ ${(so.total || 0).toFixed(2)}`
             : 'Aguardando faturamento',
         });
@@ -211,7 +226,7 @@ function useOrderFlowAudit() {
         const arTotal = soAR.reduce((s, a) => s + (a.amount || 0), 0);
         const arReceived = soAR.reduce((s, a) => s + (a.amount_received || 0), 0);
         const arStatus: StepStatus = soAR.length === 0
-          ? (['approved', 'production', 'invoiced', 'delivered'].includes(so.status) ? 'warning' : 'pending')
+          ? (soRank >= 1 ? 'warning' : 'pending')
           : arReceived >= arTotal ? 'ok' : 'warning';
         steps.push({
           id: 'accounts_receivable',
@@ -226,7 +241,7 @@ function useOrderFlowAudit() {
         // 10. COGS
         const totalCogs = soCOGS.reduce((s, c) => s + (c.total_cogs || 0), 0);
         const cogsStatus: StepStatus = soCOGS.length > 0 ? 'ok'
-          : ['invoiced', 'delivered'].includes(so.status) ? 'warning' : 'pending';
+          : soRank >= 3 ? 'warning' : 'pending';
         steps.push({
           id: 'cogs',
           label: 'COGS / CPV',
@@ -423,7 +438,7 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
   );
 }
 
-export default function OrderFlowAudit() {
+export default function OrderFlowAudit({ embedded = false }: { embedded?: boolean }) {
   const { data, isLoading, refetch } = useOrderFlowAudit();
   const audits = data?.orderAudits || [];
   const recentStages = data?.recentStages || [];
@@ -454,8 +469,7 @@ export default function OrderFlowAudit() {
     };
   }, [audits]);
 
-  return (
-    <AppLayout>
+  const content = (
       <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="SISTEMA · AUDITORIA OP"
@@ -536,6 +550,8 @@ export default function OrderFlowAudit() {
           </TabsContent>
         </Tabs>
       </div>
-    </AppLayout>
   );
+  // Tem rota própria (/auditoria-fluxo) E embed no PCPHub (?tab=auditoria). No embed,
+  // o AppLayout global já existe — renderizar outro aninharia sidebar/header.
+  return embedded ? content : <AppLayout>{content}</AppLayout>;
 }
