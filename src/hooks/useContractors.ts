@@ -268,6 +268,30 @@ export function useCreateServiceOrder() {
   });
 }
 
+/** Tarifa vigente (R$/par) de uma contratada para um setor — pré-preenche o preço
+ *  da OS manual. Lê a linha de `contractor_service_rates` sem `valid_to` (a atual).
+ *  queryKey começa em 'contractor_rate' → ContractorRatesDialog invalida ao cadastrar. */
+export function useContractorSectorRate(contractorId: string | null | undefined, sector: string | null | undefined) {
+  return useQuery({
+    queryKey: ['contractor_rate', contractorId ?? null, sector ?? null],
+    enabled: !!contractorId && !!sector,
+    staleTime: 60_000,
+    queryFn: async (): Promise<number | null> => {
+      const { data, error } = await (supabase as any)
+        .from('contractor_service_rates')
+        .select('price_per_pair')
+        .eq('contractor_id', contractorId)
+        .eq('sector', sector)
+        .is('valid_to', null)
+        .order('valid_from', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data ? Number(data.price_per_pair) : null;
+    },
+  });
+}
+
 export function useUpdateServiceOrder() {
   const qc = useQueryClient();
   return useMutation({

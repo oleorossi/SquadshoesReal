@@ -34,9 +34,10 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import {
   useContractors, useServiceOrders, useServiceOrderOverview, useCreateContractor, useUpdateContractor, useDeleteContractor,
-  useCreateServiceOrder, useUpdateServiceOrder, useDeleteServiceOrder,
+  useCreateServiceOrder, useUpdateServiceOrder, useDeleteServiceOrder, useContractorSectorRate,
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
+import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES,
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
@@ -72,6 +73,9 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
   material_name: '', material_meters: 0, material_color: '',
   materials_sent: [{ ...emptyMaterial }],
   sale_order_id: null,
+  target_sector: null,     // setor terceirizado (obrigatório no form manual)
+  is_avulsa: true,         // toda OS criada pelo form manual é avulsa
+  order_id: null,          // vínculo opcional com a OP
   artisanal_recipe_id: null,
   artisanal_output_name: '',
   artisanal_output_color: '',
@@ -995,8 +999,24 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }
   }, [deleteOrder]);
 
+  // ── Bloco C: form manual disciplinado ──────────────────────────────────────
+  // Tarifa vigente da contratada+setor → pré-preenche o preço (só quando vazio).
+  const { data: sectorRate } = useContractorSectorRate(editingOrder.contractor_id, editingOrder.target_sector);
+  useEffect(() => {
+    if (!isArtisanal && sectorRate != null && sectorRate > 0 && !(Number(editingOrder.unit_price) > 0)) {
+      setEditingOrder(p => ({ ...p, unit_price: sectorRate }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectorRate]);
+  const selectedOrderContractor = contractors.find(c => c.id === editingOrder.contractor_id);
+  const isFabricaContractor = (selectedOrderContractor?.payment_days ?? 0) >= 999;
+  // Salvar exige contratado + setor + preço (exceto artesanal, que deriva da receita).
+  const manualOsValid = !!editingOrder.contractor_id
+    && (isArtisanal || (!!editingOrder.target_sector && Number(editingOrder.unit_price) > 0));
+
   const handleSaveOrder = () => {
     if (!editingOrder.contractor_id) return;
+    if (!isArtisanal && (!editingOrder.target_sector || !(Number(editingOrder.unit_price) > 0))) return;
     const recipe = isArtisanal ? recipes.find(r => r.id === artRecipeId) : null;
 
     // Build artisanal payload override
@@ -1960,6 +1980,27 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Input value={editingOrder.description || ''} onChange={e => setEditingOrder(p => ({ ...p, description: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-2 space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Setor / serviço {!isArtisanal && '*'}</Label>
+                  <Select value={editingOrder.target_sector || ''} onValueChange={v => setEditingOrder(p => ({ ...p, target_sector: v }))}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor terceirizado" /></SelectTrigger>
+                    <SelectContent>
+                      {SERVICE_ORDER_SECTORS.map(s => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {editingOrder.contractor_id && editingOrder.target_sector && (
+                    sectorRate != null && sectorRate > 0 ? (
+                      <p className="text-[11px] text-muted-foreground">Tarifa vigente: <span className="font-mono font-semibold text-foreground">{formatCurrency(sectorRate)}/par</span> — pré-preenchida (ajustável).</p>
+                    ) : (
+                      <p className="text-[11px] text-amber-600">Sem tarifa p/ esta contratada neste setor — informe o preço (ou cadastre em Prestadores → Tabela de Preços).</p>
+                    )
+                  )}
+                  {isFabricaContractor && (
+                    <p className="flex items-center gap-1 text-[11px] text-amber-600"><AlertTriangle className="h-3 w-3" /> FÁBRICA é trabalho interno — não gera conta a pagar.</p>
+                  )}
+                </div>
+                <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                     Pedido de Venda (PV) — rastreio
                     {/* Quando há múltiplos PVs vinculados (OS auto agregada),
@@ -2410,7 +2451,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               };
               printReceipt(fakeOrder, contractor);
             }}><Printer className="h-4 w-4" /> Gerar OS</Button>
-            <Button onClick={handleSaveOrder} disabled={createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
+            <Button onClick={handleSaveOrder} disabled={!manualOsValid || createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

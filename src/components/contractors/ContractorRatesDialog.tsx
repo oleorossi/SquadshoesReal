@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { CurrencyDollar } from '@phosphor-icons/react';
 import { formatDateBR } from '@/lib/dateOnly';
+import { SERVICE_ORDER_SECTORS as SECTOR_OPTIONS, serviceOrderSectorLabel as sectorLabel } from '@/lib/serviceOrderSectors';
 
 /**
  * Tabela de Preços da terceirizada (contractor_service_rates — Fase 1 facção).
@@ -21,19 +22,8 @@ import { formatDateBR } from '@/lib/dateOnly';
  * passado — histórico preservado pra auditoria/fechamento.
  */
 
-const SECTOR_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'corte_cabedal', label: 'Corte Cabedal' },
-  { value: 'costura', label: 'Costura' },
-  { value: 'corte_palmilha', label: 'Corte Palmilha' },
-  { value: 'corte_forracao', label: 'Corte Forração' },
-  { value: 'silk', label: 'Silk' },
-  { value: 'montagem', label: 'Montagem' },
-  { value: 'solagem', label: 'Solagem' },
-  { value: 'acabamento', label: 'Acabamento' },
-];
-
-const sectorLabel = (s: string) =>
-  SECTOR_OPTIONS.find((o) => o.value === s)?.label ?? s;
+// Setores compartilhados com o form manual de OS (src/lib/serviceOrderSectors) —
+// os value têm de bater p/ o lookup de tarifa por (contratada+setor) funcionar.
 
 // contractor_service_rates fora do types.ts (regenerar depois) — tipo local.
 interface RateRow {
