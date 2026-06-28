@@ -149,15 +149,25 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
       const comprar = rows.filter(r => r.mode === 'comprar');
 
       // 1) Artesanal → service_orders
+      // Auditoria 2026-06-28: este branch era a fábrica das 235 OS-lixo do MARCO
+      // (R$0, SEM vínculo de PV, material_name vazio). Correção: a OS agora nasce
+      // RASTREÁVEL — vinculada ao PV (sale_order_id) e com material_name preenchido
+      // (label+cor da tira), então nunca mais vira "órfã/vazia". O preço continua 0
+      // enquanto não houver tarifa cadastrada (contractor_service_rates) — nesse
+      // caso avisamos, em vez de gravar R$0 em silêncio.
+      let zeroRateCount = 0;
       for (const r of artesanal) {
         if (!r.contractor_id) {
           throw new Error(`Selecione contractor pra ${r.shortage.strap_label} ${r.shortage.strap_color}.`);
         }
+        const materialName = `TIRA ${r.shortage.strap_label} ${r.shortage.strap_color}`.trim();
         const desc = `TIRA ARTESANAL · ${r.shortage.strap_label} ${r.shortage.strap_color}` +
           ` · Ref ${r.shortage.cabedal_color}` +
           ` · ${r.shortage.shortage.toFixed(0)} ${r.shortage.product_id ? 'un faltam' : 'un (novo produto)'}`;
         const { error } = await supabase.from('service_orders').insert({
           contractor_id: r.contractor_id,
+          sale_order_id: saleOrderId,
+          material_name: materialName,
           description: desc,
           service_date: new Date().toISOString().slice(0, 10),
           quantity: Math.ceil(r.shortage.shortage),
@@ -166,6 +176,12 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
           status: 'Pendente',
         } as any);
         if (error) throw new Error(`OS ${r.shortage.strap_label}: ${error.message}`);
+        zeroRateCount++;
+      }
+      if (zeroRateCount > 0) {
+        toast.warning(
+          `${zeroRateCount} OS de tira criada(s) a R$0 — cadastre a tarifa do prestador em Terceirizados → Tarifas por Referência pra valorar.`,
+        );
       }
 
       // 2) Comprar Pronto → purchase_orders + items

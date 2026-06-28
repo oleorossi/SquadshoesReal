@@ -1244,19 +1244,27 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         )}
 
         {/* Stats */}
+        {/* KPIs — auditoria 2026-06-28: ocultar os que ficam sempre em 0
+            (Aguardando prazo / Concluídas) enquanto não houver dado, pra não
+            virar ruído permanente. Reaparecem sozinhos quando o ciclo de vida
+            da OS começar a finalizar. */}
         <StatGrid>
           <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} hint={`${contractors.length} total`} />
           <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} hint={`${stats.inProgressOrders} em andamento`} tone="warning" />
           {/* OS criadas por gargalo aguardando contratada confirmar prazo —
               cada uma dessas mantém uma OP bloqueada de avançar pra Montagem. */}
-          <StatCard
-            icon={AlertCircle}
-            label="OS aguardando prazo"
-            value={stats.pendingQuotes}
-            hint={stats.blockedOps > 0 ? `${stats.blockedOps} ${stats.blockedOps === 1 ? 'OP bloqueada' : 'OPs bloqueadas'}` : 'fluxo de gargalos'}
-            tone={stats.pendingQuotes > 0 ? 'destructive' : 'default'}
-          />
-          <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} tone="success" />
+          {(stats.pendingQuotes > 0 || stats.blockedOps > 0) && (
+            <StatCard
+              icon={AlertCircle}
+              label="OS aguardando prazo"
+              value={stats.pendingQuotes}
+              hint={stats.blockedOps > 0 ? `${stats.blockedOps} ${stats.blockedOps === 1 ? 'OP bloqueada' : 'OPs bloqueadas'}` : 'fluxo de gargalos'}
+              tone="destructive"
+            />
+          )}
+          {stats.completedOrders > 0 && (
+            <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} tone="success" />
+          )}
           <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} />
         </StatGrid>
 
@@ -1280,9 +1288,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <Input placeholder="Buscar OS, prestador..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
               </div>
               {/* Chips de status — default "Ativas" (Pendente + Em Processamento).
-                  Labels: 'Em Andamento'→Em Processamento, 'Concluído'→Entregue. */}
+                  Labels: 'Em Andamento'→Em Processamento, 'Concluído'→Entregue.
+                  Auditoria 2026-06-28: chips de estado específico só aparecem se
+                  tiverem dado (ou estiverem selecionados); "Ativas"/"Todas" são
+                  fixos. Some o ruído de "Em Processamento 0 / Entregue 0". */}
               <div className="flex items-center gap-1 flex-wrap">
-                {STATUS_CHIPS.map(chip => (
+                {STATUS_CHIPS.filter(chip =>
+                  chip.value === 'active' || chip.value === 'all' ||
+                  chip.value === statusFilter || (statusChipCounts[chip.value] ?? 0) > 0
+                ).map(chip => (
                   <Button
                     key={chip.value}
                     size="sm"
