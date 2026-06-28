@@ -115,9 +115,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     queryKey: ['sheet_specs_for_colors', item.reference_id],
     enabled: !!item.reference_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      // (supabase as any): lining_materials ainda não está no types.ts gerado
+      // (coluna nova da Fase 1, aplicada via MCP) — mesmo padrão de reference_terceirizacoes.
+      const { data, error } = await (supabase as any)
         .from('technical_sheets')
-        .select('upper_material, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material')
+        .select('upper_material, lining_material, lining_materials, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -580,6 +582,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (Array.isArray(sheetSpecs?.lining_accessories)) {
       (sheetSpecs.lining_accessories as any[]).forEach((acc: any) => {
         const mat = typeof acc === 'string' ? acc : acc?.material;
+        if (mat) sheetGroupNames.push(mat);
+      });
+    }
+
+    // Forro multi-grupo (Fase 2B): cores de TODOS os grupos adicionais de forração
+    // selecionados na ficha (lining_materials) entram na lista disponível do item.
+    if (Array.isArray((sheetSpecs as any)?.lining_materials)) {
+      ((sheetSpecs as any).lining_materials as any[]).forEach((lm: any) => {
+        const mat = typeof lm === 'string' ? lm : lm?.material;
         if (mat) sheetGroupNames.push(mat);
       });
     }
