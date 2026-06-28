@@ -1330,7 +1330,7 @@ export default function Timesheet() {
         <HubTabsList tabs={[
           { value: 'records',     label: 'Ponto',        icon: FileSpreadsheet },
           { value: 'manual',      label: 'Lançamento & Pendências', icon: ClipboardEdit },
-          { value: 'calendario',  label: 'Calendário',   icon: Calendar },
+          { value: 'calendario',  label: 'Cobertura',    icon: Calendar },
           { value: 'config',      label: 'Configuração', icon: Clock },
         ]} />
 
