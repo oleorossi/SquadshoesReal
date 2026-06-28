@@ -109,7 +109,7 @@ const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
 // Capacidade (passo futuro — CapacityPlanning está em edição por outra sessão).
 const SEGMENTS: { key: string; label: string; items: string[] }[] = [
   { key: "planejar", label: "Planejar", items: ["ondas", "planejamento", "cronograma", "capacidade", "rccp", "lead-time"] },
-  { key: "produzir", label: "Produzir", items: ["setores", "gargalo-diario", "gargalo-semanal", "picking", "lot-split"] },
+  { key: "produzir", label: "Produzir", items: ["quadro", "setores", "gargalo-diario", "gargalo-semanal", "picking", "lot-split"] },
   { key: "analisar", label: "Analisar", items: ["dashboard", "auditoria"] },
 ];
 
@@ -126,7 +126,10 @@ export default function PCPHub() {
     setSearchParams({ tab: value }, { replace: true });
   };
 
-  const prodViews = getSecondaryRoutesForGroup('Produção');
+  // Stripe vira só os "quadros" NÃO fundidos (Centro de Controle, Qualidade,
+  // Cronoanálise, Paradas&OEE, Setup). Fluxo/Live/Timeline/Agregada agora são
+  // modos do "Quadro de Produção".
+  const prodViews = getSecondaryRoutesForGroup('Produção').filter((r) => !FUSED_VIEW_PATHS.has(r.path));
 
   return (
     <div className="space-y-5 page-enter editorial-stagger">
@@ -220,6 +223,7 @@ export default function PCPHub() {
             <TabsContent value="ondas" className="mt-0"><ProductionWavesPage embedded /></TabsContent>
             <TabsContent value="planejamento" className="mt-0"><ProductionPlanning /></TabsContent>
             <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
+            <TabsContent value="quadro" className="mt-0"><QuadroProducao /></TabsContent>
             <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
             <TabsContent value="gargalo-diario" className="mt-0"><SectorDailyView /></TabsContent>
             <TabsContent value="gargalo-semanal" className="mt-0"><BottlenecksPage /></TabsContent>
