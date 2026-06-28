@@ -352,7 +352,7 @@ export async function checkSectorCapacity(
 // internamente (e o que update_wave_timeline grava no banco):
 //   - Corte Palmilha ‖ Corte Forração ‖ Aviamento (Mesa) — paralelos prep
 //   - Costura é sequencial entre prep e Silk
-//   - Pós-prep: Costura → Silk → Colagem → Montagem → Solagem → Acabamento
+//   - Pós-prep: Silk → Colagem → Montagem → Solagem → Acabamento (Costura é prep paralela)
 // =============================================================================
 
 // normalização e hasSector vêm da fonte única (./sectors).
@@ -397,14 +397,17 @@ export function computeParallelWindows(
   const colaStart  = addBusinessDays(colaEnd,    -ltColagem);
   const silkEnd    = colaStart;
   const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
+  // Prep PARALELO: Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura — todos
+  // terminam em silkStart (início da cadeia sequencial) com SEU lead. Costura e
+  // Aviamento são paralelos (decisão do dono 2026-06-28; antes Costura era
+  // sequencial). Espelha compute_wave_timeline (migration costura-parallel-prep).
   const costuraEnd   = silkStart;
   const costuraStart = addBusinessDays(costuraEnd, -ltCostura);
-  // Os 3 prep rodam em PARALELO — cada um termina em costuraStart com SEU lead.
-  const palmEnd    = costuraStart;
+  const palmEnd    = silkStart;
   const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
-  const forrEnd    = costuraStart;
+  const forrEnd    = silkStart;
   const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
-  const mesaEnd    = costuraStart;
+  const mesaEnd    = silkStart;
   const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
 
   return {
@@ -424,11 +427,11 @@ export function computeParallelWindows(
 // computeForwardSchedule — agendamento PRA FRENTE ("começo hoje, entrego quando?")
 // =============================================================================
 // Dual EXATO da cascata reversa de computeParallelWindows, mas pra frente:
-//   - os 3 prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento/Mesa) começam JUNTOS
-//     na data de início; cada um termina em início + SEU lead.
-//   - Costura só pode começar quando o ÚLTIMO prep terminar (ponto de
+//   - os 4 prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento/Mesa ‖ Costura) começam
+//     JUNTOS na data de início; cada um termina em início + SEU lead.
+//   - A cadeia sequencial só começa quando o ÚLTIMO prep terminar (ponto de
 //     convergência = max dos fins de prep).
-//   - Pós-prep sequencial: Costura → Silk → Colagem → Montagem → Solagem →
+//   - Pós-prep sequencial: Silk → Colagem → Montagem → Solagem →
 //     Acabamento (→ Expedição). A entrega estimada = fim do último setor.
 // Reusa computeSectorLeadTimeDays + addBusinessDays (positivo) → MESMOS lead times
 // e MESMA topologia da cascata reversa (sem motor novo, sem divergência).
@@ -453,8 +456,8 @@ export interface ForwardSchedule {
   steps: ForwardSectorStep[];   // só os setores requeridos, na ordem do fluxo
 }
 
-const FORWARD_PREP: SectorKey[] = ['corte_palmilha', 'corte_forracao', 'mesa'];
-const FORWARD_SEQ: SectorKey[] = ['costura', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'];
+const FORWARD_PREP: SectorKey[] = ['corte_palmilha', 'corte_forracao', 'mesa', 'costura'];
+const FORWARD_SEQ: SectorKey[] = ['silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'];
 
 /** YYYY-MM-DD (data local) — reusa o helper local. */
 function fwdISO(d: Date): string { return localISODate(d); }
