@@ -115,6 +115,10 @@ export type SheetFormData = {
   upper_consumption: number;
   lining_consumption: number;
   lining_accessories: any[];
+  /** Grupos ADICIONAIS de forração (forro multi-grupo). Material 1 fica em
+   *  lining_material; extras aqui — espelha components_accessories do cabedal.
+   *  Cada item: { material, consumption, consumption_per_size, product_id?, label? }. */
+  lining_materials?: any[];
   insole_consumption: number;
   sole_consumption: number;
   direct_components: any[];
@@ -181,7 +185,7 @@ export const emptySheetForm: SheetFormData = {
   fit_type: 'normal',
   version_number: 'v1',
   images: [], color_images: [], consumption_loss_pct: 8, safety_margin_pct: 5, components_accessories: [],
-  upper_consumption: 0, lining_consumption: 0, lining_accessories: [], insole_consumption: 0, sole_consumption: 0,
+  upper_consumption: 0, lining_consumption: 0, lining_accessories: [], lining_materials: [], insole_consumption: 0, sole_consumption: 0,
   direct_components: [],
   default_silk_url: '',
   lining_consumption_per_size: {},

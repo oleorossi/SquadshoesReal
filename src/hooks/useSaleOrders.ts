@@ -816,6 +816,9 @@ export type SaleOrderItemFormData = {
   quantity: number;
   fichas?: number;
   strap_colors?: { id: string; label: string; color: string }[];
+  /** Forro multi-grupo: cores de forração SELECIONADAS neste item (cada cor → seu
+   *  grupo). Define o que reserva/debita. Espelha strap_colors. Persistido na Fase 2. */
+  lining_colors?: { group: string; color: string }[];
   observation?: string | null;
   material_variant_id?: string | null;
   /** Terceirização integrada: IDs das reference_terceirizacoes marcadas pra
