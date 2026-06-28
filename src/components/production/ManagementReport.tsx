@@ -369,23 +369,34 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
               {sectorsOrdered.map(s => (
                 <th
                   key={s}
-                  className="py-2 font-mono text-black uppercase"
-                  // Sem .section-label aqui: o override de print (7pt
-                  // !important + tracking 0.16em) estourava os ~32px da
-                  // coluna e o overflow:hidden CORTAVA o nome do setor.
-                  // Fonte própria menor + quebra em 2 linhas permitida.
+                  className="font-mono text-black uppercase"
+                  // Cabeçalho ROTACIONADO 90° (lê de baixo pra cima): numa
+                  // coluna estreita (~30px) o nome horizontal quebrava letra a
+                  // letra ("C-P-A-L-M-I-L-H-A"). Vertical, o nome inteiro lê
+                  // limpo. writing-mode + rotate(180deg) = ascendente, padrão
+                  // de matriz industrial.
                   style={{
                     width: sectorColWidth,
                     textAlign: 'center',
-                    fontSize: '7px',
-                    fontWeight: 700,
-                    letterSpacing: '0.02em',
-                    lineHeight: 1.25,
-                    whiteSpace: 'normal',
-                    overflowWrap: 'anywhere',
+                    verticalAlign: 'bottom',
+                    height: 78,
+                    padding: '4px 0 6px',
                   }}
                 >
-                  {s.replace('Corte ', 'C. ').replace('Aviamento','Aviam.').replace('Acabamento','Acab.').replace('Expedição','Exped.')}
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      writingMode: 'vertical-rl',
+                      transform: 'rotate(180deg)',
+                      whiteSpace: 'nowrap',
+                      fontSize: '8px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {s.replace('Corte ', 'C. ')}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -418,7 +429,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                     // F-A1 (2026-06-17): pendente em #777 (não #bababa, que
                     // desbotava no papel). Concluído preto, andamento vermelho,
                     // pulado #777.
-                    const color = skipped ? '#777' : status === 'concluido' ? '#000' : status === 'em_andamento' ? '#E11D2E' : '#777';
+                    const color = skipped ? '#777' : status === 'concluido' ? '#000' : status === 'em_andamento' ? '#C00000' : '#777';
                     return (
                       <td
                         key={s}
@@ -440,7 +451,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
             <span className="font-mono text-black" style={{ fontSize: '11pt' }}>●</span> concluído
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="font-mono" style={{ fontSize: '11pt', color: '#E11D2E' }}>◐</span> em andamento
+            <span className="font-mono" style={{ fontSize: '11pt', color: '#C00000' }}>◐</span> em andamento
           </span>
           <span className="flex items-center gap-1.5">
             {/* símbolo pendente em #777 (cinza-escuro legível no papel, não o

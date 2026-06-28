@@ -152,7 +152,7 @@ export default function LeadTime() {
        finishing_capacity_per_day: row.finishing_capacity_per_day || 180,
        silk_capacity_per_day: row.silk_capacity_per_day || 0,
       gluing_capacity_per_day: row.gluing_capacity_per_day || 0,
-      expedition_capacity_per_day: (row as any).soling_capacity_per_day || (row as any).expedition_capacity_per_day || 0,
+      expedition_capacity_per_day: (row as any).expedition_capacity_per_day || 0,
       notes: row.notes ?? '',
     });
     setOpen(true);

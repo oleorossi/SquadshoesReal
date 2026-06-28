@@ -37,7 +37,10 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
   return null;
 };
 
-const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Mesa', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+// Setores na ordem canônica do fluxo (fonte única em src/lib/sectors.ts) + Expedição.
+// Antes a lista era hard-coded com "Mesa" (renomeado p/ Aviamento) e SEM "Costura",
+// então o WIP de Aviamento aparecia zerado e o de Costura sumia do gráfico.
+const SECTORS = [...DISPLAY_SECTORS.map(s => s.label), SECTOR_LABELS.expedicao];
 
 export default function PCPDashboard() {
   const { data: orders = [] } = useOrders();
@@ -58,7 +61,7 @@ export default function PCPDashboard() {
   const wipBySector = useMemo(() => {
     const orderIds = new Set(productionOrders.map(o => o.id));
     return SECTORS.map(sector => {
-      const stages = allStages.filter(s => orderIds.has(s.order_id) && s.stage_name === sector);
+      const stages = allStages.filter(s => orderIds.has(s.order_id) && normalizeSector(s.stage_name) === normalizeSector(sector));
       const pending = stages.filter(s => s.status === 'pendente').reduce((sum, s) => sum + s.quantity_total, 0);
       const inProgress = stages.filter(s => s.status === 'em_andamento').reduce((sum, s) => sum + (s.quantity_total - s.quantity_processed), 0);
       const done = stages.filter(s => s.status === 'concluido').reduce((sum, s) => sum + s.quantity_processed, 0);
@@ -84,7 +87,10 @@ export default function PCPDashboard() {
 
   // Lead time médio
   const avgLeadTime = useMemo(() => {
-    const completed = orders.filter(o => (o.status || '').toLowerCase().includes('concluída') || o.status === 'completed');
+    const completed = orders.filter(o => {
+      const s = (o.status || '').toLowerCase();
+      return s.includes('conclu') || s.includes('finaliz') || s === 'completed';
+    });
     if (completed.length === 0) return 0;
     const times = completed.map(o => {
       const start = o.planned_start || o.created_at;

@@ -229,7 +229,7 @@ export default function ProductionTimeline() {
                         const groupColor = `hsl(var(${g.colorVar}))`;
                         const fillColor = state === 'done' ? 'hsl(var(--muted-foreground))'
                           : state === 'active' ? (late ? 'hsl(var(--primary))' : groupColor)
-                          : state === 'partial' ? groupColor + ' / 0.5'
+                          : state === 'partial' ? `hsl(var(${g.colorVar}) / 0.5)`
                           : 'transparent';
                         return (
                           <div key={g.key} className="relative h-8 flex items-center">
