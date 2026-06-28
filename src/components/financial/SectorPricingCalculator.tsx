@@ -39,8 +39,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Plus, Trash, Calculator, Clock, FloppyDisk, MagnifyingGlass, FolderOpen,
-  ArrowClockwise, Gauge, Warning,
+  ArrowClockwise, Gauge, Warning, Info, CaretDown,
 } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
@@ -172,6 +174,10 @@ export default function SectorPricingCalculator() {
   const [efficiency, setEfficiency] = useState(String(DEFAULT_EFFICIENCY_PCT));
   const efficiencyPct = parseNum(efficiency);
 
+  // UI: a explicação detalhada do cálculo fica recolhida por padrão (alivia a
+  // parede de texto na 1ª dobra; o essencial continua sempre visível).
+  const [showHow, setShowHow] = useState(false);
+
   // ── Custo-hora efetivo (override da linha OU default do setor) ──
   const defaultHourly = (sectorKey: string) => rateMap[sectorKey]?.hourly_rate ?? 0;
   const effectiveHourly = (row: Row): number =>
@@ -184,6 +190,38 @@ export default function SectorPricingCalculator() {
   });
 
   const rowCostBrl = (row: Row) => sectorCostPerPair(parseNum(row.pairsPerHour), effectiveHourly(row));
+
+  // Valores derivados de UMA linha — usado nas DUAS renderizações (tabela densa
+  // no desktop + card rotulado no mobile), pra não duplicar a conta.
+  const computeRow = (row: Row) => {
+    const hourly = effectiveHourly(row);
+    const pph = parseNum(row.pairsPerHour);
+    return {
+      hourly,
+      pph,
+      // custo/par já ajustado pela eficiência (a soma das linhas dá o total ajustado).
+      cost: adjustForEfficiency(rowCostBrl(row), efficiencyPct),
+      ppd: pairsPerDay(pph, JORNADA_HORAS),       // derivado: pares/dia
+      dailyBrl: dailyRate(hourly, JORNADA_HORAS), // derivado: diária equivalente
+      isOverride: row.costPerHour.trim() !== '',
+      capacityMissing: !!row.sectorKey && pph <= 0,
+      rateMissing: !!row.sectorKey && pph > 0 && hourly === 0,
+    };
+  };
+
+  // Select de setor — idêntico nas duas renderizações.
+  const renderSectorSelect = (row: Row) => (
+    <Select value={row.sectorKey} onValueChange={(v) => updateRow(row.id, { sectorKey: v })}>
+      <SelectTrigger className="h-9 text-sm" aria-label="Setor">
+        <SelectValue placeholder="Selecionar setor…" />
+      </SelectTrigger>
+      <SelectContent>
+        {RATE_SECTORS.map(({ key, label }) => (
+          <SelectItem key={key} value={key}>{label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   const total = useMemo(() => totalModPerPair(rows.filter((r) => r.sectorKey).map(toModel)), [rows, rateMap]);
   // Total AJUSTADO pela eficiência = o custo de MO real por par (bruto ÷ η).
@@ -311,6 +349,12 @@ export default function SectorPricingCalculator() {
   );
 
   const noSalaries = useMemo(() => RATE_SECTORS.every(({ key }) => defaultHourly(key) === 0), [rateMap]);
+  // Quantos setores já têm salário (lê o draft → reflete edição ao vivo). Usado no
+  // contador "X/13 cadastrados" do cabeçalho, pra escanear o que falta de relance.
+  const configuredRates = useMemo(
+    () => RATE_SECTORS.filter(({ key }) => hourlyFromSalary(parseNum(draft[key])) > 0).length,
+    [draft],
+  );
 
   return (
     <div className="space-y-4">
@@ -320,6 +364,16 @@ export default function SectorPricingCalculator() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Clock className="h-4 w-4 text-muted-foreground" />
             Salário por setor
+            <span
+              className={cn(
+                'ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
+                configuredRates === RATE_SECTORS.length
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {configuredRates}/{RATE_SECTORS.length} cadastrados
+            </span>
           </CardTitle>
           <CardDescription>
             Cadastre o <strong>salário mensal</strong> de cada setor. O custo da hora é derivado
@@ -340,26 +394,45 @@ export default function SectorPricingCalculator() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {RATE_SECTORS.map(({ key, label }) => {
               const hourly = hourlyFromSalary(parseNum(draft[key]));
+              const configured = hourly > 0;
               return (
-                <div key={key} className="flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                <div
+                  key={key}
+                  className={cn(
+                    'flex flex-col gap-2 rounded-xl border px-3 py-2.5 transition-colors',
+                    configured ? 'border-border/60 bg-muted/20' : 'border-dashed border-border bg-transparent',
+                  )}
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor={`rate-${key}`} className="text-xs font-medium truncate">{label}</Label>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-xs text-muted-foreground">R$</span>
-                      <Input
-                        id={`rate-${key}`}
-                        inputMode="decimal"
-                        className="h-8 w-24 text-right text-xs tabular-nums"
-                        value={draft[key] ?? ''}
-                        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-                        onBlur={() => saveRate(key)}
-                        placeholder="0,00"
-                      />
-                      <span className="text-xs text-muted-foreground">/mês</span>
-                    </div>
+                    <Label htmlFor={`rate-${key}`} className="text-xs font-semibold truncate">{label}</Label>
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full shrink-0',
+                        configured ? 'bg-primary' : 'bg-muted-foreground/30',
+                      )}
+                      aria-hidden
+                    />
                   </div>
-                  <p className="text-[11px] text-muted-foreground text-right tabular-nums">
-                    custo-hora = {fmtBRL(hourly)}/h
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">R$</span>
+                    <Input
+                      id={`rate-${key}`}
+                      inputMode="decimal"
+                      className="h-8 flex-1 text-right text-sm tabular-nums"
+                      value={draft[key] ?? ''}
+                      onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                      onBlur={() => saveRate(key)}
+                      placeholder="0,00"
+                    />
+                    <span className="text-xs text-muted-foreground">/mês</span>
+                  </div>
+                  <p className="flex items-center justify-between text-[11px] tabular-nums">
+                    <span className="text-muted-foreground">custo-hora</span>
+                    {configured ? (
+                      <span className="font-semibold text-foreground">{fmtBRL(hourly)}/h</span>
+                    ) : (
+                      <span className="text-muted-foreground/60">não cadastrado</span>
+                    )}
                   </p>
                 </div>
               );
@@ -378,14 +451,36 @@ export default function SectorPricingCalculator() {
                 Custo de mão de obra por setor
               </CardTitle>
               <CardDescription>
-                Custo-hora ÷ pares por hora = custo de MO por par. Custo-hora default vem do salário
-                do setor (÷ {SALARY_HOUR_DIVISOR}); edite por linha pra sobrescrever. Os pares/hora podem ser
-                derivados da capacidade (pares/dia ÷ {JORNADA_HORAS}h). O custo bruto é dividido pela{' '}
-                <strong>eficiência produtiva</strong> — horas pagas / capacidade teórica não viram 100% de
-                pares (absenteísmo, setup, paradas, refugo). <strong>Pares/dia</strong> e{' '}
-                <strong>Diária (R$)</strong> são projeções pra jornada de {JORNADA_HORAS}h — pra avaliar
-                rendimento de prestador diarista.
+                Custo-hora ÷ pares por hora = custo de MO por par, somado pelos setores da referência.
               </CardDescription>
+              <button
+                type="button"
+                onClick={() => setShowHow((v) => !v)}
+                aria-expanded={showHow}
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                <Info className="h-3.5 w-3.5" />
+                Como funciona o cálculo
+                <CaretDown className={cn('h-3 w-3 transition-transform', showHow && 'rotate-180')} />
+              </button>
+              {showHow && (
+                <div className="mt-2 space-y-1.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+                  <p>
+                    O <strong>custo-hora default</strong> vem do salário do setor (÷ {SALARY_HOUR_DIVISOR});
+                    edite por linha pra sobrescrever. Os <strong>pares/hora</strong> podem ser derivados da
+                    capacidade (pares/dia ÷ {JORNADA_HORAS}h).
+                  </p>
+                  <p>
+                    O custo bruto é dividido pela <strong>eficiência produtiva</strong> — horas pagas /
+                    capacidade teórica não viram 100% de pares (absenteísmo, setup, paradas, refugo).
+                  </p>
+                  <p>
+                    <strong>Pares/dia</strong> e <strong>Diária (R$)</strong> são projeções pra jornada de{' '}
+                    {JORNADA_HORAS}h — pra avaliar rendimento de prestador diarista. Não entram na fórmula
+                    do custo/par.
+                  </p>
+                </div>
+              )}
             </div>
             {loadedId && (
               <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
@@ -423,54 +518,37 @@ export default function SectorPricingCalculator() {
                 <span className="text-xs text-muted-foreground">%</span>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={restoreDefaults} className="h-8 gap-1.5">
+            <Button variant="outline" size="sm" onClick={restoreDefaults} className="h-9 gap-1.5">
               <ArrowClockwise className="h-3.5 w-3.5" /> Restaurar setores padrão
             </Button>
           </div>
 
-          {/* Cabeçalho da tabela */}
-          <div className="hidden md:grid grid-cols-[1fr_92px_100px_84px_120px_96px_92px_36px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <span>Setor</span>
-            <span className="text-right">Pares por hora</span>
-            <span className="text-right">Capacidade/dia</span>
-            <span className="text-right">Pares/dia</span>
-            <span className="text-right">Custo-hora (R$)</span>
-            <span className="text-right">Diária (R$)</span>
-            <span className="text-right">Custo/par</span>
-            <span />
-          </div>
-
-          {/* Linhas */}
-          <div className="space-y-2">
+          {/* ── Tabela densa (desktop ≥ md) ── */}
+          <div className="hidden md:block space-y-2">
+            <div className="grid grid-cols-[1fr_92px_100px_84px_120px_96px_96px_36px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span>Setor</span>
+              <span className="text-right">Pares por hora</span>
+              <span className="text-right">Capacidade/dia</span>
+              <span className="text-right">Pares/dia</span>
+              <span className="text-right">Custo-hora (R$)</span>
+              <span className="text-right">Diária (R$)</span>
+              <span className="text-right">Custo/par</span>
+              <span />
+            </div>
             {rows.map((row) => {
-              const hourly = effectiveHourly(row);
-              // Custo/par exibido já ajustado pela eficiência (soma dá o total ajustado).
-              const cost = adjustForEfficiency(rowCostBrl(row), efficiencyPct);
-              const pph = parseNum(row.pairsPerHour);
-              const ppd = pairsPerDay(pph, JORNADA_HORAS);     // derivado: pares/dia
-              const dailyBrl = dailyRate(hourly, JORNADA_HORAS); // derivado: diária equivalente
-              const isOverride = row.costPerHour.trim() !== '';
-              const capacityMissing = !!row.sectorKey && pph <= 0;
-              const rateMissing = !!row.sectorKey && pph > 0 && hourly === 0;
+              const { pph, cost, ppd, dailyBrl, isOverride, capacityMissing, rateMissing } = computeRow(row);
+              const sLabel = sectorLabel(row.sectorKey) || 'setor';
               return (
                 <div
                   key={row.id}
-                  className="grid grid-cols-2 md:grid-cols-[1fr_92px_100px_84px_120px_96px_92px_36px] gap-2 items-center"
+                  className="grid grid-cols-[1fr_92px_100px_84px_120px_96px_96px_36px] gap-2 items-center"
                 >
-                  <Select value={row.sectorKey} onValueChange={(v) => updateRow(row.id, { sectorKey: v })}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Selecionar setor…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RATE_SECTORS.map(({ key, label }) => (
-                        <SelectItem key={key} value={key}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {renderSectorSelect(row)}
 
                   {/* Pares por hora */}
                   <div className="flex items-center justify-end gap-1">
                     <Input
+                      aria-label={`Pares por hora — ${sLabel}`}
                       inputMode="decimal"
                       value={row.pairsPerHour}
                       onChange={(e) => updateRow(row.id, { pairsPerHour: e.target.value, capacityPerDay: '' })}
@@ -482,8 +560,9 @@ export default function SectorPricingCalculator() {
 
                   {/* Capacidade/dia (helper → deriva pares/hora) */}
                   <div className="flex items-center justify-end gap-1">
-                    <Gauge className="h-3.5 w-3.5 text-muted-foreground shrink-0 hidden md:block" />
+                    <Gauge className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <Input
+                      aria-label={`Capacidade por dia — ${sLabel}`}
                       inputMode="decimal"
                       value={row.capacityPerDay}
                       onChange={(e) => onCapacityChange(row.id, e.target.value)}
@@ -503,6 +582,7 @@ export default function SectorPricingCalculator() {
                     <div className="flex items-center justify-end gap-1 w-full">
                       <span className="text-xs text-muted-foreground shrink-0">R$</span>
                       <Input
+                        aria-label={`Custo-hora — ${sLabel}`}
                         inputMode="decimal"
                         value={row.costPerHour}
                         onChange={(e) => updateRow(row.id, { costPerHour: e.target.value })}
@@ -532,11 +612,98 @@ export default function SectorPricingCalculator() {
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
                     onClick={() => removeRow(row.id)}
-                    aria-label="Remover linha"
+                    aria-label={`Remover ${sLabel}`}
                     disabled={rows.length <= 1}
                   >
                     <Trash className="h-4 w-4" />
                   </Button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Cards rotulados (mobile < md) — toda linha vira um card com rótulos
+              próprios, pra caber em 360px sem espremer 7 campos sem legenda. ── */}
+          <div className="space-y-3 md:hidden">
+            {rows.map((row) => {
+              const { pph, cost, ppd, dailyBrl, isOverride, capacityMissing, rateMissing } = computeRow(row);
+              return (
+                <div key={row.id} className="space-y-3 rounded-xl border border-border/60 bg-card p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">{renderSectorSelect(row)}</div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeRow(row.id)}
+                      aria-label="Remover linha"
+                      disabled={rows.length <= 1}
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-medium text-muted-foreground">Pares por hora</span>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          aria-label="Pares por hora"
+                          inputMode="decimal"
+                          value={row.pairsPerHour}
+                          onChange={(e) => updateRow(row.id, { pairsPerHour: e.target.value, capacityPerDay: '' })}
+                          placeholder="0"
+                          className="h-9 text-right text-sm tabular-nums"
+                        />
+                        <span className="text-xs text-muted-foreground">p/h</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-medium text-muted-foreground">Capacidade/dia</span>
+                      <Input
+                        aria-label="Capacidade por dia"
+                        inputMode="decimal"
+                        value={row.capacityPerDay}
+                        onChange={(e) => onCapacityChange(row.id, e.target.value)}
+                        placeholder="—"
+                        className="h-9 w-full text-right text-sm tabular-nums"
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        Custo-hora {isOverride ? '(override)' : `(salário ÷ ${SALARY_HOUR_DIVISOR})`}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">R$</span>
+                        <Input
+                          aria-label="Custo-hora"
+                          inputMode="decimal"
+                          value={row.costPerHour}
+                          onChange={(e) => updateRow(row.id, { costPerHour: e.target.value })}
+                          placeholder={row.sectorKey ? fmtNum(defaultHourly(row.sectorKey), 2) : '0,00'}
+                          className="h-9 flex-1 text-right text-sm tabular-nums"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Derivados + custo/par */}
+                  <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">
+                      Pares/dia <strong className="text-foreground tabular-nums">{pph > 0 ? fmtNum(ppd, 1) : '—'}</strong>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Diária <strong className="text-foreground tabular-nums">{fmtBRL(dailyBrl)}</strong>
+                    </span>
+                    <span className="font-semibold tabular-nums">Custo/par {fmtBRL(cost)}</span>
+                  </div>
+
+                  {capacityMissing && (
+                    <p className="text-[11px] text-amber-600">Informe os pares por hora (ou a capacidade/dia).</p>
+                  )}
+                  {rateMissing && (
+                    <p className="text-[11px] text-amber-600">Setor sem custo-hora — cadastre o salário ou informe por linha.</p>
+                  )}
                 </div>
               );
             })}
@@ -547,36 +714,34 @@ export default function SectorPricingCalculator() {
           </Button>
 
           {/* Total + ações + resumo */}
-          <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 space-y-2.5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-primary/70">
                   MOD por par{reference ? ` · ${reference}` : ''}
                 </p>
-                <p className="text-[11px] text-muted-foreground">
-                  {activeCount} {activeCount === 1 ? 'setor' : 'setores'} · bruto {fmtBRL(total)}
+                <p className="mt-1 display text-3xl leading-none tabular-nums text-primary">{fmtBRL(totalAdjusted)}</p>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  {activeCount} {activeCount === 1 ? 'setor ativo' : 'setores ativos'} · bruto {fmtBRL(total)}
                   {efficiencyPct > 0 && efficiencyPct < 100 ? ` ÷ ${fmtNum(efficiencyPct, 1)}% eficiência` : ''}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <p className="display text-2xl tabular-nums text-primary">{fmtBRL(totalAdjusted)}</p>
-                <div className="flex items-center gap-1.5">
-                  {loadedId && (
-                    <Button variant="ghost" size="sm" onClick={onNew} className="h-9">Novo</Button>
-                  )}
-                  <Button size="sm" onClick={onSave} disabled={save.isPending} className="h-9 gap-1.5">
-                    <FloppyDisk className="h-4 w-4" /> {loadedId ? 'Atualizar' : 'Salvar'}
-                  </Button>
-                </div>
+              <div className="flex items-center gap-1.5">
+                {loadedId && (
+                  <Button variant="ghost" size="sm" onClick={onNew} className="h-9">Novo</Button>
+                )}
+                <Button size="sm" onClick={onSave} disabled={save.isPending} className="h-9 gap-1.5">
+                  <FloppyDisk className="h-4 w-4" /> {loadedId ? 'Atualizar' : 'Salvar'}
+                </Button>
               </div>
             </div>
 
             {/* Diária total — projeção pra comparar com prestador diarista */}
             {hasCapacity && (
-              <div className="flex items-center justify-between gap-3 border-t border-primary/15 pt-2.5">
+              <div className="flex items-center justify-between gap-3 border-t border-primary/15 pt-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-primary/70">Diária total</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
                     soma das diárias dos setores ativos · jornada {JORNADA_HORAS}h/dia
                   </p>
                 </div>
@@ -618,13 +783,23 @@ export default function SectorPricingCalculator() {
           </div>
 
           {results.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma referência salva ainda.</p>
+            <EmptyState
+              size="sm"
+              icon={FolderOpen}
+              title="Nenhuma referência salva"
+              description="Calcule a MOD de uma referência acima e clique em Salvar pra reutilizar depois."
+            />
           ) : filtered.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma referência para “{search}”.</p>
+            <EmptyState
+              size="sm"
+              icon={MagnifyingGlass}
+              title="Nenhum resultado"
+              description={`Nenhuma referência encontrada para “${search}”.`}
+            />
           ) : (
             <div className="space-y-2">
               {filtered.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2">
+                <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{r.reference}</p>
                     <p className="text-[11px] text-muted-foreground truncate">
