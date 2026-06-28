@@ -523,7 +523,6 @@ export default function Payroll() {
               <TableHead className="text-right">Faltas</TableHead>
               <TableHead className="text-right">Atrasos</TableHead>
               <TableHead className="text-right">Hora extra</TableHead>
-              <TableHead className="text-right">Adiant.</TableHead>
               <TableHead className="text-right">Líquido</TableHead>
               <TableHead>Status</TableHead>
               <TableHead></TableHead>
@@ -532,7 +531,7 @@ export default function Payroll() {
           <TableBody>
             {runs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="p-0">
+                <TableCell colSpan={8} className="p-0">
                   <EmptyState
                     icon={Calculator}
                     title="Nenhuma folha calculada"
@@ -567,9 +566,6 @@ export default function Payroll() {
                     {(r.overtime_amount || 0) > 0
                       ? <span className="text-emerald-600 font-semibold">+{fmt(r.overtime_amount)}</span>
                       : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className={`text-right font-mono tabular-nums ${hasAdvance ? 'text-amber-700 font-semibold' : 'text-muted-foreground'}`}>
-                    {hasAdvance ? `− ${fmt(r.advances_total)}` : fmt(0)}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
                   <TableCell><Badge variant={sb.variant}>{sb.label}</Badge></TableCell>

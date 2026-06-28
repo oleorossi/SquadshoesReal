@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, CalendarBlank as CalendarDays, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, CalendarBlank as CalendarDays, Warning as AlertTriangle, Wallet } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,9 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { HubTabsList } from '@/components/layout/HubTabs';
+import AdvancesPanel from '@/components/hr/AdvancesPanel';
 
 // Folha por hora: o que importa do cadastro é nome, matrícula, salário-referência
 // (220h/mês) e contato/PIX. HE/escala/mensalista-diarista foram aposentados (as
@@ -50,6 +53,8 @@ export default function Employees() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
   const [deptFilter, setDeptFilter] = usePersistedState('emp-dept-filter', 'all');
+  // Sub-abas da página Funcionários: cadastro + Adiantamentos (movido da Folha em 2026-06-28).
+  const [subTab, setSubTab] = usePersistedState('rh-func-subtab', 'funcionarios');
 
   // Filtra null/undefined/'' E strings só com whitespace — Radix Select
   // crasha se algum SelectItem.value for string vazia ou só espaços.
@@ -134,6 +139,12 @@ export default function Employees() {
   return (
     <>
     <div className="space-y-4 page-enter">
+      <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
+        <HubTabsList tabs={[
+          { value: 'funcionarios', label: 'Funcionários', icon: Users2 },
+          { value: 'adiantamentos', label: 'Adiantamentos', icon: Wallet },
+        ]} />
+        <TabsContent value="funcionarios" className="space-y-4 mt-4">
       {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
         <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2" size="sm">
@@ -302,6 +313,11 @@ export default function Employees() {
               </div>
             )}
         </div>
+        </TabsContent>
+        <TabsContent value="adiantamentos" className="mt-4">
+          <AdvancesPanel />
+        </TabsContent>
+      </Tabs>
       </div>
 
       {/* Employee Form Dialog */}
