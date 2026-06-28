@@ -6257,6 +6257,18 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                       }
                     }
 
+                    // Consumo de ÁREA (dm²→metro) usa a largura da FICHA DE COMPONENTE.
+                    // Se a FT existe mas está SEM largura e o produto é linear (m/cm), o
+                    // consumo infla ~100× no PV/custeio (bug clássico de napa no BOM,
+                    // 2026-05-30). Alta confiança: só dispara quando a FT existe (cs) —
+                    // material linear nativo (elástico) não tem FT, então não alarma.
+                    if (!conversionIssue && cs && Number(cs.dimensions_width || 0) <= 0) {
+                      const u = (prod?.unit || '').toString().trim().toLowerCase();
+                      if (['m', 'cm', 'metro', 'metros', 'mt'].includes(u)) {
+                        conversionIssue = 'Ficha de componente sem largura — consumo de área pode inflar ~100×.';
+                      }
+                    }
+
                     rows.push(
                       <TableRow key={m.id}>
                         <TableCell className="text-xs font-medium">
