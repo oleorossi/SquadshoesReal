@@ -2701,7 +2701,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           label="Material 1 (Principal)"
                           value={form.upper_material}
                           onChange={v => {
+                            const prev = (form.upper_material || '').trim();
                             updateField('upper_material', v);
+                            // Trocou de grupo → o pin de SKU do grupo anterior não vale mais.
+                            if (prev !== (v || '').trim()) updateField('upper_material_product_id' as any, null);
                             autoFillConsumption(v, 'upper_material');
                             // MUTEX Cabedal × Tiras: selecionar cabedal significa que o modelo
                             // NÃO é de tiras. Auto-desliga has_straps + limpa strap_colors pra
@@ -2717,6 +2720,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         {form.upper_material && (
                           <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                             updateField('upper_material', '');
+                            updateField('upper_material_product_id' as any, null);
                             updateField('upper_consumption', 0);
                             updateField('upper_consumption_per_size' as any, {});
                           }}>
@@ -2726,6 +2730,48 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       </div>
 
                       {renderWidthWarn(form.upper_material)}
+
+                      {/* Item específico (pin de SKU) do Cabedal Material 1 — opcional.
+                          Fixa o produto exato pro débito (vence a cor do PV; perde só pra
+                          variante). Em branco = resolve pela cor do PV. Auditoria 2026-06-28. */}
+                      {form.upper_material && (() => {
+                        const grp = (groups || []).find((x: any) => (x.name || '').trim() === (form.upper_material || '').trim());
+                        const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id) : [];
+                        const activeItems = itemsOfGroup.filter((p: any) => p.active);
+                        const pinId = (form as any).upper_material_product_id || '__none__';
+                        const pinOrphanInactive = pinId !== '__none__' && !activeItems.some((p: any) => p.id === pinId) && itemsOfGroup.some((p: any) => p.id === pinId);
+                        return (
+                          <div className="mt-2">
+                            <Label className="text-xs text-muted-foreground">
+                              Item específico <span className="text-muted-foreground/60">(opcional — débito exato)</span>
+                            </Label>
+                            <Select
+                              value={pinId}
+                              onValueChange={(v) => updateField('upper_material_product_id' as any, v === '__none__' ? null : v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs mt-1"><SelectValue placeholder="Resolver pela cor (padrão)" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                {activeItems.map((p: any) => (
+                                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                                    {p.name}{p.color ? ` (${p.color})` : ''} [{p.unit || 'un'}]
+                                  </SelectItem>
+                                ))}
+                                {pinOrphanInactive && (
+                                  <SelectItem value={pinId} className="text-xs">
+                                    {(itemsOfGroup.find((p: any) => p.id === pinId)?.name) || 'Produto'} (inativo)
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                            {(form as any).upper_material_product_id ? (
+                              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">Débito fixo neste item (ignora a cor do PV).</p>
+                            ) : activeItems.length === 1 ? (
+                              <p className="text-xs text-muted-foreground mt-1">Grupo tem 1 produto — o débito já é determinístico.</p>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
 
                       {/* Tabela de consumo por numeração INLINE — quando o cabedal é
                           selecionado, o usuário precisa preencher quanto consome
@@ -3048,7 +3094,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <GroupMaterialSelect
                           label="Grupo de material de forração"
                           value={form.lining_material}
-                          onChange={v => { updateField('lining_material', v); autoFillConsumption(v, 'lining_material'); }}
+                          onChange={v => {
+                            const prev = (form.lining_material || '').trim();
+                            updateField('lining_material', v);
+                            if (prev !== (v || '').trim()) updateField('lining_material_product_id' as any, null);
+                            autoFillConsumption(v, 'lining_material');
+                          }}
                         />
                         {form.lining_material && (
                           <Button
@@ -3057,6 +3108,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             className="h-9 w-9 text-destructive hover:text-destructive"
                             onClick={() => {
                               updateField('lining_material', '');
+                              updateField('lining_material_product_id' as any, null);
                               updateField('lining_consumption', 0);
                               updateField('lining_consumption_per_size' as any, {});
                             }}
@@ -3067,6 +3119,46 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       </div>
 
                       {renderWidthWarn(form.lining_material)}
+
+                      {/* Item específico (pin de SKU) da Forração — opcional (mesma lógica do Cabedal). */}
+                      {form.lining_material && (() => {
+                        const grp = (groups || []).find((x: any) => (x.name || '').trim() === (form.lining_material || '').trim());
+                        const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id) : [];
+                        const activeItems = itemsOfGroup.filter((p: any) => p.active);
+                        const pinId = (form as any).lining_material_product_id || '__none__';
+                        const pinOrphanInactive = pinId !== '__none__' && !activeItems.some((p: any) => p.id === pinId) && itemsOfGroup.some((p: any) => p.id === pinId);
+                        return (
+                          <div className="mt-2">
+                            <Label className="text-xs text-muted-foreground">
+                              Item específico <span className="text-muted-foreground/60">(opcional — débito exato)</span>
+                            </Label>
+                            <Select
+                              value={pinId}
+                              onValueChange={(v) => updateField('lining_material_product_id' as any, v === '__none__' ? null : v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs mt-1"><SelectValue placeholder="Resolver pela cor (padrão)" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                {activeItems.map((p: any) => (
+                                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                                    {p.name}{p.color ? ` (${p.color})` : ''} [{p.unit || 'un'}]
+                                  </SelectItem>
+                                ))}
+                                {pinOrphanInactive && (
+                                  <SelectItem value={pinId} className="text-xs">
+                                    {(itemsOfGroup.find((p: any) => p.id === pinId)?.name) || 'Produto'} (inativo)
+                                  </SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                            {(form as any).lining_material_product_id ? (
+                              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">Débito fixo neste item (ignora a cor do PV).</p>
+                            ) : activeItems.length === 1 ? (
+                              <p className="text-xs text-muted-foreground mt-1">Grupo tem 1 produto — o débito já é determinístico.</p>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
 
                       {form.lining_material && (() => {
                         const liningUnit = getUnitForGroupName(form.lining_material);
@@ -4640,15 +4732,41 @@ function GroupMaterialSelect({ label, value, onChange }: { label: string; value:
       return data;
     },
   });
+  // Produtos (SKU/cor) por grupo — permite ACHAR o material por SKU ou cor (não só
+  // pelo nome do grupo) e mostrar quantos produtos/cores cada grupo tem.
+  // Auditoria 2026-06-28: o caso "T32121-PALHA" não aparecia porque a busca só
+  // casava nome/descrição do grupo.
+  const { data: groupProducts = [] } = useQuery({
+    queryKey: ['products_for_group_select'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('products').select('group_id, name, sku, color, active').eq('active', true);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const groupIndex = useMemo(() => {
+    const map: Record<string, { count: number; colors: Set<string>; blob: string }> = {};
+    for (const p of groupProducts as any[]) {
+      if (!p.group_id) continue;
+      const e = map[p.group_id] || (map[p.group_id] = { count: 0, colors: new Set<string>(), blob: '' });
+      e.count++;
+      if (p.color?.trim()) e.colors.add(p.color.trim());
+      e.blob += ' ' + normalizeForSearch([p.name, p.sku, p.color].filter(Boolean).join(' '));
+    }
+    return map;
+  }, [groupProducts]);
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
     if (!search.trim()) return groups;
-    const q = search.toLowerCase();
-    return groups.filter((g: any) => normalizeForSearch(g.name).includes(q) || normalizeForSearch(g.description).includes(q));
-  }, [groups, search]);
+    const q = normalizeForSearch(search);
+    return groups.filter((g: any) =>
+      normalizeForSearch(g.name).includes(q)
+      || normalizeForSearch(g.description).includes(q)
+      || (groupIndex[g.id]?.blob || '').includes(q));
+  }, [groups, search, groupIndex]);
 
   return (
     <div>
@@ -4662,19 +4780,28 @@ function GroupMaterialSelect({ label, value, onChange }: { label: string; value:
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Buscar grupo de material..." value={search} onValueChange={setSearch} />
+            <CommandInput placeholder="Buscar por grupo, SKU ou cor..." value={search} onValueChange={setSearch} />
             <CommandList>
               <CommandEmpty>Nenhum grupo encontrado</CommandEmpty>
               <CommandGroup heading={`Grupos disponíveis (${filtered.length})`}>
-                {filtered.map((g: any) => (
-                  <CommandItem key={g.id} value={g.id} onSelect={() => { onChange(g.name); setOpen(false); setSearch(''); }}>
-                    <Check className={cn("mr-2 h-4 w-4", value === g.name ? "opacity-100" : "opacity-0")} />
-                    <div className="flex flex-col">
-                      <span className="text-sm">{g.name}</span>
-                      {g.description && <span className="text-xs text-muted-foreground">{g.description}</span>}
-                    </div>
-                  </CommandItem>
-                ))}
+                {filtered.map((g: any) => {
+                  const idx = groupIndex[g.id];
+                  return (
+                    <CommandItem key={g.id} value={g.id} onSelect={() => { onChange(g.name); setOpen(false); setSearch(''); }}>
+                      <Check className={cn("mr-2 h-4 w-4", value === g.name ? "opacity-100" : "opacity-0")} />
+                      <div className="flex flex-col">
+                        <span className="text-sm">{g.name}</span>
+                        {idx ? (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {idx.count} produto{idx.count !== 1 ? 's' : ''}{idx.colors.size > 0 ? ` · ${idx.colors.size} cor${idx.colors.size !== 1 ? 'es' : ''}` : ''}
+                          </span>
+                        ) : g.description ? (
+                          <span className="text-xs text-muted-foreground">{g.description}</span>
+                        ) : null}
+                      </div>
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             </CommandList>
           </Command>

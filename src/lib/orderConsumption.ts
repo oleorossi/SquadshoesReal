@@ -125,9 +125,11 @@ export type ConsumptionContext = {
 export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   id,
   upper_material,
+  upper_material_product_id,
   upper_consumption,
   upper_consumption_per_size,
   lining_material,
+  lining_material_product_id,
   lining_consumption,
   lining_consumption_per_size,
   insole_material,
@@ -567,10 +569,16 @@ export function computeConsumptionForItems(
         ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
         : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
+      // Pin de SKU da ficha (Material 1): quando fixado + ativo, o débito SQL baixa
+      // ESSE produto (resolve_upper_material_for_variant → 'sheet_pin'). Aqui só
+      // refletimos o NOME no custeio/modal; a quantidade não muda. (2026-06-28)
+      const upperPin = isPrincipal && (sheet as any)?.upper_material_product_id
+        ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
+        : null;
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: upperMatch.group,
-        materialName: 'Cabedal',
+        materialName: upperPin?.name || 'Cabedal',
         productUnit: 'metro',
         color: orderColor,
         totalQuantity: upperTotal,
@@ -623,10 +631,13 @@ export function computeConsumptionForItems(
         ? (sheet?.lining_consumption_per_size && Object.keys(sheet.lining_consumption_per_size).length > 0 ? sheet.lining_consumption_per_size : null)
         : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
       const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption);
+      const liningPin = isPrincipalLining && (sheet as any)?.lining_material_product_id
+        ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
+        : null;
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração',
         groupName: liningMatch.group,
-        materialName: 'Forração',
+        materialName: liningPin?.name || 'Forração',
         productUnit: 'metro',
         color: mappedLiningColor,
         totalQuantity: liningTotal,
