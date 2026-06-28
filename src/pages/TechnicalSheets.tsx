@@ -3013,6 +3013,20 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <div className="flex items-center gap-2">
                           <Scissors className="h-3.5 w-3.5 text-purple-600" />
                           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Forração</span>
+                          {form.lining_material && (() => {
+                            const ls = (form as any).lining_consumption_per_size || {};
+                            const vals = Object.values(ls).map(Number).filter((v: number) => v > 0);
+                            const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.lining_consumption) || 0);
+                            return avg > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                                <CheckCircle className="h-3 w-3" weight="fill" /> Completo
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                                <AlertTriangle className="h-3 w-3" weight="fill" /> Falta consumo
+                              </span>
+                            );
+                          })()}
                         </div>
                         {form.sole_group_id && (
                           <Button
@@ -3051,6 +3065,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         )}
                       </div>
+
+                      {renderWidthWarn(form.lining_material)}
 
                       {form.lining_material && (() => {
                         const liningUnit = getUnitForGroupName(form.lining_material);
