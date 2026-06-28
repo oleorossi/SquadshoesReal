@@ -13,7 +13,7 @@
  * stock_movements de saída (in/out type).
  */
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useMemo } from 'react';
+import { useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleNotch as Loader2, Warning as AlertTriangle, Pulse as Activity } from '@phosphor-icons/react';
 import AppLayout from '@/components/layout/AppLayout';
@@ -124,7 +124,7 @@ function useLastHourPairsRate() {
   });
 }
 
-export default function ProductionLive() {
+export default function ProductionLive({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: orders = [], isLoading } = useOrders();
   const activeOrders = useMemo(
     () => (orders as Order[]).filter(o => {
@@ -156,18 +156,21 @@ export default function ProductionLive() {
     return { running, late, totalPairs };
   }, [activeOrders]);
 
+  const Wrapper = embedded ? Fragment : AppLayout;
   return (
-    <AppLayout>
+    <Wrapper>
       <div className="space-y-5 pb-12">
-        <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · AO VIVO"
-          title="Monitor de chão"
-          actions={
-            <div className="text-xs text-muted-foreground font-mono">
-              {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          }
-        />
+        {!embedded && (
+          <EditorialPageHeader
+            sectionLabel="PRODUÇÃO · AO VIVO"
+            title="Monitor de chão"
+            actions={
+              <div className="text-xs text-muted-foreground font-mono">
+                {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            }
+          />
+        )}
 
         {/* Hero: ritmo agregado */}
         <Card className="slash-top">
@@ -321,6 +324,6 @@ export default function ProductionLive() {
             )}
         </Panel>
       </div>
-    </AppLayout>
+    </Wrapper>
   );
 }

@@ -75,7 +75,7 @@ interface FlowRow {
   bySector: Map<number, OrderStage>;
 }
 
-export default function ProductionFlow() {
+export default function ProductionFlow({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: orders = [] } = useOrders();
   const [search, setSearch] = useState('');
   const [apontStage, setApontStage] = useState<{ stage: OrderStage; op: string } | null>(null);
@@ -208,11 +208,13 @@ export default function ProductionFlow() {
 
   return (
     <div className="space-y-4 page-enter">
-      <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · FLUXO"
-        title="Onde está cada ordem"
-        description="Cada OP aparece em TODOS os seus setores ao mesmo tempo (a preparação roda em paralelo). Clique numa célula pra apontar aquele setor; clique na OP pra ver o resumo. Vermelho = atraso."
-      />
+      {!embedded && (
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · FLUXO"
+          title="Onde está cada ordem"
+          description="Cada OP aparece em TODOS os seus setores ao mesmo tempo (a preparação roda em paralelo). Clique numa célula pra apontar aquele setor; clique na OP pra ver o resumo. Vermelho = atraso."
+        />
+      )}
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
