@@ -20,8 +20,8 @@ const LeadTime = lazy(() => import("./LeadTime"));
 const RCCPPlanning = lazy(() => import("@/components/production/RCCPPlanning"));
 const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis"));
 const LotSplitPage = lazy(() => import("./LotSplitPage"));
-const SectorDailyView = lazy(() => import("./SectorDailyView"));
-const BottlenecksPage = lazy(() => import("./Bottlenecks"));
+// Gargalo Diário + Semanal fundidos numa só tela com seletor de período (2026-06-28).
+const SectorBottleneckView = lazy(() => import("./SectorBottleneckView"));
 const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
 // Quadro de Produção (fusão 2026-06-28): os 4 visuais do MESMO dado (order_stages)
 // viram MODOS de uma só tela, em vez de 4 rotas separadas na stripe.
@@ -89,8 +89,7 @@ const tabs: { value: string; label: string; icon: any; description: string }[] =
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, description: "Indicadores gerais do PCP num relance." },
   { value: "quadro", label: "Quadro de Produção", icon: Kanban, description: "Onde está cada OP agora — alterne entre Matriz, Cartões, Timeline e Lote agregado (mesma fonte, 4 visões)." },
   { value: "setores", label: "Setores", icon: Factory, description: "Acompanhamento setor a setor (Corte, Costura, Solagem, Montagem...)." },
-  { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle, description: "Onde está apertando hoje: planejado vs. realizado do dia." },
-  { value: "gargalo-semanal", label: "Gargalo Semanal", icon: AlertTriangle, description: "Capacidade vs. demanda por setor ao longo da semana." },
+  { value: "gargalos", label: "Gargalos", icon: AlertTriangle, description: "Gargalo por setor — demanda vs. capacidade no período (diário/semanal/quinzenal/mensal ou range de datas)." },
   { value: "capacidade", label: "Capacidade", icon: BarChart3, description: "Capacidade instalada x ocupação de cada setor." },
   { value: "picking", label: "Separação Semanal", icon: Boxes, description: "Separação semanal dos materiais para as ordens da semana." },
   { value: "auditoria", label: "Auditoria de Fluxo", icon: History, description: "Histórico de mudanças no fluxo de produção." },
@@ -109,17 +108,21 @@ const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
 // Capacidade (passo futuro — CapacityPlanning está em edição por outra sessão).
 const SEGMENTS: { key: string; label: string; items: string[] }[] = [
   { key: "planejar", label: "Planejar", items: ["ondas", "planejamento", "cronograma", "capacidade", "rccp", "lead-time"] },
-  { key: "produzir", label: "Produzir", items: ["quadro", "setores", "gargalo-diario", "gargalo-semanal", "picking", "lot-split"] },
+  { key: "produzir", label: "Produzir", items: ["quadro", "setores", "gargalos", "picking", "lot-split"] },
   { key: "analisar", label: "Analisar", items: ["dashboard", "auditoria"] },
 ];
 
 // Backward-compat: legacy URLs like ?tab=corte should land on the consolidated Setores tab
 const LEGACY_SECTOR_TABS = new Set(['corte', 'costura', 'silk', 'colagem', 'montagem', 'acabamento', 'expedicao']);
+// Gargalo Diário + Semanal fundidos em "gargalos" — deep-links antigos caem na nova tela.
+const LEGACY_GARGALO_TABS = new Set(['gargalo-diario', 'gargalo-semanal']);
 
 export default function PCPHub() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") || "ondas";
-  const activeTab = LEGACY_SECTOR_TABS.has(rawTab) ? "setores" : rawTab;
+  const activeTab = LEGACY_SECTOR_TABS.has(rawTab) ? "setores"
+    : LEGACY_GARGALO_TABS.has(rawTab) ? "gargalos"
+    : rawTab;
   const activeSegment = SEGMENTS.find((s) => s.items.includes(activeTab)) ?? SEGMENTS[0];
 
   const handleTabChange = (value: string) => {
@@ -180,7 +183,7 @@ export default function PCPHub() {
                   >
                     {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
                     {tab.label}
-                    {value === "gargalo-diario" && (
+                    {value === "gargalos" && (
                       <span className="ml-0.5 rounded bg-primary/15 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-primary">
                         novo
                       </span>
@@ -225,8 +228,7 @@ export default function PCPHub() {
             <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
             <TabsContent value="quadro" className="mt-0"><QuadroProducao /></TabsContent>
             <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
-            <TabsContent value="gargalo-diario" className="mt-0"><SectorDailyView /></TabsContent>
-            <TabsContent value="gargalo-semanal" className="mt-0"><BottlenecksPage /></TabsContent>
+            <TabsContent value="gargalos" className="mt-0"><SectorBottleneckView /></TabsContent>
             <TabsContent value="capacidade" className="mt-0"><CapacityPlanning /></TabsContent>
             <TabsContent value="picking" className="mt-0"><PickingListPage /></TabsContent>
             <TabsContent value="auditoria" className="mt-0"><OrderFlowAudit embedded /></TabsContent>
