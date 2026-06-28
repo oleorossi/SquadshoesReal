@@ -1168,12 +1168,9 @@ function TimesheetRecordsTab() {
           </DialogHeader>
 
           {selectedEmployee && selectedEmployee !== '__all__' && summaries.length > 0 && (() => {
-            const hourlySalary = getHourlySalary(selectedEmployee);
-            // ALINHADO À FOLHA: valores líquidos do período (HE só no excedente).
-            const overtimeValue = heValueFolha;
-            const deficitValue = atrasoDescontoFolha + (folhaInd?.falta_desconto ?? 0);
-            const netValue = overtimeValue - deficitValue;
-
+            // Ponto é SÓ ENTRADA: este diálogo mostra apenas HORAS (trabalhadas/
+            // esperadas/faltas/déficit). Os valores em R$ (HE, descontos, líquido)
+            // vivem na aba FOLHA — não duplicar pagamento aqui (2026-06-28).
             return (
               <div className="space-y-5 mt-2">
                 {/* Summary cards */}
@@ -1196,38 +1193,9 @@ function TimesheetRecordsTab() {
                   </CardContent></Card>
                 </div>
 
-                {/* Financial summary */}
-                {hourlySalary > 0 && (
-                  <Card className="border-primary/20">
-                    <CardContent className="p-4">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                        <DollarSign className="h-4 w-4" /> Resumo Financeiro
-                      </h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground text-xs">Valor/hora base</span>
-                          <p className="font-mono tabular-nums font-medium">{formatCurrency(hourlySalary)}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground text-xs">Hora extra líq. ({minutesToDisplay(compensatedOvertime)})</span>
-                          <p className="font-mono tabular-nums font-bold text-green-600">{overtimeValue > 0 ? formatCurrency(overtimeValue) : '—'}</p>
-                        </div>
-                        {deficitValue > 0 && (
-                          <div>
-                            <span className="text-muted-foreground text-xs">Descontos (atraso + faltas)</span>
-                            <p className="font-mono tabular-nums font-bold text-destructive">-{formatCurrency(deficitValue)}</p>
-                          </div>
-                        )}
-                        <div className="sm:col-span-3 border-t pt-2 mt-1">
-                          <span className="text-muted-foreground text-xs">Saldo Líquido</span>
-                          <p className={`display text-xl tabular-nums font-mono tabular-nums ${netValue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                            {netValue >= 0 ? '+' : ''}{formatCurrency(netValue)}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Resumo Financeiro (valor/hora, HE em R$, descontos, líquido) REMOVIDO
+                    daqui (2026-06-28): pagamento é SAÍDA, vive na aba Folha. O Ponto é
+                    só entrada — este diálogo fica só com horas. */}
 
                 {/* "Dias com Hora Extra" REMOVIDO (auditoria 2026-06-17): HE é do
                     PERÍODO, não diária — overtimeMinutes por dia é sempre 0. Ver
@@ -1274,7 +1242,6 @@ function TimesheetRecordsTab() {
                         <TableHeader><TableRow className="bg-destructive/5">
                           <TableHead>Data</TableHead><TableHead>Dia</TableHead>
                           <TableHead className="text-right">Horas Devidas</TableHead>
-                          {hourlySalary > 0 && <TableHead className="text-right">Desconto</TableHead>}
                         </TableRow></TableHeader>
                         <TableBody>
                           {absentDays.map(d => (
@@ -1282,11 +1249,6 @@ function TimesheetRecordsTab() {
                               <TableCell className="font-mono text-sm">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</TableCell>
                               <TableCell className="text-xs">{DAYS_PT[d.dayOfWeek]}</TableCell>
                               <TableCell className="text-right font-mono text-sm text-destructive">{minutesToDisplay(d.expectedMinutes)}</TableCell>
-                              {hourlySalary > 0 && (
-                                <TableCell className="text-right font-mono text-sm text-destructive">
-                                  -{formatCurrency((d.expectedMinutes / 60) * hourlySalary)}
-                                </TableCell>
-                              )}
                             </TableRow>
                           ))}
                         </TableBody>
