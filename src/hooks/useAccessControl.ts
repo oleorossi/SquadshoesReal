@@ -76,6 +76,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/relatorios/semanal': 'reports',
   '/production-dashboard': 'producao',
   '/financeiro': 'financeiro',
+  '/financeiro?tab=accounts': 'financeiro', // item "Contas (AR/AP)" deep-linka a aba; mesmo módulo
   '/rh': 'rh',
   '/rh/banco-de-horas': 'rh',
   '/transporte': 'expedicao',

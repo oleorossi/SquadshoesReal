@@ -362,7 +362,7 @@ export default function CapacityPlanning() {
       <EditorialPageHeader
         sectionNumber="01"
         sectionLabel="PRODUÇÃO · CAPACIDADE"
-        title="Sala de Controle"
+        title="Capacidade"
         description="Onde está apertando agora, como flui pela fábrica e como vai ser nas próximas semanas."
         actions={
           <Button asChild variant="outline" size="sm" className="h-9">

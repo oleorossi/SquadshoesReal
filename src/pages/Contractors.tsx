@@ -1446,7 +1446,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="font-mono text-base font-bold leading-none tabular-nums">{formatCurrency(Number(o.total_value))}</p>
+                            <p className="font-mono text-base font-bold leading-none tabular-nums">
+                              {Number(o.total_value) === 0 && o.status !== 'Concluído' && o.status !== 'Cancelado' && o.status !== 'cancelled'
+                                ? <span className="text-sm font-medium text-muted-foreground">A definir</span>
+                                : formatCurrency(Number(o.total_value))}
+                            </p>
                             <div className="mt-1 flex justify-end">
                               <Badge variant={statusColor(o.status)} className="text-[10px]">{statusLabel(o.status)}</Badge>
                             </div>

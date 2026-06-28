@@ -11,6 +11,7 @@ import { useAllReservations } from '@/hooks/useReservations';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { differenceInHours, parseISO } from 'date-fns';
+import { DISPLAY_SECTORS, SECTOR_LABELS, normalizeSector } from '@/lib/sectors';
 
 const CHART_COLORS = ['#0EA5E9', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6'];
 

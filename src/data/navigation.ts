@@ -61,7 +61,6 @@ export const menuGroups = [
       { name: "Estoque",          icon: Package,        path: "/estoque" },
       { name: "Grupos",           icon: FolderOpen,     path: "/grupos" },
       { name: "MRP",              icon: Boxes,          path: "/mrp" },
-      { name: "Picking",          icon: ClipboardCheck, path: "/picking" },
       { name: "Ajustes",          icon: Boxes,          path: "/ajuste-estoque" },
       { name: "Qualidade",        icon: ShieldCheck,  path: "/estoque/qualidade" },
       { name: "Histórico",        icon: History,      path: "/estoque/historico" },
@@ -102,6 +101,7 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: Package,        path: "/expedicao" },
+      { name: "Picking",          icon: ClipboardCheck, path: "/picking" },
       { name: "Conferência",      icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
@@ -113,7 +113,7 @@ export const menuGroups = [
     icon: Wallet,
     items: [
       { name: "Financeiro",       icon: Wallet,          path: "/financeiro" },
-      { name: "Contas (AR/AP)",   icon: DollarSign,      path: "/finance" },
+      { name: "Contas (AR/AP)",   icon: DollarSign,      path: "/financeiro?tab=accounts" },
       { name: "Conciliação",      icon: Scale,           path: "/bank-reconciliation" },
       { name: "CNAB / Boletos",   icon: FileSpreadsheet, path: "/cnab" },
       { name: "Markup / Pricing", icon: Calculator,      path: "/pricing-calculator" },

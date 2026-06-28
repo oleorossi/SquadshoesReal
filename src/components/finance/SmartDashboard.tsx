@@ -144,7 +144,19 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Saldo em Bancos</p>
-                <p className={cn('text-lg font-bold', balanceColor)}>{fmt(kpis.totalBalance)}</p>
+                {kpis.bankAccountsCount === 0 ? (
+                  // Sem contas cadastradas: "R$ 0,00" parecia dado real e
+                  // contradizia o alerta de saldo. Estado vazio orientativo
+                  // deixa claro que falta integração/cadastro (issue 7).
+                  <p className="text-sm font-semibold text-muted-foreground leading-tight">
+                    Sem contas
+                    <span className="block text-[11px] font-normal text-muted-foreground/80">
+                      Cadastre em Configurações
+                    </span>
+                  </p>
+                ) : (
+                  <p className={cn('text-lg font-bold', balanceColor)}>{fmt(kpis.totalBalance)}</p>
+                )}
               </div>
             </div>
           </CardContent>

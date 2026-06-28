@@ -1,4 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSearchParams, Link } from "react-router-dom";
 import { lazy, Suspense, Fragment } from "react";
 import { cn } from "@/lib/utils";
@@ -31,21 +32,21 @@ const TabLoader = () => (
 
 // Single hub for all production sectors — Setores aggregates Corte, Costura,
 // Solagem, Aviamento, Montagem and Acabamento internally.
- const tabs = [
-   { value: "ondas", label: "Ondas", icon: Waves },
-   { value: "planejamento", label: "Planejamento", icon: ClipboardList },
-   { value: "cronograma", label: "Cronograma Reverso", icon: Workflow },
-  { value: "lead-time", label: "Lead Time", icon: Clock },
-   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-   { value: "setores", label: "Setores", icon: Factory },
-  { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle },
-  { value: "gargalo-semanal", label: "Gargalo Semanal", icon: AlertTriangle },
-  { value: "capacidade", label: "Capacidade", icon: BarChart3 },
-  { value: "picking", label: "Picking Semanal", icon: Boxes },
-  { value: "auditoria", label: "Auditoria", icon: History },
-  { value: "rccp", label: "RCCP", icon: Gauge },
-  { value: "pos-op", label: "Análise Pós-OP", icon: FileBarChart },
-  { value: "lot-split", label: "Split de Lotes", icon: Scissors },
+ const tabs: { value: string; label: string; icon: any; description: string }[] = [
+   { value: "ondas", label: "Ondas", icon: Waves, description: "Agrupa as ordens em ondas de produção pra disparar a fábrica em lotes." },
+   { value: "planejamento", label: "Planejamento", icon: ClipboardList, description: "Distribui a carga de trabalho prevista entre os setores." },
+   { value: "cronograma", label: "Cronograma Reverso", icon: Workflow, description: "Calcula as datas de início de cada setor a partir do prazo de entrega (de trás pra frente)." },
+  { value: "lead-time", label: "Lead Time", icon: Clock, description: "Tempo total de atravessamento da fábrica por produto e por setor." },
+   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, description: "Indicadores gerais do PCP num relance." },
+   { value: "setores", label: "Setores", icon: Factory, description: "Acompanhamento setor a setor (Corte, Costura, Solagem, Montagem...)." },
+  { value: "gargalo-diario", label: "Gargalo Diário", icon: AlertTriangle, description: "Onde está apertando hoje: planejado vs. realizado do dia." },
+  { value: "gargalo-semanal", label: "Gargalo Semanal", icon: AlertTriangle, description: "Capacidade vs. demanda por setor ao longo da semana." },
+  { value: "capacidade", label: "Capacidade", icon: BarChart3, description: "Capacidade instalada x ocupação de cada setor." },
+  { value: "picking", label: "Picking Semanal", icon: Boxes, description: "Separação semanal dos materiais para as ordens da semana." },
+  { value: "auditoria", label: "Auditoria", icon: History, description: "Histórico de mudanças no fluxo de produção." },
+  { value: "rccp", label: "RCCP", icon: Gauge, description: "Rough-Cut Capacity Planning: checagem grosseira de capacidade vs. plano de produção." },
+  { value: "pos-op", label: "Análise Pós-OP", icon: FileBarChart, description: "Análise de desempenho depois que as OPs fecham." },
+  { value: "lot-split", label: "Split de Lotes", icon: Scissors, description: "Divide um lote grande em sublotes pra paralelizar os setores." },
 ];
  const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
 
@@ -107,23 +108,31 @@ export default function PCPHub() {
                     const tab = TAB_BY_VALUE[value];
                     if (!tab) return null;
                     return (
-                      <TabsTrigger
-                        key={value}
-                        value={value}
-                        className={cn(
-                          "text-xs whitespace-nowrap gap-1.5 px-3 py-1.5 rounded-md",
-                          "data-[state=active]:bg-background data-[state=active]:shadow-sm",
-                          "md:w-full md:justify-start md:py-2 md:gap-2.5",
+                      <Tooltip key={value} delayDuration={350}>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger
+                            value={value}
+                            className={cn(
+                              "text-xs whitespace-nowrap gap-1.5 px-3 py-1.5 rounded-md",
+                              "data-[state=active]:bg-background data-[state=active]:shadow-sm",
+                              "md:w-full md:justify-start md:py-2 md:gap-2.5",
+                            )}
+                          >
+                            {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
+                            {tab.label}
+                            {value === "gargalo-diario" && (
+                              <span className="md:ml-auto text-[9px] font-bold uppercase tracking-wide leading-none rounded px-1 py-0.5 bg-primary/15 text-primary">
+                                novo
+                              </span>
+                            )}
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        {(tab as any).description && (
+                          <TooltipContent side="right" sideOffset={8} className="max-w-[230px] text-xs">
+                            {(tab as any).description}
+                          </TooltipContent>
                         )}
-                      >
-                        {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
-                        {tab.label}
-                        {value === "gargalo-diario" && (
-                          <span className="md:ml-auto text-[9px] font-bold uppercase tracking-wide leading-none rounded px-1 py-0.5 bg-primary/15 text-primary">
-                            novo
-                          </span>
-                        )}
-                      </TabsTrigger>
+                      </Tooltip>
                     );
                   })}
                 </Fragment>

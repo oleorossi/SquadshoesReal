@@ -397,6 +397,20 @@ export default function FichaMontadoresPage() {
         ))}
       </div>
 
+      {/* Orientação de primeiro uso: sem fichas, "0 FICHAS" no header não dizia
+          o que fazer. Banner aponta pro formulário logo abaixo (issue 23). */}
+      {tab === "lancamento" && fichas.length === 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <ClipboardText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">Nenhuma ficha lançada ainda</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Preencha o formulário abaixo para registrar a primeira ficha — informe o montador, o solado e os pares produzidos.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ════ LANÇAMENTO ════ */}
       {tab === "lancamento" && (
         <Panel

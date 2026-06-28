@@ -504,9 +504,16 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 </div>
               )}
               {/* Grupos colapsados */}
-              {orderedGroups.map((group, gi) => (
+              {orderedGroups.map((group, gi) => {
+                // Mesma regra do modo expandido: não repetir itens que já estão
+                // na faixa de Favoritos acima.
+                const groupItems = group.items.filter(
+                  (item) => !filteredFavorites.some((f) => f.path === item.path),
+                );
+                if (groupItems.length === 0) return null;
+                return (
                 <div key={group.label} className={cn(gi > 0 && "pt-2 border-t border-sidebar-border/40")}>
-                  {group.items.map((item) => {
+                  {groupItems.map((item) => {
                     const isFavorite = favorites.some(f => f.path === item.path);
                     return (
                       <Tooltip key={item.name} delayDuration={0}>
@@ -523,7 +530,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     );
                   })}
                 </div>
-              ))}
+                );
+              })}
               {/* Sistema colapsado (admin) */}
               {filteredSystemItems.length > 0 && (
                 <div className="pt-2 border-t border-sidebar-border/40">
@@ -549,6 +557,13 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 // o grupo a abrir ao navegar (ex.: clicar num favorito abria o
                 // setor) — comportamento que o usuário não quer.
                 const isGroupCollapsed = collapsedGroups.has(group.label);
+                // Oculta itens já fixados nos Favoritos pra não repetir o item
+                // (ele já aparece na seção "Favoritos" no topo). Grupo que ficar
+                // sem itens visíveis some inteiro.
+                const visibleItems = group.items.filter(
+                  (item) => !filteredFavorites.some((f) => f.path === item.path),
+                );
+                if (visibleItems.length === 0) return null;
                 return (
                   <div
                     key={group.label}
@@ -577,7 +592,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     </button>
                     {!isGroupCollapsed && (
                       <div className="mt-0.5 space-y-0.5">
-                        {group.items.map((item) => {
+                        {visibleItems.map((item) => {
                           const isFavorite = favorites.some(f => f.path === item.path);
                           const isSubItem = !!(item as any).parent;
                           return (

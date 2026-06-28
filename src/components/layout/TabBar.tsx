@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ComponentType } from 'react';
 import { useTabs } from '@/contexts/TabsContext';
 import { cn } from '@/lib/utils';
-import { X, Plus, File as FileIcon } from '@phosphor-icons/react';
+import { X, Plus, File as FileIcon, Broom } from '@phosphor-icons/react';
 import { menuGroups, systemItems, topItem, secondaryRoutes } from '@/data/navigation';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
@@ -154,6 +154,20 @@ export function TabBar() {
       >
         <Plus className="h-3.5 w-3.5" />
       </button>
+
+      {/* Fechar todas — só aparece com 2+ abas. Antes só existia no menu de
+          contexto (botão direito), que o usuário comum não descobre. */}
+      {tabs.length > 1 && (
+        <button
+          type="button"
+          onClick={() => closeAll()}
+          aria-label="Fechar todas as abas"
+          title="Fechar todas as abas"
+          className="shrink-0 mb-1 ml-auto mr-0.5 flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+        >
+          <Broom className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }

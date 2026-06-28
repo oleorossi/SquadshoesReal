@@ -98,8 +98,15 @@ export function NfeBillingHealthCard() {
             ))}
           </div>
         ) : null}
-        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExpanded(v => !v)}>
-          {expanded ? 'Ocultar lista' : 'Ver lista detalhada'}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 border-amber-500/50 bg-amber-500/10 font-semibold text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+          onClick={() => setExpanded(v => !v)}
+        >
+          {expanded
+            ? 'Ocultar lista'
+            : `Revisar ${rows.length} ${rows.length === 1 ? 'pendência' : 'pendências'}`}
         </Button>
       </CardContent>
     </Card>

@@ -65,6 +65,10 @@ interface Props {
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
+  // PVs/clientes do maço — hoisted pro escopo do header (usado na
+  // identificação E no QR escaneável do canto).
+  const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
+  const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));
 
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
   // Header da ficha → 1 card por solado → Total Geral → rodapé de conclusão.
@@ -75,8 +79,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
         icon={Scissors}
         sizeBand={sizeBand}
         identification={(() => {
-          const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
-          const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));
           return (
             <HeaderIdentification pvNumbers={pvs} clientNames={clientNames}>
               <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
@@ -97,7 +99,8 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             </HeaderIdentification>
           );
         })()}
-        qrLabel="PLACA FIBRA"
+        qrValue={pvs.length ? pvs.join(',') : undefined}
+        qrLabel={pvs.length === 1 ? pvs[0] : pvs.length > 1 ? `${pvs.length} PVs` : 'PLACA FIBRA'}
         index={`OP ${formatOpNumber('Corte Palmilha')} / CORTE DE PLACA DE FIBRA`}
       />
   );
@@ -265,7 +268,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                           {s}
                         </th>
                       ))}
-                      <th className="section-label py-1" style={{ color: '#000', width: 54 }}>Total</th>
+                      <th className="section-label py-1" style={{ color: '#000', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>

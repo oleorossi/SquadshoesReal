@@ -218,7 +218,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
                   {s}
                 </th>
               ))}
-              <th className="section-label py-1" style={{ color: '#000', width: 54 }}>Total</th>
+              <th className="section-label py-1" style={{ color: '#000', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -295,13 +295,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
   // Header → bandas (divider de seção colado à 1ª banda do grupo) →
   // Total Geral → rodapé. O paginador garante "card inteiro ou nada".
+  // PVs do maço — hoisted pro escopo do header (identificação + QR escaneável).
+  const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
   const headerBlock = (
       <WorksheetHeader
         sector={sector}
         icon={Footprints}
         sizeBand={sizeBand}
         identification={(() => {
-          const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
           return (
             <HeaderIdentification pvNumbers={pvs} clientNames={clientNames}>
               <span className="section-label block" style={{ color: '#000' }}>Resumo</span>
@@ -324,7 +325,8 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             </HeaderIdentification>
           );
         })()}
-        qrLabel={sector.toUpperCase()}
+        qrValue={pvs.length ? pvs.join(',') : undefined}
+        qrLabel={pvs.length === 1 ? pvs[0] : pvs.length > 1 ? `${pvs.length} PVs` : sector.toUpperCase()}
         index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
   );

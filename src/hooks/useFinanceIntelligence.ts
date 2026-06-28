@@ -467,8 +467,13 @@ export function useFinanceAlerts() {
       const [banksRes, payRes, recRes] = await Promise.all([
         supabase.from('bank_accounts').select('current_balance').eq('active', true),
         supabase
+          // Sem o embed `suppliers(name)`: era o único motivo de ESTA query
+          // falhar enquanto a de KPIs (mesmas tabelas, sem join) passava — RLS/
+          // relacionamento do join derrubava só os alertas, que ficavam presos
+          // em "Analisando..." / erro (issue 20). O nome do fornecedor não é
+          // usado em nenhum alerta.
           .from('accounts_payable')
-          .select('id, due_date, amount, amount_paid, status, description, suppliers(name)')
+          .select('id, due_date, amount, amount_paid, status, description')
           .neq('status', 'cancelled')
           .lte('due_date', next30),
         supabase
@@ -481,13 +486,16 @@ export function useFinanceAlerts() {
       if (payRes.error) throw payRes.error;
       if (recRes.error) throw recRes.error;
 
+      const bankCount = (banksRes.data || []).length;
       const balance = (banksRes.data || []).reduce(
         (s, b) => s + Number(b.current_balance || 0),
         0
       );
 
-      // 1. Saldo crítico
-      if (balance < 0) {
+      // 1. Saldo crítico — só faz sentido se HÁ contas cadastradas. Sem
+      // integração bancária o saldo é 0 por falta de cadastro, não por estar
+      // "no vermelho"; alertar nesse caso é ruído contraditório (issue 7).
+      if (bankCount > 0 && balance < 0) {
         alerts.push({
           id: 'balance-negative',
           severity: 'critical',
@@ -495,7 +503,7 @@ export function useFinanceAlerts() {
           description: 'O saldo total das contas está no vermelho. Ação imediata necessária.',
           value: balance,
         });
-      } else if (balance < 5000) {
+      } else if (bankCount > 0 && balance < 5000) {
         alerts.push({
           id: 'balance-low',
           severity: 'warning',
@@ -513,7 +521,7 @@ export function useFinanceAlerts() {
         (s, p) => s + (Number(p.amount) - Number(p.amount_paid)),
         0
       );
-      if (next7Total > balance) {
+      if (bankCount > 0 && next7Total > balance) {
         alerts.push({
           id: 'payables-uncovered',
           severity: 'critical',
@@ -593,7 +601,7 @@ export function useFinanceAlerts() {
         }
       }
 
-      if (firstNegativeDay) {
+      if (bankCount > 0 && firstNegativeDay) {
         alerts.push({
           id: 'cash-flow-negative',
           severity: 'critical',
@@ -690,6 +698,7 @@ export function useFinanceKPIs() {
 
       return {
         totalBalance,
+        bankAccountsCount: banks.length,
         totalPayable,
         totalReceivable,
         netPosition: totalBalance + totalReceivable - totalPayable,

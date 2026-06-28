@@ -133,7 +133,8 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
           </div>
         </HeaderIdentification>
       }
-      qrLabel={sector.toUpperCase().slice(0, 8)}
+      qrValue={pvNumbers.length ? pvNumbers.join(',') : undefined}
+      qrLabel={pvNumbers.length === 1 ? pvNumbers[0] : pvNumbers.length > 1 ? `${pvNumbers.length} PVs` : sector.toUpperCase()}
       index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
     />
   );
@@ -476,7 +477,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
                     </th>
                   ))}
                   {ci === sizeChunks.length - 1 && (
-                    <th className="section-label py-1" style={{ color: '#000', width: 64 }}>Total</th>
+                    <th className="section-label py-1" style={{ color: '#000', width: 64, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
                   )}
                 </tr>
               </thead>

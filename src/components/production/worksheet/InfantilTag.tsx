@@ -39,7 +39,10 @@ export const InfantilTag = ({ compact = false }: { compact?: boolean }) => (
 );
 
 export const AdultoTag = ({ compact = false }: { compact?: boolean }) => (
-  <span style={tagStyle('#E2E8F0', '#1E293B', '#475569', compact)} aria-label="Pedido adulto">
+  // Monocromático (branco/preto) pra ficar na paleta da ficha — o azul-ardósia
+  // antigo destoava do preto/vermelho/branco. Infantil mantém o rosa por ser o
+  // sinal que realmente precisa saltar.
+  <span style={tagStyle('#FFFFFF', '#000000', '#000000', compact)} aria-label="Pedido adulto">
     Adulto
   </span>
 );

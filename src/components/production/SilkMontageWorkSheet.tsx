@@ -340,7 +340,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 )}
               </th>
             ))}
-            <th className="section-label py-1" style={{ color: '#000', width: 50 }}>Total</th>
+            <th className="section-label py-1" style={{ color: '#000', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
           </tr>
         </thead>
         <tbody>
@@ -601,7 +601,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             </div>
           </HeaderIdentification>
         }
-        qrLabel={sector.toUpperCase().slice(0, 8)}
+        qrValue={allPvs.length ? allPvs.join(',') : undefined}
+        qrLabel={allPvs.length === 1 ? allPvs[0] : allPvs.length > 1 ? `${allPvs.length} PVs` : sector.toUpperCase()}
         index={`OP ${formatOpNumber(sector)} / ${sector.toUpperCase()}`}
       />
   );

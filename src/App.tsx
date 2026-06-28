@@ -15,7 +15,7 @@ import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
  import AppLayout from "@/components/layout/AppLayout";
 import { TabsProvider } from "@/contexts/TabsContext";
 import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker";
-import PageSkeleton from "@/components/layout/PageSkeleton";
+import PageSkeleton, { DashboardSkeleton } from "@/components/layout/PageSkeleton";
 
 // Eager-loaded (auth flow)
 import Auth from "./pages/Auth";
@@ -568,7 +568,14 @@ const router = createBrowserRouter([
        },
       {
         path: "dashboard",
-        element: <Dashboard />,
+        // Skeleton dedicado (8 KPIs + 2 gráficos) em vez do PageSkeleton genérico
+        // — placeholder fiel ao layout enquanto o chunk + as queries carregam,
+        // pra não dar a sensação de "tela branca" no /dashboard (issue ALTA).
+        element: (
+          <Suspense fallback={<DashboardSkeleton />}>
+            <Dashboard />
+          </Suspense>
+        ),
       },
       {
         path: "pcp",

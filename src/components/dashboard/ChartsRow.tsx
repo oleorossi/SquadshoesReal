@@ -47,7 +47,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
     return Array.from({ length: count }, (_, i) => {
       const d = subMonths(new Date(), count - 1 - i);
       return {
-        label: format(d, "MMM", { locale: ptBR }),
+        label: format(d, "MMM/yy", { locale: ptBR }),
         start: startOfMonth(d).toISOString(),
         end:   endOfMonth(d).toISOString(),
         key:   format(d, "yyyy-MM"),
@@ -141,7 +141,7 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
             <h3 className="text-base font-semibold text-foreground tracking-tight">
               Vendas vs Produção
             </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">últimos 6 meses</p>
+            <p className="text-xs text-muted-foreground mt-0.5 capitalize">{range.label}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -178,12 +178,12 @@ export function ChartsRow({ period = 'current_month' }: { period?: DashboardPeri
               <YAxis yAxisId="vendas" tickFormatter={formatK} tick={{ fontSize: 10, fill: PRIMARY }} axisLine={false} tickLine={false} width={36} />
               <YAxis yAxisId="producao" orientation="right" tickFormatter={formatK} tick={{ fontSize: 10, fill: CHART_BLUE }} axisLine={false} tickLine={false} width={36} />
               <Tooltip
-                formatter={(v: number, name: string) => name === "vendas" ? formatBRL(v) : `${v} pares`}
+                formatter={(v: number, name: string) => name === "Vendas" ? formatBRL(v) : `${v} pares`}
                 labelFormatter={(l) => `Mês: ${l}`}
                 contentStyle={CARD_TOOLTIP_STYLE}
               />
-              <Area yAxisId="vendas"   type="monotone" dataKey="vendas"   stroke={PRIMARY}    strokeWidth={2} fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
-              <Area yAxisId="producao" type="monotone" dataKey="producao" stroke={CHART_BLUE} strokeWidth={2} fill="url(#gradProd)" dot={{ r: 3, fill: CHART_BLUE, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
+              <Area yAxisId="vendas"   type="monotone" dataKey="vendas"   name="Vendas"   stroke={PRIMARY}    strokeWidth={2} fill="url(#gradVendas)" dot={{ r: 3, fill: PRIMARY, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
+              <Area yAxisId="producao" type="monotone" dataKey="producao" name="Produção" stroke={CHART_BLUE} strokeWidth={2} fill="url(#gradProd)" dot={{ r: 3, fill: CHART_BLUE, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>

@@ -110,9 +110,20 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   const longestSizeKey = allSizes.reduce((m, s) => Math.max(m, s.length), 0);
   const ft = adaptiveTableFont(7 + allSizes.length, longestSizeKey);
   const dense = allSizes.length > 12;
-  // Coluna de numeração precisa caber a CHAVE do header (conjugada "33/34"
-  // tem 5 chars) — antes era 22px fixo e clipava.
-  const sizeColWidth = Math.max(18, Math.ceil(longestSizeKey * ft.headerPx * 0.65) + 4);
+  // Coluna de numeração precisa caber DOIS conteúdos sem quebrar (nowrap):
+  //   (a) a CHAVE do header (conjugada "33/34" = 5 chars, fonte headerPx)
+  //   (b) o VALOR do corpo (até 3 dígitos: "105", "140", fonte cellPx)
+  // Antes só media (a) → valores de 3 dígitos estouravam e quebravam "10/5".
+  const maxCellDigits = group.orders.reduce((m, o) => {
+    for (const s of allSizes) {
+      const v = o.grid?.[s];
+      if (v) m = Math.max(m, String(v).length);
+    }
+    return m;
+  }, 1);
+  const headerW = Math.ceil(longestSizeKey * ft.headerPx * 0.65) + 4;
+  const bodyW = Math.ceil(maxCellDigits * ft.cellPx * 0.62) + 4;
+  const sizeColWidth = Math.max(18, headerW, bodyW);
   const colW = {
     op: dense ? 42 : 48,
     cor: dense ? 48 : 56,
@@ -177,7 +188,8 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
             </div>
           </HeaderIdentification>
         }
-        qrLabel="EXPED."
+        qrValue={group.sale_order_number || undefined}
+        qrLabel={group.sale_order_number || 'EXPED.'}
         index={`OP ${formatOpNumber('Expedição')} / EXPEDIÇÃO`}
       />
   );
@@ -267,7 +279,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
                 <th
                   key={s}
                   className="text-black font-bold"
-                  style={{ width: sizeColWidth, fontSize: `${ft.headerPx}px`, fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}
+                  style={{ width: sizeColWidth, fontSize: `${ft.headerPx}px`, fontFamily: "'Fira Code', monospace", borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2, whiteSpace: 'nowrap' }}
                 >
                   {s}
                 </th>
@@ -299,7 +311,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
                   <td
                     key={s}
                     className="text-center font-mono font-bold text-black"
-                    style={{ borderRight: '1px solid #000', fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}
+                    style={{ borderRight: '1px solid #000', fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2, whiteSpace: 'nowrap' }}
                   >
                     {o.grid?.[s] || ''}
                   </td>
@@ -352,7 +364,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
             <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-              {group.orders.length} item{group.orders.length !== 1 ? 'ns' : ''}
+              {group.orders.length} {group.orders.length !== 1 ? 'itens' : 'item'}
             </span>
           </div>
         )}

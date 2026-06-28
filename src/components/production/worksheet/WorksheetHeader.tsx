@@ -1,5 +1,6 @@
 import React from 'react';
 import { QrCode } from '@phosphor-icons/react';
+import { QRCodeSVG } from 'qrcode.react';
 import { cn } from '@/lib/utils';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { SizeBandTags, type SizeBand } from './InfantilTag';
@@ -18,8 +19,12 @@ interface Props {
   imageSlot?: React.ReactNode;
   /** Slot principal com identificação (ref/cor/PV/etc). */
   identification: React.ReactNode;
-  /** Tag opcional pro canto direito (QR code label). */
+  /** Legenda opcional embaixo do QR (ex.: número do PV). NÃO truncar. */
   qrLabel?: string;
+  /** Conteúdo a codificar num QR REAL escaneável (ex.: "PV-00141" ou lista de
+   *  PVs). Quando presente, renderiza um QR de verdade (SVG, nítido em qualquer
+   *  DPI) no lugar do ícone decorativo. Sem isso, cai no glifo phosphor. */
+  qrValue?: string;
   /** Slot extra abaixo do header (alertas). */
   alerts?: React.ReactNode;
   /** Index editorial pré-formatado (ex: "01 / SILK"). Se omitido, é derivado de `sector`. */
@@ -47,7 +52,7 @@ interface Props {
  */
 export const WorksheetHeader = ({
   sector, icon: Icon,
-  imageSlot, identification, qrLabel, alerts, index, lotInfo, sizeBand,
+  imageSlot, identification, qrLabel, qrValue, alerts, index, lotInfo, sizeBand,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   return (
@@ -107,11 +112,37 @@ export const WorksheetHeader = ({
           {identification}
         </div>
 
-        {/* QR */}
+        {/* QR — real escaneável (codifica o PV) quando `qrValue` é passado;
+            senão cai no glifo decorativo. Legenda embaixo NÃO trunca. */}
         <div className="flex flex-col items-center justify-center shrink-0 border-l border-black pl-4">
-          <QrCode className="h-11 w-11 text-black" weight="thin" />
+          {qrValue ? (
+            <div
+              style={{
+                border: '1.5px solid #000',
+                padding: 2,
+                background: '#fff',
+                lineHeight: 0,
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact',
+              } as React.CSSProperties}
+            >
+              <QRCodeSVG
+                value={qrValue}
+                size={46}
+                level="M"
+                marginSize={0}
+                fgColor="#000000"
+                bgColor="#ffffff"
+                title={qrLabel || qrValue}
+              />
+            </div>
+          ) : (
+            <QrCode className="h-11 w-11 text-black" weight="thin" />
+          )}
           {qrLabel && (
-            <span className="text-[8px] font-mono text-black mt-1 tracking-[0.2em] uppercase">{qrLabel}</span>
+            <span className="text-[8px] font-mono font-bold text-black mt-1 tracking-[0.14em] uppercase text-center leading-tight" style={{ maxWidth: 64 }}>
+              {qrLabel}
+            </span>
           )}
         </div>
       </div>
