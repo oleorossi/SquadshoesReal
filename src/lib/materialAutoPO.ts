@@ -149,6 +149,12 @@ export async function autoCreateMaterialPO(params: {
   }
 
   // ── Step 4: No open PO — create a new one ────────────────────────────────
+  // Vincula o PV (orderRef = nº do PV) pra herdar o purchase_by_date via trigger.
+  let linkedPvId: string | null = null;
+  try {
+    const { data: so } = await (supabase.from('sale_orders') as any).select('id').eq('order_number', orderRef).maybeSingle();
+    linkedPvId = so?.id ?? null;
+  } catch { /* sem PV vinculado — segue sem purchase_by_date */ }
   const { data: po, error: poErr } = await (supabase as any)
     .from('purchase_orders')
     .insert({
@@ -157,6 +163,7 @@ export async function autoCreateMaterialPO(params: {
       auto_generated: true,
       total_value: orderQty * unitPrice,
       notes: `Gerada automaticamente — Falta de "${productName}" para PV ${orderRef}. Pedir ${orderQty} ${unit}.`,
+      ...(linkedPvId ? { linked_sale_order_ids: [linkedPvId] } : {}),
     })
     .select('id, order_number')
     .single();

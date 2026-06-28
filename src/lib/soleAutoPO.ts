@@ -23,7 +23,7 @@ export async function autoCreateSolePO(params: {
   grade: Record<string, number>;
   orderRef: string;
 }): Promise<SoleAutoPOResult | null> {
-  const { referenceId, color, grade, orderRef } = params;
+  const { referenceId, color, grade, orderRef, orderId } = params;
 
   // ── Step 1: Resolve the sole product ──────────────────────────────────────
   let soleProductId: string | null = null;
@@ -215,6 +215,12 @@ export async function autoCreateSolePO(params: {
   }
 
   // ── Step 5: No open OC — create a new one ─────────────────────────────────
+  // Vincula o PV da OP pra herdar o purchase_by_date (backward do faturamento) via trigger.
+  let linkedPvId: string | null = null;
+  try {
+    const { data: op } = await (supabase.from('orders') as any).select('sale_order_id').eq('id', orderId).maybeSingle();
+    linkedPvId = op?.sale_order_id ?? null;
+  } catch { /* sem PV vinculado — segue sem purchase_by_date */ }
   const { data: po, error: poErr } = await (supabase as any)
     .from('purchase_orders')
     .insert({
@@ -223,6 +229,7 @@ export async function autoCreateSolePO(params: {
       auto_generated: true,
       total_value: orderQty * unitPrice,
       notes: `Gerada automaticamente — Solado insuficiente para OP ${orderRef}. Grade necessária: ${gradeDesc}`,
+      ...(linkedPvId ? { linked_sale_order_ids: [linkedPvId] } : {}),
     })
     .select('id, order_number')
     .single();
