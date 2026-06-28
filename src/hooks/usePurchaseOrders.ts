@@ -12,6 +12,8 @@ export type PurchaseOrder = {
   notes: string;
   auto_generated: boolean;
   promised_date: string | null;
+  /** Comprar até: backward do faturamento (− lead produção − buffer − lead fornecedor). ≠ promised_date (ETA). */
+  purchase_by_date: string | null;
   received_date: string | null;
   created_at: string;
   updated_at: string;

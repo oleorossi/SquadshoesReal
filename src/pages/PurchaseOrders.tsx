@@ -516,7 +516,8 @@ export default function PurchaseOrders() {
                     <TableHead>Itens</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Valor Total</TableHead>
-                    <TableHead>Prazo Previsto</TableHead>
+                    <TableHead>Comprar até</TableHead>
+                    <TableHead>Entrega prev.</TableHead>
                     <TableHead>Criada em</TableHead>
                     <TableHead>Origem</TableHead>
                     <TableHead className="text-center">Ações</TableHead>
@@ -524,13 +525,14 @@ export default function PurchaseOrders() {
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhuma ordem de compra encontrada</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Nenhuma ordem de compra encontrada</TableCell></TableRow>
                   ) : filtered.map(o => {
                     const st = STATUS_MAP[o.status] || STATUS_MAP.pending;
                     const today = new Date().toISOString().slice(0, 10);
                     const isOverdue = o.promised_date && o.promised_date < today && o.status !== 'received' && o.status !== 'cancelled';
+                    const buyOverdue = o.purchase_by_date && o.purchase_by_date < today && o.status !== 'received' && o.status !== 'cancelled';
                     return (
                       <TableRow key={o.id} className={`hover:bg-muted/20 cursor-pointer ${selectedIds.has(o.id) ? 'bg-primary/5' : ''}`} onClick={() => setSelectedId(o.id)}>
                         <TableCell onClick={e => e.stopPropagation()}>
@@ -585,6 +587,16 @@ export default function PurchaseOrders() {
                         <TableCell><OrderItemsCell summary={itemSummaries?.get(o.id)} /></TableCell>
                         <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
                         <TableCell className="text-right font-medium">{fmt(o.total_value)}</TableCell>
+                        <TableCell>
+                          {o.purchase_by_date ? (
+                            <span className={`flex items-center gap-1 text-sm ${buyOverdue ? 'text-destructive font-medium' : 'text-foreground'}`} title="Comprar até esta data — backward do faturamento, descontando o lead de produção e o lead do fornecedor">
+                              {buyOverdue && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                              {format(new Date(o.purchase_by_date + 'T12:00:00'), 'dd/MM/yyyy')}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {o.promised_date ? (
                             <span className={`flex items-center gap-1 text-sm ${isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
