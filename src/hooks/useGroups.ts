@@ -22,6 +22,9 @@ export type ProductGroup = {
   consumption_unit?: string | null;
   /** Múltiplo de compra padrão do grupo (embalagem); fallback do item. */
   purchase_multiple?: number | null;
+  /** Material BASE sem cor (EVA, cola): consumo/débito resolvem por grupo, nunca
+   *  color_mismatch — não dispara o guard "cor não cadastrada". */
+  is_color_agnostic?: boolean;
   created_at: string;
   updated_at: string;
 };

@@ -4,13 +4,18 @@
  * /terceiros e o "Terceirizados" /contractors). O dono apontou que "é o mesmo
  * conceito" e nomeou o módulo unificado como **Terceirizados**.
  *
- * Uma única barra de abas (flat) engloba as duas funcionalidades:
- *   • Na Rua            → acompanhamento operacional (OutsourcedInField)
+ * Uma única barra de abas, agrupada em OPERACIONAL | CADASTRO:
+ *   OPERACIONAL:
+ *   • Na Rua            → acompanhamento + recebimento/retorno (OutsourcedInField)
  *   • Ordens de Serviço → lista de OS + filtros/seleção/PDF (Contractors)
  *   • Planejamento      → projeção de carga por contratada (Contractors)
- *   • Prestadores       → cadastro/CRUD das contratadas (Contractors)
- *   • Receitas          → receitas artesanais (Contractors)
  *   • Relatório         → métricas + histórico (ContractorReports)
+ *   CADASTRO:
+ *   • Prestadores          → cadastro/CRUD das contratadas (Contractors)
+ *   • Tarifas por Referência → R$/par por ficha (TerceirizacaoCoberturaPanel)
+ *
+ * (A antiga aba "Receitas" foi removida na auditoria 2026-06-28 — duplicava
+ *  Engenharia → Receitas /artisanal-recipes, que segue como página própria.)
  *
  * As páginas originais são renderizadas em modo `embedded` (sem header/AppLayout
  * próprios — o header é deste hub). Contractors mantém seus 4 painéis, mas a
@@ -24,18 +29,19 @@ import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Truck, ChartBar as BarChart3, ClipboardText as ClipboardList,
-  ChartLineUp, Users, Flask as FlaskConical,
+  ChartLineUp, Users, Tag,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import OutsourcedInFieldPage from './OutsourcedInField';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
+import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
 
 const TRIGGER = 'gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md';
 
 // Abas servidas pelo componente Contractors (uma única instância controlada).
-const CONTRACTOR_TABS = ['orders', 'planning', 'contractors', 'recipes'];
-const VALID_TABS = new Set(['rua', ...CONTRACTOR_TABS, 'relatorio']);
+const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
+const VALID_TABS = new Set(['rua', ...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
 const DEFAULT_TAB = 'rua';
 
 export default function TerceirizadosHub() {
@@ -73,7 +79,8 @@ export default function TerceirizadosHub() {
         description="Acompanhamento na rua, ordens de serviço, cadastro de contratadas e relatório — tudo num só lugar."
       />
       <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
-        <TabsList className="h-auto flex-wrap gap-1 bg-muted/50 p-1 rounded-lg">
+        <TabsList className="h-auto flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-lg">
+          {/* OPERACIONAL */}
           <TabsTrigger value="rua" className={TRIGGER}>
             <Truck className="h-3.5 w-3.5" /> Na Rua
           </TabsTrigger>
@@ -83,19 +90,25 @@ export default function TerceirizadosHub() {
           <TabsTrigger value="planning" className={TRIGGER}>
             <ChartLineUp className="h-3.5 w-3.5" /> Planejamento
           </TabsTrigger>
+          <TabsTrigger value="relatorio" className={TRIGGER}>
+            <BarChart3 className="h-3.5 w-3.5" /> Relatório
+          </TabsTrigger>
+          {/* divisor OPERACIONAL | CADASTRO */}
+          <span aria-hidden className="mx-1 h-5 w-px self-center bg-border" />
+          {/* CADASTRO */}
           <TabsTrigger value="contractors" className={TRIGGER}>
             <Users className="h-3.5 w-3.5" /> Prestadores
           </TabsTrigger>
-          <TabsTrigger value="recipes" className={TRIGGER}>
-            <FlaskConical className="h-3.5 w-3.5" /> Receitas
-          </TabsTrigger>
-          <TabsTrigger value="relatorio" className={TRIGGER}>
-            <BarChart3 className="h-3.5 w-3.5" /> Relatório
+          <TabsTrigger value="cobertura" className={TRIGGER}>
+            <Tag className="h-3.5 w-3.5" /> Tarifas por Referência
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="rua">
           <OutsourcedInFieldPage embedded onRequestCreateOS={requestCreateOS} />
+        </TabsContent>
+        <TabsContent value="cobertura">
+          <TerceirizacaoCoberturaPanel />
         </TabsContent>
         <TabsContent value="relatorio">
           <ContractorReportsPage embedded />

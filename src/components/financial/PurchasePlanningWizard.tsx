@@ -29,6 +29,8 @@ interface OrderMaterialNeed {
   reference_name: string;
   quantity: number;
   delivery_date: string | null;
+  /** Data-limite de compra (data_limite_compra da projeção) — backward do faturamento. */
+  purchase_deadline?: string | null;
   week_label: string;
   week_start: Date;
   materials: MaterialLine[];
@@ -69,6 +71,8 @@ interface AggregatedMaterial {
   supplier_name?: string;
   supplier_id?: string; // FK suppliers — gravado na OC
   orders: string[];
+  /** Data-limite de compra MAIS CEDO entre os pedidos que precisam deste material. */
+  earliest_purchase_deadline?: string | null;
   product_id?: string; // representative product id for PO item creation
   width_missing?: boolean; // alguma linha de área sem largura → quantidade não confiável
 }
@@ -509,6 +513,7 @@ export default function PurchasePlanningWizard() {
           reference_name: sheet.name || '',
           quantity: qty,
           delivery_date: deliveryDate,
+          purchase_deadline: purchaseDeadline,
           week_label: weekLabel,
           week_start: weekStart,
           materials,
@@ -573,6 +578,7 @@ export default function PurchasePlanningWizard() {
             supplier_name: matAny._supplier || undefined,
             supplier_id: matAny._supplier_id || undefined,
             orders: [],
+            earliest_purchase_deadline: order.purchase_deadline || null,
             product_id: matAny._product_id || undefined,
             width_missing: matAny.width_missing || false,
           });
@@ -582,6 +588,9 @@ export default function PurchasePlanningWizard() {
         agg.total_needed += mat.total_needed_converted;
         if (matAny.width_missing) agg.width_missing = true;
         agg.orders.push(order.order_number);
+        if (order.purchase_deadline && (!agg.earliest_purchase_deadline || order.purchase_deadline < agg.earliest_purchase_deadline)) {
+          agg.earliest_purchase_deadline = order.purchase_deadline;
+        }
       }
     }
 
@@ -616,6 +625,9 @@ export default function PurchasePlanningWizard() {
           existing.total_needed += mat.total_needed;
           if (mat.width_missing) existing.width_missing = true;
           existing.orders = Array.from(new Set([...existing.orders, ...mat.orders]));
+          if (mat.earliest_purchase_deadline && (!existing.earliest_purchase_deadline || mat.earliest_purchase_deadline < existing.earliest_purchase_deadline)) {
+            existing.earliest_purchase_deadline = mat.earliest_purchase_deadline;
+          }
           existing.stock_after = existing.current_stock - existing.total_needed;
           const deficit = Math.max(0, existing.total_needed - existing.current_stock);
           existing.estimated_cost = deficit * existing.unit_price;
@@ -688,6 +700,8 @@ export default function PurchasePlanningWizard() {
           .sort()
           .join('|');
         const idempKey = `wizard|${supplierId || supplierName}|${idempSig}`;
+        // Comprar até = data-limite de compra MAIS CEDO entre os materiais desta OC.
+        const buyBy = items.map(i => i.earliest_purchase_deadline).filter(Boolean).sort()[0] || null;
         const { data: po, error: poErr } = await supabase
           .from('purchase_orders')
           .insert({
@@ -698,6 +712,7 @@ export default function PurchasePlanningWizard() {
             auto_generated: true,
             status: 'pending',
             idempotency_key: idempKey,
+            ...(buyBy ? { purchase_by_date: buyBy } : {}),
           })
           .select('id')
           .single();

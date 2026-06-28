@@ -12,6 +12,29 @@ import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
+import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
+
+/** Quantidade pt-BR: inteiro sem casas, fracionário com 1-2 casas. */
+const fmtConsumoQty = (n: number) =>
+  n.toLocaleString('pt-BR', { minimumFractionDigits: Number.isInteger(n) ? 0 : 1, maximumFractionDigits: 2 });
+
+/** Rótulo curto da unidade do consumo (espelha a do modal do PV). */
+const consumoUnitLabel = (u?: string): string => {
+  const k = (u || '').toLowerCase();
+  if (k === 'metro' || k === 'm' || k === 'mt') return 'm';
+  if (k === 'cm') return 'cm';
+  if (k === 'dm2' || k === 'dm²') return 'dm²';
+  if (k === 'placa' || k === 'placas') return 'placa(s)';
+  if (k === 'par') return 'pares';
+  if (k === 'un') return 'un';
+  return u || '';
+};
+
+/** Componentes de consumo que cada setor de corte exibe na ficha. */
+const CONSUMO_COMPONENTS_BY_SECTOR: Partial<Record<GroupedSector, string[]>> = {
+  'Corte Forração': ['Forração', 'Forração Palmilha'],
+  'Corte Cabedal': ['Cabedal'],
+};
 
 export interface SilkColorGroup {
   /** Cor do CABEDAL (chave de agrupamento). Em todos os setores exceto
@@ -85,6 +108,10 @@ export interface SilkColorGroup {
   /** Lot sizing (PR 2026-05-23): quando o grupo representa o N-ésimo lote
    *  de OPs splitadas, mostra badge "LOTE X / N" no header. */
   lotInfo?: { number: number; total: number };
+  /** Consumo de materiais do grupo (motor canônico, idêntico ao modal do PV).
+   *  Anexado SÓ nos setores de corte (Corte Forração / Corte Cabedal) — a ficha
+   *  filtra pelo componente do setor e mostra o bloco "Consumo · Corte do Rolo". */
+  consumption?: ConsumptionRow[];
 }
 
 export interface SoleSilkGroup {
@@ -472,6 +499,79 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     );
   };
 
+  /**
+   * Bloco "Consumo · Corte do Rolo" (Corte Forração / Corte Cabedal).
+   *
+   * Re-introduz o consumo nas fichas de corte (saiu em 2026-06-12) usando o MOTOR
+   * CANÔNICO — `cg.consumption` é o MESMO resultado do modal "Consumo de Material"
+   * do PV (`useBulkOrderConsumption`). Filtra pelo componente do setor: forro
+   * (cabedal + palmilha) no Corte Forração, cabedal no Corte Cabedal. A quantidade
+   * (`required`) já vem na unidade física do produto (metros lineares cortados da
+   * bobina, ou placa), com a conversão dm²→linear pela largura da ficha já aplicada.
+   * Quando a ficha de componente não tem largura, o motor marca `width_missing`: aí
+   * o valor fica em dm² e o bloco avisa (sem inflar ~100×), igual ao PV.
+   */
+  const renderConsumoCorte = (cg: SilkColorGroup) => {
+    const comps = CONSUMO_COMPONENTS_BY_SECTOR[sector];
+    if (!comps) return null;
+    const rows = (cg.consumption || []).filter(r => comps.includes(r.component) && (Number(r.required) || 0) > 0);
+    if (rows.length === 0) return null;
+    const colLabel = sector === 'Corte Forração' ? 'Forro a cortar' : 'Cabedal a cortar';
+    return (
+      <div className="keep-together mt-1 bg-white" style={{ border: '1.5px solid #000' }}>
+        <div className="flex items-baseline justify-between gap-2 px-2 py-1" style={{ background: '#000' }}>
+          <span className="font-mono uppercase flex items-center gap-1.5" style={{ color: '#fff', fontSize: '9px', letterSpacing: '0.13em', fontWeight: 700 }}>
+            <Scissors className="h-3 w-3" weight="bold" /> Consumo · Corte do Rolo
+          </span>
+          <span className="font-mono uppercase" style={{ color: '#d9d6d0', fontSize: '8px', letterSpacing: '0.06em' }}>
+            cálculo do PV
+          </span>
+        </div>
+        <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1.5px solid #000' }}>
+              <th className="text-left px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em' }}>Material · cor</th>
+              <th className="text-right px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 132 }}>{colLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const widthMissing = r.source === 'width_missing';
+              const colorStr = (r.color || '').trim();
+              const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
+              return (
+                <tr key={i} style={{ borderBottom: i < rows.length - 1 ? '1px solid #000' : 'none' }}>
+                  <td className="px-2 py-1 align-middle">
+                    <span className="uppercase leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
+                      {r.product_name}
+                    </span>
+                    {showColor && (
+                      <span className="font-mono" style={{ fontSize: '9px', color: '#333', marginLeft: 4 }}>· {colorStr}</span>
+                    )}
+                    {widthMissing && (
+                      <div className="font-mono leading-tight" style={{ fontSize: '8.5px', fontWeight: 700, color: '#C00000', marginTop: 1 }}>
+                        ⚠ cadastrar largura na ficha de componente (valor em dm²)
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                    <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.02em', color: '#C00000', lineHeight: 1 }}>
+                      {fmtConsumoQty(Number(r.required))}
+                    </span>
+                    <span className="font-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#000', marginLeft: 3 }}>
+                      {/* width_missing: o motor mantém productUnit='metro' mas o valor é dm² cru. */}
+                      {widthMissing ? 'dm²' : consumoUnitLabel(r.unit)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
   // Header agregado do SETOR (1×) → [sub-header + cards + rodapé] por grupo.
   const headerBlock = (
@@ -803,6 +903,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   {renderGradeTable(cg)}
                 </div>
                 {renderCompactAlerts(cg)}
+                {renderConsumoCorte(cg)}
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size="sm" />
               </div>
             );
@@ -1025,6 +1126,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   <span className="section-label block mb-1" style={{ color: '#000' }}>Grade · Pares por Numeração</span>
                   {renderGradeTable(cg)}
                 </div>
+
+                {/* Consumo · Corte do Rolo (Corte Cabedal — mesmo cálculo do PV) */}
+                {renderConsumoCorte(cg)}
 
                 {/* Tally Box */}
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} />

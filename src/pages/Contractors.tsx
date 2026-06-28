@@ -5,7 +5,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, Sparkle as Sparkles, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
@@ -307,6 +308,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   };
   const [orderTab, setOrderTab] = useState('dados');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Busca do seletor de pedido (PV/OP) — filtro manual (shouldFilter=false) sobre
+  // TODOS os pedidos, sem corte de 50 nem filtro de status que escondia pedidos.
+  const [pvSearch, setPvSearch] = useState('');
+  const [pvOpen, setPvOpen] = useState(false);
   // Artisanal OS state
   const [isArtisanal, setIsArtisanal] = useState(false);
   const [artRecipeId, setArtRecipeId] = useState('');
@@ -952,6 +957,44 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     updateOrder.mutate({ id: o.id, status: 'Em Andamento' } as any);
   }, [updateOrder]);
 
+  // Dar baixa / reabrir um material da OS. Quando TODOS ficam baixados, a OS
+  // fecha (status→Concluído) via claim atômico (.neq status) que evita
+  // dupla-conta-a-pagar em clique duplo / abas concorrentes, e dispara a saída
+  // de estoque artesanal 1×. Extraído do corpo da tabela pra reuso no card.
+  const toggleMaterial = useCallback(async (o: ServiceOrder, index: number) => {
+    const mats = getMaterials(o);
+    const updatedMats = mats.map((mat, mi) => mi === index ? { ...mat, completed: !mat.completed } : mat);
+    const allDone = updatedMats.length > 0 && updatedMats.every(mat => mat.completed);
+    if (allDone && o.status !== 'Concluído') {
+      const { data: claimed } = await supabase
+        .from('service_orders')
+        .update({ status: 'Concluído', materials_sent: updatedMats as any })
+        .eq('id', o.id)
+        .neq('status', 'Concluído')
+        .select('id, order_number, artisanal_stock_entry_done');
+      if (!claimed || claimed.length === 0) {
+        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+        return;
+      }
+      toast.success('Todos os itens concluídos! OS marcada como Concluída.');
+      queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+      queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
+      const freshOs = claimed[0] as any;
+      if ((o as any).artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
+        await produceArtisanalOutput({ ...o, artisanal_stock_entry_done: freshOs.artisanal_stock_entry_done } as any, freshOs.order_number || '', o.id);
+      }
+    } else {
+      updateOrder.mutate({ id: o.id, materials_sent: updatedMats } as any);
+    }
+  }, [updateOrder, queryClient, produceArtisanalOutput]);
+
+  const confirmAndDeleteOs = useCallback((o: ServiceOrder) => {
+    if (window.confirm(`Excluir a OS ${o.order_number}? Esta ação não pode ser desfeita.`)) {
+      deleteOrder.mutate(o.id);
+    }
+  }, [deleteOrder]);
+
   const handleSaveOrder = () => {
     if (!editingOrder.contractor_id) return;
     const recipe = isArtisanal ? recipes.find(r => r.id === artRecipeId) : null;
@@ -1254,281 +1297,246 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   </Button>
                 ))}
               </div>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                {/* Filtros de relatório (prestador / período / base) + PDF num popover —
+                    tiram o ruído da lista operacional. O ponto sinaliza filtro ativo. */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-1.5 relative">
+                      <FileDown className="h-4 w-4" /> Relatório
+                      {hasOsReportFilters && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary" aria-hidden />}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 space-y-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Prestador</Label>
+                      <Select value={contractorFilter} onValueChange={v => setOsParam('contractor', v === 'all' ? null : v)}>
+                        <SelectTrigger className="mt-1 h-9 w-full">
+                          <span className="flex items-center gap-1.5 truncate"><Funnel className="h-3.5 w-3.5 shrink-0" /><SelectValue placeholder="Todos os prestadores" /></span>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os prestadores</SelectItem>
+                          {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> De</Label>
+                        <Input type="date" value={osFromDate} onChange={e => setOsParam('from', e.target.value || null)} className="mt-1 h-9" />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Até</Label>
+                        <Input type="date" value={osToDate} onChange={e => setOsParam('to', e.target.value || null)} className="mt-1 h-9" />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Base da data</Label>
+                      <Select value={osBasis} onValueChange={v => setOsParam('basis', v === 'criacao' ? 'criacao' : null)}>
+                        <SelectTrigger className="mt-1 h-9 w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="vencimento">Por vencimento</SelectItem>
+                          <SelectItem value="criacao">Por criação</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      {hasOsReportFilters ? (
+                        <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={clearOsReportFilters}>
+                          <X className="h-3.5 w-3.5" /> Limpar
+                        </Button>
+                      ) : <span />}
+                      <Button size="sm" className="h-9 gap-1.5" disabled={osPdfBusy} onClick={() => handleGenerateOsPdf('filtro')}>
+                        {osPdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                        Gerar PDF ({filteredOrders.length})
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>
               </div>
             </div>
 
-            {/* Filtros do relatório: prestador + período + base de data + PDF */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={contractorFilter} onValueChange={v => setOsParam('contractor', v === 'all' ? null : v)}>
-                <SelectTrigger className="w-56 h-9">
-                  <span className="flex items-center gap-1.5 truncate"><Funnel className="h-3.5 w-3.5 shrink-0" /><SelectValue placeholder="Todos os prestadores" /></span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os prestadores</SelectItem>
-                  {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> De</Label>
-                <Input type="date" value={osFromDate} onChange={e => setOsParam('from', e.target.value || null)} className="h-9 w-[150px]" />
-                <Label className="text-xs text-muted-foreground">até</Label>
-                <Input type="date" value={osToDate} onChange={e => setOsParam('to', e.target.value || null)} className="h-9 w-[150px]" />
-              </div>
-              <Select value={osBasis} onValueChange={v => setOsParam('basis', v === 'criacao' ? 'criacao' : null)}>
-                <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="vencimento">Por vencimento</SelectItem>
-                  <SelectItem value="criacao">Por criação</SelectItem>
-                </SelectContent>
-              </Select>
-              {hasOsReportFilters && (
-                <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" onClick={clearOsReportFilters}>
-                  <X className="h-3.5 w-3.5" /> Limpar filtros
-                </Button>
-              )}
-              <Button variant="outline" size="sm" className="h-9 gap-1.5 ml-auto" disabled={osPdfBusy} onClick={() => handleGenerateOsPdf('filtro')}>
-                {osPdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                Relatório PDF ({filteredOrders.length})
-              </Button>
-            </div>
-
-            <Panel flush>
-                <div className="rounded-md border-0 overflow-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                        <TableHead className="w-10"><Checkbox checked={allOsSelected} onCheckedChange={toggleSelectAllOs} aria-label="Selecionar todas as OS" /></TableHead>
-                        <TableHead className="w-[90px]">Nº OS</TableHead>
-                        <TableHead>Prestador</TableHead>
-                        <TableHead className="w-[100px]">Pedido (PV)</TableHead>
-                        <TableHead>Descrição</TableHead>
-                        <TableHead>Materiais</TableHead>
-                        <TableHead className="w-[100px]">Data</TableHead>
-                        <TableHead className="text-right w-[110px]">Total</TableHead>
-                        <TableHead className="w-[140px]">Prazo / OP</TableHead>
-                        <TableHead className="w-[130px]">Status</TableHead>
-                        <TableHead className="w-[90px]">Recibo</TableHead>
-                        <TableHead className="text-right w-[80px]">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredOrders.length === 0 ? (
-                        <TableRow><TableCell colSpan={12} className="text-center text-sm text-muted-foreground py-12">Nenhuma OS encontrada</TableCell></TableRow>
-                      ) : filteredOrders.map(o => {
-                        const mats = getMaterials(o);
-                        return (
-                          <TableRow key={o.id} className={cn("cursor-pointer hover:bg-muted/50 transition-colors", selectedOsIds.has(o.id) && 'bg-primary/5')} onClick={e => { if ((e.target as HTMLElement).closest('button')) return; openEditOrder(o); }}>
-                            <TableCell onClick={e => e.stopPropagation()}><Checkbox checked={selectedOsIds.has(o.id)} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} /></TableCell>
-                            <TableCell className="text-sm font-mono font-medium">{o.order_number}</TableCell>
-                            <TableCell className="text-sm font-medium">{o.contractors?.name || '—'}</TableCell>
-                            <TableCell className="text-sm">
-                              {(() => {
-                                // Vínculo direto (legacy) OU vínculo de terceirização integrada (source_sale_order_id).
-                                const linkedPvId = o.sale_order_id || o.source_sale_order_id || null;
-                                const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
-                                const isAuto = !!o.source_sale_order_id;
-                                return so ? (
-                                  <div>
-                                    <span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>
-                                    {so.client_order_number && <span className="text-xs text-muted-foreground block">{so.client_order_number}</span>}
-                                    {isAuto && (
-                                      <Badge variant="outline" className="mt-0.5 h-4 px-1.5 text-[9px] bg-primary/5 border-primary/30 text-primary">Vinculada a PV</Badge>
-                                    )}
-                                  </div>
-                                ) : <span className="text-xs text-muted-foreground">—</span>;
-                              })()}
-                            </TableCell>
-                            <TableCell className="text-sm max-w-[200px]">
-                              <div className="flex items-center gap-1.5">
-                                {o.artisanal_recipe_id && (
-                                  <span title="Produção artesanal"><FlaskConical className="h-3.5 w-3.5 shrink-0 text-primary" /></span>
-                                )}
-                                <span className="truncate">{o.description}</span>
-                              </div>
-                              {o.artisanal_output_name && (
-                                <div className="flex items-center gap-1 mt-0.5">
-                                  <span className="text-xs text-muted-foreground">{o.artisanal_output_name} ({o.artisanal_output_color}) · {Number(o.artisanal_output_meters).toFixed(2)}m</span>
-                                  {o.artisanal_stock_entry_done && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {mats.length > 0 ? (
-                                <div className="space-y-0.5">
-                                  {mats.map((m, i) => (
-                                    <div key={i} className={cn("text-xs flex items-center gap-1", m.completed && "line-through opacity-60")}>
-                                      <button
-                                        className="shrink-0 hover:scale-110 transition-transform"
-                                        title={m.completed ? 'Marcar como pendente' : 'Dar baixa neste item'}
-                                        onClick={async e => {
-                                          e.stopPropagation();
-                                          const updatedMats = mats.map((mat, mi) => mi === i ? { ...mat, completed: !mat.completed } : mat);
-                                          const allDone = updatedMats.every(mat => mat.completed);
-                                          if (allDone && o.status !== 'Concluído') {
-                                            // Atomic claim: only proceed if DB still shows pre-Concluído status.
-                                            // Prevents double-click / concurrent-tab race that would create
-                                            // duplicate AP entries and double-debit/credit artisanal stock.
-                                            const { data: claimed } = await supabase
-                                              .from('service_orders')
-                                              .update({ status: 'Concluído', materials_sent: updatedMats as any })
-                                              .eq('id', o.id)
-                                              .neq('status', 'Concluído')
-                                              .select('id, order_number, artisanal_stock_entry_done');
-                                            if (!claimed || claimed.length === 0) {
-                                              // Already claimed by another click — just refresh UI
-                                              queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-                                              return;
-                                            }
-                                            toast.success('Todos os itens concluídos! OS marcada como Concluída.');
-                                            queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-                                            // Conta a pagar: gerada pelo banco na transição de status.
-                                            queryClient.invalidateQueries({ queryKey: ['accounts_payable'] }); queryClient.invalidateQueries({ queryKey: ['service_order_overview'] });
-                                            const freshOs = claimed[0] as any;
-                                            if ((o as any).artisanal_recipe_id && !freshOs.artisanal_stock_entry_done) {
-                                              // Pass freshOs flag so the early-return inside produceArtisanalOutput
-                                              // sees the live DB value rather than the potentially-stale React Query cache.
-                                              await produceArtisanalOutput({ ...o, artisanal_stock_entry_done: freshOs.artisanal_stock_entry_done } as any, freshOs.order_number || '', o.id);
-                                            }
-                                          } else {
-                                            // Just update materials without status change
-                                            updateOrder.mutate({ id: o.id, materials_sent: updatedMats } as any);
-                                          }
-                                        }}
-                                      >
-                                        {m.completed ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Circle className="h-3.5 w-3.5 text-muted-foreground" />}
-                                      </button>
-                                      <span className="font-medium">{m.material || '?'}</span>
-                                      {m.color && <span className="text-muted-foreground"> ({m.color})</span>}
-                                      <span className="font-mono ml-1">{Number(m.meters).toFixed(2)}m</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : '—'}
-                            </TableCell>
-                            <TableCell className="text-sm tabular-nums">{o.service_date ? format(new Date(o.service_date + 'T12:00:00'), 'dd/MM/yyyy') : '—'}</TableCell>
-                            <TableCell className="text-sm text-right font-mono font-semibold">
-                              <div>{formatCurrency(Number(o.total_value))}</div>
-                              <div className="flex justify-end mt-0.5"><OsPaymentBadge ov={osOverview?.get(o.id)} /></div>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {(() => {
-                                const isBottleneckOS = !!o.target_sector;
-                                const isPendingReceive = isBottleneckOS &&
-                                  o.status !== 'received' && o.status !== 'Concluído' &&
-                                  o.status !== 'Cancelado' && o.status !== 'cancelled';
-                                const todayIso = new Date().toISOString().slice(0, 10);
-                                const isLate = o.quoted_deadline && o.quoted_deadline < todayIso && isPendingReceive;
-                                if (!isBottleneckOS) return <span className="text-muted-foreground">—</span>;
-                                return (
-                                  <div className="space-y-0.5">
-                                    <div className="flex items-center gap-1">
-                                      <Calendar className="h-3 w-3 text-muted-foreground" />
-                                      <span className={isLate ? 'text-red-600 font-semibold' : ''}>
-                                        {o.quoted_deadline
-                                          ? new Date(o.quoted_deadline + 'T00:00:00').toLocaleDateString('pt-BR')
-                                          : '—'}
-                                      </span>
-                                      {isLate && <Badge variant="outline" className="h-4 text-xs bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400">atrasado</Badge>}
-                                    </div>
-                                    {o.target_sector && (
-                                      <div className="text-xs text-muted-foreground">
-                                        Setor: {(o.target_sector in SECTOR_LABEL) ? SECTOR_LABEL[o.target_sector as SectorKey] : o.target_sector}
-                                      </div>
-                                    )}
-                                    {isPendingReceive && o.order_id && (
-                                      <div className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
-                                        <Lock className="h-3 w-3" /> OP bloqueada
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
-                                <Badge variant={statusColor(o.status)} className="text-xs w-fit">{statusLabel(o.status)}</Badge>
-                                <OsBalanceLine ov={osOverview?.get(o.id)} />
-                                {/* Botão "Marcar recebido" só aparece em OS de gargalo ainda não recebidas */}
-                                {!!o.target_sector && isOsActive(o.status) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-6 px-1.5 text-xs gap-1"
-                                    onClick={e => { e.stopPropagation(); openReceiveDialog(o); }}
-                                  >
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Receber
-                                  </Button>
-                                )}
-                                {/* Envio em parcelas (OS do PV): checklist enviar pra rua / receber */}
-                                {(o as any).dispatch_tracked && isOsActive(o.status) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-6 px-1.5 text-xs gap-1"
-                                    onClick={e => { e.stopPropagation(); setDispatchDialogOs(o); }}
-                                  >
-                                    <Truck className="h-3 w-3" />
-                                    Enviar pra rua
-                                  </Button>
-                                )}
-                                {/* Ações rápidas (1 clique, sem abrir o form) em OS ativa */}
-                                {isOsActive(o.status) && (
-                                  <div className="flex items-center gap-1">
-                                    {o.status !== 'Em Andamento' && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-6 px-1.5 text-xs gap-1"
-                                        title="Mover para Em Processamento"
-                                        onClick={e => { e.stopPropagation(); markInProgress(o); }}
-                                      >
-                                        <Play className="h-3 w-3" />
-                                        Processar
-                                      </Button>
-                                    )}
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-6 px-1.5 text-xs gap-1 text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10"
-                                      title="Marcar como Entregue (grava a data de entrega)"
-                                      onClick={e => { e.stopPropagation(); markDelivered(o); }}
-                                    >
-                                      <CheckCircle2 className="h-3 w-3" />
-                                      Entregue
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {o.receipt_number ? (
-                                <Button variant="ghost" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => printReceipt(o, contractors.find(c => c.id === o.contractor_id))}>
-                                  <Printer className="h-3 w-3" />{o.receipt_number}
-                                </Button>
-                              ) : <span className="text-xs text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-0.5">
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditOrder(o)}><Pencil className="h-3.5 w-3.5" /></Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader><AlertDialogTitle>Excluir OS?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
-                                    <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteOrder.mutate(o.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+            {filteredOrders.length === 0 ? (
+              <Panel flush>
+                <EmptyState
+                  icon={ClipboardList}
+                  title="Nenhuma OS encontrada"
+                  description={search || hasOsReportFilters || statusFilter !== 'all'
+                    ? 'Ajuste a busca, os chips de status ou os filtros de relatório.'
+                    : 'Crie a primeira ordem de serviço para uma contratada.'}
+                  action={<Button size="sm" className="gap-1.5" onClick={() => openNewOrder()}><Plus className="h-4 w-4" /> Nova OS</Button>}
+                />
+              </Panel>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-0.5 text-xs text-muted-foreground">
+                  <span className="font-mono">{filteredOrders.length} OS</span>
+                  <button type="button" className="transition-colors hover:text-foreground" onClick={toggleSelectAllOs}>
+                    {allOsSelected ? 'Limpar seleção' : 'Selecionar todas'}
+                  </button>
                 </div>
-            </Panel>
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                  {filteredOrders.map(o => {
+                    const mats = getMaterials(o);
+                    // Vínculo direto (legacy) OU terceirização integrada (source_sale_order_id).
+                    const linkedPvId = o.sale_order_id || o.source_sale_order_id || null;
+                    const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
+                    const isAuto = !!o.source_sale_order_id;
+                    const isBottleneckOS = !!o.target_sector;
+                    const isPendingReceive = isBottleneckOS
+                      && o.status !== 'received' && o.status !== 'Concluído'
+                      && o.status !== 'Cancelado' && o.status !== 'cancelled';
+                    const todayIso = new Date().toISOString().slice(0, 10);
+                    const isLate = !!o.quoted_deadline && o.quoted_deadline < todayIso && isPendingReceive;
+                    const active = isOsActive(o.status);
+                    const selected = selectedOsIds.has(o.id);
+                    return (
+                      <div
+                        key={o.id}
+                        className={cn(
+                          'flex flex-col rounded-xl border bg-card p-3.5 transition-colors',
+                          selected ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border/60 hover:border-border',
+                        )}
+                      >
+                        {/* Cabeçalho: seleção + Nº/prestador · total/status */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} className="mt-0.5 shrink-0" aria-label={`Selecionar OS ${o.order_number}`} />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
+                                {o.artisanal_recipe_id && <span title="Produção artesanal"><FlaskConical className="h-3.5 w-3.5 text-primary" /></span>}
+                              </div>
+                              <p className="truncate text-sm font-medium text-foreground">{o.contractors?.name || 'Sem prestador'}</p>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="font-mono text-base font-bold leading-none tabular-nums">{formatCurrency(Number(o.total_value))}</p>
+                            <div className="mt-1 flex justify-end">
+                              <Badge variant={statusColor(o.status)} className="text-[10px]">{statusLabel(o.status)}</Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Corpo: descrição + PV + materiais + gargalo */}
+                        <div className="mt-2.5 flex-1 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="line-clamp-2 text-sm text-muted-foreground">{o.description || '—'}</p>
+                            {so && (
+                              <div className="shrink-0 text-right leading-tight">
+                                <span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>
+                                {so.client_order_number && <span className="block text-[11px] text-muted-foreground">{so.client_order_number}</span>}
+                                {isAuto && <Badge variant="outline" className="mt-0.5 h-4 bg-primary/5 px-1.5 text-[9px] text-primary border-primary/30">PV</Badge>}
+                              </div>
+                            )}
+                          </div>
+
+                          {o.artisanal_output_name && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <span>{o.artisanal_output_name} ({o.artisanal_output_color}) · {Number(o.artisanal_output_meters).toFixed(2)}m</span>
+                              {o.artisanal_stock_entry_done && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
+                            </div>
+                          )}
+
+                          {mats.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {mats.map((m, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  title={m.completed ? 'Reabrir este item' : 'Dar baixa neste item'}
+                                  onClick={() => toggleMaterial(o, i)}
+                                  className={cn(
+                                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                                    m.completed
+                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 line-through'
+                                      : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+                                  )}
+                                >
+                                  {m.completed ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                                  <span className="font-medium">{m.material || '?'}</span>
+                                  {m.color && <span>({m.color})</span>}
+                                  <span className="font-mono">{Number(m.meters).toFixed(0)}m</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {isBottleneckOS && (
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
+                                <span className={isLate ? 'font-semibold text-red-600' : ''}>
+                                  {o.quoted_deadline ? new Date(o.quoted_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'sem prazo'}
+                                </span>
+                              </span>
+                              {isLate && <Badge variant="outline" className="h-4 bg-red-500/10 text-[10px] text-red-700 border-red-500/30 dark:text-red-400">atrasado</Badge>}
+                              {o.target_sector && (
+                                <span className="text-muted-foreground">· {(o.target_sector in SECTOR_LABEL) ? SECTOR_LABEL[o.target_sector as SectorKey] : o.target_sector}</span>
+                              )}
+                              {isPendingReceive && o.order_id && (
+                                <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400"><Lock className="h-3 w-3" /> OP bloqueada</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Rodapé: pagamento + ações contextuais + menu */}
+                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <OsPaymentBadge ov={osOverview?.get(o.id)} />
+                            <OsBalanceLine ov={osOverview?.get(o.id)} />
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {isBottleneckOS && active && isPendingReceive && (
+                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => openReceiveDialog(o)}>
+                                <CheckCircle2 className="h-3 w-3" /> Receber
+                              </Button>
+                            )}
+                            {(o as any).dispatch_tracked && active && (
+                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setDispatchDialogOs(o)}>
+                                <Truck className="h-3 w-3" /> Enviar
+                              </Button>
+                            )}
+                            {active && o.status !== 'Em Andamento' && (
+                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
+                                <Play className="h-3 w-3" /> Processar
+                              </Button>
+                            )}
+                            {active && (
+                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10" title="Registrar retorno e marcar como Entregue" onClick={() => markDelivered(o)}>
+                                <CheckCircle2 className="h-3 w-3" /> Entregue
+                              </Button>
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
+                                {o.receipt_number && (
+                                  <DropdownMenuItem onClick={() => printReceipt(o, contractors.find(c => c.id === o.contractor_id))}>
+                                    <Printer className="mr-2 h-3.5 w-3.5" /> Recibo {o.receipt_number}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={(e) => { e.preventDefault(); confirmAndDeleteOs(o); }}
+                                >
+                                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           {/* ── PLANNING TAB ── */}
@@ -1913,12 +1921,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           <Tabs value={orderTab} onValueChange={setOrderTab}>
             <TabsList className="w-full">
               <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
-              <TabsTrigger value="artesanal" className="flex-1 gap-1"><Sparkles className="h-3.5 w-3.5" /> Artesanal</TabsTrigger>
               <TabsTrigger value="foto" className="flex-1 gap-1"><Upload className="h-3.5 w-3.5" /> Foto Assinada</TabsTrigger>
             </TabsList>
 
             <TabsContent value="dados" className="mt-3">
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 flex items-center gap-2.5">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Prestador &amp; Vínculo</span>
+                  <span className="h-px flex-1 bg-border/70" />
+                </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Prestador *</Label>
                   <Select value={editingOrder.contractor_id || ''} onValueChange={v => setEditingOrder(p => ({ ...p, contractor_id: v }))}>
@@ -1945,36 +1956,45 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       </span>
                     )}
                   </Label>
-                  <Popover>
+                  <Popover open={pvOpen} onOpenChange={(o) => { setPvOpen(o); if (!o) setPvSearch(''); }}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm font-normal">
+                      <Button variant="outline" role="combobox" aria-expanded={pvOpen} className="h-9 w-full justify-between text-sm font-normal">
                         {editingOrder.sale_order_id
-                          ? (() => { const so = saleOrders.find((s: any) => s.id === editingOrder.sale_order_id); return so ? `${so.order_number}${so.client_order_number ? ` — ${so.client_order_number}` : ''} (${so.client_name || ''})` : 'Selecione'; })()
+                          ? (() => { const so = saleOrders.find((s: any) => s.id === editingOrder.sale_order_id); return so ? `${so.order_number}${so.client_order_number ? ` — ${so.client_order_number}` : ''}${so.client_name ? ` (${so.client_name})` : ''}` : 'Selecione'; })()
                           : 'Nenhum (opcional)'}
                         <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[400px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Buscar PV, cliente..." />
+                    {/* shouldFilter=false + filtro manual sobre TODOS os pedidos + value=id
+                        estável: corrige o seletor que não achava/selecionava o pedido
+                        (antes filtrava por 3 status e cortava em 50 ANTES da busca). */}
+                    <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[340px] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput placeholder="Buscar por PV, cliente ou pedido do cliente..." value={pvSearch} onValueChange={setPvSearch} />
                         <CommandList>
                           <CommandEmpty>Nenhum pedido encontrado.</CommandEmpty>
                           <CommandGroup>
-                            <CommandItem value="__none__" onSelect={() => setEditingOrder(p => ({ ...p, sale_order_id: null }))}>
+                            <CommandItem value="__none__" onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: null })); setPvOpen(false); setPvSearch(''); }}>
                               <Check className={cn("mr-2 h-3.5 w-3.5", !editingOrder.sale_order_id ? "opacity-100" : "opacity-0")} />
-                              Nenhum
+                              Nenhum (sem vínculo)
                             </CommandItem>
-                            {saleOrders
-                              .filter((s: any) => s.status === 'Aprovado' || s.status === 'Em produção' || s.status === 'Produção')
-                              .slice(0, 50)
-                              .map((so: any) => (
-                                <CommandItem key={so.id} value={`${so.order_number} ${so.client_order_number || ''} ${so.client_name || ''}`} onSelect={() => setEditingOrder(p => ({ ...p, sale_order_id: so.id }))}>
+                            {(() => {
+                              const q = normalizeForSearch(pvSearch);
+                              const matches = (saleOrders as any[]).filter((so) => {
+                                if (!q) return true;
+                                return normalizeForSearch(so.order_number).includes(q)
+                                  || normalizeForSearch(so.client_order_number || '').includes(q)
+                                  || normalizeForSearch(so.client_name || '').includes(q);
+                              });
+                              return matches.slice(0, 80).map((so: any) => (
+                                <CommandItem key={so.id} value={so.id} onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: so.id })); setPvOpen(false); setPvSearch(''); }}>
                                   <Check className={cn("mr-2 h-3.5 w-3.5", editingOrder.sale_order_id === so.id ? "opacity-100" : "opacity-0")} />
                                   <span className="font-mono font-semibold mr-2">{so.order_number}</span>
                                   {so.client_order_number && <span className="text-muted-foreground mr-2">({so.client_order_number})</span>}
                                   <span className="text-sm truncate">{so.client_name || ''}</span>
                                 </CommandItem>
-                              ))}
+                              ));
+                            })()}
                           </CommandGroup>
                         </CommandList>
                       </Command>
@@ -2129,11 +2149,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   )}
                 </div>
 
-                <Separator className="col-span-2" />
                 {/* Materials section — hidden in artisanal mode (auto-computed) */}
                 {!isArtisanal && (
-                <div className="col-span-2 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Materiais Enviados</p>
+                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Materiais Enviados</span>
+                  <span className="h-px flex-1 bg-border/70" />
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addMaterial}><Plus className="h-3 w-3" /> Adicionar</Button>
                 </div>
                 )}
@@ -2142,9 +2162,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <div className="col-span-2 space-y-2">
                   {(editingOrder.materials_sent || []).map((mat, idx) => (
                     <div key={idx} className={cn("flex items-end gap-2 p-3 rounded-lg border bg-muted/20 transition-colors", mat.completed ? "border-green-300 bg-green-50/50 dark:bg-green-950/20" : "border-border")}>
+                      {/* Check de "dar baixa" só faz sentido editando uma OS existente —
+                          numa OS nova ainda não há o que baixar. */}
+                      {isEditing && (
                       <button type="button" className="shrink-0 self-center mb-1 hover:scale-110 transition-transform" title={mat.completed ? 'Marcar como pendente' : 'Dar baixa'} onClick={() => updateMaterial(idx, 'completed', !mat.completed)}>
                         {mat.completed ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Circle className="h-5 w-5 text-muted-foreground" />}
                       </button>
+                      )}
                       <div className={cn("flex-1 space-y-1.5", mat.completed && "opacity-60")}>
                         <Label className="text-xs text-muted-foreground">Material</Label>
                         <Popover>
@@ -2197,7 +2221,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   </div>
                 )}
 
-                <Separator className="col-span-2" />
+                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Cobrança</span>
+                  <span className="h-px flex-1 bg-border/70" />
+                </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Data</Label>
@@ -2246,21 +2273,26 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     className="h-9 font-mono"
                   />
                 </div>
-                <div className="col-span-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    Total {!isArtisanal && (
-                      <span className="text-muted-foreground/80 font-normal">
+                <div className="col-span-2 flex items-end justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3.5 py-3">
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-semibold uppercase tracking-wide text-foreground">Total</span>
+                    {!isArtisanal && (
+                      <span className="mt-0.5 block">
                         = {(editingOrder.quantity || 1).toLocaleString('pt-BR')} × {formatCurrency(editingOrder.unit_price || 0)}
                       </span>
                     )}
-                  </Label>
-                  <p className="display text-xl tabular-nums font-mono text-primary mt-1">
+                  </div>
+                  <p className="display text-2xl leading-none tabular-nums text-foreground">
                     {formatCurrency(
                       isArtisanal
                         ? (editingOrder.total_value || editingOrder.unit_price || 0)
                         : ((editingOrder.quantity || 1) * (editingOrder.unit_price || 0))
                     )}
                   </p>
+                </div>
+                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Status &amp; Observações</span>
+                  <span className="h-px flex-1 bg-border/70" />
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Status</Label>
@@ -2278,219 +2310,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
                   <Textarea value={editingOrder.notes || ''} onChange={e => setEditingOrder(p => ({ ...p, notes: e.target.value }))} rows={2} className="resize-none" />
                 </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="artesanal" className="mt-3">
-              <div className="space-y-3">
-                <div className="rounded-lg border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 p-3">
-                  <p className="text-xs text-amber-900 dark:text-amber-200">
-                    <Sparkles className="h-3.5 w-3.5 inline mr-1" />
-                    Use esta aba quando o terceirizado <strong>transforma</strong> uma matéria-prima em um produto artesanal
-                    (ex.: couro liso → couro trançado). Ao concluir a OS, o sistema debita a MP e gera a entrada do produto artesanal no estoque.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Receita Artesanal</Label>
-                  <Select
-                    value={editingOrder.artisanal_recipe_id || '__none__'}
-                    onValueChange={(v) => {
-                      if (v === '__none__') {
-                        setEditingOrder((p) => ({
-                          ...p,
-                          artisanal_recipe_id: null,
-                          artisanal_output_name: '',
-                        }));
-                        return;
-                      }
-                      const r = artisanalRecipes.find((x) => x.id === v);
-                      setEditingOrder((p) => ({
-                        ...p,
-                        artisanal_recipe_id: v,
-                        artisanal_output_name: r?.artisanal_product_name || '',
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Selecione a receita (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Nenhuma (OS comum)</SelectItem>
-                      {artisanalRecipes.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name} — {r.base_product_name} → {r.artisanal_product_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {editingOrder.artisanal_recipe_id && (() => {
-                  const recipe = artisanalRecipes.find((r) => r.id === editingOrder.artisanal_recipe_id);
-                  if (!recipe) return null;
-                  const output = Number(editingOrder.artisanal_output_meters) || 0;
-                  const yieldRate = Number(recipe.yield_per_meter) || 1;
-                  const baseNeeded = output / yieldRate;
-                  const forOrder = Number(editingOrder.artisanal_for_order_meters) || 0;
-                  const forStock = Number(editingOrder.artisanal_for_stock_meters) || 0;
-                  const totalSplit = forOrder + forStock;
-                  const splitOk = output > 0 && Math.abs(totalSplit - output) < 0.01;
-                  return (
-                    <>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">MP Base</Label>
-                          <Input value={recipe.base_product_name} disabled className="h-9 bg-muted/40" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">Cor da MP Base</Label>
-                          <Input
-                            value={editingOrder.artisanal_output_color || ''}
-                            disabled
-                            className="h-9 bg-muted/40"
-                          />
-                          <p className="text-[11px] text-muted-foreground">= cor do produto (a tira é cortada da NAPA da mesma cor).</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">Produto Artesanal</Label>
-                          <Input
-                            value={editingOrder.artisanal_output_name || ''}
-                            onChange={(e) => setEditingOrder((p) => ({ ...p, artisanal_output_name: e.target.value }))}
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">Cor do Produto Artesanal</Label>
-                          <Input
-                            placeholder="Ex.: Caramelo Trançado"
-                            value={editingOrder.artisanal_output_color || ''}
-                            onChange={(e) => setEditingOrder((p) => ({ ...p, artisanal_output_color: e.target.value }))}
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">
-                            Metros Produzidos (saída)
-                          </Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min={0}
-                            value={editingOrder.artisanal_output_meters ?? ''}
-                            onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                            onChange={(e) =>
-                              setEditingOrder((p) => ({ ...p, artisanal_output_meters: Number(e.target.value) || 0 }))
-                            }
-                            className="h-9 font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">
-                            Rendimento (m artesanal / m base)
-                          </Label>
-                          <Input value={yieldRate.toFixed(3)} disabled className="h-9 font-mono bg-muted/40" />
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">MP base necessária:</span>
-                          <span className="font-mono font-semibold">{baseNeeded.toFixed(2)} m</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Custo MO (R$/m):</span>
-                          <span className="font-mono">
-                            {formatCurrency(Number(recipe.labor_cost_per_meter) || 0)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm border-t pt-2">
-                          <span className="text-muted-foreground">Custo total MO:</span>
-                          <span className="font-mono font-semibold text-primary">
-                            {formatCurrency(output * (Number(recipe.labor_cost_per_meter) || 0))}
-                          </span>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Destino da produção
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs flex items-center gap-1">
-                              <ArrowRight className="h-3 w-3" /> Para o pedido (m)
-                            </Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min={0}
-                              value={editingOrder.artisanal_for_order_meters ?? ''}
-                              onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                              onChange={(e) =>
-                                setEditingOrder((p) => ({
-                                  ...p,
-                                  artisanal_for_order_meters: Number(e.target.value) || 0,
-                                }))
-                              }
-                              className="h-9 font-mono"
-                              disabled={!editingOrder.sale_order_id}
-                            />
-                            {!editingOrder.sale_order_id && (
-                              <p className="text-xs text-muted-foreground">Vincule um PV na aba Dados</p>
-                            )}
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs flex items-center gap-1">
-                              <Package className="h-3 w-3" /> Para estoque (m)
-                            </Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min={0}
-                              value={editingOrder.artisanal_for_stock_meters ?? ''}
-                              onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                              onChange={(e) =>
-                                setEditingOrder((p) => ({
-                                  ...p,
-                                  artisanal_for_stock_meters: Number(e.target.value) || 0,
-                                }))
-                              }
-                              className="h-9 font-mono"
-                            />
-                          </div>
-                        </div>
-                        {output > 0 && (
-                          <div
-                            className={cn(
-                              'text-xs px-3 py-2 rounded-md font-mono',
-                              splitOk
-                                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300',
-                            )}
-                          >
-                            {splitOk
-                              ? `✓ Soma ${totalSplit.toFixed(2)}m = produzido`
-                              : `⚠ Soma ${totalSplit.toFixed(2)}m ≠ produzido ${output.toFixed(2)}m`}
-                          </div>
-                        )}
-                      </div>
-
-                      {editingOrder.artisanal_stock_entry_done && (
-                        <div className="text-xs px-3 py-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-medium">
-                          ✓ Entrada de estoque já processada para esta OS
-                        </div>
-                      )}
-
-                      <p className="text-xs text-muted-foreground italic">
-                        A baixa da MP e a entrada do produto artesanal ocorrem automaticamente quando a OS é marcada como{' '}
-                        <strong>Concluído</strong>.
-                      </p>
-                    </>
-                  );
-                })()}
               </div>
             </TabsContent>
 

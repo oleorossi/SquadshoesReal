@@ -37,6 +37,7 @@ const NORMALIZE: Record<string, OsStatus> = {
   concluido: OS_STATUS.CONCLUIDO,
   finalizado: OS_STATUS.CONCLUIDO,
   received: OS_STATUS.CONCLUIDO,
+  recebida: OS_STATUS.CONCLUIDO,
   entregue: OS_STATUS.CONCLUIDO,
   cancelado: OS_STATUS.CANCELADO,
   cancelada: OS_STATUS.CANCELADO,
@@ -51,7 +52,7 @@ export function normalizeOsStatus(s: string | null | undefined): OsStatus {
 }
 
 // ── Conjuntos canônicos (compat com os filtros existentes) ───────────────────
-export const OS_DONE_STATUSES = ['Concluído', 'Concluido', 'concluido', 'received', 'finalizado', 'Finalizado'];
+export const OS_DONE_STATUSES = ['Concluído', 'Concluido', 'concluido', 'received', 'finalizado', 'Finalizado', 'Recebida', 'recebida'];
 export const OS_CANCELLED_STATUSES = ['Cancelado', 'cancelled', 'cancelado', 'estornado'];
 export const OS_PENDING_STATUSES = ['Pendente', 'pending_quote', 'quoted_unconfirmed', 'quoted'];
 
@@ -60,8 +61,9 @@ export const isOsCancelled = (s: string | null | undefined) => normalizeOsStatus
 export const isOsActive = (s: string | null | undefined) => !isOsDone(s) && !isOsCancelled(s);
 
 /**
- * Labels amigáveis no vocabulário do dono:
- * 'Em Andamento' → "Em Processamento", 'Concluído'/'received' → "Entregue".
+ * Labels no vocabulário do ciclo de OS (Pendente → Enviada → Recebida):
+ * 'Em Andamento' (material despachado ao prestador) → "Enviada";
+ * 'Concluído'/'received'/'Recebida' (pares bons de volta) → "Recebida".
  * Mantém as etapas de cotação do fluxo de gargalos com label próprio.
  */
 export function osStatusLabel(s: string | null | undefined): string {
@@ -70,8 +72,8 @@ export function osStatusLabel(s: string | null | undefined): string {
   if (raw === 'quoted') return 'Prazo confirmado';
   switch (normalizeOsStatus(s)) {
     case OS_STATUS.PENDENTE: return 'Pendente';
-    case OS_STATUS.EM_ANDAMENTO: return 'Em Processamento';
-    case OS_STATUS.CONCLUIDO: return 'Entregue';
+    case OS_STATUS.EM_ANDAMENTO: return 'Enviada';
+    case OS_STATUS.CONCLUIDO: return 'Recebida';
     case OS_STATUS.CANCELADO: return 'Cancelada';
   }
 }

@@ -102,6 +102,9 @@ export default function Payroll() {
   const [calcRunning, setCalcRunning] = useState(false);
   const [detailRun, setDetailRun] = useState<string | null>(null);
   const [approveRun, setApproveRun] = useState<string | null>(null);
+  // Visão do Relatório consolidado: tabela (Folha) · calendário de tempo · holerites.
+  const [view, setView] = useState<'folha' | 'calendario' | 'holerite'>('folha');
+  const [calEmp, setCalEmp] = useState<string>('');
 
   // Intervalo APLICADO (debounced 450ms): enquanto o usuário digita a data, as queries,
   // o título e os avisos só recarregam DEPOIS que ele para de digitar — senão a página
@@ -499,6 +502,18 @@ export default function Payroll() {
         <StatCard label="Total líquido" value={fmt(totals.liquido)} tone="primary" />
       </StatGrid>
 
+      <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+        {([['folha', 'Folha'], ['calendario', 'Calendário de tempo'], ['holerite', 'Holerite']] as const).map(([v, label]) => (
+          <button
+            key={v} type="button" onClick={() => setView(v)}
+            className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${view === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'folha' && (
       <Panel title={`Folha · ${periodTitle}`} flush>
         <Table>
           <TableHeader>
@@ -591,6 +606,72 @@ export default function Payroll() {
           </TableBody>
         </Table>
       </Panel>
+      )}
+
+      {view === 'calendario' && (() => {
+        const crows = comparativo.rows;
+        if (crows.length === 0) {
+          return <Panel title="Calendário de tempo" flush><div className="p-2"><EmptyState icon={Calculator} title="Nenhuma folha calculada" description={`Não há dados para ${periodTitle}. Clique em "Calcular folha".`} /></div></Panel>;
+        }
+        const cur = crows.find(r => r.id === calEmp) || crows[0];
+        const days = ((cur as any)?.printData?.days || []) as any[];
+        const cls = (d: any) => {
+          const exp = d.expectedMinutes || 0, w = d.workedMinutes || 0;
+          if (exp === 0) return { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
+          if (w === 0) return { t: 'falta', c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
+          if ((d.overtimeMinutes || 0) > 0 || w > exp) return { t: '+' + (Math.round((w - exp) / 6) / 10) + 'h', c: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' };
+          if (w < exp) return { t: '−' + (Math.round((exp - w) / 6) / 10) + 'h', c: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' };
+          return { t: Math.round(w / 60) + 'h', c: 'bg-card text-foreground border-border' };
+        };
+        return (
+          <Panel title={`Calendário de tempo · ${periodTitle}`} flush>
+            <div className="p-4 space-y-3">
+              <select value={cur?.id || ''} onChange={e => setCalEmp(e.target.value)} className="h-9 w-full max-w-xs rounded-md border bg-background px-3 text-sm">
+                {crows.map(r => <option key={r.id} value={r.id}>{employeeMap.get(r.id)?.name || (r as any).name}</option>)}
+              </select>
+              <div className="grid grid-cols-7 gap-1.5">
+                {days.map((d, i) => {
+                  const s = cls(d);
+                  return (
+                    <div key={i} className={`rounded-md border px-1 py-1.5 text-center ${s.c}`}>
+                      <div className="text-[10px] opacity-70 tabular-nums">{String(d.date || '').slice(8, 10)}/{String(d.date || '').slice(5, 7)}</div>
+                      <div className="text-xs font-semibold tabular-nums">{s.t}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground pt-1">
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 inline-block" /> hora extra</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500/40 inline-block" /> atraso</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/40 inline-block" /> falta</span>
+                <Button size="sm" variant="outline" className="h-7 ml-auto gap-1.5" onClick={() => printEspelho(cur.id)}><Printer className="h-3.5 w-3.5" /> Imprimir espelho</Button>
+              </div>
+            </div>
+          </Panel>
+        );
+      })()}
+
+      {view === 'holerite' && (
+        <Panel title={`Holerites · ${periodTitle}`} flush>
+          {runs.length === 0 ? (
+            <div className="p-2"><EmptyState icon={Receipt} title="Nenhuma folha calculada" description={`Não há folha para ${periodTitle}. Clique em "Calcular folha".`} /></div>
+          ) : (
+            <div className="divide-y divide-border">
+              {runs.map(r => {
+                const emp = employeeMap.get(r.employee_id);
+                return (
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="text-sm font-medium truncate">{emp?.name || '—'}</span>
+                    <span className="font-mono tabular-nums text-sm font-bold ml-auto">{fmt(r.total_liquido)}</span>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setDetailRun(r.id)}><Receipt className="h-4 w-4" /> Holerite</Button>
+                    <Button size="sm" variant="ghost" className="h-8" onClick={() => printEspelho(r.employee_id)} title="Espelho de ponto (Portaria 671)"><IdentificationCard className="h-4 w-4 text-muted-foreground" /></Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      )}
 
       {/* Confirmação de aprovação quando há adiantamento */}
       <AlertDialog open={!!approveRun} onOpenChange={(o) => !o && setApproveRun(null)}>
