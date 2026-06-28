@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
+import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Truck, ArrowSquareOut, Buildings, Funnel, Warning as AlertTriangle,
   CurrencyDollar as DollarSign, Package as Boxes, X, CheckCircle, Clock,
   Calendar, DotsThreeVertical, Printer, CaretRight, Palette, Flask as FlaskConical,
-  Ruler, Plus, Camera, ChartBar as BarChart3, Receipt,
+  Ruler, Plus, Camera, ChartBar as BarChart3, Receipt, PaperPlaneTilt,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -503,6 +504,19 @@ export default function OutsourcedInFieldPage({ embedded, onRequestCreateOS }: {
     receiveItem.mutate(item);
   };
 
+  // Remessa: registrar pares ENVIADOS pro prestador. Marca a OS como rastreada
+  // (dispatch_tracked via trigger) → daí a conta a pagar nasce do RETORNO, por
+  // pares bons. Só pra OS (não pra OP legada). Auditoria 2026-06-28: ativa o
+  // fluxo remessa→retorno→AP que já existia no banco mas não tinha entrada na UI.
+  const [dispatchItem, setDispatchItem] = useState<OutsourcedItem | null>(null);
+  const handleDispatch = (item: OutsourcedItem) => {
+    if (item.source !== 'service_order') {
+      alert('Remessa rastreada só vale pra Ordens de Serviço de terceirização.');
+      return;
+    }
+    setDispatchItem(item);
+  };
+
   const openExtendDialog = (item: OutsourcedItem) => {
     if (item.source !== 'service_order') {
       alert('OPs terceirizadas pré-produção têm seu prazo controlado pela data de entrega da OP em /orders.');
@@ -932,9 +946,17 @@ export default function OutsourcedInFieldPage({ embedded, onRequestCreateOS }: {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem
+                                onClick={() => handleDispatch(it)}
+                                className="text-xs gap-2"
+                                disabled={it.source !== 'service_order'}
+                              >
+                                <PaperPlaneTilt className="h-3.5 w-3.5" />
+                                Enviar pares (remessa)
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleReceive(it)} className="text-xs gap-2">
                                 <CheckCircle className="h-3.5 w-3.5" />
-                                Marcar recebido
+                                Registrar retorno
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => setPhotoItem(it)}
@@ -1073,6 +1095,20 @@ export default function OutsourcedInFieldPage({ embedded, onRequestCreateOS }: {
           quantity: returnItem.pairs,
           contractorName: returnItem.contractor_name,
         } : null}
+      />
+
+      <ServiceOrderDispatchDialog
+        open={!!dispatchItem}
+        onOpenChange={(o) => { if (!o) setDispatchItem(null); }}
+        serviceOrder={dispatchItem ? {
+          id: dispatchItem.id,
+          order_number: dispatchItem.op_number,
+          quantity: dispatchItem.pairs,
+          description: dispatchItem.description ?? null,
+          contractorName: dispatchItem.contractor_name,
+          contractorId: dispatchItem.contractor_id,
+        } : null}
+        onReceive={() => { if (dispatchItem) { setReturnItem(dispatchItem); setDispatchItem(null); } }}
       />
     </div>
   );
