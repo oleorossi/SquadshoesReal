@@ -24,18 +24,19 @@ import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Truck, ChartBar as BarChart3, ClipboardText as ClipboardList,
-  ChartLineUp, Users, Flask as FlaskConical,
+  ChartLineUp, Users, Flask as FlaskConical, Handshake,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import OutsourcedInFieldPage from './OutsourcedInField';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
+import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
 
 const TRIGGER = 'gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md';
 
 // Abas servidas pelo componente Contractors (uma única instância controlada).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors', 'recipes'];
-const VALID_TABS = new Set(['rua', ...CONTRACTOR_TABS, 'relatorio']);
+const VALID_TABS = new Set(['rua', ...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
 const DEFAULT_TAB = 'rua';
 
 export default function TerceirizadosHub() {
@@ -86,6 +87,9 @@ export default function TerceirizadosHub() {
           <TabsTrigger value="contractors" className={TRIGGER}>
             <Users className="h-3.5 w-3.5" /> Prestadores
           </TabsTrigger>
+          <TabsTrigger value="cobertura" className={TRIGGER}>
+            <Handshake className="h-3.5 w-3.5" /> Cobertura
+          </TabsTrigger>
           <TabsTrigger value="recipes" className={TRIGGER}>
             <FlaskConical className="h-3.5 w-3.5" /> Receitas
           </TabsTrigger>
@@ -96,6 +100,9 @@ export default function TerceirizadosHub() {
 
         <TabsContent value="rua">
           <OutsourcedInFieldPage embedded onRequestCreateOS={requestCreateOS} />
+        </TabsContent>
+        <TabsContent value="cobertura">
+          <TerceirizacaoCoberturaPanel />
         </TabsContent>
         <TabsContent value="relatorio">
           <ContractorReportsPage embedded />
