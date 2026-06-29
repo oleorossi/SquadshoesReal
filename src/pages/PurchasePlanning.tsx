@@ -12,6 +12,9 @@ const CostAnalyticsPanel = lazy(() => import('@/components/financial/CostAnalyti
 const SaldoFinalTab = lazy(() => import('@/components/financial/SaldoFinalTab'));
 const WeeklyPurchasingContent = lazy(() => import('@/components/financial/WeeklyPurchasingContent'));
 const MrpUnifiedContent = lazy(() => import('@/components/financial/MrpUnifiedContent'));
+// Motor CANÔNICO de MRP (v_mrp_needs: 87 necessidades acionáveis em prod, com "Gerar OC").
+// Promovido na aba MRP em 2026-06-28; o item de menu /mrp-advanced era duplicata.
+const MrpNeedsTable = lazy(() => import('@/components/mrp/MrpNeedsTable').then(m => ({ default: m.MrpNeedsTable })));
 const PurchaseTimelineTab = lazy(() => import('@/components/financial/PurchaseTimeline').then(m => ({ default: m.PurchaseTimeline })));
 const ProductionScheduleTimeline = lazy(() => import('@/components/financial/ProductionScheduleTimeline'));
 const PurchaseProjectionContent = lazy(() => import('@/components/financial/PurchaseProjectionContent'));
@@ -196,11 +199,18 @@ export default function PurchasePlanning() {
           </div>
         </TabsContent>
 
-        {/* ── Tab 3: MRP & Alertas ── */}
+        {/* ── Tab 3: MRP — Necessidades líquidas (motor canônico v_mrp_needs, com
+            "Gerar OC") no topo + Projeções/Alertas embaixo. O item de menu
+            "MRP (Necessidades)" (/mrp-advanced) era o MESMO motor — unificado aqui. ── */}
         <TabsContent value="mrp">
-          <Suspense fallback={<TabLoader />}>
-            <MrpUnifiedContent />
-          </Suspense>
+          <div className="space-y-6">
+            <Suspense fallback={<TabLoader />}>
+              <MrpNeedsTable />
+            </Suspense>
+            <Suspense fallback={<TabLoader />}>
+              <MrpUnifiedContent />
+            </Suspense>
+          </div>
         </TabsContent>
 
         {/* ── Tab 4: Cronograma Reverso ── */}

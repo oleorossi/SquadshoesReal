@@ -86,7 +86,9 @@ export const menuGroups = [
     icon: ShoppingBag,
     items: [
       { name: "Planejamento",     icon: Calendar,        path: "/purchase-planning" },
-      { name: "MRP (Necessidades)", icon: Boxes,         path: "/mrp-advanced" },
+      // "MRP (Necessidades)" (/mrp-advanced) unificado na aba MRP do Planejamento
+      // (2026-06-28): é o MESMO motor canônico (v_mrp_needs), agora no topo da aba.
+      // A rota /mrp-advanced segue viva pra bookmarks antigos.
       { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
       { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
       // "Ordens de Serviço" removido da sidebar (auditoria 2026-06-28): era porta
