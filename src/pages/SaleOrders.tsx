@@ -407,23 +407,20 @@ export default function SaleOrders() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
-      // Tab gating: ativos => não-terminais; faturados => Faturado + Finalizado s/ NF.
-      // Exceção: com BUSCA ativa, ignora a aba e procura em Ativos E Faturados
-      // juntos — senão buscar por referência/cliente "não acha" pedidos que
-      // estão na outra aba (78% ficam em Faturados). Os demais filtros
-      // explícitos (status/rep/grupo/segmento/mês) continuam valendo.
+      // Tab gating SEMPRE aplicado — a busca fica restrita à aba atual
+      // (pedido user 29/06/2026: "buscar apenas na aba em que estou").
+      // Antes a busca ignorava a aba e varria Ativos+Faturados juntos; agora cada
+      // aba é isolada. Para achar um PV já faturado/cancelado, abra a aba dele.
+      // Demais filtros (status/rep/grupo/segmento/mês) continuam valendo.
       const isBilled = TERMINAL_BILLED_STATUSES.includes(order.status);
       const isCancelled = order.status === 'Cancelado';
-      const searching = debouncedSearchTerm.trim().length > 0;
-      if (!searching) {
-        if (mainTab === 'cancelados') {
-          if (!isCancelled) return false;
-        } else if (mainTab === 'faturados') {
-          if (!isBilled || isCancelled) return false;
-        } else {
-          // Ativos: não-terminais E não-cancelados (cancelados têm aba própria).
-          if (isBilled || isCancelled) return false;
-        }
+      if (mainTab === 'cancelados') {
+        if (!isCancelled) return false;
+      } else if (mainTab === 'faturados') {
+        if (!isBilled || isCancelled) return false;
+      } else {
+        // Ativos: não-terminais E não-cancelados (cancelados têm aba própria).
+        if (isBilled || isCancelled) return false;
       }
       if (filterStatus !== 'all' && order.status !== filterStatus) return false;
       if (filterRep !== 'all' && order.representative !== filterRep) return false;
@@ -1739,12 +1736,11 @@ export default function SaleOrders() {
             )}
           </div>
 
-          {/* Aviso: durante a busca, ignora a aba e procura em Ativos + Faturados
-              + Cancelados (senão referência/cliente cujos pedidos já faturaram ou
-              foram cancelados "não apareciam"). */}
+          {/* Busca restrita à aba atual (29/06/2026). Indica em qual aba está
+              buscando + a contagem, deixando claro que não varre as outras. */}
           {searchTerm.trim() && (
             <p className="text-xs text-muted-foreground -mt-1">
-              Buscando em <span className="font-medium text-foreground">Ativos, Faturados e Cancelados</span> · {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''}
+              Buscando em <span className="font-medium text-foreground">{mainTab === 'faturados' ? 'Faturados / Sem NF' : mainTab === 'cancelados' ? 'Cancelados' : 'Pedidos Ativos'}</span> · {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''}
             </p>
           )}
 
@@ -2199,7 +2195,7 @@ export default function SaleOrders() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between w-full flex-wrap gap-y-2">
               <div className="flex items-center gap-3 flex-wrap">
-                <span>Pedido {selectedOrder?.order_number || ''}</span>
+                <span className="text-lg font-extrabold uppercase tracking-tight">Pedido {selectedOrder?.order_number || ''}</span>
                 {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
                 <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
                 {/* Badge "Picking individual realizado" — quando preenchido, este PV
@@ -2315,25 +2311,31 @@ export default function SaleOrders() {
 
           {selectedOrder && (
             <div className="space-y-4 mt-2">
-              <div className="rounded-lg border overflow-hidden">
-                <div className="bg-muted/40 p-4 space-y-1.5 text-sm">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-0.5">
-                      <p><span className="font-semibold">Representante:</span> {selectedOrder.representative || '—'}</p>
-                      <p><span className="font-semibold">Cliente:</span> {selectedOrder.client_name || '—'}</p>
-                      <p><span className="font-semibold">CNPJ:</span> <span className="font-mono">{selectedOrder.client_cnpj || '—'}</span></p>
-                      <p><span className="font-semibold">Contato:</span> {selectedOrder.client_contact || '—'}</p>
-                      {selectedOrder.client_order_number && <p><span className="font-semibold">Nº Pedido Cliente:</span> <span className="font-mono">{selectedOrder.client_order_number}</span></p>}
-                      <p><span className="font-semibold">Criado em:</span> {new Date(selectedOrder.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+              <div className="rounded-lg border bg-muted/30 overflow-hidden">
+                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 p-4">
+                  {([
+                    { label: 'Representante', value: selectedOrder.representative || '—' },
+                    { label: 'Cliente', value: selectedOrder.client_name || '—' },
+                    { label: 'CNPJ', value: selectedOrder.client_cnpj || '—', mono: true },
+                    { label: 'Contato', value: selectedOrder.client_contact || '—' },
+                    ...(selectedOrder.client_order_number ? [{ label: 'Nº Pedido Cliente', value: selectedOrder.client_order_number, mono: true }] : []),
+                    { label: 'Pagamento', value: selectedOrder.payment_condition || '—' },
+                    { label: 'Entrega', value: selectedOrder.delivery_deadline ? new Date(selectedOrder.delivery_deadline).toLocaleDateString('pt-BR') : '—' },
+                    ...(canSeeFinancialValues && Number(selectedOrder.commission_value) > 0 ? [{ label: 'Comissão', value: formatCurrency(Number(selectedOrder.commission_value)), mono: true }] : []),
+                    { label: 'Criado em', value: new Date(selectedOrder.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+                  ] as { label: string; value: string; mono?: boolean }[]).map((f) => (
+                    <div key={f.label} className="min-w-0">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</dt>
+                      <dd className={cn('text-sm text-foreground truncate', f.mono && 'font-mono')} title={String(f.value)}>{f.value}</dd>
                     </div>
-                    <div className="text-right space-y-0.5">
-                      <p><span className="font-semibold">Pagamento:</span> {selectedOrder.payment_condition || '—'}</p>
-                      <p><span className="font-semibold">Entrega:</span> {selectedOrder.delivery_deadline ? new Date(selectedOrder.delivery_deadline).toLocaleDateString('pt-BR') : '—'}</p>
-                      {canSeeFinancialValues && selectedOrder.commission_value > 0 && <p><span className="font-semibold">Comissão:</span> <span className="font-mono">{formatCurrency(Number(selectedOrder.commission_value))}</span></p>}
-                    </div>
+                  ))}
+                </dl>
+                {selectedOrder.notes && (
+                  <div className="border-t px-4 py-2.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Observação</span>
+                    <p className="text-sm text-foreground">{selectedOrder.notes}</p>
                   </div>
-                </div>
-                {selectedOrder.notes && <div className="px-4 py-2 border-t text-sm"><span className="font-semibold">Observação:</span> {selectedOrder.notes}</div>}
+                )}
               </div>
 
               <div className="rounded-lg border bg-card overflow-hidden">
