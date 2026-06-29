@@ -15,6 +15,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import {
   fetchConsumptionContext,
   computeConsumptionForItems,
+  TECHNICAL_SHEET_CONSUMPTION_COLUMNS,
   type ConsumptionItem,
   type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
@@ -312,6 +313,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     setLoading(true);
 
     try {
+      // O sub-select de technical_sheets reusa TECHNICAL_SHEET_CONSUMPTION_COLUMNS
+      // (fonte ÚNICA das colunas que o motor canônico lê) + os campos exclusivos
+      // do modal (code/name p/ a seção de Corte de Cabedal, has_straps p/ decidir
+      // quem entra nela). Antes a lista era duplicada inline e DRIFTOU do motor:
+      // faltavam lining_consumption_per_size (→ modal usava o escalar e divergia
+      // do per-size que a ficha usa) e os *_material_product_id (→ pino de SKU não
+      // aparecia no modal). Compor da constante elimina a divergência por
+      // construção. (Auditoria do motor 2026-06-29.)
       const { data: items, error: itemsError } = await supabase
         .from('sale_order_items')
         .select(`
@@ -322,27 +331,10 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           fichas,
           strap_colors,
           technical_sheets(
-            id,
             code,
             name,
             has_straps,
-            upper_material,
-            upper_consumption,
-            upper_consumption_per_size,
-            lining_material,
-            lining_consumption,
-            insole_material,
-            insole_consumption,
-            insole_has_lining,
-            insole_ready_made,
-            insole_lining_consumption,
-            sole_material,
-            sole_consumption,
-            sole_color,
-            sole_group_id,
-            lining_accessories,
-            components_accessories,
-            direct_components
+            ${TECHNICAL_SHEET_CONSUMPTION_COLUMNS}
           )
         `)
         .eq('sale_order_id', saleOrderId);
