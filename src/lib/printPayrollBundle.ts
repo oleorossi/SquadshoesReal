@@ -35,6 +35,51 @@ const fmtH = (min: number) => {
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// ── Consolidado por setor: 1 linha por setor (proventos/descontos/adiant./líquido)
+//    + total geral. Visão gerencial pra fechar a folha por departamento. ────────
+function sectorSummarySection(emps: BundleEmployee[], periodTitle: string): string {
+  const map = new Map<string, { count: number; prov: number; desc: number; adv: number; liq: number }>();
+  for (const e of emps) {
+    const dep = (e.department || '').trim() || 'Sem setor';
+    const g = map.get(dep) || { count: 0, prov: 0, desc: 0, adv: 0, liq: 0 };
+    g.count += 1;
+    g.prov += e.run.total_proventos || 0;
+    g.desc += (e.run.absence_discount || 0) + (e.run.deductions_amount || 0);
+    g.adv += e.run.advances_total || 0;
+    g.liq += e.run.total_liquido || 0;
+    map.set(dep, g);
+  }
+  const groups = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+  const rows = groups.map(([dep, g]) => `<tr>
+    <td style="text-align:left;font-weight:600;">${esc(dep)}</td>
+    <td>${g.count}</td>
+    <td style="color:#047857;">${fmt(g.prov)}</td>
+    <td style="color:#b91c1c;">${g.desc > 0 ? '−' + fmt(g.desc) : '—'}</td>
+    <td style="color:#b45309;">${g.adv > 0 ? '−' + fmt(g.adv) : '—'}</td>
+    <td style="font-weight:700;">${fmt(g.liq)}</td>
+  </tr>`).join('');
+  const tot = groups.reduce((a, [, g]) => ({
+    count: a.count + g.count, prov: a.prov + g.prov, desc: a.desc + g.desc, adv: a.adv + g.adv, liq: a.liq + g.liq,
+  }), { count: 0, prov: 0, desc: 0, adv: 0, liq: 0 });
+  return `<section class="doc">
+    <h2>Folha por setor · ${esc(periodTitle)}</h2>
+    <table class="grid">
+      <thead><tr>
+        <th style="text-align:left;">Setor</th><th>Func.</th><th>Proventos</th>
+        <th>Descontos</th><th>Adiant.</th><th>Líquido</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr>
+        <td style="text-align:left;font-weight:800;">TOTAL (${tot.count})</td><td></td>
+        <td style="font-weight:800;color:#047857;">${fmt(tot.prov)}</td>
+        <td style="font-weight:800;color:#b91c1c;">${tot.desc > 0 ? '−' + fmt(tot.desc) : '—'}</td>
+        <td style="font-weight:800;color:#b45309;">${tot.adv > 0 ? '−' + fmt(tot.adv) : '—'}</td>
+        <td style="font-weight:800;">${fmt(tot.liq)}</td>
+      </tr></tfoot>
+    </table>
+  </section>`;
+}
+
 // ── Folha: uma tabela com todos os funcionários do escopo ────────────────────
 function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
   const rows = emps.map(e => {
@@ -135,13 +180,14 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
 
 export function printPayrollBundle(params: {
   periodTitle: string;
-  docs: { folha: boolean; calendario: boolean; holerite: boolean };
+  docs: { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean };
   employees: BundleEmployee[];
 }): void {
   const { periodTitle, docs, employees } = params;
   if (employees.length === 0) return;
 
   const sections: string[] = [];
+  if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
   if (docs.folha) sections.push(folhaSection(employees, periodTitle));
   if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
   if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));

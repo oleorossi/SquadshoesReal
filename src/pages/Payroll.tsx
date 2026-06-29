@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { Fragment, useMemo, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,7 +18,6 @@ import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { printPayrollBundle } from '@/lib/printPayrollBundle';
-import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -106,9 +105,12 @@ export default function Payroll() {
   // Visão do Relatório consolidado: tabela (Folha) · calendário de tempo · holerites.
   const [view, setView] = useState<'folha' | 'calendario' | 'holerite'>('folha');
   const [calEmp, setCalEmp] = useState<string>('');
-  // Botão único "Gerar documentos": tipos selecionados × escopo (todos / um funcionário).
+  // Filtro de setor (department) da view Folha — '' = todos.
+  const [setorFilter, setSetorFilter] = useState<string>('all');
+  // Seletor ÚNICO de relatórios: 1 tipo × escopo (todos / um funcionário).
+  // Consolida o antigo "Gerar documentos" + "Exportar Excel" + novo "Por setor".
   const [docDialogOpen, setDocDialogOpen] = useState(false);
-  const [docSel, setDocSel] = useState({ folha: true, calendario: false, holerite: false });
+  const [reportType, setReportType] = useState<'folha' | 'calendario' | 'holerite' | 'setor' | 'excel'>('folha');
   const [docScope, setDocScope] = useState<string>('all'); // 'all' ou employee_id
 
   // Intervalo APLICADO (debounced 450ms): enquanto o usuário digita a data, as queries,
@@ -158,6 +160,41 @@ export default function Payroll() {
     return { proventos, descontos, advances, liquido, advancesCount };
   }, [runs]);
 
+  // Setor de uma run = department do funcionário (fallback "Sem setor").
+  const setorOf = (employee_id: string) =>
+    (employeeMap.get(employee_id) as any)?.department?.trim() || 'Sem setor';
+
+  // Setores presentes na folha do período (pro filtro).
+  const setoresDisponiveis = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of runs) s.add(setorOf(r.employee_id));
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs, employeeMap]);
+
+  // Folha agrupada por setor + subtotais (Proventos/Descontos/Adiant./Líquido).
+  // Respeita o filtro de setor. Ordenada alfabeticamente.
+  const folhaGroups = useMemo(() => {
+    const map = new Map<string, typeof runs>();
+    for (const r of runs) {
+      const dep = setorOf(r.employee_id);
+      if (setorFilter !== 'all' && dep !== setorFilter) continue;
+      if (!map.has(dep)) map.set(dep, []);
+      map.get(dep)!.push(r);
+    }
+    return Array.from(map.entries())
+      .map(([setor, rs]) => ({
+        setor,
+        runs: rs,
+        proventos: rs.reduce((s, r) => s + (r.total_proventos || 0), 0),
+        descontos: rs.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0),
+        advances: rs.reduce((s, r) => s + (r.advances_total || 0), 0),
+        liquido: rs.reduce((s, r) => s + (r.total_liquido || 0), 0),
+      }))
+      .sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs, employeeMap, setorFilter]);
+
   // ── Comparativo Mês × 1ª × 2ª (pra IMPRIMIR / EXPORTAR a folha) ──────────────
   // Mesma fórmula da folha (computePeriodFolha) via lib compartilhada. Antes vivia
   // na aba Relatórios → Pagamento; consolidado aqui (2026-06-21).
@@ -205,11 +242,13 @@ export default function Payroll() {
     );
   };
 
-  // Botão único: monta os funcionários do escopo (run financeiro + dias do calendário) e
-  // gera UM documento com os tipos marcados — sem abrir N popups. Reusa runs + comparativo.
-  const handleGenerateDocs = () => {
-    if (!docSel.folha && !docSel.calendario && !docSel.holerite) { toast.error('Selecione ao menos um documento.'); return; }
-    const scoped = docScope === 'all' ? runs : runs.filter(r => r.employee_id === docScope);
+  // Seletor ÚNICO de relatórios: 1 tipo (folha/calendário/holerite/por setor/Excel)
+  // × escopo (todos / um funcionário). Reusa runs + comparativo. O "por setor" e o
+  // Excel são sempre do período inteiro (escopo ignorado).
+  const handleGenerateReport = () => {
+    if (reportType === 'excel') { handleExportExcel(); setDocDialogOpen(false); return; }
+    const allScope = reportType === 'setor' || docScope === 'all';
+    const scoped = allScope ? runs : runs.filter(r => r.employee_id === docScope);
     if (scoped.length === 0) { toast.error('Nada pra gerar — calcule a folha do período primeiro.'); return; }
     const emps = scoped.map(r => {
       const emp = employeeMap.get(r.employee_id);
@@ -222,7 +261,16 @@ export default function Payroll() {
         days: (crow?.printData?.days || []) as any[],
       };
     });
-    printPayrollBundle({ periodTitle, docs: docSel, employees: emps as any });
+    printPayrollBundle({
+      periodTitle,
+      docs: {
+        folha: reportType === 'folha',
+        calendario: reportType === 'calendario',
+        holerite: reportType === 'holerite',
+        setor: reportType === 'setor',
+      },
+      employees: emps as any,
+    });
     setDocDialogOpen(false);
   };
 
@@ -479,11 +527,8 @@ export default function Payroll() {
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha
           </Button>
-          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={() => setDocDialogOpen(true)} title="Gerar documentos (Folha · Calendário de tempo · Holerite) — todos os funcionários ou um">
-            <Files className="h-4 w-4" /> Gerar documentos
-          </Button>
-          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={handleExportExcel} title="Exportar a folha em Excel (resumo + detalhe dia a dia)">
-            <DownloadSimple className="h-4 w-4" /> Exportar Excel
+          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={() => setDocDialogOpen(true)} title="Relatórios — Folha · Calendário de tempo · Holerite · Por setor · Excel (num único seletor)">
+            <Files className="h-4 w-4" /> Relatórios
           </Button>
         </div>
       </div>
@@ -520,15 +565,31 @@ export default function Payroll() {
         <StatCard label="Total líquido" value={fmt(totals.liquido)} tone="primary" />
       </StatGrid>
 
-      <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
-        {([['folha', 'Folha'], ['calendario', 'Calendário de tempo'], ['holerite', 'Holerite']] as const).map(([v, label]) => (
-          <button
-            key={v} type="button" onClick={() => setView(v)}
-            className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${view === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+          {([['folha', 'Folha'], ['calendario', 'Calendário de tempo'], ['holerite', 'Holerite']] as const).map(([v, label]) => (
+            <button
+              key={v} type="button" onClick={() => setView(v)}
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${view === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === 'folha' && runs.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Setor</span>
+            <select
+              value={setorFilter}
+              onChange={e => setSetorFilter(e.target.value)}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+              aria-label="Filtrar por setor"
+            >
+              <option value="all">Todos os setores ({setoresDisponiveis.length})</option>
+              {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {view === 'folha' && (
@@ -557,7 +618,26 @@ export default function Payroll() {
                   />
                 </TableCell>
               </TableRow>
-            ) : runs.map(r => {
+            ) : folhaGroups.map(g => (
+            <Fragment key={g.setor}>
+              {/* Cabeçalho do setor + subtotais (Proventos · Descontos · Líquido) */}
+              <TableRow className="bg-muted/60 hover:bg-muted/60 border-t-2 border-border">
+                <TableCell colSpan={8} className="py-2">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <span className="font-bold uppercase tracking-wide text-sm">
+                      {g.setor}
+                      <span className="ml-1.5 text-muted-foreground font-normal normal-case tracking-normal">· {g.runs.length} func.</span>
+                    </span>
+                    <span className="flex items-center gap-4 text-xs font-mono tabular-nums">
+                      <span className="text-muted-foreground">Proventos <b className="text-emerald-600">{fmt(g.proventos)}</b></span>
+                      <span className="text-muted-foreground">Descontos <b className="text-amber-600">{g.descontos > 0 ? `−${fmt(g.descontos)}` : fmt(0)}</b></span>
+                      {g.advances > 0 && <span className="text-muted-foreground">Adiant. <b className="text-amber-600">−{fmt(g.advances)}</b></span>}
+                      <span className="text-muted-foreground">Líquido <b className="text-foreground">{fmt(g.liquido)}</b></span>
+                    </span>
+                  </div>
+                </TableCell>
+              </TableRow>
+              {g.runs.map(r => {
               const emp = employeeMap.get(r.employee_id);
               const sb = STATUS_BADGES[r.status] || STATUS_BADGES.rascunho;
               const hasAdvance = (r.advances_total || 0) > 0;
@@ -612,7 +692,9 @@ export default function Payroll() {
                   </TableCell>
                 </TableRow>
               );
-            })}
+              })}
+            </Fragment>
+            ))}
           </TableBody>
         </Table>
       </Panel>
@@ -811,32 +893,47 @@ export default function Payroll() {
         </DialogContent>
       </Dialog>
 
-      {/* Botão único — gera Folha/Calendário/Holerite (× todos ou um funcionário) num só documento */}
+      {/* Seletor ÚNICO de relatórios — escolhe 1 tipo (+ escopo) e gera. Consolida
+          o antigo "Gerar documentos" + "Exportar Excel" + o novo "Por setor". */}
       <Dialog open={docDialogOpen} onOpenChange={setDocDialogOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Gerar documentos</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Gerar relatório</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Documentos</p>
-              <div className="space-y-2.5">
-                {([['folha', 'Folha'], ['calendario', 'Calendário de tempo'], ['holerite', 'Holerite']] as const).map(([k, label]) => (
-                  <label key={k} className="flex items-center gap-2.5 cursor-pointer text-sm">
-                    <Checkbox checked={docSel[k]} onCheckedChange={(v) => setDocSel(s => ({ ...s, [k]: !!v }))} />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Funcionário</p>
-              <select value={docScope} onChange={e => setDocScope(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
-                <option value="all">Todos os funcionários ({runs.length})</option>
-                {runs.map(r => <option key={r.id} value={r.employee_id}>{employeeMap.get(r.employee_id)?.name || '—'}</option>)}
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Relatório</p>
+              <select
+                value={reportType}
+                onChange={e => setReportType(e.target.value as typeof reportType)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="folha">Folha (PDF)</option>
+                <option value="calendario">Calendário de tempo (PDF)</option>
+                <option value="holerite">Holerite (PDF)</option>
+                <option value="setor">Consolidado por setor (PDF)</option>
+                <option value="excel">Folha em Excel (.xlsx)</option>
               </select>
             </div>
+            {reportType !== 'setor' && reportType !== 'excel' && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Funcionário</p>
+                <select value={docScope} onChange={e => setDocScope(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
+                  <option value="all">Todos os funcionários ({runs.length})</option>
+                  {runs.map(r => <option key={r.id} value={r.employee_id}>{employeeMap.get(r.employee_id)?.name || '—'}</option>)}
+                </select>
+              </div>
+            )}
+            {(reportType === 'setor' || reportType === 'excel') && (
+              <p className="text-xs text-muted-foreground">
+                {reportType === 'setor'
+                  ? 'Resumo por setor de todo o período (Proventos · Descontos · Adiant. · Líquido + total geral).'
+                  : 'Exporta a folha completa do período em Excel (resumo + detalhe dia a dia).'}
+              </p>
+            )}
             <div className="flex justify-end gap-2 pt-1">
               <Button size="sm" variant="outline" onClick={() => setDocDialogOpen(false)}>Cancelar</Button>
-              <Button size="sm" onClick={handleGenerateDocs} className="gap-1.5"><Files className="h-4 w-4" /> Gerar</Button>
+              <Button size="sm" onClick={handleGenerateReport} className="gap-1.5">
+                {reportType === 'excel' ? <DownloadSimple className="h-4 w-4" /> : <Files className="h-4 w-4" />} Gerar
+              </Button>
             </div>
           </div>
         </DialogContent>
