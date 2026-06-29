@@ -97,17 +97,25 @@ export interface SoleMatrixHtmlOptions {
  */
 export function soleMatrixHtml(rows: SoleMatrixRow[], opts: SoleMatrixHtmlOptions = {}): string {
   const showAvail = opts.showAvailability !== false;
-  const byModel = new Map<string, SoleMatrixRow[]>();
-  for (const r of rows) { const k = r.groupName || '—'; if (!byModel.has(k)) byModel.set(k, []); byModel.get(k)!.push(r); }
+  // UM QUADRO POR (modelo + COR) — não mistura cores numa tabela só nem soma a grade
+  // entre cores (pedido user 2026-06-29: "um quadrado para cada cor"). Cada cor vira
+  // seu próprio box/grid, com seu próprio "Total por numeração".
+  const byGroup = new Map<string, { model: string; color: string; rows: SoleMatrixRow[] }>();
+  for (const r of rows) {
+    const model = r.groupName || '—';
+    const color = r.color || '—';
+    const k = `${model}|||${color}`;
+    if (!byGroup.has(k)) byGroup.set(k, { model, color, rows: [] });
+    byGroup.get(k)!.rows.push(r);
+  }
   const OK = 'background:#dcfce7;color:#15803d';
   const NO = 'background:#fee2e2;color:#b91c1c';
-  return Array.from(byModel.entries())
-    .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
-    .map(([model, mrows]) => {
+  return Array.from(byGroup.values())
+    .sort((a, b) => a.model.localeCompare(b.model, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'))
+    .map(({ model, color, rows: mrows }) => {
       const sizes = Array.from(new Set(mrows.flatMap((r) => Object.keys(r.sizeBreakdown || {}))))
         .sort((a, b) => sizeSortKey(a) - sizeSortKey(b));
-      const corCount = mrows.length;
-      const label = `<div style="font-size:10pt;color:#374151;font-weight:600;margin:6px 4px 3px">${escapeHtml(model)} <span style="color:#9ca3af;font-weight:400">· ${corCount} cor(es)</span></div>`;
+      const label = `<div style="font-size:10pt;color:#374151;font-weight:600;margin:6px 4px 3px">${escapeHtml(model)} <span style="color:#9ca3af;font-weight:400">· ${escapeHtml(color)}</span></div>`;
 
       // Fallback: solado sem breakdown por numeração → tabela simples por cor.
       if (sizes.length === 0) {

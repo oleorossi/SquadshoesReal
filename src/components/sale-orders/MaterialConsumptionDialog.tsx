@@ -192,18 +192,26 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
  * (conjugada ou individual) × cor. Pedido user 2026-05-30.
  */
 function SoleSection({ rows }: { rows: ConsumptionRow[] }) {
+  // UM QUADRO POR (modelo + COR) — não mistura cores na mesma tabela (pedido user
+  // 2026-06-29). Cada cor é seu próprio box; idem `soleMatrixHtml` no PDF.
   const bySole = useMemo(() => {
-    const m = new Map<string, ConsumptionRow[]>();
-    for (const r of rows) { const k = r.groupName || '—'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(r); }
-    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+    const m = new Map<string, { sole: string; color: string; rows: ConsumptionRow[] }>();
+    for (const r of rows) {
+      const sole = r.groupName || '—';
+      const color = r.color || '—';
+      const k = `${sole}|||${color}`;
+      if (!m.has(k)) m.set(k, { sole, color, rows: [] });
+      m.get(k)!.rows.push(r);
+    }
+    return Array.from(m.values()).sort((a, b) => a.sole.localeCompare(b.sole, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
   }, [rows]);
   return (
     <div className="space-y-3">
-      {bySole.map(([sole, soleRows]) => (
-        <div key={sole} className="space-y-1 keep-together">
+      {bySole.map(({ sole, color, rows: soleRows }) => (
+        <div key={`${sole}|||${color}`} className="space-y-1 keep-together">
           <div className="text-xs font-semibold flex items-center gap-2">
             <span className="inline-block rounded bg-muted px-2 py-0.5 text-foreground">{sole}</span>
-            <span className="text-muted-foreground font-normal">{soleRows.length} cor(es)</span>
+            <span className="text-muted-foreground font-normal">{color}</span>
           </div>
           <SoleMatrix rows={soleRows} />
         </div>
