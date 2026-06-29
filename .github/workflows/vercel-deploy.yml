@@ -112,7 +112,8 @@ jobs:
       # Se workflow_dispatch foi usado pra bypass do CI, ou se algum bug deixou
       # vercel-deploy.yml ser triggered sem CI, esse gate ainda bloqueia.
       - name: TypeScript gate (bloqueia deploy se houver erro)
-        run: bunx tsc --noEmit
+        # ⚠ -p tsconfig.app.json obrigatório: a raiz é solution file e não checa nada.
+        run: bunx tsc -p tsconfig.app.json --noEmit
 
       - name: Pull Vercel config
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}

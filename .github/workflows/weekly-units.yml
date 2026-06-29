@@ -27,4 +27,5 @@ jobs:
         run: bun run test:units
 
       - name: TypeScript type check
-        run: bunx tsc --noEmit
+        # ⚠ -p tsconfig.app.json obrigatório: a raiz é solution file e não checa nada.
+        run: bunx tsc -p tsconfig.app.json --noEmit

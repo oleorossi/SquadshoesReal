@@ -31,7 +31,10 @@ jobs:
         run: bun run test
 
       - name: TypeScript type check
-        run: bunx tsc --noEmit
+        # ⚠ tem que ser -p tsconfig.app.json: o tsconfig.json raiz é solution file
+        # (files:[], só references) e NÃO checa nada. `bunx tsc --noEmit` na raiz
+        # passa sempre → símbolo indefinido / import errado vira ReferenceError em prod.
+        run: bunx tsc -p tsconfig.app.json --noEmit
 
       - name: Design tokens check
         run: bash scripts/check-design-tokens.sh
