@@ -60,8 +60,8 @@ export function useExpedicaoStats() {
         supabase.from('box_types').select('id, nome, quantity, min_stock, supplier_id, comprimento_cm, largura_cm, altura_cm, active').eq('active', true),
         // Baús (vehicles)
         supabase.from('baus').select('id, nome, comprimento_cm, largura_cm, altura_cm, capacidade_kg').eq('active', true),
-        // Transport companies
-        supabase.from('transport_companies').select('id, nome').eq('active', true),
+        // Transportadoras (canônica = transporters; consolidação 2026-06-28)
+        supabase.from('transporters').select('id, name').eq('active', true),
         // Sale orders ready to ship: production done, not yet dispatched
         supabase.from('sale_orders')
           .select('id, order_number, client_name, client_id, status, packaging_mode, delivery_deadline, shipped_at')

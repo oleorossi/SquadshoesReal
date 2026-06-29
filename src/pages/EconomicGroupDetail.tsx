@@ -272,7 +272,8 @@ function ComercialTab({ group }: { group: any }) {
   const { data: transportCompanies = [] } = useQuery({
     queryKey: ['transport_companies_active_for_group_select'],
     queryFn: async () => {
-      const { data } = await (supabase as any).from('transport_companies').select('id, nome').eq('active', true).order('nome');
+      // Transportadora canônica = transporters (consolidação 2026-06-28).
+      const { data } = await (supabase as any).from('transporters').select('id, name').eq('active', true).order('name');
       return data || [];
     },
   });
@@ -364,7 +365,7 @@ function ComercialTab({ group }: { group: any }) {
               <SelectTrigger><SelectValue placeholder="Sem default" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Sem default</SelectItem>
-                {transportCompanies.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
+                {transportCompanies.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

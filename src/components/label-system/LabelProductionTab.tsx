@@ -331,7 +331,7 @@ export function LabelProductionTab() {
         .select(`
           *,
           clients(id, razao_social, cnpj, endereco, bairro, cidade, estado, cep, branch_code, branch_name, economic_group_id, economic_groups(name)),
-          transport_companies:transport_company_id(nome),
+          transporters:transporter_id(name),
           nfe_emitidas(numero, serie, status, created_at)
         `);
       if (error) throw error;
@@ -1191,7 +1191,7 @@ export function LabelProductionTab() {
           const recipientCode = client?.cnpj
             ? client.cnpj.replace(/\D/g, '').slice(-5)
             : (so?.client_cnpj ? String(so.client_cnpj).replace(/\D/g, '').slice(-5) : undefined);
-          const transporter = so?.transport_companies?.nome || undefined;
+          const transporter = so?.transporters?.name || undefined;
 
           for (let f = 0; f < fichas; f++) {
             const currentBoxNumber = Math.ceil((f + 1) / (fichasPerBox || 1));

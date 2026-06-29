@@ -968,7 +968,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, transport_company_id, transport_companies:transport_company_id(nome)')
+        .select('id, transporter_id, transporters:transporter_id(name)')
         .in('id', saleOrderIds);
       if (error) throw error;
       return data || [];
@@ -2413,7 +2413,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     }
     const transportByOrder = new Map<string, string | null>();
     for (const t of saleOrdersTransport as any[]) {
-      transportByOrder.set(t.id, (t.transport_companies as any)?.nome || null);
+      transportByOrder.set(t.id, (t.transporters as any)?.name || null);
     }
 
     // B1: mesmo filtro de roteiro dos demais setores — OP cuja ficha técnica
