@@ -174,6 +174,40 @@ export function rollFillLabel(
   return `usa ${pct}% do rolo · sobra ${sobra.toFixed(0)} cm`;
 }
 
+/**
+ * Barra B&W do corte do rolo como **string HTML inline** (pros geradores de PDF /
+ * impressão que montam HTML próprio em `window.open`). Espelha o `StrapRollGauge` da
+ * tela: a faixa É um rolo (137 cm de largura útil), a hachura PRETA = quanto cortar,
+ * branco = sobra; rolos INTEIROS viram mini-blocos hachurados antes da faixa do
+ * último rolo. `print-color-adjust:exact` garante a hachura na impressora B&W.
+ *
+ * FONTE ÚNICA da barra nos 3 HTMLs (modal Consumo de Materiais, Resumo de Consumo,
+ * Lista de Separação) — assim a barra não diverge entre as superfícies. Retorna ''
+ * quando inválido (sem largura → a tabela mostra só o aviso, sem barra).
+ */
+export function strapRollBarHtml(
+  cut: Pick<StrapRollCutResult, 'valid' | 'n_rolos_completos' | 'cm_no_ultimo_rolo'>,
+): string {
+  if (!cut.valid) return '';
+  const last = cut.cm_no_ultimo_rolo;
+  const pct = last > 0 ? Math.min(100, (last / ROLO_LARGURA_CM) * 100) : 100;
+  const fullMini = last > 0 ? cut.n_rolos_completos : Math.max(0, cut.n_rolos_completos - 1);
+  const miniShown = Math.min(fullMini, 6);
+  const miniExtra = fullMini - miniShown;
+  const hatch = 'background:#fff;background-image:repeating-linear-gradient(45deg,#000 0 1.2px,transparent 1.2px 5px);-webkit-print-color-adjust:exact;print-color-adjust:exact';
+  const minis = Array.from({ length: miniShown })
+    .map(() => `<span style="display:inline-block;width:9px;height:12px;border:1px solid #000;${hatch}"></span>`)
+    .join('');
+  const extra = miniExtra > 0 ? `<span style="font-size:9px;font-family:monospace">+${miniExtra}</span>` : '';
+  return `<div style="display:flex;align-items:center;gap:2px;margin-top:3px;justify-content:flex-end">
+    ${minis}${extra}
+    <span style="position:relative;display:inline-block;width:118px;height:12px;border:1px solid #000;background:#fff">
+      <span style="position:absolute;left:0;top:0;bottom:0;width:${pct.toFixed(1)}%;${hatch}"></span>
+    </span>
+    <span style="font-size:9px;font-family:monospace;color:#555;white-space:nowrap">137 cm</span>
+  </div>`;
+}
+
 // ─── Detecção de "tira artesanal" ───────────────────────────────────────────
 
 /** Itens de tira COMPRADOS prontos (não cortados de rolo) — excluídos do bloco. */

@@ -61,10 +61,17 @@ export function suggestConversionRate(
   if (pu === 'l' && su === 'ml') return 1000;
   if (pu === 'ml' && su === 'l') return 0.001;
 
-  // Comprimento (linear → linear)
+  // Comprimento (linear → linear) — simétrico nos dois sentidos pra o
+  // cadastro sugerir o fator independente da ordem em que o usuário escolhe
+  // compra/estoque (antes só tinha o sentido maior→menor; trocar a ordem
+  // deixava cair no fallback 1 e gravava conversion_rate errado — ex.: 3
+  // "Elástico 6MM" cm↔m ficaram com rate=1 em vez de 100).
   if (pu === 'm' && su === 'cm') return 100;
+  if (pu === 'cm' && su === 'm') return 0.01;
   if (pu === 'm' && su === 'mm') return 1000;
+  if (pu === 'mm' && su === 'm') return 0.001;
   if (pu === 'cm' && su === 'mm') return 10;
+  if (pu === 'mm' && su === 'cm') return 0.1;
 
   // Linear → área: precisa largura — caller resolve via dimensions_width
   return null;

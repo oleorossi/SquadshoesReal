@@ -24,7 +24,7 @@ import {
   COMPONENT_ORDER,
   formatUnit,
 } from '@/lib/bomConsumption';
-import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollFillLabel } from '@/lib/strapRollCut';
+import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollFillLabel, strapRollBarHtml } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -415,30 +415,6 @@ export default function PickingListPage() {
     // (137 cm), mostra o breakdown "N rolos completos + X cm" embaixo do cm total.
     let strapCutHtml = '';
     if (strapCut.length > 0) {
-      const ROLO_CM = ROLO_LARGURA_MM / 10; // 137 cm — largura útil do rolo
-      // Barra B&W do corte (hachura preta = a cortar; branco = sobra). A faixa é UM
-      // rolo (137 cm); rolos cheios viram mini-blocos antes da faixa do último rolo.
-      // print-color-adjust:exact garante que a hachura saia na impressora.
-      const hatch = 'background:#fff;background-image:repeating-linear-gradient(45deg,#000 0 1.2px,transparent 1.2px 5px);-webkit-print-color-adjust:exact;print-color-adjust:exact';
-      const barHtml = (cut: ArtisanalStrapCutRow['cut']) => {
-        if (!cut.valid) return '';
-        const last = cut.cm_no_ultimo_rolo;
-        const pct = last > 0 ? Math.min(100, (last / ROLO_CM) * 100) : 100;
-        const fullMini = last > 0 ? cut.n_rolos_completos : Math.max(0, cut.n_rolos_completos - 1);
-        const miniShown = Math.min(fullMini, 6);
-        const miniExtra = fullMini - miniShown;
-        const minis = Array.from({ length: miniShown })
-          .map(() => `<span style="display:inline-block;width:9px;height:12px;border:1px solid #000;${hatch}"></span>`)
-          .join('');
-        const extra = miniExtra > 0 ? `<span style="font-size:9px;font-family:monospace">+${miniExtra}</span>` : '';
-        return `<div style="display:flex;align-items:center;gap:2px;margin-top:3px;justify-content:flex-end">
-          ${minis}${extra}
-          <span style="position:relative;display:inline-block;width:118px;height:12px;border:1px solid #000;background:#fff">
-            <span style="position:absolute;left:0;top:0;bottom:0;width:${pct.toFixed(1)}%;${hatch}"></span>
-          </span>
-          <span style="font-size:9px;font-family:monospace;color:#555;white-space:nowrap">137 cm</span>
-        </div>`;
-      };
       const strapRows = strapCut.map((r) => {
         const { cut } = r;
         const cortar = cut.valid
@@ -452,7 +428,7 @@ export default function PickingListPage() {
         const colorTxt = r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : '';
         return `<tr style="color:#dc2626">
           <td style="padding:4px 8px;font-weight:600">${escapeHtml(r.groupName)}${colorTxt}${larguraTxt}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}${barHtml(cut)}${breakdownHtml}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace">${cortar}${strapRollBarHtml(cut)}${breakdownHtml}</td>
         </tr>`;
       }).join('');
       strapCutHtml = `

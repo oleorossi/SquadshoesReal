@@ -24,6 +24,7 @@ import {
   isArtisanalStrap,
   normalizeWidthToMm,
   rollFillLabel,
+  strapRollBarHtml,
   type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
@@ -683,7 +684,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
         return `<tr style="color:#dc2626">
           <td style="padding:5px 10px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
-          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}${breakdownHtml}</td>
+          <td style="padding:5px 10px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}${strapRollBarHtml(cut)}${breakdownHtml}</td>
         </tr>`;
       }).join('');
       strapCutHtml = `
