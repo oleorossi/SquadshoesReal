@@ -35,11 +35,15 @@ export const CONSUMPTION_UNITS: MeasurementUnitOption[] = [
   // Contagem
   { value: 'un', label: 'Unidade (un)', group: 'Contagem' },
   { value: 'par', label: 'Par', group: 'Contagem' },
+  // 'placa' é a grafia CANÔNICA (a forbidden 'chapa' foi removida da lista —
+  // normalize_product_unit/toCanonical mapeiam 'chapa'→'placa'). Placa de
+  // material de área (EVA) usa conversion_rate placa→dm² (ex.: 150), NÃO um
+  // fator fixo em CONVERSOES — ver CLAUDE.md › Unidades canônicas.
+  { value: 'placa', label: 'Placa', group: 'Contagem' },
   { value: 'cx', label: 'Caixa (cx)', group: 'Contagem' },
   { value: 'pc', label: 'Pacote (pc)', group: 'Contagem' },
   { value: 'rolo', label: 'Rolo', group: 'Contagem' },
   { value: 'folha', label: 'Folha', group: 'Contagem' },
-  { value: 'chapa', label: 'Chapa', group: 'Contagem' },
   { value: 'jg', label: 'Jogo (jg)', group: 'Contagem' },
 ];
 

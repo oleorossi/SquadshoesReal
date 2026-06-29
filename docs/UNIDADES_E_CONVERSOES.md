@@ -1,11 +1,23 @@
 # Catálogo de Unidades de Medida e Conversões — Squad Shoes
 
-> **Propósito:** levantar **todas** as unidades e conversões existentes no sistema
+> ✅ **DECISÕES FECHADAS (atualizado 2026-06-29).** Este documento nasceu como
+> *snapshot pra decisão* (2026-05-30); as decisões já foram tomadas e aplicadas:
+> - **Lista canônica** = `m` · `cm` · `mm` · `dm²` · `m²` · `cm²` · `un` · `par` ·
+>   `placa` · `kg` · `g` · `L` · `ml` (ver tabela em `CLAUDE.md` › Unidades canônicas).
+> - **Grafias proibidas normalizadas** via `toCanonical` (`src/lib/nfUnitConversion.ts`)
+>   e `normalize_product_unit` (SQL): `metro`/`metros`/`mt`/`mts`→`m`,
+>   `dm2`→`dm²`, `m2`→`m²`, `cm2`→`cm²`, `unid`/`unidade`/`und`→`un`,
+>   `chapa`→`placa`, `gr`/`grama`/`gramas`→`g`, `litro`/`litros`/`l`→`L`.
+> - **`chapa` e `gr` NÃO são mais órfãs** — mapeiam pra `placa`/`g` (a Tabela A
+>   abaixo é histórica; ver notas inline). `placa` virou membro canônico do enum
+>   `UnidadeMedida` em 2026-06-29 (sem fator fixo — placa→dm² mora em
+>   `conversion_rate`, ver §3.2).
+> - Banco normalizado em massa pela migration `20260702120000`; auditoria de
+>   2026-06-19 (`AUDITORIA_UNIDADES_2026-06-19.md`) confirmou 0 unidade fora do canônico.
+>
+> **Propósito original:** levantar **todas** as unidades e conversões existentes no sistema
 > (camada TS do frontend + funções SQL do servidor + dados reais no banco) para
 > **avaliação e definição de regra canônica**. Gerado em 2026-05-30.
->
-> Use a coluna **DECISÃO** das tabelas para marcar o que vira regra:
-> `MANTER` · `NORMALIZAR p/ <unidade>` · `REMOVER` · `REVISAR`.
 
 ---
 
@@ -68,8 +80,8 @@
 | `mg` | Massa | miligrama | — | SQL | ☐ |
 | `L`/`l`/`litro` | Volume | litro | L | TS label, SQL | ☐ |
 | `ml` | Volume | mililitro | ml | SQL | ☐ |
-| **`chapa`** | ❓ órfã | sinônimo de placa? | — | ⚠️ nenhum conversor | ☐ |
-| **`gr`** | ❓ órfã | grama (grafia errada de `g`) | — | ⚠️ nenhum conversor | ☐ |
+| **`chapa`** | Área→contagem | sinônimo de `placa` | placa | ✅ `toCanonical`+`normalize_product_unit` → `placa` | ✅ NORMALIZADO |
+| **`gr`** | Massa | grama (grafia legada de `g`) | g | ✅ `toCanonical` → `g` | ✅ NORMALIZADO |
 
 > Conjuntos TS (`src/lib/materialConsumption.ts:30-31`):
 > `LINEAR_UNITS = {cm, m, metro, mt}` · `PLATE_UNITS = {dm2, dm², m², placa, placas, un}`.
