@@ -66,7 +66,11 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
        return result as ReferenceMaterialVariant;
      },
      onSuccess: (_d, vars) => {
-       qc.invalidateQueries({ queryKey: ['reference_material_variants', vars.reference_id] });
+       qc.invalidateQueries({ queryKey: QUERY_KEY(vars.reference_id) });
+       // ALL_ACTIVE_KEY é mais ESPECÍFICA que o prefixo da ficha (['..._variants', refId]),
+       // então NÃO casa por prefixo — precisa ser invalidada explicitamente. Sem isto, a
+       // variante recém-criada não aparece no dropdown do PV até o staleTime (60s) expirar.
+       qc.invalidateQueries({ queryKey: ALL_ACTIVE_KEY });
        toast.success('Variante de material adicionada');
      },
      onError: (err: Error) => toast.error(`Erro: ${err.message}`),
