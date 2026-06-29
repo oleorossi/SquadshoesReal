@@ -30,6 +30,13 @@ jobs:
       - name: Full test suite
         run: bun run test
 
+      # B6 (auditoria 2026-06-29): as suites de conversão de unidade (dm²→física,
+      # cm↔m, kg…) ficavam SÓ no cron semanal. Sendo a causa nº 1 de bug 100× de
+      # consumo/custo, têm que travar merge — rodam aqui também (a weekly fica de
+      # redundância).
+      - name: Unit conversion suite (dm²→física etc.)
+        run: bun run test:units
+
       - name: TypeScript type check
         # ⚠ tem que ser -p tsconfig.app.json: o tsconfig.json raiz é solution file
         # (files:[], só references) e NÃO checa nada. `bunx tsc --noEmit` na raiz

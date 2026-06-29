@@ -412,6 +412,22 @@ export default function Payroll() {
         advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + Number(a.amount || 0));
       }
 
+      // B4 (auditoria 2026-06-29): ausências JUSTIFICADAS (férias/atestado/licença)
+      // no período → dias abonados (não descontam falta). Expande [start,end]∩[período].
+      const { data: absences } = await supabase
+        .from('employee_absences')
+        .select('employee_id, start_date, end_date')
+        .lte('start_date', cTo)
+        .gte('end_date', cFrom);
+      const absencesByEmp = new Map<string, Set<string>>();
+      for (const ab of (absences || []) as any[]) {
+        const set = absencesByEmp.get(ab.employee_id) || new Set<string>();
+        const s = ab.start_date > cFrom ? ab.start_date : cFrom;
+        const e = ab.end_date < cTo ? ab.end_date : cTo;
+        for (const day of getDaysInRange(s, e)) set.add(day.date);
+        absencesByEmp.set(ab.employee_id, set);
+      }
+
       let calculated = 0;
       let withIncomplete = 0;
       let sharedMatricula = 0;
@@ -443,6 +459,7 @@ export default function Payroll() {
           schedule: sch,
           holidaysSet,
           punchesByDate: empPunches,
+          absenceDates: absencesByEmp.get(emp.id),
           advancesTotal: advancesByEmp.get(emp.id) || 0,
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
           monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)

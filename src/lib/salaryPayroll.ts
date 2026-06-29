@@ -68,6 +68,9 @@ export interface SalaryDayInput {
   /** jornada esperada do dia em minutos (ex.: 540 = 9h). 0 em folga/feriado. */
   expectedMinutes: number;
   punches: string[];     // ['08:00','12:00','13:00','18:00']
+  /** Ausência JUSTIFICADA cobrindo o dia (férias/atestado/licença). Dia útil sem
+   *  batida E excused=true → abonado (não conta falta nem desconta). */
+  excused?: boolean;
 }
 
 export interface SalaryPayrollResult {
@@ -84,6 +87,8 @@ export interface SalaryPayrollResult {
   worked_days: number;     // dias úteis com alguma hora trabalhada
   falta_days: number;
   falta_desconto: number;  // R$ (faltas × valor-dia)
+  /** Dias úteis sem batida cobertos por ausência justificada (abonados, sem desconto). */
+  excused_days?: number;
   atraso_minutes: number;  // minutos faltantes (atraso + saída cedo) em dias parciais
   atraso_desconto: number; // R$ (atraso_minutes × valor-hora)
   he_minutes: number;
@@ -165,6 +170,7 @@ export function calculateSalaryPayroll(
   let workdays = 0;
   let workedDays = 0;
   let faltaDays = 0;
+  let excusedDays = 0;
   let pendingDays = 0;
   // BRUTO por-dia (decisão do usuário 2026-06-19): HE e atraso acumulam POR DIA
   // (excedente/déficit de cada dia), SEM compensação entre dias. Ver loop abaixo.
@@ -201,7 +207,9 @@ export function calculateSalaryPayroll(
 
     if (isSchedWorkday) {
       if (worked === 0) {
-        // Falta: dia útil sem trabalho → desconta 1 valor-dia (fora da conta de horas).
+        // Dia útil sem trabalho. Ausência JUSTIFICADA (férias/atestado/licença) é
+        // abonada: não conta falta nem desconta. Senão, falta (desconta 1 valor-dia).
+        if (d.excused) { excusedDays++; continue; }
         faltaDays++;
         continue;
       }
@@ -249,6 +257,7 @@ export function calculateSalaryPayroll(
     worked_days: workedDays,
     falta_days: faltaDays,
     falta_desconto: round2(faltaDesconto),
+    excused_days: excusedDays,
     atraso_minutes: atrasoMin,
     atraso_desconto: round2(atrasoDesconto),
     late_days: lateDays,
@@ -296,6 +305,9 @@ export interface PeriodFolhaInput {
   schedule: any;                          // work_schedule (entry/exit/lunch/works_*)
   holidaysSet: Set<string>;               // feriados obrigatórios (dia inteiro 1,5×)
   punchesByDate: Map<string, string[]>;   // data (YYYY-MM-DD) → batidas
+  /** Datas (YYYY-MM-DD) cobertas por ausência JUSTIFICADA → dia útil sem batida vira
+   *  abonado (não desconta falta). Default vazio = comportamento legado. */
+  absenceDates?: Set<string>;
   advancesTotal?: number;
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
   monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
@@ -315,6 +327,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       date: d.date, dayOfWeek: d.dow, isHoliday, isWorkday,
       expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule) : 0,
       punches: inp.punchesByDate.get(d.date) || [],
+      excused: inp.absenceDates?.has(d.date) ?? false,
     };
   });
   // Tolerância da escala (default 10min) — espelha useTimesheet (`tolerance_minutes ?? 10`).
@@ -331,7 +344,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     return {
       ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
       worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
-      worked_days: 0, falta_days: 0, falta_desconto: 0,
+      worked_days: 0, falta_days: 0, falta_desconto: 0, excused_days: 0,
       atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0, he_value: 0, pending_days: 0,
       total_proventos: base.period_base, total_descontos: adv,
       gross_value: base.period_base, net_value: round2(base.period_base - adv),
@@ -346,7 +359,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     const grossD = round2(dr * paidDays);
     return {
       ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
-      falta_days: 0, falta_desconto: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
+      falta_days: 0, falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
       he_minutes: 0, he_value: 0,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),
