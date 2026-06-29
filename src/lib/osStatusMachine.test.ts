@@ -48,9 +48,9 @@ describe('predicados de status', () => {
 
 describe('labels (vocabulário do dono)', () => {
   it('traduz pro vocabulário do dono', () => {
-    expect(osStatusLabel('Em Andamento')).toBe('Em Processamento');
-    expect(osStatusLabel('Concluído')).toBe('Entregue');
-    expect(osStatusLabel('received')).toBe('Entregue');
+    expect(osStatusLabel('Em Andamento')).toBe('Enviada');
+    expect(osStatusLabel('Concluído')).toBe('Recebida');
+    expect(osStatusLabel('received')).toBe('Recebida');
     expect(osStatusLabel('Cancelado')).toBe('Cancelada');
     expect(osStatusLabel('Pendente')).toBe('Pendente');
   });
