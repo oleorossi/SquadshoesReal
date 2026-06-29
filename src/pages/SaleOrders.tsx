@@ -413,12 +413,16 @@ export default function SaleOrders() {
       // estão na outra aba (78% ficam em Faturados). Os demais filtros
       // explícitos (status/rep/grupo/segmento/mês) continuam valendo.
       const isBilled = TERMINAL_BILLED_STATUSES.includes(order.status);
+      const isCancelled = order.status === 'Cancelado';
       const searching = debouncedSearchTerm.trim().length > 0;
       if (!searching) {
-        if (mainTab === 'faturados') {
-          if (!isBilled) return false;
+        if (mainTab === 'cancelados') {
+          if (!isCancelled) return false;
+        } else if (mainTab === 'faturados') {
+          if (!isBilled || isCancelled) return false;
         } else {
-          if (isBilled) return false;
+          // Ativos: não-terminais E não-cancelados (cancelados têm aba própria).
+          if (isBilled || isCancelled) return false;
         }
       }
       if (filterStatus !== 'all' && order.status !== filterStatus) return false;
@@ -512,12 +516,12 @@ export default function SaleOrders() {
     else sel.selectAll();
   };
 
-  // Auditoria visual 11/06/2026: o badge da aba excluía Rascunho/Cancelado,
-  // mas a lista da aba "Ativos" inclui ambos (só exclui faturados) — badge
-  // mostrava 9 com KPI "Total Pedidos 11". Agora usa o MESMO predicado do
-  // tab gating em filteredOrders (não-faturados).
-  const activeCount = useMemo(() => orders.filter(o => !TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
+  // Cada badge usa o MESMO predicado do tab gating em filteredOrders.
+  // Ativos = não-faturados E não-cancelados (Rascunho continua em Ativos;
+  // Cancelado ganhou aba própria em 29/06/2026 pra não poluir Ativos).
+  const activeCount = useMemo(() => orders.filter(o => !TERMINAL_BILLED_STATUSES.includes(o.status) && o.status !== 'Cancelado').length, [orders]);
   const billedCount = useMemo(() => orders.filter(o => TERMINAL_BILLED_STATUSES.includes(o.status)).length, [orders]);
+  const cancelledCount = useMemo(() => orders.filter(o => o.status === 'Cancelado').length, [orders]);
 
   const pendingOrders = useMemo(() => orders.filter(o => o.status === 'Rascunho'), [orders]);
 
@@ -1659,6 +1663,19 @@ export default function SaleOrders() {
             Faturados / Sem NF
             <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{billedCount}</Badge>
           </button>
+          <button
+            type="button"
+            onClick={() => setMainTab('cancelados')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium transition-colors border-b-2',
+              mainTab === 'cancelados'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Cancelados
+            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{cancelledCount}</Badge>
+          </button>
         </div>
 
         {/* KPI Cards — Novidade editorial */}
@@ -1723,10 +1740,11 @@ export default function SaleOrders() {
           </div>
 
           {/* Aviso: durante a busca, ignora a aba e procura em Ativos + Faturados
-              (senão referência/cliente cujos pedidos já faturaram "não apareciam"). */}
+              + Cancelados (senão referência/cliente cujos pedidos já faturaram ou
+              foram cancelados "não apareciam"). */}
           {searchTerm.trim() && (
             <p className="text-xs text-muted-foreground -mt-1">
-              Buscando em <span className="font-medium text-foreground">Ativos e Faturados</span> · {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''}
+              Buscando em <span className="font-medium text-foreground">Ativos, Faturados e Cancelados</span> · {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''}
             </p>
           )}
 
