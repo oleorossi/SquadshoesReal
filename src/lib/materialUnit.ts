@@ -11,7 +11,10 @@
  * (material de área) ou se o valor base precisa ser informado em outra unidade.
  */
 
-const LINEAR_LABELS = ['m', 'cm', 'metro', 'metros', 'mt'];
+// Sinônimos lineares canônicos+legados (alinhado com toCanonical em
+// nfUnitConversion.ts e CANONICAL_UNIT_LABELS em unitLabels.ts): m/cm + as
+// grafias proibidas metro/metros/mt/mts que produtos legados ainda podem ter.
+const LINEAR_LABELS = ['m', 'cm', 'metro', 'metros', 'mt', 'mts'];
 
 export function resolveGroupUnit(
   groupName: string | null | undefined,

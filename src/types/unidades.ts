@@ -20,6 +20,11 @@ export enum UnidadeMedida {
   // Contagem
   UNIDADE = 'un',
   PAR = 'par',
+  // Placa (chapa cortada de material de área, ex.: EVA). A conversão
+  // placa→dm² depende da ÁREA da placa e mora em products.conversion_rate
+  // (ex.: 150), NÃO num fator fixo de CONVERSOES — por isso não há entrada
+  // de conversão pra PLACA aqui (mesmo princípio do dm²→linear via largura).
+  PLACA = 'placa',
   CAIXA = 'cx',
   PACOTE = 'pc',
   ROLO = 'rl',
@@ -79,4 +84,9 @@ export const GRUPOS_COMPATIBILIDADE = {
   COMPRIMENTO: [UnidadeMedida.METRO, UnidadeMedida.METRO_LINEAR, UnidadeMedida.CENTIMETRO, UnidadeMedida.MILIMETRO],
   AREA: [UnidadeMedida.METRO_QUADRADO, UnidadeMedida.DECIMETRO_QUADRADO, UnidadeMedida.CENTIMETRO_QUADRADO],
   UNIDADE: [UnidadeMedida.UNIDADE, UnidadeMedida.PAR, UnidadeMedida.CAIXA, UnidadeMedida.PACOTE, UnidadeMedida.ROLO, UnidadeMedida.FOLHA, UnidadeMedida.JOGO],
+  // PLACA fica isolada de propósito: a conversão placa→dm² depende da área da
+  // placa (conversion_rate, ex.: 150), NÃO de um fator fixo. Colocá-la no grupo
+  // UNIDADE faria conversaoService achar que placa↔un são intercambiáveis (e
+  // estourar). Grupo próprio ⇒ saoCompativeis(placa, placa)=true e nada mais.
+  PLACA: [UnidadeMedida.PLACA],
 } as const;

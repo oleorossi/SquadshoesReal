@@ -161,3 +161,51 @@ vazio). Mas há uma constatação **estrutural** e um bug **crítico ativo**:
 ## Notas de confiança
 - "~8 fichas de forro per-size=0,5": reportado por uma frente, **a confirmar** a contagem exata por ficha (o `audit_unit_divergences` live agregou 69 chaves, todas da ficha órfã CF 03).
 - Todo o resto tem evidência SQL direta (def viva das funções + contagens reais).
+
+---
+
+## Adendo — Auditoria do CATÁLOGO canônico (camada TS, 2026-06-29)
+
+> Auditoria focada nos artefatos TS do catálogo de unidades (`src/types/unidades.ts`,
+> `src/lib/measurementUnits.ts`, `src/lib/materialUnit.ts`, `src/lib/unitLabels.ts`),
+> cruzando com `toCanonical` (`nfUnitConversion.ts`), `materialConsumption.ts` e os 3
+> docs. Diferente da auditoria de 2026-06-19 (que olhou o banco + SQL), esta cobre a
+> consistência da camada TS. Sem migration.
+
+### ✅ Correções aplicadas
+1. **`measurementUnits.ts` oferecia `chapa` (grafia PROIBIDA) no Select de unidade,
+   sem oferecer a canônica `placa`.** Um usuário podia gravar `chapa` em
+   `products.unit`/`consumption_unit`, reintroduzindo a grafia que `toCanonical`/
+   `normalize_product_unit` normalizam pra `placa`. Trocado `chapa`→`placa` em
+   `CONSUMPTION_UNITS`.
+2. **`UnidadeMedida` (enum) não tinha `placa`** — embora `placa` seja unidade-base
+   canônica (ex.: PLACA EVA, `placa`→`dm²` rate 150). Adicionado membro `PLACA='placa'`
+   + grupo de compatibilidade `PLACA: [PLACA]` **isolado de propósito** (placa↔dm²
+   depende de `conversion_rate`, NÃO de fator fixo; colocá-la no grupo `UNIDADE` faria
+   `conversaoService` tentar converter `placa↔un` e estourar). Nenhum fator novo em
+   `CONVERSOES` — mesmo princípio do dm²→linear (mora na largura da ficha).
+3. **`materialUnit.ts` `LINEAR_LABELS` não tinha `mts`** (tinha `metro`/`metros`/`mt`).
+   Um produto legado com `unit='mts'` + largura na ficha não era detectado como área
+   (não virava `dm²`). Adicionado `mts` pra alinhar com `toCanonical`/`unitLabels`.
+
+### ✅ Verificações que passaram (sem ação)
+- **Fatores de `CONVERSOES` corretos e bidirecionais:** kg↔g=1000, L↔ml=1000,
+  m↔cm=100, m↔mm=1000, m²↔dm²=100, dm²↔cm²=100, m²↔cm²=10000 (+ mg, m³, m linear).
+- **`GRUPOS_COMPATIBILIDADE`** agrupa corretamente por dimensão (Peso/Volume/
+  Comprimento/Área/Unidade), agora + Placa.
+- **`unitLabels.ts` (`CANONICAL_UNIT_LABELS`)** cobre TODOS os sinônimos proibidos do
+  contrato: metro/metros/mt/mts/dm2/m2/cm2/unid/unidade/und/chapa/gr/grama/gramas/
+  litro/litros/l → canônico.
+- **`toCanonical`** (`nfUnitConversion.ts`, fora do escopo de edição) cobre os mesmos
+  sinônimos; `'l'/'lt'/'litro'` → `'l'` (alinhado ao enum `LITRO='l'`).
+
+### ⚠ Suspeitas / dívidas externas (arquivos de OUTRA unidade — só reportado)
+- **`materialConsumption.ts` `LINEAR_UNITS = {cm, m, metro, mt}`** não inclui `metros`
+  nem `mts`, mas `materialUnit.ts`/`unitLabels.ts`/`toCanonical` incluem. Como o banco
+  já está normalizado pra `m` (migration `20260702120000`), o risco é só pra produto
+  legado não-normalizado. **Não editado** (arquivo de outra unidade).
+- **Casing `L` vs `l`:** o enum `UnidadeMedida.LITRO='l'` (minúsculo) e `toCanonical`
+  retornam `'l'`, mas a lista canônica de exibição (`measurementUnits.ts`/`unitLabels.ts`)
+  usa `'L'` (maiúsculo, padrão SI). É intencional: o **valor armazenado** é `'l'` (casa
+  com `CONVERSOES`), o **rótulo exibido** é `'L'`. Consistente, mas vale registrar pra
+  não "consertar" por engano um dos lados.
