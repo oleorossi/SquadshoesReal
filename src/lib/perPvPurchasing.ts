@@ -33,6 +33,15 @@ export interface PvMaterialNeed {
   is_artisanal?: boolean;
   /** Múltiplo de compra (embalagem): qtd arredonda pra cima. Enriquecido pela UI. */
   purchase_multiple?: number | null;
+  /** Unidade de COMPRA do produto (ex.: 'placa') quando ≠ da unidade de estoque
+   *  (`unit`, ex.: 'dm²'). Enriquecido pela UI a partir de products.purchase_unit.
+   *  Vazio/igual a `unit` ⇒ sem conversão. */
+  purchase_unit?: string | null;
+  /** Fator estoque↔compra: quanto de `unit` cabe em 1 `purchase_unit` (ex.: 150
+   *  dm²/placa). Enriquecido pela UI via effectiveConversionFactorStrict — MESMO
+   *  fator que o recebimento da OC usa pra creditar estoque (round-trip exato).
+   *  1 (ou ausente) ⇒ compra na própria unidade de estoque. */
+  conversion_factor?: number | null;
   /** Grade do SOLADO por numeração (total de pares por número). Só vem preenchida
    *  nas linhas de solado; demais materiais vêm null. Exibida na OC como no
    *  consumo de materiais. */
@@ -54,8 +63,9 @@ export interface DraftPurchaseOrderItem {
   stock_qty: number;
   unit_price: number;
   purchase_multiple?: number | null;
-  /** Excedente comprado a mais por causa do múltiplo de compra (qtd − necessidade
-   *  pré-arredondamento). 0 quando não houve arredondamento. Exibido em azul. */
+  /** Excedente comprado a mais por arredondamento (múltiplo de compra OU inteiro
+   *  da unidade contável). qtd − necessidade pré-arredondamento. 0 quando não
+   *  houve. Exibido em azul. */
   rounding_surplus?: number;
   /** Grade do solado por numeração (total de pares). Só em linhas de solado. */
   grade?: Record<string, number> | null;
@@ -105,6 +115,20 @@ function colorKey(c: string | null | undefined): string {
 }
 
 /**
+ * Unidades de COMPRA contáveis (vendidas por inteiro) — a quantidade da OC
+ * arredonda pra cima pro inteiro. Espelha DISCRETE_PURCHASE_UNITS de
+ * materialAutoPO.ts. Materiais contínuos (m/dm²/kg/L) ficam fracionados.
+ */
+const DISCRETE_PURCHASE_UNITS = new Set([
+  'un', 'unid', 'unidade', 'und', 'par', 'pares', 'placa', 'placas', 'chapa',
+  'cx', 'caixa', 'rolo', 'rolos', 'pç', 'pc', 'peça', 'peca', 'dz', 'dúzia',
+]);
+
+function isDiscretePurchaseUnit(u: string | null | undefined): boolean {
+  return DISCRETE_PURCHASE_UNITS.has((u ?? '').trim().toLowerCase());
+}
+
+/**
  * Empacota necessidades de material em OCs, uma por fornecedor + uma agrupada
  * "Sem Fornecedor".
  *
@@ -123,7 +147,7 @@ export function buildPerPvPurchaseOrders(
   const netOfStock = opts.netOfStock ?? false;
 
   // 1) Mescla por (material_id + cor).
-  const merged = new Map<string, DraftPurchaseOrderItem & { supplier_id: string | null; supplier_name: string | null }>();
+  const merged = new Map<string, DraftPurchaseOrderItem & { supplier_id: string | null; supplier_name: string | null; conversion_factor: number; purchase_unit: string | null }>();
   for (const n of needs) {
     if (!n || !n.material_id) continue;
     const key = `${n.material_id}::${colorKey(n.color)}`;
@@ -149,6 +173,8 @@ export function buildPerPvPurchaseOrders(
         stock_qty: round3(stock),
         unit_price: price,
         purchase_multiple: n.purchase_multiple ?? null,
+        purchase_unit: n.purchase_unit ?? null,
+        conversion_factor: Number(n.conversion_factor) > 0 ? Number(n.conversion_factor) : 1,
         grade: n.grade ?? null,
         color_mismatch: !!n.color_mismatch,
         supplier_id: n.supplier_id ?? null,
@@ -157,18 +183,38 @@ export function buildPerPvPurchaseOrders(
     }
   }
 
-  // 2) Define quantidade a comprar e descarta zeros.
+  // 2) Converte estoque→compra, define quantidade a comprar e descarta zeros.
   const items: (DraftPurchaseOrderItem & { supplier_id: string | null; supplier_name: string | null })[] = [];
   for (const it of merged.values()) {
-    const qtyRaw = netOfStock
-      ? Math.max(0, round3(it.needed_qty - it.stock_qty))
-      : it.needed_qty;
+    // Conversão estoque→compra (ex.: PLACA EVA: 10.333 dm² ÷ 150 = 69 placas).
+    // O fator é o MESMO do recebimento da OC (effectiveConversionFactorStrict),
+    // então a OC sai na unidade que o fornecedor vende e o crédito de estoque no
+    // recebimento (qtd × fator) volta exato à unidade de estoque. Sem isto a OC
+    // saía em dm² e o recebimento creditava 150× a mais.
+    const factor = Number(it.conversion_factor) > 0 ? Number(it.conversion_factor) : 1;
+    const usePurchaseUnit = factor !== 1 && !!it.purchase_unit;
+    const displayUnit = usePurchaseUnit ? (it.purchase_unit as string) : it.unit;
+    const neededP = round3(it.needed_qty / factor);
+    const stockP = round3(it.stock_qty / factor);
+    const priceP = round3(it.unit_price * factor);
+
+    const qtyRaw = netOfStock ? Math.max(0, round3(neededP - stockP)) : neededP;
     // Múltiplo de compra (embalagem): arredonda pra cima (ex.: 187 → 200 c/ 50).
-    const qty = roundUpToPurchaseMultiple(qtyRaw, it.purchase_multiple);
+    let qty = roundUpToPurchaseMultiple(qtyRaw, it.purchase_multiple);
+    // Unidade contável (un/par/placa…): não dá pra comprar fração → inteiro.
+    if (isDiscretePurchaseUnit(displayUnit)) qty = Math.ceil(round3(qty));
     if (qty <= 0) continue;
     // Excedente do arredondamento — exibido em azul na coluna "A comprar".
     const rounding_surplus = round3(Math.max(0, qty - qtyRaw));
-    items.push({ ...it, quantity: qty, rounding_surplus });
+    items.push({
+      ...it,
+      unit: displayUnit,
+      needed_qty: neededP,
+      stock_qty: stockP,
+      unit_price: priceP,
+      quantity: qty,
+      rounding_surplus,
+    });
   }
 
   // 3) Agrupa por fornecedor.

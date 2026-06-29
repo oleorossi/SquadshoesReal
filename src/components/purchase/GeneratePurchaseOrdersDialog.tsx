@@ -19,6 +19,8 @@ import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePe
 import { useProducts } from '@/hooks/useProducts';
 import { useGroups } from '@/hooks/useGroups';
 import { effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
+import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
+import { normalizeUnit } from '@/lib/unitConversion';
 import { buildPerPvPurchaseOrders, summarizePerPvDrafts, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
@@ -42,7 +44,10 @@ type Props = {
  * grupo com source_type='per_pv'. Não interfere no MRP/ondas.
  */
 export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds, pvNumbers, onGenerated }: Props) {
-  const [netOfStock, setNetOfStock] = useState(false);
+  // Default LIGADO: numa ordem de compra você quer comprar a FALTA, não a
+  // necessidade bruta — senão recompra material que já está em estoque (ex.:
+  // cola/binóculo). O usuário pode desligar pra ver o bruto.
+  const [netOfStock, setNetOfStock] = useState(true);
   // GUARD: cor não cadastrada bloqueia gerar OC; override consciente p/ casos benignos.
   const [overrideColorMismatch, setOverrideColorMismatch] = useState(false);
   const { data: needs = [], isLoading, isError, error } = useMaterialsPerPv(open ? pvIds : null);
@@ -69,9 +74,38 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     return m;
   }, [products]);
 
+  // Conversão estoque→compra por produto (mesmo fator do recebimento da OC):
+  // PLACA EVA vira placa, cola/napa ficam como estão. Sem regra segura → mantém
+  // a unidade de estoque (fator 1), igual ao recebimento que bloquearia.
+  const conversionByProduct = useMemo(() => {
+    const m = new Map<string, { purchase_unit: string | null; conversion_factor: number }>();
+    for (const p of products as any[]) {
+      const ctx = {
+        unit: p.unit,
+        purchase_unit: p.purchase_unit,
+        conversion_rate: p.conversion_rate,
+        dimensions_width: p.dimensions_width,
+      };
+      const factor = effectiveConversionFactorStrict(ctx);
+      const differs = p.purchase_unit && normalizeUnit(p.purchase_unit) !== normalizeUnit(p.unit);
+      m.set(p.id, differs && factor != null && factor > 0
+        ? { purchase_unit: p.purchase_unit, conversion_factor: factor }
+        : { purchase_unit: null, conversion_factor: 1 });
+    }
+    return m;
+  }, [products]);
+
   const enrichedNeeds = useMemo(
-    () => needs.map((n: any) => ({ ...n, purchase_multiple: multipleByProduct.get(n.material_id) ?? null })),
-    [needs, multipleByProduct],
+    () => needs.map((n: any) => {
+      const conv = conversionByProduct.get(n.material_id);
+      return {
+        ...n,
+        purchase_multiple: multipleByProduct.get(n.material_id) ?? null,
+        purchase_unit: conv?.purchase_unit ?? null,
+        conversion_factor: conv?.conversion_factor ?? 1,
+      };
+    }),
+    [needs, multipleByProduct, conversionByProduct],
   );
 
   const drafts = useMemo(
@@ -153,7 +187,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               <p className="text-xs text-muted-foreground">
                 Na coluna <strong>A comprar</strong>, o valor em{' '}
                 <span className="text-blue-600 dark:text-blue-400 font-medium">azul</span> é o
-                excedente comprado a mais pra fechar o múltiplo de compra (embalagem).
+                excedente comprado a mais pra fechar o múltiplo de compra (embalagem) ou a
+                unidade inteira (ex.: placa/caixa).
               </p>
             )}
 
@@ -259,7 +294,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                             {(it.rounding_surplus ?? 0) > 0 && (
                               <span
                                 className="ml-1 text-blue-600 dark:text-blue-400 font-medium"
-                                title={`+${(it.rounding_surplus ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} comprado a mais pra fechar o múltiplo de compra (embalagem)`}
+                                title={`+${(it.rounding_surplus ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} comprado a mais pra fechar o múltiplo de compra (embalagem) ou a unidade inteira`}
                               >
                                 +{(it.rounding_surplus ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
                               </span>

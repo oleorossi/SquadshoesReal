@@ -162,6 +162,50 @@ describe('buildPerPvPurchaseOrders', () => {
     expect(drafts[0].items[0].quantity).toBe(10); // 30 − 20
   });
 
+  it('converte estoque→compra: dm² vira placa INTEIRA (PLACA EVA, fator 150)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: 'eva', product_name: 'PLACA EVA', unit: 'dm²', color: '',
+        needed_qty: 10333.44, stock_qty: 0, last_unit_price: 0.11,
+        purchase_unit: 'placa', conversion_factor: 150,
+      }),
+    ]);
+    const item = drafts[0].items[0];
+    expect(item.unit).toBe('placa');
+    expect(item.quantity).toBe(69); // ceil(10333.44 / 150 = 68.89)
+    expect(item.needed_qty).toBeCloseTo(68.89, 2);
+    expect(item.unit_price).toBeCloseTo(16.5, 2); // R$/dm² 0,11 × 150 = R$/placa
+    // total invariante (~ valor em dm²), a menos do arredondamento pra placa inteira
+    expect(item.quantity * item.unit_price).toBeCloseTo(1138.5, 1);
+  });
+
+  it('conversão respeita netOfStock (neta em dm² antes de virar placa)', () => {
+    const drafts = buildPerPvPurchaseOrders(
+      [need({
+        material_id: 'eva', unit: 'dm²', needed_qty: 10333.44, stock_qty: 150,
+        last_unit_price: 0.11, purchase_unit: 'placa', conversion_factor: 150,
+      })],
+      { netOfStock: true },
+    );
+    // (10333.44 − 150)/150 = 67.89 → ceil 68 placas
+    expect(drafts[0].items[0].quantity).toBe(68);
+  });
+
+  it('unidade contável (un) arredonda pra cima quando fracionada (caixa)', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'cx', product_name: 'CAIXA COLMEIA', unit: 'un', needed_qty: 183.264, last_unit_price: 5.5 }),
+    ]);
+    expect(drafts[0].items[0].quantity).toBe(184);
+    expect(drafts[0].items[0].rounding_surplus).toBeCloseTo(0.736, 3);
+  });
+
+  it('unidade contínua (m/kg) NÃO arredonda pra inteiro', () => {
+    const drafts = buildPerPvPurchaseOrders([
+      need({ material_id: 'napa', unit: 'm', needed_qty: 82.6, last_unit_price: 13.34 }),
+    ]);
+    expect(drafts[0].items[0].quantity).toBeCloseTo(82.6, 3);
+  });
+
   it('ignora linhas inválidas (sem material_id) e quantidade zero', () => {
     const drafts = buildPerPvPurchaseOrders([
       need({ material_id: '', needed_qty: 5 } as any),
