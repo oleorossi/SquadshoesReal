@@ -76,6 +76,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { transitivePredecessors } from '@/lib/sectorDag';
 
 interface KanbanOrder {
   id: string;
@@ -529,9 +530,13 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
         throw new Error(`Etapa "${toSector}" não encontrada ou já em andamento.`);
       }
 
-      // Marca as etapas puladas como concluídas (incluindo a de origem se não for Pendente)
-      const stagesToComplete = [...skipped];
-      if (fromSector !== 'Pendente' && !stagesToComplete.includes(fromSector)) {
+      // Marca como concluídas só as etapas que são predecessoras REAIS do destino
+      // no DAG (não ramos paralelos irmãos). A origem é concluída apenas se for
+      // predecessora do destino — mover entre setores prep paralelos (ex.:
+      // Aviamento → Costura) não conclui a origem.
+      const preds = transitivePredecessors(toSector);
+      const stagesToComplete = [...skipped].filter((s) => preds.has(s));
+      if (fromSector !== 'Pendente' && preds.has(fromSector) && !stagesToComplete.includes(fromSector)) {
         stagesToComplete.push(fromSector);
       }
 
@@ -602,11 +607,15 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       return;
     }
 
-    // Etapas que serão puladas (entre origem e destino, exclusive)
+    // Etapas concluídas implicitamente ao saltar: SÓ os predecessores REAIS do
+    // destino no DAG (não ramos paralelos irmãos). Antes usava a fatia linear de
+    // colunas e concluía Costura/cortes paralelos indevidamente (ex.: arrastar
+    // p/ Costura concluía os 3 cortes; arrastar p/ Colagem concluía Silk).
+    const preds = transitivePredecessors(toSectorKey);
     const skipped = KANBAN_SECTORS
       .slice(fromIdx + 1, toIdx)
       .map(s => s.key)
-      .filter(k => k !== 'Pendente');
+      .filter(k => k !== 'Pendente' && preds.has(k));
 
     // Guard contra "pular tudo" — quando é mais de 4 setores ou indo direto
     // de Pendente pra Expedição (saltando produção inteira), bloqueia.
