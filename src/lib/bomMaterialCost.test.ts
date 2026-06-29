@@ -65,6 +65,23 @@ describe('areaToStockDivisor — divisor dm²→unidade física (planejamento de
     expect(4309 / (areaToStockDivisor('m', sheet(1370)) as number)).toBeCloseTo(31.45, 1);
   });
 
+  it('produto LINEAR em cm → divisor = (largura_mm/10)/100 (dm² por cm) — PARIDADE SQL', () => {
+    // SQL get_material_conversion_info divide dm2_per_unit por 100 quando unit='cm'.
+    // O TS DEVE bater: 137 dm²/m → 1,37 dm²/cm. Sem isso o need sairia em metros
+    // tratado como cm (~100× errado) no PurchasePlanningWizard.
+    expect(areaToStockDivisor('cm', sheet(1370))).toBeCloseTo(1.37, 5);
+    // need 137 dm² ÷ 1,37 dm²/cm = 100 cm (= 1 m de bobina 1370mm). Coerente.
+    expect(137 / (areaToStockDivisor('cm', sheet(1370)) as number)).toBeCloseTo(100, 4);
+  });
+
+  it('metro e seus sinônimos (m/metro/metros/meters/mt) NÃO dividem por 100 (só cm)', () => {
+    // Set espelha o branch v_is_linear do SQL ('m','meters','metros','mt','cm').
+    expect(areaToStockDivisor('metro', sheet(1370))).toBeCloseTo(137, 5);
+    expect(areaToStockDivisor('mt', sheet(1370))).toBeCloseTo(137, 5);
+    expect(areaToStockDivisor('metros', sheet(1370))).toBeCloseTo(137, 5);
+    expect(areaToStockDivisor('meters', sheet(1370))).toBeCloseTo(137, 5);
+  });
+
   it('produto LINEAR sem largura → null (não dá pra converter; caller sinaliza widthMissing)', () => {
     expect(areaToStockDivisor('m', sheet(0))).toBeNull();
     expect(areaToStockDivisor('m', null)).toBeNull();
