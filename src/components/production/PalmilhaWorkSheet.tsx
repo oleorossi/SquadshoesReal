@@ -42,6 +42,11 @@ export interface PalmilhaGroup {
    *  de OPs splitadas, mostra badge "LOTE X / N" no header. Undefined em
    *  grupos consolidados de OPs não-splitadas. */
   lotInfo?: { number: number; total: number };
+  /** Operação de CORTE DE PLACA (corte de fibra) — consumo em unidade `placa`
+   *  do grupo, vindo do motor de consumo (component 'Palmilha', unit 'placa').
+   *  Vazio quando a palmilha é pronta-na-cor (não corta placa). É a métrica de
+   *  saída deste setor: quantas placas o operador precisa cortar. */
+  plateOps?: Array<{ name: string; qty: number; unit: string; areaDm2?: number }>;
 }
 
 interface Props {
@@ -65,6 +70,12 @@ interface Props {
  */
 export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBand, sectorLabel }: Props) => {
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
+  // Placas a cortar (saída deste setor). Mesma redação do "Consumo de
+  // Materiais": valor com até 1 casa (61,3 placa(s)).
+  const fmtPlates = (n: number) =>
+    (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+  const groupPlates = (g: PalmilhaGroup) => (g.plateOps ?? []).reduce((a, p) => a + (p.qty || 0), 0);
+  const grandPlates = groups.reduce((s, g) => s + groupPlates(g), 0);
   // PVs/clientes do maço — hoisted pro escopo do header (usado na
   // identificação E no QR escaneável do canto).
   const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
@@ -112,6 +123,14 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             // Fallback (sem resolução): pairsPerCard (12).
             const grpBgs = group.baseGradeSum ?? 0;
             const grpNf = group.fichas ?? 0;
+            // Operação de corte de placa deste solado (consumo em `placa`).
+            const plates = groupPlates(group);
+            const plateNames = Array.from(
+              new Set((group.plateOps ?? []).map(p => p.name).filter(Boolean)),
+            );
+            // Base da conversão dm²→placa (ex.: 150 dm²/placa) — só pra mostrar
+            // de onde vem o nº de placas. 0 quando o grupo não tem dimensões.
+            const plateArea = (group.plateOps ?? []).reduce((mx, p) => Math.max(mx, p.areaDm2 || 0), 0);
             const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
             const cards = grpNf > 0 ? grpNf : Math.max(1, Math.ceil(group.totalPairs / tallyPerCard));
             const tallyTitle = group.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
@@ -197,6 +216,32 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     </div>
                   </div>
                 </div>
+
+                {/* OPERAÇÃO do setor: quantas PLACAS cortar deste solado.
+                    Saída do motor de consumo (component 'Palmilha', unit
+                    'placa'). Só aparece quando há corte de placa — palmilha
+                    pronta-na-cor não corta (plateOps vazio). */}
+                {plates > 0 && (
+                  <div className="keep-together flex items-center justify-between px-3 py-1.5" style={{ borderBottom: '1.5px solid #000', background: '#000' }}>
+                    <div className="min-w-0">
+                      <span className="section-label block" style={{ color: '#fff' }}>Cortar placas</span>
+                      {(plateNames.length > 0 || plateArea > 0) && (
+                        <span className="font-mono uppercase block mt-0.5 truncate text-[10px] tracking-wider" style={{ color: '#fff' }}>
+                          {[plateNames.join(' · '), plateArea > 0 ? `${fmtPlates(plateArea)} dm²/placa` : ''].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-1 shrink-0">
+                      <span
+                        className="text-white leading-none"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '30px', letterSpacing: '-0.02em' }}
+                      >
+                        {fmtPlates(plates)}
+                      </span>
+                      <span className="font-mono text-[10px] text-white tracking-widest uppercase">placa(s)</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Sandálias que usam essa palmilha — strip de fotos + ref.
                     Fix 22/05/2026: imagens reduzidas de 110×110 pra 55×55.
@@ -361,14 +406,27 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // Trailing — só o "Total Geral" da ficha (KIT handoff + assinaturas
   // saíram em 2026-06-11). Bloco atômico próprio no paginador.
   const trailingBlock = (
-    <div className="keep-together flex justify-between items-baseline mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
-      <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
-      <span
-        className="text-black uppercase leading-none py-1"
-        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
-      >
-        {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
-      </span>
+    <div className="keep-together mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+      <div className="flex justify-between items-baseline">
+        <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+        <span
+          className="text-black uppercase leading-none py-1"
+          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+        >
+          {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+        </span>
+      </div>
+      {grandPlates > 0 && (
+        <div className="flex justify-between items-baseline" style={{ borderTop: '1px solid #000' }}>
+          <span className="section-label py-1" style={{ color: '#000' }}>Total Placas</span>
+          <span
+            className="text-black uppercase leading-none py-1"
+            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em' }}
+          >
+            {fmtPlates(grandPlates)} <span className="text-xs font-mono tracking-widest">placa(s)</span>
+          </span>
+        </div>
+      )}
     </div>
   );
 

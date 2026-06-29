@@ -22,6 +22,7 @@ import {
   bulkConsumptionKey,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
+import { calcGroupPlateAreaDm2 } from '@/lib/orderConsumption';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import { expandOrdersByLots, type LotMetadata } from '@/lib/lotExpansion';
@@ -1175,6 +1176,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         .in('id', allSoleGroupIds);
       if (error) throw error;
       return data || [];
+    },
+  });
+
+  // Área da placa (dm²) por NOME de grupo — base da conversão dm²→placas
+  // (1000×1500mm = 150 dm²/placa). Usada só pra EXIBIR a base na ficha de
+  // Corte de Placa; o número de placas em si já vem convertido do motor.
+  const { data: plateAreaByGroupName } = useQuery({
+    queryKey: ['plate_area_by_group_name_v1'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('product_groups')
+        .select('name, dimensions_length, dimensions_width, dimensions_unit')
+        .not('dimensions_length', 'is', null)
+        .not('dimensions_width', 'is', null);
+      if (error) throw error;
+      const m = new Map<string, number>();
+      for (const g of (data || []) as any[]) {
+        const area = calcGroupPlateAreaDm2(g);
+        if (area > 0 && g?.name) m.set(String(g.name).toLowerCase(), area);
+      }
+      return m;
     },
   });
 
@@ -2894,6 +2916,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 groups={palmilhaGroups.map(g => ({
                   ...g,
                   clientNames: clientNamesForPvs(g.pvNumbers),
+                  // Operação do setor: placas a cortar deste solado. Filtra o
+                  // consumo em unidade `placa` (component Palmilha em placa);
+                  // palmilha pronta-na-cor sai como `par` e não entra aqui.
+                  plateOps: consumptionForOpNumbers(g.opNumbers, g.totalPairs)
+                    .filter(r => (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
+                    .map(r => ({
+                      name: r.product_name,
+                      qty: r.required,
+                      unit: r.unit || 'placa',
+                      areaDm2: plateAreaByGroupName?.get((r.product_name || '').toLowerCase()) || 0,
+                    })),
                 }))}
                 allSizes={palmilhaAllSizes}
                 sizeBand={bandForOps(palmilhaGroups.flatMap(g => g.opNumbers || []))}
