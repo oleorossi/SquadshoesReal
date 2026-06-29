@@ -62,8 +62,9 @@ export type NfConversionResult = {
  *    (primary path for "purchased in UN, tracked in g")
  * 3. Any pkg-like NF unit with a configured conversion_rate → apply it
  * 4. Metric conversion via CONVERSOES table (g↔kg, ml↔l, cm↔m, etc.)
- * 5. Package unit → measured unit → needs package_weight_kg on product group
- * 6. Unknown difference → pass through unchanged
+ * 5. Package unit → MASS unit (kg/g/mg) via package_weight_kg on product group
+ * 6. Package → comprimento/área/volume sem rate → BLOQUEIA (needsConfig)
+ * 7. Unknown difference → BLOQUEIA (needsConfig) — nunca grava qtd errada
  */
 export function convertNfToStockUnit(
   nfQty: number,
@@ -95,6 +96,13 @@ export function convertNfToStockUnit(
 
   const pkgLike = new Set(['un', 'pc', 'cx', 'rl', 'fh', 'jg', 'par', 'placa']);
   const measuredLike = new Set(['kg', 'g', 'mg', 'l', 'ml', 'm³', 'm', 'cm', 'mm', 'm²', 'dm²', 'cm²']);
+  // package_weight_kg só é dimensionalmente válido pra produto em MASSA — é um
+  // peso (kg). Usá-lo pra converter pacote→comprimento/área/volume infla o
+  // estoque com um número de kg fingindo ser metro/dm²/litro (ex.: rolo de napa
+  // em "m" com package_weight_kg=12 creditaria 12 m por rolo usando o PESO, não
+  // o comprimento). Esses casos têm que ir por conversion_rate (Prioridade 2/3)
+  // ou BLOQUEAR. Ver regra dm²→física no CLAUDE.md.
+  const massLike = new Set(['kg', 'g', 'mg']);
 
   // Resolve the product's purchase unit (prefer purchase_unit, fall back to purchase_order_unit)
   const purchaseUnitRaw = product.purchase_unit || product.purchase_order_unit;
@@ -145,9 +153,11 @@ export function convertNfToStockUnit(
     };
   }
 
-  // Priority 5 — Package unit → measured unit via package_weight_kg.
-  // package_weight_kg is always in kg; convert to the product's actual stock unit.
-  if (pkgLike.has(nfCan) && measuredLike.has(prodCan)) {
+  // Priority 5 — Package unit → MASS unit via package_weight_kg.
+  // package_weight_kg is always in kg, so it only converts cleanly to a mass
+  // stock unit (kg/g/mg). For package → comprimento/área/volume o fator certo é
+  // conversion_rate (Prioridade 2/3) — usar o peso aqui inflaria o estoque.
+  if (pkgLike.has(nfCan) && massLike.has(prodCan)) {
     if (!product.package_weight_kg || product.package_weight_kg <= 0) {
       return {
         qty: nfQty,
@@ -157,7 +167,7 @@ export function convertNfToStockUnit(
         reason: `Conversão necessária: NF em "${nfUnit}" mas estoque em "${product.unit}". Configure "Peso por embalagem" no grupo do produto "${product.name || ''}".`,
       };
     }
-    // Convert kg → target stock unit
+    // Convert kg → target mass unit
     let factor = product.package_weight_kg;
     if (prodCan === 'g') factor = product.package_weight_kg * 1000;
     else if (prodCan === 'mg') factor = product.package_weight_kg * 1000000;
@@ -165,6 +175,19 @@ export function convertNfToStockUnit(
       qty: nfQty * factor,
       unitPrice: nfUnitPrice / factor,
       converted: true,
+    };
+  }
+
+  // Package → comprimento/área/volume (NÃO-massa) sem conversion_rate: não há
+  // fator seguro (package_weight_kg é peso, não comprimento/área). BLOQUEIA em
+  // vez de gravar qtd errada — o operador configura a Taxa de conversão.
+  if (pkgLike.has(nfCan) && measuredLike.has(prodCan)) {
+    return {
+      qty: nfQty,
+      unitPrice: nfUnitPrice,
+      converted: false,
+      needsConfig: true,
+      reason: `NF em "${nfUnit}" mas estoque em "${product.unit}". Configure a "Taxa de conversão" no cadastro de "${product.name || ''}" (ex: 1 ${nfUnit} = 50 ${product.unit}) — o "Peso por embalagem" só converte para produtos em kg/g.`,
     };
   }
 
