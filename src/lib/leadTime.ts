@@ -91,7 +91,11 @@ const SECTOR_CONFIG: Record<SectorKey, {
    *  (ex.: Expedição usa expedition_capacity_per_day, mas cai pra
    *  finishing_capacity_per_day — comportamento legado — quando vazia). */
   fallbackCapField?: keyof SheetCapacityRow;
-  ltField: keyof SheetCapacityRow;
+  /** Coluna de lead_time legado consultada SÓ quando não há capacidade. Só
+   *  setores com coluna de lead_time DEDICADA a têm; mesa/silk/colagem/solagem
+   *  NÃO têm (caem direto no hardFallbackDays), espelhando o `ELSE 1` do SQL
+   *  compute_wave_timeline (alinhamento B1/B2/B3 — auditoria 2026-06-29). */
+  ltField?: keyof SheetCapacityRow;
   hardFallbackDays: number;
 }> = {
   // New sector names (PR 2 — Costura adicionado entre Corte Forração e Mesa)
@@ -102,11 +106,14 @@ const SECTOR_CONFIG: Record<SectorKey, {
   corte_palmilha: { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
   corte_forracao: { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
   costura:        { capField: 'costura_capacity_per_day',   ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
-  mesa:           { capField: 'mesa_daily_capacity',        ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
-  silk:           { capField: 'silk_capacity_per_day',      ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
-  colagem:        { capField: 'gluing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
+  // mesa/silk/colagem/solagem não têm lead_time dedicado — sem ltField, caem no
+  // hardFallback (1), igual ao SQL (ELSE 1). Antes pegavam emprestado
+  // lead_time_corte/montagem, divergindo do servidor.
+  mesa:           { capField: 'mesa_daily_capacity',        hardFallbackDays: 1 },
+  silk:           { capField: 'silk_capacity_per_day',      hardFallbackDays: 1 },
+  colagem:        { capField: 'gluing_capacity_per_day',    hardFallbackDays: 1 },
   montagem:       { capField: 'assembly_capacity_per_day',  ltField: 'lead_time_montagem_dias',   hardFallbackDays: 2 },
-  solagem:        { capField: 'soling_capacity_per_day',    ltField: 'lead_time_montagem_dias',   hardFallbackDays: 1 },
+  solagem:        { capField: 'soling_capacity_per_day',    hardFallbackDays: 1 },
   acabamento:     { capField: 'finishing_capacity_per_day', ltField: 'lead_time_acabamento_dias', hardFallbackDays: 1 },
   expedicao:      { capField: 'expedition_capacity_per_day', fallbackCapField: 'finishing_capacity_per_day', ltField: 'lead_time_expedicao_dias', hardFallbackDays: 0 },
   // Legacy alias — 'corte' was renamed to corte_palmilha
@@ -164,11 +171,15 @@ export function computeSectorLeadTimeDays(
     return Math.max(minimum, Math.ceil(qty / cap));
   }
 
-  const legacySheet = num(sheet?.[cfg.ltField]);
-  if (legacySheet > 0) return legacySheet;
+  // Fallback de lead_time legado SÓ pra setores com coluna dedicada (ltField).
+  // mesa/silk/colagem/solagem não têm → caem direto no hardFallback (= SQL ELSE 1).
+  if (cfg.ltField) {
+    const legacySheet = num(sheet?.[cfg.ltField]);
+    if (legacySheet > 0) return legacySheet;
 
-  const legacyCategory = num(categoryDefaults?.[cfg.ltField as keyof CategoryDefaultsRow]);
-  if (legacyCategory > 0) return legacyCategory;
+    const legacyCategory = num(categoryDefaults?.[cfg.ltField as keyof CategoryDefaultsRow]);
+    if (legacyCategory > 0) return legacyCategory;
+  }
 
   return cfg.hardFallbackDays;
 }

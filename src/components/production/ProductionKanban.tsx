@@ -124,15 +124,16 @@ function normalizeKanbanSector(s: string): string {
   return KANBAN_SECTORS.find(k => k.key.toLowerCase() === lower)?.key ?? s;
 }
 
-// `parallel: true` marca os 3 setores prep que rodam simultaneamente (PR3+S4).
-// Renderizamos um header visual destacado pra equipe entender que pode atacar
-// os 3 ao mesmo tempo, em vez de esperar fila sequencial.
+// `parallel: true` marca os 4 setores prep que rodam simultaneamente (PR3+S4).
+// Costura passou a ser prep paralela de verdade (decisão do dono 2026-06-29 —
+// guard/DAG relaxados na migration de paralelismo). Renderizamos um header
+// destacado pra equipe entender que pode atacar os 4 ao mesmo tempo.
 const KANBAN_SECTORS = [
   { key: 'Pendente',       label: 'Pendente',       color: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400', icon: Clock,      parallel: false },
   { key: 'Corte Palmilha', label: 'Corte Palmilha', color: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',       icon: Scissors,   parallel: true  },
   { key: 'Corte Forração', label: 'Corte Forração', color: 'bg-purple-500/20 text-purple-700 dark:text-purple-400', icon: Layers,     parallel: true  },
   { key: 'Aviamento',      label: 'Aviamento',      color: 'bg-rose-500/20 text-rose-700 dark:text-rose-400',       icon: Hand,       parallel: true  },
-  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers,  parallel: false },
+  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers,  parallel: true  },
   { key: 'Silk',           label: 'Silk',           color: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',       icon: Printer,    parallel: false },
   { key: 'Colagem',        label: 'Colagem',        color: 'bg-orange-500/20 text-orange-700 dark:text-orange-400', icon: Flame,      parallel: false },
   { key: 'Montagem',       label: 'Montagem',       color: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400', icon: Hammer,  parallel: false },
@@ -965,7 +966,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       <div className="text-xs flex items-center gap-2 text-muted-foreground bg-muted/40 border border-border/50 rounded-md px-2.5 py-1.5">
         <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
         <span>
-          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> rodam <span className="font-medium text-primary">em paralelo</span>; Costura só inicia quando os 3 estiverem prontos.
+          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> ‖ <span className="font-medium text-foreground">Costura</span> rodam <span className="font-medium text-primary">em paralelo</span>; a Colagem só inicia quando todos os 4 estiverem prontos.
         </span>
       </div>
 
@@ -1002,7 +1003,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                       {sector.parallel && (
                         <span
                           className="text-xs font-bold text-primary bg-primary/10 px-1 rounded leading-tight"
-                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento). Costura só inicia quando os 3 finalizam."
+                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura). A Colagem só inicia quando todos os 4 finalizam."
                         >
                           ‖ PREP
                         </span>
