@@ -220,11 +220,12 @@ export async function checkSectorCapacity(
     const ltForracao = hasSector(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, defaults) : 0;
     const ltPalmilha = hasSector(sheet, 'Corte Palmilha') ? computeSectorLeadTimeDays('corte_palmilha', qty, sheet, defaults) : 0;
 
-    // ── Cascata espelha compute_wave_timeline (PR 3) ──
-    // Sequencial pós-prep: acabamento ← solagem ← montagem ← colagem ← silk ← costura
-    // Paralelos prep (PR 3): Corte Palmilha ‖ Corte Forração ‖ Mesa(Aviamento)
-    //   — todos terminam em costuraStart (ponto de convergência)
-    //   — cada um começa em SUA própria data (back-calculated)
+    // ── Cascata espelha compute_wave_timeline (alinhada a computeParallelWindows) ──
+    // Sequencial pós-prep: acabamento ← solagem ← montagem ← colagem ← silk
+    // Prep PARALELO que converge em silkStart: Corte Palmilha ‖ Corte Forração ‖
+    //   Mesa(Aviamento) ‖ Costura — todos terminam em silkStart, cada um com SEU lead.
+    //   (Costura NÃO é sequencial entre prep e Silk — corrigido 2026-06-29 p/ casar
+    //    o SQL e o irmão computeParallelWindows, que já convergiam em silkStart.)
     const acabEnd    = deadline;
     const acabStart  = addBusinessDays(acabEnd,    -ltAcab);
     const solaEnd    = acabStart;
@@ -235,15 +236,15 @@ export async function checkSectorCapacity(
     const colaStart  = addBusinessDays(colaEnd,    -ltColagem);
     const silkEnd    = colaStart;
     const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
-    // Costura é sequencial entre os 3 prep paralelos e Silk
+    // Costura + os 3 cortes rodam em PARALELO no bloco de prep — todos terminam
+    // em silkStart (convergência), cada um com SEU lead (back-calculated).
     const costuraEnd   = silkStart;
     const costuraStart = addBusinessDays(costuraEnd, -ltCostura);
-    // Os 3 prep rodam em PARALELO — cada um termina em costuraStart com SEU lead
-    const palmEnd    = costuraStart;
+    const palmEnd    = silkStart;
     const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
-    const forrEnd    = costuraStart;
+    const forrEnd    = silkStart;
     const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
-    const mesaEnd    = costuraStart;
+    const mesaEnd    = silkStart;
     const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
 
     return {
