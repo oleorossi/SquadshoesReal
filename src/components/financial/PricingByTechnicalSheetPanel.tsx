@@ -433,7 +433,9 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                     ))}
                     <tr className="bg-muted/30 font-bold">
                       <td className="py-2 px-3 uppercase tracking-wider text-xs" colSpan={3}>Total mão de obra por par</td>
-                      <td className="py-2 px-3 text-right font-mono text-base text-primary">{fmtBRL(policyLaborCost)}</td>
+                      {/* C14: honra o override manual (getLabor) — antes mostrava só o
+                          policyLaborCost e divergia do preço/breakdown quando havia override. */}
+                      <td className="py-2 px-3 text-right font-mono text-base text-primary">{fmtBRL(getLabor())}</td>
                     </tr>
                   </tbody>
                 </table>
