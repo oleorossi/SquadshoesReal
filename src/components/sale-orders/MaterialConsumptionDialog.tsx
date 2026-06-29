@@ -140,6 +140,61 @@ const buildColAvailability = (
   return out;
 };
 
+/**
+ * Versão STRING-HTML da matriz de solado (numeração × cor) pro "Gerar PDF" do modal —
+ * espelha o componente React `SoleMatrix`: mesma `buildColAvailability`, mesmas cores
+ * verde/vermelho por disponibilidade, mesma linha "Total por numeração", UMA sub-tabela
+ * por MODELO de solado (`groupName`). Antes o PDF saía como texto inline "Nº 34: 184 · …"
+ * (pedido do user 2026-06-29 pra bater com a tela). `print-color-adjust:exact` (no <style>
+ * global do PDF) garante que as cores saiam na impressão.
+ */
+function soleMatrixHtml(rows: ConsumptionRow[]): string {
+  const byModel = new Map<string, ConsumptionRow[]>();
+  for (const r of rows) { const k = r.groupName || '—'; if (!byModel.has(k)) byModel.set(k, []); byModel.get(k)!.push(r); }
+  const OK = 'background:#dcfce7;color:#15803d';
+  const NO = 'background:#fee2e2;color:#b91c1c';
+  return Array.from(byModel.entries())
+    .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+    .map(([model, mrows]) => {
+      const sizes = Array.from(new Set(mrows.flatMap((r) => Object.keys(r.sizeBreakdown || {}))))
+        .sort((a, b) => sizeSortKey(a) - sizeSortKey(b));
+      const corCount = mrows.length;
+      const label = `<div style="font-size:8.5pt;color:#374151;font-weight:600;margin:6px 4px 3px">${escapeHtml(model)} <span style="color:#9ca3af;font-weight:400">· ${corCount} cor(es)</span></div>`;
+
+      // Fallback: solado sem breakdown por numeração → tabela simples cor | necessário | estoque.
+      if (sizes.length === 0) {
+        const body = mrows.map((r) => {
+          const have = Object.values(r.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+          const ok = have >= r.totalQuantity;
+          return `<tr><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;font-weight:600">${escapeHtml(r.color)}</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${r.totalQuantity.toFixed(0)} par</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;${ok ? OK : NO}">${have.toFixed(0)}</td></tr>`;
+        }).join('');
+        return `${label}<table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:4px;border:1px solid #e5e7eb"><thead><tr style="background:#f3f4f6"><th style="padding:3px 6px;text-align:left;font-size:8pt">Cor</th><th style="padding:3px 6px;text-align:right;font-size:8pt">Necessário</th><th style="padding:3px 6px;text-align:right;font-size:8pt">Em estoque</th></tr></thead><tbody>${body}</tbody></table>`;
+      }
+
+      const totalsBySize: Record<string, number> = {};
+      for (const r of mrows) for (const [s, q] of Object.entries(r.sizeBreakdown || {})) totalsBySize[s] = (totalsBySize[s] || 0) + (Number(q) || 0);
+
+      const head = `<tr style="background:#f3f4f6"><th style="padding:3px 5px;text-align:left;font-size:8pt">Cor</th>${sizes.map((s) => `<th style="padding:3px 4px;text-align:center;font-size:8pt;font-family:monospace">${escapeHtml(s)}</th>`).join('')}<th style="padding:3px 5px;text-align:right;font-size:8pt">Total</th></tr>`;
+
+      const body = mrows.map((r) => {
+        const avail = buildColAvailability(r.soleSizeStock, sizes, r.sizeBreakdown || {});
+        const total = Object.values(r.sizeBreakdown || {}).reduce((s, v) => s + (Number(v) || 0), 0) || r.totalQuantity;
+        const cells = sizes.map((s) => {
+          const need = r.sizeBreakdown?.[s] || 0;
+          if (need <= 0) return `<td style="padding:3px 4px;text-align:center;color:#d1d5db;font-family:monospace">·</td>`;
+          const have = avail[s] || 0;
+          const ok = have >= need;
+          return `<td title="Necessário ${need} · Em estoque ${Math.round(have * 10) / 10}" style="padding:3px 4px;text-align:center;font-family:monospace;font-weight:600;${ok ? OK : NO}">${need}</td>`;
+        }).join('');
+        return `<tr><td style="padding:3px 5px;font-weight:600;white-space:nowrap">${escapeHtml(r.color)}</td>${cells}<td style="padding:3px 5px;text-align:right;font-family:monospace;font-weight:700;white-space:nowrap">${total} par</td></tr>`;
+      }).join('');
+
+      const totalRow = `<tr style="background:#f9fafb;font-weight:700"><td style="padding:3px 5px">Total por numeração</td>${sizes.map((s) => `<td style="padding:3px 4px;text-align:center;font-family:monospace">${totalsBySize[s] || 0}</td>`).join('')}<td style="padding:3px 5px;text-align:right;font-family:monospace">${Object.values(totalsBySize).reduce((s, v) => s + v, 0)} par</td></tr>`;
+
+      return `${label}<table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:4px;border:1px solid #e5e7eb"><thead>${head}</thead><tbody>${body}${totalRow}</tbody></table>`;
+    }).join('');
+}
+
 function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
   const sizes = useMemo(() => {
     const set = new Set<string>();
@@ -827,6 +882,21 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       const totalSummary = Array.from(totalsThisComp.entries())
         .map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`)
         .join(' · ');
+
+      // Solado: MATRIZ numeração × cor por modelo (igual à tela), full-width pra
+      // caber a grade de numeração. Substitui o texto inline "Nº 34: 184 · …".
+      if (componentType === 'Solado') {
+        cards.push(`
+        <div class="card" style="grid-column:1 / -1;border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
+          <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
+            <span>▌${escapeHtml(componentType)}</span>
+            <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
+          </div>
+          <div style="background:white;padding:0 6px 6px">${soleMatrixHtml(componentRows)}</div>
+        </div>
+      `);
+        continue;
+      }
 
       const rowsHtml = componentRows.map(row => {
         const aplicacao = row.sizeBreakdown && Object.keys(row.sizeBreakdown).length > 0
