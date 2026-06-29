@@ -12,7 +12,8 @@ import { sanitizeUuidFields } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { UNITS, LOCATIONS } from '@/types/inventory';
-import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
+import { sectorOfGroup, sectorLabel } from '@/lib/categoryFromGroup';
+import { useGroups } from '@/hooks/useGroups';
 
 interface Props {
   open: boolean;
@@ -121,6 +122,8 @@ const resolveUniqueSku = async (preferredSku: string, groupName: string, color: 
 
 export default function CreateStrapProductDialog({ open, onOpenChange, groupId, groupName, color, onCreated }: Props) {
   const qc = useQueryClient();
+  const { data: groups = [] } = useGroups();
+  const group = groups.find(g => g.id === groupId);
   const [loading, setLoading] = useState(false);
   const [prefilling, setPrefilling] = useState(true);
   const [similarProducts, setSimilarProducts] = useState<SimilarProduct[]>([]);
@@ -313,7 +316,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       const finalSku = await resolveUniqueSku(sku, groupName, trimmedColor);
       // Defesa: category é NOT NULL no DB. Se o state ficou vazio (sem
       // produto anterior no grupo pra pré-preencher), deriva do groupName.
-      const safeCategory = (category && category.trim()) || deriveCategoryFromGroup(groupName);
+      const safeCategory = (category && category.trim()) || sectorOfGroup(group ?? { name: groupName });
       const productData = sanitizeUuidFields({
         name: trimmedName,
         sku: finalSku,
@@ -508,7 +511,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
                   <div>
                     <Label className="text-xs">Tipo</Label>
-                    <Input value={deriveCategoryFromGroup(groupName)} disabled className="h-9 text-sm bg-muted" />
+                    <Input value={sectorLabel(sectorOfGroup(group ?? { name: groupName }))} disabled className="h-9 text-sm bg-muted" />
                   </div>
 
                   <div>

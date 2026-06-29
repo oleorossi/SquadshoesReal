@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useQueryClient } from '@tanstack/react-query';
-import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
+import { deriveCategoryFromGroup, sectorOfGroup } from '@/lib/categoryFromGroup';
 
 interface Props {
   open: boolean;
@@ -108,7 +108,7 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
       if (groupMode === 'new') {
         const { data: newGroup, error: gErr } = await (supabase as any)
           .from('product_groups')
-          .insert({ name: familyName.trim(), description: `Família de ${familyName.trim()} — criada via Cadastro Rápido` })
+          .insert({ name: familyName.trim(), description: `Família de ${familyName.trim()} — criada via Cadastro Rápido`, sector: deriveCategoryFromGroup(familyName) })
           .select('id')
           .single();
         if (gErr) {
@@ -134,10 +134,12 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
 
       // 2) Cria 1 produto por cor
       const prefix = (skuPrefix || slugForSku(familyName)).toUpperCase();
-      // products.category é NOT NULL no DB. Derivamos do nome da família/grupo
-      // (Solado/Cabedal/Palmilha/Forração/Cola/etc). Sem isso o insert falha
-      // com '23502 null value in column "category"'.
-      const category = deriveCategoryFromGroup(familyName);
+      // products.category vem do SETOR do grupo (explícito). Grupo novo recebe o
+      // setor sugerido pelo nome (no insert acima); grupo existente usa o setor
+      // já gravado. O trigger do banco reforça isso ao inserir com o group_id.
+      const category = groupMode === 'new'
+        ? deriveCategoryFromGroup(familyName)
+        : sectorOfGroup(groups.find(g => g.id === selectedGroupId));
       const rows = colors.map(color => ({
         name: `${familyName.trim()} - ${color}`,
         sku: `${prefix}-${slugForSku(color)}`,

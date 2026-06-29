@@ -24,7 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
 import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
-import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
+import { sectorOfGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
@@ -447,7 +447,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       }
     } else {
       const defaultGroup = defaultGroupId ? groups.find(g => g.id === defaultGroupId) : null;
-      setForm({ ...emptyForm, group_id: defaultGroupId || null, category: defaultGroup ? deriveCategoryFromGroup(defaultGroup.name) : '' });
+      setForm({ ...emptyForm, group_id: defaultGroupId || null, category: defaultGroup ? sectorOfGroup(defaultGroup) : '' });
       setSoladoColor('');
       setSoladoGrade({});
       setMinStockGrade({});
@@ -1171,7 +1171,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 const gid = v === 'none' ? null : v;
                 update('group_id', gid);
                 const selectedGroup = gid ? groups.find(g => g.id === gid) : null;
-                const derivedCategory = deriveCategoryFromGroup(selectedGroup?.name);
+                const derivedCategory = sectorOfGroup(selectedGroup);
                 update('category', derivedCategory);
                 if (attempted) setErrors(prev => ({ ...prev, category: false }));
                 if (selectedGroup) {
@@ -1838,7 +1838,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                           update('group_id', gid);
                           // Mantém categoria coerente com a nova família (espelha o
                           // trigger do banco que deriva category do grupo).
-                          update('category', deriveCategoryFromGroup(gid ? groups.find(g => g.id === gid)?.name : undefined));
+                          update('category', sectorOfGroup(gid ? groups.find(g => g.id === gid) : undefined));
                         }}
                       >
                         <SelectTrigger className="mt-1 border-dashed">

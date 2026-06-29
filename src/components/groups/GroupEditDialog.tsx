@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2 } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
@@ -25,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
-import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
+import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { normalizeForSearch } from '@/lib/searchUtils';
@@ -42,8 +42,8 @@ interface GroupEditDialogProps {
 // componente é consumo unitário — não tem rendimento por numeração nem cor.
 type GroupType = 'sole' | 'upper_material' | 'insole_part' | 'chemical' | 'tool' | 'last' | 'component';
 
-function getGroupType(groupName: string): GroupType {
-  switch (deriveCategoryFromGroup(groupName)) {
+function getGroupType(sector: string): GroupType {
+  switch (sector) {
     case 'Solado': return 'sole';
     case 'Cabedal': return 'upper_material';
     case 'Palmilha':
@@ -424,7 +424,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     return m;
   }, [allProducts]);
 
-  const groupType = useMemo(() => getGroupType(group.name), [group.name]);
+  // Setor explícito do grupo (editável — "mover para outro setor"). Inicia do
+  // valor salvo; os campos visíveis derivam do setor ESCOLHIDO (não do nome).
+  const [sector, setSector] = useState<string>(() => sectorOfGroup(group));
+  const savedSector = useMemo(() => sectorOfGroup(group), [group]);
+  const sectorChanged = sector !== savedSector;
+  const groupType = useMemo(() => getGroupType(sector), [sector]);
   const show = useMemo(() => getVisibleFields(groupType), [groupType]);
   const showYieldTab = show.yieldTab;
 
@@ -486,6 +491,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
   useEffect(() => {
     setName(group.name);
+    setSector(sectorOfGroup(group));
     setDescription(group.description || '');
     setIsBomColorSource(group.is_bom_color_source);
     setIsColorAgnostic(group.is_color_agnostic ?? false);
@@ -547,6 +553,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         data: {
           name,
           description,
+          // Setor explícito do grupo. Mudar dispara o trigger de cascata no banco
+          // (tg_group_sector_cascade) que reclassifica products.category dos itens.
+          sector: sector || null,
           is_bom_color_source: isBomColorSource,
           is_color_agnostic: isColorAgnostic,
           consumption_unit: finalUnit,
@@ -556,6 +565,17 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           purchase_multiple: purchaseMultiple > 0 ? purchaseMultiple : null,
         } as any,
       });
+
+      // Moveu de setor: o banco já cascateou products.category — invalida os
+      // caches do estoque pra os itens aparecerem na aba nova na hora.
+      if (sectorChanged) {
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
+        queryClient.invalidateQueries({ queryKey: ['product_groups'] });
+        toast.success(
+          `Grupo movido para "${sectorLabel(sector)}" — ${products.length} ${products.length === 1 ? 'item reclassificado' : 'itens reclassificados'}.`,
+        );
+      }
 
       // Propaga a unidade de consumo e outras specs para todos os itens do grupo
       const prevUnit = group.consumption_unit ?? null;
@@ -645,20 +665,34 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-5xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between gap-2">
-              <span>Editar grupo de material</span>
+            <div className="flex items-start justify-between gap-3 pr-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-foreground text-background">
+                  <Rows className="h-5 w-5" weight="bold" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="truncate text-lg font-bold leading-tight">{group.name}</DialogTitle>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span className="font-mono uppercase tracking-wider text-[10px]">Editar grupo</span>
+                    <span>·</span>
+                    <Badge variant="outline" className="h-5 gap-1 px-2 font-medium">{sectorLabel(savedSector)}</Badge>
+                    <span>·</span>
+                    <span>{products.length} {products.length === 1 ? 'item' : 'itens'}</span>
+                  </div>
+                </div>
+              </div>
               {products.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1.5 mr-6"
+                  className="shrink-0 gap-1.5"
                   onClick={() => setVariantsDialogOpen(true)}
                 >
                   <Palette className="h-3.5 w-3.5" />
-                  Gerenciar variantes de cor
+                  Variantes de cor
                 </Button>
               )}
-            </DialogTitle>
+            </div>
           </DialogHeader>
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
@@ -670,6 +704,93 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
             {/* Tab: General */}
             <TabsContent value="general" className="space-y-4 mt-4">
+              {/* ── Setor do grupo (mover para outro setor) ─────────────────── */}
+              <div className="relative overflow-hidden rounded-xl border-2 border-primary/30 bg-gradient-to-b from-primary/[0.07] to-transparent p-4 sm:p-5">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(420px_120px_at_100%_0%,hsl(var(--primary)/0.08),transparent_70%)]" />
+                <div className="relative flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-[0_4px_12px_-2px_hsl(var(--primary)/0.45)]">
+                    <ArrowsLeftRight className="h-5 w-5" weight="bold" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold tracking-tight">Setor do grupo</h3>
+                      <span className="rounded-full bg-primary px-2 py-[3px] font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-primary-foreground">novo</span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Define em qual <strong>aba/setor</strong> do Estoque este grupo aparece. Mover
+                      reclassifica <strong>{products.length} {products.length === 1 ? 'item' : 'itens'}</strong> de uma vez.
+                    </p>
+                  </div>
+                </div>
+
+                {/* de → para */}
+                <div className="relative mt-4 flex flex-wrap items-center gap-3">
+                  <div className="min-w-[150px] flex-1 rounded-lg border border-border bg-card px-3 py-2.5">
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">Setor atual</div>
+                    <div className="mt-0.5 flex items-center gap-2 text-base font-bold">
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground" />
+                      {sectorLabel(savedSector)}
+                    </div>
+                  </div>
+                  <ArrowRight className={`h-6 w-6 shrink-0 ${sectorChanged ? 'text-primary' : 'text-muted-foreground/40'}`} weight="bold" />
+                  <div className={`min-w-[150px] flex-1 rounded-lg border px-3 py-2.5 transition-colors ${sectorChanged ? 'border-primary ring-[3px] ring-primary/10' : 'border-border'}`}>
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">Mover para</div>
+                    <div className={`mt-0.5 flex items-center gap-2 text-base font-bold ${sectorChanged ? 'text-primary' : ''}`}>
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${sectorChanged ? 'bg-primary' : 'bg-muted-foreground'}`} />
+                      {sectorLabel(sector)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* chips de setor */}
+                <div className="relative mt-3.5 flex flex-wrap gap-2">
+                  {SECTOR_OPTIONS.map((o) => {
+                    const isCurrent = o.value === savedSector;
+                    const isTarget = o.value === sector && sectorChanged;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setSector(o.value)}
+                        className={[
+                          'inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold transition-all',
+                          isTarget
+                            ? 'border-primary bg-primary text-primary-foreground shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.5)]'
+                            : isCurrent
+                              ? 'border-dashed border-border bg-muted/60 text-muted-foreground'
+                              : 'border-border bg-card hover:-translate-y-px hover:border-muted-foreground/50',
+                        ].join(' ')}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${isTarget ? 'bg-primary-foreground' : 'bg-muted-foreground/40'}`} />
+                        {o.label}
+                        {isTarget && <Check className="h-3.5 w-3.5" weight="bold" />}
+                        {isCurrent && !isTarget && (
+                          <span className="rounded-full border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider">atual</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* aviso ao vivo */}
+                {sectorChanged ? (
+                  <div className="relative mt-4 flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[12.5px] leading-relaxed text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="mt-px h-[17px] w-[17px] shrink-0" weight="fill" />
+                    <span>
+                      Mover <strong>"{name}"</strong> de <strong>{sectorLabel(savedSector)}</strong> para{' '}
+                      <strong>{sectorLabel(sector)}</strong> vai reclassificar{' '}
+                      <span className="rounded bg-card px-1.5 font-mono font-bold">{products.length} {products.length === 1 ? 'item' : 'itens'}</span>
+                      {' '}ao salvar — eles deixam a aba <strong>{sectorLabel(savedSector)}</strong> e passam a aparecer em <strong>{sectorLabel(sector)}</strong>.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="relative mt-4 flex items-center gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-[12.5px] text-emerald-700 dark:text-emerald-400">
+                    <Check className="h-4 w-4 shrink-0" weight="bold" />
+                    <span>Sem alteração — continua no setor <strong>{sectorLabel(savedSector)}</strong>.</span>
+                  </div>
+                )}
+              </div>
+
               {show.bomColorSource && (
                 <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
                   <div className="flex items-center gap-3">
@@ -1052,8 +1173,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     Cancelar
                   </Button>
                   <Button onClick={handleSave} disabled={saving}>
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-1" />}
-                    Salvar Grupo e Itens
+                    {saving
+                      ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      : sectorChanged
+                        ? <ArrowsLeftRight className="h-4 w-4 mr-1.5" weight="bold" />
+                        : <Save className="h-4 w-4 mr-1" />}
+                    {sectorChanged ? `Mover para ${sectorLabel(sector)} e salvar` : 'Salvar Grupo e Itens'}
                   </Button>
                 </CardFooter>
               </Card>

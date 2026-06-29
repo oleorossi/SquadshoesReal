@@ -1,18 +1,54 @@
 /**
- * Derives a product category from its group name.
- * This unifies the old hardcoded CATEGORIES with the dynamic product_groups.
+ * Setor/categoria de um grupo de material.
  *
- * MIRROR DA FUNÇÃO SQL `derive_category_from_group_name(text)` aplicada no
- * DB via trigger BEFORE INSERT/UPDATE `tg_products_auto_category` em products.
- * Manter sincronizado: mudar aqui = mudar lá também (migration).
+ * Modelo NOVO (2026-06-29): o setor é EXPLÍCITO em `product_groups.sector`
+ * (= products.category canônico). A dedução por nome (deriveCategoryFromGroup)
+ * deixou de governar — vale só como SUGESTÃO ao criar um grupo novo e como
+ * fallback de segurança quando `sector` ainda está vazio. A migration
+ * 20260629140000 fez o backfill e o trigger de category passou a ler o setor
+ * do grupo; mover o grupo de setor cascateia pra products.category no banco.
+ */
+
+/**
+ * Setores oferecidos no seletor "Mover para outro setor". `value` é o
+ * products.category canônico (CATEGORIES em src/types/inventory.ts); `label` é
+ * o rótulo amigável das abas do Estoque. Ordem espelha as abas.
+ */
+export const SECTOR_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'Cabedal',              label: 'Cabedal' },
+  { value: 'Forração da Palmilha', label: 'Forração' },
+  { value: 'Palmilha',             label: 'Palmilha' },
+  { value: 'Cola / Químico',       label: 'Químicos' },
+  { value: 'Componente',           label: 'Componentes' },
+  { value: 'Embalagem',            label: 'Embalagem' },
+  { value: 'Solado',               label: 'Solado' },
+  { value: 'Ferramentas',          label: 'Ferramentas' },
+  { value: 'Fôrma',                label: 'Fôrma' },
+] as const;
+
+/** Rótulo amigável de um valor de setor (category). Fallback: o próprio valor. */
+export function sectorLabel(sector: string | null | undefined): string {
+  if (!sector) return '—';
+  return SECTOR_OPTIONS.find(o => o.value === sector)?.label ?? sector;
+}
+
+/**
+ * Setor efetivo de um grupo: o explícito (`sector`) vence; se ainda vazio
+ * (grupo legado sem backfill / recém-criado), cai na sugestão por nome.
+ */
+export function sectorOfGroup(group: { sector?: string | null; name?: string | null } | null | undefined): string {
+  const s = (group?.sector ?? '').trim();
+  if (s) return s;
+  return deriveCategoryFromGroup(group?.name);
+}
+
+/**
+ * Sugere uma categoria a partir do NOME do grupo. Antes governava a categoria
+ * dos produtos via trigger; agora é só SUGESTÃO inicial (cadastro de grupo) e
+ * fallback de `sectorOfGroup` quando `product_groups.sector` está vazio.
  *
- * Comportamento do trigger (atualizado 2026-05-16):
- *   • INSERT: respeita category explícita; só deriva quando vazia
- *   • UPDATE de group_id: SEMPRE recalcula (intenção de reclassificar)
- *   • UPDATE direto de category sem mexer no group: respeita (edit manual)
- *
- * O trigger garante products.category NUNCA seja NULL (resolve "null value
- * in column category" mesmo se algum code path frontend esquecer).
+ * Ainda espelha `derive_category_from_group_name(text)` no DB (usada no backfill
+ * one-time e como semente). Manter sincronizado se mexer na heurística.
  */
 export function deriveCategoryFromGroup(groupName: string | null | undefined): string {
   if (!groupName) return 'Componente';

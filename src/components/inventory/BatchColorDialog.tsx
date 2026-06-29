@@ -9,7 +9,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { X, Plus } from '@phosphor-icons/react';
 import { ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
-import { deriveCategoryFromGroup } from '@/lib/categoryFromGroup';
+import { sectorOfGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 
 interface BatchColorDialogProps {
@@ -74,7 +74,7 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
     const items: ProductFormData[] = colors.map((color, idx) => ({
       name: baseName,
       sku: `${skuPrefix}-${String(idx + 1).padStart(2, '0')}`,
-      category: deriveCategoryFromGroup(groups.find(g => g.id === groupId)?.name),
+      category: sectorOfGroup(groups.find(g => g.id === groupId)),
       color,
       quantity: 0,
       min_stock: minStock,
@@ -130,7 +130,7 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
               <Label>Tipo do Material</Label>
               <Input
                 className="mt-1"
-                value={groupId ? deriveCategoryFromGroup(groups.find(g => g.id === groupId)?.name) : 'Selecione um grupo'}
+                value={groupId ? sectorOfGroup(groups.find(g => g.id === groupId)) : 'Selecione um grupo'}
                 disabled
               />
               <p className="text-xs text-muted-foreground mt-1">Derivado do grupo</p>

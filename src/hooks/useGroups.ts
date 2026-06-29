@@ -25,6 +25,10 @@ export type ProductGroup = {
   /** Material BASE sem cor (EVA, cola): consumo/débito resolvem por grupo, nunca
    *  color_mismatch — não dispara o guard "cor não cadastrada". */
   is_color_agnostic?: boolean;
+  /** Setor/categoria EXPLÍCITO do grupo (= products.category canônico). Fonte da
+   *  categoria dos itens (substitui a dedução por nome). Mover o grupo de setor
+   *  cascateia pra products.category no banco. Ver lib/categoryFromGroup.ts. */
+  sector?: string | null;
   created_at: string;
   updated_at: string;
 };
