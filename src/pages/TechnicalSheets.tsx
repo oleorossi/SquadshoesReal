@@ -2541,11 +2541,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   const prod = g ? ((products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
                     || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim())) : null;
                   const prodUnit = (prod?.unit || '').toString().trim();
-                  const width = Number(g?.dimensions_width) || 0;
-                  // Material de ÁREA cortado de bobina (napa/couro/forro): produto LINEAR (m/cm)
-                  // COM largura cadastrada → o consumo é gravado em dm²/par (a conversão p/ metro
-                  // usa a largura da ficha). Rótulo correto = dm²/par.
-                  if (width > 0 && ['m', 'cm', 'metro', 'metros', 'mt'].includes(prodUnit.toLowerCase())) return 'dm²';
+                  // Material de ÁREA cortado de bobina (napa/couro/forro): produto LINEAR (m/cm).
+                  // O consumo é SEMPRE gravado em dm²/par (a conversão p/ metro usa a largura da
+                  // ficha de componente). Rótulo correto = dm²/par — INDEPENDENTE de a largura
+                  // estar cadastrada. Detecta área pelo sinal de bobina (consumption_unit de área
+                  // OU comprimento de rolo), igual ao cabedalWidthWarning. Antes exigia largura > 0,
+                  // então sem largura o rótulo mostrava "(m/par)" enquanto o valor digitado é dm²/par
+                  // (inconsistência que assustava o operador). O aviso âmbar continua sinalizando que
+                  // falta a largura pra converter dm²→metro.
+                  if (['m', 'cm', 'metro', 'metros', 'mt'].includes(prodUnit.toLowerCase())) {
+                    const consUnit = (g?.consumption_unit || '').toString().trim().toLowerCase().replace(/2/g, '²');
+                    const isAreaConsumption = ['dm²', 'm²', 'cm²'].includes(consUnit);
+                    const hasRollDims = Number(g?.dimensions_length) > 0;
+                    const width = Number(g?.dimensions_width) || 0;
+                    if (width > 0 || isAreaConsumption || hasRollDims) return 'dm²';
+                  }
                   // Senão, a unidade vem do ITEM SELECIONADO (produto) — NÃO do consumption_unit do
                   // grupo, que pode divergir (ex.: grupo ELÁSTICO SARJA tinha consumption_unit='m'
                   // mas o produto é 'un', fazendo o operador digitar valor errado).
