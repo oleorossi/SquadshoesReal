@@ -15,16 +15,25 @@ export interface OrderCostResult {
       product_id: string;
       product_name: string;
       component: string;
+      /** Linha de SUCESSO: já escalada pelo `qty_multiplier` (= total da OP, na
+       *  unidade do produto). Linha de unit_mismatch: valor CRU sem converter
+       *  (na unidade de consumo), apenas pra exibição — `subtotal` vem 0. */
       required: number;
-      /** Quantidade convertida pra unidade do produto. Pode estar ausente se SQL
-       *  retornou NULL por unit mismatch (linha pulada com conversion_warning). */
-      required_in_product_unit?: number;
+      /** Linha de sucesso: `required` por dúzia/grade base, antes de escalar pelo
+       *  `qty_multiplier`. Renomeado de `required_in_product_unit` na auditoria do
+       *  double-scaling (snapshot). Ausente na linha de unit_mismatch. */
+      required_per_grade?: number;
+      /** Multiplicador qty_real ÷ soma_grade (ou qty ÷ snapshot.quantity) aplicado
+       *  a esta linha. Snapshot já vem escalado → ≈ 1. */
+      qty_multiplier?: number;
       consumption_unit?: string;
       product_unit?: string;
       unit_price: number;
       subtotal: number;
-      /** B3: marcado pelo SQL quando convert_to_product_unit retornou NULL
-       *  por unidades incompatíveis (ex: kg → un). UI pode renderizar alerta. */
+      /** Marcado pelo SQL ('unit_mismatch') quando convert_to_product_unit
+       *  retornou NULL por unidades incompatíveis (ex: kg → un) e o fallback A4
+       *  (dm²→física pela largura da ficha) também não resolveu. Custo NÃO somado
+       *  (subtotal=0); UI deve alertar erro de cadastro. */
       conversion_warning?: string;
     }>;
     labor: Array<{
@@ -37,8 +46,21 @@ export interface OrderCostResult {
      *  overhead_pct (que não existia) e omitia este. */
     overhead_per_pair: number;
     packaging_per_pair: number;
+    /** Multiplicador qty/grade aplicado ao item (espelha breakdown.materials[].qty_multiplier). */
+    qty_multiplier?: number;
+    /** 'snapshot' quando o consumo veio de technical_sheet_snapshots (custo
+     *  congelado), 'computed' quando recalculado da ficha viva. */
+    consumption_source?: string;
     used_grade: boolean;
   };
+  /** Avisos do SQL na granularidade do item: 'no_active_cost_policy' (overhead/
+   *  embalagem zerados), 'unit_mismatch:<produto>' (linha não convertida),
+   *  'strap_color_not_registered:<cor>'. Vazio no caminho agregado de PV. */
+  warnings?: string[];
+  /** Soma da grade base do item (tipicamente ~12); 0 quando sem grade. */
+  grade_sum?: number;
+  /** qty_real ÷ grade_sum (ou qty ÷ snapshot.quantity). */
+  qty_multiplier?: number;
   /** Quando p_sale_order_item_id=NULL e p_sale_order_id dado, o SQL retorna
    *  agregado com array de itens. Presença indica modo PV inteiro. */
   items?: OrderCostResult[];
