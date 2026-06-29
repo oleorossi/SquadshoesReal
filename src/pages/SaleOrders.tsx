@@ -2193,22 +2193,49 @@ export default function SaleOrders() {
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between w-full flex-wrap gap-y-2">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-lg font-extrabold uppercase tracking-tight">Pedido {selectedOrder?.order_number || ''}</span>
-                {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
-                <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
-                {/* Badge "Picking individual realizado" — quando preenchido, este PV
-                    foi excluído do Picking Semanal pra evitar débito em duplicidade. */}
-                {(selectedOrder as any)?.picking_individually_done_at && (
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30 gap-1.5">
-                    <Hand className="h-3 w-3" />
-                    Picking individual em {new Date((selectedOrder as any).picking_individually_done_at).toLocaleDateString('pt-BR')}
-                  </Badge>
-                )}
+            <div className="flex items-start justify-between gap-4 gap-y-3 flex-wrap">
+              <div className="min-w-0">
+                <p className="eyebrow">Comercial · Pedido de Venda</p>
+                <div className="flex items-center gap-2.5 flex-wrap mt-1">
+                  <DialogTitle className="display text-3xl sm:text-4xl m-0 leading-none">{selectedOrder?.order_number || ''}</DialogTitle>
+                  {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
+                  <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
+                  {/* Badge "Picking individual realizado" — exclui o PV do Picking Semanal. */}
+                  {(selectedOrder as any)?.picking_individually_done_at && (
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/30 gap-1.5">
+                      <Hand className="h-3 w-3" />
+                      Picking individual em {new Date((selectedOrder as any).picking_individually_done_at).toLocaleDateString('pt-BR')}
+                    </Badge>
+                  )}
+                </div>
               </div>
+              {/* Faixa de KPIs — totais do PV em destaque editorial (Anton) */}
               {selectedOrder && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-5 sm:gap-7 shrink-0">
+                  <div>
+                    <p className="eyebrow">Pares</p>
+                    <p className="font-display text-2xl leading-none tabular-nums">{loadingOrderItems ? '—' : selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0).toLocaleString('pt-BR')}</p>
+                  </div>
+                  {canSeeFinancialValues && (
+                    <div>
+                      <p className="eyebrow">Total</p>
+                      <p className="font-display text-2xl leading-none tabular-nums">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="eyebrow">Itens</p>
+                    <p className="font-display text-2xl leading-none tabular-nums">{loadingOrderItems ? '—' : selectedOrderItems.length}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogDescription className="sr-only">Detalhes, totais e ações do pedido {selectedOrder?.order_number || ''}</DialogDescription>
+          </DialogHeader>
+
+          {selectedOrder && (
+            <div className="space-y-4 mt-3">
+              {/* Toolbar de ações do PV */}
+              <div className="flex items-center gap-2 flex-wrap border-y py-2.5">
                   {isAdmin && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
                       Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"
@@ -2304,13 +2331,8 @@ export default function SaleOrders() {
                   >
                     <Tag className="h-3.5 w-3.5" /> Etiquetas
                   </Button>
-                </div>
-              )}
-            </DialogTitle>
-          </DialogHeader>
+              </div>
 
-          {selectedOrder && (
-            <div className="space-y-4 mt-2">
               <div className="rounded-lg border bg-muted/30 overflow-hidden">
                 <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 p-4">
                   {([
@@ -2485,12 +2507,7 @@ export default function SaleOrders() {
                 )}
               </div>
 
-              <div className="flex flex-col items-end gap-1 text-sm">
-                <p><span className="text-muted-foreground">Pares:</span> <span className="font-bold font-mono">{selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0).toLocaleString('pt-BR')}</span> <span className="text-xs text-muted-foreground font-normal">· {selectedOrderItems.length} {selectedOrderItems.length === 1 ? 'item' : 'itens'}</span></p>
-                {canSeeFinancialValues && (
-                  <p><span className="text-muted-foreground">Total:</span> <span className="font-bold font-mono text-lg">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</span></p>
-                )}
-              </div>
+              {/* Totais movidos pra faixa de KPIs do header (Pares/Total/Itens). */}
 
               {/* Compras deste PV (canal "Compras por Pedido") */}
               {canBuy && <PurchaseOrdersForPvCard pvId={selectedOrder.id} />}
