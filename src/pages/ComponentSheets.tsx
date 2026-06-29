@@ -34,7 +34,24 @@ import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SIZES_INFANTIL = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
 const SIZES_ADULTO = [34, 35, 36, 37, 38, 39, 40];
-const DIM_UNITS = ['mm', 'cm', 'm', 'm linear', 'dm²', 'cm²', 'm²'];
+// Unidade das DIMENSÕES (base/altura/espessura) — sempre LINEAR. As dimensões
+// da placa/rolo descrevem comprimentos, então só fazem sentido em unidade linear.
+// ⚠ NÃO incluir unidades de ÁREA (dm²/cm²/m²) aqui: a largura cadastrada AQUI é a
+// fonte da conversão dm²→linear do sistema todo (materialConsumption/orderConsumption/
+// bomConsumption), e esses motores só entendem mm/cm/dm/m — qualquer outra unidade
+// é tratada como mm cru, inflando o consumo ~100×. `dm` é a unidade canônica de
+// largura usada por purchaseConversion (ex.: Napa Soft width=10 dm).
+const DIM_UNITS = ['mm', 'cm', 'dm', 'm'];
+
+/**
+ * Opções do seletor de unidade de dimensão, garantindo que um valor já gravado
+ * (mesmo legado/inválido como `dm²`) continue visível e editável — senão o Select
+ * mostraria vazio e a ficha perderia a unidade silenciosamente ao salvar.
+ */
+function dimUnitOptions(current?: string | null): string[] {
+  if (current && !DIM_UNITS.includes(current)) return [...DIM_UNITS, current];
+  return DIM_UNITS;
+}
 
 const SIZE_GRADE_CATEGORIES = [
   { aliases: ['solado', 'sola'], label: 'Solado' },
@@ -108,18 +125,24 @@ function getConsumptionUnit(category?: string): string {
   return found?.unit || 'kg';
 }
 
-/** Convert plate dimensions to dm² based on the unit of the dimensions */
+/**
+ * Área da placa em dm² a partir de duas dimensões LINEARES (base × altura) na
+ * mesma unidade. ⚠ Deve casar com a normalização linear→mm usada pelos motores
+ * de consumo (materialConsumption.convertDimensionToMm e
+ * orderConsumption.calcGroupPlateAreaDm2): só mm/cm/dm/m são válidas. Qualquer
+ * outra unidade cai no fallback (tratada como mm), igual aos motores.
+ */
 function calcAreaDm2(length: number, width: number, unit: string): number {
-  const raw = length * width;
-  switch (unit) {
-    case 'mm': return raw / 10000;
-    case 'cm': return raw / 100;
-    case 'm': case 'm linear': return raw * 100;
-    case 'dm²': return raw; // already in dm²
-    case 'cm²': return raw / 100;
-    case 'm²': return raw * 100;
-    default: return raw / 10000; // fallback mm
-  }
+  // Normaliza cada dimensão para mm, depois converte mm² → dm² (÷ 10000).
+  const toMm = (v: number): number => {
+    switch (unit) {
+      case 'cm': return v * 10;
+      case 'dm': return v * 100;
+      case 'm': return v * 1000;
+      case 'mm': default: return v; // mm (fallback)
+    }
+  };
+  return (toMm(length) * toMm(width)) / 10000;
 }
 
 const formatCurrency = (v: number) =>
@@ -746,25 +769,29 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
         )}
         <div className="grid grid-cols-4 gap-3">
           <div>
-            <Label className="text-xs">Base</Label>
+            <Label className="text-xs">Base ({form.dimensions_unit || 'mm'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_length || ''} onChange={e => setForm(f => ({ ...f, dimensions_length: Number(e.target.value) }))} className="mt-1" placeholder="1200" />
           </div>
           <div>
-            <Label className="text-xs">Altura</Label>
+            <Label className="text-xs">Altura/larg. ({form.dimensions_unit || 'mm'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_width || ''} onChange={e => setForm(f => ({ ...f, dimensions_width: Number(e.target.value) }))} className="mt-1" placeholder="800" />
           </div>
           <div>
-            <Label className="text-xs">Espessura</Label>
+            <Label className="text-xs">Espessura ({form.dimensions_unit || 'mm'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_thickness || ''} onChange={e => setForm(f => ({ ...f, dimensions_thickness: Number(e.target.value) }))} className="mt-1" placeholder="3" />
           </div>
           <div>
-            <Label className="text-xs">Unidade</Label>
+            <Label className="text-xs">Unidade (das dimensões)</Label>
             <Select value={form.dimensions_unit} onValueChange={v => setForm(f => ({ ...f, dimensions_unit: v }))}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>{DIM_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+              <SelectContent>{dimUnitOptions(form.dimensions_unit).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          A <strong>Altura (largura)</strong> é a fonte da conversão dm²→{form.dimensions_unit || 'mm'} linear do sistema.
+          Sem ela, o consumo de materiais de área (napa/forro) fica ~100× inflado.
+        </p>
       </div>
 
       <div>
@@ -1196,25 +1223,34 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             </h3>
             <div className="grid grid-cols-4 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Base (comp.)</Label>
+                <Label className="text-xs text-muted-foreground">Base / comp. ({form.dimensions_unit || 'mm'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_length || ''} onChange={e => updateField('dimensions_length', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Altura (larg.)</Label>
+                <Label className="text-xs text-muted-foreground">Altura / larg. ({form.dimensions_unit || 'mm'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_width || ''} onChange={e => updateField('dimensions_width', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Espessura</Label>
+                <Label className="text-xs text-muted-foreground">Espessura ({form.dimensions_unit || 'mm'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_thickness || ''} onChange={e => updateField('dimensions_thickness', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Unidade</Label>
+                <Label className="text-xs text-muted-foreground">Unidade (linear)</Label>
                 <Select value={form.dimensions_unit} onValueChange={v => updateField('dimensions_unit', v)}>
                   <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>{DIM_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                  <SelectContent>{dimUnitOptions(form.dimensions_unit).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              A <strong>Altura / largura</strong> é a fonte da conversão dm²→{form.dimensions_unit || 'mm'} linear (cabedal, forro, BOM).
+              Sem largura, o consumo de material de área fica ~100× inflado. Use só unidade linear (mm/cm/dm/m).
+            </p>
+            {form.dimensions_unit && !DIM_UNITS.includes(form.dimensions_unit) && (
+              <p className="mt-1 text-xs text-amber-600">
+                ⚠ Unidade "{form.dimensions_unit}" não é linear — os motores de consumo a tratam como mm, inflando a conversão. Troque para mm/cm/dm/m.
+              </p>
+            )}
           </div>
 
           {/* Waste */}
