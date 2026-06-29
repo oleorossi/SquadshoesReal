@@ -19,6 +19,8 @@
  *   Cola PU:    unit='g',   purchase_unit='kg',    conversion_rate=1000
  */
 
+import { normalizeUnit } from './unitConversion';
+
 export type PurchaseConversionContext = {
   unit: string;
   purchase_unit?: string | null;
@@ -26,7 +28,15 @@ export type PurchaseConversionContext = {
   dimensions_width?: number | null;  // em dm
 };
 
-const lc = (s: string | null | undefined) => (s || '').toLowerCase().trim();
+/**
+ * Resolve a unidade ao CANÔNICO antes de decidir a regra de conversão. Sem
+ * isto, sinônimos não-canônicos (`metro`/`metros`/`mt`, `dm2`/`m2`) caíam por
+ * fora dos ramos m→dm²/m² e o fator virava 1 em silêncio — inflando a
+ * quantidade ~100× num material de área cuja unidade de compra estava grafada
+ * `metro` em vez de `m`. A grafia canônica mora em unitConversion.normalizeUnit
+ * (mesma fonte do MRP/NF). `lc` segue só pra rótulos de exibição.
+ */
+const lc = (s: string | null | undefined) => normalizeUnit(s);
 
 /** Sugestão de conversion_rate para pares unit↔purchase_unit comuns. */
 export function suggestConversionRate(
