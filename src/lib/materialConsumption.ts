@@ -27,7 +27,12 @@ type GradeItem = {
 
 type SelectionMode = 'any' | 'linear' | 'plate';
 
-const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'mt']);
+// Set CANÔNICO de unidades lineares. DEVE espelhar o branch v_is_linear de
+// get_material_conversion_info no SQL ('m','meters','metros','mt','cm') — senão
+// um produto em 'metros'/'meters' converte dm²→física no SQL mas NÃO no TS
+// (areaToStockDivisor devolveria null → PurchasePlanningWizard infla ~100×).
+// 'metro' (singular) é sinônimo aceito em UNIT_SYNONYMS; mantido por segurança.
+const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'metros', 'meters', 'mt']);
 // 'un' é CONTAGEM, não placa — removido (auditoria 2026-06-11). Mantê-lo aqui
 // fazia um item de contagem com ficha dimensionada passar por convertDm2ToPlates.
 const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas']);
@@ -250,8 +255,9 @@ export const convertDm2ToLinearMeters = (totalDm2: number, componentSheet: Compo
  */
 export const isLinearWidthMissing = (componentSheet: ComponentSheetCandidate | null, productUnit?: string | null): boolean => {
   const sheetUnit = getSheetUnit(componentSheet);
-  const unit = (productUnit || '').toLowerCase();
-  const isLinear = LINEAR_UNITS.has(sheetUnit) || ['m','metros','mt','meters','cm'].includes(unit);
+  const unit = normalizeText(productUnit);
+  // LINEAR_UNITS já cobre m/metro/metros/meters/mt/cm (paridade SQL) — sem lista inline.
+  const isLinear = LINEAR_UNITS.has(sheetUnit) || LINEAR_UNITS.has(unit);
   if (!isLinear) return false;
   return getLinearWidthMm(componentSheet) <= 0;
 };
@@ -325,7 +331,10 @@ export function bomMaterialCostPerPair(
  *
  *   need_em_estoque = total_dm2 / areaToStockDivisor(stockUnit, ficha)
  *
- * - linear (m/cm): divisor = largura_mm / 10  (= dm² por metro)
+ * - linear em METRO (m/metro/mt): divisor = largura_mm / 10  (= dm² por metro)
+ * - linear em CENTÍMETRO (cm): divisor = largura_mm / 10 / 100 (= dm² por cm);
+ *   sem isso o need sairia em metros tratado como cm → ~100× errado. ESPELHA o
+ *   branch `cm` de get_material_conversion_info (dm2_per_unit / 100).
  * - placa: divisor = área_da_placa_dm²
  * - retorna null quando NÃO se aplica (unidade não é linear/placa) OU quando falta a
  *   largura/área na ficha (caller deve sinalizar widthMissing e NÃO inflar ~100×).
@@ -340,7 +349,10 @@ export function areaToStockDivisor(
   const unit = normalizeText(stockUnit);
   if (LINEAR_UNITS.has(unit)) {
     const w = getLinearWidthMm(componentSheet);
-    return w > 0 ? w / 10 : null;
+    if (w <= 0) return null;
+    const dm2PerMeter = w / 10;
+    // estoque em cm: divisor é dm² POR CM (= dm²/m ÷ 100). Paridade com SQL.
+    return unit === 'cm' ? dm2PerMeter / 100 : dm2PerMeter;
   }
   if (PLATE_UNITS.has(unit)) {
     const a = getPlateAreaDm2(componentSheet);
