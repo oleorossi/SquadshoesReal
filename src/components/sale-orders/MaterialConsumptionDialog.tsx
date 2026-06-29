@@ -159,7 +159,7 @@ function soleMatrixHtml(rows: ConsumptionRow[]): string {
       const sizes = Array.from(new Set(mrows.flatMap((r) => Object.keys(r.sizeBreakdown || {}))))
         .sort((a, b) => sizeSortKey(a) - sizeSortKey(b));
       const corCount = mrows.length;
-      const label = `<div style="font-size:8.5pt;color:#374151;font-weight:600;margin:6px 4px 3px">${escapeHtml(model)} <span style="color:#9ca3af;font-weight:400">· ${corCount} cor(es)</span></div>`;
+      const label = `<div style="font-size:10pt;color:#374151;font-weight:600;margin:6px 4px 3px">${escapeHtml(model)} <span style="color:#9ca3af;font-weight:400">· ${corCount} cor(es)</span></div>`;
 
       // Fallback: solado sem breakdown por numeração → tabela simples cor | necessário | estoque.
       if (sizes.length === 0) {
@@ -168,13 +168,13 @@ function soleMatrixHtml(rows: ConsumptionRow[]): string {
           const ok = have >= r.totalQuantity;
           return `<tr><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;font-weight:600">${escapeHtml(r.color)}</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace">${r.totalQuantity.toFixed(0)} par</td><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;${ok ? OK : NO}">${have.toFixed(0)}</td></tr>`;
         }).join('');
-        return `${label}<table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:4px;border:1px solid #e5e7eb"><thead><tr style="background:#f3f4f6"><th style="padding:3px 6px;text-align:left;font-size:8pt">Cor</th><th style="padding:3px 6px;text-align:right;font-size:8pt">Necessário</th><th style="padding:3px 6px;text-align:right;font-size:8pt">Em estoque</th></tr></thead><tbody>${body}</tbody></table>`;
+        return `${label}<table style="width:100%;border-collapse:collapse;font-size:10.5pt;margin-bottom:4px;border:1px solid #e5e7eb"><thead><tr style="background:#f3f4f6"><th style="padding:3px 6px;text-align:left;font-size:9.5pt">Cor</th><th style="padding:3px 6px;text-align:right;font-size:9.5pt">Necessário</th><th style="padding:3px 6px;text-align:right;font-size:9.5pt">Em estoque</th></tr></thead><tbody>${body}</tbody></table>`;
       }
 
       const totalsBySize: Record<string, number> = {};
       for (const r of mrows) for (const [s, q] of Object.entries(r.sizeBreakdown || {})) totalsBySize[s] = (totalsBySize[s] || 0) + (Number(q) || 0);
 
-      const head = `<tr style="background:#f3f4f6"><th style="padding:3px 5px;text-align:left;font-size:8pt">Cor</th>${sizes.map((s) => `<th style="padding:3px 4px;text-align:center;font-size:8pt;font-family:monospace">${escapeHtml(s)}</th>`).join('')}<th style="padding:3px 5px;text-align:right;font-size:8pt">Total</th></tr>`;
+      const head = `<tr style="background:#f3f4f6"><th style="padding:3px 5px;text-align:left;font-size:9.5pt">Cor</th>${sizes.map((s) => `<th style="padding:3px 4px;text-align:center;font-size:9.5pt;font-family:monospace">${escapeHtml(s)}</th>`).join('')}<th style="padding:3px 5px;text-align:right;font-size:9.5pt">Total</th></tr>`;
 
       const body = mrows.map((r) => {
         const avail = buildColAvailability(r.soleSizeStock, sizes, r.sizeBreakdown || {});
@@ -191,7 +191,7 @@ function soleMatrixHtml(rows: ConsumptionRow[]): string {
 
       const totalRow = `<tr style="background:#f9fafb;font-weight:700"><td style="padding:3px 5px">Total por numeração</td>${sizes.map((s) => `<td style="padding:3px 4px;text-align:center;font-family:monospace">${totalsBySize[s] || 0}</td>`).join('')}<td style="padding:3px 5px;text-align:right;font-family:monospace">${Object.values(totalsBySize).reduce((s, v) => s + v, 0)} par</td></tr>`;
 
-      return `${label}<table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:4px;border:1px solid #e5e7eb"><thead>${head}</thead><tbody>${body}${totalRow}</tbody></table>`;
+      return `${label}<table style="width:100%;border-collapse:collapse;font-size:10.5pt;margin-bottom:4px;border:1px solid #e5e7eb"><thead>${head}</thead><tbody>${body}${totalRow}</tbody></table>`;
     }).join('');
 }
 
