@@ -5,7 +5,7 @@ import {
   ROLO_COMPRIMENTO_M,
   ROLO_LARGURA_CM,
   ROLO_LARGURA_MM,
-  rollBreakdownLabel,
+  rollFillLabel,
   type ArtisanalStrapCutRow,
   type StrapRollCutResult,
 } from '@/lib/strapRollCut';
@@ -49,12 +49,9 @@ function StrapRollGauge({ cut }: { cut: StrapRollCutResult }) {
   const miniShown = Math.min(fullMini, MAX_MINI);
   const miniExtra = fullMini - miniShown;
   const totalRolos = fullMini + 1;
-  const sobra = last > 0 ? Math.max(0, ROLO_LARGURA_CM - last) : 0;
-  const stripe = 'repeating-linear-gradient(90deg, rgba(255,255,255,0.28) 0 1px, transparent 1px 6px)';
+  const stripe ='repeating-linear-gradient(90deg, rgba(255,255,255,0.28) 0 1px, transparent 1px 6px)';
   const hatch = 'repeating-linear-gradient(45deg, hsl(var(--border)) 0 1px, transparent 1px 7px)';
-  const caption = overflow
-    ? rollBreakdownLabel(cut)
-    : `usa ${Math.round(lastPct)}% do rolo · sobra ${sobra.toFixed(0)} cm`;
+  const caption = rollFillLabel(cut);
 
   return (
     <div className="strap-roll-gauge">

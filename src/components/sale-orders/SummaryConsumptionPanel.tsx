@@ -23,7 +23,7 @@ import {
   aggregateArtisanalStrapCut,
   isArtisanalStrap,
   normalizeWidthToMm,
-  rollBreakdownLabel,
+  rollFillLabel,
   type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
@@ -678,8 +678,8 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const cortar = cut.valid
           ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
           : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
-        const breakdown = rollBreakdownLabel(cut);
-        const breakdownHtml = breakdown ? `<div style="font-size:10px;opacity:.85">${escapeHtml(breakdown)}</div>` : '';
+        const fill = rollFillLabel(cut);
+        const breakdownHtml = fill ? `<div style="font-size:10px;opacity:.85">${escapeHtml(fill)}</div>` : '';
         const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
         return `<tr style="color:#dc2626">
           <td style="padding:5px 10px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>

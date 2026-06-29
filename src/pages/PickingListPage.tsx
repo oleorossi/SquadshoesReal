@@ -24,7 +24,7 @@ import {
   COMPONENT_ORDER,
   formatUnit,
 } from '@/lib/bomConsumption';
-import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollBreakdownLabel } from '@/lib/strapRollCut';
+import { type ArtisanalStrapCutRow, ROLO_COMPRIMENTO_M, ROLO_LARGURA_MM, rollFillLabel } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -444,9 +444,9 @@ export default function PickingListPage() {
         const cortar = cut.valid
           ? `<span style="font-weight:700;font-size:14px">${cut.cm_a_cortar.toFixed(1)} cm</span>`
           : `<span style="font-size:11px">⚠ ${escapeHtml(cut.warning || 'sem largura')}</span>`;
-        const breakdown = rollBreakdownLabel(cut);
-        const breakdownHtml = breakdown
-          ? `<div style="font-size:10px;color:#dc2626;opacity:.85;font-family:system-ui">${escapeHtml(breakdown)}</div>`
+        const fill = rollFillLabel(cut);
+        const breakdownHtml = fill
+          ? `<div style="font-size:10px;color:#dc2626;opacity:.85;font-family:system-ui">${escapeHtml(fill)}</div>`
           : '';
         const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
         const colorTxt = r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : '';

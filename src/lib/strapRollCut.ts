@@ -155,6 +155,25 @@ export function rollBreakdownLabel(
   return sobra > 0 ? `${rolos} + ${sobra} cm do próximo` : rolos;
 }
 
+/**
+ * Caption do PREENCHIMENTO do rolo (tela + PDFs):
+ *   < 1 rolo : "usa 58% do rolo · sobra 57 cm"   (% da largura útil de 137 cm)
+ *   ≥ 1 rolo : rollBreakdownLabel ("2 rolos completos + 31 cm do próximo")
+ *   inválido : '' (sem largura → a UI mostra o aviso, não a caption)
+ * FONTE ÚNICA da caption — usada no StrapRollGauge (tela) e nas 3 tabelas HTML
+ * (modal Consumo de Materiais, Resumo de Consumo, Lista de Separação) pra não divergir.
+ */
+export function rollFillLabel(
+  cut: Pick<StrapRollCutResult, 'valid' | 'n_rolos_completos' | 'cm_no_ultimo_rolo' | 'cm_a_cortar'>,
+): string {
+  if (!cut.valid) return '';
+  const breakdown = rollBreakdownLabel(cut);
+  if (breakdown) return breakdown;
+  const pct = ROLO_LARGURA_CM > 0 ? Math.round((cut.cm_a_cortar / ROLO_LARGURA_CM) * 100) : 0;
+  const sobra = Math.max(0, ROLO_LARGURA_CM - cut.cm_a_cortar);
+  return `usa ${pct}% do rolo · sobra ${sobra.toFixed(0)} cm`;
+}
+
 // ─── Detecção de "tira artesanal" ───────────────────────────────────────────
 
 /** Itens de tira COMPRADOS prontos (não cortados de rolo) — excluídos do bloco. */
