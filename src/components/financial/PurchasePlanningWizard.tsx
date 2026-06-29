@@ -599,8 +599,11 @@ export default function PurchasePlanningWizard() {
       for (const [, mat] of Array.from(week.materials)) {
         mat.stock_after = mat.current_stock - mat.total_needed;
         const deficit = Math.max(0, mat.total_needed - mat.current_stock);
-        mat.estimated_cost = deficit * mat.unit_price;
-        mat.selected = mat.stock_after < 0; // auto-select deficit items
+        // Área sem largura na ficha → quantidade ~100× inflada e comparação com
+        // estoque INVÁLIDA: não estima custo nem auto-seleciona (a OC já bloqueia
+        // esses itens — auto-marcar só pré-ticava uma linha que cairia fora).
+        mat.estimated_cost = mat.width_missing ? 0 : deficit * mat.unit_price;
+        mat.selected = !mat.width_missing && mat.stock_after < 0; // auto-select deficit items
       }
     }
 
@@ -630,8 +633,9 @@ export default function PurchasePlanningWizard() {
           }
           existing.stock_after = existing.current_stock - existing.total_needed;
           const deficit = Math.max(0, existing.total_needed - existing.current_stock);
-          existing.estimated_cost = deficit * existing.unit_price;
-          existing.selected = existing.stock_after < 0;
+          // Área sem largura → quantidade inflada/comparação inválida (ver acima).
+          existing.estimated_cost = existing.width_missing ? 0 : deficit * existing.unit_price;
+          existing.selected = !existing.width_missing && existing.stock_after < 0;
         }
       }
     }
@@ -766,6 +770,18 @@ export default function PurchasePlanningWizard() {
     if (stockAfter === 0) return <Badge variant="default">Justo</Badge>;
     return <Badge variant="secondary">OK</Badge>;
   };
+
+  // Material de área cuja ficha de componente não tem largura → não dá pra
+  // converter dm²→unidade física, a quantidade fica ~100× inflada e a
+  // comparação com estoque é inválida. Status âmbar (cor semântica permitida).
+  const widthMissingBadge = (
+    <Badge
+      className="bg-amber-500/10 text-amber-600 border-amber-500/20"
+      title="Ficha de componente sem largura — quantidade não confiável. Cadastre em Materiais → Ficha de Componente → Dimensões."
+    >
+      Largura?
+    </Badge>
+  );
 
   if (loading) {
     return (
@@ -922,19 +938,21 @@ export default function PurchasePlanningWizard() {
                               mats = mats.filter(m => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.type).includes(q));
                             }
                             return mats.sort((a, b) => a.stock_after - b.stock_after).map(mat => (
-                              <TableRow key={mat.material_key} className={mat.stock_after < 0 ? 'bg-destructive/5' : ''}>
+                              // Área sem largura: linha NEUTRA (não vermelha) — a
+                              // comparação com estoque é inválida (qtd ~100× inflada).
+                              <TableRow key={mat.material_key} className={!mat.width_missing && mat.stock_after < 0 ? 'bg-destructive/5' : ''}>
                                 <TableCell>
                                   <p className="font-medium text-sm">{mat.name}</p>
                                   <p className="text-xs text-muted-foreground">{mat.orders.length} OP(s)</p>
                                 </TableCell>
                                 <TableCell><Badge variant="outline" className="text-xs">{mat.type}</Badge></TableCell>
-                                <TableCell className="text-right">{fmtQty(mat.total_needed)} {mat.unit}</TableCell>
+                                <TableCell className={`text-right ${mat.width_missing ? 'text-muted-foreground' : ''}`}>{fmtQty(mat.total_needed)} {mat.unit}</TableCell>
                                 <TableCell className="text-right">{fmtQty(mat.current_stock)} {mat.unit}</TableCell>
-                                <TableCell className={`text-right font-semibold ${mat.stock_after < 0 ? 'text-destructive' : ''}`}>
-                                  {fmtQty(mat.stock_after)} {mat.unit}
+                                <TableCell className={`text-right font-semibold ${!mat.width_missing && mat.stock_after < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                  {mat.width_missing ? '—' : `${fmtQty(mat.stock_after)} ${mat.unit}`}
                                 </TableCell>
-                                <TableCell className="text-right">{mat.estimated_cost > 0 ? fmt(mat.estimated_cost) : '—'}</TableCell>
-                                <TableCell>{stockBadge(mat.stock_after)}</TableCell>
+                                <TableCell className="text-right">{!mat.width_missing && mat.estimated_cost > 0 ? fmt(mat.estimated_cost) : '—'}</TableCell>
+                                <TableCell>{mat.width_missing ? widthMissingBadge : stockBadge(mat.stock_after)}</TableCell>
                               </TableRow>
                             ));
                           })()}
@@ -1012,15 +1030,18 @@ export default function PurchasePlanningWizard() {
                             <Checkbox checked={m.selected} onCheckedChange={() => toggleMaterial(m.material_key)} />
                           </TableCell>
                           <TableCell>
-                            <p className="font-medium text-sm">{m.name}</p>
+                            <p className="font-medium text-sm flex items-center gap-1.5">
+                              {m.name}
+                              {m.width_missing && widthMissingBadge}
+                            </p>
                             <p className="text-xs text-muted-foreground">{m.orders.length} OP(s)</p>
                           </TableCell>
                           <TableCell><Badge variant="outline" className="text-xs">{m.type}</Badge></TableCell>
-                          <TableCell className="text-right text-destructive font-semibold">
-                            {deficit > 0 ? fmtQty(deficit) : '—'} {deficit > 0 ? m.unit : ''}
+                          <TableCell className={`text-right font-semibold ${m.width_missing ? 'text-muted-foreground' : 'text-destructive'}`}>
+                            {m.width_missing ? '—' : (deficit > 0 ? `${fmtQty(deficit)} ${m.unit}` : '—')}
                           </TableCell>
                           <TableCell className="text-right">{m.unit_price > 0 ? fmt(m.unit_price) : '—'}</TableCell>
-                          <TableCell className="text-right font-semibold">{m.estimated_cost > 0 ? fmt(m.estimated_cost) : '—'}</TableCell>
+                          <TableCell className="text-right font-semibold">{!m.width_missing && m.estimated_cost > 0 ? fmt(m.estimated_cost) : '—'}</TableCell>
                           <TableCell className="text-sm">{m.supplier_name || '—'}</TableCell>
                         </TableRow>
                       );
