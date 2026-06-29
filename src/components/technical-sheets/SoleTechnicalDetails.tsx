@@ -26,6 +26,12 @@ import { useQueryClient } from "@tanstack/react-query";
 interface SoleTechnicalDetailsProps {
   soleId: string;
   soleName?: string;
+  /**
+   * @deprecated Não é mais usado internamente (alimentava os presets de
+   * numeração removidos do Passo 2). Mantido só pra não quebrar o caller
+   * em ComponentSheets.tsx que ainda passa `shoeCategory`. A grade hoje vem
+   * do range size_from/size_to da aba Cadastro.
+   */
   shoeCategory?: string;
   onClose?: () => void;
 }
@@ -38,36 +44,10 @@ interface SoleSpec {
   fachete_lining_consumption_dm2: number | null;
 }
 
-// Presets de numeração — agora cobrem todas as faixas comuns na fábrica.
-// `categories` indica em quais shoe_category esse preset é recomendado.
-// Quando o solado tem shoe_category atrelada, presets recomendados aparecem
-// primeiro na ordem com badge visual.
-const SIZE_PRESETS: Array<{ label: string; sizes: number[]; categories: string[] }> = [
-  { label: 'Adulto 34–40',         sizes: [34, 35, 36, 37, 38, 39, 40],                            categories: ['Adulto', 'Feminino'] },
-  { label: 'Adulto 33–42',         sizes: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42],                categories: ['Adulto', 'Feminino', 'Unissex'] },
-  { label: 'Adulto Grande 38–46',  sizes: [38, 39, 40, 41, 42, 43, 44, 45, 46],                    categories: ['Adulto', 'Masculino'] },
-  { label: 'Masculino 38–44',      sizes: [38, 39, 40, 41, 42, 43, 44],                            categories: ['Masculino'] },
-  { label: 'Infantil 25–34',       sizes: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34],                categories: ['Infantil'] },
-  { label: 'Infantil Pequeno 22–28', sizes: [22, 23, 24, 25, 26, 27, 28],                          categories: ['Infantil'] },
-  { label: 'Baby 15–24',           sizes: [15, 16, 17, 18, 19, 20, 21, 22, 23, 24],                categories: ['Baby', 'Bebê'] },
-];
-
-function getSortedPresets(shoeCategory?: string | null): Array<{ label: string; sizes: number[]; recommended: boolean }> {
-  const cat = (shoeCategory || '').trim();
-  if (!cat) {
-    return SIZE_PRESETS.map(p => ({ label: p.label, sizes: p.sizes, recommended: false }));
-  }
-  const recommended: typeof SIZE_PRESETS = [];
-  const others: typeof SIZE_PRESETS = [];
-  for (const p of SIZE_PRESETS) {
-    if (p.categories.some(c => c.toLowerCase() === cat.toLowerCase())) recommended.push(p);
-    else others.push(p);
-  }
-  return [
-    ...recommended.map(p => ({ label: p.label, sizes: p.sizes, recommended: true })),
-    ...others.map(p      => ({ label: p.label, sizes: p.sizes, recommended: false })),
-  ];
-}
+// NOTA (auditoria 2026-06-29): os presets de numeração (Adulto/Infantil/Baby) e a
+// função getSortedPresets foram removidos junto com os botões de preset do Passo 2.
+// A grade hoje vem do range (size_from/size_to) definido na aba Cadastro — ver o
+// comentário do Passo 2 abaixo. Mantê-los aqui era código morto.
 
 export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnicalDetailsProps) {
   const qc = useQueryClient();
@@ -107,7 +87,6 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   // UN, não dm². A grade não cobra "placa" nem "forração da palmilha", só
   // a forração do CABEDAL (e fachete se aplicável).
   const isPalmilhaPronta = soleClassification === 'palmilha_pronta';
-  const [shoeCategory, setShoeCategory] = useState<string | null>(null);
   // Passo 3 (Materiais padrão) é opcional — escondemos por default pra não
   // competir visualmente com o Passo 4 (onde o consumo de verdade é definido).
   // User pode expandir se quiser configurar material default.
@@ -271,14 +250,6 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
               });
             }
           }
-          // Inferência heurística de categoria pelo nome do solado (legacy,
-          // mantido pra display info, não pra preset buttons que foram removidos)
-          const name = (d?.name || '').toLowerCase();
-          if (name.includes('baby') || name.includes('beb')) setShoeCategory('Baby');
-          else if (name.includes('infantil') || name.includes('kids')) setShoeCategory('Infantil');
-          else if (name.includes('masc')) setShoeCategory('Masculino');
-          else if (name.includes('fem')) setShoeCategory('Feminino');
-          else setShoeCategory('Adulto');
         });
     }
   }, [soleId]);
@@ -441,17 +412,6 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setReferenceInfo({ id: refSoleId, name: refName, date: refDate });
     setReferencePreview(null);
     toast.success(`Consumos carregados da referência: ${refName}`);
-  };
-
-  const applyPreset = (presetSizes: number[]) => {
-    setSizes(presetSizes);
-    setSpecs((prev) => {
-      const next: Record<number, SoleSpec> = {};
-      presetSizes.forEach((s) => {
-        next[s] = prev[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null };
-      });
-      return next;
-    });
   };
 
   const addSize = () => {
