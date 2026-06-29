@@ -28,6 +28,7 @@ import {
   type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
+import { soleMatrixHtml } from '@/lib/soleMatrixHtml';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 
@@ -635,31 +636,22 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           <tbody>${rowsHtml}</tbody>
         </table>`;
 
-      // Add sole size breakdown grid for Solado section
+      // Solado: MATRIZ numeração × cor (igual ao modal "Consumo de Materiais" e à tela),
+      // via helper único `soleMatrixHtml`. `showAvailability:false` — o Resumo é
+      // CONSOLIDADO multi-PV e NÃO rastreia estoque por numeração, então as células
+      // saem neutras (sem verde/vermelho), só com a quantidade necessária por nº.
       if (section === 'Solado' && Object.keys(soleSizeBreakdown).length > 0) {
-        const sortedSoleTypes = Object.entries(soleSizeBreakdown).sort(([a], [b]) => a.localeCompare(b, 'pt-BR'));
-        for (const [soleType, sizes] of sortedSoleTypes) {
-          const totalPairs = Object.values(sizes).reduce((s, v) => s + Math.round(v), 0);
-          const sortedSizes = Object.entries(sizes).sort(([a], [b]) => {
-            const na = Number(a), nb = Number(b);
-            if (!isNaN(na) && !isNaN(nb)) return na - nb;
-            return a.localeCompare(b);
-          });
-          const sizeCells = sortedSizes.map(([size, total]) =>
-            `<td style="text-align:center;padding:4px 6px;border:1px solid #d1d5db">
-              <div style="font-size:10px;color:#6b7280">Nº ${size}</div>
-              <div style="font-size:13px;font-family:monospace;font-weight:700">${Math.round(total)}</div>
-            </td>`
-          ).join('');
-          sectionsHtml += `
-            <div style="margin:8px 0 12px;border:1px solid #d1d5db;border-radius:6px;overflow:hidden">
-              <div style="background:#f3f4f6;padding:4px 10px;font-size:12px;font-weight:600;text-transform:uppercase;display:flex;align-items:center;gap:8px">
-                Solado ${soleType}
-                <span style="font-size:11px;font-weight:400;color:#6b7280">${totalPairs} ${totalPairs === 1 ? 'par' : 'pares'}</span>
-              </div>
-              <table style="width:auto;border-collapse:collapse;margin:6px 10px 8px"><tr>${sizeCells}</tr></table>
-            </div>`;
-        }
+        const soleRows = Object.entries(soleSizeBreakdown).map(([color, sizes]) => {
+          const rounded: Record<string, number> = {};
+          for (const [s, v] of Object.entries(sizes)) rounded[s] = Math.round(Number(v) || 0);
+          return {
+            groupName: 'Solado',
+            color,
+            totalQuantity: Object.values(rounded).reduce((a, b) => a + b, 0),
+            sizeBreakdown: rounded,
+          };
+        });
+        sectionsHtml += `<div style="margin:6px 0 12px">${soleMatrixHtml(soleRows, { showAvailability: false })}</div>`;
       }
     }
 
