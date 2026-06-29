@@ -39,7 +39,7 @@ interface ConstructionConfigPanelProps {
 //   Costura (costura palmilha+forração e cabedal).
 // • Tiras (has_straps=true)            → SEM Corte Cabedal (tira já vem
 //   cortada). COM Costura (só palmilha+forração).
-// Silk fica entre Aviamento/Mesa e Colagem quando ativado.
+// Silk fica entre Aviamento e Colagem quando ativado.
 const SECTORS_CABEDAL              = ['Corte Palmilha', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
@@ -191,8 +191,9 @@ function routingLabel(model: ProductionModel, hasSilk: boolean, requires_sewing:
     const sewing = requires_sewing ? ' (costura inclusa)' : '';
     return `Corte Palmilha ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk} → Colagem → Montagem → Solagem → Acabamento`;
   }
-  // tiras — não tem Corte Cabedal porque a tira já vem cortada
-  return `Corte Palmilha → Corte Forração → Mesa${silk} → Colagem → Montagem → Solagem → Acabamento`;
+  // tiras — não tem Corte Cabedal porque a tira já vem cortada.
+  // Roteiro segue SECTORS_TIRAS (Mesa foi renomeado p/ Aviamento em 2026-05-20).
+  return `Corte Palmilha → Corte Forração → Costura → Aviamento${silk} → Colagem → Montagem → Solagem → Acabamento`;
 }
 
 export function ConstructionConfigPanel({
