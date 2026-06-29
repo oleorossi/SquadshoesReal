@@ -103,6 +103,8 @@ export function useSaleOrdersWeightBatch(saleOrderIds: string[]) {
             saleOrderId: r.sale_order_id,
             totalPairs: r.total_pairs,
             netWeightKg: Number(r.net_weight_kg) || 0,
+            netWeightRealKg: Number(r.net_weight_real_kg) || 0,
+            netWeightEstimatedKg: Number(r.net_weight_estimated_kg) || 0,
             boxWeightKg: Number(r.box_weight_kg) || 0,
             grossWeightKg: Number(r.gross_weight_kg) || 0,
             incompleteItems: r.incomplete_items || [],

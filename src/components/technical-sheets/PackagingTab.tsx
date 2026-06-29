@@ -173,7 +173,7 @@ export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
             {k === 'fitilho' && b.metros_per_amarrado_default && (
               <span>{safeToFixed(b.metros_per_amarrado_default, 2)} m/amarrado</span>
             )}
-            <span>Estoque: {b.quantity ?? 0}</span>
+            <span>Estoque: {b.quantity ?? 0} un</span>
           </div>
         </div>
       </label>

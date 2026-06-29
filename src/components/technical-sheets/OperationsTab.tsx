@@ -442,6 +442,7 @@ export function OperationsTab({
           <span className={`text-2xl font-bold font-mono ${demandTotal > weeklyCapacity ? 'text-amber-700 dark:text-amber-400' : ''}`}>
             {demandTotal}
           </span>
+          <span className="text-xs text-muted-foreground ml-1">pares</span>
           {daysNeeded > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
               ≈ <strong className="text-foreground">{daysNeeded} dia{daysNeeded > 1 ? 's' : ''}</strong> para atender
