@@ -222,11 +222,15 @@ import { supabase } from '@/integrations/supabase/client';
            data: formData
          });
        } else if (duplicatingFromId) {
+         // Só sobrescrevemos os campos que o usuário REALMENTE editou no diálogo
+         // de duplicação (nome/SKU/EAN/NCM/descrição/preço/ativo + cabedal). Os
+         // overrides de consumo (dm²/par) e os pins de SKU (forro/palmilha/solado)
+         // NÃO têm campo no diálogo de duplicação, então não vão em `overrides`:
+         // assim o hook os copia da variante de origem via `...sourceData`. Se
+         // mandássemos `undefined` explícito aqui, o spread `{...sourceData,
+         // ...overrides}` zeraria (clobber → NULL) os overrides/pins da origem.
          const { material_name, sku, barcode, ncm, description_override,
-                 unit_price_override, active, upper_material_product_id,
-                 upper_consumption_override, lining_material_product_id, lining_consumption_override,
-                 insole_material_product_id, insole_consumption_override,
-                 sole_material_product_id, sole_consumption_override } = formData;
+                 unit_price_override, active, upper_material_product_id } = formData;
          await duplicateVariant.mutateAsync({
            source_variant_id: duplicatingFromId,
            sheet_id: sheetId,
@@ -239,13 +243,6 @@ import { supabase } from '@/integrations/supabase/client';
              unit_price_override,
              active,
              upper_material_product_id,
-             upper_consumption_override,
-             lining_material_product_id,
-             lining_consumption_override,
-             insole_material_product_id,
-             insole_consumption_override,
-             sole_material_product_id,
-             sole_consumption_override,
              display_order: variants.length,
            },
          });
