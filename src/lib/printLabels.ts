@@ -486,7 +486,7 @@ ${LABEL_PRINT_HARDENING}
 .body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
 .photo-frame{flex:1;border:3px solid #000;background:#fff;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 .photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
-.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#fff;color:#000;border:1px solid #000;font-size:8px;font-weight:800;padding:1px 4px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+.photo-fallback-badge{position:absolute;top:6px;left:6px;z-index:2;background:#fff;color:#000;border:1px solid #000;font-size:8.5px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap;line-height:1;font-family:'JetBrains Mono',monospace;}
 .cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
 .cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;line-height:1.1;color:#C00000;}
 
