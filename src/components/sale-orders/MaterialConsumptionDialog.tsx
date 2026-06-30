@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon, Scissors, CheckCircle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
@@ -58,6 +59,31 @@ const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forra�
 // Normalização de texto (lowercase + sem acento) — usada no match de cor do
 // estoque e no match de OS já gerada de corte de cabedal.
 const normTxt = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// ── Formatação de quantidade pt-BR (DISPLAY-ONLY) ──────────────────────────
+// Aditiva e pura — NÃO mexe em formatUnit (compartilhado com o PDF). par/un/
+// placa = inteiro com separador de milhar; área/linear/massa/volume = 2 casas.
+// Corrige "2208.00 PAR" → "2.208" e "6399.39" → "6.399,39".
+const INTEGER_UNITS = new Set(['par', 'un', 'placa']);
+const formatQty = (value: number, unit: string): string => {
+  const isInt = INTEGER_UNITS.has((unit || '').toLowerCase());
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: isInt ? 0 : 2,
+    maximumFractionDigits: isInt ? 0 : 2,
+  }).format(Number(value) || 0);
+};
+const pluralizeItens = (n: number) => `${n} ${n === 1 ? 'item' : 'itens'}`;
+
+// Disponível efetivo da linha (espelha EXATAMENTE o cálculo do render: solado
+// soma o stock_grade; demais usam `available`). Fonte única pro contador de
+// escassez, o subtotal por seção e o status da linha — zero lógica nova.
+const rowAvailable = (r: ConsumptionRow): number =>
+  r.componentType === 'Solado'
+    ? Object.values(r.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0)
+    : (r.available ?? 0);
+// "Em falta" = largura conhecida E disponível < necessário (mesma regra do render).
+const rowIsShort = (r: ConsumptionRow): boolean =>
+  !r.widthMissing && rowAvailable(r) < r.totalQuantity;
 
 /* ── Terceirização do Corte de Cabedal ─────────────────────────────────────
  * Itens do PV cuja ficha técnica NÃO tem tiras (has_straps !== true) passam
@@ -122,12 +148,19 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
               const have = Object.values(r.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0);
               const ok = have >= r.totalQuantity;
               return (
-                <TableRow key={i} className={ok ? 'bg-green-500/10' : 'bg-red-500/10'}>
-                  <TableCell className="font-medium">{r.groupName}</TableCell>
+                <TableRow key={i}>
+                  <TableCell className={`font-medium ${!ok ? 'border-l-2 border-red-500/60' : ''}`}>{r.groupName}</TableCell>
                   <TableCell>{r.color}</TableCell>
-                  <TableCell className="text-right font-mono font-bold">{r.totalQuantity.toFixed(2)}</TableCell>
-                  <TableCell className={`text-right font-mono font-semibold ${ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>{have.toFixed(0)}</TableCell>
-                  <TableCell className="text-center"><Badge variant="outline" className="text-xs">par</Badge></TableCell>
+                  <TableCell className="text-right font-mono font-bold tabular-nums">{formatQty(r.totalQuantity, 'par')}</TableCell>
+                  <TableCell className="text-right" aria-label={ok ? 'em estoque' : 'em falta'}>
+                    <span className="inline-flex items-center justify-end gap-1">
+                      {ok
+                        ? <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                        : <WarningIcon weight="fill" className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />}
+                      <span className={`font-mono tabular-nums font-semibold ${ok ? 'text-foreground' : 'text-red-600 dark:text-red-400'}`}>{formatQty(have, 'par')}</span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center text-xs text-muted-foreground">par</TableCell>
                 </TableRow>
               );
             })}
@@ -164,21 +197,22 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
                     <TableCell
                       key={s}
                       title={`Necessário ${need} · Em estoque ${Math.round(have * 10) / 10}`}
-                      className={`text-center font-mono font-semibold tabular-nums ${ok ? 'bg-green-500/15 text-green-700 dark:text-green-400' : 'bg-red-500/15 text-red-700 dark:text-red-400'}`}
+                      aria-label={ok ? `${s}: em estoque` : `${s}: em falta`}
+                      className={`text-center font-mono font-semibold tabular-nums ${ok ? 'text-foreground' : 'text-red-600 dark:text-red-400 border-b-2 border-red-500/60'}`}
                     >
-                      {need}
+                      {formatQty(need, 'par')}
                     </TableCell>
                   );
                   });
                 })()}
-                <TableCell className="text-right font-mono font-bold whitespace-nowrap">{total} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
+                <TableCell className="text-right font-mono font-bold tabular-nums whitespace-nowrap">{formatQty(total, 'par')} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
               </TableRow>
             );
           })}
           <TableRow className="bg-muted/40 font-semibold">
             <TableCell>Total por numeração</TableCell>
-            {sizes.map((s) => <TableCell key={s} className="text-center font-mono tabular-nums">{totalsBySize[s] || 0}</TableCell>)}
-            <TableCell className="text-right font-mono">{Object.values(totalsBySize).reduce((s, v) => s + v, 0)} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
+            {sizes.map((s) => <TableCell key={s} className="text-center font-mono tabular-nums">{formatQty(totalsBySize[s] || 0, 'par')}</TableCell>)}
+            <TableCell className="text-right font-mono tabular-nums">{formatQty(Object.values(totalsBySize).reduce((s, v) => s + v, 0), 'par')} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
           </TableRow>
         </TableBody>
       </Table>
@@ -210,7 +244,7 @@ function SoleSection({ rows }: { rows: ConsumptionRow[] }) {
       {bySole.map(({ sole, color, rows: soleRows }) => (
         <div key={`${sole}|||${color}`} className="space-y-1 keep-together">
           <div className="text-xs font-semibold flex items-center gap-2">
-            <span className="inline-block rounded bg-muted px-2 py-0.5 text-foreground">{sole}</span>
+            <span className="inline-block rounded-sm border border-border px-2 py-0.5 text-foreground">{sole}</span>
             <span className="text-muted-foreground font-normal">{color}</span>
           </div>
           <SoleMatrix rows={soleRows} />
@@ -743,6 +777,10 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     return map;
   }, [rows]);
 
+  // Contagem de linhas EM FALTA — mesma regra do render (rowIsShort). Alimenta
+  // o chip de escassez da toolbar e o contador por seção. Presentation-only.
+  const emFaltaCount = useMemo(() => rows.filter(rowIsShort).length, [rows]);
+
   const formatUnit = (unit: string) => {
     const labels: Record<string, string> = {
       metro: 'm',
@@ -936,19 +974,32 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                 </div>
               </div>
             )}
-            <div className="flex items-center justify-between">
-              <div className="flex flex-wrap gap-2">
-                {Array.from(totalsByUnit.entries()).map(([unit, total]) => (
-                  <Badge key={unit} variant="secondary" className="text-sm px-3 py-1">
-                    {total.toFixed(2)} {formatUnit(unit)}
-                  </Badge>
+            <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                {/* Totais por unidade — stat enxuto (mono tabular) no lugar de pills cinza iguais */}
+                {Array.from(totalsByUnit.entries()).map(([unit, total], i) => (
+                  <div key={unit} className="flex items-center gap-1.5">
+                    {i > 0 && <Separator orientation="vertical" className="h-4" />}
+                    <span className="font-mono tabular-nums font-semibold text-foreground">{formatQty(total, unit)}</span>
+                    <span className="text-xs text-muted-foreground">{formatUnit(unit)}</span>
+                  </div>
                 ))}
-                <Badge variant="outline" className="text-sm px-3 py-1">
-                  {rows.length} item(ns)
-                </Badge>
-                <span className="flex items-center gap-2 text-xs text-muted-foreground ml-1">
-                  <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-green-500/40 border border-green-500/60" /> em estoque</span>
-                  <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-red-500/40 border border-red-500/60" /> em falta</span>
+                <Separator orientation="vertical" className="h-4" />
+                <span className="text-xs text-muted-foreground">{pluralizeItens(rows.length)}</span>
+                {/* Chip de escassez — o ÚNICO elemento colorido da toolbar */}
+                {emFaltaCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400">
+                    <WarningIcon weight="fill" className="h-3 w-3" />{emFaltaCount} em falta
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
+                    <CheckCircle weight="fill" className="h-3 w-3" />tudo em estoque
+                  </span>
+                )}
+                {/* Legenda = espelho do tratamento das linhas (ícone+texto, não só cor) */}
+                <span className="flex items-center gap-2 text-[11px] text-muted-foreground ml-1">
+                  <span className="flex items-center gap-1"><CheckCircle weight="fill" className="h-3 w-3 text-green-600 dark:text-green-400" /> em estoque</span>
+                  <span className="inline-flex items-center gap-1 rounded-sm px-1 bg-red-500/10 text-red-600 dark:text-red-400"><WarningIcon weight="fill" className="h-3 w-3" /> falta</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -962,10 +1013,23 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             </div>
 
             {Array.from(grouped.entries()).map(([componentType, componentRows]) => (
-              <div key={componentType} className="space-y-1">
-                {componentType !== 'Todos' && (
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{componentType}</h3>
-                )}
+              <div key={componentType} className="space-y-1.5">
+                {componentType !== 'Todos' && (() => {
+                  // Subtotal por unidade da seção (reusa a lógica do PDF; só display).
+                  const subt = new Map<string, number>();
+                  for (const r of componentRows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
+                  const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
+                  const short = componentRows.filter(rowIsShort).length;
+                  return (
+                    <div className="flex items-baseline justify-between gap-3 border-b border-border/60 pb-1">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-foreground">{componentType}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {subtotal}
+                        {short > 0 && <span className="text-red-600 dark:text-red-400 font-medium"> · {short} em falta</span>}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {componentType === 'Solado'
                   ? <SoleSection rows={componentRows} />
                   : (
@@ -985,7 +1049,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                         <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('totalQuantity')}>
                           <span className="flex items-center justify-end">Consumo Total <SortIcon col="totalQuantity" /></span>
                         </TableHead>
-                        <TableHead className="text-right w-28">Em estoque</TableHead>
+                        <TableHead className="text-right w-36">Em estoque</TableHead>
                         <TableHead className="text-center w-24 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('productUnit')}>
                           <span className="flex items-center justify-center">Unidade <SortIcon col="productUnit" /></span>
                         </TableHead>
@@ -997,16 +1061,13 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                         // enganoso, então a linha fica neutra (o aviso âmbar permanece).
                         const known = !row.widthMissing;
                         // Na visão por COR o solado também cai nesta tabela genérica
-                        // (a seção é uma cor, não "Solado"); usa o total do stock_grade
-                        // como disponível em vez de `available` (que é undefined p/ solado).
-                        const avail = row.componentType === 'Solado'
-                          ? Object.values(row.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0)
-                          : (row.available ?? 0);
+                        // (a seção é uma cor, não "Solado"); rowAvailable usa o total do
+                        // stock_grade como disponível em vez de `available` (undefined p/ solado).
+                        const avail = rowAvailable(row);
                         const ok = avail >= row.totalQuantity;
-                        const rowBg = !known ? '' : ok ? 'bg-green-500/10' : 'bg-red-500/10';
                         return (
-                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`} className={rowBg}>
-                          <TableCell className="font-medium">
+                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
+                          <TableCell className={`font-medium ${known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
                             <div className="flex items-center gap-1.5">
                               {row.widthMissing && (
                                 <TooltipProvider delayDuration={150}>
@@ -1028,21 +1089,36 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                           </TableCell>
                           <TableCell>{row.materialName}</TableCell>
                           <TableCell>{row.color}</TableCell>
-                          <TableCell className="text-right font-mono font-bold">
-                            {row.totalQuantity.toFixed(2)}
+                          <TableCell className="text-right font-mono font-bold tabular-nums">
+                            {formatQty(row.totalQuantity, row.productUnit)}
                             {row.artisanal && (
                               <div className="text-[10px] font-normal text-muted-foreground mt-0.5 whitespace-nowrap">
-                                ≈ {row.artisanal.baseQty.toFixed(2)} m {row.artisanal.baseName}
+                                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
                                 <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className={`text-right font-mono font-semibold ${!known ? 'text-muted-foreground' : ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                            {!known ? '—' : avail.toFixed(2)}
+                          <TableCell className="text-right" aria-label={!known ? 'largura não cadastrada' : ok ? 'em estoque' : 'em falta'}>
+                            {!known ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : ok ? (
+                              <span className="inline-flex items-center justify-end gap-1">
+                                <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                                <span className="font-mono tabular-nums text-foreground">{formatQty(avail, row.productUnit)}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-end gap-1 flex-wrap">
+                                <span className="font-mono tabular-nums text-red-600 dark:text-red-400">{formatQty(avail, row.productUnit)}</span>
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] font-medium bg-red-500/10 text-red-600 dark:text-red-400"
+                                  title={`Faltam ${formatQty(row.totalQuantity - avail, row.productUnit)} ${formatUnit(row.productUnit)}`}
+                                >
+                                  <WarningIcon weight="fill" className="h-3 w-3" />falta
+                                </span>
+                              </span>
+                            )}
                           </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="outline" className="text-xs">{formatUnit(row.productUnit)}</Badge>
-                          </TableCell>
+                          <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
                         </TableRow>
                       ); })}
                     </TableBody>
