@@ -322,10 +322,22 @@ export default function OrdersSummary() {
 
   if (isError) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-        <AlertTriangle className="h-10 w-10 text-destructive" />
-        <p className="font-semibold text-foreground">Falha ao carregar dados</p>
-        <p className="text-sm text-muted-foreground">Verifique sua conexão e recarregue a página.</p>
+      <div className="space-y-5 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PEDIDOS · RESUMO"
+          title="Resumo de Produção"
+          description="Resumo consolidado das ordens de produção"
+        />
+        <EmptyState
+          icon={AlertTriangle}
+          title="Erro ao carregar o resumo"
+          description="Verifique sua conexão e recarregue a página."
+          action={
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Recarregar
+            </Button>
+          }
+        />
       </div>
     );
   }

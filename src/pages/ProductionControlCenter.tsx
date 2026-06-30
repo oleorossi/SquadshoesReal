@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // ─── Setores monitorados ───────────────────────────────────────────────────
 
@@ -453,9 +454,12 @@ export default function ProductionControlCenter() {
             flush
           >
               {bottlenecks.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-6 italic">
-                  Nenhum gargalo per-ficha detectado nas próximas {WEEKS_TO_SHOW} semanas. 🎉
-                </p>
+                <EmptyState
+                  icon={CheckCircle2}
+                  title="Nenhum gargalo detectado"
+                  description={`Capacidade das fichas folgada nas próximas ${WEEKS_TO_SHOW} semanas.`}
+                  size="sm"
+                />
               ) : (
                 <div className="divide-y divide-border/50">
                   {bottlenecks.slice(0, 50).map((b, i) => (
@@ -493,7 +497,12 @@ export default function ProductionControlCenter() {
           {/* OSes terceirizadas ativas */}
           <Panel title={`OSes terceirizadas ativas (${activeOutsourceOses.length})`} flush>
               {activeOutsourceOses.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-6 italic">Sem OSes em aberto.</p>
+                <EmptyState
+                  icon={Truck}
+                  title="Nenhuma OS em aberto"
+                  description="OSes terceirizadas ativas aparecem aqui assim que forem criadas."
+                  size="sm"
+                />
               ) : (
                 <div className="divide-y divide-border/50">
                   {activeOutsourceOses.map((os: any) => (
@@ -574,13 +583,11 @@ function AlertsSection({ alerts }: { alerts: any[] }) {
       </div>
 
       {alerts.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center space-y-2">
-            <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-500/40" />
-            <p className="text-sm text-muted-foreground">Nenhum alerta ativo. 🎉</p>
-            <p className="text-xs text-muted-foreground">Alertas críticos param de aparecer aqui quando você dispensa ou quando o gargalo é resolvido.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={CheckCircle2}
+          title="Nenhum alerta ativo"
+          description="Alertas críticos param de aparecer aqui quando você dispensa ou quando o gargalo é resolvido."
+        />
       ) : (
         <div className="space-y-2">
           {alerts.map((a: any) => (
@@ -705,13 +712,11 @@ function OutsourceHistorySection() {
   if (isLoading) return <p className="text-xs text-muted-foreground">Carregando…</p>;
   if (stats.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center space-y-2">
-          <Award className="h-10 w-10 mx-auto text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">Nenhum histórico de terceirização ainda.</p>
-          <p className="text-xs text-muted-foreground">Após criar e concluir OSes, o ranking aparece aqui.</p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Award}
+        title="Nenhum histórico de terceirização ainda"
+        description="Após criar e concluir OSes, o ranking de costureiras / terceirizados aparece aqui."
+      />
     );
   }
 

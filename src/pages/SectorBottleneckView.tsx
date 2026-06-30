@@ -6,9 +6,10 @@ import { Panel } from '@/components/ui/panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import {
-  Factory, Warning, Gauge, Lightning, CaretRight, CalendarBlank, Lock,
+  Factory, Warning, Gauge, Lightning, CaretRight, CalendarBlank, Lock, ClipboardText,
 } from '@phosphor-icons/react';
 import { useSectorPeriodLoad, type SectorPeriodLoad } from '@/hooks/useSectorPeriodLoad';
 import type { DailySeverity } from '@/lib/sectorCapacity';
@@ -202,7 +203,12 @@ function SectorDrill({ sector, period }: { sector: SectorPeriodLoad; period: str
       )}
       <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Planejadas no período ({sector.ops.length})</p>
       {sector.ops.length === 0 ? (
-        <p className="py-3 text-center text-xs text-muted-foreground">Sem OPs planejadas neste setor no período.</p>
+        <EmptyState
+          icon={ClipboardText}
+          size="sm"
+          title="Sem OPs planejadas"
+          description="Nenhuma OP planejada neste setor no período selecionado."
+        />
       ) : (
         <div className="space-y-1">
           {sector.ops.map((o) => (

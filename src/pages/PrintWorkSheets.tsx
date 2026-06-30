@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
 import { format, parseISO } from 'date-fns';
@@ -382,18 +383,24 @@ export default function PrintWorkSheets() {
           ) : isError ? (
             // Erro ≠ lista vazia: antes o erro de rede caía no empty state
             // ("Nenhuma OP encontrada") e o usuário achava que não havia OPs.
-            <div className="text-center py-8 space-y-2">
-              <p className="text-sm text-red-600">
-                ⚠ Falha ao carregar as OPs — verifique a conexão.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => refetch()}>
-                Tentar novamente
-              </Button>
-            </div>
+            <EmptyState
+              size="sm"
+              icon={AlertTriangle}
+              title="Erro ao carregar as OPs"
+              description="Verifique a conexão e tente novamente."
+              action={
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                  Tentar novamente
+                </Button>
+              }
+            />
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8 italic">
-              Nenhuma OP encontrada com esse filtro.
-            </p>
+            <EmptyState
+              size="sm"
+              icon={FileText}
+              title="Nenhuma OP encontrada"
+              description="Ajuste os filtros de status, PV ou a busca para encontrar OPs."
+            />
           ) : (
             <div className="border rounded-md overflow-hidden">
               <table className="w-full text-xs">

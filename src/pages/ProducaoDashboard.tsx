@@ -135,7 +135,14 @@ export default function ProducaoDashboard() {
             <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-6">
               <Panel title={<span className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" /> Ordens em Andamento</span>}>
                   <div className="space-y-4">
-                    {data.opProgress.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma OP ativa</p> : data.opProgress.map(op => (
+                    {data.opProgress.length === 0 ? (
+                      <EmptyState
+                        size="sm"
+                        icon={ClipboardList}
+                        title="Nenhuma OP ativa"
+                        description="Não há ordens em produção no momento."
+                      />
+                    ) : data.opProgress.map(op => (
                       <div key={op.id} className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <div className="min-w-0">

@@ -3,12 +3,13 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Panel } from '@/components/ui/panel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { SectorStageActions } from '@/components/production/SectorStageActions';
@@ -294,11 +295,13 @@ export default function Montagem() {
 
       {/* Orders list */}
       {montagemOrders.length === 0 ? (
-        <EmptyState
-          icon={Layers}
-          title="Nenhuma OP com montagem pendente"
-          description="Não há ordens de produção aguardando montagem no momento."
-        />
+        <Panel flush>
+          <EmptyState
+            icon={ClipboardText}
+            title="Nenhuma OP com montagem pendente"
+            description="Não há ordens de produção aguardando montagem no momento."
+          />
+        </Panel>
       ) : (
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">

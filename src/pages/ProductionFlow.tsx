@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { SignedImage } from '@/components/ui/signed-image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, MagnifyingGlass as Search,
   Check, CircleNotch as Loader2, Circle, Minus,
@@ -260,7 +261,16 @@ export default function ProductionFlow({ embedded = false }: { embedded?: boolea
             </thead>
             <tbody>
               {filteredRows.length === 0 ? (
-                <tr><td colSpan={SECTORS.length + 2} className="text-center text-sm text-muted-foreground italic py-10">Nenhuma OP em produção.</td></tr>
+                <tr>
+                  <td colSpan={SECTORS.length + 2} className="p-0">
+                    <EmptyState
+                      icon={Package}
+                      title={search ? 'Nenhuma OP encontrada' : 'Nenhuma OP em produção'}
+                      description={search ? 'Ajuste a busca por OP, referência, cliente ou PV.' : 'Quando houver ordens reservadas ou em produção, elas aparecerão aqui.'}
+                      size="sm"
+                    />
+                  </td>
+                </tr>
               ) : (
                 filteredRows.map((r) => (
                   <tr key={r.id} className="border-b border-border/50 hover:bg-muted/20">
