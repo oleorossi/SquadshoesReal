@@ -178,22 +178,36 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
   </section>`;
 }
 
-export function printPayrollBundle(params: {
+export type PayrollDocs = { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean };
+
+/**
+ * Monta o HTML do documento (sem abrir janela). Fonte ÚNICA usada tanto pela
+ * impressão (`printPayrollBundle`) quanto pela PRÉVIA ao vivo no app (iframe
+ * `srcDoc`) — assim a prévia é byte-a-byte o que sai na impressão.
+ * `autoPrint: false` omite o script de auto-impressão (pra prévia em iframe).
+ * Retorna '' quando não há nada pra renderizar.
+ */
+export function buildPayrollHtml(params: {
   periodTitle: string;
-  docs: { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean };
+  docs: PayrollDocs;
   employees: BundleEmployee[];
-}): void {
+  autoPrint?: boolean;
+}): string {
   const { periodTitle, docs, employees } = params;
-  if (employees.length === 0) return;
+  if (employees.length === 0) return '';
 
   const sections: string[] = [];
   if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
   if (docs.folha) sections.push(folhaSection(employees, periodTitle));
   if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
   if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
-  if (sections.length === 0) return;
+  if (sections.length === 0) return '';
 
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/>
+  const printScript = params.autoPrint === false
+    ? ''
+    : '<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>';
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/>
   <title>Documentos · Folha · ${esc(periodTitle)}</title>
   <style>
     * { box-sizing: border-box; }
@@ -215,9 +229,17 @@ export function printPayrollBundle(params: {
     .totais span { font-size: 10px; color: #6b7280; text-transform: uppercase; }
     .totais strong { font-size: 13px; }
     @media print { body { margin: 0; } @page { margin: 14mm; } }
-  </style></head><body>${sections.join('')}
-  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>
+  </style></head><body>${sections.join('')}${printScript}
   </body></html>`;
+}
+
+export function printPayrollBundle(params: {
+  periodTitle: string;
+  docs: PayrollDocs;
+  employees: BundleEmployee[];
+}): void {
+  const html = buildPayrollHtml(params);
+  if (!html) return;
 
   const w = window.open('', '_blank');
   if (!w) return; // popup bloqueado
