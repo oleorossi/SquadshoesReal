@@ -173,16 +173,18 @@ function silkLogoSvg(silk: string, size: number): string {
 /** Build HTML string for box identification labels (rótulo Caixa Externa).
  *
  * Formato 198×132mm — 2 etiquetas empilhadas verticalmente por folha A4 portrait
- * com 6mm de margem de corte entre elas. Visual amarelo fluor (#FFE94A — ref
- * Tailwind do design system) estilo Beira-Rio/Molekinha redesign:
- *   - HEADER: NF em destaque (Anton 34px sobre faixa preta) + PROG.: <orderNumber> /
- *     FICHA <ficha> como metadata secundária à direita.
- *   - BODY: 2 colunas — esquerda com dados do destinatário (CLIENTE, CNPJ, ENDEREÇO,
- *     BAIRRO, CIDADE, UF + IDENTIF. CLI + PED. COMPRA); direita com foto grande
- *     do produto (~310×240px) em moldura preta 2px + nome da cor abaixo.
+ * com 6mm de margem de corte entre elas. Visual ECONOMIA DE TINTA (2026-06-30,
+ * "Opção 4 — editorial bold"): fundo BRANCO, molduras/divisórias pretas grossas
+ * (3px) e tipografia forte, SEM nenhum preenchimento de área (saiu o amarelo
+ * fluor #FFE94A + todas as faixas pretas).
+ *   - HEADER: NF em destaque (Anton, preto sobre branco) + PEDIDO: <pedido do
+ *     CLIENTE; se ausente, nosso OP> / FICHA <ficha> à direita.
+ *   - BODY: 2 colunas — esquerda com dados do destinatário num GRID 2-col (rótulo
+ *     largura fixa + valor alinhado), CLIENTE em destaque (Anton); direita com
+ *     foto grande do produto em moldura preta 3px + nome da cor abaixo.
  *   - GRADE TABLE: rótulos MARCA/REFERENCIA/TAMANHO/QUANTIDADE à esquerda, valores
  *     em grid à direita. Linha MARCA renderiza SilkMark determinado pelo solado.
- *   - FOOTER: PEDIDO + VOLUME em Anton 28px sobre faixa preta.
+ *   - FOOTER: OP (nosso) + código de barras + VOLUME em Anton, tudo preto/branco.
  *
  * Regra: campo vazio → linha/célula NÃO renderiza (em vez de aparecer "—").
  *
@@ -196,10 +198,10 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
   const fieldRow = (
     label: string,
     val: string | number | undefined | null,
-    opts: { mono?: boolean } = {},
+    opts: { mono?: boolean; big?: boolean } = {},
   ): string => {
     if (val === undefined || val === null || val === '' || val === 0) return '';
-    return `<div class="field${opts.mono ? ' mono' : ''}">
+    return `<div class="field${opts.mono ? ' mono' : ''}${opts.big ? ' big' : ''}">
       <span class="lbl">${escapeHtml(label)}:</span>
       <span class="val">${escapeHtml(String(val))}</span>
     </div>`;
@@ -222,8 +224,11 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // E-M3: sem NF, exibe o rótulo "NF:" com valor vazio (em vez de "—"),
     // mantendo o layout do header íntegro (a célula PROG. continua).
     const nfValue = item.nfe || '';
+    // Topo = PEDIDO DO CLIENTE (o que o cliente reconhece); sem ele, cai no
+    // nosso OP. Pedido do dono 2026-06-30.
+    const pedidoTopo = item.clientOrderNumber || item.orderNumber || '';
     const progParts = [
-      item.orderNumber ? escapeHtml(item.orderNumber) : '',
+      pedidoTopo ? escapeHtml(String(pedidoTopo)) : '',
       item.ficha ? `FICHA ${escapeHtml(item.ficha)}` : '',
     ].filter(Boolean);
     const progValue = progParts.join(' / ') || '—';
@@ -240,7 +245,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       || item.recipientCode
       || '';
     const recipientFields = [
-      fieldRow('CLIENTE', cliente),
+      fieldRow('CLIENTE', cliente, { big: true }),
       fieldRow('CNPJ', item.recipientCnpj),
       fieldRow('ENDEREÇO', item.recipientAddress),
       fieldRow('BAIRRO', item.recipientNeighborhood),
@@ -298,7 +303,9 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const brandLogo = silkLogoSvg(brand.toUpperCase(), 14);
 
     // ─── RODAPÉ PEDIDO / VOLUME ────────────────────────────
-    const pedidoFooter = item.clientOrderNumber || item.orderNumber || '—';
+    // Rodapé = NOSSO OP (produção). O pedido do cliente foi pro topo; aqui fica
+    // o OP pra rastreio interno, sem duplicar o mesmo número em cima e embaixo.
+    const opFooter = item.orderNumber || item.clientOrderNumber || '—';
     const volNumerador = item.boxNumber ?? 1;
     const volDenominador = item.totalBoxes ?? 1;
 
@@ -310,7 +317,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
             <span class="nf-value">${escapeHtml(String(nfValue))}</span>
           </div>
           <div class="prog-cell">
-            <span class="prog-label">PROG.:</span>
+            <span class="prog-label">PEDIDO:</span>
             <span class="prog-value">${progValue}</span>
           </div>
         </div>
@@ -341,8 +348,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
 
         <div class="footer">
           <div class="pedido">
-            <span class="lbl">PEDIDO:</span>
-            <span class="val">${escapeHtml(String(pedidoFooter))}</span>
+            <span class="lbl">OP:</span>
+            <span class="val">${escapeHtml(String(opFooter))}</span>
           </div>
           ${item.barcode ? `<div class="box-bc-wrap"><svg id="bx-${idx}"></svg></div>` : ''}
           <div class="volume">
@@ -421,8 +428,8 @@ ${LABEL_PRINT_HARDENING}
 .page:not(.page-break){break-after:avoid;page-break-after:avoid;}
 
 .label-cx-ext{
-  width:192mm;height:132mm;background:#FFE94A;
-  border:1.5px solid #000;color:#000;
+  width:192mm;height:132mm;background:#fff;
+  border:3px solid #000;color:#000;
   font-family:'Inter Tight',sans-serif;
   display:flex;flex-direction:column;
   page-break-inside:avoid;break-inside:avoid;
@@ -450,33 +457,36 @@ ${LABEL_PRINT_HARDENING}
   .print-footer{display:none !important;}
 }
 
-/* HEADER NF / PROG ─────────────────── */
-.nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:1.5px solid #000;flex-shrink:0;}
-.nf-cell{padding:6px 12px;border-right:1.5px solid #000;display:flex;align-items:baseline;gap:8px;background:#000;color:#FFE94A;}
-.nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
-.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:34px;letter-spacing:0.02em;line-height:1;}
-.prog-cell{padding:6px 12px;display:flex;align-items:baseline;gap:6px;}
-.prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;letter-spacing:0.06em;}
-.prog-cell .prog-value{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;}
+/* HEADER NF / PEDIDO ─────────────────── */
+.nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:3px solid #000;flex-shrink:0;}
+.nf-cell{padding:6px 14px;border-right:3px solid #000;display:flex;align-items:baseline;gap:8px;background:#fff;color:#000;}
+.nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.06em;color:#555;}
+.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:40px;letter-spacing:0.02em;line-height:.92;}
+.prog-cell{padding:6px 14px;display:flex;flex-direction:column;justify-content:center;gap:1px;}
+.prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.06em;color:#555;}
+.prog-cell .prog-value{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:0.02em;line-height:1;}
 
 /* REMETENTE (faixa fina) ───────────── */
-.remetente-row{display:flex;gap:6px;align-items:baseline;padding:3px 12px;border-bottom:1.5px solid #000;background:#000;color:#FFE94A;flex-shrink:0;}
+.remetente-row{display:flex;gap:6px;align-items:baseline;padding:3px 14px;border-bottom:1.5px solid #000;background:#fff;color:#000;flex-shrink:0;}
 .remetente-row .rem-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:0.06em;white-space:nowrap;}
 .remetente-row .rem-val{font-family:'Inter Tight',sans-serif;font-weight:700;font-size:9.5px;line-height:1.15;}
 
 /* CORPO 2 colunas ──────────────────── */
 .body{display:flex;flex:1;min-height:0;}
-.body-left{flex:1.3;border-right:1.5px solid #000;padding:8px 14px;display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:600;}
-.body-left .field{display:flex;gap:6px;align-items:baseline;border-bottom:0.5px solid #000;padding-bottom:1px;line-height:1.25;}
-.body-left .field .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;min-width:76px;}
-.body-left .field .val{font-weight:700;font-size:12px;flex:1;}
+.body-left{flex:1.3;border-right:3px solid #000;padding:8px 14px;display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:600;}
+/* Grid de 2 colunas: rótulo (largura fixa) + valor. Garante a coluna de
+   valores SEMPRE alinhada (fix do alinhamento "torto" 2026-06-30). */
+.body-left .field{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:baseline;border-bottom:0.5px solid #bbb;padding-bottom:2px;line-height:1.25;}
+.body-left .field .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;color:#555;}
+.body-left .field .val{font-weight:700;font-size:12px;}
 .body-left .field.mono .val{font-family:'JetBrains Mono',monospace;}
+.body-left .field.big .val{font-family:'Anton',sans-serif;font-weight:400;font-size:19px;letter-spacing:0.01em;}
 .body-left .gap{height:4px;}
 
 .body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
-.photo-frame{flex:1;border:2px solid #000;background:#FFE94A;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.photo-frame{flex:1;border:3px solid #000;background:#fff;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 .photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
-.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#000;color:#FFE94A;font-size:8px;font-weight:800;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+.photo-fallback-badge{position:absolute;top:2px;left:2px;background:#fff;color:#000;border:1px solid #000;font-size:8px;font-weight:800;padding:1px 4px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
 .cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
 .cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;line-height:1.1;}
 
@@ -485,25 +495,25 @@ ${LABEL_PRINT_HARDENING}
    Garante que cada rótulo (MARCA/REFERENCIA/TAMANHO/QUANTIDADE) compartilhe a
    altura da sua linha de valores (antes eram 2 colunas flex independentes que
    desalinhavam por terem alturas de linha calculadas separadamente). */
-.grade-table{display:grid;border-top:1.5px solid #000;flex-shrink:0;}
-.grade-table > .glabel{border-right:1.5px solid #000;border-bottom:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;display:flex;align-items:center;}
-.grade-table > .glabel.first{background:#000;color:#FFE94A;}
+.grade-table{display:grid;border-top:3px solid #000;flex-shrink:0;}
+.grade-table > .glabel{border-right:1.5px solid #000;border-bottom:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;color:#555;display:flex;align-items:center;}
+.grade-table > .glabel.first{background:#fff;color:#000;}
 .grade-table > .glabel.last{border-bottom:none;}
-.grade-table > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#000;font-size:13px;padding:3px 0;display:flex;align-items:center;justify-content:center;}
-.grade-table > .cell.tam-total{background:#000;color:#FFE94A;}
-.grade-table > .cell.qtd-total{background:#000;color:#FFE94A;font-size:18px;border-bottom:none;}
-.grade-table > .row-marca{grid-column:2 / -1;background:#000;color:#FFE94A;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #FFE94A;}
-.grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.08em;color:#FFE94A;line-height:1;}
-.grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:14px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;display:flex;align-items:center;}
+.grade-table > .cell{text-align:center;border-right:1px solid #000;border-bottom:1px solid #000;font-family:'Anton',sans-serif;font-weight:400;color:#000;font-size:18px;padding:2px 0;display:flex;align-items:center;justify-content:center;}
+.grade-table > .cell.tam-total{background:#fff;color:#000;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;}
+.grade-table > .cell.qtd-total{background:#fff;color:#000;font-size:22px;border-bottom:none;}
+.grade-table > .row-marca{grid-column:2 / -1;background:#fff;color:#000;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #000;}
+.grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:0.06em;color:#000;line-height:1;}
+.grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:15px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;display:flex;align-items:center;}
 
 /* RODAPÉ PEDIDO + VOLUME ──────────── */
-.footer{display:flex;border-top:1.5px solid #000;background:#000;color:#FFE94A;flex-shrink:0;}
-.footer .pedido{flex:1;padding:6px 12px;border-right:1.5px solid #FFE94A;display:flex;align-items:center;gap:8px;}
+.footer{display:flex;border-top:3px solid #000;background:#fff;color:#000;flex-shrink:0;}
+.footer .pedido{flex:1;padding:6px 14px;border-right:3px solid #000;display:flex;align-items:center;gap:8px;}
 .footer .volume{padding:6px 14px;display:flex;align-items:baseline;gap:8px;}
-.footer .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.06em;}
-.footer .val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:0.02em;line-height:1;}
+.footer .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.06em;color:#555;}
+.footer .val{font-family:'Anton',sans-serif;font-size:28px;letter-spacing:0.02em;line-height:1;color:#000;}
 .footer .volume .sep{font-size:16px;}
-.footer .box-bc-wrap{flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding:2px 12px;border-left:1.5px solid #FFE94A;}
+.footer .box-bc-wrap{flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding:2px 12px;border-left:3px solid #000;}
 .footer .box-bc-wrap svg{height:11mm;width:auto;max-width:62mm;}
 
 /* Linha de corte entre as 2 etiquetas (visível só em tela, sumindo em print) */
