@@ -162,3 +162,64 @@ export function PCPSkeleton() {
     </div>
   );
 }
+
+/**
+ * Body-only skeletons (SEM header) — usados junto do <EditorialPageHeader> REAL
+ * montado durante isLoading, pra não piscar o chrome da página (eyebrow/título/
+ * sidebar). Padrão do Lote 1 (auditoria visual 2026-06-30):
+ *
+ *   if (isLoading) return (
+ *     <div className="w-full space-y-6 page-enter">
+ *       <EditorialPageHeader sectionLabel=… title=… description=… />
+ *       <StatGridSkeleton count={4} />
+ *       <TableSkeleton rows={8} />
+ *     </div>
+ *   );
+ */
+export function StatGridSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in duration-300">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-24 rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
+export function TableSkeleton({
+  rows = 8,
+  withToolbar = true,
+}: {
+  rows?: number;
+  withToolbar?: boolean;
+}) {
+  return (
+    <div className="space-y-4 animate-in fade-in duration-300">
+      {withToolbar && (
+        <div className="flex gap-2 justify-between flex-wrap">
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-32 rounded-md" />
+            <Skeleton className="h-9 w-24 rounded-md" />
+          </div>
+          <Skeleton className="h-9 w-56 rounded-md" />
+        </div>
+      )}
+      <div className="rounded-lg border overflow-hidden">
+        <div className="bg-muted/40 px-4 py-2.5 flex gap-4">
+          {[16, 120, 90, 80, 70].map((w, i) => (
+            <Skeleton key={i} className="h-3 rounded" style={{ width: w }} />
+          ))}
+        </div>
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="px-4 py-3.5 flex gap-4 border-t items-center">
+            <Skeleton className="h-4 w-4 rounded" />
+            <Skeleton className="h-4 w-32 rounded" />
+            <Skeleton className="h-4 w-24 rounded" />
+            <Skeleton className="h-5 w-20 rounded-full" />
+            <Skeleton className="h-7 w-16 rounded ml-auto" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

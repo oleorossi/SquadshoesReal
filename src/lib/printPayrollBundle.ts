@@ -178,22 +178,54 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
   </section>`;
 }
 
-export function printPayrollBundle(params: {
+export type PayrollDocs = { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean };
+
+/**
+ * Monta o HTML do documento (sem abrir janela). Fonte ÚNICA usada tanto pela
+ * impressão (`printPayrollBundle`) quanto pela PRÉVIA ao vivo no app (iframe
+ * `srcDoc`) — assim a prévia é byte-a-byte o que sai na impressão.
+ * `autoPrint: false` omite o script de auto-impressão (pra prévia em iframe).
+ * Retorna '' quando não há nada pra renderizar.
+ */
+export function buildPayrollHtml(params: {
   periodTitle: string;
-  docs: { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean };
+  docs: PayrollDocs;
   employees: BundleEmployee[];
-}): void {
+  autoPrint?: boolean;
+  /** 'employee' (padrão): relatórios gerais (Folha/Setor) 1× no topo, depois o
+   *  pacote de cada funcionário (Calendário + Holerite) JUNTO — impressão
+   *  funcionário-a-funcionário. 'type': todos do tipo A, depois do tipo B. */
+  groupBy?: 'employee' | 'type';
+}): string {
   const { periodTitle, docs, employees } = params;
-  if (employees.length === 0) return;
+  if (employees.length === 0) return '';
+  const groupBy = params.groupBy ?? 'employee';
 
   const sections: string[] = [];
+  // Relatórios gerais (agregados do período) saem 1× no topo nos dois modos.
   if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
   if (docs.folha) sections.push(folhaSection(employees, periodTitle));
-  if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
-  if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
-  if (sections.length === 0) return;
+  if (groupBy === 'employee') {
+    // Pacote por pessoa: Calendário + Holerite do MESMO funcionário fluem
+    // JUNTOS numa página só (wrapper .emp); a quebra acontece só ENTRE
+    // funcionários — sem desperdiçar uma folha por documento.
+    employees.forEach(e => {
+      const empDocs: string[] = [];
+      if (docs.calendario) empDocs.push(calendarSection(e, periodTitle));
+      if (docs.holerite) empDocs.push(holeriteSection(e, periodTitle));
+      if (empDocs.length) sections.push(`<section class="emp">${empDocs.join('')}</section>`);
+    });
+  } else {
+    if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
+    if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
+  }
+  if (sections.length === 0) return '';
 
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/>
+  const printScript = params.autoPrint === false
+    ? ''
+    : '<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>';
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/>
   <title>Documentos · Folha · ${esc(periodTitle)}</title>
   <style>
     * { box-sizing: border-box; }
@@ -201,8 +233,14 @@ export function printPayrollBundle(params: {
     h2 { font-family: 'Anton', Impact, sans-serif; font-size: 18px; text-transform: uppercase;
          letter-spacing: .5px; margin: 0 0 4px; border-bottom: 2px solid #000; padding-bottom: 4px; }
     .sub { font-size: 12px; color: #374151; margin: 0 0 10px; }
-    .doc { page-break-inside: avoid; margin-bottom: 28px; }
-    .doc + .doc { page-break-before: always; }
+    .doc { page-break-inside: avoid; margin-bottom: 18px; }
+    /* Pacote do funcionário (Calendário + Holerite) numa página só; quebra só
+       ENTRE funcionários. Relatórios gerais (Folha/Setor) ficam antes e fluem
+       naturalmente. Sem página em branco no começo (:first-child). */
+    .emp { page-break-before: always; break-before: page; page-break-inside: avoid; }
+    .emp:first-child { page-break-before: avoid; break-before: auto; }
+    .emp > .doc { margin-bottom: 14px; }
+    .emp > .doc:last-child { margin-bottom: 0; }
     table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.grid th, table.grid td { border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; }
     table.grid th { background: #1f2937; color: #fff; text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
@@ -215,9 +253,18 @@ export function printPayrollBundle(params: {
     .totais span { font-size: 10px; color: #6b7280; text-transform: uppercase; }
     .totais strong { font-size: 13px; }
     @media print { body { margin: 0; } @page { margin: 14mm; } }
-  </style></head><body>${sections.join('')}
-  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>
+  </style></head><body>${sections.join('')}${printScript}
   </body></html>`;
+}
+
+export function printPayrollBundle(params: {
+  periodTitle: string;
+  docs: PayrollDocs;
+  employees: BundleEmployee[];
+  groupBy?: 'employee' | 'type';
+}): void {
+  const html = buildPayrollHtml(params);
+  if (!html) return;
 
   const w = window.open('', '_blank');
   if (!w) return; // popup bloqueado

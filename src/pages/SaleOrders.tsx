@@ -55,6 +55,7 @@ import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
@@ -93,6 +94,21 @@ const STATUS_DOT: Record<string, string> = {
   'Concluído': 'bg-green-500',
   'Finalizado s/ NF': 'bg-amber-500',
   'Cancelado': 'bg-destructive',
+};
+
+// Tom sutil (5%) da faixa full-bleed do header da prévia, por status — espelha a
+// semântica de STATUS_DOT. Status colors em alpha baixo são permitidas (CLAUDE.md);
+// default neutro pra status desconhecido.
+const STATUS_BAND: Record<string, string> = {
+  'Rascunho': 'bg-muted/40',
+  'Pendente': 'bg-yellow-500/5',
+  'Aprovado': 'bg-emerald-500/5',
+  'Em Produção': 'bg-blue-500/5',
+  'Faturado': 'bg-violet-500/5',
+  'Expedido': 'bg-cyan-500/5',
+  'Concluído': 'bg-green-500/5',
+  'Finalizado s/ NF': 'bg-amber-500/5',
+  'Cancelado': 'bg-destructive/5',
 };
 
 const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
@@ -1440,7 +1456,17 @@ export default function SaleOrders() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="w-full space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · PV"
+          title="Pedidos de Venda"
+          description="Gestão comercial e geração de ordens de produção"
+        />
+        <StatGridSkeleton count={4} />
+        <TableSkeleton rows={8} />
+      </div>
+    );
   }
 
   if (isError) {
@@ -2192,7 +2218,11 @@ export default function SaleOrders() {
       {/* ORDER DETAILS DIALOG */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="space-y-0">
+            <div className={cn(
+              "-mx-6 -mt-6 rounded-t-lg border-b px-6 py-4",
+              STATUS_BAND[selectedOrder?.status || ''] || 'bg-muted/30'
+            )}>
             <div className="flex items-start justify-between gap-4 gap-y-3 flex-wrap">
               <div className="min-w-0">
                 <p className="eyebrow">Comercial · Pedido de Venda</p>
@@ -2229,13 +2259,15 @@ export default function SaleOrders() {
                 </div>
               )}
             </div>
+            </div>
             <DialogDescription className="sr-only">Detalhes, totais e ações do pedido {selectedOrder?.order_number || ''}</DialogDescription>
           </DialogHeader>
 
           {selectedOrder && (
             <div className="space-y-4 mt-3">
               {/* Toolbar de ações do PV */}
-              <div className="flex items-center gap-2 flex-wrap border-y py-2.5">
+              <div className="flex items-center gap-2 flex-wrap border-b py-2.5">
+                <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Operação">
                   {isAdmin && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
                       Sem esse botão, o usuário só conseguia aprovar via "Gerar OPs"
@@ -2313,6 +2345,9 @@ export default function SaleOrders() {
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
+                </div>
+                <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
+                <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Impressão e documentos">
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printOperatorFichas(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }} title="Fichas de operador (Corte Forração / Aviamento / Montagem) geradas do pedido — N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Fichas Operador</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
@@ -2331,6 +2366,7 @@ export default function SaleOrders() {
                   >
                     <Tag className="h-3.5 w-3.5" /> Etiquetas
                   </Button>
+                </div>
               </div>
 
               <div className="rounded-lg border bg-muted/30 overflow-hidden">
