@@ -1471,11 +1471,18 @@ export default function SaleOrders() {
 
   if (isError) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-        <AlertTriangle className="h-8 w-8 text-destructive" />
-        <p className="text-destructive font-medium">Erro ao carregar pedidos</p>
-        <p className="text-sm text-muted-foreground">{error?.message || 'Tente recarregar a página'}</p>
-        <Button variant="outline" onClick={() => window.location.reload()}>Recarregar</Button>
+      <div className="w-full space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · PV"
+          title="Pedidos de Venda"
+          description="Gestão comercial e geração de ordens de produção"
+        />
+        <EmptyState
+          icon={AlertTriangle}
+          title="Erro ao carregar pedidos"
+          description={error?.message || 'Tente recarregar a página.'}
+          action={<Button variant="outline" onClick={() => window.location.reload()}>Recarregar</Button>}
+        />
       </div>
     );
   }
