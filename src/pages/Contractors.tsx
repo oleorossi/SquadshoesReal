@@ -96,6 +96,11 @@ const emptyOrder: Partial<ServiceOrder> & { materials_sent: MaterialSent[] } = {
 const STATUS_CHIPS: { value: string; label: string }[] = [
   { value: 'active', label: 'Ativas' },
   { value: 'all', label: 'Todas' },
+  // "Na rua" e "Atrasados" vieram da antiga aba "Na Rua" (fundida aqui em
+  // 2026-06-30). Filtram por pares em campo (qty_in_field) + prazo vencido —
+  // tratados à parte de matchesStatusChip (precisam do overview/prazo).
+  { value: 'na_rua', label: 'Na rua' },
+  { value: 'atrasados', label: 'Atrasados' },
   { value: 'Pendente', label: 'Pendente' },
   { value: 'Em Andamento', label: 'Em Processamento' },
   { value: 'Concluído', label: 'Entregue' },
@@ -413,11 +418,46 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
   }, [orders, search]);
 
+  // ── Operacional "Na rua" (fundido da antiga aba, 2026-06-30) ──────────────
+  // "Na rua" = OS com pares ainda em campo (overview.qty_in_field > 0).
+  // "Atrasados" = na rua E com prazo (quoted_deadline) vencido.
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const osInField = useCallback(
+    (o: ServiceOrder) => Number(osOverview?.get(o.id)?.qty_in_field ?? 0) > 0,
+    [osOverview],
+  );
+  const osLate = useCallback(
+    (o: ServiceOrder) => osInField(o) && !!o.quoted_deadline && o.quoted_deadline < todayISO,
+    [osInField, todayISO],
+  );
+  const matchChip = useCallback((o: ServiceOrder, chip: string) => {
+    if (chip === 'na_rua') return osInField(o);
+    if (chip === 'atrasados') return osLate(o);
+    return matchesStatusChip(o.status, chip);
+  }, [osInField, osLate]);
+
   const statusChipCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const chip of STATUS_CHIPS) counts[chip.value] = searchedOrders.filter(o => matchesStatusChip(o.status, chip.value)).length;
+    for (const chip of STATUS_CHIPS) counts[chip.value] = searchedOrders.filter(o => matchChip(o, chip.value)).length;
     return counts;
-  }, [searchedOrders]);
+  }, [searchedOrders, matchChip]);
+
+  // KPIs operacionais "na rua" (pares em campo + OS atrasadas) — substituem os
+  // cards da antiga aba "Na Rua".
+  const fieldStats = useMemo(() => {
+    let itens = 0, pares = 0, atrasados = 0;
+    for (const o of orders) {
+      const inf = Number(osOverview?.get(o.id)?.qty_in_field ?? 0);
+      if (inf > 0) {
+        itens++; pares += inf;
+        if (o.quoted_deadline && o.quoted_deadline < todayISO) atrasados++;
+      }
+    }
+    return { itens, pares, atrasados };
+  }, [orders, osOverview, todayISO]);
 
   // OS → linha do relatório de custos (pagamento/vencimento vêm do overview).
   const toOsCostRow = useCallback((o: ServiceOrder): CostReportRow => {
@@ -440,7 +480,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   const filteredOrders = useMemo(
     () => searchedOrders.filter(o => {
-      if (!matchesStatusChip(o.status, statusFilter)) return false;
+      if (!matchChip(o, statusFilter)) return false;
       if (contractorFilter !== 'all' && o.contractor_id !== contractorFilter) return false;
       if (osFromDate || osToDate) {
         const r = toOsCostRow(o);
@@ -448,7 +488,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       }
       return true;
     }),
-    [searchedOrders, statusFilter, contractorFilter, osFromDate, osToDate, osBasis, toOsCostRow],
+    [searchedOrders, statusFilter, matchChip, contractorFilter, osFromDate, osToDate, osBasis, toOsCostRow],
   );
 
   const selectedOrders = useMemo(() => orders.filter(o => selectedOsIds.has(o.id)), [orders, selectedOsIds]);
@@ -1271,6 +1311,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         <StatGrid>
           <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} hint={`${contractors.length} total`} />
           <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} hint={`${stats.inProgressOrders} em andamento`} tone="warning" />
+          {/* Operacional "na rua" (fundido da antiga aba): pares em campo + atrasados */}
+          {fieldStats.itens > 0 && (
+            <StatCard icon={Truck} label="Na rua" value={fieldStats.pares} hint={`${fieldStats.itens} OS em campo`} />
+          )}
+          {fieldStats.atrasados > 0 && (
+            <StatCard icon={AlertTriangle} label="Atrasados" value={fieldStats.atrasados} hint="OS com prazo vencido" tone="destructive" />
+          )}
           {/* OS criadas por gargalo aguardando contratada confirmar prazo —
               cada uma dessas mantém uma OP bloqueada de avançar pra Montagem. */}
           {(stats.pendingQuotes > 0 || stats.blockedOps > 0) && (
@@ -1525,6 +1572,17 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           <div className="flex min-w-0 flex-col gap-0.5">
                             <OsPaymentBadge ov={osOverview?.get(o.id)} />
                             <OsBalanceLine ov={osOverview?.get(o.id)} />
+                            {/* Prazo/atraso da remessa em campo (fundido da Na Rua) */}
+                            {osInField(o) && o.quoted_deadline && (() => {
+                              const due = o.quoted_deadline!;
+                              const lateDays = Math.round(
+                                (new Date(todayISO + 'T00:00:00').getTime() - new Date(due + 'T00:00:00').getTime()) / 86400000,
+                              );
+                              const fmt = `${due.slice(8, 10)}/${due.slice(5, 7)}`;
+                              if (lateDays > 0) return <span className="text-[11px] font-semibold text-red-600">Atrasado +{lateDays}d · prazo {fmt}</span>;
+                              if (lateDays === 0) return <span className="text-[11px] font-semibold text-amber-600">Vence hoje · {fmt}</span>;
+                              return <span className="text-[11px] text-muted-foreground">Na rua · vence {fmt}</span>;
+                            })()}
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
                             {isBottleneckOS && active && isPendingReceive && (

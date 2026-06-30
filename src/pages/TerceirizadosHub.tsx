@@ -28,11 +28,10 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-  Truck, ChartBar as BarChart3, ClipboardText as ClipboardList,
+  ChartBar as BarChart3, ClipboardText as ClipboardList,
   ChartLineUp, Users, Tag,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import OutsourcedInFieldPage from './OutsourcedInField';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
@@ -41,12 +40,16 @@ const TRIGGER = 'gap-1.5 text-xs data-[state=active]:bg-background data-[state=a
 
 // Abas servidas pelo componente Contractors (uma única instância controlada).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
-const VALID_TABS = new Set(['rua', ...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
-const DEFAULT_TAB = 'rua';
+const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
+const DEFAULT_TAB = 'orders';
 
 export default function TerceirizadosHub() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const requested = searchParams.get('tab') ?? '';
+  // "Na Rua" foi FUNDIDA em "Ordens de Serviço" (2026-06-30): o acompanhamento
+  // em campo virou os chips "Na rua"/"Atrasados" + KPIs dentro da própria OS.
+  // Links/bookmarks antigos (?tab=rua) redirecionam pra Ordens de Serviço.
+  const requestedRaw = searchParams.get('tab') ?? '';
+  const requested = requestedRaw === 'rua' ? 'orders' : requestedRaw;
   const [tab, setTab] = useState<string>(VALID_TABS.has(requested) ? requested : DEFAULT_TAB);
 
   useEffect(() => {
@@ -61,15 +64,10 @@ export default function TerceirizadosHub() {
     );
   };
 
-  // "Nova OS" UNIFICADA: qualquer aba (ex.: "Na Rua") que peça criar OS abre o
-  // ÚNICO formulário canônico, que vive na aba "Ordens de Serviço" (Contractors).
-  // Troca pra essa aba + sinaliza o Contractors a abrir o form (com contratada
-  // opcional pré-selecionada). Acaba com o formulário duplicado/divergente.
+  // "Nova OS" abre o ÚNICO formulário canônico (aba Ordens de Serviço). Mantido
+  // o canal openCreateOS pra eventuais chamadas externas; sem a aba "Na Rua",
+  // hoje a criação parte da própria Ordens de Serviço.
   const [pendingCreateOS, setPendingCreateOS] = useState<{ contractorId?: string } | null>(null);
-  const requestCreateOS = (contractorId?: string) => {
-    setPendingCreateOS({ contractorId });
-    onTabChange('orders');
-  };
 
   return (
     <div className="space-y-5 page-enter">
@@ -81,9 +79,6 @@ export default function TerceirizadosHub() {
       <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
         <TabsList className="h-auto flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-lg">
           {/* OPERACIONAL */}
-          <TabsTrigger value="rua" className={TRIGGER}>
-            <Truck className="h-3.5 w-3.5" /> Na Rua
-          </TabsTrigger>
           <TabsTrigger value="orders" className={TRIGGER}>
             <ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço
           </TabsTrigger>
@@ -104,9 +99,6 @@ export default function TerceirizadosHub() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rua">
-          <OutsourcedInFieldPage embedded onRequestCreateOS={requestCreateOS} />
-        </TabsContent>
         <TabsContent value="cobertura">
           <TerceirizacaoCoberturaPanel />
         </TabsContent>
