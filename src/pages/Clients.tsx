@@ -425,7 +425,7 @@ export default function Clients() {
                       {(!group || !isCollapsed) && (
                         <Table>
                           <TableHeader>
-                            <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                            <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
                               <TableHead className="w-8">
                                 <Checkbox
                                   checked={gc.length > 0 && gc.every(c => sel.isSelected(c.id))}
@@ -459,7 +459,7 @@ export default function Clients() {
                                     aria-label={`Selecionar ${c.razao_social}`}
                                   />
                                 </TableCell>
-                                <TableCell className="font-mono text-xs text-muted-foreground">{(c as any).client_number || '—'}</TableCell>
+                                <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">{(c as any).client_number || '—'}</TableCell>
                                 <TableCell className="font-medium">
                                   <div className="flex items-center gap-1.5">
                                     <button onClick={(e) => { e.stopPropagation(); updateClient.mutate({ id: c.id, data: { is_favorite: !c.is_favorite } }); }} className="shrink-0">
@@ -471,9 +471,9 @@ export default function Clients() {
                                     </div>
                                   </div>
                                 </TableCell>
-                                <TableCell className="font-mono text-sm">{c.cnpj || '—'}</TableCell>
+                                <TableCell className="font-mono text-sm tabular-nums">{c.cnpj || '—'}</TableCell>
                                 <TableCell className="text-sm">{[c.cidade, c.estado].filter(Boolean).join('/') || '—'}</TableCell>
-                                <TableCell className="text-sm">{c.telefone || '—'}</TableCell>
+                                <TableCell className="text-sm tabular-nums">{c.telefone || '—'}</TableCell>
                                 <TableCell className="text-sm">{c.email || '—'}</TableCell>
                                 <TableCell className="text-right text-sm tabular-nums">
                                   {c.credit_limit > 0
@@ -518,7 +518,7 @@ export default function Clients() {
               >
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
+                    <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
                       <TableHead className="w-24">Nº</TableHead>
                       <TableHead>Nome</TableHead>
                       <TableHead>Descrição</TableHead>
@@ -532,7 +532,7 @@ export default function Clients() {
                       // Clique na linha abre a tela 360° (gestão completa). Pencil = edit rápido inline.
                       return (
                         <TableRow key={g.id} className="group cursor-pointer hover:bg-muted/50 transition-colors" onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; navigate(`/grupos-economicos/${g.id}`); }}>
-                          <TableCell className="font-mono text-xs text-muted-foreground">{g.group_number || '—'}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">{g.group_number || '—'}</TableCell>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-1.5">
                               <button onClick={(e) => { e.stopPropagation(); updateGroup.mutate({ id: g.id, data: { name: g.name, description: g.description || '', is_favorite: !g.is_favorite } as any }); }} className="shrink-0">
@@ -542,7 +542,7 @@ export default function Clients() {
                             </div>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">{g.description || '—'}</TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center tabular-nums">
                             <Badge variant="secondary">{count}</Badge>
                           </TableCell>
                           <TableCell className="text-right">

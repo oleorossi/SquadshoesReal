@@ -313,13 +313,13 @@ export default function BottlenecksPage() {
         >
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+              <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                 <TableHead>Setor</TableHead>
                 <TableHead>Semana</TableHead>
-                <TableHead className="text-right">OPs</TableHead>
-                <TableHead className="text-right">Pares</TableHead>
-                <TableHead className="text-right">Capacidade</TableHead>
-                <TableHead className="text-right">Utilização</TableHead>
+                <TableHead className="text-right tabular-nums">OPs</TableHead>
+                <TableHead className="text-right tabular-nums">Pares</TableHead>
+                <TableHead className="text-right tabular-nums">Capacidade</TableHead>
+                <TableHead className="text-right tabular-nums">Utilização</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -332,7 +332,7 @@ export default function BottlenecksPage() {
                 return (
                   <TableRow
                     key={`${b.sector}-${b.week_start}`}
-                    className="cursor-pointer hover:bg-muted/30"
+                    className="cursor-pointer hover:bg-muted/30 transition-colors"
                     onClick={() => setSelected(b)}
                   >
                     <TableCell className="text-xs font-medium">{SECTOR_LABEL[b.sector]}</TableCell>
@@ -346,8 +346,8 @@ export default function BottlenecksPage() {
                     <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
                       {b.total_capacity_week.toLocaleString('pt-BR')}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline" className={cn('text-xs', style.pct, style.cell.replace('hover:border', 'border'))}>
+                    <TableCell className="text-right tabular-nums">
+                      <Badge variant="outline" className={cn('text-xs tabular-nums', style.pct, style.cell.replace('hover:border', 'border'))}>
                         {b.utilization_pct}%
                       </Badge>
                     </TableCell>

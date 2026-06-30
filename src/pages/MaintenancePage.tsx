@@ -281,9 +281,9 @@ export default function MaintenancePage() {
           >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Nome</TableHead>
-                    <TableHead>Código</TableHead>
+                    <TableHead className="tabular-nums">Código</TableHead>
                     <TableHead>Setor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead />
@@ -291,9 +291,9 @@ export default function MaintenancePage() {
                 </TableHeader>
                 <TableBody>
                   {equipment.map(eq => (
-                    <TableRow key={eq.id}>
+                    <TableRow key={eq.id} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium">{eq.name}</TableCell>
-                      <TableCell>{eq.code || "—"}</TableCell>
+                      <TableCell className="tabular-nums">{eq.code || "—"}</TableCell>
                       <TableCell>{eq.sector || "—"}</TableCell>
                       <TableCell>{statusBadge(eq.status)}</TableCell>
                       <TableCell className="text-right space-x-1">
@@ -327,21 +327,21 @@ export default function MaintenancePage() {
           >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <TableHead>Equipamento</TableHead>
                     <TableHead>Descrição</TableHead>
-                    <TableHead>Frequência</TableHead>
-                    <TableHead>Próxima</TableHead>
+                    <TableHead className="tabular-nums">Frequência</TableHead>
+                    <TableHead className="tabular-nums">Próxima</TableHead>
                     <TableHead>Responsável</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {plans.map(p => (
-                    <TableRow key={p.id} className={p.next_due_at && isPast(new Date(p.next_due_at)) ? "bg-destructive/5" : ""}>
+                    <TableRow key={p.id} className={`hover:bg-muted/30 transition-colors ${p.next_due_at && isPast(new Date(p.next_due_at)) ? "bg-destructive/5" : ""}`}>
                       <TableCell className="font-medium">{(p.equipment as any)?.name || "—"}</TableCell>
                       <TableCell>{p.description}</TableCell>
-                      <TableCell>{p.frequency_days}d</TableCell>
-                      <TableCell>{dueBadge(p.next_due_at)}</TableCell>
+                      <TableCell className="tabular-nums">{p.frequency_days}d</TableCell>
+                      <TableCell className="tabular-nums">{dueBadge(p.next_due_at)}</TableCell>
                       <TableCell>{p.responsible || "—"}</TableCell>
                     </TableRow>
                   ))}
@@ -396,19 +396,19 @@ export default function MaintenancePage() {
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                    <TableHead>Data</TableHead>
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                    <TableHead className="tabular-nums">Data</TableHead>
                     <TableHead>Equipamento</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Descrição</TableHead>
-                    <TableHead>Custo</TableHead>
+                    <TableHead className="tabular-nums">Custo</TableHead>
                     <TableHead>Executor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredLogs.map(l => (
-                    <TableRow key={l.id}>
-                      <TableCell>{format(new Date(l.performed_at), "dd/MM/yy", { locale: ptBR })}</TableCell>
+                    <TableRow key={l.id} className="hover:bg-muted/30 transition-colors">
+                      <TableCell className="tabular-nums">{format(new Date(l.performed_at), "dd/MM/yy", { locale: ptBR })}</TableCell>
                       <TableCell className="font-medium">{(l.equipment as any)?.name || "—"}</TableCell>
                       <TableCell>
                         <Badge variant={l.type === "corretiva" ? "destructive" : "default"}>
@@ -416,7 +416,7 @@ export default function MaintenancePage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{l.description}</TableCell>
-                      <TableCell>R$ {Number(l.cost).toFixed(2)}</TableCell>
+                      <TableCell className="tabular-nums">R$ {Number(l.cost).toFixed(2)}</TableCell>
                       <TableCell>{l.performed_by || "—"}</TableCell>
                     </TableRow>
                   ))}

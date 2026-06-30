@@ -1865,7 +1865,7 @@ export default function SaleOrders() {
           >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10">
                     <Checkbox
                       checked={selectedIds.size === filteredOrders.length && filteredOrders.length > 0}
@@ -1876,9 +1876,9 @@ export default function SaleOrders() {
                   <TableHead>Nº Cliente</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Cidade</TableHead>
-                  {canSeeFinancialValues && <TableHead className="text-right">Total</TableHead>}
+                  {canSeeFinancialValues && <TableHead className="text-right tabular-nums">Total</TableHead>}
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Pares</TableHead>
+                  <TableHead className="text-right tabular-nums">Pares</TableHead>
                   <TableHead>Entrega / Fat.</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -1969,7 +1969,7 @@ export default function SaleOrders() {
                           <span className="text-xs text-muted-foreground uppercase font-medium">{formatDate(order.created_at)}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
+                      <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">
                         {order.client_order_number || '—'}
                       </TableCell>
                       <TableCell>
@@ -1989,7 +1989,7 @@ export default function SaleOrders() {
                         </div>
                       </TableCell>
                       {canSeeFinancialValues && (
-                        <TableCell className="text-right">
+                        <TableCell className="text-right tabular-nums">
                           <div className="flex flex-col items-end">
                             <span className="font-mono font-bold text-sm text-primary">{formatCurrency(Number(order.total))}</span>
                           </div>
@@ -2026,12 +2026,12 @@ export default function SaleOrders() {
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell className="text-right text-xs font-mono font-semibold">
+                      <TableCell className="text-right text-xs font-mono font-semibold tabular-nums">
                         {(pairsBySaleOrder[order.id] || 0).toLocaleString('pt-BR')}
                       </TableCell>
                       <TableCell
                         className={cn(
-                          'text-xs',
+                          'text-xs tabular-nums',
                           (isOverdue || isInfeasible) ? 'text-destructive font-semibold' : 'text-muted-foreground'
                         )}
                         title={

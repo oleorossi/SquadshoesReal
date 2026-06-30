@@ -40,7 +40,7 @@ function K230Row({ k }: { k: BlocoKK230 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <TableRow>
+      <TableRow className="hover:bg-muted/30 transition-colors">
         <TableCell className="text-xs font-mono">{k.cod_doc_op}</TableCell>
         <TableCell className="font-medium">{k.cod_item}{k.descr && k.descr !== k.cod_item && <span className="block text-[11px] text-muted-foreground">{k.descr}</span>}</TableCell>
         <TableCell className="text-xs">{fmtDate(k.dt_ini)} → {fmtDate(k.dt_fin)}</TableCell>
@@ -179,11 +179,11 @@ export default function BlocoK() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                     <TableHead>Doc. OP</TableHead>
                     <TableHead>Item produzido</TableHead>
                     <TableHead>Período</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
+                    <TableHead className="text-right tabular-nums">Qtd</TableHead>
                     <TableHead>Insumos (K235)</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -200,16 +200,16 @@ export default function BlocoK() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                     <TableHead>Cód. item</TableHead>
                     <TableHead>Descrição</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
+                    <TableHead className="text-right tabular-nums">Qtd</TableHead>
                     <TableHead>Ind. estoque</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {result.k200.map((s, i) => (
-                    <TableRow key={i}>
+                    <TableRow key={i} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="text-xs font-mono">{s.cod_item}</TableCell>
                       <TableCell>{s.descr}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtQtd(s.qtd)}</TableCell>
@@ -227,17 +227,17 @@ export default function BlocoK() {
         <Panel eyebrow="HISTÓRICO" title="Gerações registradas" flush>
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                 <TableHead>Arquivo</TableHead>
                 <TableHead>Período</TableHead>
-                <TableHead className="text-right">Registros</TableHead>
+                <TableHead className="text-right tabular-nums">Registros</TableHead>
                 <TableHead>Gerado em</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {history.map((h) => (
-                <TableRow key={h.id}>
+                <TableRow key={h.id} className="hover:bg-muted/30 transition-colors">
                   <TableCell className="text-xs font-mono">{h.filename}</TableCell>
                   <TableCell className="text-xs">{fmtDate(h.period_start)} – {fmtDate(h.period_end)}</TableCell>
                   <TableCell className="text-right tabular-nums">{h.total_records}</TableCell>
