@@ -38,6 +38,54 @@ interface Props {
   sizeBand?: SizeBand;
 }
 
+/** Trilho do fluxo (10 setores canônicos) — wayfinding no topo da ficha.
+ *  Print-safe P&B: passos cumpridos = quadrado PREENCHIDO, atual = quadrado
+ *  preenchido com nº (white-on-black) e contorno duplo, pendentes = contorno.
+ *  (Sem cor — a fábrica imprime laser P&B; vermelho viraria cinza.) */
+const FLOW_RAIL_STEPS = ['C.PLM', 'C.FOR', 'COST', 'AVIA', 'SILK', 'COLA', 'MONT', 'SOLA', 'ACAB', 'EXP'] as const;
+
+const FlowRail = ({ current }: { current: number }) => (
+  <div className="flex items-stretch gap-[3px] mb-0.5" aria-label={`Setor ${current} de 10 no fluxo`}>
+    {FLOW_RAIL_STEPS.map((label, i) => {
+      const step = i + 1;
+      const done = step < current;
+      const isCur = step === current;
+      return (
+        <div
+          key={label}
+          className="flex-1 flex flex-col items-center"
+          style={{ minWidth: 0 }}
+        >
+          <div
+            style={{
+              width: '100%',
+              height: isCur ? 9 : 6,
+              border: '1px solid #000',
+              background: done || isCur ? '#000' : '#fff',
+              outline: isCur ? '1px solid #000' : 'none',
+              outlineOffset: 1,
+              WebkitPrintColorAdjust: 'exact',
+              printColorAdjust: 'exact',
+            } as React.CSSProperties}
+          />
+          <span
+            className="uppercase leading-none mt-0.5"
+            style={{
+              fontFamily: "'Fira Code', monospace",
+              fontSize: 6.5,
+              letterSpacing: '0.02em',
+              fontWeight: isCur ? 700 : 500,
+              color: isCur || done ? '#000' : '#9a958c',
+            }}
+          >
+            {label}
+          </span>
+        </div>
+      );
+    })}
+  </div>
+);
+
 /**
  * Header padronizado pra todas as fichas de operador — design Industrial Editorial Minimalist.
  *
@@ -55,6 +103,9 @@ export const WorksheetHeader = ({
   imageSlot, identification, qrLabel, qrValue, alerts, index, lotInfo, sizeBand,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
+  // Passo do fluxo (1–10) pro trilho: lê o nº à frente do index ("03 / SILK" → 3).
+  const flowStep = parseInt(editorialIndex, 10);
+  const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 10;
   return (
     <div className="mb-1 text-black keep-together keep-with-next">
       {/* Sector title bar — top of the page (per user feedback May/2026) */}
@@ -96,6 +147,9 @@ export const WorksheetHeader = ({
           {editorialIndex}
         </span>
       </div>
+
+      {/* Trilho do fluxo (exemplo 1 da melhoria estética 2026-06-30) */}
+      {hasFlow && <FlowRail current={flowStep} />}
 
       {/* Hero row — top hairline rules, no fills */}
       <div className="flex items-stretch gap-3 border-t border-b border-black py-1">

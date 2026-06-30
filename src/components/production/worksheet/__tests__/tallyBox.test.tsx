@@ -15,19 +15,19 @@ import { TallyBox } from '../TallyBox';
  * nenhuma linha maior que o nº de colunas, sem chunk de 60).
  */
 
-/** Quadrados renderizados, em ordem, lidos do DOM. */
+/** Quadrados renderizados, em ordem, lidos do DOM.
+ *  Desde a melhoria estética 2026-06-30 cada linha agrupa as caixas em DEZENAS
+ *  (divs com divisória) + um acumulado "← N" no fim — então a caixa é marcada
+ *  com [data-tally-box] em vez de ser filha direta da linha. */
 function boxNumbers(container: HTMLElement): number[] {
-  // Cada quadrado é um div folha com texto numérico dentro de uma linha.
-  const rows = Array.from(container.querySelectorAll('.keep-together')).filter(
-    (el) => (el as HTMLElement).style.display === 'flex' && el.parentElement?.style.flexDirection === 'column',
+  return Array.from(container.querySelectorAll('[data-tally-box]')).map(
+    (box) => Number((box as HTMLElement).textContent),
   );
-  const nums: number[] = [];
-  for (const row of rows) {
-    for (const box of Array.from(row.children)) {
-      nums.push(Number((box as HTMLElement).textContent));
-    }
-  }
-  return nums;
+}
+
+/** Nº de caixas por linha (ignora as divs de dezena e o acumulado "← N"). */
+function boxesPerRow(rows: HTMLElement[]): number[] {
+  return rows.map((r) => r.querySelectorAll('[data-tally-box]').length);
 }
 
 /** Linhas atômicas (`.keep-together` que são filhas diretas do container coluna). */
@@ -59,7 +59,7 @@ describe('TallyBox — paginação por linha', () => {
     const rows = tallyRows(container);
     // Cada linha cabe ~24 quadrados (md) — 90 caixas = 4 linhas, nenhuma com 60.
     expect(rows.length).toBeGreaterThan(1);
-    const perRow = rows.map((r) => r.children.length);
+    const perRow = boxesPerRow(rows);
     expect(Math.max(...perRow)).toBeLessThanOrEqual(25); // jamais um "chunk" de 60
     // soma fecha com o total
     expect(perRow.reduce((a, b) => a + b, 0)).toBe(90);
@@ -72,13 +72,13 @@ describe('TallyBox — paginação por linha', () => {
   it('size="sm" cabe MAIS quadrados por linha que size="md" (caixa menor)', () => {
     const sm = tallyRows(render(<TallyBox count={120} size="sm" />).container);
     const md = tallyRows(render(<TallyBox count={120} size="md" />).container);
-    expect(sm[0].children.length).toBeGreaterThan(md[0].children.length);
+    expect(boxesPerRow(sm)[0]).toBeGreaterThan(boxesPerRow(md)[0]);
   });
 
   it('toda linha cheia tem a mesma largura lógica (nº de colunas estável)', () => {
     const { container } = render(<TallyBox count={200} />);
     const rows = tallyRows(container);
-    const full = rows.slice(0, -1).map((r) => r.children.length);
+    const full = boxesPerRow(rows.slice(0, -1));
     expect(new Set(full).size).toBe(1);
     // 200 quadrados não cabem numa única linha (prova que pagina por linha)
     expect(rows.length).toBeGreaterThan(5);

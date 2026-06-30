@@ -16,13 +16,14 @@ import React from 'react';
 export const CompletionFooter = () => (
   <div
     className="keep-together keep-with-previous mt-3"
-    style={{ border: '1.5px solid #000', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
+    style={{ display: 'flex', alignItems: 'stretch', fontFamily: "'Fira Sans', sans-serif", color: '#000' }}
   >
-    <div className="grid grid-cols-3">
+    {/* Campos pra preencher à caneta */}
+    <div className="grid grid-cols-3" style={{ flex: 1, border: '1.5px solid #000' }}>
       {[
-        { label: 'Executado por', width: 'auto' },
-        { label: 'Data', width: 'auto' },
-        { label: 'Visto do responsável', width: 'auto' },
+        { label: 'Executado por' },
+        { label: 'Data' },
+        { label: 'Total conferido' },
       ].map((f, i) => (
         <div
           key={f.label}
@@ -38,6 +39,32 @@ export const CompletionFooter = () => (
           <div style={{ borderBottom: '1.5px solid #000', height: 22, marginTop: 4 }} />
         </div>
       ))}
+    </div>
+    {/* Selo de conclusão — visto do responsável + carimbo/data */}
+    <div
+      style={{
+        width: 150,
+        border: '1.5px solid #000',
+        borderLeft: 'none',
+        padding: '5px 10px 7px',
+        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+      }}
+    >
+      <span
+        className="font-mono uppercase"
+        style={{ fontSize: '7.5px', letterSpacing: '0.18em', color: '#000', fontWeight: 700 }}
+      >
+        Visto do responsável
+      </span>
+      <span
+        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: 18, letterSpacing: '0.02em', lineHeight: 1, marginTop: 3, textTransform: 'uppercase' }}
+      >
+        Concluído
+      </span>
+      <div style={{ borderBottom: '1.5px solid #000', height: 15, marginTop: 5 }} />
     </div>
   </div>
 );

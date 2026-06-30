@@ -90,7 +90,12 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // conservador garante que a linha (sem wrap, nº fixo de colunas) NUNCA estoure
   // na horizontal — seja no tally top-level (Expedição) ou aninhado num card.
   const ROW_WIDTH_PX = 710;
-  const cols = Math.max(1, Math.floor((ROW_WIDTH_PX + gapPx) / (boxPx + gapPx)));
+  const rawCols = Math.max(1, Math.floor((ROW_WIDTH_PX + gapPx) / (boxPx + gapPx)));
+  // Arredonda PRA BAIXO ao múltiplo de 10 (mín 10) pra alinhar as DEZENAS —
+  // cada linha vira N dezenas completas, com divisória a cada 10 + acumulado
+  // no fim da linha (melhoria estética 2026-06-30, aprovada). Facilita marcar
+  // à caneta sem perder a conta no turno.
+  const cols = rawCols >= 10 ? Math.floor(rawCols / 10) * 10 : rawCols;
   const rows: number[][] = [];
   for (let i = 0; i < count; i += cols) {
     rows.push(
@@ -115,25 +120,60 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
         className={cn('border-t border-black', size === 'sm' ? 'pt-1' : 'pt-2')}
         style={{ display: 'flex', flexDirection: 'column', gap: gapPx }}
       >
-        {rows.map((row, ri) => (
-          <div key={ri} className="keep-together" style={{ display: 'flex', gap: gapPx }}>
-            {row.map((n) => (
-              <div
-                key={n}
-                className="flex items-center justify-center bg-white text-black font-mono font-bold leading-none"
+        {rows.map((row, ri) => {
+          // Agrupa a linha em DEZENAS (chunks de 10) com divisória reforçada
+          // (2px) entre elas + acumulado no fim da linha.
+          const decades: number[][] = [];
+          for (let d = 0; d < row.length; d += 10) decades.push(row.slice(d, d + 10));
+          const rowLast = row[row.length - 1];
+          return (
+            <div key={ri} className="keep-together" style={{ display: 'flex', alignItems: 'center' }}>
+              {decades.map((dec, di) => (
+                <div
+                  key={di}
+                  style={{
+                    display: 'flex',
+                    gap: gapPx,
+                    paddingRight: di < decades.length - 1 ? gapPx * 2 : 0,
+                    marginRight: di < decades.length - 1 ? gapPx : 0,
+                    borderRight: di < decades.length - 1 ? '2px solid #000' : 'none',
+                  }}
+                >
+                  {dec.map((n) => (
+                    <div
+                      key={n}
+                      data-tally-box=""
+                      className="flex items-center justify-center bg-white text-black font-mono font-bold leading-none"
+                      style={{
+                        width: boxPx,
+                        height: boxPx,
+                        border: '1.5px solid #000',
+                        fontSize: getFontSize(n),
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {n}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <span
+                className="font-mono leading-none"
                 style={{
-                  width: boxPx,
-                  height: boxPx,
-                  border: '1.5px solid #000',
-                  fontSize: getFontSize(n),
+                  marginLeft: 'auto',
+                  paddingLeft: gapPx * 3,
+                  fontSize: size === 'sm' ? '8px' : '9px',
+                  color: '#000',
+                  fontWeight: 600,
                   fontVariantNumeric: 'tabular-nums',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                {n}
-              </div>
-            ))}
-          </div>
-        ))}
+                ← {rowLast}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

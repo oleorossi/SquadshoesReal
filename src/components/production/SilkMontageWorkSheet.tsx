@@ -340,7 +340,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 )}
               </th>
             ))}
-            <th className="section-label py-1" style={{ color: '#000', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
+            <th className="section-label py-1" style={{ background: '#000', color: '#fff', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}>Total</th>
           </tr>
         </thead>
         <tbody>
@@ -370,7 +370,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     {perFicha[s] || '—'}
                   </td>
                 ))}
-                <td className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
+                <td className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2, background: '#000', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}>
                   {perFichaTotal}
                 </td>
               </tr>
@@ -403,14 +403,17 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               </td>
             ))}
             <td
-              className="text-black"
               style={{
                 fontFamily: "'Anton', Impact, sans-serif",
                 fontSize: `${ft.displayPx}px`,
                 letterSpacing: '-0.02em',
                 lineHeight: '1.1',
                 padding: `${ft.padY}px 1px`,
-              }}
+                background: '#000',
+                color: '#fff',
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact',
+              } as React.CSSProperties}
             >
               {cg.totalPairs}
             </td>
