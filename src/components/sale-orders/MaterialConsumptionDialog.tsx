@@ -5,7 +5,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon, Scissors, CheckCircle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
@@ -81,9 +80,25 @@ const rowAvailable = (r: ConsumptionRow): number =>
   r.componentType === 'Solado'
     ? Object.values(r.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0)
     : (r.available ?? 0);
-// "Em falta" = largura conhecida E disponível < necessário (mesma regra do render).
-const rowIsShort = (r: ConsumptionRow): boolean =>
-  !r.widthMissing && rowAvailable(r) < r.totalQuantity;
+// Solado é avaliado POR NUMERAÇÃO (igual à matriz): falta se ALGUM número não
+// é coberto pelo stock_grade — distribuído por `buildColAvailability` (mesma
+// função da matriz, conjugadas inclusas). Sem isto, um solado com estoque TOTAL
+// suficiente mas mal distribuído mostrava célula vermelha na matriz e NÃO
+// entrava no contador "em falta" (divergência visível pro usuário).
+const soleRowShort = (r: ConsumptionRow): boolean => {
+  const breakdown = r.sizeBreakdown || {};
+  const sizes = Object.keys(breakdown);
+  if (sizes.length === 0) return rowAvailable(r) < r.totalQuantity;
+  const avail = buildColAvailability(r.soleSizeStock, sizes, breakdown);
+  return sizes.some((s) => (Number(breakdown[s]) || 0) > (Number(avail[s]) || 0));
+};
+// "Em falta" = largura conhecida E (solado: algum número descoberto; demais:
+// disponível < necessário). Espelha o status visível no render.
+const rowIsShort = (r: ConsumptionRow): boolean => {
+  if (r.widthMissing) return false;
+  if (r.componentType === 'Solado') return soleRowShort(r);
+  return rowAvailable(r) < r.totalQuantity;
+};
 
 /* ── Terceirização do Corte de Cabedal ─────────────────────────────────────
  * Itens do PV cuja ficha técnica NÃO tem tiras (has_straps !== true) passam
@@ -155,8 +170,8 @@ function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
                   <TableCell className="text-right" aria-label={ok ? 'em estoque' : 'em falta'}>
                     <span className="inline-flex items-center justify-end gap-1">
                       {ok
-                        ? <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
-                        : <WarningIcon weight="fill" className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />}
+                        ? <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
+                        : <WarningIcon weight="fill" className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" aria-hidden="true" />}
                       <span className={`font-mono tabular-nums font-semibold ${ok ? 'text-foreground' : 'text-red-600 dark:text-red-400'}`}>{formatQty(have, 'par')}</span>
                     </span>
                   </TableCell>
@@ -974,32 +989,35 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                 </div>
               </div>
             )}
-            <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* `-mx-6 px-6` sangra a barra até as bordas cancelando o p-6 do
+                DialogContent; `bg-background` casa com o fundo do dialog (sem
+                emenda de cor no modo escuro). Separadores verticais foram
+                removidos: em wrap a 360px ficavam órfãos no início da linha —
+                o `gap-x-4` já separa os stats. */}
+            <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 {/* Totais por unidade — stat enxuto (mono tabular) no lugar de pills cinza iguais */}
-                {Array.from(totalsByUnit.entries()).map(([unit, total], i) => (
-                  <div key={unit} className="flex items-center gap-1.5">
-                    {i > 0 && <Separator orientation="vertical" className="h-4" />}
+                {Array.from(totalsByUnit.entries()).map(([unit, total]) => (
+                  <span key={unit} className="flex items-center gap-1.5">
                     <span className="font-mono tabular-nums font-semibold text-foreground">{formatQty(total, unit)}</span>
                     <span className="text-xs text-muted-foreground">{formatUnit(unit)}</span>
-                  </div>
+                  </span>
                 ))}
-                <Separator orientation="vertical" className="h-4" />
                 <span className="text-xs text-muted-foreground">{pluralizeItens(rows.length)}</span>
                 {/* Chip de escassez — o ÚNICO elemento colorido da toolbar */}
                 {emFaltaCount > 0 ? (
                   <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400">
-                    <WarningIcon weight="fill" className="h-3 w-3" />{emFaltaCount} em falta
+                    <WarningIcon weight="fill" className="h-3 w-3" aria-hidden="true" />{emFaltaCount} em falta
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
-                    <CheckCircle weight="fill" className="h-3 w-3" />tudo em estoque
+                    <CheckCircle weight="fill" className="h-3 w-3" aria-hidden="true" />tudo em estoque
                   </span>
                 )}
                 {/* Legenda = espelho do tratamento das linhas (ícone+texto, não só cor) */}
-                <span className="flex items-center gap-2 text-[11px] text-muted-foreground ml-1">
-                  <span className="flex items-center gap-1"><CheckCircle weight="fill" className="h-3 w-3 text-green-600 dark:text-green-400" /> em estoque</span>
-                  <span className="inline-flex items-center gap-1 rounded-sm px-1 bg-red-500/10 text-red-600 dark:text-red-400"><WarningIcon weight="fill" className="h-3 w-3" /> falta</span>
+                <span className="flex items-center gap-2 text-xs text-muted-foreground ml-1">
+                  <span className="flex items-center gap-1"><CheckCircle weight="fill" className="h-3 w-3 text-green-600 dark:text-green-400" aria-hidden="true" /> em estoque</span>
+                  <span className="inline-flex items-center gap-1 rounded-sm px-1 bg-red-500/10 text-red-600 dark:text-red-400"><WarningIcon weight="fill" className="h-3 w-3" aria-hidden="true" /> falta</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1103,7 +1121,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                               <span className="text-muted-foreground">—</span>
                             ) : ok ? (
                               <span className="inline-flex items-center justify-end gap-1">
-                                <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                                <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
                                 <span className="font-mono tabular-nums text-foreground">{formatQty(avail, row.productUnit)}</span>
                               </span>
                             ) : (
@@ -1113,7 +1131,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                                   className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] font-medium bg-red-500/10 text-red-600 dark:text-red-400"
                                   title={`Faltam ${formatQty(row.totalQuantity - avail, row.productUnit)} ${formatUnit(row.productUnit)}`}
                                 >
-                                  <WarningIcon weight="fill" className="h-3 w-3" />falta
+                                  <WarningIcon weight="fill" className="h-3 w-3" aria-hidden="true" />falta
                                 </span>
                               </span>
                             )}
