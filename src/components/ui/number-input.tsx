@@ -24,7 +24,6 @@ interface NumberInputProps {
 
 export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit }: NumberInputProps) {
   const [displayValue, setDisplayValue] = React.useState("");
-  const [justFocused, setJustFocused] = React.useState(false);
 
   const formatValue = (num: number | string | null | undefined): string => {
     const safeNum = parseSafeNumber(num);
@@ -48,60 +47,32 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
   }, [value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let raw = e.target.value;
-    
-    // Accept comma as decimal separator (Brazilian locale)
-    raw = raw.replace(',', '.');
-    
-    // If just focused and user starts typing, replace entire value
-    if (justFocused) {
-      setJustFocused(false);
-      if (raw.length > 0 && raw !== displayValue) {
-        const diff = raw.replace(displayValue, "");
-        if (diff.length > 0) {
-          raw = diff;
-        } else if (raw.length <= displayValue.length) {
-          // User replaced selection - use raw as-is
-        } else {
-          raw = raw.slice(-1);
-        }
-      }
-    }
-    
-    // Remove leading zeros (but keep "0." for decimals)
-    let cleaned = raw;
-    if (cleaned.match(/^0\d/) && !cleaned.startsWith("0.")) {
-      cleaned = cleaned.replace(/^0+/, "");
-    }
-    
-    // Allow intermediate states like "0.", "0.0", "0.00" etc.
-    if (cleaned === "" || cleaned === "0" || /^0\.0*$/.test(cleaned) || /^\d*\.?\d*$/.test(cleaned)) {
-      setDisplayValue(cleaned);
-    }
-    
-    const parsed = parseFloat(cleaned);
+    // Vírgula (locale BR) → ponto decimal.
+    let raw = e.target.value.replace(',', '.');
+    // Aceita só dígitos e UM ponto. Rejeita o resto SEM bloquear o decimal
+    // (permite "12.", "0.", "0.0", "0.05" — estados intermediários da digitação).
+    if (!/^\d*\.?\d*$/.test(raw)) return;
+    // Tira zeros à esquerda, mas preserva "0", "0." e "0.x".
+    if (/^0\d/.test(raw)) raw = raw.replace(/^0+/, '');
+    setDisplayValue(raw);
+    const parsed = parseFloat(raw);
     if (Number.isFinite(parsed)) {
       prevValueRef.current = parsed;
       onChange(parsed);
-    } else if (cleaned === "" || cleaned === "0") {
+    } else {
+      // raw vazio ou só "." — vale 0, mas mantém o que o usuário digitou no display.
       prevValueRef.current = 0;
       onChange(0);
     }
   };
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    setJustFocused(true);
-    if (parseSafeNumber(value) === 0) {
-      setDisplayValue("");
-    }
-    // Use setTimeout to ensure select works after React re-render
-    setTimeout(() => {
-      e.target.select();
-    }, 0);
+    // Seleciona tudo: o 1º caractere digitado SUBSTITUI o valor atual (não
+    // concatena). Resolve "comecei a digitar e o número velho não some".
+    e.target.select();
   };
 
   const handleBlur = () => {
-    setJustFocused(false);
     setDisplayValue(formatValue(value));
   };
 
