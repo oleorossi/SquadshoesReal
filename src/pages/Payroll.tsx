@@ -17,7 +17,7 @@ import { computePeriodFolha, getDaysInRange, SALARY_DAY_DIVISOR } from '@/lib/sa
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
-import { printPayrollBundle, buildPayrollHtml } from '@/lib/printPayrollBundle';
+import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin } from '@/lib/printPayrollBundle';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -759,9 +759,9 @@ export default function Payroll() {
           const exp = d.expectedMinutes || 0, w = d.workedMinutes || 0;
           if (exp === 0) return { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
           if (w === 0) return { t: 'falta', c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
-          if ((d.overtimeMinutes || 0) > 0 || w > exp) return { t: '+' + (Math.round((w - exp) / 6) / 10) + 'h', c: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' };
-          if (w < exp) return { t: '−' + (Math.round((exp - w) / 6) / 10) + 'h', c: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' };
-          return { t: Math.round(w / 60) + 'h', c: 'bg-card text-foreground border-border' };
+          if ((d.overtimeMinutes || 0) > 0 || w > exp) return { t: '+' + fmtDeltaMin(w - exp), c: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' };
+          if (w < exp) return { t: '−' + fmtDeltaMin(exp - w), c: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' };
+          return { t: fmtDeltaMin(w), c: 'bg-card text-foreground border-border' };
         };
         return (
           <Panel title={`Calendário de tempo · ${periodTitle}`} flush>

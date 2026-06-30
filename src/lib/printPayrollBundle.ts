@@ -35,6 +35,20 @@ const fmtH = (min: number) => {
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * Delta de tempo do dia (atraso / hora extra) EM MINUTOS — resolve a imprecisão
+ * de exibir "0.1h" (que são 6 min). Mostra "Nmin" abaixo de 1h e "XhYY" a partir
+ * de 1h (ex.: 6 → "6min", 24 → "24min", 72 → "1h12", 318 → "5h18"). Fonte única
+ * usada na grade da tela (Payroll) e na impressão (calendarSection).
+ */
+export const fmtDeltaMin = (mins: number): string => {
+  const m = Math.abs(Math.round(Number(mins) || 0));
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r === 0 ? `${h}h` : `${h}h${String(r).padStart(2, '0')}`;
+};
+
 // ── Consolidado por setor: 1 linha por setor (proventos/descontos/adiant./líquido)
 //    + total geral. Visão gerencial pra fechar a folha por departamento. ────────
 function sectorSummarySection(emps: BundleEmployee[], periodTitle: string): string {
@@ -121,9 +135,9 @@ function calendarSection(e: BundleEmployee, periodTitle: string): string {
     let bg = '#fff', color = '#111', label = '—';
     if (exp === 0) { bg = '#f3f4f6'; color = '#6b7280'; label = '—'; }
     else if (w === 0) { bg = '#fee2e2'; color = '#b91c1c'; label = 'falta'; }
-    else if ((d.overtimeMinutes || 0) > 0 || w > exp) { bg = '#d1fae5'; color = '#047857'; label = '+' + (Math.round((w - exp) / 6) / 10) + 'h'; }
-    else if (w < exp) { bg = '#fef3c7'; color = '#b45309'; label = '−' + (Math.round((exp - w) / 6) / 10) + 'h'; }
-    else { label = Math.round(w / 60) + 'h'; }
+    else if ((d.overtimeMinutes || 0) > 0 || w > exp) { bg = '#d1fae5'; color = '#047857'; label = '+' + fmtDeltaMin(w - exp); }
+    else if (w < exp) { bg = '#fef3c7'; color = '#b45309'; label = '−' + fmtDeltaMin(exp - w); }
+    else { label = fmtDeltaMin(w); }
     const dd = `${String(d.date).slice(8, 10)}/${String(d.date).slice(5, 7)}`;
     return `<td style="background:${bg};color:${color};border:1px solid #d1d5db;padding:4px 2px;text-align:center;width:14.28%;">
       <div style="font-size:9px;opacity:.7;">${dd}</div>
