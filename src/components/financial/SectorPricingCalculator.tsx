@@ -80,6 +80,20 @@ const RATE_SECTORS: { key: string; label: string }[] = [
   { key: 'expedicao', label: SECTOR_LABELS.expedicao },
 ];
 
+// Setores FIXOS do Markup (custo por capacidade/dia) — sempre pré-carregados,
+// nesta ordem (pedido do dono 2026-06-30). Os demais setores continuam
+// disponíveis via "Adicionar setor". O dropdown segue oferecendo RATE_SECTORS
+// inteiro; só o conjunto PADRÃO (estado inicial + "Restaurar setores padrão")
+// passa a ser esses 6.
+const MARKUP_FIXED_SECTORS: { key: string; label: string }[] = [
+  { key: 'corte_palmilha', label: SECTOR_LABELS.corte_palmilha },
+  { key: 'corte_forracao', label: SECTOR_LABELS.corte_forracao },
+  { key: COSTURA_PALMILHA.key, label: COSTURA_PALMILHA.label },
+  { key: 'silk', label: SECTOR_LABELS.silk },
+  { key: 'solagem', label: SECTOR_LABELS.solagem },
+  { key: 'acabamento', label: SECTOR_LABELS.acabamento },
+];
+
 // Jornada-padrão da fábrica (horas/dia). Ajuste aqui se mudar — usada pra
 // derivar pares/hora da capacidade, pares/dia e a diária equivalente.
 const JORNADA_HORAS = DEFAULT_HOURS_PER_DAY; // 8h
@@ -116,7 +130,7 @@ interface Row {
 }
 
 function canonicalRows(startId: number): Row[] {
-  return RATE_SECTORS.map((s, i) => ({
+  return MARKUP_FIXED_SECTORS.map((s, i) => ({
     id: startId + i,
     sectorKey: s.key,
     pairsPerHour: '',
@@ -260,7 +274,7 @@ export default function SectorPricingCalculator() {
 
   const restoreDefaults = () => {
     setRows(canonicalRows(rowId.current));
-    rowId.current += RATE_SECTORS.length;
+    rowId.current += MARKUP_FIXED_SECTORS.length;
   };
 
   // ── Salvar / carregar / excluir ──
@@ -331,7 +345,7 @@ export default function SectorPricingCalculator() {
     setLoadedId(null);
     setEfficiency(String(DEFAULT_EFFICIENCY_PCT));
     setRows(canonicalRows(rowId.current));
-    rowId.current += RATE_SECTORS.length;
+    rowId.current += MARKUP_FIXED_SECTORS.length;
   };
 
   const onDelete = (r: ReferenceSectorPricing) => {
