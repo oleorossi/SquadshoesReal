@@ -192,15 +192,29 @@ export function buildPayrollHtml(params: {
   docs: PayrollDocs;
   employees: BundleEmployee[];
   autoPrint?: boolean;
+  /** 'employee' (padrão): relatórios gerais (Folha/Setor) 1× no topo, depois o
+   *  pacote de cada funcionário (Calendário + Holerite) JUNTO — impressão
+   *  funcionário-a-funcionário. 'type': todos do tipo A, depois do tipo B. */
+  groupBy?: 'employee' | 'type';
 }): string {
   const { periodTitle, docs, employees } = params;
   if (employees.length === 0) return '';
+  const groupBy = params.groupBy ?? 'employee';
 
   const sections: string[] = [];
+  // Relatórios gerais (agregados do período) saem 1× no topo nos dois modos.
   if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
   if (docs.folha) sections.push(folhaSection(employees, periodTitle));
-  if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
-  if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
+  if (groupBy === 'employee') {
+    // Pacote por pessoa: Calendário + Holerite do funcionário, lado a lado.
+    employees.forEach(e => {
+      if (docs.calendario) sections.push(calendarSection(e, periodTitle));
+      if (docs.holerite) sections.push(holeriteSection(e, periodTitle));
+    });
+  } else {
+    if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
+    if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
+  }
   if (sections.length === 0) return '';
 
   const printScript = params.autoPrint === false
@@ -237,6 +251,7 @@ export function printPayrollBundle(params: {
   periodTitle: string;
   docs: PayrollDocs;
   employees: BundleEmployee[];
+  groupBy?: 'employee' | 'type';
 }): void {
   const html = buildPayrollHtml(params);
   if (!html) return;

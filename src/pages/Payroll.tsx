@@ -18,6 +18,7 @@ import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { printPayrollBundle, buildPayrollHtml } from '@/lib/printPayrollBundle';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -110,7 +111,8 @@ export default function Payroll() {
   // Seletor ÚNICO de relatórios: 1 tipo × escopo (todos / um funcionário).
   // Consolida o antigo "Gerar documentos" + "Exportar Excel" + novo "Por setor".
   const [docDialogOpen, setDocDialogOpen] = useState(false);
-  const [reportType, setReportType] = useState<'folha' | 'calendario' | 'holerite' | 'setor' | 'excel'>('folha');
+  // Multi-seleção de relatórios — imprime os marcados NUM ARQUIVO só.
+  const [reportSel, setReportSel] = useState({ folha: false, calendario: true, holerite: true, setor: false });
   const [docScope, setDocScope] = useState<string>('all'); // 'all' ou employee_id
   const [previewIdx, setPreviewIdx] = useState(0); // paginador da prévia em "Todos" (calendário/holerite)
 
@@ -257,42 +259,49 @@ export default function Payroll() {
     };
   }), [runs, employeeMap, comparativo.rows]);
 
-  const reportDocs = (t: typeof reportType) => ({
-    folha: t === 'folha', calendario: t === 'calendario', holerite: t === 'holerite', setor: t === 'setor',
-  });
-  // Escopo "por funcionário" só faz sentido pra folha/calendário/holerite.
-  const scopeApplies = reportType === 'folha' || reportType === 'calendario' || reportType === 'holerite';
-  // Paginador da prévia (1 por vez) só em calendário/holerite com "Todos".
-  const previewPaged = (reportType === 'calendario' || reportType === 'holerite') && docScope === 'all' && bundleEmps.length > 1;
+  // Documentos POR FUNCIONÁRIO (1 por pessoa) × RELATÓRIOS GERAIS (1 do período).
+  const hasPerEmp = reportSel.calendario || reportSel.holerite;
+  const hasAgg = reportSel.folha || reportSel.setor;
+  const anySel = hasPerEmp || hasAgg;
+  // Funcionários do escopo (Todos ou um).
+  const scopeEmps = useMemo(
+    () => (docScope === 'all' ? bundleEmps : bundleEmps.filter(e => e.id === docScope)),
+    [docScope, bundleEmps],
+  );
+  // Prévia pagina por funcionário quando há doc por-funcionário e mais de um no escopo.
+  const previewPaged = hasPerEmp && scopeEmps.length > 1;
 
-  // Funcionários exibidos na PRÉVIA: 1 (escolhido/paginado) em calendário/holerite;
-  // todos (doc único) em folha/por setor.
+  // Funcionários + docs exibidos na PRÉVIA. Paginando: 1 funcionário por vez,
+  // só os docs por-funcionário (Calendário/Holerite). Senão: o escopo inteiro
+  // com os docs selecionados.
   const previewEmps = useMemo(() => {
-    if (reportType === 'excel' || bundleEmps.length === 0) return [];
-    if (reportType === 'folha' || reportType === 'setor') return bundleEmps;
-    if (scopeApplies && docScope !== 'all') return bundleEmps.filter(e => e.id === docScope);
-    return [bundleEmps[Math.min(previewIdx, bundleEmps.length - 1)]];
+    if (!anySel || scopeEmps.length === 0) return [];
+    if (previewPaged) return [scopeEmps[Math.min(previewIdx, scopeEmps.length - 1)]];
+    return scopeEmps;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportType, docScope, bundleEmps, previewIdx, scopeApplies]);
+  }, [anySel, scopeEmps, previewPaged, previewIdx]);
 
-  // HTML da prévia = MESMO do print (autoPrint off pra não imprimir no iframe).
   const previewHtml = useMemo(() => {
-    if (reportType === 'excel' || previewEmps.length === 0) return '';
-    return buildPayrollHtml({ periodTitle, docs: reportDocs(reportType), employees: previewEmps as any, autoPrint: false });
+    if (previewEmps.length === 0) return '';
+    const docs = previewPaged
+      ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite }
+      : reportSel;
+    return buildPayrollHtml({ periodTitle, docs, employees: previewEmps as any, autoPrint: false, groupBy: 'employee' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportType, previewEmps, periodTitle]);
+  }, [previewEmps, previewPaged, reportSel, periodTitle]);
 
-  // Reseta o paginador quando muda o tipo/escopo.
-  useEffect(() => { setPreviewIdx(0); }, [reportType, docScope]);
+  // Reseta o paginador quando muda a seleção/escopo.
+  useEffect(() => { setPreviewIdx(0); }, [reportSel, docScope]);
 
-  // Seletor ÚNICO de relatórios: 1 tipo × escopo (todos / um funcionário). O
-  // "por setor" e o Excel são sempre do período inteiro (escopo ignorado).
+  const toggleAllReports = (on: boolean) =>
+    setReportSel({ folha: on, calendario: on, holerite: on, setor: on });
+
+  // Imprime os documentos marcados NUM ARQUIVO só, funcionário-a-funcionário
+  // (Folha/Setor 1× no topo; Calendário+Holerite agrupados por pessoa).
   const handleGenerateReport = () => {
-    if (reportType === 'excel') { handleExportExcel(); setDocDialogOpen(false); return; }
-    const allScope = !scopeApplies || docScope === 'all';
-    const emps = allScope ? bundleEmps : bundleEmps.filter(e => e.id === docScope);
-    if (emps.length === 0) { toast.error('Nada pra gerar — calcule a folha do período primeiro.'); return; }
-    printPayrollBundle({ periodTitle, docs: reportDocs(reportType), employees: emps as any });
+    if (!anySel) { toast.error('Marque ao menos um relatório.'); return; }
+    if (scopeEmps.length === 0) { toast.error('Nada pra gerar — calcule a folha do período primeiro.'); return; }
+    printPayrollBundle({ periodTitle, docs: reportSel, employees: scopeEmps as any, groupBy: 'employee' });
     setDocDialogOpen(false);
   };
 
@@ -950,39 +959,48 @@ export default function Payroll() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Multi-seleção — imprime os marcados NUM ARQUIVO só */}
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Relatório</p>
-                <select
-                  value={reportType}
-                  onChange={e => setReportType(e.target.value as typeof reportType)}
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="folha">Folha (PDF)</option>
-                  <option value="calendario">Calendário de tempo (PDF)</option>
-                  <option value="holerite">Holerite (PDF)</option>
-                  <option value="setor">Consolidado por setor (PDF)</option>
-                  <option value="excel">Folha em Excel (.xlsx)</option>
-                </select>
-              </div>
-              {scopeApplies && (
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Funcionário</p>
-                  <select value={docScope} onChange={e => setDocScope(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
-                    <option value="all">Todos os funcionários ({runs.length})</option>
-                    {runs.map(r => <option key={r.id} value={r.employee_id}>{employeeMap.get(r.employee_id)?.name || '—'}</option>)}
-                  </select>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Relatórios (num arquivo)</p>
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => toggleAllReports(!(reportSel.folha && reportSel.calendario && reportSel.holerite && reportSel.setor))}
+                  >
+                    {reportSel.folha && reportSel.calendario && reportSel.holerite && reportSel.setor ? 'Limpar' : 'Selecionar todos'}
+                  </button>
                 </div>
-              )}
+                <div className="space-y-2">
+                  {([['calendario', 'Calendário de tempo'], ['holerite', 'Holerite'], ['folha', 'Folha'], ['setor', 'Consolidado por setor']] as const).map(([k, label]) => (
+                    <label key={k} className="flex items-center gap-2.5 cursor-pointer text-sm rounded-md border bg-background px-3 h-9">
+                      <Checkbox checked={reportSel[k]} onCheckedChange={v => setReportSel(s => ({ ...s, [k]: !!v }))} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Calendário e Holerite saem por funcionário; Folha e Consolidado por setor saem 1× no período.
+                </p>
+              </div>
+
+              {/* Escopo */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Funcionário</p>
+                <select value={docScope} onChange={e => setDocScope(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
+                  <option value="all">Todos os funcionários ({runs.length})</option>
+                  {runs.map(r => <option key={r.id} value={r.employee_id}>{employeeMap.get(r.employee_id)?.name || '—'}</option>)}
+                </select>
+                {hasPerEmp && docScope === 'all' && scopeEmps.length > 1 && (
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    Impressão <b>funcionário a funcionário</b>: cada pessoa com o conjunto de documentos dela junto.
+                  </p>
+                )}
+              </div>
             </div>
 
-            {reportType === 'excel' && (
-              <p className="text-xs text-muted-foreground">
-                Exporta a folha completa do período em Excel (resumo + detalhe dia a dia). Sem prévia.
-              </p>
-            )}
-
             {/* PRÉVIA ao vivo (mesmo HTML do print) */}
-            {previewHtml && (
+            {previewHtml ? (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Prévia</p>
@@ -990,15 +1008,12 @@ export default function Payroll() {
                     <div className="ml-auto flex items-center gap-1">
                       <Button size="sm" variant="outline" className="h-7 px-2" disabled={previewIdx <= 0}
                         onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>‹</Button>
-                      <span className="text-xs text-muted-foreground tabular-nums min-w-[120px] text-center truncate">
-                        {Math.min(previewIdx, bundleEmps.length - 1) + 1}/{bundleEmps.length} · {bundleEmps[Math.min(previewIdx, bundleEmps.length - 1)]?.name}
+                      <span className="text-xs text-muted-foreground tabular-nums min-w-[140px] text-center truncate">
+                        {Math.min(previewIdx, scopeEmps.length - 1) + 1}/{scopeEmps.length} · {scopeEmps[Math.min(previewIdx, scopeEmps.length - 1)]?.name}
                       </span>
-                      <Button size="sm" variant="outline" className="h-7 px-2" disabled={previewIdx >= bundleEmps.length - 1}
-                        onClick={() => setPreviewIdx(i => Math.min(bundleEmps.length - 1, i + 1))}>›</Button>
+                      <Button size="sm" variant="outline" className="h-7 px-2" disabled={previewIdx >= scopeEmps.length - 1}
+                        onClick={() => setPreviewIdx(i => Math.min(scopeEmps.length - 1, i + 1))}>›</Button>
                     </div>
-                  )}
-                  {!previewPaged && (reportType === 'calendario' || reportType === 'holerite') && docScope === 'all' && bundleEmps.length > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">{bundleEmps.length} funcionário(s) serão impressos</span>
                   )}
                 </div>
                 <iframe
@@ -1009,17 +1024,22 @@ export default function Payroll() {
                 />
                 {previewPaged && (
                   <p className="text-[11px] text-muted-foreground">
-                    A prévia mostra um funcionário por vez; ao gerar, sai 1 documento por funcionário ({bundleEmps.length} no total).
+                    A prévia mostra um funcionário por vez; ao gerar, sai tudo num arquivo só
+                    {hasAgg ? ' (Folha/Consolidado 1× no início + ' : ' ('}o pacote de cada um dos {scopeEmps.length} funcionários).
                   </p>
                 )}
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Marque ao menos um relatório para ver a prévia.</p>
             )}
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button size="sm" variant="ghost" className="mr-auto gap-1.5" onClick={handleExportExcel} title="Exportar a folha em Excel (resumo + detalhe dia a dia)">
+                <DownloadSimple className="h-4 w-4" /> Excel
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setDocDialogOpen(false)}>Cancelar</Button>
-              <Button size="sm" onClick={handleGenerateReport} className="gap-1.5">
-                {reportType === 'excel' ? <DownloadSimple className="h-4 w-4" /> : <Printer className="h-4 w-4" />}
-                {reportType === 'excel' ? 'Exportar' : 'Imprimir / PDF'}
+              <Button size="sm" onClick={handleGenerateReport} disabled={!anySel} className="gap-1.5">
+                <Printer className="h-4 w-4" /> Imprimir / PDF
               </Button>
             </div>
           </div>
