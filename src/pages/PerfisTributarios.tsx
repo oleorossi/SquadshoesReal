@@ -114,7 +114,8 @@ export default function PerfisTributarios() {
         ) : !profiles?.length ? (
           <div className="p-6"><EmptyState icon={Receipt} title="Nenhum perfil tributário" description="Crie perfis por NCM para padronizar a tributação das notas." /></div>
         ) : (
-          <Table>
+          <div className="overflow-x-auto">
+          <Table className="min-w-[860px]">
             <TableHeader>
               <TableRow>
                 <TableHead>NCM</TableHead>
@@ -152,6 +153,7 @@ export default function PerfisTributarios() {
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
       </Panel>
 

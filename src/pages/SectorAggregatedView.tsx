@@ -74,11 +74,11 @@ export default function SectorAggregatedView({ embedded = false }: { embedded?: 
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid grid-cols-4 lg:grid-cols-8 h-auto">
+        <TabsList className="grid grid-cols-4 lg:grid-cols-8 h-auto overflow-x-auto">
           {SECTORS.map(s => {
             const Icon = s.icon;
             return (
-              <TabsTrigger key={s.key} value={s.key} className="gap-1.5 text-xs">
+              <TabsTrigger key={s.key} value={s.key} className="gap-1.5 text-xs shrink-0">
                 <Icon className="h-3.5 w-3.5" />
                 {s.label}
               </TabsTrigger>

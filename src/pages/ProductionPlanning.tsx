@@ -107,7 +107,8 @@
          title="Datas Planejadas (Timeline de Produção)"
          flush
        >
-             <Table>
+           <div className="overflow-x-auto">
+             <Table className="min-w-[760px]">
                <TableHeader>
                  <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                    <TableHead>OP / Ref</TableHead>
@@ -144,6 +145,7 @@
                  ))}
                </TableBody>
              </Table>
+           </div>
        </Panel>
 
        {/* Alerts & Risks */}

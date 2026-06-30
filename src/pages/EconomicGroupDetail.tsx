@@ -75,15 +75,15 @@ export default function EconomicGroupDetail() {
       <Header group={group} />
 
       <Tabs defaultValue="resumo" className="w-full">
-        <TabsList className="grid w-full grid-cols-8 max-w-6xl">
-          <TabsTrigger value="resumo" className="gap-1.5"><TrendingUp className="h-4 w-4" /> Resumo</TabsTrigger>
-          <TabsTrigger value="comercial" className="gap-1.5"><DollarSign className="h-4 w-4" /> Comercial</TabsTrigger>
-          <TabsTrigger value="clientes" className="gap-1.5"><Users className="h-4 w-4" /> Clientes</TabsTrigger>
-          <TabsTrigger value="pedidos" className="gap-1.5"><ShoppingCart className="h-4 w-4" /> Pedidos</TabsTrigger>
-          <TabsTrigger value="financeiro" className="gap-1.5"><DollarSign className="h-4 w-4" /> Financeiro</TabsTrigger>
-          <TabsTrigger value="contatos" className="gap-1.5"><Phone className="h-4 w-4" /> Contatos</TabsTrigger>
-          <TabsTrigger value="notas" className="gap-1.5"><StickyNote className="h-4 w-4" /> Notas</TabsTrigger>
-          <TabsTrigger value="historico" className="gap-1.5"><HistoryIcon className="h-4 w-4" /> Histórico</TabsTrigger>
+        <TabsList className="flex w-full max-w-6xl overflow-x-auto justify-start">
+          <TabsTrigger value="resumo" className="gap-1.5 shrink-0"><TrendingUp className="h-4 w-4" /> Resumo</TabsTrigger>
+          <TabsTrigger value="comercial" className="gap-1.5 shrink-0"><DollarSign className="h-4 w-4" /> Comercial</TabsTrigger>
+          <TabsTrigger value="clientes" className="gap-1.5 shrink-0"><Users className="h-4 w-4" /> Clientes</TabsTrigger>
+          <TabsTrigger value="pedidos" className="gap-1.5 shrink-0"><ShoppingCart className="h-4 w-4" /> Pedidos</TabsTrigger>
+          <TabsTrigger value="financeiro" className="gap-1.5 shrink-0"><DollarSign className="h-4 w-4" /> Financeiro</TabsTrigger>
+          <TabsTrigger value="contatos" className="gap-1.5 shrink-0"><Phone className="h-4 w-4" /> Contatos</TabsTrigger>
+          <TabsTrigger value="notas" className="gap-1.5 shrink-0"><StickyNote className="h-4 w-4" /> Notas</TabsTrigger>
+          <TabsTrigger value="historico" className="gap-1.5 shrink-0"><HistoryIcon className="h-4 w-4" /> Histórico</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumo"><ResumoTab groupId={id} group={group} /></TabsContent>

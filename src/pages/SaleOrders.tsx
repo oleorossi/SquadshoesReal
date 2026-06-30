@@ -1861,9 +1861,9 @@ export default function SaleOrders() {
             ref={sel.containerRef}
             onMouseDown={sel.onContainerMouseDown}
             data-marquee-container
-            className="rounded-lg border bg-card overflow-hidden relative"
+            className="rounded-lg border bg-card overflow-x-auto relative"
           >
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10">

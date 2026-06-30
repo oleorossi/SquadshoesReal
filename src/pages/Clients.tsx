@@ -423,7 +423,8 @@ export default function Clients() {
                         </div>
                       )}
                       {(!group || !isCollapsed) && (
-                        <Table>
+                        <div className="overflow-x-auto">
+                        <Table className="min-w-[860px]">
                           <TableHeader>
                             <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:h-9">
                               <TableHead className="w-8">
@@ -490,6 +491,7 @@ export default function Clients() {
                             ))}
                           </TableBody>
                         </Table>
+                        </div>
                       )}
                     </div>
                   );

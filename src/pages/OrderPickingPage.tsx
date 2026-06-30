@@ -377,7 +377,8 @@ export default function OrderPickingPage() {
           }
           flush
         >
-            <Table>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10 pl-4" />
@@ -489,6 +490,7 @@ export default function OrderPickingPage() {
                 })}
               </TableBody>
             </Table>
+          </div>
         </Panel>
       )}
     </div>

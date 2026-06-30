@@ -408,7 +408,8 @@ export default function LeadTime() {
               description="Cadastre tempos padrão para cada categoria de modelo (ex.: Sandália, Infantil)."
             />
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Categoria</TableHead>
@@ -480,6 +481,7 @@ export default function LeadTime() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
        </Panel>
 
@@ -495,7 +497,8 @@ export default function LeadTime() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <Table>
+              <div className="overflow-x-auto">
+              <Table className="min-w-[640px]">
                 <TableHeader>
                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                      <TableHead>Categoria</TableHead>
@@ -557,6 +560,7 @@ export default function LeadTime() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             )}
         </Panel>
         <p className="text-xs text-muted-foreground px-1 italic">

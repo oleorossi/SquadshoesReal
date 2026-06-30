@@ -125,36 +125,38 @@ export default function ApuracaoImpostos() {
             {!a?.by_ncm?.length ? (
               <div className="p-6"><EmptyState icon={Receipt} title="Sem itens no período" description="Nenhum item de NF-e autorizada encontrado." /></div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>NCM</TableHead>
-                    <TableHead className="text-right">Base</TableHead>
-                    <TableHead className="text-right">ICMS</TableHead>
-                    <TableHead className="text-right">IPI</TableHead>
-                    <TableHead className="text-right">PIS</TableHead>
-                    <TableHead className="text-right">COFINS</TableHead>
-                    <TableHead>Perfil</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {a.by_ncm.map((row, i) => (
-                    <TableRow key={i} className={!row.has_profile ? 'bg-amber-500/5' : ''}>
-                      <TableCell className="font-mono text-xs">{row.ncm}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCurrency(row.base)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCurrency(row.icms)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCurrency(row.ipi)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCurrency(row.pis)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCurrency(row.cofins)}</TableCell>
-                      <TableCell>
-                        {row.has_profile
-                          ? <Badge variant="secondary" className="text-xs">com perfil</Badge>
-                          : <Badge variant="outline" className="text-xs text-amber-600 border-amber-500/40">sem perfil</Badge>}
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[640px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>NCM</TableHead>
+                      <TableHead className="text-right">Base</TableHead>
+                      <TableHead className="text-right">ICMS</TableHead>
+                      <TableHead className="text-right">IPI</TableHead>
+                      <TableHead className="text-right">PIS</TableHead>
+                      <TableHead className="text-right">COFINS</TableHead>
+                      <TableHead>Perfil</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {a.by_ncm.map((row, i) => (
+                      <TableRow key={i} className={!row.has_profile ? 'bg-amber-500/5' : ''}>
+                        <TableCell className="font-mono text-xs">{row.ncm}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.base)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.icms)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.ipi)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.pis)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.cofins)}</TableCell>
+                        <TableCell>
+                          {row.has_profile
+                            ? <Badge variant="secondary" className="text-xs">com perfil</Badge>
+                            : <Badge variant="outline" className="text-xs text-amber-600 border-amber-500/40">sem perfil</Badge>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </Panel>
         </>
