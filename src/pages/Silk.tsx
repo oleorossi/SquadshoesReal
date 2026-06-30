@@ -5,8 +5,9 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfMonth } from 'date-fns';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Footprints, Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2, DotsThreeVertical } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Panel } from '@/components/ui/panel';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -440,7 +441,7 @@ export default function Silk() {
             <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
             <div className="flex items-center gap-2">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[140px] h-8 text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
@@ -450,7 +451,7 @@ export default function Silk() {
               </SelectContent>
             </Select>
             <Select value={filterPeriod} onValueChange={setFilterPeriod}>
-              <SelectTrigger className="w-[160px] h-9 text-xs">
+              <SelectTrigger className="w-[160px] h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -461,7 +462,7 @@ export default function Silk() {
               </SelectContent>
             </Select>
             <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[140px] h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -470,18 +471,27 @@ export default function Silk() {
                 <SelectItem value="adulto">Adulto</SelectItem>
               </SelectContent>
             </Select>
-            {selectedOrders.size > 0 && (
-              <Button size="sm" variant="outline" onClick={() => {
-                const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/orders/grouped-summary?sector=silk&ids=${ids}`);
-              }}>
-                <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setShowDetail(v => !v)}>
-              <ListChecks className="h-3.5 w-3.5 mr-1" /> {showDetail ? 'Ocultar Detalhes' : 'Resumo Detalhado'}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => {
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <DotsThreeVertical className="h-4 w-4" /> Ações
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => setShowDetail(v => !v)}>
+                  <ListChecks className="h-3.5 w-3.5 mr-2" /> {showDetail ? 'Ocultar Detalhes' : 'Resumo Detalhado'}
+                </DropdownMenuItem>
+                {selectedOrders.size > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    navigate(`/orders/grouped-summary?sector=silk&ids=${ids}`);
+                  }}>
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => {
               const sizeTotals: Record<string, number> = {};
               activeSizes.forEach(s => { sizeTotals[s] = 0; });
                let rowsHtml = '';
@@ -520,7 +530,7 @@ export default function Silk() {
                  });
                  silkArtworksHtml += '</div>';
                }
- 
+
                const html = `
                  <h1 style="font-size:18px;margin-bottom:4px;">${SECTOR_EMOJI} Relatório do Setor de Silk</h1>
                  <p style="font-size:10px;color:#666;margin-bottom:12px;">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
@@ -542,19 +552,23 @@ export default function Silk() {
                  ` : ''}`;
               printHtml('Relatório Silk', html);
             }} disabled={soleData.length === 0}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Relatório PDF
-            </Button>
-            <Button size="sm" onClick={printSoleList} disabled={soleData.length === 0}>
-              <Printer className="h-4 w-4 mr-1" /> Imprimir
-            </Button>
-            <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={printSoleList} disabled={soleData.length === 0}>
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir
+                </DropdownMenuItem>
+                {selectedOrders.size > 0 && (
+                  <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
               // 6º passe (2026-06-12): popup legado de fichas por setor
               // morto — deep-link pra tela central (modelo v7, com TallyBox).
               const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
               navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Silk')}`);
             }}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
-            </Button>
+                    <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             </div>
           </>}
         />
