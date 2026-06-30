@@ -55,6 +55,7 @@ import { todayISO, todayPlusDaysISO } from '@/lib/date';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
@@ -1455,7 +1456,17 @@ export default function SaleOrders() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="w-full space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionLabel="COMERCIAL · PV"
+          title="Pedidos de Venda"
+          description="Gestão comercial e geração de ordens de produção"
+        />
+        <StatGridSkeleton count={4} />
+        <TableSkeleton rows={8} />
+      </div>
+    );
   }
 
   if (isError) {
