@@ -380,7 +380,7 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     const isLastPage = i + 2 >= labels.length;
     pages.push(`<section class="page${!isLastPage ? ' page-break' : ''}">
       ${first}
-      ${second ? `<div class="cut-line"><span>✂ CORTAR AQUI</span></div>\n${second}` : ''}
+      ${second || ''}
     </section>`);
   }
   const totalPages = Math.ceil(labels.length / 2);
@@ -517,9 +517,6 @@ ${LABEL_PRINT_HARDENING}
 .footer .box-bc-wrap svg{height:11mm;width:auto;max-width:62mm;}
 
 /* Linha de corte entre as 2 etiquetas (visível só em tela, sumindo em print) */
-.cut-line{width:100%;height:0;border-top:1px dashed #888;position:relative;margin:0 auto;}
-.cut-line span{position:absolute;left:50%;top:-7px;transform:translateX(-50%);background:#fff;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.18em;color:#999;}
-@media print{.cut-line{border-top:none;}.cut-line span{display:none;}}
 
 /* Print footer (botões "Imprimir" / "Voltar" — só em tela) */
 .print-footer{max-width:190mm;margin:24px auto 12px;padding:18px 24px;background:#fff;border:1px solid #d4d4d4;border-radius:6px;font-family:Arial,sans-serif;text-align:center;}
