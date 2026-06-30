@@ -206,10 +206,14 @@ export function buildPayrollHtml(params: {
   if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
   if (docs.folha) sections.push(folhaSection(employees, periodTitle));
   if (groupBy === 'employee') {
-    // Pacote por pessoa: Calendário + Holerite do funcionário, lado a lado.
+    // Pacote por pessoa: Calendário + Holerite do MESMO funcionário fluem
+    // JUNTOS numa página só (wrapper .emp); a quebra acontece só ENTRE
+    // funcionários — sem desperdiçar uma folha por documento.
     employees.forEach(e => {
-      if (docs.calendario) sections.push(calendarSection(e, periodTitle));
-      if (docs.holerite) sections.push(holeriteSection(e, periodTitle));
+      const empDocs: string[] = [];
+      if (docs.calendario) empDocs.push(calendarSection(e, periodTitle));
+      if (docs.holerite) empDocs.push(holeriteSection(e, periodTitle));
+      if (empDocs.length) sections.push(`<section class="emp">${empDocs.join('')}</section>`);
     });
   } else {
     if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
@@ -229,8 +233,14 @@ export function buildPayrollHtml(params: {
     h2 { font-family: 'Anton', Impact, sans-serif; font-size: 18px; text-transform: uppercase;
          letter-spacing: .5px; margin: 0 0 4px; border-bottom: 2px solid #000; padding-bottom: 4px; }
     .sub { font-size: 12px; color: #374151; margin: 0 0 10px; }
-    .doc { page-break-inside: avoid; margin-bottom: 28px; }
-    .doc + .doc { page-break-before: always; }
+    .doc { page-break-inside: avoid; margin-bottom: 18px; }
+    /* Pacote do funcionário (Calendário + Holerite) numa página só; quebra só
+       ENTRE funcionários. Relatórios gerais (Folha/Setor) ficam antes e fluem
+       naturalmente. Sem página em branco no começo (:first-child). */
+    .emp { page-break-before: always; break-before: page; page-break-inside: avoid; }
+    .emp:first-child { page-break-before: avoid; break-before: auto; }
+    .emp > .doc { margin-bottom: 14px; }
+    .emp > .doc:last-child { margin-bottom: 0; }
     table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.grid th, table.grid td { border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; }
     table.grid th { background: #1f2937; color: #fff; text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
