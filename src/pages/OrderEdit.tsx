@@ -21,7 +21,10 @@ import { ptBR } from 'date-fns/locale';
 import { useState, useMemo } from 'react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { RefChip } from '@/components/ui/ref-chip';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const STATUS_COLORS: Record<string, string> = {
   'Rascunho': 'bg-muted text-muted-foreground border-border',
@@ -139,18 +142,35 @@ export default function OrderEdit() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <AppLayout>
+        <div className="space-y-6 page-enter">
+          <EditorialPageHeader
+            sectionLabel="PEDIDOS · EDIÇÃO"
+            title="Edição de Pedido"
+            description="Acompanhamento de produção das ordens"
+          />
+          <Skeleton className="h-[88px] rounded-lg" />
+          <StatGridSkeleton count={3} />
+          <TableSkeleton rows={4} />
+        </div>
+      </AppLayout>
+    );
   }
 
   if (displayOrders.length === 0) {
     return (
       <AppLayout>
-        <div className="space-y-4">
-          <Button variant="ghost" onClick={() => navigate('/orders')} className="gap-2">
-            <ArrowLeft className="h-4 w-4" /> Voltar
-          </Button>
-          <p className="text-muted-foreground">Ordem de produção não encontrada.</p>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="Ordem de produção não encontrada"
+          description="A OP que você procura não existe ou foi removida. Volte para a lista de ordens de produção."
+          action={
+            <Button variant="outline" onClick={() => navigate('/orders')} className="gap-2">
+              <ArrowLeft className="h-4 w-4" /> Voltar para Ordens de Produção
+            </Button>
+          }
+        />
       </AppLayout>
     );
   }

@@ -8,9 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Factory, Package, Warning as AlertTriangle, ClipboardText as ClipboardList, TrendDown as TrendingDown, Stack as Layers, CheckCircle as CheckCircle2, ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, ChartBar as BarChart3, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Factory, Package, Warning as AlertTriangle, ClipboardText as ClipboardList, TrendDown as TrendingDown, Stack as Layers, CheckCircle as CheckCircle2, ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, ChartBar as BarChart3 } from '@phosphor-icons/react';
 import { StockHistoryTab } from '@/components/production/StockHistoryTab';
 import ProducaoKPIsTab from '@/components/production/ProducaoKPIsTab';
+import { StatGridSkeleton } from '@/components/layout/PageSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -72,12 +74,23 @@ const STATUS_LABELS: Record<string, string> = {
 export default function ProducaoDashboard() {
   const { data, isLoading } = useProducaoData();
 
-  if (isLoading) return (
-    <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
-      <Loader2 className="h-6 w-6 animate-spin" />
-      <span className="text-sm">Carregando...</span>
-    </div>
-  );
+  if (isLoading) {
+    return (
+      <div className="editorial-container editorial-stagger space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionNumber="03"
+          sectionLabel="PRODUÇÃO · VISÃO GERAL"
+          title="Produção"
+          description="Ordens de produção, estoque e materiais — fluxo da fábrica em tempo real."
+        />
+        <StatGridSkeleton count={4} />
+        <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-6">
+          <Skeleton className="h-[260px] rounded-lg" />
+          <Skeleton className="h-[260px] rounded-lg" />
+        </div>
+      </div>
+    );
+  }
   if (!data) return null;
 
   return (
@@ -122,7 +135,14 @@ export default function ProducaoDashboard() {
             <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-6">
               <Panel title={<span className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" /> Ordens em Andamento</span>}>
                   <div className="space-y-4">
-                    {data.opProgress.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma OP ativa</p> : data.opProgress.map(op => (
+                    {data.opProgress.length === 0 ? (
+                      <EmptyState
+                        size="sm"
+                        icon={ClipboardList}
+                        title="Nenhuma OP ativa"
+                        description="Não há ordens em produção no momento."
+                      />
+                    ) : data.opProgress.map(op => (
                       <div key={op.id} className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <div className="min-w-0">
@@ -155,7 +175,7 @@ export default function ProducaoDashboard() {
                           <p className="text-xs text-muted-foreground">SKU: {p.sku}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`text-sm font-semibold ${p.quantity === 0 ? 'text-destructive' : 'text-amber-600'}`}>
+                          <p className={`text-sm font-semibold ${p.quantity === 0 ? 'text-destructive' : 'text-warning'}`}>
                             {p.quantity} {p.unit}
                           </p>
                           <p className="text-xs text-muted-foreground">Mín: {p.min_stock}</p>

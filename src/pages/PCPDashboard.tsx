@@ -264,7 +264,7 @@ export default function PCPDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted/40 border-b [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <tr className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm border-b [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                     <th className="text-left p-2">Setor</th>
                     <th className="text-center p-2">Pendentes</th>
                     <th className="text-center p-2">Em Andamento</th>
@@ -274,18 +274,18 @@ export default function PCPDashboard() {
                 </thead>
                 <tbody>
                   {wipBySector.map(row => (
-                    <tr key={row.sector} className="border-b hover:bg-muted/50">
+                    <tr key={row.sector} className="border-b hover:bg-muted/30 transition-colors">
                       <td className="p-2 font-medium">{row.sector}</td>
-                      <td className="p-2 text-center">
+                      <td className="p-2 text-center tabular-nums">
                         <Badge variant="secondary">{row.pending}</Badge>
                       </td>
-                      <td className="p-2 text-center">
+                      <td className="p-2 text-center tabular-nums">
                         <Badge variant="default">{row.inProgress}</Badge>
                       </td>
-                      <td className="p-2 text-center">
+                      <td className="p-2 text-center tabular-nums">
                         <Badge className="bg-success/15 text-success border-success/30">{row.done}</Badge>
                       </td>
-                      <td className="p-2 text-center font-bold">{row.total}</td>
+                      <td className="p-2 text-center font-bold tabular-nums">{row.total}</td>
                     </tr>
                   ))}
                 </tbody>

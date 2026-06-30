@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Package, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { ShoppingCart, TrendUp as TrendingUp, CurrencyDollar as DollarSign, Package } from '@phosphor-icons/react';
 import { RefChip } from '@/components/ui/ref-chip';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
+import { StatGridSkeleton } from '@/components/layout/PageSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -102,9 +104,19 @@ export default function ComercialDashboard() {
   const { data, isLoading } = useComercialData();
 
   if (isLoading) return (
-    <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
-      <Loader2 className="h-6 w-6 animate-spin" />
-      <span className="text-sm">Carregando...</span>
+    <div className="editorial-container editorial-stagger space-y-6 page-enter">
+      <EditorialPageHeader
+        sectionNumber="04"
+        sectionLabel="COMERCIAL · VISÃO GERAL"
+        title="Comercial"
+        description="Visão geral de vendas, clientes, representantes e cores mais vendidas."
+      />
+      <StatGridSkeleton count={4} />
+      <div className="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-[260px] rounded-lg" />
+        ))}
+      </div>
     </div>
   );
   if (!data) return null;

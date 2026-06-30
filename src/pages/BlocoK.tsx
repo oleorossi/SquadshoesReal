@@ -17,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
-import { FileText, DownloadSimple as Download, Stack, CaretRight, FloppyDisk as Save, Factory } from '@phosphor-icons/react';
+import { FileText, DownloadSimple as Download, Stack, CaretRight, FloppyDisk as Save, Factory, Package, Cube } from '@phosphor-icons/react';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import {
   useGenerateBlocoK, buildBlocoKTxt, useSpedExports, useRegisterSpedExport,
   type BlocoKResult, type BlocoKK230,
@@ -40,7 +41,7 @@ function K230Row({ k }: { k: BlocoKK230 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <TableRow>
+      <TableRow className="hover:bg-muted/30 transition-colors">
         <TableCell className="text-xs font-mono">{k.cod_doc_op}</TableCell>
         <TableCell className="font-medium">{k.cod_item}{k.descr && k.descr !== k.cod_item && <span className="block text-[11px] text-muted-foreground">{k.descr}</span>}</TableCell>
         <TableCell className="text-xs">{fmtDate(k.dt_ini)} → {fmtDate(k.dt_fin)}</TableCell>
@@ -147,19 +148,12 @@ export default function BlocoK() {
         </Panel>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: 'OPs produzidas (K230)', value: String(totals?.ops ?? 0) },
-              { label: 'Pares produzidos', value: fmtQtd(totals?.produced ?? 0) },
-              { label: 'Insumos consumidos (K235)', value: String(totals?.k235 ?? 0) },
-              { label: 'Itens em estoque (K200)', value: String(totals?.stock ?? 0) },
-            ].map((k) => (
-              <div key={k.label} className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground">{k.label}</p>
-                <p className="text-lg font-bold text-foreground tabular-nums">{k.value}</p>
-              </div>
-            ))}
-          </div>
+          <StatGrid>
+            <StatCard label="OPs produzidas (K230)" value={String(totals?.ops ?? 0)} icon={Factory} />
+            <StatCard label="Pares produzidos" value={fmtQtd(totals?.produced ?? 0)} icon={Package} />
+            <StatCard label="Insumos consumidos (K235)" value={String(totals?.k235 ?? 0)} icon={Cube} />
+            <StatCard label="Itens em estoque (K200)" value={String(totals?.stock ?? 0)} icon={Stack} />
+          </StatGrid>
 
           <div className="flex items-center gap-2">
             <Button onClick={handleDownload} className="gap-2"><Download className="size-4" /> Baixar .txt (EFD)</Button>
@@ -179,11 +173,11 @@ export default function BlocoK() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                     <TableHead>Doc. OP</TableHead>
                     <TableHead>Item produzido</TableHead>
                     <TableHead>Período</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
+                    <TableHead className="text-right tabular-nums">Qtd</TableHead>
                     <TableHead>Insumos (K235)</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -200,16 +194,16 @@ export default function BlocoK() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                     <TableHead>Cód. item</TableHead>
                     <TableHead>Descrição</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
+                    <TableHead className="text-right tabular-nums">Qtd</TableHead>
                     <TableHead>Ind. estoque</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {result.k200.map((s, i) => (
-                    <TableRow key={i}>
+                    <TableRow key={i} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="text-xs font-mono">{s.cod_item}</TableCell>
                       <TableCell>{s.descr}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtQtd(s.qtd)}</TableCell>
@@ -227,17 +221,17 @@ export default function BlocoK() {
         <Panel eyebrow="HISTÓRICO" title="Gerações registradas" flush>
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                 <TableHead>Arquivo</TableHead>
                 <TableHead>Período</TableHead>
-                <TableHead className="text-right">Registros</TableHead>
+                <TableHead className="text-right tabular-nums">Registros</TableHead>
                 <TableHead>Gerado em</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {history.map((h) => (
-                <TableRow key={h.id}>
+                <TableRow key={h.id} className="hover:bg-muted/30 transition-colors">
                   <TableCell className="text-xs font-mono">{h.filename}</TableCell>
                   <TableCell className="text-xs">{fmtDate(h.period_start)} – {fmtDate(h.period_end)}</TableCell>
                   <TableCell className="text-right tabular-nums">{h.total_records}</TableCell>

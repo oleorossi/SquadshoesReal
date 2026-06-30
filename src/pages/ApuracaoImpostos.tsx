@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Calculator, Receipt, Warning, Info } from '@phosphor-icons/react';
 import { formatCurrency } from '@/lib/utils';
 import { useEstimateTaxApuration, type TaxApuration } from '@/hooks/useTaxApuration';
@@ -78,19 +79,16 @@ export default function ApuracaoImpostos() {
         <Panel><EmptyState icon={Receipt} title="Apure o período" description={`Selecione o mês e clique em Apurar. Período atual: ${monthLabel}.`} /></Panel>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatGrid>
             {[
-              { label: 'NF-e autorizadas', value: String(result.notes_count) },
-              { label: 'Faturamento bruto', value: formatCurrency(result.faturamento_bruto) },
-              { label: 'Canceladas (não conta)', value: formatCurrency(result.faturamento_cancelado) },
-              { label: 'Base apurável', value: formatCurrency(a?.base_apuravel ?? 0) },
+              { label: 'NF-e autorizadas', value: String(result.notes_count), icon: Receipt, tone: 'default' as const },
+              { label: 'Faturamento bruto', value: formatCurrency(result.faturamento_bruto), icon: Calculator, tone: 'primary' as const },
+              { label: 'Canceladas (não conta)', value: formatCurrency(result.faturamento_cancelado), icon: Warning, tone: 'destructive' as const },
+              { label: 'Base apurável', value: formatCurrency(a?.base_apuravel ?? 0), icon: Receipt, tone: 'default' as const },
             ].map((k) => (
-              <div key={k.label} className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground">{k.label}</p>
-                <p className="text-lg font-bold text-foreground tabular-nums">{k.value}</p>
-              </div>
+              <StatCard key={k.label} label={k.label} value={k.value} icon={k.icon} tone={k.tone} />
             ))}
-          </div>
+          </StatGrid>
 
           {(a?.base_sem_perfil ?? 0) > 0 && (
             <p className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">

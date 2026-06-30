@@ -16,12 +16,14 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 
 const STATUS_COLORS: Record<string, string> = {
-  aberto: 'bg-blue-100 text-blue-700 border-blue-300',
-  em_analise: 'bg-amber-100 text-amber-700 border-amber-300',
-  aprovado: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  // Trio semântico via tokens (dark-mode safe, consistente com rejeitado→destructive)
+  em_analise: 'bg-warning/10 text-warning border-warning/30',
+  aprovado: 'bg-success/10 text-success border-success/30',
   rejeitado: 'bg-destructive/10 text-destructive border-destructive/30',
-  aguarda_coleta: 'bg-purple-100 text-purple-700 border-purple-300',
-  recebido: 'bg-indigo-100 text-indigo-700 border-indigo-300',
+  // Hues categóricos: padrão alpha endossado (bg-*-500/10 text-*-600), não os tints sólidos -100/-700 que quebram dark mode
+  aberto: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  aguarda_coleta: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+  recebido: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
   resolvido: 'bg-muted text-foreground border-border',
   cancelado: 'bg-muted text-muted-foreground border-border',
 };

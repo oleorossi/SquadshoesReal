@@ -379,12 +379,12 @@ export default function OrderPickingPage() {
         >
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead className="w-10 pl-4" />
                   <TableHead className="w-8" />
                   <TableHead>Pedido</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Pares</TableHead>
+                  <TableHead className="text-right tabular-nums">Pares</TableHead>
                   <TableHead>Embalagem</TableHead>
                   <TableHead>Prazo</TableHead>
                   <TableHead className="text-right pr-4">Ação</TableHead>
@@ -402,7 +402,7 @@ export default function OrderPickingPage() {
                     <React.Fragment key={order.id}>
                       <TableRow
                         className={cn(
-                          'cursor-pointer',
+                          'cursor-pointer hover:bg-muted/30 transition-colors',
                           isOverdue && 'bg-destructive/5 hover:bg-destructive/10',
                           isDueToday && 'bg-amber-500/5 hover:bg-amber-500/10',
                         )}
@@ -436,7 +436,7 @@ export default function OrderPickingPage() {
                         <TableCell>
                           {order.delivery_deadline ? (
                             <span className={cn(
-                              'text-sm font-medium flex items-center gap-1',
+                              'text-sm font-medium flex items-center gap-1 tabular-nums',
                               isOverdue ? 'text-destructive' : isDueToday ? 'text-amber-600' : isDueSoon ? 'text-amber-500' : 'text-muted-foreground',
                             )}>
                               {isOverdue && <XCircle className="h-3 w-3" />}

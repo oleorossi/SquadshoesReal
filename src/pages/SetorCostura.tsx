@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Funnel as Filter, CheckCircle as CheckCircle2, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Funnel as Filter, CheckCircle as CheckCircle2, CircleNotch as Loader2, Package } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -22,7 +22,6 @@ import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
 const SECTOR_NAME = 'Costura';
-const SECTOR_EMOJI = '🪡';
 
 /**
  * Página do setor de Costura — costura palmilha+forração + costura cabedal.
@@ -211,8 +210,8 @@ export default function SetorCostura() {
                           <span className="font-normal text-muted-foreground">{ref?.name}</span>
                         </CardTitle>
                         {so && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            📦 <span className="font-semibold">{so.order_number}</span>
+                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                            <Package className="h-3.5 w-3.5" /> <span className="font-semibold">{so.order_number}</span>
                             {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                             {so.client_name ? <> | {so.client_name}</> : null}
                           </p>

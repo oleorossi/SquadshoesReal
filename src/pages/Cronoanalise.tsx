@@ -202,7 +202,7 @@ export default function Cronoanalise() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                 <TableHead>Referência</TableHead>
                 <TableHead>Operação</TableHead>
                 <TableHead>Setor</TableHead>
@@ -217,7 +217,7 @@ export default function Cronoanalise() {
             </TableHeader>
             <TableBody>
               {studies.map((s) => (
-                <TableRow key={s.id}>
+                <TableRow key={s.id} className="hover:bg-muted/30 transition-colors">
                   <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">{sheetName(s.sheet_id)}</TableCell>
                   <TableCell className="font-medium">
                     {s.operation_name}

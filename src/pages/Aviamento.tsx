@@ -3,8 +3,9 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers } from '@phosphor-icons/react';
+import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, DotsThreeVertical } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -271,15 +272,44 @@ export default function Aviamento() {
           title="Setor de Aviamento"
           description="Fichas de controle com checklist de pares para aviamento"
           actions={<>
-            {selectedOrders.size > 0 && (
-              <Button size="sm" variant="outline" onClick={() => {
-                const ids = aviamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/orders/grouped-summary?sector=aviamento&ids=${ids}`);
-              }}>
-                <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={async () => {
+            <Button
+              size="sm"
+              onClick={handleFinishSelectedOrders}
+              disabled={selectedOrders.size === 0 || finalizingOrders}
+              className="bg-success hover:bg-success/90 text-success-foreground"
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+              Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
+            </Button>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <Filter className="h-3.5 w-3.5 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">OPs Ativas</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
+              </SelectContent>
+            </Select>
+            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <DotsThreeVertical className="h-4 w-4" /> Ações
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {selectedOrders.size > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    const ids = aviamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    navigate(`/orders/grouped-summary?sector=aviamento&ids=${ids}`);
+                  }}>
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+                <DropdownMenuItem onClick={async () => {
               // Use only selected orders, or all if none selected
               const ordersToprint = selectedOrders.size > 0
                 ? aviamentoOrders.filter(o => selectedOrders.has(o.id))
@@ -535,28 +565,10 @@ export default function Aviamento() {
                 ${opsHtml}`;
               writePrintWindow(printWin, 'Relatório Aviamento', html);
             }} disabled={aviamentoOrders.length === 0}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Relatório PDF
-            </Button>
-            <Button 
-              size="sm" 
-              onClick={handleFinishSelectedOrders} 
-              disabled={selectedOrders.size === 0 || finalizingOrders}
-              className="bg-success hover:bg-success/90 text-success-foreground"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1" /> 
-              Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
-            </Button>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
-                <Filter className="h-3.5 w-3.5 mr-1" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">OPs Ativas</SelectItem>
-                <SelectItem value="all">Todas</SelectItem>
-              </SelectContent>
-            </Select>
-            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>}
         />
 

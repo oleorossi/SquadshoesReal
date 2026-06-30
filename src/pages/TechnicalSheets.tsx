@@ -666,7 +666,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                         {/* Badge "tem variante de material" — sinaliza que essa ref pode ser
                             cadastrada no PV em N versões de material principal (Napa, Santorini,…) */}
                         {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                          <Badge variant="secondary" className="px-2 py-0 h-5 text-xs bg-amber-100 text-amber-800 border-amber-300 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
+                          <Badge variant="secondary" className="px-2 py-0 h-5 text-xs bg-warning/10 text-warning border-warning/30 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
                             <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
                           </Badge>
                         )}
@@ -734,9 +734,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               <TableBody>
                 {filteredSheets.map((sheet: any) => {
                   const statusFichaColors: Record<string, string> = {
-                    publicada: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800',
-                    validada: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800',
-                    em_revisao: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800',
+                    publicada: 'bg-success/10 text-success border-success/30',
+                    validada: 'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400',
+                    em_revisao: 'bg-warning/10 text-warning border-warning/30',
                     rascunho: 'bg-muted text-muted-foreground border-border',
                   };
                   return (
@@ -759,7 +759,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                           <span className="font-semibold text-sm flex items-center gap-1.5">
                             {sheet.name}
                             {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-xs bg-amber-100 text-amber-800 border-amber-300" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
+                              <Badge variant="secondary" className="px-1.5 py-0 h-4 text-xs bg-warning/10 text-warning border-warning/30" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
                                 <Package className="h-2.5 w-2.5 mr-0.5" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
                               </Badge>
                             )}
@@ -800,7 +800,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setImageDialogSheet(sheet); }}>
                             <ImagePlus className="h-3.5 w-3.5" />
                           </Button>
@@ -1086,7 +1086,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               required
-              className={cn("mt-1 h-9", nameMissing && "border-red-500")}
+              className={cn("mt-1 h-9", nameMissing && "border-destructive")}
               placeholder="Ex.: DS20 / SP101"
               autoFocus
             />
@@ -1099,7 +1099,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
               value={form.code}
               onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
               required
-              className={cn("mt-1 h-9 font-mono", codeMissing && "border-red-500")}
+              className={cn("mt-1 h-9 font-mono", codeMissing && "border-destructive")}
               placeholder="Ex: MON-893767-003"
             />
           </div>
@@ -1107,7 +1107,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
           <div>
             <Label htmlFor="qc-category" className="text-xs">Categoria <RequiredMark /></Label>
             <Select value={form.shoe_category} onValueChange={v => setForm(f => ({ ...f, shoe_category: v, sizes: v === 'Infantil' ? '25-36' : '34-40' }))}>
-              <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-red-500")}>
+              <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-destructive")}>
                 <SelectValue placeholder="Selecione…" />
               </SelectTrigger>
               <SelectContent>{SHOE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
@@ -1240,7 +1240,7 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
         <div
           className={cn(
             'h-full rounded-full transition-all duration-500',
-            pct === 100 ? 'bg-green-500' : pct >= 60 ? 'bg-primary' : 'bg-amber-500'
+            pct === 100 ? 'bg-success' : pct >= 60 ? 'bg-primary' : 'bg-warning'
           )}
           style={{ width: `${pct}%` }}
         />
@@ -1254,7 +1254,7 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
               className={cn(
                 'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border transition-colors',
                 c.ok
-                  ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800'
+                  ? 'bg-success/10 text-success border-success/30'
                   : 'bg-muted/50 text-muted-foreground border-border'
               )}
             >
@@ -1917,8 +1917,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   <Badge
                     className={cn(
                       'text-xs h-4.5 uppercase tracking-wider',
-                      form.status_ficha === 'publicada' && 'bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-800',
-                      form.status_ficha === 'em_revisao' && 'bg-amber-500/15 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-800',
+                      form.status_ficha === 'publicada' && 'bg-success/10 text-success border-success/30',
+                      form.status_ficha === 'em_revisao' && 'bg-warning/10 text-warning border-warning/30',
                       form.status_ficha === 'rascunho' && 'bg-muted text-muted-foreground border-border',
                     )}
                   >
@@ -1929,7 +1929,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
                 {form.ncm && (
                   <span className="font-mono">
-                    NCM <span className={cn('font-bold', /^\d{8}$/.test(form.ncm) ? 'text-foreground' : 'text-amber-600')}>{form.ncm}</span>
+                    NCM <span className={cn('font-bold', /^\d{8}$/.test(form.ncm) ? 'text-foreground' : 'text-warning')}>{form.ncm}</span>
                   </span>
                 )}
                 {form.sole_material && (
@@ -1943,12 +1943,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <div className="shrink-0">
             {dirty ? (
               <Button size="sm" onClick={saveAll} disabled={updateSheet.isPending} className="gap-1.5 h-8">
-                <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="inline-block h-2 w-2 rounded-full bg-warning animate-pulse" />
                 <Save className="h-3.5 w-3.5" /> Salvar
               </Button>
             ) : (
-              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Salvo
+              <span className="text-xs text-success font-medium flex items-center gap-1">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" /> Salvo
               </span>
             )}
           </div>
@@ -1962,9 +1962,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Tag className="h-3.5 w-3.5" /> Identificação
             {form.name && form.code && form.shoe_category ? (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold">✓</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-success/10 text-success text-xs font-bold">✓</span>
             ) : (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs font-bold">!</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-warning/10 text-warning text-xs font-bold">!</span>
             )}
           </TabsTrigger>
           <Separator orientation="vertical" className="h-5 mx-0.5" />
@@ -1989,7 +1989,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <TabsTrigger value="production" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
             <Factory className="h-3.5 w-3.5" /> Produção
             {form.sole_group_id ? (
-              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold">✓</span>
+              <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-success/10 text-success text-xs font-bold">✓</span>
             ) : (
               <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-muted-foreground text-xs font-bold">·</span>
             )}
@@ -2135,8 +2135,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           <div className="flex items-center gap-2">
                             <span className={cn('h-2 w-2 rounded-full',
                               s === 'rascunho' ? 'bg-muted-foreground' :
-                              s === 'em_revisao' ? 'bg-amber-500' :
-                              s === 'validada' ? 'bg-blue-500' : 'bg-green-500'
+                              s === 'em_revisao' ? 'bg-warning' :
+                              s === 'validada' ? 'bg-blue-500' : 'bg-success'
                             )} />
                             {STATUS_FICHA_LABELS[s]}
                           </div>
@@ -2165,9 +2165,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </div>
 
               {form.status_ficha === 'publicada' && (
-                <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-800 p-3 flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-green-600" />
-                  <span className="text-xs text-green-700 dark:text-green-400">
+                <div className="rounded-lg border border-success/30 bg-success/10 p-3 flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-success" />
+                  <span className="text-xs text-success">
                     Ficha publicada — campos críticos (cor e material) bloqueados. Mude pra "Em Revisão" pra alterar.
                   </span>
                 </div>
@@ -2384,9 +2384,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   {form.ncm && /^\d{8}$/.test(form.ncm) ? (
                     <Badge variant="outline" className="h-4 text-xs font-mono">válido</Badge>
                   ) : form.ncm ? (
-                    <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">precisa 8 dígitos</Badge>
+                    <Badge variant="outline" className="h-4 text-xs bg-warning/10 text-warning border-warning/30">precisa 8 dígitos</Badge>
                   ) : (
-                    <Badge variant="outline" className="h-4 text-xs bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">obrigatório p/ NF-e</Badge>
+                    <Badge variant="outline" className="h-4 text-xs bg-warning/10 text-warning border-warning/30">obrigatório p/ NF-e</Badge>
                   )}
                 </Label>
                 <Input
@@ -2433,9 +2433,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               />
             )}
             {!form.sole_material && (
-              <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                <span className="text-xs text-amber-700 dark:text-amber-400">
+              <div className="flex items-center gap-2 p-2 rounded-md bg-warning/10 border border-warning/30">
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                <span className="text-xs text-warning">
                   Defina o grupo de solado para habilitar o preenchimento automático de palmilha e forração.
                 </span>
               </div>
@@ -2477,23 +2477,23 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.upper_consumption) || 0);
                     const complete = !!form.upper_material && avg > 0;
                     return complete ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
                         <CheckCircle className="h-3 w-3" weight="fill" /> Completo
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
                         <AlertTriangle className="h-3 w-3" weight="fill" /> {!form.upper_material ? 'Falta material' : 'Falta consumo'}
                       </span>
                     );
                   })()}
                 </div>
                  {isSoleFachetado && (
-                   <div className="p-3 border border-amber-500/30 bg-amber-500/10 rounded-lg space-y-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                   <div className="p-3 border border-warning/30 bg-warning/10 rounded-lg space-y-2 animate-in fade-in slide-in-from-left-2 duration-300">
                      <div className="flex items-center gap-2">
-                       <div className="h-5 w-5 rounded bg-amber-500/15 flex items-center justify-center">
-                         <Wand2 className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                       <div className="h-5 w-5 rounded bg-warning/15 flex items-center justify-center">
+                         <Wand2 className="h-3 w-3 text-warning" />
                        </div>
-                       <Label className="text-xs font-bold text-amber-700 dark:text-amber-400">Forração de Salto (Fachete)</Label>
+                       <Label className="text-xs font-bold text-warning">Forração de Salto (Fachete)</Label>
                      </div>
                      <div>
                        <Label className="text-xs text-muted-foreground uppercase">Material do Fachete</Label>
@@ -2511,7 +2511,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                          </SelectContent>
                        </Select>
                        {!form.fachete_material ? (
-                         <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 flex items-start gap-1">
+                         <p className="text-xs text-warning mt-1 flex items-start gap-1">
                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" weight="fill" />
                            <span>Selecione o material do fachete — senão o forro do salto <strong>não é consumido</strong> no custeio.</span>
                          </p>
@@ -2590,9 +2590,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 };
                 const renderWidthWarn = (groupName?: string) =>
                   cabedalWidthWarning(groupName) ? (
-                    <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" weight="fill" />
-                      <span className="text-[11px] leading-snug text-amber-700 dark:text-amber-400">
+                    <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning mt-0.5" weight="fill" />
+                      <span className="text-[11px] leading-snug text-warning">
                         Sem largura cadastrada — o consumo pode inflar ~100×. Cadastre a largura em <strong>Materiais → Ficha de Componente (Dimensões)</strong>.
                       </span>
                     </div>
@@ -2616,9 +2616,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   highlightColor: 'amber' | 'primary' | 'emerald' = 'primary',
                 ) => {
                   const colorClass = highlightColor === 'emerald'
-                    ? 'border-emerald-300 dark:border-emerald-800'
+                    ? 'border-success/30'
                     : highlightColor === 'amber'
-                    ? 'border-amber-300 dark:border-amber-800'
+                    ? 'border-warning/30'
                     : 'border-primary/30';
                   const filledVals = cabedalSizes.map(s => Number(perSize[String(s)] || 0)).filter(v => v > 0);
                   const avg = filledVals.length > 0 ? (filledVals.reduce((a, b) => a + b, 0) / filledVals.length) : 0;
@@ -2772,7 +2772,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               </SelectContent>
                             </Select>
                             {(form as any).upper_material_product_id ? (
-                              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">Débito fixo neste item (ignora a cor do PV).</p>
+                              <p className="text-xs text-success mt-1">Débito fixo neste item (ignora a cor do PV).</p>
                             ) : activeItems.length === 1 ? (
                               <p className="text-xs text-muted-foreground mt-1">Grupo tem 1 produto — o débito já é determinístico.</p>
                             ) : null}
@@ -3017,7 +3017,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       </SelectContent>
                                     </Select>
                                     {extra.product_id && (
-                                      <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                                      <p className="text-xs text-success mt-1">
                                         Débito fixo neste item (ignora a cor do PV).
                                       </p>
                                     )}
@@ -3071,11 +3071,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             const vals = Object.values(ls).map(Number).filter((v: number) => v > 0);
                             const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.lining_consumption) || 0);
                             return avg > 0 ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
                                 <CheckCircle className="h-3 w-3" weight="fill" /> Completo
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
                                 <AlertTriangle className="h-3 w-3" weight="fill" /> Falta consumo
                               </span>
                             );
@@ -3159,7 +3159,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               </SelectContent>
                             </Select>
                             {(form as any).lining_material_product_id ? (
-                              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">Débito fixo neste item (ignora a cor do PV).</p>
+                              <p className="text-xs text-success mt-1">Débito fixo neste item (ignora a cor do PV).</p>
                             ) : activeItems.length === 1 ? (
                               <p className="text-xs text-muted-foreground mt-1">Grupo tem 1 produto — o débito já é determinístico.</p>
                             ) : null}
@@ -3398,7 +3398,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     const mode = (soleProd as any)?.insole_mode || 'cortar';
                     if (mode === 'pronta_na_cor') {
                       return (
-                        <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2">
                           <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                             Modo <strong>Pronta na cor</strong> ativo: consumo automático de 1 par por unidade.
                           </p>
@@ -4223,7 +4223,7 @@ function ProductionSectorsTab({
          })}
       </div>
       {insoleReadyMade && (
-        <p className="text-xs text-amber-700">
+        <p className="text-xs text-warning">
           ⚠ Palmilha pronta na cor: Corte Palmilha, Corte Forração e Costura são removidos do roteiro automaticamente.
         </p>
       )}
@@ -4232,8 +4232,8 @@ function ProductionSectorsTab({
           Cada etapa marcada vira uma linha de checklist na ficha de operador
           de Aviamento (Frente/Traseira/Costura de tiras × numerações). */}
       {isAviamentoActive && (
-        <div className="rounded-lg border-2 border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-amber-700">
+        <div className="rounded-lg border-2 border-warning/30 bg-warning/5 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-warning">
             <Factory className="h-4 w-4 shrink-0" />
             <span className="text-sm font-bold">Etapas de Aviamento</span>
             <span className="text-xs text-muted-foreground">
@@ -4251,8 +4251,8 @@ function ProductionSectorsTab({
                   className={cn(
                     'flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-all min-w-0',
                     isStepActive
-                      ? 'border-amber-600 bg-amber-100 text-amber-900 cursor-pointer'
-                      : 'border-border bg-card text-muted-foreground hover:border-amber-500/50 cursor-pointer'
+                      ? 'border-warning/40 bg-warning/10 text-warning cursor-pointer'
+                      : 'border-border bg-card text-muted-foreground hover:border-warning/40 cursor-pointer'
                   )}
                 >
                   <Checkbox checked={isStepActive} className="pointer-events-none shrink-0" />
@@ -4262,7 +4262,7 @@ function ProductionSectorsTab({
             })}
           </div>
           {localSteps.length === 0 && (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-warning">
               ⚠ Nenhuma etapa marcada — ficha de operador vai aparecer sem checklist de Aviamento.
             </p>
           )}
@@ -4332,7 +4332,7 @@ function SheetImageUpload({ images, onChange }: { images: any[]; onChange: (imgs
               onClick={() => setLightboxOpen(true)}>
               <img src={currentUrl} alt="Produto" className="w-full h-full object-cover" />
             </div>
-            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
               <label className="cursor-pointer">
                 <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
                 <div className="h-7 w-7 rounded-md bg-background/90 backdrop-blur border border-border flex items-center justify-center hover:bg-accent transition-colors">
@@ -4554,7 +4554,7 @@ function ComponentGroupSelect({ label, value, onChange, groups, products, requir
         </div>
       )}
       {value && availableColors.length === 0 && (
-        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+        <p className="text-xs text-warning mt-1 flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" /> Nenhuma cor cadastrada neste grupo
         </p>
       )}
@@ -4663,7 +4663,7 @@ function SoleColorMappingPanel({ sheetId, corPredominanteId, groups, products, s
     return (
       <div>
         <Label className="text-xs text-muted-foreground">Material do Solado por Cor</Label>
-        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+        <p className="text-xs text-warning mt-1 flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" /> Selecione o "Material Predominante (Cabedal)" acima para que as cores fiquem disponíveis.
         </p>
       </div>
@@ -5035,7 +5035,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
 
    if (sourceColors.length === 0) {
     return (
-      <p className="text-xs text-amber-600 flex items-center gap-1">
+      <p className="text-xs text-warning flex items-center gap-1">
         <AlertTriangle className="h-3 w-3" />
         Nenhuma cor encontrada no grupo de cor predominante. Configure as cores do produto primeiro.
       </p>
@@ -5133,7 +5133,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                         </SelectContent>
                       </Select>
                     ) : (
-                      <p className="text-xs text-amber-600">Sem cores no grupo</p>
+                      <p className="text-xs text-warning">Sem cores no grupo</p>
                     )
                   )}
                 </div>
@@ -5152,7 +5152,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                    }}
                    className={`text-xs px-2 py-1 rounded-md border transition-colors ${
                      defaultPalmilhaColor && defaultPalmilhaColor === currentPalmilhaColor
-                       ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 font-semibold'
+                       ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-semibold'
                        : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted'
                    }`}
                  >
@@ -5269,7 +5269,7 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
                   onClick={() => handleToggleTodas(currentSole || 'Caramelo')}
                   className={`text-xs px-2 py-1 rounded-md border transition-colors ${
                     defaultSoleColor === currentSole && currentSole
-                      ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 font-semibold'
+                      ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-semibold'
                       : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted'
                   }`}
                 >
@@ -5699,7 +5699,7 @@ function NcmInlineEditor({ productId, currentNcm }: { productId: string; current
           type="button"
           className={cn(
             'px-1.5 py-0.5 rounded text-xs font-mono w-full text-left hover:bg-muted transition-colors',
-            !isCurrentValid && 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30',
+            !isCurrentValid && 'text-warning bg-warning/10',
             !currentNcm && 'text-muted-foreground/60 italic',
           )}
           title={currentNcm ? (isCurrentValid ? 'Clique pra editar NCM' : 'NCM inválido — clique pra corrigir') : 'Clique pra adicionar NCM'}
@@ -6209,7 +6209,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                     )}
                   </div>
                   {!cs && (
-                    <div className="flex items-center gap-2 mt-1 text-amber-600 dark:text-amber-400">
+                    <div className="flex items-center gap-2 mt-1 text-warning">
                       <AlertTriangle className="h-3.5 w-3.5" />
                       <span className="text-xs">Sem Ficha de Componente — custo será Qtd/par × Preço unitário</span>
                     </div>
@@ -6408,13 +6408,13 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                               {groupInfo && <Badge variant="outline" className="text-[8px]">Grupo</Badge>}
                               {cs && <Badge variant="outline" className="text-[8px] bg-accent/30 border-accent">FT</Badge>}
                               {conversionIssue && (
-                                <Badge variant="outline" className="text-[8px] border-amber-500 text-amber-700 dark:text-amber-400 gap-0.5">
+                                <Badge variant="outline" className="text-[8px] border-warning text-warning gap-0.5">
                                   <AlertTriangle className="h-2.5 w-2.5" /> Conversão
                                 </Badge>
                               )}
                             </div>
                             {conversionIssue && (
-                              <span className="text-xs text-amber-600 dark:text-amber-400">{conversionIssue}</span>
+                              <span className="text-xs text-warning">{conversionIssue}</span>
                             )}
                             {prod?.name && groupInfo && prod.name !== groupInfo.name && (
                               <span className="text-xs text-muted-foreground">Item: {prod.name}{prod.color ? ` (${prod.color})` : ''}</span>
@@ -6832,11 +6832,11 @@ function CostsTab({ sheetId, form, groups }: {
             - bom_default_qty_per_unit: ≥80% dos itens com qty_per_unit=1
               (default do cadastro, deveria ser fracionário) */}
       {bomIssues.length > 0 && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+        <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
           <div className="flex items-start gap-2.5">
-            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
             <div className="flex-1 space-y-1.5">
-              <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+              <p className="text-sm font-bold text-warning">
                 BOM possivelmente inflado — {bomIssues.length} alerta{bomIssues.length > 1 ? 's' : ''} detectado{bomIssues.length > 1 ? 's' : ''}
               </p>
               <p className="text-xs text-muted-foreground leading-snug">
@@ -6848,7 +6848,7 @@ function CostsTab({ sheetId, form, groups }: {
               <ul className="text-xs space-y-0.5 mt-1.5">
                 {bomIssues.map((i, idx) => (
                   <li key={`${i.issue_type}-${i.group_id || idx}`} className="font-mono">
-                    <span className={i.severity === 'critical' ? 'text-destructive font-bold' : 'text-amber-700 dark:text-amber-400'}>
+                    <span className={i.severity === 'critical' ? 'text-destructive font-bold' : 'text-warning'}>
                       {i.issue_type === 'bom_default_qty_per_unit'
                         ? `consumo default`
                         : `${i.variants_count}× cores`}
@@ -7034,7 +7034,7 @@ function CostsTab({ sheetId, form, groups }: {
                 <TableCell className="text-sm">
                   Overhead Alocado
                   {(form as any).custom_overhead !== null && (
-                    <Badge variant="outline" className="ml-2 text-[8px] bg-amber-50 text-amber-600 border-amber-200">Customizado</Badge>
+                    <Badge variant="outline" className="ml-2 text-[8px] bg-warning/10 text-warning border-warning/30">Customizado</Badge>
                   )}
                 </TableCell>
                 <TableCell className="text-sm text-right font-mono">{formatCurrency(overheadPerPair)}</TableCell>

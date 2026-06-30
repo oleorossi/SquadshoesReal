@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAllQualityRecords, useResolveQualityRecord } from '@/hooks/useQualityRecords';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
@@ -52,6 +53,22 @@ export default function Quality() {
     const reworkable = records.filter((r: any) => r.can_rework && !r.resolved).length;
     return { total, unresolved, critical, reworkable };
   }, [records]);
+
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <div className="space-y-5 page-enter">
+          <EditorialPageHeader
+            sectionLabel="QUALIDADE · INSPEÇÕES"
+            title="Qualidade & Auditorias"
+            description="Defeitos registrados por setor — rastreamento por OP e plano de ação"
+          />
+          <StatGridSkeleton count={4} />
+          <TableSkeleton rows={8} />
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -110,11 +127,11 @@ export default function Quality() {
              <Panel flush>
                <Table>
                  <TableHeader>
-                   <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                   <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                      <TableHead>Setor</TableHead>
                      <TableHead>Tipo</TableHead>
                      <TableHead>Severidade</TableHead>
-                     <TableHead className="text-center">Qtd</TableHead>
+                     <TableHead className="text-center tabular-nums">Qtd</TableHead>
                      <TableHead>Descrição / Causa</TableHead>
                      <TableHead>Ação Corretiva</TableHead>
                      <TableHead>Data</TableHead>
@@ -132,7 +149,7 @@ export default function Quality() {
                    ) : filtered.map((r: any) => {
                      const sev = SEVERITY_CONFIG[r.severity] || SEVERITY_CONFIG.minor;
                      return (
-                       <TableRow key={r.id} className={r.resolved ? 'opacity-50' : ''}>
+                       <TableRow key={r.id} className={`hover:bg-muted/30 transition-colors ${r.resolved ? 'opacity-50' : ''}`}>
                          <TableCell className="font-medium text-sm">{r.stage_name || '—'}</TableCell>
                          <TableCell className="text-sm text-muted-foreground">{r.record_type || '—'}</TableCell>
                          <TableCell>
@@ -148,7 +165,7 @@ export default function Quality() {
                          <TableCell className="max-w-[160px]">
                            <p className="text-xs text-muted-foreground truncate">{r.corrective_action || '—'}</p>
                          </TableCell>
-                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap tabular-nums">
                            {r.created_at ? format(new Date(r.created_at), 'dd/MM/yy HH:mm', { locale: ptBR }) : '—'}
                          </TableCell>
                          <TableCell className="text-center">

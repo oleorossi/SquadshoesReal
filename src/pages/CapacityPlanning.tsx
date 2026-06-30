@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import { computeParallelWindows, setHolidayCache, isBusinessDay, loadCategoryDefaults, defaultsForSheet } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ForwardScheduleTool } from '@/components/production/ForwardScheduleTool';
@@ -364,8 +366,18 @@ export default function CapacityPlanning() {
 
   if (isLoading) {
     return (
-      <div className="py-12 text-center text-muted-foreground text-sm">
-        Carregando capacidade...
+      <div className="space-y-6 page-enter">
+        <EditorialPageHeader
+          sectionNumber="01"
+          sectionLabel="PRODUÇÃO · CAPACIDADE"
+          title="Capacidade"
+          description="Onde está apertando agora, como flui pela fábrica e como vai ser nas próximas semanas."
+          noRule
+        />
+        <StatGridSkeleton count={6} />
+        <Skeleton className="h-[120px] rounded-lg" />
+        <Skeleton className="h-[180px] rounded-lg" />
+        <TableSkeleton rows={8} />
       </div>
     );
   }

@@ -485,9 +485,12 @@ export default function Notes() {
             {isLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin" /></div>
             ) : noteTree.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-12 px-3">
-                {search ? 'Nada encontrado.' : 'Nenhuma página aqui. Clique em "Nova página".'}
-              </p>
+              <EmptyState
+                size="sm"
+                icon={search ? Search : FileIcon}
+                title={search ? 'Nada encontrado' : 'Nenhuma página aqui'}
+                description={search ? 'Nenhuma nota corresponde à busca.' : 'Clique em "Nova página" para começar.'}
+              />
             ) : (
               <div
                 className="py-1"
@@ -1071,9 +1074,12 @@ function NoteTasksPanel({ noteId }: { noteId: string }) {
       {isLoading ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : tasks.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic text-center py-12">
-          Nenhuma tarefa criada ainda.
-        </p>
+        <EmptyState
+          size="sm"
+          icon={ListChecks}
+          title="Nenhuma tarefa criada ainda"
+          description="Adicione tarefas no campo acima — uma por linha."
+        />
       ) : (
         <>
           <PriorityGroup

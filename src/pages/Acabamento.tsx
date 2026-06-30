@@ -3,8 +3,9 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, DotsThreeVertical, CaretRight, Package, Palette, ListChecks, CheckCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -463,30 +464,19 @@ export default function Acabamento() {
           description="Fichas de controle com checklist de pares para acabamento"
           actions={<>
             {selectedOrders.size > 0 && (
-              <>
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="bg-success hover:bg-success/90 text-success-foreground"
-                  disabled={finalizingOrders}
-                  onClick={handleFinishSelectedOrders}
-                >
-                  <CheckSquare className="h-3.5 w-3.5 mr-1" />
-                  Finalizar OP's selecionadas ({selectedOrders.size})
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => {
-                  const ids = acabamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                  navigate(`/orders/grouped-summary?sector=acabamento&ids=${ids}`);
-                }}>
-                  <Layers className="h-3.5 w-3.5 mr-1" /> Imprimir Relatório ({selectedOrders.size})
-                </Button>
-              </>
+              <Button
+                size="sm"
+                variant="default"
+                className="bg-success hover:bg-success/90 text-success-foreground"
+                disabled={finalizingOrders}
+                onClick={handleFinishSelectedOrders}
+              >
+                <CheckSquare className="h-3.5 w-3.5 mr-1" />
+                Finalizar OP's selecionadas ({selectedOrders.size})
+              </Button>
             )}
-            <Button size="sm" variant="secondary" onClick={() => handlePrintByClient()} disabled={selectedOrders.size === 0}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Relatório por Cliente ({selectedOrders.size})
-            </Button>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[140px] h-8 text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
@@ -496,6 +486,28 @@ export default function Acabamento() {
               </SelectContent>
             </Select>
            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <DotsThreeVertical className="h-4 w-4" /> Ações
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {selectedOrders.size > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    const ids = acabamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    navigate(`/orders/grouped-summary?sector=acabamento&ids=${ids}`);
+                  }}>
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Imprimir Relatório ({selectedOrders.size})
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => handlePrintByClient()} disabled={selectedOrders.size === 0}>
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório por Cliente ({selectedOrders.size})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>}
         />
 
@@ -575,7 +587,7 @@ export default function Acabamento() {
                       </div>
                        <div className="flex-1 ml-2">
                         <CardTitle className="text-sm flex items-center gap-2">
-                          <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                          <CaretRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                           {order.order_number} — {ref?.code} {ref?.name}
                           {(() => {
                             const info = getDeliveryInfo(order);
@@ -590,8 +602,8 @@ export default function Acabamento() {
                         {(() => {
                           const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
                           return so ? (
-                            <p className="text-xs text-muted-foreground ml-5 mt-0.5">
-                              📦 <span className="font-semibold">{so.order_number}</span>
+                            <p className="text-xs text-muted-foreground ml-5 mt-0.5 inline-flex items-center gap-1">
+                              <Package className="h-3.5 w-3.5" /> <span className="font-semibold">{so.order_number}</span>
                               {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                               {so.client_name ? <> | {(so as any).client_number ? <span className="font-bold text-primary">{(so as any).client_number}</span> : null}{(so as any).client_number ? ' — ' : ''}{so.client_name}</> : null}
                               {' | '}<Badge variant="outline" className="text-[8px] h-4 px-1">{PACKAGING_MODE_LABELS[(so as any).packaging_mode as PackagingMode] || 'Cx Individual + Amarrado'}</Badge>
@@ -606,8 +618,8 @@ export default function Acabamento() {
                           <span className="text-primary">{totalFichas} fichas</span>
                         </p>
                         {(() => { const sl = getStrapsLabel(order); return sl ? (
-                          <p className="text-xs ml-5 mt-0.5">
-                            🎨 Tiras: <span className="font-bold text-red-600">{sl}</span>
+                          <p className="text-xs ml-5 mt-0.5 inline-flex items-center gap-1">
+                            <Palette className="h-3.5 w-3.5" /> Tiras: <span className="font-bold text-red-600">{sl}</span>
                           </p>
                         ) : null; })()}
                       </div>
@@ -644,7 +656,7 @@ export default function Acabamento() {
                       {/* Grade table */}
                       {grade && activeSizes.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold mb-2">📋 Grade</p>
+                          <p className="text-xs font-semibold mb-2 inline-flex items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> Grade</p>
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
@@ -681,7 +693,7 @@ export default function Acabamento() {
 
                       {/* Checklist preview */}
                       <div>
-                        <p className="text-xs font-semibold mb-2">✅ Checklist de Fichas ({totalFichas})</p>
+                        <p className="text-xs font-semibold mb-2 inline-flex items-center gap-1"><CheckCircle className="h-3.5 w-3.5" /> Checklist de Fichas ({totalFichas})</p>
                         <div className="flex flex-wrap gap-1">
                           {Array.from({ length: Math.min(totalFichas, 60) }, (_, i) => (
                             <div key={i} className="w-11 h-11 border-2 border-foreground/30 rounded flex items-center justify-center text-sm font-bold text-destructive font-mono">

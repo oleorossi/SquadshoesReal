@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Plus, CircleNotch as Loader2, Trash as Trash2, ListChecks,
+  Plus, CircleNotch as Loader2, ListChecks,
   CaretRight as ChevronRight, File as FileIcon,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -248,7 +249,7 @@ function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
         )}
       </div>
 
-      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         <Select value={task.priority} onValueChange={(v) => onChangePriority(v as NoteTaskPriority)}>
           <SelectTrigger className="h-7 w-[88px] text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -257,13 +258,7 @@ function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
             <SelectItem value="baixa">⚪ Baixa</SelectItem>
           </SelectContent>
         </Select>
-        <button
-          onClick={() => { if (confirm('Excluir tarefa?')) onDelete(); }}
-          className="h-7 w-7 inline-flex items-center justify-center rounded-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          aria-label="Excluir tarefa"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <DeleteConfirmButton onConfirm={onDelete} title="Excluir tarefa?" description="Esta ação não pode ser desfeita." />
       </div>
     </div>
   );

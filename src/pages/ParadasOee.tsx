@@ -133,7 +133,7 @@ export default function ParadasOee() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                   <TableHead>Setor</TableHead>
                   <TableHead className="text-right">Disponibilidade</TableHead>
                   <TableHead className="text-right">Performance</TableHead>
@@ -146,7 +146,7 @@ export default function ParadasOee() {
                 {oeeSorted.map(row => {
                   const o = partialOee(row);
                   return (
-                    <TableRow key={row.stage_name}>
+                    <TableRow key={row.stage_name} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-semibold">{row.stage_name}</TableCell>
                       <TableCell className="text-right tabular-nums">{pct(row.availability_pct)}</TableCell>
                       <TableCell className="text-right tabular-nums">{pct(row.performance_pct)}</TableCell>
@@ -172,7 +172,7 @@ export default function ParadasOee() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm">
                   <TableHead>Setor</TableHead>
                   <TableHead>Motivo</TableHead>
                   <TableHead>Categoria</TableHead>
@@ -183,7 +183,7 @@ export default function ParadasOee() {
               </TableHeader>
               <TableBody>
                 {stops.map(s => (
-                  <TableRow key={s.id}>
+                  <TableRow key={s.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="font-semibold">{s.stage_name}</TableCell>
                     <TableCell>{s.reason?.description || '—'}</TableCell>
                     <TableCell>

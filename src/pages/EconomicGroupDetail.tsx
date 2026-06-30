@@ -132,7 +132,7 @@ function Header({ group }: { group: any }) {
               </Badge>
             )}
             {overLimit && (
-              <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 gap-1">
+              <Badge className="bg-warning/10 text-warning border-warning/30 gap-1">
                 <AlertTriangle className="h-3 w-3" /> Limite estourado
               </Badge>
             )}
@@ -192,13 +192,13 @@ function ResumoTab({ groupId, group }: { groupId: string; group: any }) {
       </div>
 
       {group.important_info && (
-        <Card className="border-amber-500/40 bg-amber-500/5">
+        <Card className="border-warning/40 bg-warning/5">
           <CardContent className="pt-3 pb-3">
             <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
               <div>
-                <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-1">Informação importante</p>
-                <p className="text-sm text-amber-900 whitespace-pre-wrap">{group.important_info}</p>
+                <p className="text-xs font-bold text-warning uppercase tracking-wide mb-1">Informação importante</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{group.important_info}</p>
               </div>
             </div>
           </CardContent>
@@ -219,7 +219,7 @@ function KpiCard({ label, value, icon: Icon, accent }: { label: string; value: s
 }
 
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: 'green' | 'red' | 'amber' }) {
-  const color = highlight === 'green' ? 'text-emerald-700' : highlight === 'red' ? 'text-rose-700' : highlight === 'amber' ? 'text-amber-700' : '';
+  const color = highlight === 'green' ? 'text-success' : highlight === 'red' ? 'text-destructive' : highlight === 'amber' ? 'text-warning' : '';
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted-foreground">{label}</span>
@@ -443,7 +443,7 @@ function ClientesTab({ groupId }: { groupId: string }) {
                       <td className="p-2">
                         <div className="flex items-center gap-2">
                           {c.is_matriz && (
-                            <Badge className="gap-1 bg-amber-500/15 text-amber-700 border-amber-500/30 text-xs">
+                            <Badge className="gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs">
                               <Crown className="h-3 w-3" /> Matriz
                             </Badge>
                           )}
@@ -460,8 +460,8 @@ function ClientesTab({ groupId }: { groupId: string }) {
                       <td className="p-2 text-right font-mono text-xs">{fmtCurrency(c.credit_limit || 0)}</td>
                       <td className="p-2 text-center">
                         {!c.active ? <Badge variant="outline" className="text-xs">Inativo</Badge> :
-                          c.commercial_block ? <Badge className="bg-red-500/15 text-red-700 border-red-500/30 text-xs">Bloqueado</Badge> :
-                            <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 text-xs">Ativo</Badge>}
+                          c.commercial_block ? <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-xs">Bloqueado</Badge> :
+                            <Badge className="bg-success/10 text-success border-success/30 text-xs">Ativo</Badge>}
                       </td>
                       <td className="p-2 text-right">
                         {!c.is_matriz && (
@@ -608,7 +608,7 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
                       <tr key={a.id} className="border-t border-border/50 hover:bg-muted/30">
                         <td className="p-2 text-xs">{a.client_name}</td>
                         <td className="p-2 text-xs truncate max-w-[200px]" title={a.description}>{a.description}</td>
-                        <td className={`p-2 text-xs ${overdue ? 'text-red-600 font-bold' : ''}`}>{fmtDate(a.due_date)}</td>
+                        <td className={`p-2 text-xs ${overdue ? 'text-destructive font-bold' : ''}`}>{fmtDate(a.due_date)}</td>
                         <td className="p-2 text-right font-mono text-xs">{fmtCurrency(a.amount)}</td>
                         <td className="p-2 text-right font-mono text-xs">{fmtCurrency(a.amount_received)}</td>
                         <td className="p-2"><Badge variant="outline" className="text-xs">{a.status}</Badge></td>
@@ -691,7 +691,7 @@ function ContatosTab({ groupId }: { groupId: string }) {
                     </div>
                     <div className="flex gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(c)}><Edit3 className="h-3 w-3" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" onClick={() => del.mutate({ id: c.id, groupId })}><Trash2 className="h-3 w-3" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => del.mutate({ id: c.id, groupId })}><Trash2 className="h-3 w-3" /></Button>
                     </div>
                   </div>
                   {c.email && <p className="text-xs flex items-center gap-1"><a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a></p>}
@@ -828,7 +828,7 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                         <Badge variant="outline" className="text-xs">{n.note_type}</Badge>
                         <span className="text-xs text-muted-foreground">{fmtDateTime(n.created_at)}</span>
                       </div>
-                      <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-red-600" onClick={() => delNote.mutate({ id: n.id, groupId })}>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => delNote.mutate({ id: n.id, groupId })}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
@@ -858,7 +858,7 @@ function NotasAnexosTab({ groupId }: { groupId: string }) {
                   <div key={a.id} className="flex items-center gap-2 border border-border/60 rounded p-2 group">
                     <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
                     <a href={a.file_url} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline truncate flex-1" title={a.file_name}>{a.file_name}</a>
-                    <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-red-600" onClick={() => delAtt.mutate({ id: a.id, groupId })}>
+                    <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => delAtt.mutate({ id: a.id, groupId })}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>

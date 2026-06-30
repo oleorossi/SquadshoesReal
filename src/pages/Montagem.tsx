@@ -3,12 +3,14 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Panel } from '@/components/ui/panel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { SectorStageActions } from '@/components/production/SectorStageActions';
@@ -231,27 +233,19 @@ export default function Montagem() {
         description="Gestão e controle das ordens de produção na etapa de montagem"
         actions={<>
           {selectedOrders.size > 0 && (
-            <>
-              <Button
-                size="sm"
-                variant="default"
-                className="bg-success hover:bg-success/90 text-success-foreground"
-                disabled={finalizingOrders}
-                onClick={handleFinishSelectedOrders}
-              >
-                <CheckSquare className="h-3.5 w-3.5 mr-1" />
-                Finalizar OP's selecionadas ({selectedOrders.size})
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => {
-                const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/orders/grouped-summary?sector=montagem&ids=${ids}`);
-              }}>
-                <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
-              </Button>
-            </>
+            <Button
+              size="sm"
+              variant="default"
+              className="bg-success hover:bg-success/90 text-success-foreground"
+              disabled={finalizingOrders}
+              onClick={handleFinishSelectedOrders}
+            >
+              <CheckSquare className="h-3.5 w-3.5 mr-1" />
+              Finalizar OP's selecionadas ({selectedOrders.size})
+            </Button>
           )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px] h-9 text-xs">
+            <SelectTrigger className="w-[140px] h-8 text-xs">
               <Filter className="h-3.5 w-3.5 mr-1" />
               <SelectValue />
             </SelectTrigger>
@@ -260,14 +254,33 @@ export default function Montagem() {
               <SelectItem value="all">Todas</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1">
+                <DotsThreeVertical className="h-4 w-4" /> Ações
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {selectedOrders.size > 0 && (
+                <DropdownMenuItem onClick={() => {
+                  const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                  navigate(`/orders/grouped-summary?sector=montagem&ids=${ids}`);
+                }}>
+                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+              <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
             // 6º passe (2026-06-12): popup legado de fichas por setor
             // morto — deep-link pra tela central (modelo v7, com TallyBox).
             const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
             navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Montagem')}`);
           }}>
-            <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
-          </Button>
+                <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
         </>}
       />
@@ -294,11 +307,13 @@ export default function Montagem() {
 
       {/* Orders list */}
       {montagemOrders.length === 0 ? (
-        <EmptyState
-          icon={Layers}
-          title="Nenhuma OP com montagem pendente"
-          description="Não há ordens de produção aguardando montagem no momento."
-        />
+        <Panel flush>
+          <EmptyState
+            icon={ClipboardText}
+            title="Nenhuma OP com montagem pendente"
+            description="Não há ordens de produção aguardando montagem no momento."
+          />
+        </Panel>
       ) : (
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">
@@ -331,7 +346,7 @@ export default function Montagem() {
                     </div>
                     <div className="flex-1 ml-2">
                       <CardTitle className="text-sm flex items-center gap-2">
-                        <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                        <CaretRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                         {order.order_number} — {ref?.code} {ref?.name}
                         {(() => {
                           const info = getDeliveryInfo(order);
@@ -344,8 +359,8 @@ export default function Montagem() {
                         })()}
                       </CardTitle>
                       {so && (
-                        <p className="text-xs text-muted-foreground ml-5 mt-0.5">
-                          📦 <span className="font-semibold">{so.order_number}</span>
+                        <p className="text-xs text-muted-foreground ml-5 mt-0.5 flex items-center gap-1">
+                          <Package className="h-3.5 w-3.5 shrink-0" /> <span className="font-semibold">{so.order_number}</span>
                           {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                           {so.client_name ? <> | {so.client_name}</> : null}
                         </p>
@@ -356,8 +371,8 @@ export default function Montagem() {
                         <span className="font-bold">{totalPairs} pares</span>
                       </p>
                       {(() => { const sl = getStrapsLabel(order); return sl ? (
-                        <p className="text-xs ml-5 mt-0.5">
-                          🎨 Tiras: <span className="font-bold text-red-600">{sl}</span>
+                        <p className="text-xs ml-5 mt-0.5 flex items-center gap-1">
+                          <Palette className="h-3.5 w-3.5 shrink-0" /> Tiras: <span className="font-bold text-red-600">{sl}</span>
                         </p>
                       ) : null; })()}
                     </div>
@@ -402,7 +417,9 @@ export default function Montagem() {
                     {/* Grade table */}
                     {grade && activeSizes.length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold mb-2">📋 Grade Individual</p>
+                        <p className="text-xs font-semibold mb-2 flex items-center gap-1">
+                          <ListBullets className="h-3.5 w-3.5 shrink-0" /> Grade Individual
+                        </p>
                         <div className="overflow-x-auto">
                           <Table>
                             <TableHeader>
