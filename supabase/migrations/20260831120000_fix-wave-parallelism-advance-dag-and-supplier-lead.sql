@@ -36,6 +36,10 @@
 -- -----------------------------------------------------------------------------
 -- search_path inclui extensions p/ get_material_conversion_info/unaccent usados
 -- na derivação canônica de necessidade (mesma do get_wave_material_needs).
+-- (M6 — dedup de calculate_order_consumption — foi ABANDONADO: realizá-lo exigia
+-- redefinir get_wave_material_needs, que está hand-patched no banco vivo (CTE de
+-- tiras fora do repo); o teste de equivalência pegou a divergência. Ganho era só
+-- performance fora de hot path → risco > benefício.)
 CREATE OR REPLACE FUNCTION public.compute_wave_timeline(p_sale_order_ids uuid[])
  RETURNS TABLE(earliest_deadline date, corte_palmilha_start_date date, corte_forracao_start_date date, costura_start_date date, mesa_start_date date, silk_start_date date, colagem_start_date date, montagem_start_date date, solagem_start_date date, acabamento_start_date date, acabamento_end_date date, pickup_tuesday_date date, pickup_friday_date date, material_ready_date date, purchase_deadline date)
  LANGUAGE plpgsql
@@ -126,19 +130,33 @@ BEGIN
     WHERE (line ->> 'product_id') IS NOT NULL
   ),
   needed AS (
-    SELECT product_id,
-      COALESCE(SUM(required) FILTER (WHERE unit IS NULL), 0)
-        / GREATEST(COALESCE((SELECT conv.dm2_per_unit FROM public.get_material_conversion_info(product_id) conv LIMIT 1), 1), 1)
-      + COALESCE(SUM(required) FILTER (WHERE unit IS NOT NULL), 0) AS total_needed
-    FROM exploded
-    GROUP BY product_id
+    SELECT e.product_id,
+      COALESCE(SUM(e.required) FILTER (WHERE e.unit IS NULL), 0) AS dm2_need,
+      COALESCE(SUM(e.required) FILTER (WHERE e.unit IS NOT NULL), 0) AS phys_need
+    FROM exploded e
+    GROUP BY e.product_id
+  ),
+  needed_conv AS (
+    SELECT n.product_id,
+      n.dm2_need / GREATEST(COALESCE(c.dm2_per_unit, 1), 1) + n.phys_need AS total_needed,
+      -- M5: material de ÁREA cortado sem largura na ficha de componente não tem
+      -- conversão dm²→física confiável (dm2_per_unit=1 + conversion_warning). Não
+      -- dá pra comparar a necessidade (dm²) com o estoque (físico) → NÃO inferir
+      -- falta a partir dele (senão antecipa compra ~100× indevidamente).
+      (n.dm2_need > 0 AND c.conversion_warning IS NOT NULL) AS unconvertible
+    FROM needed n
+    LEFT JOIN LATERAL (
+      SELECT dm2_per_unit, conversion_warning
+        FROM public.get_material_conversion_info(n.product_id) LIMIT 1
+    ) c ON true
   )
-  SELECT COALESCE(MAX(CASE WHEN n.total_needed > GREATEST(0, COALESCE(p.quantity,0) - COALESCE(p.reserved_stock,0))
+  SELECT COALESCE(MAX(CASE WHEN NOT nc.unconvertible
+           AND nc.total_needed > GREATEST(0, COALESCE(p.quantity,0) - COALESCE(p.reserved_stock,0))
          THEN public.get_effective_supplier_lead_days(p.id, NULL) ELSE 0 END), 0)
     INTO v_lead_supplier
-    FROM needed n
-    JOIN products p ON p.id = n.product_id
-   WHERE n.total_needed > 0;
+    FROM needed_conv nc
+    JOIN products p ON p.id = nc.product_id
+   WHERE nc.total_needed > 0;
 
   -- Costura é PREP PARALELA (junto com palmilha/forração/mesa); v_seq_start =
   -- início da cadeia sequencial (= silk_start). A cadeia termina no Acabamento

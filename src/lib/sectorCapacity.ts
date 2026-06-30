@@ -422,22 +422,46 @@ const FORWARD_SEQ: SectorKey[] = ['silk', 'colagem', 'montagem', 'solagem', 'aca
 /** YYYY-MM-DD (data local) — reusa o helper local. */
 function fwdISO(d: Date): string { return localISODate(d); }
 
+// =============================================================================
+// loadCategoryDefaults / defaultsForSheet (B5/M8) — fonte única dos defaults de
+// capacidade/lead por categoria (default_lead_times), pra TODOS os callers da
+// cascata passarem os mesmos defaults que o SQL usa. Sem isso, setores sem
+// capacidade própria mas com default de categoria caíam no hardFallback=1,
+// divergindo da timeline gravada.
+// =============================================================================
+export async function loadCategoryDefaults(categories: (string | null | undefined)[]): Promise<Map<string, any>> {
+  const map = new Map<string, any>();
+  const cats = Array.from(new Set((categories || []).filter(Boolean))) as string[];
+  if (cats.length === 0) return map;
+  const { data } = await supabase
+    .from('default_lead_times')
+    .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias')
+    .in('shoe_category', cats);
+  (data || []).forEach((d: any) => map.set(d.shoe_category, d));
+  return map;
+}
+
+export function defaultsForSheet(map: Map<string, any> | null | undefined, sheet: any): any {
+  return sheet?.shoe_category ? (map?.get(sheet.shoe_category) ?? null) : null;
+}
+
 export function computeForwardSchedule(
   sheet: any,
   qty: number,
   startDate: Date,
   setupDaysBySector: Partial<Record<SectorKey, number>> = {},
+  categoryDefaults: any = null,
 ): ForwardSchedule {
   const setup = (k: SectorKey) => Math.max(0, Number(setupDaysBySector[k] || 0));
   // required espelha computeParallelWindows (mesma lógica de hasSector + caps).
-  const w = computeParallelWindows(sheet, qty, startDate); // só pra reaproveitar `required`/`cap`
+  const w = computeParallelWindows(sheet, qty, startDate, categoryDefaults); // só pra reaproveitar `required`/`cap`
   const required = (k: SectorKey): boolean => {
     if (k === 'expedicao') return sheetHasSector(sheet, 'Expedição');
     const pw = (w as any)[k];
     return pw ? !!pw.required : false;
   };
   const lead = (k: SectorKey): number =>
-    required(k) ? computeSectorLeadTimeDays(k, qty, sheet, null) + setup(k) : 0;
+    required(k) ? computeSectorLeadTimeDays(k, qty, sheet, categoryDefaults) + setup(k) : 0;
 
   const steps: ForwardSectorStep[] = [];
   const pushStep = (k: SectorKey, start: Date, end: Date, ld: number) => {
@@ -560,6 +584,7 @@ export function computeSectorDailyLoad(
   dateISO: string,
   ops: DailyOpInput[],
   sheetMap: Map<string, any>,
+  categoryDefaults: Map<string, any> | null = null,
 ): SectorDayLoad[] {
   const day = new Date(dateISO + 'T00:00:00');
 
@@ -576,7 +601,7 @@ export function computeSectorDailyLoad(
       const deadline = new Date(op.planned_delivery + 'T00:00:00');
       if (isNaN(deadline.getTime())) continue;
 
-      const windows = computeParallelWindows(sheet, qty, deadline);
+      const windows = computeParallelWindows(sheet, qty, deadline, defaultsForSheet(categoryDefaults, sheet));
       for (const { key } of DISPLAY_SECTORS) {
         const w = windows[key as keyof ParallelWindows];
         if (!w || !w.required) continue;

@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, addDays, parseISO, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { computeParallelWindows, setHolidayCache, isBusinessDay } from '@/lib/sectorCapacity';
+import { computeParallelWindows, setHolidayCache, isBusinessDay, loadCategoryDefaults, defaultsForSheet } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
@@ -133,7 +133,7 @@ export default function CapacityPlanning() {
         .select(`
           id, order_number, quantity, status, planned_delivery, reference_id, color, sale_order_id,
           technical_sheets:reference_id (
-            id, name, code,
+            id, name, code, shoe_category,
             cutting_capacity_per_day, sewing_capacity_per_day,
             mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day,
             gluing_capacity_per_day, soling_capacity_per_day,
@@ -196,6 +196,19 @@ export default function CapacityPlanning() {
     return { ...o, sheet, orderStages, activeStage, currentSector };
   }), [orders, stagesByOrder]);
 
+  // M8: defaults por categoria (default_lead_times) pra a timeline bater com o SQL
+  // quando o setor não tem capacidade própria mas a categoria tem.
+  const categoryKeys = useMemo(
+    () => Array.from(new Set(orders.map((o: any) => o.technical_sheets?.shoe_category).filter(Boolean))).sort(),
+    [orders],
+  );
+  const { data: catDefaults } = useQuery({
+    queryKey: ['cap_cat_defaults_v1', categoryKeys],
+    queryFn: () => loadCategoryDefaults(categoryKeys),
+    enabled: categoryKeys.length > 0,
+    staleTime: 60_000,
+  });
+
   // ─── SECTOR KPIs ───────────────────────────────────────────────────────────
 
   const sectorKPIs = useMemo(() => SECTORS.map(sc => {
@@ -252,7 +265,7 @@ export default function CapacityPlanning() {
 
       const s = o.sheet;
       const billing = parseISO(o.planned_delivery);
-      const pw = computeParallelWindows(s, qty, billing);
+      const pw = computeParallelWindows(s, qty, billing, defaultsForSheet(catDefaults, s));
 
       const windows: { key: SectorKey; start: Date; end: Date; active: boolean }[] = [
         { key: 'corte_palmilha', start: pw.corte_palmilha.start, end: pw.corte_palmilha.end, active: pw.corte_palmilha.required },
@@ -314,7 +327,7 @@ export default function CapacityPlanning() {
           values: daily,
         };
       });
-  }, [enrichedOrders, today, horizon, holidays]);
+  }, [enrichedOrders, today, horizon, holidays, catDefaults]);
 
   // ─── DERIVED (status strip + drill-down) ───────────────────────────────────
 

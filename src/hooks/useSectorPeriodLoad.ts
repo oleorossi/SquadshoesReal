@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  loadHolidayCache, isBusinessDay, computeSectorDailyLoad,
+  loadHolidayCache, isBusinessDay, computeSectorDailyLoad, loadCategoryDefaults,
   type DailyOpInput, type DailySeverity,
 } from '@/lib/sectorCapacity';
 import { normalizeSector, DISPLAY_SECTORS, type SectorKey } from '@/lib/sectors';
@@ -112,11 +112,15 @@ export function useSectorPeriodLoad(startISO: string, endISO: string) {
       }));
 
       // ── PLANEJADO agregado (Σ por dia útil) ──
+      // M8: defaults por categoria carregados UMA vez (fora do loop de dias).
+      const catDefaults = await loadCategoryDefaults(
+        Array.from(sheetMap.values()).map((s: any) => s.shoe_category),
+      );
       type Agg = { demand: number; cap: number; ops: Map<string, PeriodSectorOp> };
       const agg = new Map<SectorKey, Agg>();
       for (const s of DISPLAY_SECTORS) agg.set(s.key, { demand: 0, cap: 0, ops: new Map() });
       for (const dayISO of days) {
-        for (const sd of computeSectorDailyLoad(dayISO, ops, sheetMap)) {
+        for (const sd of computeSectorDailyLoad(dayISO, ops, sheetMap, catDefaults)) {
           const a = agg.get(sd.sector); if (!a) continue;
           a.demand += sd.plannedPairs;
           a.cap = Math.max(a.cap, sd.capacityPerDay); // capacidade/dia efetiva do setor

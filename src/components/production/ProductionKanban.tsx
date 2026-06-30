@@ -515,8 +515,35 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
     try {
       const now = new Date().toISOString();
 
-      // Claim the destination stage BEFORE any stock mutation. If the stage row
-      // is missing or already started, bail without debiting stock.
+      // M9 (auditoria 2026-06-30): conclui os predecessores REAIS do destino no
+      // DAG ANTES de reivindicar o destino. O guard do servidor
+      // (fn_guard_manual_stage_transition) barra pendente→em_andamento se algum
+      // pré-requisito não estiver concluído; como Colagem agora exige Silk+prep,
+      // reivindicar o destino primeiro abortaria saltos multi-setor. A origem é
+      // concluída só se for predecessora (mover entre prep paralelos — ex.:
+      // Aviamento → Costura — não conclui a origem).
+      const preds = transitivePredecessors(toSector);
+      const stagesToComplete = [...skipped].filter((s) => preds.has(s));
+      if (fromSector !== 'Pendente' && preds.has(fromSector) && !stagesToComplete.includes(fromSector)) {
+        stagesToComplete.push(fromSector);
+      }
+
+      if (stagesToComplete.length > 0) {
+        // RPC sets quantity_processed = quantity_total in the same statement so
+        // skipped stages don't show "0/total concluído" in the UI and capacity
+        // planning doesn't treat them as still pending. completed_at é carimbado
+        // pelo trigger; só predecessores reais (não ramos paralelos irmãos).
+        const { error: skipError } = await (supabase as any).rpc('complete_order_stages_bulk', {
+          p_order_id: orderId,
+          p_stage_names: stagesToComplete,
+        });
+
+        if (skipError) throw skipError;
+      }
+
+      // Reivindica o destino DEPOIS de concluir os predecessores (guard passa).
+      // O winner-check (linhas afetadas) coordena o débito de estoque: só um
+      // vencedor passa de pendente→em_andamento e debita.
       const { data: startedRows, error: startError } = await supabase
         .from('order_stages')
         .update({ status: 'em_andamento', started_at: now })
@@ -528,28 +555,6 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       if (startError) throw startError;
       if (!startedRows || startedRows.length === 0) {
         throw new Error(`Etapa "${toSector}" não encontrada ou já em andamento.`);
-      }
-
-      // Marca como concluídas só as etapas que são predecessoras REAIS do destino
-      // no DAG (não ramos paralelos irmãos). A origem é concluída apenas se for
-      // predecessora do destino — mover entre setores prep paralelos (ex.:
-      // Aviamento → Costura) não conclui a origem.
-      const preds = transitivePredecessors(toSector);
-      const stagesToComplete = [...skipped].filter((s) => preds.has(s));
-      if (fromSector !== 'Pendente' && preds.has(fromSector) && !stagesToComplete.includes(fromSector)) {
-        stagesToComplete.push(fromSector);
-      }
-
-      if (stagesToComplete.length > 0) {
-        // RPC sets quantity_processed = quantity_total in the same statement so
-        // skipped stages don't show "0/total concluído" in the UI and capacity
-        // planning doesn't treat them as still pending.
-        const { error: skipError } = await (supabase as any).rpc('complete_order_stages_bulk', {
-          p_order_id: orderId,
-          p_stage_names: stagesToComplete,
-        });
-
-        if (skipError) throw skipError;
       }
 
       // Se vinha de Pendente, converte reservas em débito permanente APÓS a
