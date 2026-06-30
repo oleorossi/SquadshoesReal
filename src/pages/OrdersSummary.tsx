@@ -9,7 +9,6 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useAllOrderStages } from '@/hooks/useOrderStages';
@@ -19,6 +18,7 @@ import { format, parseISO, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { printHtml } from '@/lib/printOrder';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
@@ -307,7 +307,17 @@ export default function OrdersSummary() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="space-y-5 page-enter print:space-y-4">
+        <EditorialPageHeader
+          sectionLabel="PEDIDOS · RESUMO"
+          title="Resumo de Produção"
+          description="Resumo consolidado das ordens de produção"
+        />
+        <StatGridSkeleton count={5} />
+        <TableSkeleton rows={8} />
+      </div>
+    );
   }
 
   if (isError) {

@@ -23,6 +23,8 @@ import { useContractors } from '@/hooks/useContractors';
 import { BulkAssignServiceOrderDialog } from '@/components/bottlenecks/BulkAssignServiceOrderDialog';
 import { cn, formatCurrency } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Setores cobertos pela view (alinhado com v_sector_bottlenecks)
@@ -180,8 +182,15 @@ export default function BottlenecksPage() {
 
   if (isLoading) {
     return (
-      <div className="py-12 text-center text-muted-foreground text-sm">
-        Calculando gargalos...
+      <div className="space-y-5 page-enter">
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · GARGALOS"
+          title="Monitoramento de Gargalos"
+          description="Heatmap setor × próximas 4 semanas. Clique numa célula sobrecarregada pra ver as OPs e encaminhar pra terceirizadas antes que atrase a Montagem."
+        />
+        <StatGridSkeleton count={4} />
+        <Skeleton className="h-[320px] rounded-lg" />
+        <TableSkeleton rows={6} />
       </div>
     );
   }

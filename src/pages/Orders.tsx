@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Panel } from '@/components/ui/panel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -1092,7 +1093,18 @@ function getWeekOptions() {
   const selectedRefName = (referenceById.get(form.reference_id) as any)?.name || '';
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="w-full space-y-4 page-enter editorial-stagger">
+        {!hideHeader && (
+          <EditorialPageHeader
+            sectionLabel="PCP · ORDENS"
+            title="Ordens de Produção"
+            description="Gestão de OPs com controle por setor de produção"
+          />
+        )}
+        <TableSkeleton rows={8} />
+      </div>
+    );
   }
 
   if (isError) {

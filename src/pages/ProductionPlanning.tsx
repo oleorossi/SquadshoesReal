@@ -12,6 +12,7 @@
  import { ptBR } from "date-fns/locale";
  import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
  import { Panel } from "@/components/ui/panel";
+ import { StatGridSkeleton, TableSkeleton } from "@/components/layout/PageSkeleton";
 
  const SECTOR_ICONS: Record<string, any> = {
    'Corte': Scissors,
@@ -46,7 +47,17 @@
    });
  
    if (loadingKpis || loadingTimeline) {
-     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+     return (
+       <div className="space-y-6">
+         <EditorialPageHeader
+           sectionLabel="PRODUÇÃO · PLANEJAMENTO"
+           title="Planejamento de Produção"
+           description="Capacidade por setor, ocupação e timeline de ondas"
+         />
+         <StatGridSkeleton count={5} />
+         <TableSkeleton rows={8} />
+       </div>
+     );
    }
  
    return (

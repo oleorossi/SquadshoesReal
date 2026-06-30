@@ -21,6 +21,8 @@ import { ptBR } from 'date-fns/locale';
 import { useState, useMemo } from 'react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { RefChip } from '@/components/ui/ref-chip';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -139,7 +141,20 @@ export default function OrderEdit() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <AppLayout>
+        <div className="space-y-6 page-enter">
+          <EditorialPageHeader
+            sectionLabel="PEDIDOS · EDIÇÃO"
+            title="Edição de Pedido"
+            description="Acompanhamento de produção das ordens"
+          />
+          <Skeleton className="h-[88px] rounded-lg" />
+          <StatGridSkeleton count={3} />
+          <TableSkeleton rows={4} />
+        </div>
+      </AppLayout>
+    );
   }
 
   if (displayOrders.length === 0) {

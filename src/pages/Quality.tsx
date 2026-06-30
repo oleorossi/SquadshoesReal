@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAllQualityRecords, useResolveQualityRecord } from '@/hooks/useQualityRecords';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
@@ -52,6 +53,22 @@ export default function Quality() {
     const reworkable = records.filter((r: any) => r.can_rework && !r.resolved).length;
     return { total, unresolved, critical, reworkable };
   }, [records]);
+
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <div className="space-y-5 page-enter">
+          <EditorialPageHeader
+            sectionLabel="QUALIDADE · INSPEÇÕES"
+            title="Qualidade & Auditorias"
+            description="Defeitos registrados por setor — rastreamento por OP e plano de ação"
+          />
+          <StatGridSkeleton count={4} />
+          <TableSkeleton rows={8} />
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

@@ -25,6 +25,7 @@ import ClientFormDialog from '@/components/clients/ClientFormDialog';
 import ExcelImportDialog from '@/components/clients/ExcelImportDialog';
 import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -279,7 +280,19 @@ export default function Clients() {
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <AppLayout>
+        <div className="space-y-5 page-enter">
+          <EditorialPageHeader
+            sectionLabel="COMERCIAL · CLIENTES"
+            title="Clientes"
+            description="Cadastro de lojistas e grupos econômicos"
+          />
+          <StatGridSkeleton count={4} />
+          <TableSkeleton rows={8} />
+        </div>
+      </AppLayout>
+    );
   }
   if (isError) {
     return <div className="flex items-center justify-center py-20 text-destructive text-sm">Erro ao carregar clientes: {(error as Error)?.message}</div>;
