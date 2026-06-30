@@ -800,7 +800,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setImageDialogSheet(sheet); }}>
                             <ImagePlus className="h-3.5 w-3.5" />
                           </Button>
@@ -4332,7 +4332,7 @@ function SheetImageUpload({ images, onChange }: { images: any[]; onChange: (imgs
               onClick={() => setLightboxOpen(true)}>
               <img src={currentUrl} alt="Produto" className="w-full h-full object-cover" />
             </div>
-            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
               <label className="cursor-pointer">
                 <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
                 <div className="h-7 w-7 rounded-md bg-background/90 backdrop-blur border border-border flex items-center justify-center hover:bg-accent transition-colors">

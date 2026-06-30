@@ -301,7 +301,7 @@ export default function CRM() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createInteraction.mutate()} disabled={createInteraction.isPending || !newInt.client_id || !newInt.subject}>
+            <Button onClick={() => createInteraction.mutate()} disabled={createInteraction.isPending || !newInt.subject || (contactMode === 'client' ? !newInt.client_id : !newInt.external_contact_name.trim())}>
               {createInteraction.isPending
                 ? 'Salvando...'
                 : newInt.scheduled_for ? 'Agendar Contato' : 'Registrar'}

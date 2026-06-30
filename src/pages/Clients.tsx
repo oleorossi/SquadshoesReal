@@ -481,7 +481,7 @@ export default function Clients() {
                                     : <span className="text-muted-foreground/50">—</span>}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditClient(c)} aria-label="Editar cliente"><Pencil className="h-4 w-4" /></Button>
                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteClientId(c.id)} aria-label="Excluir cliente"><Trash2 className="h-4 w-4" /></Button>
                                   </div>
@@ -546,7 +546,7 @@ export default function Clients() {
                             <Badge variant="secondary">{count}</Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir 360°" aria-label="Abrir visão 360° do grupo econômico" onClick={() => navigate(`/grupos-economicos/${g.id}`)}><ExternalLink className="h-4 w-4" /></Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Edição rápida" aria-label="Edição rápida do grupo econômico" onClick={() => openEditGroup(g)}><Pencil className="h-4 w-4" /></Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteGroupId(g.id)} aria-label="Excluir grupo econômico"><Trash2 className="h-4 w-4" /></Button>
