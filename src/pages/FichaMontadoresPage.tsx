@@ -1,19 +1,16 @@
 // FichaMontadoresPage.tsx — Squad Shoes
-// "Ficha de Montadores" → CHAMADA DO DIA: lançamento da PRODUÇÃO DIÁRIA dos
-// montadores (quantas fichas cada um fechou por dia). Roster do setor Montagem
-// numa tela só, um stepper por montador, um único "Salvar o dia" (upsert em
-// lote). Visão "Semana" = matriz montadores × Seg–Sex pro gestor fechar a semana.
-// Detalhe opcional por referência/cor (a soma = total do dia).
+// "Ficha de Montadores" → CHAMADA DO DIA: produção diária dos montadores.
+// O montador lança os PARES produzidos por TAMANHO DE FICHA (12 / 15 / 18 pares).
+//   · fichas = Σ (pares ÷ tamanho)   · pares = Σ pares
+// Roster do setor Montagem numa tela (visão Dia) + matriz montadores × Seg–Sex
+// por tamanho (visão Semana). Um único "Salvar" (upsert em lote por dia/montador).
 //
 // Modelo 'chamada' em public.ficha_montadores: 1 linha por (dia, montador_id) com
-// fichas_dia + detalhe jsonb + origem='chamada'. Compat com Produtividade: grava
-// total=fichas_dia, copias=1 → paresDaFicha = fichas_dia (agg não muda de fórmula).
-// Fichas antigas de grade ficam origem='legacy' (histórico intacto).
-//
-// Print (relatório/dia) abre em window próprio com cores hardcoded de propósito.
+//   detalhe = [{tamanho, pares}], total = Σ pares, fichas_dia = Σ round(pares/tamanho).
+// Produtividade lê fichas_dia (qtd de fichas) e total (pares). Fichas antigas de
+// grade = origem='legacy'.
 import { supabase } from "@/integrations/supabase/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
@@ -24,14 +21,18 @@ import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { toast } from "sonner";
-import { Printer, Plus, Minus, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, X } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight } from "@phosphor-icons/react";
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
 type ChamadaView = "dia" | "semana";
 type PeriodMode = "hoje" | "semana" | "q1" | "q2" | "mes" | "custom";
 
-interface DetItem { reference_id: string | null; referencia: string | null; cor: string | null; qtd: number; }
+/** Tamanhos de ficha (pares por ficha). */
+const SIZES = [12, 15, 18] as const;
+type SizeMap = Record<number, number>; // tamanho -> pares
+
+interface DetItem { tamanho: number; pares: number; }
 
 interface Ficha {
   id: string;
@@ -46,11 +47,11 @@ interface Ficha {
   grade: Grade;
   numeracoes: string[];
   quantidades: string[];
-  total: number;
+  total: number;               // PARES (modelo chamada) / pares da grade (legado)
   copias: number;
   valor_par: number | null;
-  fichas_dia?: number | null;  // modelo 'chamada'
-  detalhe?: DetItem[] | null;  // modelo 'chamada'
+  fichas_dia?: number | null;  // modelo 'chamada' = qtd de fichas
+  detalhe?: DetItem[] | null;  // modelo 'chamada' = [{tamanho, pares}]
   origem?: string | null;      // 'chamada' | 'legacy'
   criado_em?: string;
 }
@@ -67,11 +68,30 @@ const paresDaFicha = (f: { total: number; copias: number }) => (Number(f.total) 
 const esc = (s: string) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
-// É um registro do modelo novo (produção diária)? origem='chamada'; ou, antes da
-// migration (sem coluna origem), uma linha sem grade (numeracoes vazias).
+// É um registro do modelo novo (produção diária)?
 const isChamada = (f: Ficha) =>
   f.origem === "chamada" || (f.origem == null && Array.isArray(f.numeracoes) && f.numeracoes.length === 0);
-const fichasDiaOf = (f: Ficha) => Number(f.fichas_dia ?? f.total) || 0;
+
+// pares -> mapa por tamanho (lê detalhe; fallback p/ linhas antigas sem detalhe = tudo em 12)
+const emptySizeMap = (): SizeMap => ({ 12: 0, 15: 0, 18: 0 });
+function sizeMapOf(f: Ficha): SizeMap {
+  const m = emptySizeMap();
+  if (Array.isArray(f.detalhe) && f.detalhe.length) {
+    for (const d of f.detalhe) { const t = Number(d.tamanho); const p = Number(d.pares) || 0; if (t) m[t] = (m[t] || 0) + p; }
+    return m;
+  }
+  // legado/chamada antiga sem detalhe: trata o total como pares de ficha de 12
+  const tot = Number(f.total) || 0;
+  if (tot > 0) m[12] = tot;
+  return m;
+}
+const paresOfMap = (m: SizeMap) => SIZES.reduce((s, sz) => s + (m[sz] || 0), 0);
+const fichasOfMap = (m: SizeMap) => SIZES.reduce((s, sz) => s + Math.round((m[sz] || 0) / sz), 0);
+// Sempre deriva a qtd de fichas do detalhe por tamanho (linhas antigas sem
+// detalhe caem no fallback "tudo em 12"), ignorando fichas_dia possivelmente
+// defasado — assim os lançamentos já gravados aparecem corrigidos sem backfill.
+const fichasDiaOf = (f: Ficha) => fichasOfMap(sizeMapOf(f));
+const paresOfFicha = (f: Ficha) => Number(f.total) || 0;
 
 const WD_FULL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 const WD_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex"];
@@ -87,7 +107,7 @@ function weekDaysOf(iso: string) {
   return Array.from({ length: 5 }, (_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return isoOf(x); });
 }
 
-/** Intervalo {from,to} (ISO) do período escolhido (Produtividade + Fichas). */
+/** Intervalo {from,to} (ISO) do período (Produtividade + Fichas). */
 function periodRange(mode: PeriodMode, cFrom: string, cTo: string): { from: string; to: string } {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
@@ -125,51 +145,13 @@ function imprimirRelatorio(rows: AggRow[], label: string, intervalo: string, tot
   openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Produtividade — Montadores</title><style>${css}</style></head><body>
     <h1>Produtividade dos Montadores</h1>
     <div class="sub">${esc(label)} · ${esc(intervalo)} — gerado em ${fmtDia(todayISO())}</div>
-    <table><thead><tr><th>Montador</th><th style="text-align:right">Fichas</th><th style="text-align:right">Pares</th><th style="text-align:right">Valor/ficha</th><th style="text-align:right">Pagamento</th></tr></thead>
+    <table><thead><tr><th>Montador</th><th style="text-align:right">Fichas</th><th style="text-align:right">Pares</th><th style="text-align:right">Valor/par</th><th style="text-align:right">Pagamento</th></tr></thead>
     <tbody>${body || '<tr><td colspan="5" style="text-align:center;color:#888">Sem dados no período.</td></tr>'}</tbody>
     <tfoot><tr><td>TOTAL (${rows.length} montador${rows.length === 1 ? "" : "es"})</td><td class="n">${totals.fichas}</td><td class="n">${totals.pares}</td><td class="n"></td><td class="n">${fmtBRL(totals.pago)}</td></tr></tfoot></table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
 
 interface AggRow { key: string; nome: string; fichas: number; pares: number; pago: number; valorPar: number; }
-
-/* ---------- Sub-form: adicionar uma referência ao detalhe de um montador ---------- */
-function DetalheAdd({ references, onAdd }: { references: { id: string; code: string | null; name: string | null }[]; onAdd: (d: DetItem) => void }) {
-  const [refId, setRefId] = useState("");
-  const [refNome, setRefNome] = useState("");
-  const [cor, setCor] = useState("");
-  const [qtd, setQtd] = useState(1);
-  const lblXs = "block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
-  function add() {
-    if (qtd <= 0) return;
-    onAdd({ reference_id: refId || null, referencia: refNome || null, cor: cor.trim() || null, qtd });
-    setRefId(""); setRefNome(""); setCor(""); setQtd(1);
-  }
-  return (
-    <div className="mt-2 flex flex-wrap items-end gap-2">
-      <div className="min-w-[180px] flex-1">
-        <label className={lblXs}>Referência</label>
-        <SearchableSelect
-          value={refId}
-          onChange={(id) => { setRefId(id); const r = references.find((x) => x.id === id); setRefNome(r ? (r.name || r.code || "") : ""); }}
-          options={references.map((r) => ({ value: r.id, label: r.name || r.code || "", description: r.name && r.code ? r.code : undefined, keywords: r.code || undefined }))}
-          placeholder="Referência"
-          searchPlaceholder="Buscar referência ou código..."
-          emptyText="Nenhuma referência."
-        />
-      </div>
-      <div className="w-28">
-        <label className={lblXs}>Cor</label>
-        <Input value={cor} onChange={(e) => setCor(e.target.value)} list="cores-montagem" placeholder="Cor" autoComplete="off" className="h-9" />
-      </div>
-      <div className="w-16">
-        <label className={lblXs}>Qtd</label>
-        <Input type="number" min={1} value={qtd} onChange={(e) => setQtd(Math.max(1, parseInt(e.target.value) || 1))} className="h-9 text-center" />
-      </div>
-      <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={add}><Plus className="h-3.5 w-3.5" /> Adicionar</Button>
-    </div>
-  );
-}
 
 /* ---------- Componente ---------- */
 export default function FichaMontadoresPage() {
@@ -180,13 +162,14 @@ export default function FichaMontadoresPage() {
   const [chamadaView, setChamadaView] = useState<ChamadaView>("dia");
   const [chamadaDia, setChamadaDia] = useState(todayISO());
   const [semanaAnchor, setSemanaAnchor] = useState(todayISO());
+  const [semSize, setSemSize] = useState<number>(12);
   const [busca, setBusca] = useState("");
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [origCounts, setOrigCounts] = useState<Record<string, number>>({});
-  const [detalhe, setDetalhe] = useState<Record<string, DetItem[]>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [weekCounts, setWeekCounts] = useState<Record<string, number>>({});
-  const [origWeek, setOrigWeek] = useState<Record<string, number>>({});
+  // Dia: pares por montador por tamanho
+  const [pares, setPares] = useState<Record<string, SizeMap>>({});
+  const [origPares, setOrigPares] = useState<Record<string, SizeMap>>({});
+  // Semana: pares por (montador|dia) por tamanho
+  const [week, setWeek] = useState<Record<string, SizeMap>>({});
+  const [origWeek, setOrigWeek] = useState<Record<string, SizeMap>>({});
   const [savingDia, setSavingDia] = useState(false);
   const [savingSem, setSavingSem] = useState(false);
 
@@ -195,41 +178,12 @@ export default function FichaMontadoresPage() {
   const [loading, setLoading] = useState(false);
 
   const { data: employees = [] } = useEmployees();
-  // Só funcionários do setor Montagem (montadores). Casa por cargo OU setor.
   const montadores = useMemo(
     () => [...(employees as any[])]
       .filter((e) => e.active && /montagem|montador/i.test(`${e.role || ""} ${e.department || ""}`))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [employees],
   );
-  // Referências (fichas técnicas) — pro detalhe opcional.
-  const { data: references = [] } = useQuery({
-    queryKey: ["references-list-montadores"],
-    queryFn: async () => {
-      const { data, error } = await db.from("technical_sheets").select("id,code,name").order("name");
-      if (error) throw error;
-      return (data || []) as { id: string; code: string | null; name: string | null }[];
-    },
-  });
-
-  // Cores já usadas (autocomplete do campo Cor do detalhe).
-  const { data: coresCatalogo = [] } = useQuery({
-    queryKey: ["cores-distinct-montadores"],
-    queryFn: async () => {
-      const { data, error } = await db.from("products").select("color").not("color", "is", null);
-      if (error) throw error;
-      return (data || []).map((r: any) => (r.color || "").trim()).filter(Boolean) as string[];
-    },
-  });
-  const coresSugeridas = useMemo(() => {
-    const s = new Set<string>(coresCatalogo);
-    for (const f of fichas) {
-      const det = isChamada(f) && Array.isArray(f.detalhe) ? f.detalhe : [];
-      for (const d of det) { const c = (d.cor || "").trim(); if (c) s.add(c); }
-      const c0 = ((f as any).cor || "").trim(); if (c0) s.add(c0);
-    }
-    return [...s].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [coresCatalogo, fichas]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -240,68 +194,75 @@ export default function FichaMontadoresPage() {
   }, [db]);
   useEffect(() => { carregar(); }, [carregar]);
 
-  // Semeia a contagem do dia a partir do que já está no banco (edição = sobrescrita).
+  // Semeia a contagem do dia a partir do banco.
   useEffect(() => {
-    const c: Record<string, number> = {};
-    const d: Record<string, DetItem[]> = {};
+    const p: Record<string, SizeMap> = {};
     for (const f of fichas) {
       if (!isChamada(f) || !f.montador_id || f.dia !== chamadaDia) continue;
-      c[f.montador_id] = fichasDiaOf(f);
-      if (Array.isArray(f.detalhe) && f.detalhe.length) d[f.montador_id] = f.detalhe;
+      p[f.montador_id] = sizeMapOf(f);
     }
-    setCounts(c); setOrigCounts(c); setDetalhe(d); setExpanded({});
+    setPares(p); setOrigPares(p);
   }, [fichas, chamadaDia]);
 
   // Semeia a matriz da semana.
   useEffect(() => {
     const days = weekDaysOf(semanaAnchor);
-    const w: Record<string, number> = {};
+    const w: Record<string, SizeMap> = {};
     for (const f of fichas) {
       if (!isChamada(f) || !f.montador_id) continue;
-      if (days.includes(f.dia)) w[`${f.montador_id}|${f.dia}`] = fichasDiaOf(f);
+      if (days.includes(f.dia)) w[`${f.montador_id}|${f.dia}`] = sizeMapOf(f);
     }
-    setWeekCounts(w); setOrigWeek(w);
+    setWeek(w); setOrigWeek(w);
   }, [fichas, semanaAnchor]);
 
-  // ── helpers de contagem (dia) ──
-  const sumDet = (mid: string) => (detalhe[mid] || []).reduce((s, d) => s + (Number(d.qtd) || 0), 0);
-  const hasDet = (mid: string) => (detalhe[mid] || []).length > 0;
-  const effCount = (mid: string) => (hasDet(mid) ? sumDet(mid) : (counts[mid] || 0));
-  const setCount = (mid: string, v: number) => setCounts((c) => ({ ...c, [mid]: Math.max(0, v) }));
-  const setWeek = (mid: string, day: string, v: number) => setWeekCounts((c) => ({ ...c, [`${mid}|${day}`]: Math.max(0, v) }));
-  const toggleExpand = (mid: string) => setExpanded((p) => ({ ...p, [mid]: !p[mid] }));
-  const addDet = (mid: string, d: DetItem) => setDetalhe((p) => ({ ...p, [mid]: [...(p[mid] || []), d] }));
-  const removeDet = (mid: string, idx: number) => setDetalhe((p) => ({ ...p, [mid]: (p[mid] || []).filter((_, i) => i !== idx) }));
+  // ── helpers Dia ──
+  const mapOf = (mid: string): SizeMap => pares[mid] || emptySizeMap();
+  const setPS = (mid: string, sz: number, v: number) =>
+    setPares((p) => ({ ...p, [mid]: { ...(p[mid] || emptySizeMap()), [sz]: Math.max(0, v) } }));
+  const paresMontador = (mid: string) => paresOfMap(mapOf(mid));
+  const fichasMontador = (mid: string) => fichasOfMap(mapOf(mid));
+
+  // ── helpers Semana ──
+  const weekMap = (mid: string, day: string): SizeMap => week[`${mid}|${day}`] || emptySizeMap();
+  const setWeekCell = (mid: string, day: string, sz: number, v: number) =>
+    setWeek((w) => ({ ...w, [`${mid}|${day}`]: { ...(w[`${mid}|${day}`] || emptySizeMap()), [sz]: Math.max(0, v) } }));
 
   const rosterFiltrado = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return q ? montadores.filter((e) => `${e.name} ${e.role || ""} ${e.department || ""}`.toLowerCase().includes(q)) : montadores;
   }, [montadores, busca]);
 
-  const totalDia = useMemo(() => montadores.reduce((s, e) => s + effCount(e.id), 0), [montadores, counts, detalhe]);
-  const dirtyDia = useMemo(() => montadores.filter((e) => effCount(e.id) !== (origCounts[e.id] || 0)).length, [montadores, counts, detalhe, origCounts]);
+  const totalDiaPares = useMemo(() => montadores.reduce((s, e) => s + paresMontador(e.id), 0), [montadores, pares]);
+  const totalDiaFichas = useMemo(() => montadores.reduce((s, e) => s + fichasMontador(e.id), 0), [montadores, pares]);
+  const dirtyDia = useMemo(
+    () => montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptySizeMap())).length,
+    [montadores, pares, origPares],
+  );
 
   const weekDays = useMemo(() => weekDaysOf(semanaAnchor), [semanaAnchor]);
   const weekLabel = `${fmtDia(weekDays[0])} – ${fmtDia(weekDays[4])}`;
-  const grandWeek = useMemo(() => Object.values(weekCounts).reduce((s, v) => s + (v || 0), 0), [weekCounts]);
+  const semParesTotal = useMemo(() => Object.values(week).reduce((s, m) => s + paresOfMap(m), 0), [week]);
+  const semFichasTotal = useMemo(() => Object.values(week).reduce((s, m) => s + fichasOfMap(m), 0), [week]);
 
   const fichasHoje = useMemo(() => {
     const t = todayISO();
     return fichas.filter((f) => isChamada(f) && f.dia === t).reduce((s, f) => s + fichasDiaOf(f), 0);
   }, [fichas]);
 
-  // Persiste 1 montador (modelo 'chamada'): update se já existe linha do dia, senão insert; delete se zerou.
-  async function persistChamada(dia: string, e: { id: string; name: string }, val: number): Promise<string | null> {
+  // Persiste 1 montador num dia a partir do mapa de pares por tamanho.
+  async function persistChamada(dia: string, e: { id: string; name: string }, m: SizeMap): Promise<string | null> {
     const existing = fichas.find((f) => isChamada(f) && f.montador_id === e.id && f.dia === dia);
-    if (val <= 0) {
+    const totalP = paresOfMap(m);
+    if (totalP <= 0) {
       if (!existing) return null;
       const { error } = await db.from("ficha_montadores").delete().eq("id", existing.id);
       return error ? error.message : null;
     }
-    const det = detalhe[e.id]?.length ? detalhe[e.id] : null;
+    const det: DetItem[] = SIZES.filter((sz) => (m[sz] || 0) > 0).map((sz) => ({ tamanho: sz, pares: m[sz] }));
+    const fichasCount = det.reduce((s, d) => s + Math.round(d.pares / d.tamanho), 0);
     const payload: any = {
       dia, montador: e.name, montador_id: e.id,
-      fichas_dia: val, total: val, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
+      fichas_dia: fichasCount, total: totalP, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
       cor: null, referencia: null, reference_id: null, detalhe: det, origem: "chamada",
       valor_par: existing?.valor_par ?? 0, atualizado_em: new Date().toISOString(),
     };
@@ -309,7 +270,6 @@ export default function FichaMontadoresPage() {
       ? db.from("ficha_montadores").update(pl).eq("id", existing.id)
       : db.from("ficha_montadores").insert(pl);
     let { error } = await write(payload);
-    // Resiliente: se a migration ainda não subiu, regrava sem a(s) coluna(s) nova(s).
     if (error && /column|could not find/i.test(error.message || "")) {
       const msg = (error.message || "").toLowerCase();
       const retry: any = { ...payload };
@@ -323,10 +283,10 @@ export default function FichaMontadoresPage() {
 
   async function salvarDia() {
     setSavingDia(true);
-    const changed = montadores.filter((e) => effCount(e.id) !== (origCounts[e.id] || 0));
+    const changed = montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptySizeMap()));
     let ok = 0; const erros: string[] = [];
     for (const e of changed) {
-      const err = await persistChamada(chamadaDia, e, effCount(e.id));
+      const err = await persistChamada(chamadaDia, e, mapOf(e.id));
       if (err) erros.push(e.name); else ok++;
     }
     await carregar();
@@ -342,9 +302,8 @@ export default function FichaMontadoresPage() {
     for (const e of montadores) {
       for (const day of weekDays) {
         const k = `${e.id}|${day}`;
-        const v = weekCounts[k] || 0;
-        if (v === (origWeek[k] || 0)) continue;
-        const m = await persistChamada(day, e, v);
+        if (JSON.stringify(week[k] || emptySizeMap()) === JSON.stringify(origWeek[k] || emptySizeMap())) continue;
+        const m = await persistChamada(day, e, week[k] || emptySizeMap());
         if (m) err++; else ok++;
       }
     }
@@ -355,10 +314,8 @@ export default function FichaMontadoresPage() {
     if (!ok && !err) toast.message("Nada para salvar.");
   }
 
-  function zerarDia() { setCounts({}); setDetalhe({}); }
-  function zerarSemana() {
-    setWeekCounts((w) => { const n = { ...w }; for (const k in n) n[k] = 0; return n; });
-  }
+  function zerarDia() { setPares({}); }
+  function zerarSemana() { setWeek((w) => { const n: Record<string, SizeMap> = {}; for (const k in w) n[k] = emptySizeMap(); return n; }); }
   function abrirDia(f: Ficha) {
     setTab("lancamento"); setChamadaView("dia"); setChamadaDia(f.dia);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -372,11 +329,11 @@ export default function FichaMontadoresPage() {
   async function persistRateMontador(key: string, valor: number) {
     if (key.startsWith("txt:")) return;
     const { error } = await db.from("ficha_montadores").update({ valor_par: valor }).eq("montador_id", key);
-    if (error) { toast.error("Erro ao salvar valor/ficha: " + error.message); return; }
+    if (error) { toast.error("Erro ao salvar valor/par: " + error.message); return; }
     setFichas((fs) => fs.map((f) => (f.montador_id === key ? { ...f, valor_par: valor } : f)));
   }
 
-  // ── valor/ficha por montador (Produtividade) ──
+  // ── valor/par por montador (Produtividade) ──
   const aggKeyOf = (f: { montador_id?: string | null; montador?: string | null }) =>
     f.montador_id || `txt:${(f.montador || "—").toLowerCase()}`;
   const seedValorPorMontador = useMemo(() => {
@@ -409,9 +366,8 @@ export default function FichaMontadoresPage() {
     const m = new Map<string, AggRow>();
     for (const f of fichasFiltradas) {
       const key = aggKeyOf(f);
-      // modelo 'chamada': cada linha = fichas_dia fichas; legado: 1 ficha por linha.
-      const fichasContrib = isChamada(f) ? fichasDiaOf(f) : 1;
-      const pares = paresDaFicha(f);
+      const fichasContrib = isChamada(f) ? fichasDiaOf(f) : 1; // chamada = nº de fichas; legado = 1 ficha/linha
+      const pares = isChamada(f) ? paresOfFicha(f) : paresDaFicha(f);
       const cur = m.get(key) || { key, nome: f.montador || "(sem montador)", fichas: 0, pares: 0, pago: 0, valorPar: 0 };
       cur.fichas += fichasContrib; cur.pares += pares;
       m.set(key, cur);
@@ -438,19 +394,17 @@ export default function FichaMontadoresPage() {
     { id: "fichas", label: "Fichas salvas", icon: ListChecks },
   ];
 
+  // estilo dos inputs de pares
+  const cellCls = "h-9 w-16 rounded-md border border-border bg-card text-center text-sm font-bold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-foreground";
+
   return (
     <div className="w-full space-y-6">
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · MONTADORES"
         title="Ficha de Montadores"
-        description="Bata quantas fichas cada montador fechou no dia — o time inteiro numa tela. Opcional: detalhe por referência."
+        description="Lance os PARES produzidos por tamanho de ficha (12 / 15 / 18). O sistema calcula a quantidade de fichas."
         meta={<><span className="font-bold">{montadores.length}</span> MONTADOR{montadores.length === 1 ? "" : "ES"} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
-
-      {/* datalist de cores (usado pelo detalhe) */}
-      <datalist id="cores-montagem">
-        {coresSugeridas.map((c) => <option key={c} value={c} />)}
-      </datalist>
 
       {/* abas */}
       <div className="flex flex-wrap gap-1 border-b border-border">
@@ -482,7 +436,7 @@ export default function FichaMontadoresPage() {
                 </div>
               </div>
             )}
-            <div className="min-w-[200px] flex-1">
+            <div className="min-w-[180px] flex-1">
               <label className={lbl}>Buscar</label>
               <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar montador…" className="h-9" />
             </div>
@@ -504,72 +458,66 @@ export default function FichaMontadoresPage() {
               flush
               eyebrow="CONTAGEM DO DIA"
               title={`${weekdayName(chamadaDia)} · ${fmtDia(chamadaDia)}`}
+              subtitle="Pares produzidos por tamanho de ficha — 12, 15 ou 18 pares/ficha."
               actions={<Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarDia}>Zerar tudo</Button>}
             >
-              {/* cabeçalho da lista */}
-              <div className="grid items-center border-b-2 border-border/80 bg-muted/40 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ gridTemplateColumns: "1fr 168px" }}>
-                <span>Montador</span><span className="text-right">Fichas</span>
-              </div>
-              {rosterFiltrado.map((e) => {
-                const val = effCount(e.id);
-                const det = detalhe[e.id] || [];
-                const locked = det.length > 0;
-                const isExp = !!expanded[e.id] || locked;
-                return (
-                  <div key={e.id} className="border-b border-border/50 transition-colors hover:bg-primary/[0.03]" style={{ borderLeft: `2px solid ${val > 0 ? "hsl(var(--primary))" : "transparent"}` }}>
-                    <div className="grid items-center px-4 py-2.5" style={{ gridTemplateColumns: "1fr 168px" }}>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">{e.name}</div>
-                        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span className="truncate">{[e.role, e.department].filter(Boolean).join(" · ") || "Montagem"}</span>
-                          <button type="button" onClick={() => toggleExpand(e.id)} className="inline-flex shrink-0 items-center gap-1 font-semibold text-muted-foreground hover:text-foreground">
-                            <Plus className="h-3 w-3" /> {isExp ? "fechar" : "detalhar"}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" disabled={locked} onClick={() => setCount(e.id, (counts[e.id] || 0) - 1)} aria-label={`Diminuir fichas de ${e.name}`}><Minus className="h-4 w-4" /></Button>
-                        <input
-                          inputMode="numeric"
-                          disabled={locked}
-                          value={locked ? val : (counts[e.id] ?? 0)}
-                          onFocus={(ev) => ev.target.select()}
-                          onChange={(ev) => setCount(e.id, parseInt(ev.target.value.replace(/[^\d]/g, "")) || 0)}
-                          className="h-9 w-14 rounded-md border border-border bg-card text-center text-base font-bold tabular-nums text-foreground outline-none transition-colors focus:border-foreground disabled:bg-muted/40 disabled:text-muted-foreground"
-                          aria-label={`Fichas de ${e.name}`}
-                        />
-                        <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0" disabled={locked} onClick={() => setCount(e.id, (counts[e.id] || 0) + 1)} aria-label={`Aumentar fichas de ${e.name}`}><Plus className="h-4 w-4" /></Button>
-                      </div>
-                    </div>
-                    {isExp && (
-                      <div className="px-4 pb-3 pt-0.5">
-                        <div className="rounded-md border border-dashed border-border bg-muted/20 p-2.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {det.length === 0 && <span className="text-[11px] text-muted-foreground">Sem detalhe — opcional. A soma das referências vira o total do dia.</span>}
-                            {det.map((d, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground">
-                                {d.referencia || "ref"}{d.cor ? ` · ${d.cor}` : ""} ×{d.qtd}
-                                <button type="button" onClick={() => removeDet(e.id, idx)} className="opacity-60 hover:opacity-100" aria-label="Remover"><X className="h-3 w-3" /></button>
-                              </span>
-                            ))}
-                          </div>
-                          <DetalheAdd references={references as any[]} onAdd={(d) => addDet(e.id, d)} />
-                        </div>
-                      </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse" style={{ minWidth: 560 }}>
+                  <thead>
+                    <tr className="border-b-2 border-border/80 bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="px-4 py-2.5 text-left" style={{ minWidth: 180 }}>Montador</th>
+                      {SIZES.map((sz) => (
+                        <th key={sz} className="px-1 py-2.5 text-center" style={{ width: 80 }}>{sz}<span className="ml-1 font-mono text-[9px] normal-case text-muted-foreground/70">pares</span></th>
+                      ))}
+                      <th className="px-3 py-2.5 text-right" style={{ width: 72 }}>Pares</th>
+                      <th className="border-l border-border px-3 py-2.5 text-right text-primary" style={{ width: 72 }}>Fichas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rosterFiltrado.map((e) => {
+                      const m = mapOf(e.id);
+                      const pp = paresOfMap(m), ff = fichasOfMap(m);
+                      return (
+                        <tr key={e.id} className="border-b border-border/50 transition-colors hover:bg-primary/[0.03]" style={{ borderLeft: `2px solid ${pp > 0 ? "hsl(var(--primary))" : "transparent"}` }}>
+                          <td className="px-4 py-2">
+                            <div className="truncate text-sm font-semibold text-foreground">{e.name}</div>
+                            <div className="truncate text-[11px] text-muted-foreground">{[e.role, e.department].filter(Boolean).join(" · ") || "Montagem"}</div>
+                          </td>
+                          {SIZES.map((sz) => (
+                            <td key={sz} className="px-1 py-1.5 text-center">
+                              <input inputMode="numeric" value={m[sz] || ""} placeholder="0"
+                                onFocus={(ev) => ev.target.select()}
+                                onChange={(ev) => setPS(e.id, sz, parseInt(ev.target.value.replace(/[^\d]/g, "")) || 0)}
+                                className={cellCls} aria-label={`Pares de ficha ${sz} — ${e.name}`} />
+                            </td>
+                          ))}
+                          <td className="px-3 py-2 text-right text-sm font-semibold tabular-nums text-foreground">{pp.toLocaleString("pt-BR")}</td>
+                          <td className="border-l border-border px-3 py-2 text-right text-base font-bold tabular-nums text-primary">{ff}</td>
+                        </tr>
+                      );
+                    })}
+                    {rosterFiltrado.length === 0 && (
+                      <tr><td colSpan={SIZES.length + 3} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum montador encontrado para "{busca}".</td></tr>
                     )}
-                  </div>
-                );
-              })}
-              {rosterFiltrado.length === 0 && (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum montador encontrado para "{busca}".</div>
-              )}
-              {/* rodapé: total + salvar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-foreground px-4 py-3.5">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total do dia</span>
-                  <span className="text-3xl leading-none tabular-nums text-primary" style={{ fontFamily: "var(--font-display)" }}>{totalDia}</span>
-                  {dirtyDia > 0 && <span className="text-[11px] font-semibold text-amber-600">● {dirtyDia} alterado{dirtyDia === 1 ? "" : "s"}</span>}
-                </div>
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-foreground bg-muted/30 text-sm font-bold tabular-nums">
+                      <td className="px-4 py-2.5 text-left text-[11px] uppercase tracking-wider text-muted-foreground">Total do dia</td>
+                      {SIZES.map((sz) => {
+                        const colP = rosterFiltrado.reduce((s, e) => s + (mapOf(e.id)[sz] || 0), 0);
+                        return <td key={sz} className="px-1 py-2.5 text-center text-muted-foreground">{colP || ""}</td>;
+                      })}
+                      <td className="px-3 py-2.5 text-right text-foreground">{totalDiaPares.toLocaleString("pt-BR")}</td>
+                      <td className="border-l border-border px-3 py-2.5 text-right text-primary" style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>{totalDiaFichas}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3.5">
+                <span className="text-[11px] text-muted-foreground">
+                  <strong className="text-foreground">{totalDiaPares.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{totalDiaFichas}</strong> fichas
+                  {dirtyDia > 0 && <span className="ml-2 font-semibold text-amber-600">● {dirtyDia} alterado{dirtyDia === 1 ? "" : "s"}</span>}
+                </span>
                 <Button type="button" onClick={salvarDia} disabled={savingDia} className="h-10 gap-2">
                   <FloppyDisk className="h-4 w-4" /> {savingDia ? "Salvando…" : "Salvar o dia"}
                 </Button>
@@ -580,37 +528,49 @@ export default function FichaMontadoresPage() {
               flush
               eyebrow={`SEMANA ${weekLabel}`}
               title="Matriz · Seg a Sex"
-              actions={<Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarSemana}>Zerar tudo</Button>}
+              subtitle="Pares por dia. Escolha o tamanho da ficha para preencher."
+              actions={
+                <div className="flex items-center gap-2">
+                  <div className="flex overflow-hidden rounded-md border border-border">
+                    {SIZES.map((sz) => (
+                      <button key={sz} type="button" onClick={() => setSemSize(sz)}
+                        className={`px-3 py-1.5 text-xs font-semibold transition-colors ${semSize === sz ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>{sz}</button>
+                    ))}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={zerarSemana}>Zerar tudo</Button>
+                </div>
+              }
             >
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-center">
                   <thead>
                     <tr className="border-b-2 border-border/80 bg-muted/40">
-                      <th className="sticky left-0 z-10 bg-muted/40 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ minWidth: 150 }}>Montador</th>
+                      <th className="sticky left-0 z-10 bg-muted/40 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" style={{ minWidth: 150 }}>Montador <span className="font-mono normal-case text-muted-foreground/70">· pares de {semSize}</span></th>
                       {weekDays.map((d, i) => (
                         <th key={d} className="px-1 py-2.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground" style={{ minWidth: 60 }}>{WD_SHORT[i]} {d.slice(8)}</th>
                       ))}
-                      <th className="border-l-2 border-border px-2 py-2.5 text-[11px] font-bold uppercase text-foreground" style={{ width: 54 }}>Tot</th>
+                      <th className="border-l-2 border-border px-2 py-2.5 text-[11px] font-bold uppercase text-foreground" style={{ width: 90 }}>Pares · Fichas</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rosterFiltrado.map((e) => {
-                      const rt = weekDays.reduce((s, d) => s + (weekCounts[`${e.id}|${d}`] || 0), 0);
+                      const rowPares = weekDays.reduce((s, d) => s + paresOfMap(weekMap(e.id, d)), 0);
+                      const rowFichas = weekDays.reduce((s, d) => s + fichasOfMap(weekMap(e.id, d)), 0);
                       return (
                         <tr key={e.id} className="border-b border-border/50">
                           <td className="sticky left-0 z-10 bg-card px-4 py-1.5 text-left"><span className="whitespace-nowrap text-sm font-semibold text-foreground">{e.name}</span></td>
                           {weekDays.map((d) => (
                             <td key={d} className="px-1 py-1">
                               <input inputMode="numeric"
-                                value={weekCounts[`${e.id}|${d}`] || ""}
+                                value={weekMap(e.id, d)[semSize] || ""}
                                 placeholder="·"
                                 onFocus={(ev) => ev.target.select()}
-                                onChange={(ev) => setWeek(e.id, d, parseInt(ev.target.value.replace(/[^\d]/g, "")) || 0)}
+                                onChange={(ev) => setWeekCell(e.id, d, semSize, parseInt(ev.target.value.replace(/[^\d]/g, "")) || 0)}
                                 className="h-8 w-full rounded border border-border/70 bg-card text-center text-sm font-semibold tabular-nums text-foreground outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-foreground"
-                                aria-label={`${e.name} ${fmtDia(d)}`} />
+                                aria-label={`${e.name} ${fmtDia(d)} — pares de ${semSize}`} />
                             </td>
                           ))}
-                          <td className="border-l-2 border-border text-center font-mono text-sm font-bold tabular-nums text-foreground">{rt}</td>
+                          <td className="border-l-2 border-border px-2 text-center font-mono text-xs font-bold tabular-nums text-foreground whitespace-nowrap">{rowPares.toLocaleString("pt-BR")} · <span className="text-primary">{rowFichas}</span></td>
                         </tr>
                       );
                     })}
@@ -620,18 +580,18 @@ export default function FichaMontadoresPage() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-foreground bg-muted/30">
-                      <td className="sticky left-0 z-10 bg-muted/30 px-4 py-2.5 text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Total / dia</td>
+                      <td className="sticky left-0 z-10 bg-muted/30 px-4 py-2.5 text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Total ({semSize}) / dia</td>
                       {weekDays.map((d) => {
-                        const ct = rosterFiltrado.reduce((s, e) => s + (weekCounts[`${e.id}|${d}`] || 0), 0);
-                        return <td key={d} className="font-mono text-sm font-bold tabular-nums text-foreground">{ct}</td>;
+                        const colP = rosterFiltrado.reduce((s, e) => s + (weekMap(e.id, d)[semSize] || 0), 0);
+                        return <td key={d} className="font-mono text-sm font-bold tabular-nums text-foreground">{colP || ""}</td>;
                       })}
-                      <td className="border-l-2 border-border text-center tabular-nums text-primary" style={{ fontFamily: "var(--font-display)", fontSize: 20 }}>{grandWeek}</td>
+                      <td className="border-l-2 border-border" />
                     </tr>
                   </tfoot>
                 </table>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
-                <span className="text-[11px] text-muted-foreground">Semana {weekLabel} · <strong className="text-foreground">{grandWeek}</strong> fichas</span>
+                <span className="text-[11px] text-muted-foreground">Semana {weekLabel} (todos os tamanhos): <strong className="text-foreground">{semParesTotal.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{semFichasTotal}</strong> fichas</span>
                 <Button type="button" onClick={salvarSemana} disabled={savingSem} className="h-10 gap-2">
                   <FloppyDisk className="h-4 w-4" /> {savingSem ? "Salvando…" : "Salvar semana"}
                 </Button>
@@ -689,7 +649,7 @@ export default function FichaMontadoresPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <tr><th className="px-3 py-2 w-8">#</th><th className="px-3 py-2">Montador</th><th className="px-3 py-2 text-right">Fichas</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Valor/ficha</th><th className="px-3 py-2 text-right">Pagamento</th></tr>
+                  <tr><th className="px-3 py-2 w-8">#</th><th className="px-3 py-2">Montador</th><th className="px-3 py-2 text-right">Fichas</th><th className="px-3 py-2 text-right">Pares</th><th className="px-3 py-2 text-right">Valor/par</th><th className="px-3 py-2 text-right">Pagamento</th></tr>
                 </thead>
                 <tbody>
                   {agg.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
@@ -697,8 +657,8 @@ export default function FichaMontadoresPage() {
                     <tr key={r.key} className="border-t border-border">
                       <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{r.nome}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.fichas}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-foreground">{r.pares.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-primary">{r.fichas.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.pares.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 text-right">
                         <div className="ml-auto w-28" onBlur={() => persistRateMontador(r.key, valorPorMontador[r.key] ?? 0)}>
                           <CurrencyInput
@@ -716,7 +676,7 @@ export default function FichaMontadoresPage() {
                   <tfoot>
                     <tr className="border-t-2 font-semibold bg-muted/30">
                       <td className="px-3 py-2" /><td className="px-3 py-2">Total ({agg.length})</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{totals.fichas}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-primary">{totals.fichas.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{totals.pares.toLocaleString("pt-BR")}</td>
                       <td className="px-3 py-2" />
                       <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.pago)}</td>
@@ -742,28 +702,31 @@ export default function FichaMontadoresPage() {
           )}
           <div className="space-y-5">
             {grupos.map(([d, lista]) => {
-              const totalDoDia = lista.reduce((s, f) => s + (isChamada(f) ? fichasDiaOf(f) : paresDaFicha(f)), 0);
+              const diaFichas = lista.reduce((s, f) => s + (isChamada(f) ? fichasDiaOf(f) : 1), 0);
+              const diaPares = lista.reduce((s, f) => s + (isChamada(f) ? paresOfFicha(f) : paresDaFicha(f)), 0);
               return (
                 <div key={d}>
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{fmtDia(d)} <span className="font-normal text-muted-foreground">· {lista.length} montador(es) · {totalDoDia} fichas</span></h3>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{fmtDia(d)} <span className="font-normal text-muted-foreground">· {diaFichas} fichas · {diaPares.toLocaleString("pt-BR")} pares</span></h3>
                   </div>
                   <div className="overflow-hidden rounded-lg border border-border">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
-                        <tr><th className="px-3 py-2">Montador</th><th className="px-3 py-2">Detalhe</th><th className="px-3 py-2 text-center">Fichas</th><th className="px-3 py-2 text-right">Ações</th></tr>
+                        <tr><th className="px-3 py-2">Montador</th><th className="px-3 py-2">Tamanhos (pares)</th><th className="px-3 py-2 text-center">Fichas</th><th className="px-3 py-2 text-center">Pares</th><th className="px-3 py-2 text-right">Ações</th></tr>
                       </thead>
                       <tbody>
                         {lista.map((f) => {
                           const chamada = isChamada(f);
-                          const detLabel = chamada && Array.isArray(f.detalhe) && f.detalhe.length
-                            ? f.detalhe.map((x) => `${x.referencia || "ref"}${x.cor ? ` ${x.cor}` : ""}×${x.qtd}`).join(", ")
+                          const m = sizeMapOf(f);
+                          const tamLabel = chamada
+                            ? (SIZES.filter((sz) => (m[sz] || 0) > 0).map((sz) => `${m[sz]}×${sz}`).join("  ") || "—")
                             : (f.referencia || f.solado || "—");
                           return (
                             <tr key={f.id} className="border-t border-border">
                               <td className="px-3 py-2 font-medium text-foreground">{f.montador || "—"}</td>
-                              <td className="px-3 py-2 text-muted-foreground">{detLabel}{!chamada && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide">grade</span>}</td>
-                              <td className="px-3 py-2 text-center font-semibold tabular-nums text-foreground">{chamada ? fichasDiaOf(f) : paresDaFicha(f)}</td>
+                              <td className="px-3 py-2 text-muted-foreground tabular-nums">{tamLabel}{!chamada && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide">grade</span>}</td>
+                              <td className="px-3 py-2 text-center font-semibold tabular-nums text-primary">{chamada ? fichasDiaOf(f) : 1}</td>
+                              <td className="px-3 py-2 text-center tabular-nums text-foreground">{(chamada ? paresOfFicha(f) : paresDaFicha(f)).toLocaleString("pt-BR")}</td>
                               <td className="px-3 py-2 text-right">
                                 <button onClick={() => abrirDia(f)} className="mr-3 text-xs font-medium text-primary hover:underline">Abrir o dia</button>
                                 <button onClick={() => excluir(f)} className="text-xs font-medium text-muted-foreground hover:text-red-600 dark:hover:text-red-400">Excluir</button>
