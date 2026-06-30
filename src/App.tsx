@@ -726,11 +726,11 @@ const router = createBrowserRouter([
         // links internos preservados). Inclui o nome canônico anterior
         // (/terceiros) pra não quebrar bookmarks.
         path: "terceiros",
-        element: <Navigate to="/terceirizados?tab=rua" replace />,
+        element: <Navigate to="/terceirizados?tab=orders" replace />,
       },
       {
         path: "terceiros-na-rua",
-        element: <Navigate to="/terceirizados?tab=rua" replace />,
+        element: <Navigate to="/terceirizados?tab=orders" replace />,
       },
       {
         path: "terceiros/relatorios",
