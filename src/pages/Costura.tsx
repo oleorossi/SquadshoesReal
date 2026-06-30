@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical, LinkSimple, Clock, ArrowsClockwise } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -421,7 +421,7 @@ export default function Costura() {
                                     <span className="font-mono text-xs font-bold">{order.order_number}</span>
                                     {ref?.code && <RefChip code={ref.code} />}
                                     <Badge variant="secondary" className="text-xs">{order.color || '—'}</Badge>
-                                    {strapsLabel && <Badge variant="outline" className="text-xs">🔗 {strapsLabel}</Badge>}
+                                    {strapsLabel && <Badge variant="outline" className="text-xs gap-1"><LinkSimple className="h-3.5 w-3.5" /> {strapsLabel}</Badge>}
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-0.5">
                                     {ref?.name || ''} — {totalPairs} pares
@@ -431,9 +431,9 @@ export default function Costura() {
                                   <SectorStageActions stage={stage} orderNumber={order.order_number} />
                                   <Badge
                                     variant={stageStatus === 'concluido' ? 'default' : stageStatus === 'em_andamento' ? 'secondary' : 'outline'}
-                                    className="text-xs"
+                                    className="text-xs gap-1"
                                   >
-                                    {stageStatus === 'concluido' ? '✅ Concluído' : stageStatus === 'em_andamento' ? '🔄 Em andamento' : '⏳ Pendente'}
+                                    {stageStatus === 'concluido' ? <><CheckCircle2 className="h-3.5 w-3.5" /> Concluído</> : stageStatus === 'em_andamento' ? <><ArrowsClockwise className="h-3.5 w-3.5" /> Em andamento</> : <><Clock className="h-3.5 w-3.5" /> Pendente</>}
                                   </Badge>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrintOrder(order)} aria-label={`Imprimir OP ${order.order_number}`}>
                                     <Printer className="h-3.5 w-3.5" />

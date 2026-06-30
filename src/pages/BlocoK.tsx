@@ -17,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
-import { FileText, DownloadSimple as Download, Stack, CaretRight, FloppyDisk as Save, Factory } from '@phosphor-icons/react';
+import { FileText, DownloadSimple as Download, Stack, CaretRight, FloppyDisk as Save, Factory, Package, Cube } from '@phosphor-icons/react';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import {
   useGenerateBlocoK, buildBlocoKTxt, useSpedExports, useRegisterSpedExport,
   type BlocoKResult, type BlocoKK230,
@@ -147,19 +148,12 @@ export default function BlocoK() {
         </Panel>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: 'OPs produzidas (K230)', value: String(totals?.ops ?? 0) },
-              { label: 'Pares produzidos', value: fmtQtd(totals?.produced ?? 0) },
-              { label: 'Insumos consumidos (K235)', value: String(totals?.k235 ?? 0) },
-              { label: 'Itens em estoque (K200)', value: String(totals?.stock ?? 0) },
-            ].map((k) => (
-              <div key={k.label} className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground">{k.label}</p>
-                <p className="text-lg font-bold text-foreground tabular-nums">{k.value}</p>
-              </div>
-            ))}
-          </div>
+          <StatGrid>
+            <StatCard label="OPs produzidas (K230)" value={String(totals?.ops ?? 0)} icon={Factory} />
+            <StatCard label="Pares produzidos" value={fmtQtd(totals?.produced ?? 0)} icon={Package} />
+            <StatCard label="Insumos consumidos (K235)" value={String(totals?.k235 ?? 0)} icon={Cube} />
+            <StatCard label="Itens em estoque (K200)" value={String(totals?.stock ?? 0)} icon={Stack} />
+          </StatGrid>
 
           <div className="flex items-center gap-2">
             <Button onClick={handleDownload} className="gap-2"><Download className="size-4" /> Baixar .txt (EFD)</Button>

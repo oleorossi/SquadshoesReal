@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -346,7 +346,7 @@ export default function Montagem() {
                     </div>
                     <div className="flex-1 ml-2">
                       <CardTitle className="text-sm flex items-center gap-2">
-                        <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                        <CaretRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                         {order.order_number} — {ref?.code} {ref?.name}
                         {(() => {
                           const info = getDeliveryInfo(order);
@@ -359,8 +359,8 @@ export default function Montagem() {
                         })()}
                       </CardTitle>
                       {so && (
-                        <p className="text-xs text-muted-foreground ml-5 mt-0.5">
-                          📦 <span className="font-semibold">{so.order_number}</span>
+                        <p className="text-xs text-muted-foreground ml-5 mt-0.5 flex items-center gap-1">
+                          <Package className="h-3.5 w-3.5 shrink-0" /> <span className="font-semibold">{so.order_number}</span>
                           {so.client_order_number ? <> | Ped. Cliente: <span className="font-semibold">{so.client_order_number}</span></> : null}
                           {so.client_name ? <> | {so.client_name}</> : null}
                         </p>
@@ -371,8 +371,8 @@ export default function Montagem() {
                         <span className="font-bold">{totalPairs} pares</span>
                       </p>
                       {(() => { const sl = getStrapsLabel(order); return sl ? (
-                        <p className="text-xs ml-5 mt-0.5">
-                          🎨 Tiras: <span className="font-bold text-red-600">{sl}</span>
+                        <p className="text-xs ml-5 mt-0.5 flex items-center gap-1">
+                          <Palette className="h-3.5 w-3.5 shrink-0" /> Tiras: <span className="font-bold text-red-600">{sl}</span>
                         </p>
                       ) : null; })()}
                     </div>
@@ -417,7 +417,9 @@ export default function Montagem() {
                     {/* Grade table */}
                     {grade && activeSizes.length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold mb-2">📋 Grade Individual</p>
+                        <p className="text-xs font-semibold mb-2 flex items-center gap-1">
+                          <ListBullets className="h-3.5 w-3.5 shrink-0" /> Grade Individual
+                        </p>
                         <div className="overflow-x-auto">
                           <Table>
                             <TableHeader>
