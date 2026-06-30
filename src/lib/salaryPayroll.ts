@@ -330,8 +330,11 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       excused: inp.absenceDates?.has(d.date) ?? false,
     };
   });
-  // Tolerância da escala (default 10min) — espelha useTimesheet (`tolerance_minutes ?? 10`).
-  const tolerance = Number(inp.schedule?.tolerance_minutes ?? 10);
+  // Tolerância REMOVIDA (pedido do dono 2026-06-30): todo minuto conta — atraso
+  // a partir do 1º minuto abaixo da jornada, hora extra a partir do 1º minuto
+  // acima. Antes havia janela de 10min (work_schedules.tolerance_minutes) que
+  // zerava o dia. Mantido 0 fixo p/ não depender do campo da escala.
+  const tolerance = 0;
   // Multiplicador de HE da escala (default 1,5×) — antes era PREMIUM_MULTIPLIER fixo.
   // A partir daqui, editar "Multiplicador HE" na escala (Ponto→Escalas) altera a folha.
   const premiumMult = Number(inp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);

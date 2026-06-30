@@ -270,33 +270,33 @@ describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => 
   });
 });
 
-describe('computePeriodFolha — tolerância 10min (P2) e ordenação de batidas (D18)', () => {
+describe('computePeriodFolha — SEM tolerância (todo minuto conta, 2026-06-30) e ordenação de batidas (D18)', () => {
   const sched = (tol: number) => ({ ...SCHED, tolerance_minutes: tol });
 
-  it('atraso de 8min com tolerância 10 → dia NORMAL (sem desconto)', () => {
+  it('atraso de 8min → conta 8min CHEIOS mesmo com tolerance_minutes=10 na escala (ignorado)', () => {
     const punches = new Map<string, string[]>([['2026-05-04', ['08:08', '12:00', '13:00', '18:00']]]); // déficit 8min
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
-    expect(r.atraso_minutes).toBe(0);
+    expect(r.atraso_minutes).toBe(8);
     expect(r.he_minutes).toBe(0);
-    expect(r.gross_value).toBeCloseTo(2200, 2);
+    expect(r.gross_value).toBeCloseTo(2200 - (8 / 60) * (2200 / 220), 2); // 2200 − 8min×valor-hora
   });
 
-  it('atraso de 20min com tolerância 10 → conta o atraso CHEIO (20min)', () => {
+  it('atraso de 20min → conta o atraso CHEIO (20min)', () => {
     const punches = new Map<string, string[]>([['2026-05-04', ['08:20', '12:00', '13:00', '18:00']]]);
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
     expect(r.atraso_minutes).toBe(20);
   });
 
-  it('HE de 5min com tolerância 10 → dia NORMAL (sem hora extra)', () => {
+  it('HE de 5min → conta 5min de hora extra (sem tolerância)', () => {
     const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '18:05']]]); // +5min
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
-    expect(r.he_minutes).toBe(0);
+    expect(r.he_minutes).toBe(5);
   });
 
-  it('default 10min quando a escala não define tolerance_minutes', () => {
+  it('atraso de 7min conta mesmo sem tolerance_minutes na escala (sem tolerância)', () => {
     const punches = new Map<string, string[]>([['2026-05-04', ['08:07', '12:00', '13:00', '18:00']]]); // 7min
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
-    expect(r.atraso_minutes).toBe(0);
+    expect(r.atraso_minutes).toBe(7);
   });
 
   it('batidas fora de ordem são ordenadas (D18): 08,18,12,13 = 9h, não 11h', () => {

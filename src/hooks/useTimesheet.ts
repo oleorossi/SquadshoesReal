@@ -609,7 +609,9 @@ export function calculateDaySummary(
   // schedule pode chegar NULL (ex.: escala ainda não carregada / funcionário sem
   // escala e sem padrão). worksOnDow/expectedDayMinutes já tratam null; este acesso
   // direto NÃO tratava e quebrava ("null is not an object (t.tolerance_minutes)").
-  const tolerance = schedule?.tolerance_minutes ?? 10;
+  // Tolerância REMOVIDA (pedido do dono 2026-06-30): classifica atraso/HE no 1º
+  // minuto, igual ao motor da folha (computePeriodFolha). Mantido 0 fixo.
+  const tolerance = 0;
 
   const sp = punches.length >= 2
     ? splitDayMinutes(punches, dayOfWeek, isHoliday)
