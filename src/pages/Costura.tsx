@@ -3,8 +3,9 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Panel } from '@/components/ui/panel';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -293,21 +294,13 @@ export default function Costura() {
         description="Fichas de controle com checklist de pares para corte de forração"
         actions={<>
           {selectedOrders.size > 0 && (
-            <Button size="sm" variant="outline" onClick={() => {
-              const ids = costuraOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-              navigate(`/orders/grouped-summary?sector=corte_forracao&ids=${ids}`);
-            }}>
-              <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
-            </Button>
-          )}
-          {selectedOrders.size > 0 && (
             <Button
               size="sm"
-              variant="default"
+              className="bg-success hover:bg-success/90 text-success-foreground gap-2 shadow-sm"
               disabled={finalizingOrders}
               onClick={handleFinishSelectedOrders}
             >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+              <CheckCircle2 className="h-4 w-4" />
               Finalizar {SECTOR_NAME} ({selectedOrders.size})
             </Button>
           )}
@@ -321,6 +314,23 @@ export default function Costura() {
               <SelectItem value="all">Todas</SelectItem>
             </SelectContent>
           </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1">
+                <DotsThreeVertical className="h-4 w-4" /> Ações
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {selectedOrders.size > 0 && (
+                <DropdownMenuItem onClick={() => {
+                  const ids = costuraOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                  navigate(`/orders/grouped-summary?sector=corte_forracao&ids=${ids}`);
+                }}>
+                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </>}
       />
 

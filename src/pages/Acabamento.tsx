@@ -3,8 +3,9 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, DotsThreeVertical } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -463,30 +464,19 @@ export default function Acabamento() {
           description="Fichas de controle com checklist de pares para acabamento"
           actions={<>
             {selectedOrders.size > 0 && (
-              <>
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="bg-success hover:bg-success/90 text-success-foreground"
-                  disabled={finalizingOrders}
-                  onClick={handleFinishSelectedOrders}
-                >
-                  <CheckSquare className="h-3.5 w-3.5 mr-1" />
-                  Finalizar OP's selecionadas ({selectedOrders.size})
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => {
-                  const ids = acabamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                  navigate(`/orders/grouped-summary?sector=acabamento&ids=${ids}`);
-                }}>
-                  <Layers className="h-3.5 w-3.5 mr-1" /> Imprimir Relatório ({selectedOrders.size})
-                </Button>
-              </>
+              <Button
+                size="sm"
+                variant="default"
+                className="bg-success hover:bg-success/90 text-success-foreground"
+                disabled={finalizingOrders}
+                onClick={handleFinishSelectedOrders}
+              >
+                <CheckSquare className="h-3.5 w-3.5 mr-1" />
+                Finalizar OP's selecionadas ({selectedOrders.size})
+              </Button>
             )}
-            <Button size="sm" variant="secondary" onClick={() => handlePrintByClient()} disabled={selectedOrders.size === 0}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Relatório por Cliente ({selectedOrders.size})
-            </Button>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[140px] h-8 text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
@@ -496,6 +486,28 @@ export default function Acabamento() {
               </SelectContent>
             </Select>
            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <DotsThreeVertical className="h-4 w-4" /> Ações
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {selectedOrders.size > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    const ids = acabamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    navigate(`/orders/grouped-summary?sector=acabamento&ids=${ids}`);
+                  }}>
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Imprimir Relatório ({selectedOrders.size})
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => handlePrintByClient()} disabled={selectedOrders.size === 0}>
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório por Cliente ({selectedOrders.size})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>}
         />
 

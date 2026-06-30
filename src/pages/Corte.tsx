@@ -3,10 +3,11 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers, DotsThreeVertical } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -924,8 +925,21 @@ if (totalPairsAll !== palmTotal) {
           title="Setor de Corte Palmilha"
           description="Demanda de corte por material, cor e numeração"
           actions={<>
+            {selectedOrders.size > 0 && (
+              <Button
+                size="sm"
+                onClick={handleFinishSelectedOrders}
+                disabled={selectedOrders.size === 0 || finalizingOrders}
+                className="bg-success hover:bg-success/90 text-success-foreground"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
+              </Button>
+            )}
+            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
+            <div className="flex items-center gap-2">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[140px] h-8 text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
@@ -943,28 +957,27 @@ if (totalPairsAll !== palmTotal) {
               <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
               {selectedOrders.size === cuttingOrders.length && cuttingOrders.length > 0 ? 'Desmarcar Tudo' : `Selecionar Tudo (${cuttingOrders.length})`}
             </Button>
-             <Button size="sm" variant="outline" disabled={cuttingOrders.length === 0} onClick={() => {
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <DotsThreeVertical className="h-4 w-4" /> Ações
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem disabled={cuttingOrders.length === 0} onClick={() => {
                  printCuttingGroupedReport(
-                   cuttingOrders as any, 
-                   references as any, 
-                   getStrapsLabel, 
+                   cuttingOrders as any,
+                   references as any,
+                   getStrapsLabel,
                    saleOrders as any,
                    { silkRegistrations, soleMappings }
                  );
                }}>
-                <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar Tudo ({cuttingOrders.length})
-              </Button>
-            <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
-                // 6º passe (2026-06-12): popup legado de fichas por setor
-                // morto — deep-link pra tela central (modelo v7, TallyBox).
-                // A ficha legada de 'Corte' englobava cabedal + forração +
-                // palmilha, então pré-seleciona as 3 sub-etapas de Corte.
-                const ids = cuttingOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Corte Palmilha,Corte Forração,Corte Cabedal')}`);
-              }}>
-                <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
-              </Button>
-            <Button size="sm" variant="outline" onClick={async () => {
+                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar Tudo ({cuttingOrders.length})
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+                <DropdownMenuItem onClick={async () => {
               // Open window synchronously (before async) to avoid popup blocker
               const printWin = openPrintWindow('Relatório Corte');
 
@@ -1201,9 +1214,9 @@ if (totalPairsAll !== palmTotal) {
                 ${opDetailCardsHtml}`;
               writePrintWindow(printWin, 'Relatório Corte', html);
             }}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Relatório PDF
-            </Button>
-            <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={async () => {
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={async () => {
               const selected = cuttingOrders.filter(o => selectedOrders.has(o.id));
               if (selected.length === 0) return;
               const printWin = openPrintWindow('Fichas de Corte Selecionadas');
@@ -1327,21 +1340,26 @@ if (totalPairsAll !== palmTotal) {
               }
               writePrintWindow(printWin, 'Fichas de Corte Selecionadas', fullHtml);
             }}>
-              <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir Selecionados {selectedOrders.size > 0 && `(${selectedOrders.size})`}
-            </Button>
-            <Button size="sm" onClick={printAll} disabled={cuttingData.length === 0}>
-              <Printer className="h-4 w-4 mr-1" /> Imprimir Tudo
-            </Button>
-            <Button 
-              size="sm" 
-              onClick={handleFinishSelectedOrders} 
-              disabled={selectedOrders.size === 0 || finalizingOrders}
-              className="bg-success hover:bg-success/90 text-success-foreground"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1" /> 
-              Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
-            </Button>
-            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir Selecionados {selectedOrders.size > 0 && `(${selectedOrders.size})`}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={printAll} disabled={cuttingData.length === 0}>
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir Tudo
+                </DropdownMenuItem>
+                {selectedOrders.size > 0 && (
+                  <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
+                // 6º passe (2026-06-12): popup legado de fichas por setor
+                // morto — deep-link pra tela central (modelo v7, TallyBox).
+                // A ficha legada de 'Corte' englobava cabedal + forração +
+                // palmilha, então pré-seleciona as 3 sub-etapas de Corte.
+                const ids = cuttingOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Corte Palmilha,Corte Forração,Corte Cabedal')}`);
+              }}>
+                    <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </div>
           </>}
         />
 

@@ -3,8 +3,9 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -232,27 +233,19 @@ export default function Montagem() {
         description="Gestão e controle das ordens de produção na etapa de montagem"
         actions={<>
           {selectedOrders.size > 0 && (
-            <>
-              <Button
-                size="sm"
-                variant="default"
-                className="bg-success hover:bg-success/90 text-success-foreground"
-                disabled={finalizingOrders}
-                onClick={handleFinishSelectedOrders}
-              >
-                <CheckSquare className="h-3.5 w-3.5 mr-1" />
-                Finalizar OP's selecionadas ({selectedOrders.size})
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => {
-                const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                navigate(`/orders/grouped-summary?sector=montagem&ids=${ids}`);
-              }}>
-                <Layers className="h-3.5 w-3.5 mr-1" /> Agrupar ({selectedOrders.size})
-              </Button>
-            </>
+            <Button
+              size="sm"
+              variant="default"
+              className="bg-success hover:bg-success/90 text-success-foreground"
+              disabled={finalizingOrders}
+              onClick={handleFinishSelectedOrders}
+            >
+              <CheckSquare className="h-3.5 w-3.5 mr-1" />
+              Finalizar OP's selecionadas ({selectedOrders.size})
+            </Button>
           )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px] h-9 text-xs">
+            <SelectTrigger className="w-[140px] h-8 text-xs">
               <Filter className="h-3.5 w-3.5 mr-1" />
               <SelectValue />
             </SelectTrigger>
@@ -261,14 +254,33 @@ export default function Montagem() {
               <SelectItem value="all">Todas</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" disabled={selectedOrders.size === 0} onClick={() => {
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1">
+                <DotsThreeVertical className="h-4 w-4" /> Ações
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {selectedOrders.size > 0 && (
+                <DropdownMenuItem onClick={() => {
+                  const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                  navigate(`/orders/grouped-summary?sector=montagem&ids=${ids}`);
+                }}>
+                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+              <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
             // 6º passe (2026-06-12): popup legado de fichas por setor
             // morto — deep-link pra tela central (modelo v7, com TallyBox).
             const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
             navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Montagem')}`);
           }}>
-            <Printer className="h-3.5 w-3.5 mr-1" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
-          </Button>
+                <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
         </>}
       />
