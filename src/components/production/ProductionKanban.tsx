@@ -76,6 +76,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { transitivePredecessors } from '@/lib/sectorDag';
 
 interface KanbanOrder {
   id: string;
@@ -124,15 +125,16 @@ function normalizeKanbanSector(s: string): string {
   return KANBAN_SECTORS.find(k => k.key.toLowerCase() === lower)?.key ?? s;
 }
 
-// `parallel: true` marca os 3 setores prep que rodam simultaneamente (PR3+S4).
-// Renderizamos um header visual destacado pra equipe entender que pode atacar
-// os 3 ao mesmo tempo, em vez de esperar fila sequencial.
+// `parallel: true` marca os 4 setores prep que rodam simultaneamente (PR3+S4).
+// Costura passou a ser prep paralela de verdade (decisão do dono 2026-06-29 —
+// guard/DAG relaxados na migration de paralelismo). Renderizamos um header
+// destacado pra equipe entender que pode atacar os 4 ao mesmo tempo.
 const KANBAN_SECTORS = [
   { key: 'Pendente',       label: 'Pendente',       color: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400', icon: Clock,      parallel: false },
   { key: 'Corte Palmilha', label: 'Corte Palmilha', color: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',       icon: Scissors,   parallel: true  },
   { key: 'Corte Forração', label: 'Corte Forração', color: 'bg-purple-500/20 text-purple-700 dark:text-purple-400', icon: Layers,     parallel: true  },
   { key: 'Aviamento',      label: 'Aviamento',      color: 'bg-rose-500/20 text-rose-700 dark:text-rose-400',       icon: Hand,       parallel: true  },
-  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers,  parallel: false },
+  { key: 'Costura',        label: 'Costura',        color: 'bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400', icon: Layers,  parallel: true  },
   { key: 'Silk',           label: 'Silk',           color: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',       icon: Printer,    parallel: false },
   { key: 'Colagem',        label: 'Colagem',        color: 'bg-orange-500/20 text-orange-700 dark:text-orange-400', icon: Flame,      parallel: false },
   { key: 'Montagem',       label: 'Montagem',       color: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400', icon: Hammer,  parallel: false },
@@ -513,8 +515,35 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
     try {
       const now = new Date().toISOString();
 
-      // Claim the destination stage BEFORE any stock mutation. If the stage row
-      // is missing or already started, bail without debiting stock.
+      // M9 (auditoria 2026-06-30): conclui os predecessores REAIS do destino no
+      // DAG ANTES de reivindicar o destino. O guard do servidor
+      // (fn_guard_manual_stage_transition) barra pendente→em_andamento se algum
+      // pré-requisito não estiver concluído; como Colagem agora exige Silk+prep,
+      // reivindicar o destino primeiro abortaria saltos multi-setor. A origem é
+      // concluída só se for predecessora (mover entre prep paralelos — ex.:
+      // Aviamento → Costura — não conclui a origem).
+      const preds = transitivePredecessors(toSector);
+      const stagesToComplete = [...skipped].filter((s) => preds.has(s));
+      if (fromSector !== 'Pendente' && preds.has(fromSector) && !stagesToComplete.includes(fromSector)) {
+        stagesToComplete.push(fromSector);
+      }
+
+      if (stagesToComplete.length > 0) {
+        // RPC sets quantity_processed = quantity_total in the same statement so
+        // skipped stages don't show "0/total concluído" in the UI and capacity
+        // planning doesn't treat them as still pending. completed_at é carimbado
+        // pelo trigger; só predecessores reais (não ramos paralelos irmãos).
+        const { error: skipError } = await (supabase as any).rpc('complete_order_stages_bulk', {
+          p_order_id: orderId,
+          p_stage_names: stagesToComplete,
+        });
+
+        if (skipError) throw skipError;
+      }
+
+      // Reivindica o destino DEPOIS de concluir os predecessores (guard passa).
+      // O winner-check (linhas afetadas) coordena o débito de estoque: só um
+      // vencedor passa de pendente→em_andamento e debita.
       const { data: startedRows, error: startError } = await supabase
         .from('order_stages')
         .update({ status: 'em_andamento', started_at: now })
@@ -526,24 +555,6 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       if (startError) throw startError;
       if (!startedRows || startedRows.length === 0) {
         throw new Error(`Etapa "${toSector}" não encontrada ou já em andamento.`);
-      }
-
-      // Marca as etapas puladas como concluídas (incluindo a de origem se não for Pendente)
-      const stagesToComplete = [...skipped];
-      if (fromSector !== 'Pendente' && !stagesToComplete.includes(fromSector)) {
-        stagesToComplete.push(fromSector);
-      }
-
-      if (stagesToComplete.length > 0) {
-        // RPC sets quantity_processed = quantity_total in the same statement so
-        // skipped stages don't show "0/total concluído" in the UI and capacity
-        // planning doesn't treat them as still pending.
-        const { error: skipError } = await (supabase as any).rpc('complete_order_stages_bulk', {
-          p_order_id: orderId,
-          p_stage_names: stagesToComplete,
-        });
-
-        if (skipError) throw skipError;
       }
 
       // Se vinha de Pendente, converte reservas em débito permanente APÓS a
@@ -601,11 +612,15 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       return;
     }
 
-    // Etapas que serão puladas (entre origem e destino, exclusive)
+    // Etapas concluídas implicitamente ao saltar: SÓ os predecessores REAIS do
+    // destino no DAG (não ramos paralelos irmãos). Antes usava a fatia linear de
+    // colunas e concluía Costura/cortes paralelos indevidamente (ex.: arrastar
+    // p/ Costura concluía os 3 cortes; arrastar p/ Colagem concluía Silk).
+    const preds = transitivePredecessors(toSectorKey);
     const skipped = KANBAN_SECTORS
       .slice(fromIdx + 1, toIdx)
       .map(s => s.key)
-      .filter(k => k !== 'Pendente');
+      .filter(k => k !== 'Pendente' && preds.has(k));
 
     // Guard contra "pular tudo" — quando é mais de 4 setores ou indo direto
     // de Pendente pra Expedição (saltando produção inteira), bloqueia.
@@ -965,7 +980,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       <div className="text-xs flex items-center gap-2 text-muted-foreground bg-muted/40 border border-border/50 rounded-md px-2.5 py-1.5">
         <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
         <span>
-          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> rodam <span className="font-medium text-primary">em paralelo</span>; Costura só inicia quando os 3 estiverem prontos.
+          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> ‖ <span className="font-medium text-foreground">Costura</span> rodam <span className="font-medium text-primary">em paralelo</span>; o Silk só inicia quando todos os 4 estiverem prontos.
         </span>
       </div>
 
@@ -1002,7 +1017,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                       {sector.parallel && (
                         <span
                           className="text-xs font-bold text-primary bg-primary/10 px-1 rounded leading-tight"
-                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento). Costura só inicia quando os 3 finalizam."
+                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura). O Silk só inicia quando todos os 4 finalizam."
                         >
                           ‖ PREP
                         </span>

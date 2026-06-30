@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { computeForwardSchedule, setHolidayCache, checkSectorCapacity, SECTOR_LABELS } from '@/lib/sectorCapacity';
+import { computeForwardSchedule, setHolidayCache, checkSectorCapacity, SECTOR_LABELS, loadCategoryDefaults, defaultsForSheet } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { Panel } from '@/components/ui/panel';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -42,11 +42,19 @@ export function ForwardScheduleTool() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, code, production_sectors, sewing_capacity_per_day, cutting_capacity_per_day, costura_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, assembly_capacity_per_day, soling_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_expedicao_dias, requires_cutting, requires_sewing')
+        .select('id, name, code, shoe_category, production_sectors, sewing_capacity_per_day, cutting_capacity_per_day, costura_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, assembly_capacity_per_day, soling_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_expedicao_dias, requires_cutting, requires_sewing')
         .order('name');
       if (error) throw error;
       return (data ?? []) as any[];
     },
+  });
+
+  // M8: defaults por categoria pra cascata forward bater com o SQL.
+  const { data: catDefaults } = useQuery({
+    queryKey: ['forward-cat-defaults'],
+    staleTime: 5 * 60_000,
+    enabled: sheets.length > 0,
+    queryFn: () => loadCategoryDefaults(sheets.map((s: any) => s.shoe_category)),
   });
 
   const [sheetId, setSheetId] = useState<string>('');
@@ -64,8 +72,8 @@ export function ForwardScheduleTool() {
     if (!sheet || qty <= 0 || !startISO) return null;
     const d = new Date(startISO + 'T00:00:00');
     if (isNaN(d.getTime())) return null;
-    return computeForwardSchedule(sheet, qty, d);
-  }, [sheet, qty, startISO]);
+    return computeForwardSchedule(sheet, qty, d, {}, defaultsForSheet(catDefaults, sheet));
+  }, [sheet, qty, startISO, catDefaults]);
 
   // B2 (advisory, capacidade finita): checa se algum setor JÁ está sobrecarregado
   // na janela projetada (carga das outras OPs ativas), reusando o MESMO motor

@@ -89,11 +89,23 @@ describe('motor de cascata — forward × backward (D4)', () => {
     expect(silk.startISO).toBe(maxPrepEnd);
   });
 
-  it('forward: setup days (B3) adiam a entrega', () => {
-    const start = new Date('2026-07-01T00:00:00');
+  it('forward: setup em setor SEQUENCIAL soma exatamente ao total', () => {
+    const start = new Date('2026-07-06T00:00:00'); // segunda
     const base = computeForwardSchedule(sheet, QTY, start);
-    const withSetup = computeForwardSchedule(sheet, QTY, start, { montagem: 2, costura: 1 } as Partial<Record<SectorKey, number>>);
-    expect(new Date(withSetup.finishISO).getTime()).toBeGreaterThan(new Date(base.finishISO).getTime());
+    const withSetup = computeForwardSchedule(sheet, QTY, start, { montagem: 2 } as Partial<Record<SectorKey, number>>);
+    // montagem é sequencial → +2 dias úteis exatos no total.
+    expect(withSetup.totalBusinessDays).toBe(base.totalBusinessDays + 2);
+  });
+
+  it('forward: setup no GARGALO do prep (mesa) adia a convergência', () => {
+    const start = new Date('2026-07-06T00:00:00');
+    const base = computeForwardSchedule(sheet, QTY, start);
+    // mesa é o gargalo do prep (lead 7); +3 de setup empurra a convergência e o total.
+    const withSetup = computeForwardSchedule(sheet, QTY, start, { mesa: 3 } as Partial<Record<SectorKey, number>>);
+    expect(withSetup.totalBusinessDays).toBe(base.totalBusinessDays + 3);
+    // já um setup em setor prep NÃO-gargalo (costura lead 4) é no-op no total.
+    const noop = computeForwardSchedule(sheet, QTY, start, { costura: 2 } as Partial<Record<SectorKey, number>>);
+    expect(noop.totalBusinessDays).toBe(base.totalBusinessDays);
   });
 
   it('backward: os 4 prep TERMINAM juntos no início da cadeia sequencial (Silk)', () => {
@@ -117,5 +129,56 @@ describe('motor de cascata — forward × backward (D4)', () => {
     const fwd = computeForwardSchedule(sheet, QTY, start);
     expect(fwd.totalBusinessDays).toBe(businessDaysBetween(start, new Date(fwd.finishISO + 'T00:00:00')));
     expect(fwd.totalBusinessDays).toBeGreaterThan(0);
+  });
+});
+
+// Asserts DIRETOS da fórmula MAX(prep) + Σ(seq) — o round-trip sozinho não pega
+// um erro simétrico (se forward E backward somassem o prep, ambos casariam).
+describe('motor de cascata — fórmula MAX(prep) + Σ(seq) (auditoria 2026-06-29)', () => {
+  const PREP = ['corte_palmilha', 'corte_forracao', 'mesa', 'costura'];
+  const SEQ = ['silk', 'colagem', 'montagem', 'solagem', 'acabamento'];
+
+  it('lead total da onda = MAX(leads prep) + soma(leads sequenciais)', () => {
+    const start = new Date('2026-07-06T00:00:00'); // segunda
+    const fwd = computeForwardSchedule(sheet, QTY, start);
+    const prepLeads = fwd.steps.filter((s) => PREP.includes(s.key)).map((s) => s.leadDays);
+    const seqLeads = fwd.steps.filter((s) => SEQ.includes(s.key)).map((s) => s.leadDays);
+
+    // QTY=600 / capacidades da ficha:
+    //   palmilha=ceil(600/100)=6, forração=ceil(600/120)=5, aviamento=ceil(600/90)=7,
+    //   costura=ceil(600/150)=4 → MAX prep = 7 (aviamento é o gargalo).
+    //   silk=2, colagem=3, montagem=6, solagem=5, acabamento=5 → Σ seq = 21.
+    expect(Math.max(...prepLeads)).toBe(7);
+    expect(seqLeads.reduce((a, b) => a + b, 0)).toBe(21);
+
+    const expectedTotal = Math.max(...prepLeads) + seqLeads.reduce((a, b) => a + b, 0);
+    expect(expectedTotal).toBe(28);
+    expect(fwd.totalBusinessDays).toBe(expectedTotal); // NÃO é a soma de todos (34)
+  });
+
+  it('setores ausentes na ficha não entram na cascata (lead 0)', () => {
+    // Ficha de palmilha pronta: sem Costura nem Silk.
+    const semCosturaSilk = {
+      ...sheet,
+      production_sectors: ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    };
+    const fwd = computeForwardSchedule(semCosturaSilk, QTY, new Date('2026-07-06T00:00:00'));
+    expect(fwd.steps.find((s) => s.key === 'costura')).toBeUndefined();
+    expect(fwd.steps.find((s) => s.key === 'silk')).toBeUndefined();
+    // MAX prep agora = max(palmilha6, forração5, aviamento7) = 7; Σ seq = colagem3+montagem6+solagem5+acab5 = 19.
+    expect(fwd.totalBusinessDays).toBe(7 + 19);
+  });
+
+  it('B4: Expedição nunca entra no lead da cascata forward (é via pickup)', () => {
+    const comExpedicao = {
+      ...sheet,
+      production_sectors: [...sheet.production_sectors, 'Expedição'],
+      expedition_capacity_per_day: 500,
+    };
+    const fwd = computeForwardSchedule(comExpedicao, QTY, new Date('2026-07-06T00:00:00'));
+    expect(fwd.steps.find((s) => s.key === 'expedicao')).toBeUndefined();
+    // Total inalterado vs. ficha sem Expedição (mesma cascata, termina no Acabamento).
+    const base = computeForwardSchedule(sheet, QTY, new Date('2026-07-06T00:00:00'));
+    expect(fwd.totalBusinessDays).toBe(base.totalBusinessDays);
   });
 });

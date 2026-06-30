@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   loadHolidayCache,
   computeSectorDailyLoad,
+  loadCategoryDefaults,
   type DailyOpInput,
   type SectorDayLoad,
 } from '@/lib/sectorCapacity';
@@ -122,7 +123,11 @@ export function useSectorDailyLoad(dateISO: string) {
         planned_delivery: o.planned_delivery,
         sheet_name: sheetMap.get(o.reference_id)?.name ?? null,
       }));
-      const planned = computeSectorDailyLoad(dateISO, ops, sheetMap);
+      // M8: defaults por categoria (default_lead_times) pra cascata bater com o SQL.
+      const catDefaults = await loadCategoryDefaults(
+        Array.from(sheetMap.values()).map((s: any) => s.shoe_category),
+      );
+      const planned = computeSectorDailyLoad(dateISO, ops, sheetMap, catDefaults);
 
       // ── 4. REAL (WIP atual: etapa CORRENTE de cada OP) ──────────────────────
       // Neste schema as etapas abertas de order_stages NÃO têm started_at e não
