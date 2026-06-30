@@ -13,18 +13,22 @@
 --       entra no lead). Frontend alinhado em sectorCapacity.ts.
 --
 -- Achados corrigidos:
---   M1  — Costura prep paralela no guard e na inferência de started_at.
---   M2/M3/M4 — advance_order_to_sector passa a concluir o FECHO TRANSITIVO de
+--   M1  — DAG CANÔNICO unificado entre guard, inferência de started_at,
+--        advance_order_to_sector e o frontend (sectorDag.ts): Costura é prep
+--        paralela; Silk ⟵ todo o prep (1º sequencial); Colagem ⟵ Silk + prep.
+--        Antes guard/stamp e advance/frontend usavam topologias DIFERENTES
+--        (guard deixava iniciar Colagem antes do Silk — wrong-allow).
+--   M2/M3/M4 — advance_order_to_sector conclui o FECHO TRANSITIVO de
 --        predecessores do DAG real (não o prefixo linear do array), parando de
---        force-concluir ramos paralelos irmãos (ex.: arrastar p/ Colagem não
---        conclui mais Silk indevidamente; arrastar p/ Costura não conclui mais
---        Corte Palmilha). Com isso os timestamps dos setores prep deixam de ser
---        colapsados num único now().
+--        force-concluir ramos paralelos irmãos (ex.: arrastar p/ Costura não
+--        conclui mais Corte Palmilha). Com isso os timestamps dos setores prep
+--        deixam de ser colapsados num único now().
 --   M5  — v_lead_supplier passa a derivar a necessidade de material do motor
 --        CANÔNICO (calculate_order_consumption), incluindo solado, tiras e
 --        componentes de ficha (cabedal/forro/palmilha), não só sheet_materials.
 --   B1  — fallback de lead do Corte Palmilha: lead_time_costura_dias → lead_time_corte_dias.
---   B3  — Costura passa a respeitar lead_time_costura_dias no fallback (era ELSE 1 fixo).
+--   B3  — Costura respeita lead_time_costura_dias + tier default_lead_times no
+--        fallback (cap e lead), espelhando os demais setores e o frontend.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -61,9 +65,9 @@ BEGIN
           ELSE COALESCE(NULLIF(ts.lead_time_corte_dias,0), dlt.lead_time_corte_dias, 2) END
       ELSE 0 END), 0),
     COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value) = 'costura')
-      THEN CASE WHEN COALESCE(NULLIF(ts.costura_capacity_per_day,0), 0) > 0
-          THEN GREATEST(1, CEIL(soi.quantity::numeric / ts.costura_capacity_per_day::numeric)::int)
-          ELSE COALESCE(NULLIF(ts.lead_time_costura_dias,0), 1) END
+      THEN CASE WHEN COALESCE(NULLIF(ts.costura_capacity_per_day,0), dlt.costura_capacity_per_day, 0) > 0
+          THEN GREATEST(1, CEIL(soi.quantity::numeric / COALESCE(NULLIF(ts.costura_capacity_per_day,0), dlt.costura_capacity_per_day)::numeric)::int)
+          ELSE COALESCE(NULLIF(ts.lead_time_costura_dias,0), dlt.lead_time_costura_dias, 1) END
       ELSE 0 END), 0),
     COALESCE(MAX(CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(ts.production_sectors,'[]'::jsonb)) x WHERE sector_display_to_enum(x.value) = 'mesa')
       THEN CASE WHEN COALESCE(NULLIF(ts.mesa_daily_capacity,0), dlt.mesa_daily_capacity, 0) > 0
@@ -166,15 +170,18 @@ $function$;
 -- -----------------------------------------------------------------------------
 -- 2) fn_guard_manual_stage_transition — M1: Costura é prep paralela (sem pré-req)
 -- -----------------------------------------------------------------------------
--- DAG unificado ao motor de datas (compute_wave_timeline):
+-- DAG CANÔNICO unificado (guard = tg_stamp = advance = sectorDag.ts):
 --   Prep paralelo (sem dependência): Corte Palmilha, Corte Forração,
---                                     Aviamento (alias Mesa), Costura, Silk
---   Colagem    ⟵ Corte Palmilha + Corte Forração + Aviamento + Costura  (todo o prep)
+--                                     Aviamento (alias Mesa), Costura
+--   Silk       ⟵ todo o prep  (1º setor da cadeia sequencial)
+--   Colagem    ⟵ Silk + todo o prep
 --   Montagem   ⟵ Colagem ; Solagem ⟵ Montagem ; Acabamento ⟵ Solagem ;
 --   Expedição  ⟵ Acabamento
--- Colagem (1º setor de montagem real) gateia em TODO o prep, garantindo que
--- Corte Forração/Aviamento — antes alcançados via Costura — continuem exigidos
--- mesmo com Costura agora paralela.
+-- Silk gateia em todo o prep (espelha v_seq_start = silk_start em
+-- compute_wave_timeline). Colagem exige Silk E o prep: quando a OP TEM Silk, a
+-- exigência de Silk basta (Silk já exigiu o prep); quando NÃO tem Silk (ex.
+-- palmilha pronta), o prep listado direto garante o gate. O fecho transitivo
+-- ({Silk}∪prep) é idêntico ao de advance_order_to_sector e sectorDag.ts.
 CREATE OR REPLACE FUNCTION public.fn_guard_manual_stage_transition()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -195,9 +202,9 @@ BEGIN
     WHEN 'Corte Forração' THEN ARRAY[]::text[]
     WHEN 'Aviamento'      THEN ARRAY[]::text[]
     WHEN 'Mesa'           THEN ARRAY[]::text[]
-    WHEN 'Silk'           THEN ARRAY[]::text[]
     WHEN 'Costura'        THEN ARRAY[]::text[]
-    WHEN 'Colagem'        THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+    WHEN 'Silk'           THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+    WHEN 'Colagem'        THEN ARRAY['Silk','Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
     WHEN 'Montagem'       THEN ARRAY['Colagem']
     WHEN 'Solagem'        THEN ARRAY['Montagem']
     WHEN 'Acabamento'     THEN ARRAY['Solagem']
@@ -254,17 +261,19 @@ BEGIN
     END IF;
   END IF;
 
-  -- Início inferido pelo DAG real, quando concluiu sem início. Costura agora é
-  -- prep (sem pré-req) → started_at = liberação da OP, alinhado ao guard e ao
-  -- compute_wave_timeline.
+  -- Início inferido pelo DAG CANÔNICO, quando concluiu sem início. Costura é
+  -- prep (started_at = liberação); Silk ⟵ prep (started_at = fim do prep);
+  -- Colagem ⟵ Silk + prep (started_at = fim do Silk, evitando o double-count com
+  -- a janela do Silk). Mesmo DAG do guard/advance/sectorDag.
   IF NEW.completed_at IS NOT NULL AND NEW.started_at IS NULL THEN
     v_required := CASE NEW.stage_name
-      WHEN 'Colagem'    THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+      WHEN 'Silk'       THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+      WHEN 'Colagem'    THEN ARRAY['Silk','Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
       WHEN 'Montagem'   THEN ARRAY['Colagem']
       WHEN 'Solagem'    THEN ARRAY['Montagem']
       WHEN 'Acabamento' THEN ARRAY['Solagem']
       WHEN 'Expedição'  THEN ARRAY['Acabamento']
-      ELSE ARRAY[]::text[]   -- prep (Corte Palmilha/Forração/Aviamento/Mesa/Costura/Silk) e desconhecidos
+      ELSE ARRAY[]::text[]   -- prep (Corte Palmilha/Forração/Aviamento/Mesa/Costura) e desconhecidos
     END;
     IF cardinality(v_required) = 0 THEN
       SELECT min(created_at) INTO v_start FROM public.order_stages WHERE order_id = NEW.order_id;
@@ -289,13 +298,19 @@ BEGIN
 END;
 $function$;
 
--- Re-backfill de started_at com o DAG corrigido (Costura prep; Colagem ⟵ todo prep).
+-- Re-backfill de started_at com o DAG CANÔNICO (Silk ⟵ prep; Colagem ⟵ Silk+prep).
+-- Intencionalmente RE-DERIVA started_at de TODAS as etapas concluídas (não usa
+-- COALESCE pra preservar valores anteriores): o objetivo é justamente corrigir a
+-- inferência errada da migration anterior. started_at = atravessamento (fila
+-- incluída), não tempo de trabalho; a grande maioria das etapas foi concluída em
+-- bloco (duração ~0).
 WITH rel AS (
   SELECT order_id, min(created_at) AS release_at FROM public.order_stages GROUP BY order_id
 ), calc AS (
   SELECT o.id, o.order_id, o.completed_at, o.stage_name,
     CASE WHEN (CASE o.stage_name
-                 WHEN 'Colagem'    THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+                 WHEN 'Silk'       THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+                 WHEN 'Colagem'    THEN ARRAY['Silk','Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
                  WHEN 'Montagem'   THEN ARRAY['Colagem']
                  WHEN 'Solagem'    THEN ARRAY['Montagem']
                  WHEN 'Acabamento' THEN ARRAY['Solagem']
@@ -306,7 +321,8 @@ WITH rel AS (
            (SELECT max(p.completed_at) FROM public.order_stages p
              WHERE p.order_id = o.order_id
                AND p.stage_name = ANY(CASE o.stage_name
-                 WHEN 'Colagem'    THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+                 WHEN 'Silk'       THEN ARRAY['Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
+                 WHEN 'Colagem'    THEN ARRAY['Silk','Corte Palmilha','Corte Forração','Aviamento','Mesa','Costura']
                  WHEN 'Montagem'   THEN ARRAY['Colagem']
                  WHEN 'Solagem'    THEN ARRAY['Montagem']
                  WHEN 'Acabamento' THEN ARRAY['Solagem']
@@ -334,10 +350,11 @@ UPDATE public.order_stages
 --    predecessores do DAG real, não o prefixo linear do array.
 -- -----------------------------------------------------------------------------
 -- Antes: concluía TODA etapa com array_position < alvo (posição linear). Isso
--- force-concluía ramos paralelos irmãos (arrastar p/ Colagem concluía Silk;
--- arrastar p/ Costura concluía Corte Palmilha) — corrompendo silenciosamente o
--- estado do kanban e colapsando os timestamps dos prep num único now().
+-- force-concluía ramos paralelos irmãos (ex.: arrastar p/ Costura concluía
+-- Corte Palmilha/Forração/Aviamento, que são paralelos a ela) — corrompendo
+-- silenciosamente o estado do kanban e colapsando os timestamps dos prep.
 -- Agora: só conclui os pré-requisitos REAIS (fecho transitivo do DAG do alvo).
+-- O fecho de Colagem = {Silk}∪prep, idêntico ao gate direto do guard.
 CREATE OR REPLACE FUNCTION public.advance_order_to_sector(
   p_order_id uuid,
   p_target text,

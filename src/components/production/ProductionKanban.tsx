@@ -975,7 +975,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
       <div className="text-xs flex items-center gap-2 text-muted-foreground bg-muted/40 border border-border/50 rounded-md px-2.5 py-1.5">
         <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
         <span>
-          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> ‖ <span className="font-medium text-foreground">Costura</span> rodam <span className="font-medium text-primary">em paralelo</span>; a Colagem só inicia quando todos os 4 estiverem prontos.
+          <span className="font-medium text-foreground">Corte Palmilha</span> ‖ <span className="font-medium text-foreground">Corte Forração</span> ‖ <span className="font-medium text-foreground">Aviamento</span> ‖ <span className="font-medium text-foreground">Costura</span> rodam <span className="font-medium text-primary">em paralelo</span>; o Silk só inicia quando todos os 4 estiverem prontos.
         </span>
       </div>
 
@@ -1012,7 +1012,7 @@ export function ProductionKanban({ orders, onRefresh }: { orders: KanbanOrder[],
                       {sector.parallel && (
                         <span
                           className="text-xs font-bold text-primary bg-primary/10 px-1 rounded leading-tight"
-                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura). A Colagem só inicia quando todos os 4 finalizam."
+                          title="Roda em paralelo com os outros setores prep (Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura). O Silk só inicia quando todos os 4 finalizam."
                         >
                           ‖ PREP
                         </span>

@@ -89,11 +89,23 @@ describe('motor de cascata — forward × backward (D4)', () => {
     expect(silk.startISO).toBe(maxPrepEnd);
   });
 
-  it('forward: setup days (B3) adiam a entrega', () => {
-    const start = new Date('2026-07-01T00:00:00');
+  it('forward: setup em setor SEQUENCIAL soma exatamente ao total', () => {
+    const start = new Date('2026-07-06T00:00:00'); // segunda
     const base = computeForwardSchedule(sheet, QTY, start);
-    const withSetup = computeForwardSchedule(sheet, QTY, start, { montagem: 2, costura: 1 } as Partial<Record<SectorKey, number>>);
-    expect(new Date(withSetup.finishISO).getTime()).toBeGreaterThan(new Date(base.finishISO).getTime());
+    const withSetup = computeForwardSchedule(sheet, QTY, start, { montagem: 2 } as Partial<Record<SectorKey, number>>);
+    // montagem é sequencial → +2 dias úteis exatos no total.
+    expect(withSetup.totalBusinessDays).toBe(base.totalBusinessDays + 2);
+  });
+
+  it('forward: setup no GARGALO do prep (mesa) adia a convergência', () => {
+    const start = new Date('2026-07-06T00:00:00');
+    const base = computeForwardSchedule(sheet, QTY, start);
+    // mesa é o gargalo do prep (lead 7); +3 de setup empurra a convergência e o total.
+    const withSetup = computeForwardSchedule(sheet, QTY, start, { mesa: 3 } as Partial<Record<SectorKey, number>>);
+    expect(withSetup.totalBusinessDays).toBe(base.totalBusinessDays + 3);
+    // já um setup em setor prep NÃO-gargalo (costura lead 4) é no-op no total.
+    const noop = computeForwardSchedule(sheet, QTY, start, { costura: 2 } as Partial<Record<SectorKey, number>>);
+    expect(noop.totalBusinessDays).toBe(base.totalBusinessDays);
   });
 
   it('backward: os 4 prep TERMINAM juntos no início da cadeia sequencial (Silk)', () => {

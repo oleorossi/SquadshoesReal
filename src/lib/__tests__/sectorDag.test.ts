@@ -45,3 +45,45 @@ describe('sectorDag — predecessores do DAG real', () => {
     expect(preds.has('Aviamento')).toBe(false);
   });
 });
+
+/**
+ * Paridade SQL↔TS do DAG (M7 — auditoria 2026-06-29). Encoda os ARRAYS DIRETOS
+ * do guard SQL (fn_guard_manual_stage_transition na migration
+ * 20260831120000) e verifica que o FECHO TRANSITIVO bate com o sectorDag.ts.
+ * Se alguém mexer num lado sem o outro, este teste pega a divergência (antes
+ * guard/stamp e advance/frontend usavam topologias diferentes).
+ *
+ * ⚠ Manter em sincronia com os CASE do guard e do tg_stamp na migration.
+ */
+const GUARD_DIRECT: Record<string, string[]> = {
+  'Corte Palmilha': [],
+  'Corte Forração': [],
+  'Aviamento': [],
+  'Mesa': [],
+  'Costura': [],
+  'Silk': ['Corte Palmilha', 'Corte Forração', 'Aviamento', 'Mesa', 'Costura'],
+  'Colagem': ['Silk', 'Corte Palmilha', 'Corte Forração', 'Aviamento', 'Mesa', 'Costura'],
+  'Montagem': ['Colagem'],
+  'Solagem': ['Montagem'],
+  'Acabamento': ['Solagem'],
+  'Expedição': ['Acabamento'],
+};
+
+function closureFrom(map: Record<string, string[]>, stage: string): Set<string> {
+  const out = new Set<string>();
+  const visit = (s: string) => {
+    for (const p of map[s] ?? []) if (!out.has(p)) { out.add(p); visit(p); }
+  };
+  visit(stage);
+  return out;
+}
+
+describe('sectorDag — paridade com o DAG do guard SQL (M7)', () => {
+  it('fecho transitivo do guard SQL == sectorDag.ts pra todos os setores', () => {
+    for (const stage of Object.keys(GUARD_DIRECT)) {
+      const fromGuard = [...closureFrom(GUARD_DIRECT, stage)].sort();
+      const fromTs = [...transitivePredecessors(stage)].sort();
+      expect(fromTs, `divergência no setor ${stage}`).toEqual(fromGuard);
+    }
+  });
+});

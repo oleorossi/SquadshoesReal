@@ -303,11 +303,11 @@ export async function checkSectorCapacity(
 // SEQUENCIAL e ignoravam o setor Costura, divergindo do SQL compute_wave_timeline
 // (PR 3 + PR 2 paralelos).
 //
-// Esta função espelha exatamente o que checkSectorCapacity.computeWindows faz
-// internamente (e o que update_wave_timeline grava no banco):
-//   - Corte Palmilha ‖ Corte Forração ‖ Aviamento (Mesa) — paralelos prep
-//   - Costura é sequencial entre prep e Silk
-//   - Pós-prep: Silk → Colagem → Montagem → Solagem → Acabamento (Costura é prep paralela)
+// Fonte única da cascata (checkSectorCapacity.computeWindows delega aqui — B5) e
+// espelho do que update_wave_timeline grava no banco:
+//   - Prep PARALELO: Corte Palmilha ‖ Corte Forração ‖ Aviamento (Mesa) ‖ Costura
+//   - Sequencial pós-prep: Silk → Colagem → Montagem → Solagem → Acabamento
+//     (Silk converge o prep; Expedição é via pickup, fora do lead)
 // =============================================================================
 
 // normalização e hasSector vêm da fonte única (./sectors).
