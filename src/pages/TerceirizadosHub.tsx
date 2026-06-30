@@ -6,8 +6,10 @@
  *
  * Uma única barra de abas, agrupada em OPERACIONAL | CADASTRO:
  *   OPERACIONAL:
- *   • Na Rua            → acompanhamento + recebimento/retorno (OutsourcedInField)
- *   • Ordens de Serviço → lista de OS + filtros/seleção/PDF (Contractors)
+ *   • Ordens de Serviço → lista de OS + acompanhamento em campo (chips "Na rua"/
+ *     "Atrasados" + KPIs) + enviar/receber + filtros/seleção/PDF (Contractors).
+ *     A antiga aba "Na Rua" (OutsourcedInField) foi FUNDIDA aqui em 2026-06-30 —
+ *     era um recorte filtrado das próprias OS; ?tab=rua redireciona pra cá.
  *   • Planejamento      → projeção de carga por contratada (Contractors)
  *   • Relatório         → métricas + histórico (ContractorReports)
  *   CADASTRO:
