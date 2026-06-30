@@ -504,7 +504,7 @@ ${LABEL_PRINT_HARDENING}
 .grade-table > .cell.qtd-total{background:#fff;color:#000;font-size:22px;border-bottom:none;}
 .grade-table > .row-marca{grid-column:2 / -1;background:#fff;color:#000;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #000;}
 .grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:0.06em;color:#000;line-height:1;}
-.grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:15px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;display:flex;align-items:center;}
+.grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:15px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#C00000;display:flex;align-items:center;}
 
 /* RODAPÉ PEDIDO + VOLUME ──────────── */
 .footer{display:flex;border-top:3px solid #000;background:#fff;color:#000;flex-shrink:0;}
