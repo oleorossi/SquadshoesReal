@@ -1570,31 +1570,27 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     if (!soleProductId) return;
     try {
       // 1. Try sole_technical_specs first (direct per-sole specs)
+      // ⚠ Forro do CABEDAL (lining_consumption) NÃO vem mais do solado — desde
+      // 2026-06-30 é cabedal a cabedal, definido aqui na ficha do modelo. Do
+      // solado só puxamos o que é padronizado por solado: placa da palmilha e
+      // forração da palmilha (napa que reveste a placa).
       const { data: specs } = await supabase
         .from('sole_technical_specs')
-        .select('size, lining_consumption_dm2, insole_consumption_dm2, insole_lining_consumption_dm2')
+        .select('size, insole_consumption_dm2, insole_lining_consumption_dm2')
         .eq('sole_id', soleProductId);
 
-      const hasDirectSpecs = specs && specs.some(s => s.lining_consumption_dm2 !== null || s.insole_consumption_dm2 !== null || (s as any).insole_lining_consumption_dm2 !== null);
+      const hasDirectSpecs = specs && specs.some(s => s.insole_consumption_dm2 !== null || (s as any).insole_lining_consumption_dm2 !== null);
 
       if (hasDirectSpecs) {
-        const liningMap: Record<string, number> = {};
         const insoleMap: Record<string, number> = {};
         const insoleLiningMap: Record<string, number> = {};
         specs!.forEach(s => {
-          if (s.lining_consumption_dm2 !== null) liningMap[String(s.size)] = Number(s.lining_consumption_dm2);
           if (s.insole_consumption_dm2 !== null) insoleMap[String(s.size)] = Number(s.insole_consumption_dm2);
           const il = (s as any).insole_lining_consumption_dm2;
           if (il !== null && il !== undefined) insoleLiningMap[String(s.size)] = Number(il);
         });
-        const liningVals = Object.values(liningMap);
         const insoleVals = Object.values(insoleMap);
         const insoleLiningVals = Object.values(insoleLiningMap);
-        if (liningVals.length > 0) {
-          updateField('lining_consumption', Number((liningVals.reduce((a, b) => a + b, 0) / liningVals.length).toFixed(4)));
-          updateField('lining_consumption_per_size', liningMap);
-          flashField('lining_consumption_per_size');
-        }
         if (insoleVals.length > 0) {
           updateField('insole_consumption', Number((insoleVals.reduce((a, b) => a + b, 0) / insoleVals.length).toFixed(4)));
           updateField('insole_consumption_per_size', insoleMap);
@@ -5980,7 +5976,12 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
           
           for (const struct of structures) {
             if (!struct.default_group_id) continue;
-            
+
+            // Forro do CABEDAL não é auto-adicionado do solado (2026-06-30): é
+            // cabedal a cabedal, definido na própria ficha do modelo. Só a
+            // estrutura de Palmilha (placa) entra automaticamente do solado.
+            if (struct.component_type === 'Forro') continue;
+
             // Check if already in materials
             const alreadyExists = materials.some((m: any) => m.group_id === struct.default_group_id);
             if (alreadyExists) continue;
@@ -5989,10 +5990,9 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
             const rep = groupProds[0];
             if (!rep) continue;
 
-            const field = struct.component_type === 'Forro' ? 'lining_consumption_dm2' : 'insole_consumption_dm2';
             const perSize: Record<string, number> = {};
             specs?.forEach(s => {
-              if (s[field] && Number(s[field]) > 0) perSize[String(s.size)] = Number(s[field]);
+              if (s.insole_consumption_dm2 && Number(s.insole_consumption_dm2) > 0) perSize[String(s.size)] = Number(s.insole_consumption_dm2);
             });
 
             const avg = Object.values(perSize).length > 0 

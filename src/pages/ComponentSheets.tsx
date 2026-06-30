@@ -2099,7 +2099,10 @@ function SoleConsumptionMatrixReadOnly({ groupId, category }: { groupId: string;
   useEffect(() => { fetchSoles(); }, [groupId]);
 
   const isLining = normalizeForSearch(category).includes('forro') || normalizeForSearch(category).includes('forração');
-  const field = isLining ? 'lining_consumption_dm2' : 'insole_consumption_dm2';
+  // Forro: o consumo por solado relevante é a forração da PALMILHA (napa que
+  // reveste a placa). O forro do CABEDAL saiu da ficha do solado (2026-06-30) —
+  // é cabedal a cabedal, na ficha do modelo, não há valor por solado pra exibir.
+  const field = isLining ? 'insole_lining_consumption_dm2' : 'insole_consumption_dm2';
 
   if (loading) return <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
