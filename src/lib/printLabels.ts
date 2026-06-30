@@ -461,10 +461,10 @@ ${LABEL_PRINT_HARDENING}
 .nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:3px solid #000;flex-shrink:0;}
 .nf-cell{padding:6px 14px;border-right:3px solid #000;display:flex;align-items:baseline;gap:8px;background:#fff;color:#000;}
 .nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.06em;color:#555;}
-.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:40px;letter-spacing:0.02em;line-height:.92;}
+.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:40px;letter-spacing:0.02em;line-height:.92;color:#C00000;}
 .prog-cell{padding:6px 14px;display:flex;flex-direction:column;justify-content:center;gap:1px;}
 .prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.06em;color:#555;}
-.prog-cell .prog-value{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:0.02em;line-height:1;}
+.prog-cell .prog-value{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:0.02em;line-height:1;color:#C00000;}
 
 /* REMETENTE (faixa fina) ───────────── */
 .remetente-row{display:flex;gap:6px;align-items:baseline;padding:3px 14px;border-bottom:1.5px solid #000;background:#fff;color:#000;flex-shrink:0;}
@@ -488,7 +488,7 @@ ${LABEL_PRINT_HARDENING}
 .photo-frame img{max-width:100%;max-height:100%;object-fit:contain;}
 .photo-fallback-badge{position:absolute;top:2px;left:2px;background:#fff;color:#000;border:1px solid #000;font-size:8px;font-weight:800;padding:1px 4px;letter-spacing:0.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
 .cor-row{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
-.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;line-height:1.1;}
+.cor-row .cor-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;line-height:1.1;color:#C00000;}
 
 /* TABELA grade ───────────────────── */
 /* Grade unificada num único grid: col 1 = rótulos, cols 2..N = valores.
