@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import PrintWorkSheetsPage, { SECTORS } from '@/components/production/PrintWorkSheetsPage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -258,17 +259,11 @@ export default function PrintWorkSheets() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-start gap-3">
-          <Printer className="h-7 w-7 text-primary mt-1" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Imprimir Fichas de Produção</h1>
-            <p className="text-sm text-muted-foreground">
-              Selecione as OPs e escolha qual ficha gerar: por setor (Corte/Costura/Silk/Montagem/Solagem/Acabamento),
-              Expedição agrupada por cliente, ou Relatório Gerencial completo do PV.
-            </p>
-          </div>
-        </div>
+      <EditorialPageHeader
+        sectionLabel="PRODUÇÃO · IMPRESSÃO"
+        title="Imprimir Fichas de Produção"
+        description="Selecione as OPs e escolha qual ficha gerar: por setor (Corte/Costura/Silk/Montagem/Solagem/Acabamento), Expedição agrupada por cliente, ou Relatório Gerencial completo do PV."
+        actions={
         <div className="flex items-center gap-2 flex-wrap">
           {/* Atalho "Selecionar tudo e imprimir": marca TODAS as OPs filtradas
               + abre a tela de print em 1 clique. Pedido do user 18/05/2026.
@@ -313,7 +308,8 @@ export default function PrintWorkSheets() {
             Gerar fichas ({selectedOrders.length} OP{selectedOrders.length === 1 ? '' : 's'})
           </Button>
         </div>
-      </div>
+        }
+      />
 
       <Card>
         <CardHeader className="pb-2">
