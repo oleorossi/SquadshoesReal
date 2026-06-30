@@ -323,8 +323,12 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
           </div>
 
           {/* Details grid */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 content-start">
-            <div>
+          {/* Combo de produção em CHIPS alinhados (melhoria estética 2026-06-30,
+              opção A): substitui a grade 2-col de rótulo/valor — confere
+              solado/palmilha/cor num olhar, P&B, sem swatch invisível. */}
+          <div className="flex flex-wrap gap-2 content-start">
+            {/* Cor Tiras / Cabedal (mantém o swatch pequeno que já existia) */}
+            <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
               <span className="section-label block" style={{ color: '#000' }}>{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
@@ -337,61 +341,61 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
               </div>
             </div>
 
-            {/* Sole + insole for relevant sectors */}
             {(isMontagem || isSolagem || isColagem) ? (
-              <div>
-                <span className="section-label block" style={{ color: '#000' }}>Solado</span>
-                <span
-                  className="uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
-                >
-                  {resolvedSoleColor}
-                </span>
-              </div>
+              <>
+                {/* Solado */}
+                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                  <span
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  >
+                    {resolvedSoleColor}
+                  </span>
+                </div>
+                {/* Palmilha */}
+                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                  <span
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  >
+                    {resolvedInsoleColor}
+                  </span>
+                  {insoleReadyMade && (
+                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
+                  )}
+                </div>
+              </>
             ) : (
-              <div>
+              /* Ordem — setores sem solado/palmilha */
+              <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
                 <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
                 <p className="text-xs font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
               </div>
             )}
-
-            {/* Palmilha for relevant sectors */}
-            {(isMontagem || isSolagem || isColagem) && (
-              <div>
-                <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
-                <span
-                  className="uppercase leading-none block mt-0.5"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
-                >
-                  {resolvedInsoleColor}
-                </span>
-                {insoleReadyMade && (
-                  <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
-                )}
-              </div>
-            )}
-
-            {/* Silk info inline — só pra setores onde silk NÃO é o destaque. */}
-            {silk && !isSilk && !isAcabamento && (
-              <div className="col-span-2">
-                <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  {silk.silk_url && (
-                    <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
-                  )}
-                  <span className="text-sm font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Cutting notes for cut sectors */}
-            {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
-              <div className="col-span-2">
-                <span className="section-label block" style={{ color: '#000' }}>Obs. de Corte</span>
-                <p className="text-xs text-black font-semibold leading-tight mt-0.5">{order.master.technical_notes}</p>
-              </div>
-            )}
           </div>
+
+          {/* Silk / Estampa — bloco próprio (imagem + nome) */}
+          {silk && !isSilk && !isAcabamento && (
+            <div className="mt-1.5">
+              <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
+              <div className="flex items-center gap-2 mt-0.5">
+                {silk.silk_url && (
+                  <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
+                )}
+                <span className="text-sm font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Obs. de Corte */}
+          {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
+            <div className="mt-1.5">
+              <span className="section-label block" style={{ color: '#000' }}>Obs. de Corte</span>
+              <p className="text-xs text-black font-semibold leading-tight mt-0.5">{order.master.technical_notes}</p>
+            </div>
+          )}
         </div>
       </div>
     );
