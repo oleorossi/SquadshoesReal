@@ -299,9 +299,9 @@ function useOrderFlowAudit() {
 
 function StatusIcon({ status }: { status: StepStatus }) {
   switch (status) {
-    case 'ok': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    case 'warning': return <AlertTriangle className="h-4 w-4 text-amber-500" />;
-    case 'error': return <XCircle className="h-4 w-4 text-red-500" />;
+    case 'ok': return <CheckCircle2 className="h-4 w-4 text-success" />;
+    case 'warning': return <AlertTriangle className="h-4 w-4 text-warning" />;
+    case 'error': return <XCircle className="h-4 w-4 text-destructive" />;
     case 'pending': return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />;
   }
 }
@@ -418,11 +418,11 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
                     </td>
                     <td className="p-3 text-right">
                       {s.isAdiantado ? (
-                        <Badge className="bg-amber-500 text-white text-xs px-1.5 uppercase font-black border-none animate-pulse">
+                        <Badge className="bg-warning text-warning-foreground text-xs px-1.5 uppercase font-black border-none animate-pulse">
                           Adiantado
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs uppercase font-bold text-green-600 border-green-200 bg-green-50/50">
+                        <Badge variant="outline" className="text-xs uppercase font-bold text-success border-success/30 bg-success/10">
                           No Prazo
                         </Badge>
                       )}

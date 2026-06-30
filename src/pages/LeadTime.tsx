@@ -300,7 +300,7 @@ export default function LeadTime() {
 
                    <div className="space-y-3">
                      <Label className="text-sm font-semibold">Capacidade Diária (pares/dia)</Label>
-                     <div className="bg-amber-50/30 p-4 rounded-xl border border-amber-200/50 border-dashed">
+                     <div className="bg-warning/10 p-4 rounded-xl border border-warning/30 border-dashed">
                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
                          <NumField
                            label="Corte"
@@ -350,7 +350,7 @@ export default function LeadTime() {
                           </div>
                        </div>
                      </div>
-                     <p className="text-xs text-amber-600 flex items-center gap-1.5 px-1 font-medium">
+                     <p className="text-xs text-warning flex items-center gap-1.5 px-1 font-medium">
                        <Zap className="h-3 w-3" />
                        Usado para calcular o Lead Time Dinâmico baseado no backlog atual de ordens.
                      </p>
@@ -445,13 +445,13 @@ export default function LeadTime() {
                     </TableCell>
                     <TableCell>
                        <div className="flex flex-wrap gap-1 justify-center max-w-[220px]">
-                          {lt.cutting_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Corte: {lt.cutting_capacity_per_day}</Badge>}
-                          {lt.sewing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Forr: {lt.sewing_capacity_per_day}</Badge>}
-                         {lt.silk_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Silk: {lt.silk_capacity_per_day}</Badge>}
-                         {lt.gluing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Colag: {lt.gluing_capacity_per_day}</Badge>}
-                         {lt.assembly_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Mont: {lt.assembly_capacity_per_day}</Badge>}
-                         {lt.finishing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Acab: {lt.finishing_capacity_per_day}</Badge>}
-                          {lt.expedition_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-amber-200 bg-amber-50">Exp: {lt.expedition_capacity_per_day}</Badge>}
+                          {lt.cutting_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Corte: {lt.cutting_capacity_per_day}</Badge>}
+                          {lt.sewing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Forr: {lt.sewing_capacity_per_day}</Badge>}
+                         {lt.silk_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Silk: {lt.silk_capacity_per_day}</Badge>}
+                         {lt.gluing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Colag: {lt.gluing_capacity_per_day}</Badge>}
+                         {lt.assembly_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Mont: {lt.assembly_capacity_per_day}</Badge>}
+                         {lt.finishing_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Acab: {lt.finishing_capacity_per_day}</Badge>}
+                          {lt.expedition_capacity_per_day > 0 && <Badge variant="outline" className="text-xs px-1 py-0 h-4 border-warning/30 bg-warning/10 text-warning">Exp: {lt.expedition_capacity_per_day}</Badge>}
                           {!(lt.sewing_capacity_per_day || lt.cutting_capacity_per_day || lt.silk_capacity_per_day || lt.gluing_capacity_per_day || lt.assembly_capacity_per_day || lt.finishing_capacity_per_day || lt.expedition_capacity_per_day) && <span className="text-xs text-muted-foreground">Não def.</span>}
                        </div>
                     </TableCell>
@@ -542,7 +542,7 @@ export default function LeadTime() {
                           <div className="text-xs opacity-70">{dlt.current_load_expedicao} prs</div>
                         </TableCell>
                       <TableCell className="text-center">
-                        <Badge className="bg-amber-600 hover:bg-amber-700">
+                        <Badge className="bg-warning text-warning-foreground hover:bg-warning/90">
                           {dlt.total_dynamic_lead_time_days} dias úteis
                         </Badge>
                       </TableCell>

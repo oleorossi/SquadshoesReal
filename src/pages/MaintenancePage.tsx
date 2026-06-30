@@ -24,9 +24,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; cls: string }> = {
-    ativo: { label: "Ativo", cls: "bg-green-500/10 text-green-600" },
+    ativo: { label: "Ativo", cls: "bg-success/10 text-success" },
     inativo: { label: "Inativo", cls: "bg-muted text-muted-foreground" },
-    em_manutencao: { label: "Em Manutenção", cls: "bg-amber-500/10 text-amber-600" },
+    em_manutencao: { label: "Em Manutenção", cls: "bg-warning/10 text-warning" },
   };
   const s = map[status] || map.ativo;
   return <Badge className={s.cls}>{s.label}</Badge>;
@@ -36,9 +36,9 @@ function dueBadge(nextDue: string | null) {
   if (!nextDue) return <Badge variant="outline">Sem prazo</Badge>;
   const d = new Date(nextDue);
   const diff = differenceInDays(d, new Date());
-  if (isPast(d)) return <Badge className="bg-red-500/10 text-red-600">Atrasado ({Math.abs(diff)}d)</Badge>;
-  if (diff <= 7) return <Badge className="bg-amber-500/10 text-amber-600">Em {diff}d</Badge>;
-  return <Badge className="bg-green-500/10 text-green-600">Em {diff}d</Badge>;
+  if (isPast(d)) return <Badge className="bg-destructive/10 text-destructive">Atrasado ({Math.abs(diff)}d)</Badge>;
+  if (diff <= 7) return <Badge className="bg-warning/10 text-warning">Em {diff}d</Badge>;
+  return <Badge className="bg-success/10 text-success">Em {diff}d</Badge>;
 }
 
 // ─── Equipment Form Dialog ───
@@ -298,7 +298,7 @@ export default function MaintenancePage() {
                       <TableCell>{statusBadge(eq.status)}</TableCell>
                       <TableCell className="text-right space-x-1">
                         <EquipmentFormDialog equipment={eq}><Button variant="ghost" size="sm">Editar</Button></EquipmentFormDialog>
-                        <Button variant="ghost" size="sm" className="text-red-600" onClick={() => deleteEq.mutate(eq.id)}>Excluir</Button>
+                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteEq.mutate(eq.id)}>Excluir</Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -337,7 +337,7 @@ export default function MaintenancePage() {
                 </TableHeader>
                 <TableBody>
                   {plans.map(p => (
-                    <TableRow key={p.id} className={p.next_due_at && isPast(new Date(p.next_due_at)) ? "bg-red-500/5" : ""}>
+                    <TableRow key={p.id} className={p.next_due_at && isPast(new Date(p.next_due_at)) ? "bg-destructive/5" : ""}>
                       <TableCell className="font-medium">{(p.equipment as any)?.name || "—"}</TableCell>
                       <TableCell>{p.description}</TableCell>
                       <TableCell>{p.frequency_days}d</TableCell>

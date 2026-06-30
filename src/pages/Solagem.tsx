@@ -436,7 +436,7 @@ export default function Solagem() {
             {selectedOrders.size > 0 && (
               <Button 
                 size="sm" 
-                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-sm"
+                className="bg-success hover:bg-success/90 text-success-foreground gap-2 shadow-sm"
                 onClick={handleFinishSelectedOrders}
                 disabled={finalizingOrders}
               >
@@ -653,7 +653,7 @@ export default function Solagem() {
                   const soleColorLabel = getSoleColorForSize(order.color);
 
                   const solagemStage = solagemStagesByOrderId.get(order.id);
-                  const stageColor = solagemStage?.status === 'concluido' ? 'border-l-emerald-500' : solagemStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
+                  const stageColor = solagemStage?.status === 'concluido' ? 'border-l-success' : solagemStage?.status === 'em_andamento' ? 'border-l-warning' : 'border-l-destructive';
 
                   return (
                     <div key={order.id} className={`border rounded-lg p-3 space-y-2 border-l-4 ${stageColor} ${selectedOrders.has(order.id) ? 'ring-2 ring-success' : ''}`}>
@@ -688,7 +688,7 @@ export default function Solagem() {
                               const info = getDeliveryInfo(order);
                               return info.deadline ? (
                                 <span className="flex items-center gap-1">
-                                  {info.isAdiantado && <Badge className="bg-amber-500 text-white text-xs px-1.5">ADIANTADO</Badge>}
+                                  {info.isAdiantado && <Badge className="bg-warning/10 text-warning border-warning/30 text-xs px-1.5">ADIANTADO</Badge>}
                                   <span className="text-xs text-muted-foreground">Fat: {info.deadlineFormatted}</span>
                                 </span>
                               ) : null;

@@ -168,7 +168,7 @@ export default function ProducaoDashboard() {
                           <p className="text-xs text-muted-foreground">SKU: {p.sku}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`text-sm font-semibold ${p.quantity === 0 ? 'text-destructive' : 'text-amber-600'}`}>
+                          <p className={`text-sm font-semibold ${p.quantity === 0 ? 'text-destructive' : 'text-warning'}`}>
                             {p.quantity} {p.unit}
                           </p>
                           <p className="text-xs text-muted-foreground">Mín: {p.min_stock}</p>

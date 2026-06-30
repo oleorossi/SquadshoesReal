@@ -373,7 +373,7 @@ export default function CRM() {
                   return (
                     <div key={s.id} className="p-3 flex items-start gap-3 text-sm">
                       <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${
-                        isOverdue ? 'text-destructive' : isToday ? 'text-amber-500' : 'text-primary'
+                        isOverdue ? 'text-destructive' : isToday ? 'text-warning' : 'text-primary'
                       }`} />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{s.subject}</p>
@@ -448,7 +448,7 @@ export default function CRM() {
                 <div className="divide-y">
                   {inactive.map((c: any) => (
                     <div key={c.client_id} className="p-3 flex items-center gap-3 text-sm">
-                      <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                      <AlertCircle className="h-4 w-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{c.razao_social}</p>
                         <p className="text-xs text-muted-foreground">
@@ -503,7 +503,7 @@ export default function CRM() {
                     <div key={r.client_id} className="p-3 flex items-center gap-3 text-sm">
                       <Repeat className={`h-4 w-4 shrink-0 ${
                         r.days_until_expected <= 0 ? 'text-destructive' :
-                        r.days_until_expected <= 14 ? 'text-amber-500' : 'text-emerald-500'
+                        r.days_until_expected <= 14 ? 'text-warning' : 'text-success'
                       }`} />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{r.razao_social}</p>
@@ -533,8 +533,8 @@ export default function CRM() {
                   {nps.map((n: any) => (
                     <div key={n.id} className="p-3 flex items-center gap-3 text-sm">
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-                        n.category === 'promotor' ? 'bg-emerald-100 text-emerald-700' :
-                        n.category === 'neutro' ? 'bg-amber-100 text-amber-700' :
+                        n.category === 'promotor' ? 'bg-success/10 text-success' :
+                        n.category === 'neutro' ? 'bg-warning/10 text-warning' :
                         'bg-destructive/10 text-destructive'
                       }`}>{n.score}</div>
                       <div className="flex-1 min-w-0">

@@ -106,8 +106,8 @@ const STATUS_LABELS: Record<string, string> = {
 
 const getStatusBorderClass = (canonicalStatus: string) => {
   switch (canonicalStatus) {
-    case 'Finalizado': return 'border-l-emerald-500';
-    case 'Em Produção': return 'border-l-amber-500';
+    case 'Finalizado': return 'border-l-success';
+    case 'Em Produção': return 'border-l-warning';
     case 'Reservado': return 'border-l-primary';
     case 'Cancelada': return 'border-l-muted-foreground/40';
     default: return 'border-l-muted-foreground/30'; // Rascunho
@@ -116,8 +116,8 @@ const getStatusBorderClass = (canonicalStatus: string) => {
 
 const getStatusBgClass = (canonicalStatus: string) => {
   switch (canonicalStatus) {
-    case 'Finalizado': return 'bg-emerald-500/5';
-    case 'Em Produção': return 'bg-amber-500/5';
+    case 'Finalizado': return 'bg-success/5';
+    case 'Em Produção': return 'bg-warning/5';
     case 'Reservado': return 'bg-primary/5';
     case 'Cancelada': return 'bg-muted/20';
     default: return '';
@@ -194,8 +194,8 @@ const SectorProgressDots = ({
               key={i}
               className={cn(
                 'inline-block h-1.5 w-1.5 rounded-full transition-colors',
-                isDone && 'bg-emerald-500',
-                isActive && 'bg-amber-500 ring-1 ring-amber-500/30',
+                isDone && 'bg-success',
+                isActive && 'bg-warning ring-1 ring-warning/30',
                 !isDone && !isActive && 'bg-muted-foreground/25',
               )}
             />
@@ -1686,7 +1686,7 @@ function getWeekOptions() {
                                 const isDue = diffDays >= 0 && diffDays <= 3;
                                 if (!isLate && !isDue) return null;
                                 return (
-                                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full ${isLate ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-600'}`}>
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full ${isLate ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}>
                                     <AlertTriangle className="h-3 w-3" />
                                     {isLate ? `${Math.abs(diffDays)}d atraso` : `vence em ${diffDays}d`}
                                   </span>
