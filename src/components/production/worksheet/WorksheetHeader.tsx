@@ -44,6 +44,15 @@ interface Props {
  *  (Sem cor — a fábrica imprime laser P&B; vermelho viraria cinza.) */
 const FLOW_RAIL_STEPS = ['C.PLM', 'C.FOR', 'COST', 'AVIA', 'SILK', 'COLA', 'MONT', 'SOLA', 'ACAB', 'EXP'] as const;
 
+/** Cor-assinatura por setor (MESMA ordem do fluxo 1–10) — escolha do dono
+ *  2026-06-30: cada setor tem uma cor pra reconhecer a ficha de longe e não
+ *  confundir. Aplicada SÓ na faixa do topo + nome do setor (decisão "barata":
+ *  se imprimir em P&B a faixa vira cinza e nada de conteúdo se perde). */
+const SECTOR_COLORS = [
+  '#2563eb', '#0d9488', '#4f46e5', '#d97706', '#7c3aed',
+  '#0891b2', '#dc2626', '#16a34a', '#db2777', '#475569',
+] as const;
+
 const FlowRail = ({ current }: { current: number }) => (
   <div className="flex items-stretch gap-[3px] mb-0.5" aria-label={`Setor ${current} de 10 no fluxo`}>
     {FLOW_RAIL_STEPS.map((label, i) => {
@@ -106,18 +115,35 @@ export const WorksheetHeader = ({
   // Passo do fluxo (1–10) pro trilho: lê o nº à frente do index ("03 / SILK" → 3).
   const flowStep = parseInt(editorialIndex, 10);
   const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 10;
+  // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo 1–10 → preto.
+  const sectorColor = hasFlow ? SECTOR_COLORS[flowStep - 1] : '#000';
   return (
     <div className="mb-1 text-black keep-together keep-with-next">
+      {/* Faixa de cor do setor — reconhecimento à distância (escolha do dono
+          2026-06-30). B&W: vira cinza, sem perda de conteúdo. */}
+      {hasFlow && (
+        <div
+          style={{
+            height: 7,
+            background: sectorColor,
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          } as React.CSSProperties}
+        />
+      )}
       {/* Sector title bar — top of the page (per user feedback May/2026) */}
       <div className="flex items-center gap-3 border-y-2 border-black px-2 py-1 mb-1">
         <Icon className="h-7 w-7 text-black shrink-0" weight="bold" />
         <span
-          className="text-black uppercase leading-none flex-1 min-w-0 truncate"
+          className="uppercase leading-none flex-1 min-w-0 truncate"
           style={{
             fontFamily: "'Anton', Impact, sans-serif",
             fontSize: adaptiveFontSize(sector, { maxWidthPx: 360, baseFontPx: 28, minFontPx: 22, charWidthRatio: 0.45 }),
             letterSpacing: '-0.02em',
-          }}
+            color: sectorColor,
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          } as React.CSSProperties}
         >
           {sector}
         </span>
