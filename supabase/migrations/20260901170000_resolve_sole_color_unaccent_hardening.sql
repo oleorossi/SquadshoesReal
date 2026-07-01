@@ -12,7 +12,10 @@ CREATE OR REPLACE FUNCTION public.resolve_sole_color(p_sheet_id uuid, p_product_
  RETURNS TABLE(sole_product_id uuid, sole_color text)
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ -- ⚠ 'extensions' é OBRIGATÓRIO: unaccent() mora no schema extensions. Com
+ -- search_path só em 'public' esta função quebra TODA chamada (42883) e derruba
+ -- a cadeia by_grade → MRP/per-PV/ondas/custeio/débito (fix: 20260901160000).
+ SET search_path TO 'public', 'extensions'
 AS $function$
 DECLARE
   v_primary_sole_id uuid;
