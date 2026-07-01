@@ -24,12 +24,12 @@ interface Props {
  * `sectorBottleneck.ts`) ficavam estruturalmente zerados. Este componente liga o
  * apontamento onde o trabalho acontece.
  *
- * - **Pendente** → botão "Iniciar" (1 clique): grava `em_andamento + started_at`
- *   pela MESMA mutation guardada (só efetua se a etapa ainda está pendente →
- *   anti-corrida entre operadores).
- * - **Em andamento** → botão "Apontar": abre o `SectorStageDialog` completo
- *   (progresso + finalizar com operário obrigatório + bloqueio sequencial). Só
- *   monta o diálogo quando aberto, pra não disparar 1 query por card.
+ * - **Pendente** → "Iniciar" (1 clique: `em_andamento + started_at` pela mutation
+ *   guardada, anti-corrida) E "Apontar" (dialog completo — dá pra iniciar já
+ *   apontando quantidade, fluxo parcial).
+ * - **Em andamento** → "Apontar": abre o `SectorStageDialog` completo
+ *   (quantidade via RPC canônica + finalizar com operário obrigatório + DAG do
+ *   banco). Só monta o diálogo quando aberto, pra não disparar 1 query por card.
  * - **Concluído** → nada (o card já fica verde).
  */
 export function SectorStageActions({ stage, orderNumber, className }: Props) {
@@ -44,8 +44,8 @@ export function SectorStageActions({ stage, orderNumber, className }: Props) {
   };
 
   return (
-    <div className={className} onClick={(e) => e.stopPropagation()}>
-      {stage.status === 'pendente' ? (
+    <div className={`flex items-center gap-1.5 ${className ?? ''}`} onClick={(e) => e.stopPropagation()}>
+      {stage.status === 'pendente' && (
         <Button
           size="sm"
           variant="outline"
@@ -56,17 +56,18 @@ export function SectorStageActions({ stage, orderNumber, className }: Props) {
         >
           <Play className="h-3.5 w-3.5" weight="fill" /> Iniciar
         </Button>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 gap-1.5 text-xs"
-          onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-          title="Apontar progresso / finalizar esta etapa"
-        >
-          <ClipboardText className="h-3.5 w-3.5" /> Apontar
-        </Button>
       )}
+      {/* "Apontar" também no pendente: dá pra iniciar JÁ apontando quantidade
+          (fluxo parcial) pelo dialog, em vez de dois cliques separados. */}
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1.5 text-xs"
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        title="Apontar quantidade produzida / finalizar esta etapa"
+      >
+        <ClipboardText className="h-3.5 w-3.5" /> Apontar
+      </Button>
       {open && (
         <SectorStageDialog stage={stage} open={open} onOpenChange={setOpen} orderNumber={orderNumber} />
       )}

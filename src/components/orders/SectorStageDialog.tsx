@@ -11,10 +11,10 @@ import { Progress } from '@/components/ui/progress';
 import { NumberInput } from '@/components/ui/number-input';
 import { Clock, Play, CheckCircle as CheckCircle2, Warning as AlertTriangle, Timer, CurrencyDollar as DollarSign, Lock, Scissors, Stack as Layers, Diamond as Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Cube as Box, MagnifyingGlass as ScanSearch, PencilLine as PenLine, ClipboardText as ClipboardList, Wind, GridFour as LayoutGrid, PaintBrush as Paintbrush, Truck } from '@phosphor-icons/react';
 import type { Icon as LucideIcon } from '@phosphor-icons/react';
-import { OrderStage, useUpdateOrderStage, useOrderStages } from '@/hooks/useOrderStages';
-import { useAuth } from '@/hooks/useAuth';
+import { OrderStage, useUpdateOrderStage, useOrderStages, useApontarProducao } from '@/hooks/useOrderStages';
+import { findBlockingStage, inboundAvailability } from '@/lib/production/stageFlow';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 const STAGE_CONFIGS: Record<string, { color: string; icon: LucideIcon; hints: string }> = {
   // ── New sector names ───────────────────────────────────────────────────────
@@ -48,8 +48,7 @@ interface Props {
 
 export default function SectorStageDialog({ stage, open, onOpenChange, orderNumber }: Props) {
   const update = useUpdateOrderStage();
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const apontar = useApontarProducao();
   const [form, setForm] = useState({
     quantity_processed: 0,
     observations: '',
@@ -81,18 +80,19 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     },
   });
 
-  // Load all stages for this order to check sequential constraint
+  // Load all stages for this order to check the DAG constraint
   const { data: allStages = [] } = useOrderStages(stage?.order_id);
 
-  // Determine if a previous stage is blocking this one from starting
-  const blockingStage = (() => {
-    if (!stage || stage.status !== 'pendente') return null;
-    const prev = allStages
-      .filter(s => s.stage_order < stage.stage_order)
-      .sort((a, b) => b.stage_order - a.stage_order)[0];
-    if (!prev || prev.status === 'concluido') return null;
-    return prev;
-  })();
+  // DAG ALINHADO AO BANCO (fn_guard_manual_stage_transition): preps são
+  // paralelos e o fluxo parcial libera quando o pré-requisito apontou >0
+  // pares. A regra antiga (sequencial estrito por stage_order) bloqueava
+  // na UI o que o banco permitia — ex.: Aviamento esperando Corte Forração.
+  const blockingStage = stage && stage.status === 'pendente'
+    ? findBlockingStage(stage.stage_name, allStages)
+    : null;
+
+  // Fluxo parcial: pares já liberados pelos setores pré-requisito.
+  const inbound = stage ? inboundAvailability(stage.stage_name, allStages) : null;
 
   useEffect(() => {
     if (stage) {
@@ -122,17 +122,55 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     : 0;
   const costVariance = actualCostPerPair > 0 ? actualCostPerPair - standardCostPerPair : 0;
 
-  const handleStart = () => {
-    update.mutate({
+  // Observações/defeitos/tempo persistem via UPDATE sem status (não passa
+  // pelo claim-guard). Quantidade/operário/início/fim vão SEMPRE pela RPC
+  // canônica de apontamento — é ela que grava o ledger e move a OP.
+  const fieldsChanged =
+    form.observations !== (stage.observations || '') ||
+    form.defects !== (stage.defects || '') ||
+    form.actual_time_minutes !== (Number(stage.actual_time_minutes) || 0);
+
+  const saveFields = async () => {
+    if (!fieldsChanged) return;
+    await update.mutateAsync({
       id: stage.id,
-      status: 'em_andamento',
-      started_at: new Date().toISOString(),
-      ...form,
+      observations: form.observations,
+      defects: form.defects,
+      actual_time_minutes: form.actual_time_minutes,
     });
   };
 
-  const handleSaveProgress = () => {
-    update.mutate({ id: stage.id, ...form });
+  const handleStart = async () => {
+    try {
+      await saveFields();
+      await apontar.mutateAsync({
+        orderId: stage.order_id,
+        stageName: stage.stage_name,
+        quantity: Math.max(0, form.quantity_processed - stage.quantity_processed),
+        operatorEmployeeId: operatorEmployeeId || null,
+      });
+      toast.success('Setor iniciado!');
+    } catch {
+      // apontar.mutateAsync já mostra toast de erro (inclui bloqueio do DAG)
+    }
+  };
+
+  const handleSaveProgress = async () => {
+    try {
+      await saveFields();
+      const delta = form.quantity_processed - stage.quantity_processed;
+      if (delta !== 0) {
+        await apontar.mutateAsync({
+          orderId: stage.order_id,
+          stageName: stage.stage_name,
+          quantity: delta,
+          operatorEmployeeId: operatorEmployeeId || null,
+        });
+        toast.success(`Apontado: ${delta > 0 ? '+' : ''}${delta} pares (${form.quantity_processed}/${stage.quantity_total}).`);
+      }
+    } catch {
+      // toasts de erro já emitidos pelas mutations
+    }
   };
 
   const handleComplete = async () => {
@@ -143,36 +181,27 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     // Persiste pra próxima OP no mesmo terminal não precisar reescolher
     try { localStorage.setItem('sector_operator_employee_id', operatorEmployeeId); } catch {}
     try {
-      await update.mutateAsync({
-        id: stage.id,
-        status: 'concluido',
-        completed_at: new Date().toISOString(),
-        completed_by: user?.id || null,
-        operator_employee_id: operatorEmployeeId,
-        quantity_processed: form.quantity_processed,
-        observations: form.observations,
-        defects: form.defects,
-        actual_time_minutes: form.actual_time_minutes,
+      await saveFields();
+      // Sem nenhum apontamento, finalizar = a OP inteira passou (paridade com
+      // o bulk "Finalizar selecionadas"); com apontamento, respeita o valor
+      // informado (parcial consciente fica registrado como refugo/saldo).
+      const target = form.quantity_processed > 0
+        ? form.quantity_processed
+        : (stage.quantity_processed > 0 ? stage.quantity_processed : stage.quantity_total);
+      // A RPC finaliza o setor, resolve/inicia o PRÓXIMO (paralelismo prep +
+      // blocked_until), atualiza orders.production_step e finaliza a OP quando
+      // era o último setor — substitui o antigo hack do Acabamento.
+      await apontar.mutateAsync({
+        orderId: stage.order_id,
+        stageName: stage.stage_name,
+        quantity: target - stage.quantity_processed,
+        operatorEmployeeId,
+        finalize: true,
       });
-
-      // Ao completar Acabamento, avança orders.status pra "Finalizado" só quando
-      // está em "Em Produção" — protege contra sobrescrita de status terminais
-      // (Cancelada). Antes setava 'Pronto' que NÃO é status válido em orders
-      // (orders só tem Reservado, Em Produção, Finalizado) — UPDATE silencioso
-      // gerava state inconsistente.
-      if (stage.stage_name === 'Acabamento') {
-        const now = new Date().toISOString();
-        await supabase
-          .from('orders')
-          .update({ status: 'Finalizado', updated_at: now })
-          .eq('id', stage.order_id)
-          .eq('status', 'Em Produção');
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      }
-
+      toast.success(`${stage.stage_name} finalizado — ${target}/${stage.quantity_total} pares.`);
       onOpenChange(false);
     } catch {
-      // update.mutateAsync already shows error toast via the mutation's onError
+      // apontar.mutateAsync already shows error toast via the mutation's onError
     }
   };
 
@@ -233,15 +262,22 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             </div>
           )}
 
-          {/* Sequential block warning */}
+          {/* DAG block warning (fluxo parcial: apontar >0 no anterior já libera) */}
           {blockingStage && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
               <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <span>
-                <strong>Aguardando setor anterior:</strong> "{blockingStage.stage_name}" ainda está{' '}
-                {blockingStage.status === 'pendente' ? 'pendente' : 'em andamento'}.
-                Finalize-o antes de iniciar este setor.
+                <strong>Aguardando setor anterior:</strong> "{blockingStage.stage_name}" ainda não
+                apontou produção. Aponte pares lá (ou finalize o setor) para liberar este.
               </span>
+            </div>
+          )}
+
+          {/* Fluxo parcial: quanto o(s) setor(es) anterior(es) já liberou(aram) */}
+          {!blockingStage && inbound !== null && stage.status !== 'concluido' && inbound < stage.quantity_total && (
+            <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-700 dark:text-blue-300">
+              <strong>Fluxo parcial:</strong> {inbound} de {stage.quantity_total} pares já liberados
+              pelo setor anterior — dá pra trabalhar neles enquanto o restante chega.
             </div>
           )}
 

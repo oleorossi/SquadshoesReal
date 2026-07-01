@@ -2,6 +2,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useOrders, useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useAllOrderStages, useUpdateOrderStage, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { useProductionTransitions } from '@/hooks/useProductionTransitions';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useColorVariants } from '@/hooks/useColorVariants';
 import { useQuery } from '@tanstack/react-query';
@@ -36,15 +38,20 @@ const STATUS_COLORS: Record<string, string> = {
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
+// Grafia canônica dos setores (migration 20260902120000): 'Aviamento', não
+// 'Mesa'. Costura e Expedição fazem parte do fluxo desde as PRs 2/4 — sem
+// eles aqui, era impossível finalizá-los em massa por esta tela.
 const SECTORS = [
   { name: 'Corte Palmilha', icon: Scissors, color: 'bg-blue-500 hover:bg-blue-600' },
   { name: 'Corte Forração', icon: Paintbrush, color: 'bg-pink-500 hover:bg-pink-600' },
-  { name: 'Mesa', icon: Package, color: 'bg-purple-500 hover:bg-purple-600' },
+  { name: 'Costura', icon: ClipboardList, color: 'bg-rose-500 hover:bg-rose-600' },
+  { name: 'Aviamento', icon: Package, color: 'bg-purple-500 hover:bg-purple-600' },
   { name: 'Silk', icon: Paintbrush, color: 'bg-cyan-500 hover:bg-cyan-600' },
   { name: 'Colagem', icon: Flame, color: 'bg-orange-500 hover:bg-orange-600' },
   { name: 'Montagem', icon: Wrench, color: 'bg-indigo-500 hover:bg-indigo-600' },
   { name: 'Solagem', icon: Footprints, color: 'bg-amber-500 hover:bg-amber-600' },
   { name: 'Acabamento', icon: Sparkles, color: 'bg-emerald-500 hover:bg-emerald-600' },
+  { name: 'Expedição', icon: Truck, color: 'bg-slate-600 hover:bg-slate-700' },
 ];
 
 export default function OrderEdit() {
@@ -56,6 +63,7 @@ export default function OrderEdit() {
   const { data: references = [] } = useTechnicalSheets();
   const updateStage = useUpdateOrderStage();
   const updateStatus = useUpdateOrderStatus();
+  const { finalizeSectorTask } = useProductionTransitions();
   useRealtimeOrderStages();
 
   const [confirmSector, setConfirmSector] = useState<string | null>(null);
@@ -96,7 +104,7 @@ export default function OrderEdit() {
   const relevantStages = useMemo(() => allStages.filter(s => displayOrderIds.includes(s.order_id)), [allStages, displayOrderIds]);
 
   const getSectorStatus = (sectorName: string) => {
-    const sectorStages = relevantStages.filter(s => s.stage_name === sectorName);
+    const sectorStages = relevantStages.filter(s => sameStage(s.stage_name, sectorName));
     if (sectorStages.length === 0) return 'sem_etapas';
     const allDone = sectorStages.every(s => s.status === 'concluido');
     const someDone = sectorStages.some(s => s.status === 'concluido');
@@ -125,14 +133,20 @@ export default function OrderEdit() {
   const handleCompleteSector = async (sectorName: string) => {
     setCompleting(true);
     try {
-      const sectorStages = relevantStages.filter(s => s.stage_name === sectorName && s.status !== 'concluido');
-      await Promise.all(sectorStages.map(stage => updateStage.mutateAsync({
-        id: stage.id,
-        status: 'concluido',
-        completed_at: new Date().toISOString(),
-        quantity_processed: stage.quantity_total,
-      })));
-      toast.success(`Setor "${sectorName}" finalizado para ${sectorStages.length} ${sectorStages.length === 1 ? 'OP' : 'OPs'}!`);
+      // Caminho CANÔNICO (RPC finalize_production_sector): preenche quantidade,
+      // carimba operário/timestamps, inicia o próximo setor e atualiza
+      // orders.production_step. O UPDATE direto antigo falhava em stages
+      // 'pendente' (guard exige em_andamento) e não movia a OP.
+      const sectorStages = relevantStages.filter(s => sameStage(s.stage_name, sectorName) && s.status !== 'concluido');
+      const results = await Promise.allSettled(
+        sectorStages.map(stage => finalizeSectorTask(stage.order_id, stage.stage_name))
+      );
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        toast.error(`${failed.length} de ${sectorStages.length} OPs falharam ao finalizar "${sectorName}".`);
+      } else {
+        toast.success(`Setor "${sectorName}" finalizado para ${sectorStages.length} ${sectorStages.length === 1 ? 'OP' : 'OPs'}!`);
+      }
     } catch (err: any) {
       toast.error(`Erro ao finalizar setor: ${err.message}`);
     } finally {

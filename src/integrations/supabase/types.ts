@@ -12152,6 +12152,64 @@ export type Database = {
           },
         ]
       }
+      production_pointings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          operator_employee_id: string | null
+          order_id: string
+          order_stage_id: string
+          quantity: number
+          stage_name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          operator_employee_id?: string | null
+          order_id: string
+          order_stage_id: string
+          quantity: number
+          stage_name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          operator_employee_id?: string | null
+          order_id?: string
+          order_stage_id?: string
+          quantity?: number
+          stage_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_pointings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_pointings_order_stage_id_fkey"
+            columns: ["order_stage_id"]
+            isOneToOne: false
+            referencedRelation: "order_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_pointings_operator_employee_id_fkey"
+            columns: ["operator_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       production_settings: {
         Row: {
           costura_dispatch_horizon_days: number
@@ -25377,6 +25435,17 @@ export type Database = {
         }
         Returns: Database["public"]["Enums"]["production_stage_enum"]
       }
+      apontar_producao_setor: {
+        Args: {
+          p_finalize?: boolean
+          p_note?: string
+          p_operator_employee_id?: string
+          p_order_id: string
+          p_quantity: number
+          p_stage_name: string
+        }
+        Returns: Json
+      }
       apply_inventory_count: { Args: { p_count_id: string }; Returns: Json }
       apply_manual_punch_completion: {
         Args: {
@@ -25843,7 +25912,12 @@ export type Database = {
         Returns: Json
       }
       finalize_production_sector: {
-        Args: { p_current_sector: string; p_order_id: string }
+        Args: {
+          p_current_sector: string
+          p_operator_employee_id?: string
+          p_order_id: string
+          p_quantity_processed?: number
+        }
         Returns: Json
       }
       fn_projected_demand: {

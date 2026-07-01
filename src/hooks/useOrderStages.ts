@@ -1,21 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
 
 // Default fallback stages when no BOM operations exist.
 //
-// IMPORTANTE: estes `name`s são gravados em `order_stages.stage_name` como
-// TEXT. Mantemos "Mesa" aqui (não "Aviamento") porque:
-//   • código antigo do banco e queries comparam `stage_name === 'Mesa'`;
-//   • mudar criaria divergência com rows existentes.
-// O label visível pro usuário é renderizado via STAGE_LABEL/SECTOR_ENUM_TO_DISPLAY
-// (ver src/types/production-waves.ts) que mapeia "Mesa" → "Aviamento".
+// Grafia CANÔNICA desde 2026-07-01 (migration 20260902120000): 'Aviamento',
+// não mais 'Mesa'. O banco foi normalizado (0 rows 'Mesa'), resync_op_atomic
+// também grava 'Aviamento', e a RPC apontar_producao_setor aceita o alias
+// legado Mesa ⇄ Aviamento pra rows antigas que escaparem.
 export const PRODUCTION_STAGES = [
   { name: 'Corte Palmilha', order: 1 },
   { name: 'Corte Forração', order: 2 },
   { name: 'Costura', order: 3 },
-  { name: 'Mesa', order: 4 },
+  { name: 'Aviamento', order: 4 },
   { name: 'Silk', order: 5 },
   { name: 'Colagem', order: 6 },
   { name: 'Montagem', order: 7 },
@@ -250,24 +249,82 @@ export function useUpdateOrderStage() {
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
+      // Invalidação CENTRAL: apontar/atualizar etapa precisa refletir em
+      // Setores, Quadro, Dashboard, Gargalos, Capacidade e Ondas — não só
+      // na lista de estágios (gap da auditoria 2026-07-01).
+      invalidateProductionCaches(qc);
       toast.success('Etapa atualizada!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }
 
+/**
+ * Apontamento canônico de produção por setor (RPC apontar_producao_setor):
+ * registra quantidade no ledger (production_pointings), acumula em
+ * quantity_processed, inicia o setor se pendente (guard do DAG valida) e —
+ * com finalize=true — conclui o setor e libera o próximo (mesma RPC do bulk).
+ *
+ * `quantity` é o INCREMENTO (pares apontados agora), não o acumulado.
+ * Negativo = correção/estorno. 0 = só iniciar/finalizar sem apontar.
+ */
+export function useApontarProducao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      orderId: string;
+      stageName: string;
+      quantity: number;
+      operatorEmployeeId?: string | null;
+      note?: string | null;
+      finalize?: boolean;
+    }) => {
+      const { data, error } = await supabase.rpc('apontar_producao_setor', {
+        p_order_id: p.orderId,
+        p_stage_name: p.stageName,
+        p_quantity: p.quantity,
+        ...(p.operatorEmployeeId ? { p_operator_employee_id: p.operatorEmployeeId } : {}),
+        ...(p.note ? { p_note: p.note } : {}),
+        p_finalize: p.finalize ?? false,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      invalidateProductionCaches(qc);
+    },
+    onError: (err: Error) => toast.error(`Erro no apontamento: ${err.message}`),
+  });
+}
+
+// Sufixo único por mount: dois componentes montados ao mesmo tempo (ex.: hub +
+// tela de setor) não podem disputar o mesmo topic do canal realtime.
+let realtimeChannelSeq = 0;
+
+/**
+ * Assinatura realtime de order_stages → invalidação CENTRAL debounced.
+ * Montar uma vez por tela que exiba produção (o PCPHub já monta pra todas as
+ * abas). Qualquer terminal que mover/apontar reflete aqui em ~1s, sem esperar
+ * staleTime.
+ */
 export function useRealtimeOrderStages() {
   const qc = useQueryClient();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const channel = supabase
-      .channel('order-stages-realtime')
+      .channel(`order-stages-realtime-${++realtimeChannelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_stages' }, () => {
-        qc.invalidateQueries({ queryKey: ['order_stages'] });
+        // Debounce: bulk finalize dispara N eventos em rajada — coalesce numa
+        // única invalidação pra não refetchar ~20 queries N vezes.
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => invalidateProductionCaches(qc), 400);
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') console.warn('[realtime] order-stages:', err?.message);
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [qc]);
 }

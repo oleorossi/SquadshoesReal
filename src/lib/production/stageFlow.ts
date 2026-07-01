@@ -1,0 +1,81 @@
+/**
+ * Fluxo canônico dos setores de produção — ESPELHO do lado servidor.
+ *
+ * Fonte da verdade: fn_guard_manual_stage_transition (migration
+ * 20260902120000). Se o DAG mudar lá, mudar aqui junto — a UI usa isto pra
+ * bloquear/liberar "Iniciar" sem esperar o roundtrip do erro do banco.
+ */
+
+/** Grafia legada → canônica (rows antigas e caminhos de escrita antigos). */
+const STAGE_ALIASES: Record<string, string> = {
+  Mesa: 'Aviamento',
+};
+
+export function canonicalStageName(name: string): string {
+  const trimmed = (name || '').trim();
+  return STAGE_ALIASES[trimmed] ?? trimmed;
+}
+
+/** Compara nomes de setor tolerando grafia legada (Mesa ⇄ Aviamento). */
+export function sameStage(a: string, b: string): boolean {
+  return canonicalStageName(a) === canonicalStageName(b);
+}
+
+/**
+ * Pré-requisitos por setor (DAG). Setores prep são paralelos (array vazio);
+ * setor desconhecido (legacy não mapeado) = sem bloqueio, igual ao guard.
+ */
+export const STAGE_DAG: Record<string, string[]> = {
+  'Corte Palmilha': [],
+  'Corte Forração': [],
+  'Aviamento': [],
+  'Silk': [],
+  'Costura': [],
+  'Colagem': ['Corte Palmilha', 'Costura'],
+  'Montagem': ['Colagem'],
+  'Solagem': ['Montagem'],
+  'Acabamento': ['Solagem'],
+  'Expedição': ['Acabamento'],
+};
+
+type StageLike = {
+  stage_name: string;
+  status: string;
+  quantity_processed: number;
+  quantity_total: number;
+};
+
+/**
+ * Retorna o setor pré-requisito que impede este de INICIAR, ou null.
+ * Regra do guard (fluxo parcial): pré-requisito satisfeito se concluído
+ * OU se já apontou produção (>0 pares).
+ */
+export function findBlockingStage<T extends StageLike>(stageName: string, allStages: T[]): T | null {
+  const required = STAGE_DAG[canonicalStageName(stageName)];
+  if (!required || required.length === 0) return null;
+  return (
+    allStages.find(
+      (s) =>
+        required.some((r) => sameStage(r, s.stage_name)) &&
+        s.status !== 'concluido' &&
+        (s.quantity_processed ?? 0) === 0
+    ) ?? null
+  );
+}
+
+/**
+ * Pares disponíveis vindos dos setores pré-requisito (fluxo parcial):
+ * min(quantity_processed) entre eles. null = setor sem pré-requisito
+ * (prep) ou pré-requisito não encontrado na OP.
+ */
+export function inboundAvailability(stageName: string, allStages: StageLike[]): number | null {
+  const required = STAGE_DAG[canonicalStageName(stageName)];
+  if (!required || required.length === 0) return null;
+  const preds = required
+    .map((r) => allStages.find((s) => sameStage(r, s.stage_name)))
+    .filter((s): s is StageLike => !!s);
+  if (preds.length === 0) return null;
+  return Math.min(
+    ...preds.map((s) => (s.status === 'concluido' ? s.quantity_total : s.quantity_processed ?? 0))
+  );
+}

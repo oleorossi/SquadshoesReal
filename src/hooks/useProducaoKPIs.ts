@@ -15,6 +15,21 @@ function getStartDate(period: PeriodFilter): Date | null {
   }
 }
 
+// Busca paginada: caps fixos (.limit(2000/5000)) truncavam silenciosamente e
+// as métricas ficavam erradas sem aviso acima do cap (PostgREST corta em 1000
+// por default). `build` recebe o range da página e devolve a query pronta.
+async function fetchPaged<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return out;
+}
+
 export function useProducaoKPIs(period: PeriodFilter) {
   return useQuery({
     queryKey: ['producao-kpis', period],
@@ -24,30 +39,51 @@ export function useProducaoKPIs(period: PeriodFilter) {
       const startDate = getStartDate(period);
       const now = new Date();
 
-      // Build queries with date filters to reduce data transfer
-      let ordersQuery = supabase.from('orders').select('id, order_number, status, quantity, created_at, updated_at, planned_delivery, last_sector_finished_at').order('created_at', { ascending: false });
-      if (startDate) {
-        ordersQuery = ordersQuery.gte('created_at', startDate.toISOString());
-      }
-
-      let movementsQuery = supabase.from('stock_movements').select('id, quantity, created_at').eq('movement_type', 'out');
-      if (startDate) {
-        movementsQuery = movementsQuery.gte('created_at', startDate.toISOString());
-      }
-
-      const [ordersRes, productsRes, stagesRes, movementsRes, fgrRes] = await Promise.all([
-        ordersQuery.limit(2000),
+      // Todas as fontes paginadas (sem cap silencioso) e filtradas por período
+      const [allOrders, productsRes, movements, fgrData] = await Promise.all([
+        fetchPaged<{ id: string; order_number: string; status: string; quantity: number; created_at: string; updated_at: string; planned_delivery: string | null; last_sector_finished_at: string | null }>((from, to) => {
+          let q = supabase.from('orders')
+            .select('id, order_number, status, quantity, created_at, updated_at, planned_delivery, last_sector_finished_at')
+            .order('created_at', { ascending: false })
+            .range(from, to);
+          if (startDate) q = q.gte('created_at', startDate.toISOString());
+          return q;
+        }),
         supabase.from('products').select('id, quantity, min_stock, max_stock').eq('active', true),
-        supabase.from('order_stages').select('id, order_id, stage_name, status, started_at, completed_at').limit(5000),
-        movementsQuery.limit(2000),
-        supabase.from('finished_goods_receipts').select('id, order_id, quantity_good, quantity_rework, quantity_scrap, created_at').limit(2000),
+        fetchPaged<{ id: string; quantity: number; created_at: string }>((from, to) => {
+          let q = supabase.from('stock_movements')
+            .select('id, quantity, created_at')
+            .eq('movement_type', 'out')
+            .order('created_at', { ascending: false })
+            .range(from, to);
+          if (startDate) q = q.gte('created_at', startDate.toISOString());
+          return q;
+        }),
+        fetchPaged<{ id: string; order_id: string | null; quantity_good: number | null; quantity_rework: number | null; quantity_scrap: number | null; created_at: string }>((from, to) => {
+          let q = supabase.from('finished_goods_receipts')
+            .select('id, order_id, quantity_good, quantity_rework, quantity_scrap, created_at')
+            .order('created_at', { ascending: false })
+            .range(from, to);
+          if (startDate) q = q.gte('created_at', startDate.toISOString());
+          return q;
+        }),
       ]);
 
-      const allOrders = ordersRes.data || [];
       const products = productsRes.data || [];
-      const allStages = stagesRes.data || [];
-      const movements = movementsRes.data || [];
-      const fgrData = (fgrRes.data || []).filter(f => !startDate || f.created_at >= startDate.toISOString());
+
+      // Stages SÓ das OPs do período (antes: .limit(5000) global — misturava
+      // OPs fora do período nas métricas por setor e truncava acima do cap)
+      const orderIds = allOrders.map(o => o.id);
+      const allStages: { id: string; order_id: string; stage_name: string; status: string; started_at: string | null; completed_at: string | null }[] = [];
+      const CHUNK = 100;
+      for (let i = 0; i < orderIds.length; i += CHUNK) {
+        const { data, error } = await supabase
+          .from('order_stages')
+          .select('id, order_id, stage_name, status, started_at, completed_at')
+          .in('order_id', orderIds.slice(i, i + CHUNK));
+        if (error) throw error;
+        allStages.push(...(data || []));
+      }
 
       // Orders already filtered at DB level
       const orders = allOrders;
