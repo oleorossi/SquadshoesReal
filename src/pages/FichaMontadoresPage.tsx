@@ -25,6 +25,14 @@ import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyD
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
+type Setor = "montagem" | "solagem";
+/** Setores com chamada do dia INDEPENDENTE (mesma dinâmica, dados + relatórios
+ *  separados por `ficha_montadores.setor`). Pra adicionar um setor novo é só
+ *  incluir aqui — a tela ganha a aba automaticamente. */
+const SETORES: { id: Setor; label: string; sing: string; plural: string; pattern: RegExp }[] = [
+  { id: "montagem", label: "Montadores", sing: "montador", plural: "montadores", pattern: /montagem|montador/i },
+  { id: "solagem",  label: "Soladores",  sing: "solador",  plural: "soladores",  pattern: /solagem|solador/i },
+];
 type ChamadaView = "dia" | "semana";
 type PeriodMode = "hoje" | "semana" | "q1" | "q2" | "mes" | "custom";
 
@@ -157,6 +165,9 @@ interface AggRow { key: string; nome: string; fichas: number; pares: number; pag
 export default function FichaMontadoresPage() {
   const db = supabase as any;
   const [tab, setTab] = useState<Tab>("lancamento");
+  // Setor ativo (Montadores / Soladores / …) — abas independentes na mesma tela.
+  const [setor, setSetor] = useState<Setor>("montagem");
+  const cfgSetor = useMemo(() => SETORES.find((s) => s.id === setor) ?? SETORES[0], [setor]);
 
   // ── chamada do dia / semana ──
   const [chamadaView, setChamadaView] = useState<ChamadaView>("dia");
@@ -178,20 +189,22 @@ export default function FichaMontadoresPage() {
   const [loading, setLoading] = useState(false);
 
   const { data: employees = [] } = useEmployees();
+  // Trabalhadores do SETOR ativo (montadores p/ montagem, soladores p/ solagem…).
   const montadores = useMemo(
     () => [...(employees as any[])]
-      .filter((e) => e.active && /montagem|montador/i.test(`${e.role || ""} ${e.department || ""}`))
+      .filter((e) => e.active && cfgSetor.pattern.test(`${e.role || ""} ${e.department || ""}`))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-    [employees],
+    [employees, cfgSetor],
   );
 
   const carregar = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await db.from("ficha_montadores").select("*").order("dia", { ascending: false }).order("criado_em", { ascending: false });
+    // Escopo por SETOR — cada aba (Montadores/Soladores) lê só os seus dados.
+    const { data, error } = await db.from("ficha_montadores").select("*").eq("setor", setor).order("dia", { ascending: false }).order("criado_em", { ascending: false });
     if (error) toast.error("Erro ao carregar: " + error.message);
     else setFichas((data ?? []) as Ficha[]);
     setLoading(false);
-  }, [db]);
+  }, [db, setor]);
   useEffect(() => { carregar(); }, [carregar]);
 
   // Semeia a contagem do dia a partir do banco.
@@ -261,7 +274,7 @@ export default function FichaMontadoresPage() {
     const det: DetItem[] = SIZES.filter((sz) => (m[sz] || 0) > 0).map((sz) => ({ tamanho: sz, pares: m[sz] }));
     const fichasCount = det.reduce((s, d) => s + Math.round(d.pares / d.tamanho), 0);
     const payload: any = {
-      dia, montador: e.name, montador_id: e.id,
+      dia, montador: e.name, montador_id: e.id, setor,
       fichas_dia: fichasCount, total: totalP, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
       cor: null, referencia: null, reference_id: null, detalhe: det, origem: "chamada",
       valor_par: existing?.valor_par ?? 0, atualizado_em: new Date().toISOString(),
@@ -276,6 +289,7 @@ export default function FichaMontadoresPage() {
       if (msg.includes("fichas_dia")) delete retry.fichas_dia;
       if (msg.includes("detalhe")) delete retry.detalhe;
       if (msg.includes("origem")) delete retry.origem;
+      if (msg.includes("setor")) delete retry.setor;
       ({ error } = await write(retry));
     }
     return error ? error.message : null;
@@ -400,11 +414,22 @@ export default function FichaMontadoresPage() {
   return (
     <div className="w-full space-y-6">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · MONTADORES"
-        title="Ficha de Montadores"
+        sectionLabel={`PRODUÇÃO · ${cfgSetor.label.toUpperCase()}`}
+        title={`Ficha de ${cfgSetor.label}`}
         description="Lance os PARES produzidos por tamanho de ficha (12 / 15 / 18). O sistema calcula a quantidade de fichas."
-        meta={<><span className="font-bold">{montadores.length}</span> MONTADOR{montadores.length === 1 ? "" : "ES"} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
+        meta={<><span className="font-bold">{montadores.length}</span> {(montadores.length === 1 ? cfgSetor.sing : cfgSetor.plural).toUpperCase()} · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
+
+      {/* Setor — abas INDEPENDENTES (Montadores / Soladores). Mesma dinâmica;
+          dados e relatórios separados por ficha_montadores.setor. */}
+      <div className="flex overflow-hidden rounded-lg border border-border w-fit">
+        {SETORES.map((s) => (
+          <button key={s.id} type="button" onClick={() => setSetor(s.id)}
+            className={`px-5 py-2 text-sm font-bold uppercase tracking-wide transition-colors ${setor === s.id ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
 
       {/* abas */}
       <div className="flex flex-wrap gap-1 border-b border-border">
@@ -438,7 +463,7 @@ export default function FichaMontadoresPage() {
             )}
             <div className="min-w-[180px] flex-1">
               <label className={lbl}>Buscar</label>
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar montador…" className="h-9" />
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={`Filtrar ${cfgSetor.sing}…`} className="h-9" />
             </div>
             <div className="ml-auto flex overflow-hidden rounded-md border border-border">
               {(["dia", "semana"] as ChamadaView[]).map((v) => (
@@ -450,8 +475,8 @@ export default function FichaMontadoresPage() {
 
           {montadores.length === 0 ? (
             <Panel>
-              <EmptyState icon={Users} title="Nenhum montador cadastrado"
-                description='Defina funcionários com cargo ou setor "Montagem" em Funcionários para lançar a produção.' />
+              <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} cadastrado`}
+                description={`Defina funcionários com cargo ou setor "${cfgSetor.id.charAt(0).toUpperCase()}${cfgSetor.id.slice(1)}" em Funcionários para lançar a produção.`} />
             </Panel>
           ) : chamadaView === "dia" ? (
             <Panel
