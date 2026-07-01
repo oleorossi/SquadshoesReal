@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useWorkSchedules } from '@/hooks/useTimesheet';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
+import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -212,18 +213,9 @@ export default function RelatorioAtrasos() {
     enabled: !!from && !!to && from <= to && (employees as any[]).length > 0,
     staleTime: 60_000,
     queryFn: async (): Promise<AtrasoRow[]> => {
-      // Batidas do período (paginado — o cap de 1000 do PostgREST cortava dias).
-      const recs: any[] = [];
-      for (let i = 0; ; i += 1000) {
-        const { data, error } = await supabase
-          .from('time_records')
-          .select('employee_external_id, employee_name, record_date, punches')
-          .gte('record_date', from).lte('record_date', to)
-          .order('record_date', { ascending: true }).range(i, i + 999);
-        if (error) throw error;
-        recs.push(...(data || []));
-        if (!data || data.length < 1000) break;
-      }
+      // Batidas do período via fonte ÚNICA paginada (mesma da folha e do
+      // comparativo/calendário) — motores do RH sincronizados.
+      const recs = await fetchTimeRecordsInRange(from, to);
 
       // Mapas de batida por matrícula/nome (mesma lógica da folha).
       const byExternalId = new Map<string, Map<string, string[]>>();
