@@ -8,7 +8,7 @@ import {
 } from '@phosphor-icons/react';
 import { menuGroups, secondaryRoutes } from '@/data/navigation';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -382,7 +382,8 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         title={fav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
         className={cn(
           'shrink-0 rounded p-1 transition-colors',
-          fav ? 'text-amber-400 hover:text-amber-500' : 'text-muted-foreground/50 hover:text-amber-500',
+          // text-primary: mesma cor da estrela de favorito da sidebar (AppLayout)
+          fav ? 'text-primary hover:text-primary/70' : 'text-muted-foreground/50 hover:text-primary',
         )}
         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(name, path); }}
@@ -436,6 +437,8 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="p-0 max-w-2xl gap-0 overflow-hidden [&>button]:hidden">
+          <DialogTitle className="sr-only">Busca global</DialogTitle>
+          <DialogDescription className="sr-only">Busque pedidos, clientes, modelos e fornecedores. Atalho: Command+K</DialogDescription>
           <Command shouldFilter={false} className="rounded-lg">
             <div className="flex items-center border-b border-border px-3">
               <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -451,8 +454,8 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 </Badge>
               )}
               {q && (
-                <button onClick={() => setQuery('')} className="p-1 rounded hover:bg-muted">
-                  <X className="h-3 w-3 text-muted-foreground" />
+                <button onClick={() => setQuery('')} aria-label="Limpar busca" className="p-1 rounded hover:bg-muted">
+                  <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -464,6 +467,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                   <button
                     key={s.key}
                     onClick={() => setScope(s.key)}
+                    aria-pressed={scope === s.key}
                     className={cn(
                       'shrink-0 px-2.5 py-1 rounded-md text-xs font-semibold tracking-tight transition-colors',
                       scope === s.key
@@ -498,7 +502,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                     </CommandItem>
                     {favorites.map((fav) => (
                       <CommandItem key={fav.path} onSelect={() => goTo(fav.path)}>
-                        <Star className="mr-2 h-3.5 w-3.5 text-amber-400" weight="fill" />
+                        <Star className="mr-2 h-3.5 w-3.5 text-primary" weight="fill" />
                         <span className="text-sm">{fav.name}</span>
                         <span className="ml-auto flex items-center gap-0.5 shrink-0">
                           <FavStar name={fav.name} path={fav.path} />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { House as Home, Kanban, Package, ShoppingCart, DotsThree as MoreHorizontal, X } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,17 @@ export function BottomNav() {
 
   useEffect(() => { setMoreOpen(false); }, [location.pathname]);
 
+  // O sheet "Mais" é um div artesanal (não usa o primitive Dialog): fechar no
+  // Escape e mover o foco pra dentro são responsabilidade nossa.
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    closeBtnRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [moreOpen]);
+
   const isActive = (path: string) =>
     location.pathname === path ||
     (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
@@ -45,14 +56,22 @@ export function BottomNav() {
 
       {/* "Mais" bottom sheet */}
       {moreOpen && (
-        <div className="md:hidden fixed bottom-16 inset-x-0 z-50 bg-background/98 backdrop-blur-md border-t border-border rounded-t-2xl shadow-elevated pb-safe">
+        <div
+          id="bottom-nav-mais"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navegação"
+          className="md:hidden fixed bottom-16 inset-x-0 z-50 bg-background/98 backdrop-blur-md border-t border-border rounded-t-2xl shadow-elevated safe-bot"
+        >
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
             <p className="text-sm font-semibold text-foreground">Navegação</p>
             <button
+              ref={closeBtnRef}
               onClick={() => setMoreOpen(false)}
+              aria-label="Fechar menu"
               className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
           <div className="px-4 pb-4 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -89,7 +108,7 @@ export function BottomNav() {
       )}
 
       {/* Bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 pb-safe">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 safe-bot">
         <div className="flex justify-around items-stretch h-16 px-1">
           {primaryItems.map((item) => {
             const active = isActive(item.path);
@@ -114,6 +133,8 @@ export function BottomNav() {
           {/* Mais */}
           <button
             onClick={() => setMoreOpen(v => !v)}
+            aria-expanded={moreOpen}
+            aria-controls="bottom-nav-mais"
             className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors relative pt-2"
           >
             <span className={cn(

@@ -80,6 +80,21 @@ export function TabBar() {
     <div
       role="tablist"
       aria-label="Páginas abertas"
+      // Padrão ARIA de tabs: setas navegam entre abas (roving tabindex sozinho
+      // deixava as abas inativas inalcançáveis por teclado).
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+        const idx = tabs.findIndex(t => t.id === activeId);
+        if (idx === -1) return;
+        e.preventDefault();
+        const nextIdx =
+          e.key === 'Home' ? 0 :
+          e.key === 'End' ? tabs.length - 1 :
+          e.key === 'ArrowLeft' ? (idx - 1 + tabs.length) % tabs.length :
+          (idx + 1) % tabs.length;
+        const next = tabs[nextIdx];
+        if (next) { setActiveTab(next.id); tabRefs.current[next.id]?.focus(); }
+      }}
       className="flex items-end gap-0.5 px-2 pt-1 overflow-x-auto scrollbar-thin border-b border-border bg-muted/40"
     >
       {tabs.map((tab, idx) => {

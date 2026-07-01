@@ -1,4 +1,4 @@
-import React, { useState, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { SignOut as LogOut, List as Menu, X, CaretDown as ChevronDown, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, House as Home } from '@phosphor-icons/react';
 import { menuGroups, systemItems, topItem } from '@/data/navigation';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
@@ -33,12 +33,12 @@ const QuickActionsFAB = () => {
           <Button
             size="icon"
             aria-label="Ações rápidas: novo pedido, OP ou entrada de estoque"
-            className="h-13 w-13 rounded-full shadow-elevated bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-200 hover:scale-105 hover:shadow-[0_8px_24px_-4px_hsl(var(--primary)/0.5)]"
+            className="h-14 w-14 rounded-full shadow-elevated bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-200 hover:scale-105 hover:shadow-[0_8px_24px_-4px_hsl(var(--primary)/0.5)]"
           >
             <Plus className="h-6 w-6" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" className="w-58 mb-3 shadow-elevated rounded-xl border-border/60">
+        <DropdownMenuContent align="end" side="top" className="w-56 mb-3 shadow-elevated rounded-xl border-border/60">
           <DropdownMenuItem onClick={() => navigate('/sales/new')} className="gap-3 cursor-pointer py-3 text-base">
             <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <ShoppingCart className="h-3.5 w-3.5" />
@@ -54,7 +54,7 @@ const QuickActionsFAB = () => {
             </div>
             <div>
               <p className="font-medium">Ordem de Produção</p>
-              <p className="text-xs text-muted-foreground">Criar nova OP</p>
+              <p className="text-xs text-muted-foreground">Ver e criar OPs</p>
             </div>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-base">
@@ -63,7 +63,7 @@ const QuickActionsFAB = () => {
             </div>
             <div>
               <p className="font-medium">Entrada de Estoque</p>
-              <p className="text-xs text-muted-foreground">Registrar entrada</p>
+              <p className="text-xs text-muted-foreground">Abrir estoque</p>
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -80,6 +80,16 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const { data: currentProfile } = useCurrentProfile();
   const { data: currentRoles = [] } = useCurrentUserRoles();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // O drawer mobile é um aside artesanal (não usa o primitive Sheet): Escape
+  // e foco inicial são responsabilidade nossa.
+  const mobileDrawerRef = React.useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    mobileDrawerRef.current?.querySelector<HTMLElement>('button, a, [tabindex]')?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('nav-collapsed-groups');
@@ -349,7 +359,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               </div>
               <GlobalSearch compact />
               <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
-               <NotificationBell key="desktop-notif" />
+               <NotificationBell key="desktop-notif" className="h-7 w-7" />
             </>
           ) : (
             <>
@@ -367,7 +377,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
-               <NotificationBell key="sidebar-mobile-notif" />
+               <NotificationBell key="sidebar-mobile-notif" className="h-7 w-7" />
                   {mobile && (
                     <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-7 w-7 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
                       <X className="h-4 w-4" aria-hidden="true" />
@@ -791,7 +801,13 @@ export default function AppLayout({ children, printMode = false }: { children: R
           )}
 
           {/* Mobile sidebar */}
-          <aside className={cn(
+          <aside
+            ref={mobileDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu de navegação"
+            aria-hidden={!mobileOpen}
+            className={cn(
             'fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col transform transition-transform duration-200 ease-out md:hidden',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
             printMode && 'print:hidden'

@@ -81,7 +81,7 @@ const SEVERITY_DOT: Record<string, string> = {
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[380px] p-0 max-h-[480px] overflow-auto"
+        className="w-[min(380px,calc(100vw-1rem))] p-0 max-h-[480px] overflow-auto"
         side="right"
         align="start"
         sideOffset={8}
