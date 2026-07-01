@@ -28,25 +28,39 @@ export default function Setores() {
    // Removido 'ordens' como sub-aba — lista global vive no menu lateral em /orders
    // pra eliminar duplicidade (era o mesmo componente embutido aqui).
    const [activeTab, setActiveTab] = usePersistedState<string>('setores-active-tab', 'corte');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Redireciona quem ainda tem 'ordens' salvo no localStorage
   useEffect(() => {
     if (activeTab === 'ordens') setActiveTab('corte');
   }, [activeTab, setActiveTab]);
 
-  // Deep-link from legacy ?tab=corte (etc.) URLs into the consolidated hub
+  // Deep-link: ?sub=corte (redirects /corte etc. em App.tsx) tem PRIORIDADE
+  // sobre o localStorage. ?tab=corte legado segue aceito como fallback
+  // (o PCPHub normaliza pra sub=, mas a URL antiga pode chegar direto aqui).
   useEffect(() => {
-    const fromUrl = searchParams.get('tab');
+    const fromUrl = searchParams.get('sub') ?? searchParams.get('tab');
     if (fromUrl && (SECTOR_TABS as readonly string[]).includes(fromUrl) && fromUrl !== activeTab) {
       setActiveTab(fromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Troca de sub-aba: além do localStorage, reflete na URL (?sub=) pra
+  // refresh/compartilhamento voltarem no mesmo setor. Preserva tab=setores
+  // (e demais params) e usa replace pra não poluir o histórico.
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('sub', value);
+      return next;
+    }, { replace: true });
+  };
+
    return (
      <div className="space-y-4">
-       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
             <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
              <TabsTrigger value="corte" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">

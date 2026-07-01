@@ -17,6 +17,12 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/references': 'produtos',
   '/dashboard': 'dashboard',
   '/pcp': 'producao',
+  // Deep-links do hub do PCP (itens de menu/Cmd+K apontam direto pra aba)
+  '/pcp?tab=setores': 'producao',
+  '/pcp?tab=quadro&modo=matriz': 'producao',
+  '/pcp?tab=quadro&modo=cartoes': 'producao',
+  '/pcp?tab=quadro&modo=timeline': 'producao',
+  '/pcp?tab=quadro&modo=lote': 'producao',
   '/estoque': 'estoque',
   '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',

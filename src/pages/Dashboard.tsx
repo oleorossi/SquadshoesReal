@@ -176,7 +176,7 @@ export default function Dashboard() {
           value="81%"
           hint="Eficiência global"
           icon={Gauge}
-          onClick={() => navigate('/producao')}
+          onClick={() => navigate('/pcp?tab=dashboard')}
         />
         <StatCard
           label="OPs Ativas"

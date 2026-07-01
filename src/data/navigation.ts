@@ -49,6 +49,9 @@ export const menuGroups = [
     icon: Factory,
     items: [
       { name: "PCP",              icon: Kanban,            path: "/pcp" },
+      // Atalho direto pro acompanhamento setor a setor (2026-07-01): operação de
+      // setor era o destino mais frequente e custava PCP → Produzir → Setores.
+      { name: "Setores",          icon: Factory,           path: "/pcp?tab=setores" },
       { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
       { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
       // Saíram daqui (2026-06-28): "Capacidade" (/capacity-planning) já é aba do PCP
@@ -110,9 +113,10 @@ export const menuGroups = [
       // "Transporte" (/transporte) exposto (2026-06-28): hub de baús/embalagens/
       // tarifas/simulador/rotas — era órfão (só alcançável por cards da Expedição).
       { name: "Transporte",       icon: Truck,          path: "/transporte" },
-      // Picking/Conferência renomeados pra deixar a ORDEM do fluxo clara (são 3
-      // etapas distintas, não duplicatas): Lista → (Bipagem EAN, em atalhos) → Saída.
-      { name: "Separação · Lista", icon: ClipboardCheck, path: "/picking" },
+      // Picking/Conferência com nomes distintos pra deixar o FLUXO claro (são 3
+      // etapas, não duplicatas): Materiais (semanal, mesma tela da aba "Separação
+      // Semanal" do PCP) → Bipagem EAN (em atalhos) → Conferência de Saída.
+      { name: "Separação · Materiais (Semanal)", icon: ClipboardCheck, path: "/picking" },
       { name: "Conferência · Saída", icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
@@ -184,10 +188,12 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "SAC",                  icon: MessageSquare,    path: "/sac",                    group: "Comercial" },
   { name: "Forecast",             icon: TrendingUp,       path: "/forecast",               group: "Comercial" },
   // Produção (visualizações alternativas + utilitários)
-  { name: "Fluxo de Produção",    icon: Kanban,           path: "/producao/fluxo",         group: "Produção" },
-  { name: "Live (Tempo Real)",    icon: Activity,         path: "/producao/live",          group: "Produção" },
-  { name: "Timeline",             icon: GanttChartSquare, path: "/producao/timeline",      group: "Produção" },
-  { name: "Visão Agregada",       icon: Kanban,           path: "/producao/visao-agregada", group: "Produção" },
+  // As 4 visões abaixo viraram MODOS do "Quadro de Produção" no hub PCP
+  // (2026-07-01) — as rotas standalone /producao/* redirecionam pra cá.
+  { name: "Fluxo de Produção",    icon: Kanban,           path: "/pcp?tab=quadro&modo=matriz",   group: "Produção" },
+  { name: "Live (Tempo Real)",    icon: Activity,         path: "/pcp?tab=quadro&modo=cartoes",  group: "Produção" },
+  { name: "Timeline",             icon: GanttChartSquare, path: "/pcp?tab=quadro&modo=timeline", group: "Produção" },
+  { name: "Visão Agregada",       icon: Kanban,           path: "/pcp?tab=quadro&modo=lote",     group: "Produção" },
   { name: "Centro de Controle",   icon: AlertTriangle,    path: "/centro-controle",        group: "Produção" },
   { name: "Qualidade de Produção", icon: ShieldCheck,     path: "/quality",                group: "Produção" },
   { name: "Cronoanálise",         icon: Timer,            path: "/cronoanalise",           group: "Produção" },

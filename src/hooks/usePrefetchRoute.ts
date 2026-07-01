@@ -7,9 +7,9 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/pcp': () => import('@/pages/PCPHub'),
   '/orders': () => import('@/pages/Orders'),
   '/quality': () => import('@/pages/Quality'),
-  '/capacity-planning': () => import('@/pages/CapacityPlanning'),
-  '/producao': () => import('@/pages/ProducaoDashboard'),
-  '/producao/fluxo': () => import('@/pages/ProductionFlow'),
+  // /capacity-planning, /producao e /producao/fluxo viraram redirects pro hub
+  // (/pcp?tab=...) — prefetch desses chunks morreu junto; o chunk do hub ('/pcp')
+  // já está mapeado acima.
   '/relatorios/diario-producao': () => import('@/pages/RelDiarioA4'),
   '/relatorios/op': () => import('@/pages/RelOpA4'),
   '/relatorios/oee': () => import('@/pages/RelOeeA4'),

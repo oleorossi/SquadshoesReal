@@ -51,7 +51,7 @@ const SECTORS = [
   { name: 'Montagem', icon: Wrench, color: 'bg-indigo-500 hover:bg-indigo-600' },
   { name: 'Solagem', icon: Footprints, color: 'bg-amber-500 hover:bg-amber-600' },
   { name: 'Acabamento', icon: Sparkles, color: 'bg-emerald-500 hover:bg-emerald-600' },
-  { name: 'Expedição', icon: Truck, color: 'bg-slate-600 hover:bg-slate-700' },
+  { name: 'Expedição', icon: Truck, color: 'bg-teal-600 hover:bg-teal-700' },
 ];
 
 export default function OrderEdit() {

@@ -59,9 +59,10 @@ const Contractors = lazy(() => import("./pages/Contractors"));
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const PurchaseOrdersPerPv = lazy(() => import("./pages/PurchaseOrdersPerPv"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
-const ProducaoDashboard = lazy(() => import("./pages/ProducaoDashboard"));
-const ProductionLive = lazy(() => import("./pages/ProductionLive"));
-const ProductionTimeline = lazy(() => import("./pages/ProductionTimeline"));
+// ProducaoDashboard/ProductionLive/ProductionTimeline saíram das rotas standalone
+// (2026-07-01): /producao → /pcp?tab=dashboard e live/timeline viraram modos do
+// Quadro de Produção dentro do hub (/pcp?tab=quadro&modo=...). Os componentes
+// continuam vivos — o PCPHub os importa como abas/modos.
 const BankHours = lazy(() => import("./pages/BankHours"));
 const EspelhoPontoPage = lazy(() => import("./pages/EspelhoPontoPage"));
 // ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
@@ -78,19 +79,23 @@ const PCPDashboard = lazy(() => import("./pages/PCPDashboard"));
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
 const MrpAdvancedPage = lazy(() => import("./pages/MrpAdvancedPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
-const OrderFlowAudit = lazy(() => import("./pages/OrderFlowAudit"));
+// OrderFlowAudit: rota standalone /order-flow-audit virou redirect pro hub
+// (/pcp?tab=auditoria) em 2026-07-01 — o PCPHub importa o componente como aba.
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
 const UnitAudit = lazy(() => import("./pages/UnitAudit"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
-const CapacityPlanning = lazy(() => import("./pages/CapacityPlanning"));
+// CapacityPlanning: rota standalone /capacity-planning virou redirect pro hub
+// (/pcp?tab=capacidade) em 2026-07-01 — a filha /capacity-planning/distribuir
+// segue viva (CapacityDistribution não tem aba no hub).
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
 const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
-const SectorAggregatedView = lazy(() => import("./pages/SectorAggregatedView"));
+// SectorAggregatedView: rota standalone /producao/visao-agregada virou redirect
+// pro hub (/pcp?tab=quadro&modo=lote) em 2026-07-01 — PCPHub importa como modo.
 const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
@@ -98,7 +103,8 @@ const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
 const PCPHub = lazy(() => import("./pages/PCPHub"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
-const ProductionWavesPage = lazy(() => import("./pages/ProductionWavesPage"));
+// ProductionWavesPage: rota standalone /pcp/ondas virou redirect pro hub
+// (/pcp?tab=ondas) em 2026-07-01 — o PCPHub importa o componente como aba.
 const ArtisanalRecipes = lazy(() => import("./pages/ArtisanalRecipes"));
 const BaseConsumption = lazy(() => import("./pages/BaseConsumption"));
 const StockAlerts = lazy(() => import("./pages/StockAlerts"));
@@ -108,7 +114,7 @@ const SolesHub = lazy(() => import("./pages/SolesHub"));
 
 
 // Lazy loading de componentes pesados (requested snippet)
-const ProductionModule = lazy(() => import('./modules/ProductionModule'));
+// ProductionModule removido das rotas: /modules/production → redirect /pcp (2026-07-01).
 const QualityModule = lazy(() => import('./modules/QualityModule'));
 const ReportsModule = lazy(() => import('./modules/ReportsModule'));
 
@@ -582,8 +588,9 @@ const router = createBrowserRouter([
         element: <PCPHub />,
       },
       {
+        // Rota legada: Ondas é aba do hub PCP (mesmo componente, sem duplicar rota).
         path: "pcp/ondas",
-        element: <ProductionWavesPage />,
+        element: <Navigate to="/pcp?tab=ondas" replace />,
       },
       {
         path: "pronta-entrega",
@@ -755,11 +762,10 @@ const router = createBrowserRouter([
         element: <EmployeeAbsencesPage />,
       },
       {
-        // Visão consolidada de carga por setor. Em vez de N OPs individuais
-        // de 12 pares, mostra o LOTE agregado por modelo (+cor onde faz
-        // sentido) — costura/corte trabalham por bloco consolidado.
+        // Rota legada: Visão Agregada virou o modo "Lote agregado" do Quadro
+        // de Produção dentro do hub PCP.
         path: "producao/visao-agregada",
-        element: <SectorAggregatedView />,
+        element: <Navigate to="/pcp?tab=quadro&modo=lote" replace />,
       },
       {
         path: "mrp",
@@ -774,8 +780,9 @@ const router = createBrowserRouter([
         element: <Navigate to="/pcp" replace />,
       },
       {
+        // Rota legada: Auditoria de Fluxo é aba do hub PCP.
         path: "order-flow-audit",
-        element: <OrderFlowAudit />,
+        element: <Navigate to="/pcp?tab=auditoria" replace />,
       },
       {
         path: "navigation-audit",
@@ -888,21 +895,24 @@ const router = createBrowserRouter([
         element: <ComercialDashboard />,
       },
       {
+        // Rota legada: dashboard de produção unificado no hub PCP.
         path: "producao",
-        element: <ProducaoDashboard />,
+        element: <Navigate to="/pcp?tab=dashboard" replace />,
       },
       {
+        // Rota legada: Live virou o modo "Cartões" do Quadro de Produção.
         path: "producao/live",
-        element: <ProductionLive />,
+        element: <Navigate to="/pcp?tab=quadro&modo=cartoes" replace />,
       },
       {
+        // Rota legada: Timeline virou modo do Quadro de Produção.
         path: "producao/timeline",
-        element: <ProductionTimeline />,
+        element: <Navigate to="/pcp?tab=quadro&modo=timeline" replace />,
       },
       {
-        // Rota legada: dashboard unificado em /producao (ProducaoDashboard).
+        // Rota legada: dashboard unificado no hub PCP (aba Dashboard).
         path: "production-dashboard",
-        element: <Navigate to="/producao" replace />,
+        element: <Navigate to="/pcp?tab=dashboard" replace />,
       },
       {
         path: "financeiro",
@@ -953,8 +963,9 @@ const router = createBrowserRouter([
         element: <Settings />,
       },
       {
+        // Rota legada: Capacidade é aba do hub PCP. A filha /distribuir segue viva.
         path: "capacity-planning",
-        element: <CapacityPlanning />,
+        element: <Navigate to="/pcp?tab=capacidade" replace />,
       },
       {
         path: "capacity-planning/distribuir",
@@ -979,9 +990,9 @@ const router = createBrowserRouter([
         element: <LegacyInventoryRedirect />,
       },
       {
-        // Rota legada: Production unificado em /producao (ProducaoDashboard).
+        // Rota legada: Production unificado no hub PCP (aba Dashboard).
         path: "production",
-        element: <Navigate to="/producao" replace />,
+        element: <Navigate to="/pcp?tab=dashboard" replace />,
       },
       {
         path: "quality",
@@ -1082,9 +1093,9 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/RelSemanalA4").then(m => ({ Component: m.default })),
       },
       {
-        // Novidade — quadro tipo kanban CORTE→COSTURA→MONTAGEM→ACABAMENTO→EMBALAGEM
+        // Rota legada: Fluxo (kanban) virou o modo "Matriz" do Quadro de Produção.
         path: "producao/fluxo",
-        lazy: () => import("./pages/ProductionFlow").then(m => ({ Component: m.default })),
+        element: <Navigate to="/pcp?tab=quadro&modo=matriz" replace />,
       },
       {
         path: "automations",
@@ -1126,7 +1137,8 @@ const router = createBrowserRouter([
       {
         path: "modules",
         children: [
-          { path: "production", element: <ProductionModule /> },
+          // Rota legada: módulo de produção unificado no hub PCP.
+          { path: "production", element: <Navigate to="/pcp" replace /> },
           { path: "quality", element: <QualityModule /> },
           { path: "reports", element: <ReportsModule /> },
         ]

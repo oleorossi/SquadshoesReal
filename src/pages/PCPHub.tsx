@@ -1,8 +1,9 @@
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSearchParams, Link } from "react-router-dom";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useRealtimeOrderStages } from "@/hooks/useOrderStages";
 import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
 import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle, Kanban } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -35,12 +36,6 @@ const TabLoader = () => (
   </div>
 );
 
-// Rotas da stripe antiga que viraram MODOS do Quadro de Produção (não duplicar
-// como link externo — continuam acessíveis por URL pra deep-link).
-const FUSED_VIEW_PATHS = new Set([
-  '/producao/fluxo', '/producao/live', '/producao/timeline', '/producao/visao-agregada',
-]);
-
 // "Quadro de Produção" — 1 tela, 4 modos do mesmo dado (order_stages). Substitui
 // as 4 rotas separadas (Fluxo/Live/Timeline/Visão Agregada) que poluíam a stripe.
 const QUADRO_MODES: { key: string; label: string }[] = [
@@ -50,7 +45,18 @@ const QUADRO_MODES: { key: string; label: string }[] = [
   { key: 'lote', label: 'Lote agregado' },
 ];
 function QuadroProducao() {
-  const [mode, setMode] = useState('matriz');
+  // Modo persistido na URL (?modo=) pra refresh/compartilhamento manterem a
+  // visão escolhida. 'matriz' é o default quando o param falta ou é inválido.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawMode = searchParams.get('modo') ?? 'matriz';
+  const mode = QUADRO_MODES.some((m) => m.key === rawMode) ? rawMode : 'matriz';
+  const setMode = (value: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('modo', value);
+      return next;
+    }, { replace: true });
+  };
   return (
     <div className="space-y-3">
       <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-muted/50 p-1">
@@ -102,21 +108,24 @@ const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
 // "Visualizações" flutuante) = 23 destinos em 2 trilhos empilhados, pra 1 TRILHO
 // de 3 SEGMENTOS (padrão MES: Planejar / Produzir / Analisar). Os "Quadros" de
 // produção (rotas externas) entram contextualmente no segmento Produzir, não mais
-// flutuando acima de tudo. "pos-op" sai do menu (KPIs zerados — sem apontamento de
-// tempo; rota segue acessível por URL). RCCP fica em Planejar até ser fundido em
+// flutuando acima de tudo. RCCP fica em Planejar até ser fundido em
 // Capacidade (passo futuro — CapacityPlanning está em edição por outra sessão).
 const SEGMENTS: { key: string; label: string; items: string[] }[] = [
   { key: "planejar", label: "Planejar", items: ["ondas", "planejamento", "cronograma", "capacidade", "rccp", "lead-time"] },
   { key: "produzir", label: "Produzir", items: ["quadro", "setores", "gargalos", "picking", "lot-split"] },
-  { key: "analisar", label: "Analisar", items: ["dashboard", "auditoria"] },
+  { key: "analisar", label: "Analisar", items: ["dashboard", "auditoria", "pos-op"] },
 ];
 
 // Backward-compat: legacy URLs like ?tab=corte should land on the consolidated Setores tab
-const LEGACY_SECTOR_TABS = new Set(['corte', 'costura', 'silk', 'colagem', 'montagem', 'acabamento', 'expedicao']);
+const LEGACY_SECTOR_TABS = new Set(['corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao']);
 // Gargalo Diário + Semanal fundidos em "gargalos" — deep-links antigos caem na nova tela.
 const LEGACY_GARGALO_TABS = new Set(['gargalo-diario', 'gargalo-semanal']);
 
 export default function PCPHub() {
+  // Invalidação central (debounced) de TODAS as caches de produção — montada
+  // uma vez aqui no hub, cobre todas as abas.
+  useRealtimeOrderStages();
+
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") || "ondas";
   const activeTab = LEGACY_SECTOR_TABS.has(rawTab) ? "setores"
@@ -124,14 +133,28 @@ export default function PCPHub() {
     : rawTab;
   const activeSegment = SEGMENTS.find((s) => s.items.includes(activeTab)) ?? SEGMENTS[0];
 
+  // Normaliza deep-links legados na URL: ?tab=corte vira ?tab=setores&sub=corte
+  // (o Setores lê `sub` e abre direto no setor, em vez de cair no localStorage);
+  // ?tab=gargalo-diario/semanal vira ?tab=gargalos.
+  useEffect(() => {
+    if (LEGACY_SECTOR_TABS.has(rawTab)) {
+      setSearchParams({ tab: "setores", sub: rawTab }, { replace: true });
+    } else if (LEGACY_GARGALO_TABS.has(rawTab)) {
+      setSearchParams({ tab: "gargalos" }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawTab]);
+
   const handleTabChange = (value: string) => {
     setSearchParams({ tab: value }, { replace: true });
   };
 
   // Stripe vira só os "quadros" NÃO fundidos (Centro de Controle, Qualidade,
   // Cronoanálise, Paradas&OEE, Setup). Fluxo/Live/Timeline/Agregada agora são
-  // modos do "Quadro de Produção".
-  const prodViews = getSecondaryRoutesForGroup('Produção').filter((r) => !FUSED_VIEW_PATHS.has(r.path));
+  // modos do "Quadro de Produção" — em navigation.ts eles apontam pra deep-links
+  // do próprio hub (/pcp?tab=quadro&modo=...), então basta excluir tudo que
+  // começa com /pcp pra não duplicar o seletor de modos como link externo.
+  const prodViews = getSecondaryRoutesForGroup('Produção').filter((r) => !r.path.startsWith('/pcp'));
 
   return (
     <div className="space-y-5 page-enter editorial-stagger">
@@ -182,11 +205,6 @@ export default function PCPHub() {
                   >
                     {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
                     {tab.label}
-                    {value === "gargalos" && (
-                      <span className="ml-0.5 rounded bg-primary/15 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-primary">
-                        novo
-                      </span>
-                    )}
                   </button>
                 </TooltipTrigger>
                 {tab.description && (

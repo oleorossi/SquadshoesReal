@@ -14,7 +14,7 @@ export default function CapacityDistribution() {
         description="Aloca pares por referência × setor × dia da semana. Trava células pra preservar decisões antes de re-rodar o auto-fill."
         actions={
           <Button asChild variant="outline" size="sm">
-            <Link to="/capacity-planning">
+            <Link to="/pcp?tab=capacidade">
               <ArrowLeft className="h-4 w-4 mr-1.5" />
               Capacidade
             </Link>
