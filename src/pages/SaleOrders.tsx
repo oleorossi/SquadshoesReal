@@ -22,6 +22,7 @@ import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumption
 import SaleOrdersOverviewDialog from '@/components/sale-orders/SaleOrdersOverviewDialog';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
 import { Label } from '@/components/ui/label';
@@ -282,6 +283,15 @@ export default function SaleOrders() {
   // Guard de descarte: Esc/clique fora não pode apagar um form longo em
   // silêncio — se há dados digitados, pede confirmação antes de resetar.
   const [confirmDiscard, setConfirmDiscard] = useState<null | 'create' | 'edit'>(null);
+
+  // Confirmação estruturada genérica (AlertDialog) — substitui os confirm()
+  // nativos de ações de alto impacto da página.
+  const [pendingConfirm, setPendingConfirm] = useState<null | {
+    title: string;
+    description: string;
+    actionLabel: string;
+    onConfirm: () => void | Promise<void>;
+  }>(null);
 
   const resetCreateForm = () => {
     setDialogOpen(false);
@@ -1680,11 +1690,12 @@ export default function SaleOrders() {
             {isAdmin && (
               <Button
                 variant="outline"
-                onClick={() => {
-                  if (confirm('Isso irá estornar e re-debitar o estoque de TODAS as OPs ativas com base nas fichas técnicas atualizadas. Continuar?')) {
-                    resyncOPs.mutate();
-                  }
-                }}
+                onClick={() => setPendingConfirm({
+                  title: 'Resincronizar OPs com as fichas?',
+                  description: 'Isso irá estornar e re-debitar o estoque de TODAS as OPs ativas com base nas fichas técnicas atualizadas.',
+                  actionLabel: 'Resincronizar',
+                  onConfirm: () => resyncOPs.mutate(),
+                })}
                 disabled={resyncOPs.isPending}
                 className="gap-2"
                 title="Resincronizar OPs com fichas técnicas atualizadas"
@@ -2118,8 +2129,11 @@ export default function SaleOrders() {
                               size="icon"
                               className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
                               title="Forçar Produção (admin)"
-                              onClick={async () => {
-                                if (!confirm(`Forçar produção do pedido ${order.order_number}?\n\nIsso irá colocar o pedido em "Em Produção", criar OPs ausentes e gerar etapas. Apenas administradores podem executar.`)) return;
+                              onClick={() => setPendingConfirm({
+                                title: `Forçar produção do pedido ${order.order_number}?`,
+                                description: 'Isso irá colocar o pedido em "Em Produção", criar OPs ausentes e gerar etapas. Apenas administradores podem executar.',
+                                actionLabel: 'Forçar produção',
+                                onConfirm: async () => {
                                 try {
                                   const { data, error } = await supabase.rpc('force_sale_order_production', { p_sale_order_id: order.id } as any);
                                   if (error) throw error;
@@ -2131,7 +2145,8 @@ export default function SaleOrders() {
                                 } catch (err: any) {
                                   toast.error(`Erro ao forçar produção: ${err.message}`);
                                 }
-                              }}
+                                },
+                              })}
                             >
                               <Zap className="h-3.5 w-3.5" />
                             </Button>
@@ -2317,8 +2332,11 @@ export default function SaleOrders() {
                       variant="default"
                       size="sm"
                       className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-                      onClick={async () => {
-                        if (!confirm(`Aprovar o pedido ${selectedOrder.order_number}? Isso permite incluir em ondas de produção.`)) return;
+                      onClick={() => setPendingConfirm({
+                        title: `Aprovar o pedido ${selectedOrder.order_number}?`,
+                        description: 'Isso permite incluir o pedido em ondas de produção.',
+                        actionLabel: 'Aprovar',
+                        onConfirm: async () => {
                         const { error } = await supabase
                           .from('sale_orders')
                           .update({ status: 'Aprovado' })
@@ -2331,17 +2349,19 @@ export default function SaleOrders() {
                         toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
                         queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                         setDetailDialogOpen(false);
-                      }}
+                        },
+                      })}
                     >
                       <CheckCircle className="h-3.5 w-3.5" /> Aprovar
                     </Button>
                   )}
                   {isAdmin && (selectedOrder.status === 'Aprovado' || selectedOrder.status === 'Em Produção') && (
-                    <Button variant="outline" size="sm" className="gap-2" disabled={resyncPVOPs.isPending} onClick={() => {
-                      if (confirm('Isso irá excluir as OPs atuais e recriar com base nos itens atuais do pedido. Continuar?')) {
-                        resyncPVOPs.mutate(selectedOrder.id);
-                      }
-                    }}>
+                    <Button variant="outline" size="sm" className="gap-2" disabled={resyncPVOPs.isPending} onClick={() => setPendingConfirm({
+                      title: 'Recriar as OPs deste pedido?',
+                      description: 'Isso irá excluir as OPs atuais e recriar com base nos itens atuais do pedido.',
+                      actionLabel: 'Recriar OPs',
+                      onConfirm: () => resyncPVOPs.mutate(selectedOrder.id),
+                    })}>
                       {resyncPVOPs.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Resync OPs
                     </Button>
                   )}
@@ -2435,7 +2455,7 @@ export default function SaleOrders() {
                 )}
               </div>
 
-              <div className="rounded-lg border bg-card overflow-hidden">
+              <div className="rounded-lg border bg-card overflow-hidden overflow-x-auto">
                 {loadingOrderItems ? (
                   <div className="text-center py-12 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Carregando...</div>
                 ) : selectedOrderItems.length === 0 ? (
@@ -2735,8 +2755,8 @@ export default function SaleOrders() {
             <p className="text-sm text-muted-foreground">A justificativa deve ter ao menos 15 caracteres e será enviada à SEFAZ.</p>
             <div>
               <Label>Justificativa</Label>
-              <textarea
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px]"
+              <Textarea
+                className="mt-1 min-h-[80px]"
                 value={cancelJustificativa}
                 onChange={e => setCancelJustificativa(e.target.value)}
                 placeholder="Motivo do cancelamento..."
@@ -2744,7 +2764,7 @@ export default function SaleOrders() {
               <p className="text-xs text-muted-foreground mt-1">{cancelJustificativa.length}/15 mínimo</p>
             </div>
           </div>
-          <div className="flex gap-2 justify-end">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setCancelNfeTarget(null)}>Voltar</Button>
             <Button variant="destructive"
               disabled={cancelJustificativa.trim().length < 15 || cancelNfe.isPending}
@@ -2756,7 +2776,7 @@ export default function SaleOrders() {
               {cancelNfe.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <XCircle className="h-4 w-4 mr-2" />}
               Confirmar Cancelamento
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2947,6 +2967,24 @@ export default function SaleOrders() {
               }}
             >
               Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação estruturada genérica (substitui confirm() nativo) */}
+      <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingConfirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{pendingConfirm?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { const fn = pendingConfirm?.onConfirm; setPendingConfirm(null); void fn?.(); }}
+            >
+              {pendingConfirm?.actionLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

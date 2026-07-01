@@ -132,7 +132,7 @@ export function PriceListItemsDialog({ open, onClose, priceList }: PriceListItem
             <Input value={minQty} onChange={e => setMinQty(e.target.value)} inputMode="numeric" className="h-9" />
           </div>
           <Button onClick={() => addItem.mutate()} disabled={!refId || !price || addItem.isPending} className="h-9 gap-1">
-            <Plus className="h-4 w-4" /> Add
+            <Plus className="h-4 w-4" /> Adicionar
           </Button>
         </div>
 

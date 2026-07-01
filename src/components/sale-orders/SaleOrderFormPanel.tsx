@@ -1937,7 +1937,8 @@ export default function SaleOrderFormPanel({
              <AlertTriangle className="h-5 w-5" />
              Itens Duplicados Detectados
            </AlertDialogTitle>
-           <AlertDialogDescription>
+           <AlertDialogDescription asChild>
+             <div className="text-sm text-muted-foreground">
              Os seguintes itens aparecem mais de uma vez no pedido (mesma referência + mesma cor):
              <ul className="mt-2 list-disc list-inside font-medium text-foreground">
                {duplicateList.map((item, i) => (
@@ -1952,6 +1953,7 @@ export default function SaleOrderFormPanel({
                Use "Manter separado" só se as caixas precisam mesmo ir pra destinos/lotes
                diferentes que justifiquem OPs distintas.
              </p>
+             </div>
            </AlertDialogDescription>
          </AlertDialogHeader>
          <AlertDialogFooter className="flex-col sm:flex-row gap-2">

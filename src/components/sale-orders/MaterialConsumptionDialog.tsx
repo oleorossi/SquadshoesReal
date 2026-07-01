@@ -1056,21 +1056,21 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                    <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('groupName')}>
-                          <span className="flex items-center">Grupo de material <SortIcon col="groupName" /></span>
+                        <TableHead aria-sort={sortKey === 'groupName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('groupName')}>Grupo de material <SortIcon col="groupName" /></button>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('materialName')}>
-                          <span className="flex items-center">Aplicação <SortIcon col="materialName" /></span>
+                        <TableHead aria-sort={sortKey === 'materialName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('materialName')}>Aplicação <SortIcon col="materialName" /></button>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('color')}>
-                          <span className="flex items-center">Cor <SortIcon col="color" /></span>
+                        <TableHead aria-sort={sortKey === 'color' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('color')}>Cor <SortIcon col="color" /></button>
                         </TableHead>
-                        <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('totalQuantity')}>
-                          <span className="flex items-center justify-end">Consumo Total <SortIcon col="totalQuantity" /></span>
+                        <TableHead aria-sort={sortKey === 'totalQuantity' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                          <button type="button" className="flex w-full items-center justify-end select-none hover:text-foreground" onClick={() => handleSort('totalQuantity')}>Consumo Total <SortIcon col="totalQuantity" /></button>
                         </TableHead>
                         <TableHead className="text-right w-36">Em estoque</TableHead>
-                        <TableHead className="text-center w-24 cursor-pointer select-none hover:text-foreground" onClick={() => handleSort('productUnit')}>
-                          <span className="flex items-center justify-center">Unidade <SortIcon col="productUnit" /></span>
+                        <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                          <button type="button" className="flex w-full items-center justify-center select-none hover:text-foreground" onClick={() => handleSort('productUnit')}>Unidade <SortIcon col="productUnit" /></button>
                         </TableHead>
                       </TableRow>
                     </TableHeader>

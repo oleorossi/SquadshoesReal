@@ -442,7 +442,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <Label className="text-xs">Nome</Label>
                     <Input value={name} onChange={e => setName(e.target.value)} className="h-9 text-sm" />
@@ -499,7 +499,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                   <Badge variant="outline">{color}</Badge>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <Label className="text-xs">Nome</Label>
                     <Input value={name} onChange={e => setName(e.target.value)} className="h-9 text-sm" />
@@ -562,7 +562,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                 {(dimLength > 0 || dimWidth > 0) && (
                   <div className="space-y-2 rounded-lg border p-3">
                     <p className="text-xs font-semibold text-muted-foreground">Dimensões</p>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
                         <Label className="text-xs">Comp.</Label>
                         <NumberInput value={dimLength} onChange={setDimLength} min={0} className="h-8 text-xs" />
@@ -590,7 +590,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                 )}
 
                 {yieldPerMeter != null && yieldPerMeter > 0 && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Rendimento/m</Label>
                       <NumberInput value={yieldPerMeter || 0} onChange={v => setYieldPerMeter(v)} min={0} step="0.01" className="h-9 text-sm" />

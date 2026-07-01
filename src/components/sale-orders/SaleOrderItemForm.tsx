@@ -1649,13 +1649,13 @@ function ReferenceSearch({
           autoFocus
         />
       </div>
-      {filtered.length > 50 && !search && (
+      {filtered.length > 50 && (
         <p className="px-2 text-xs text-muted-foreground">
-          {filtered.length} referências — busque por código ou nome para filtrar.
+          Mostrando 50 de {filtered.length} referências — busque por código ou nome para refinar.
         </p>
       )}
       <div className="max-h-[300px] overflow-y-auto space-y-0.5">
-        {filtered.map(ref => {
+        {filtered.slice(0, 50).map(ref => {
           const variants = variantsByRef?.get(ref.id) ?? [];
           return (
             <button
@@ -1669,7 +1669,7 @@ function ReferenceSearch({
               <div className="flex items-start gap-3 flex-1 min-w-0">
                 <div className="h-14 w-14 rounded-md border bg-muted overflow-hidden flex-shrink-0">
                   {ref.image_url ? (
-                    <img src={ref.image_url} alt={ref.name} className="h-full w-full object-cover" />
+                    <img src={ref.image_url} alt={ref.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center text-muted-foreground/30">
                       <Package className="h-5 w-5" />
@@ -1765,7 +1765,7 @@ function ReferencePickerControlled({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" align="start">
+      <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start">
         <ReferenceSearch
           references={references}
           onSelect={(ref) => { onSelect(ref.id); setOpen(false); }}

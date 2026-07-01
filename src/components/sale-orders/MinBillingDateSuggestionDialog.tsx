@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -313,7 +314,7 @@ export function MinBillingDateSuggestionDialog({
                   if (!isAdmin && computedManualDate < minDateISO) {
                     // Toast inline pra não bloquear o submit handler; user precisa
                     // escolher uma semana ≥ mínima ou clicar em "Confirmar semana mínima".
-                    alert('Apenas administradores podem faturar antes da semana mínima calculada.');
+                    toast.error('Apenas administradores podem faturar antes da semana mínima calculada.');
                     return;
                   }
                   onPickManual(computedManualDate);
