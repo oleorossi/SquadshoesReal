@@ -6,11 +6,13 @@ import { adjustStockSafe } from '@/lib/stockAdjustments';
 // src/hooks/useSaleOrders.ts and the migration 20260506120000_sector-rename-wave-stages.sql.
 // The pre-rename names ('Corte', 'Forração', 'Costura') created stages that no
 // Kanban column maps after the rename, hiding OPs from operators.
+// 'Aviamento' é a grafia canônica desde 2026-07-01 (migration 20260902120000) —
+// gravar 'Mesa' aqui recriava a grafia dupla que some das telas de setor.
 const DEFAULT_STAGES = [
   { name: 'Corte Palmilha', order: 1 },
   { name: 'Corte Forração', order: 2 },
   { name: 'Costura', order: 3 },
-  { name: 'Mesa', order: 4 },
+  { name: 'Aviamento', order: 4 },
   { name: 'Silk', order: 5 },
   { name: 'Colagem', order: 6 },
   { name: 'Montagem', order: 7 },
@@ -104,10 +106,21 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
       }
 
       // RPC ausente (ambiente sem migration 20260504180000) → fallback legado.
-      const isMissingFn = String(rpcErr.message || '').toLowerCase().includes('does not exist')
-        || String((rpcErr as any).code || '') === '42883';
+      // ⚠ Detecção ESTREITA de propósito: só considera "a própria resync_op_atomic
+      // não existe" (PostgREST PGRST202, ou "does not exist" que CITE o nome dela).
+      // ANTES bastava qualquer 'does not exist' / SQLSTATE 42883 — e um erro de
+      // DENTRO da RPC (ex.: 'function unaccent(text) does not exist', também 42883)
+      // era lido como "a RPC sumiu", disparando o fallback NÃO-atômico que apaga
+      // estágios/reservas/consumos ANTES do re-débito. Quando o re-débito também
+      // falhava, a OP ficava corrompida (0 estágios/0 reservas, invisível no kanban).
+      // (bug 2026-07-01: unaccent em resolve_sole_color, corrigido em migration.)
+      const rpcCode = String((rpcErr as any).code || '');
+      const rpcMsg = String(rpcErr.message || '');
+      const isMissingFn = rpcCode === 'PGRST202'
+        || (/resync_op_atomic/i.test(rpcMsg) && /(does not exist|could not find)/i.test(rpcMsg));
       if (!isMissingFn) {
-        // Erro real da RPC (não é "função não existe") — propaga sem cair no fallback
+        // Erro real da RPC (ela RODOU e falhou) — propaga sem cair no fallback
+        // destrutivo. A RPC é transacional: já deu rollback, a OP fica intacta.
         throw rpcErr;
       }
       // The fallback is non-atomic (SELECT-then-UPDATE on stock with no row lock)
