@@ -53,6 +53,7 @@ export function useAddGroup() {
     mutationFn: async (form: {
       name: string;
       description: string;
+      sector: string;
       auto_component_sheet?: boolean;
       parent_group_id?: string | null;
       pairs_per_box_individual?: number | null;
@@ -65,7 +66,10 @@ export function useAddGroup() {
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['product_groups'] }); toast.success('Grupo criado!'); },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: any) => {
+      if (err?.code === '23505') { toast.error('Já existe um grupo com esse nome.'); return; }
+      toast.error(`Erro: ${err.message}`);
+    },
   });
 }
 

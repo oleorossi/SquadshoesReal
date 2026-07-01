@@ -60,6 +60,8 @@ export const ConsumptionLineSchema = z
     }),
     matched_by: z.string().optional(),
     category: z.string().optional(),
+    unit: z.string().optional(),
+    conversion_warning: z.string().nullable().optional(),
   })
   // Postgres devolve numeric como string em alguns drivers — coercionamos
   // ANTES da validação para evitar falsos positivos quando isso acontece.
@@ -153,6 +155,10 @@ export type ConsumptionLine = {
   source: string;
   matched_by?: string;
   category?: string;
+  unit?: string;
+  /** Aviso de get_material_conversion_info quando o material não tem largura
+   *  cadastrada em component_sheets — o valor pode estar ~100x inflado. */
+  conversion_warning?: string | null;
 };
 
 export type ConsumptionSummary = {

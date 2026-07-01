@@ -13,6 +13,7 @@ import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Sta
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
+import { SECTOR_OPTIONS, deriveCategoryFromGroup } from "@/lib/categoryFromGroup";
 import { cn } from "@/lib/utils";
 
 interface GroupCreateDialogProps {
@@ -20,13 +21,26 @@ interface GroupCreateDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const parseIntOrNull = (v: string): number | null => {
+  if (v === '') return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps) {
   const [form, setForm] = useState({
     name: "",
     description: "",
+    sector: "" as string,
     auto_component_sheet: false,
     parent_group_id: "" as string,
+    pairs_per_box_individual: null as number | null,
+    pairs_per_box_master: null as number | null,
+    pairs_per_box_colmeia: null as number | null,
+    pairs_per_box_fitilho: null as number | null,
   });
+  // Setor segue a sugestão automática pelo nome até o usuário escolher manualmente.
+  const [sectorTouched, setSectorTouched] = useState(false);
 
    const [duplicateMatch, setDuplicateMatch] = useState<any>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
@@ -61,13 +75,20 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
 
   const addGroup = useAddGroup();
 
-  const reset = () =>
+  const reset = () => {
     setForm({
       name: "",
       description: "",
+      sector: "",
       auto_component_sheet: false,
       parent_group_id: "",
+      pairs_per_box_individual: null,
+      pairs_per_box_master: null,
+      pairs_per_box_colmeia: null,
+      pairs_per_box_fitilho: null,
     });
+    setSectorTouched(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,13 +96,21 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     if (duplicateMatch && !duplicateConfirmed) {
       return;
     }
+    if (!form.sector) {
+      return;
+    }
 
     try {
       await addGroup.mutateAsync({
         name: form.name,
         description: form.description,
+        sector: form.sector,
         auto_component_sheet: form.auto_component_sheet,
         parent_group_id: form.parent_group_id || null,
+        pairs_per_box_individual: form.pairs_per_box_individual,
+        pairs_per_box_master: form.pairs_per_box_master,
+        pairs_per_box_colmeia: form.pairs_per_box_colmeia,
+        pairs_per_box_fitilho: form.pairs_per_box_fitilho,
       });
       reset();
       onOpenChange(false);
@@ -110,7 +139,12 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
                 id="group-name"
                  value={form.name}
                  onChange={(e) => {
-                   setForm((f) => ({ ...f, name: e.target.value }));
+                   const nextName = e.target.value;
+                   setForm((f) => ({
+                     ...f,
+                     name: nextName,
+                     sector: sectorTouched ? f.sector : deriveCategoryFromGroup(nextName),
+                   }));
                    setDuplicateConfirmed(false);
                    setDuplicateMatch(null);
                  }}
@@ -153,6 +187,25 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
                    </div>
                  </div>
                )}
+            </div>
+            <div>
+              <Label htmlFor="group-sector">Setor *</Label>
+              <Select
+                value={form.sector || undefined}
+                onValueChange={(v) => { setSectorTouched(true); setForm((f) => ({ ...f, sector: v })); }}
+              >
+                <SelectTrigger id="group-sector" className="mt-1">
+                  <SelectValue placeholder="Selecione o setor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SECTOR_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Define a categoria dos produtos deste grupo. Sugerido pelo nome — confira antes de criar.
+              </p>
             </div>
             <div>
               <Label htmlFor="group-desc">Descrição</Label>
@@ -202,6 +255,51 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
             </Label>
           </div>
 
+          <div className="rounded-lg border p-3 bg-muted/30 space-y-2">
+            <Label className="text-sm font-medium">Pares por embalagem (opcional)</Label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Use somente os tipos de caixa aplicáveis a este grupo. Pode ajustar depois na edição.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="ppb-ind-create" className="text-xs">Individual</Label>
+                <Input
+                  id="ppb-ind-create" type="number" min={1} step={1}
+                  value={form.pairs_per_box_individual ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_individual: parseIntOrNull(e.target.value) }))}
+                  className="mt-1 h-8" placeholder="Ex: 1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ppb-mas-create" className="text-xs">Master</Label>
+                <Input
+                  id="ppb-mas-create" type="number" min={1} step={1}
+                  value={form.pairs_per_box_master ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_master: parseIntOrNull(e.target.value) }))}
+                  className="mt-1 h-8" placeholder="Ex: 12"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ppb-col-create" className="text-xs">Colmeia</Label>
+                <Input
+                  id="ppb-col-create" type="number" min={1} step={1}
+                  value={form.pairs_per_box_colmeia ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_colmeia: parseIntOrNull(e.target.value) }))}
+                  className="mt-1 h-8" placeholder="Ex: 24"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ppb-fit-create" className="text-xs">Fitilho</Label>
+                <Input
+                  id="ppb-fit-create" type="number" min={1} step={1}
+                  value={form.pairs_per_box_fitilho ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_fitilho: parseIntOrNull(e.target.value) }))}
+                  className="mt-1 h-8" placeholder="Ex: 2"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
             <Truck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div>
@@ -218,7 +316,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={addGroup.isPending}>Criar Grupo</Button>
+            <Button type="submit" disabled={addGroup.isPending || !form.sector}>Criar Grupo</Button>
           </DialogFooter>
         </form>
       </DialogContent>
