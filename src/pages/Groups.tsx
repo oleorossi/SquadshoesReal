@@ -1,11 +1,7 @@
-import { useState } from 'react';
-import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
+import { useMemo, useState } from 'react';
+import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle, Package, Stack as Layers } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -13,21 +9,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
-import { useGroups, useAddGroup, useUpdateGroup, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
+import { useGroups, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
-import { Switch } from '@/components/ui/switch';
 import SupplierPanel from '@/components/groups/SupplierPanel';
 import GroupEditDialog from '@/components/groups/GroupEditDialog';
+import GroupCreateDialog from '@/components/groups/GroupCreateDialog';
 import GroupItemsManager from '@/components/groups/GroupItemsManager';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { flattenGroupTree } from '@/lib/groupHierarchy';
+import { sectorLabel } from '@/lib/categoryFromGroup';
 
 export default function Groups() {
   const { data: groups = [], isLoading, isError } = useGroups();
   const { data: products = [] } = useProducts();
-  const addGroup = useAddGroup();
-  const updateGroup = useUpdateGroup();
   const deleteGroup = useDeleteGroup();
 
   const sel = useMarqueeSelection(groups, (g) => g.id);
@@ -47,37 +43,17 @@ export default function Groups() {
   };
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<ProductGroup | null>(null);
-  const emptyForm = {
-    name: '',
-    description: '',
-    auto_component_sheet: false,
-    pairs_per_box_individual: null as number | null,
-    pairs_per_box_master: null as number | null,
-    pairs_per_box_colmeia: null as number | null,
-    pairs_per_box_fitilho: null as number | null,
-  };
-  const [form, setForm] = useState(emptyForm);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
   const [itemsGroup, setItemsGroup] = useState<ProductGroup | null>(null);
 
-  const openAdd = () => { setEditing(null); setForm(emptyForm); setDialogOpen(true); };
+  const openAdd = () => setDialogOpen(true);
   const openEdit = (g: ProductGroup) => { setEditGroup(g); };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    addGroup.mutate(form);
-    setDialogOpen(false);
-  };
-
-  const parseIntOrNull = (v: string): number | null => {
-    if (v === '') return null;
-    const n = parseInt(v, 10);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-
   const countProducts = (groupId: string) => products.filter(p => p.group_id === groupId).length;
+
+  // Ordem hierárquica (pai → filhos indentados), em vez de alfabética plana.
+  const treeGroups = useMemo(() => flattenGroupTree(groups), [groups]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -135,13 +111,14 @@ export default function Groups() {
                   />
                 </TableHead>
                 <TableHead>Nome</TableHead>
+                <TableHead>Setor</TableHead>
                 <TableHead>Descrição</TableHead>
                 <TableHead className="text-center">Produtos</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groups.map(g => {
+              {treeGroups.map(g => {
                   const isExpanded = expandedGroup === g.id;
                   return (
                     <Collapsible key={g.id} asChild open={isExpanded} onOpenChange={() => setExpandedGroup(isExpanded ? null : g.id)}>
@@ -154,7 +131,18 @@ export default function Groups() {
                               aria-label={`Selecionar ${g.name}`}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{g.name}</TableCell>
+                          <TableCell className="font-medium">
+                            <span className="flex items-center gap-1.5" style={{ paddingLeft: g.depth * 20 }}>
+                              {g.depth > 0 && <span className="text-muted-foreground">└</span>}
+                              {g.name}
+                              {g.childCount > 0 && (
+                                <Badge variant="secondary" className="h-4 text-[10px] gap-1 font-mono">
+                                  <Layers className="h-2.5 w-2.5" />{g.childCount}
+                                </Badge>
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs">{sectorLabel(g.sector)}</TableCell>
                           <TableCell className="text-muted-foreground">{g.description || '—'}</TableCell>
                           <TableCell className="text-center">
                             <button type="button" onClick={() => setItemsGroup(g)} title="Gerir itens do grupo">
@@ -180,7 +168,7 @@ export default function Groups() {
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={5} className="p-0">
+                            <td colSpan={6} className="p-0">
                               <SupplierPanel groupId={g.id} />
                             </td>
                           </tr>
@@ -195,81 +183,7 @@ export default function Groups() {
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditing(null); setForm(emptyForm); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Novo grupo de material</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-            <div>
-              <Label htmlFor="group-name">Nome do grupo de material *</Label>
-              <Input id="group-name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required className="mt-1" placeholder="Ex: Solados, Santorine, Colas" />
-            </div>
-            <div>
-              <Label htmlFor="group-desc">Descrição</Label>
-              <Textarea id="group-desc" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="mt-1" rows={3} placeholder="Descrição opcional do grupo" />
-            </div>
-            <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
-              <Switch
-                id="auto-bom"
-                checked={form.auto_component_sheet}
-                onCheckedChange={v => setForm(f => ({ ...f, auto_component_sheet: v }))}
-              />
-              <Label htmlFor="auto-bom" className="cursor-pointer text-sm">
-                Ficha de Componente (BOM) — itens deste grupo entram automaticamente
-              </Label>
-            </div>
-            <div className="rounded-lg border p-3 bg-muted/30 space-y-2">
-              <Label className="text-sm font-medium">Pares por embalagem (opcional)</Label>
-              <p className="text-xs text-muted-foreground -mt-1">
-                Use somente os tipos de caixa aplicáveis a este grupo. Pode ajustar depois na edição.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="ppb-ind" className="text-xs">Individual</Label>
-                  <Input
-                    id="ppb-ind" type="number" min={1} step={1}
-                    value={form.pairs_per_box_individual ?? ''}
-                    onChange={e => setForm(f => ({ ...f, pairs_per_box_individual: parseIntOrNull(e.target.value) }))}
-                    className="mt-1 h-8" placeholder="Ex: 1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ppb-mas" className="text-xs">Master</Label>
-                  <Input
-                    id="ppb-mas" type="number" min={1} step={1}
-                    value={form.pairs_per_box_master ?? ''}
-                    onChange={e => setForm(f => ({ ...f, pairs_per_box_master: parseIntOrNull(e.target.value) }))}
-                    className="mt-1 h-8" placeholder="Ex: 12"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ppb-col" className="text-xs">Colmeia</Label>
-                  <Input
-                    id="ppb-col" type="number" min={1} step={1}
-                    value={form.pairs_per_box_colmeia ?? ''}
-                    onChange={e => setForm(f => ({ ...f, pairs_per_box_colmeia: parseIntOrNull(e.target.value) }))}
-                    className="mt-1 h-8" placeholder="Ex: 24"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ppb-fit" className="text-xs">Fitilho</Label>
-                  <Input
-                    id="ppb-fit" type="number" min={1} step={1}
-                    value={form.pairs_per_box_fitilho ?? ''}
-                    onChange={e => setForm(f => ({ ...f, pairs_per_box_fitilho: parseIntOrNull(e.target.value) }))}
-                    className="mt-1 h-8" placeholder="Ex: 2"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit">Criar</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <GroupCreateDialog open={dialogOpen} onOpenChange={setDialogOpen} />
 
       {editGroup && (
         <GroupEditDialog

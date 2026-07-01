@@ -151,6 +151,34 @@ regra segura, **bloqueia o item** (`needsConfig`) em vez de gravar qtd errada. A
 adicionar unidade nova, atualizar `toCanonical` E `src/lib/materialConsumption.ts`
 (`LINEAR_UNITS`/`PLATE_UNITS`).
 
+## Organização de Grupos de Estoque (product_groups)
+
+> Reorganizado em 2026-07-01: os dois fluxos de criação de grupo (tela **Estoque →
+> Grupos** e a aba **Materiais** do Estoque) foram unificados em
+> `src/components/groups/GroupCreateDialog.tsx` — não recriar um form de criação
+> separado; é a fonte única (nome, Setor, grupo-pai, embalagem, checagem de duplicata).
+
+- **Nomenclatura:** nome do grupo em **CAIXA ALTA**, padrão
+  `MATERIAL[ + VARIANTE/BITOLA]` (ex.: `SOLADO 01`, `NAPA SANTORINE`,
+  `TIRA CHATA 8MM`) — convenção já usada pelos grupos de solado, agora sugerida no
+  dialog de criação. Índice único case-insensitive em `product_groups.name`
+  (`lower(trim(name))`, migration `20260901140000`) trava duplicata que escapar do
+  aviso da UI.
+- **Hierarquia (`parent_group_id`):** use pra agrupar variações do mesmo material sob
+  uma família (ex.: `COMPONENTES` como pai de `TIRA CHATA 8MM`, `TIRA STRASS 15MM`
+  etc.). Helpers em `src/lib/groupHierarchy.ts` (`flattenGroupTree`,
+  `getDescendantIds`, `canBeParent`, `getGroupPath`) — reusar, não duplicar lógica de
+  árvore. A tela **Estoque → Grupos** (`src/pages/Groups.tsx`) já renderiza nessa
+  ordem hierárquica com indentação; vincular/desvincular subgrupo fica na aba
+  "Hierarquia" do `GroupEditDialog.tsx`.
+- **Setor (`product_groups.sector`):** define a categoria (`products.category`) de
+  todos os produtos do grupo — mover o grupo de setor cascateia automaticamente
+  (trigger `tg_group_sector_cascade`, migration `20260629140000`). **Obrigatório na
+  criação** desde a unificação acima (antes um grupo novo nascia com `sector = NULL`
+  até alguém lembrar de editar, e os produtos caíam silenciosamente em "Componente").
+  Valores válidos = `SECTOR_OPTIONS` (`src/lib/categoryFromGroup.ts`), com `CHECK`
+  constraint espelhando no banco (migration `20260901140000`).
+
 ## Design Token System — DO NOT use hardcoded colors
 
 This project uses **CSS custom property tokens** defined in `src/index.css`. Using
