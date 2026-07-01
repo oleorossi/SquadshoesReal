@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useEffect, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +23,12 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const qc = useQueryClient();
+
+  // O componente fica montado com open controlado: sem isto, cancelar uma
+  // baixa e abrir a de OUTRO produto herdava quantidade/observações antigas.
+  useEffect(() => {
+    if (open) { setQuantity(0); setOrderNumber(''); setNotes(''); }
+  }, [open, product?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +95,7 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
             <PackageMinus className="h-5 w-5 text-destructive" />
             Baixa Manual de Estoque
           </DialogTitle>
+        <DialogDescription>Registre uma saída avulsa de estoque deste material.</DialogDescription>
         </DialogHeader>
         {product && (
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">

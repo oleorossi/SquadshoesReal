@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle } from '@phosphor-icons/react';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -1045,6 +1049,8 @@ function ProductBulkActionsBar({
     }
   }
 
+  const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
+
   async function handleDelete() {
     if (selectedIds.size === 0) return;
     // Single delete: usa flow com dialog de força (mesmo comportamento da linha)
@@ -1053,10 +1059,11 @@ function ProductBulkActionsBar({
       forceDeleteFlow.tryDelete(id);
       return;
     }
-    // Bulk delete: confirma e tenta. Quem tiver vínculos cai no toast genérico.
-    if (!window.confirm(`Excluir ${selectedIds.size} produtos? Itens com vínculos serão pulados (exclusão um a um pra forçar).`)) {
-      return;
-    }
+    // Bulk delete: confirmação estruturada (AlertDialog) em vez de confirm().
+    setConfirmBulkOpen(true);
+  }
+
+  async function doBulkDelete() {
     setBusy(true);
     let ok = 0;
     let blocked = 0;
@@ -1145,6 +1152,26 @@ function ProductBulkActionsBar({
         ]}
       />
       {forceDeleteFlow.dialog}
+
+      <AlertDialog open={confirmBulkOpen} onOpenChange={setConfirmBulkOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {selectedIds.size} produtos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Itens com vínculos serão pulados — exclua um a um pra forçar. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setConfirmBulkOpen(false); void doBulkDelete(); }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

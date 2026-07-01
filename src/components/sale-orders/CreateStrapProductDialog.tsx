@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -366,6 +366,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
             <Package className="h-5 w-5" />
             Cadastrar Item no Estoque
           </DialogTitle>
+        <DialogDescription className="sr-only">Cadastro de produto de tira com dimensões e preço.</DialogDescription>
         </DialogHeader>
 
         {prefilling ? (

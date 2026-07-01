@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -145,6 +145,7 @@ export default function StrapSummaryDialog({ open, onOpenChange, movements }: Pr
             <BarChart3 className="h-5 w-5 text-primary" />
             Resumo Semanal — Tiras
           </DialogTitle>
+        <DialogDescription>Consumo e produção de tiras da semana.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 mt-2">

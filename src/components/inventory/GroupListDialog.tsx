@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { stripColorFromName } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -225,6 +225,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
               <FolderOpen className="h-5 w-5" />
               Grupos de Itens
             </DialogTitle>
+          <DialogDescription>Gerencie os grupos de itens do estoque.</DialogDescription>
           </DialogHeader>
 
           <div className="flex items-center gap-2">
@@ -299,6 +300,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label={(g as any).auto_component_sheet ? 'Remover da Ficha de Componente (BOM)' : 'Incluir na Ficha de Componente (BOM)'}
                                 className={`h-7 w-7 ${(g as any).auto_component_sheet ? 'text-primary bg-primary/10' : 'text-muted-foreground'}`}
                                 onClick={async (e) => {
                                   e.stopPropagation();
@@ -327,6 +329,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label={(g as any).is_bom_color_source ? 'Desativar como fonte de cores' : 'Ativar como fonte de cores do BOM'}
                                 className={`h-7 w-7 ${(g as any).is_bom_color_source ? 'text-amber-600 bg-amber-500/10' : 'text-muted-foreground'}`}
                                 onClick={async (e) => {
                                   e.stopPropagation();
@@ -355,6 +358,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label="Editar grupo"
                                 className="h-7 w-7"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -372,6 +376,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label="Excluir grupo"
                                 className="h-7 w-7 text-destructive hover:text-destructive"
                                 onClick={(e) => {
                                   e.stopPropagation();

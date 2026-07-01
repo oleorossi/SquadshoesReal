@@ -657,7 +657,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
                 </span>
               </div>
             )}
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-wrap justify-end gap-2 sm:gap-3">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
               {product.group_id && (
                 <Button type="button" variant="secondary" className="gap-2" onClick={() => setAddDialogOpen(true)}>
@@ -669,7 +669,7 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
                 onClick={handleSave}
                 disabled={saving || effectiveSizeKeys.length === 0}
               >
-                {saving ? 'Salvando...' : `Salvar Grade (${colorVariants.length} cor${colorVariants.length > 1 ? 'es' : ''})`}
+                {saving ? 'Salvando...' : 'Salvar Grade'}
               </Button>
             </div>
           </div>

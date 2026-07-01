@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -89,6 +90,7 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
+        <DialogDescription>Vincule um fornecedor e suas condições a este grupo.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -189,26 +191,18 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Mínimo para Frete Grátis (R$)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.min_free_shipping || ''}
-                  onChange={e => set('min_free_shipping', Number(e.target.value))}
+                <CurrencyInput
+                  value={form.min_free_shipping || 0}
+                  onChange={v => set('min_free_shipping', v)}
                   className="mt-1"
-                  placeholder="Ex: 1500.00"
                 />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Custo Padrão do Frete (R$)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.standard_shipping_cost || ''}
-                  onChange={e => set('standard_shipping_cost', Number(e.target.value))}
+                <CurrencyInput
+                  value={form.standard_shipping_cost || 0}
+                  onChange={v => set('standard_shipping_cost', v)}
                   className="mt-1"
-                  placeholder="Ex: 80.00"
                 />
               </div>
             </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -171,6 +171,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
             <TrendingUp className="h-5 w-5 text-primary" />
             Margem de Lucro — {orderNumber}
           </DialogTitle>
+        <DialogDescription className="sr-only">Análise de margem e custos do pedido.</DialogDescription>
         </DialogHeader>
 
         {loading ? (

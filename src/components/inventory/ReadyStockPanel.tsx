@@ -382,7 +382,7 @@ ${cardsHtml}
     writeRawPrintWindow(openPrintWindow('Pronta Entrega'), htmlDoc);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selRef || !selColor) return;
     const items = Object.entries(gradeQty)
       .filter(([_, qty]) => qty > 0)
@@ -395,9 +395,14 @@ ${cardsHtml}
         notes,
       }));
     if (items.length === 0) return;
-    batchUpsert.mutate(items);
-    setDialogOpen(false);
-    resetForm();
+    try {
+      await batchUpsert.mutateAsync(items);
+      // Só fecha/reseta no sucesso — falha mantém a grade digitada na tela
+      setDialogOpen(false);
+      resetForm();
+    } catch {
+      // erro já toasteado pelo hook (onError)
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -730,10 +735,10 @@ ${cardsHtml}
 
             <Button
               onClick={handleSubmit}
-              disabled={!selRef || !selColor || Object.values(gradeQty).every(v => !v)}
+              disabled={batchUpsert.isPending || !selRef || !selColor || Object.values(gradeQty).every(v => !v)}
               className="w-full"
             >
-              Lançar no Estoque
+              {batchUpsert.isPending ? 'Lançando...' : 'Lançar no Estoque'}
             </Button>
           </div>
         </DialogContent>

@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -105,6 +105,7 @@ export function PriceListItemsDialog({ open, onClose, priceList }: PriceListItem
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-primary" /> Itens — {priceList?.name}
           </DialogTitle>
+        <DialogDescription className="sr-only">Itens e preços desta tabela.</DialogDescription>
         </DialogHeader>
 
         {/* Form de adição */}

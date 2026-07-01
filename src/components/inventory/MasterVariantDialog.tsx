@@ -1,4 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -374,6 +378,7 @@ export function MasterVariantDialog({
    };
   const [groupForm, setGroupForm] = useState<GroupForm | null>(null);
   const [savingGroup, setSavingGroup] = useState(false);
+  const [confirmUnitOpen, setConfirmUnitOpen] = useState(false);
 
   // Helper compartilhado: NaN/null/undefined → fallback (0 por default).
   // Usado nos onChange dos inputs numéricos pra evitar que o state segure
@@ -508,11 +513,17 @@ export function MasterVariantDialog({
       groupForm.purchase_unit !== (tpl.purchase_unit || 'un') ||
       groupForm.production_unit !== (tpl.production_unit || 'un');
     if (unitChanged) {
-      const ok = window.confirm(
-        'Você alterou a unidade de compra ou de produção. Isso afeta o cálculo de consumo de TODAS as referências que usam estas variantes. Deseja continuar?'
-      );
-      if (!ok) return;
+      setConfirmUnitOpen(true);
+      return;
     }
+    await doSaveGroupForm();
+  };
+
+  // Persistência de fato — direto (sem mudança de unidade) ou via confirmação
+  // do AlertDialog de mudança crítica de unidade.
+  const doSaveGroupForm = async () => {
+    if (!groupForm) return;
+    const newBase = groupForm.baseName.trim();
 
     setSavingGroup(true);
     try {
@@ -844,7 +855,7 @@ export function MasterVariantDialog({
 
                       <section className="space-y-3">
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços Base</h4>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Custo unitário (R$)</Label>
                             <Input type="number" step="0.0001" value={groupForm.unit_price} onChange={e => updateGroup('unit_price', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
@@ -862,7 +873,7 @@ export function MasterVariantDialog({
 
                       <section className="space-y-3">
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque & Localização</h4>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Estoque Mínimo</Label>
                             <Input type="number" value={groupForm.min_stock} onChange={e => updateGroup('min_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
@@ -889,7 +900,7 @@ export function MasterVariantDialog({
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-2">
                           <Layers className="h-3 w-3" /> Dimensões
                         </h4>
-                        <div className="grid grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           <div>
                             <Label className="text-xs">Comprimento</Label>
                             <Input type="number" value={groupForm.dimensions_length} onChange={e => updateGroup('dimensions_length', Number(e.target.value))} className="mt-1 h-9 font-mono" />
@@ -922,7 +933,7 @@ export function MasterVariantDialog({
                         <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-2">
                           <ArrowRightLeft className="h-3 w-3" /> Conversão de Unidades
                         </h4>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Unidade de compra</Label>
                             <Select value={groupForm.purchase_unit} onValueChange={v => updateGroup('purchase_unit', v)}>
@@ -1048,6 +1059,24 @@ export function MasterVariantDialog({
         product={detailVariant}
         otherVariants={detailVariant ? variants.filter(v => v.id !== detailVariant.id) : []}
       />
+
+      {/* Mudança de unidade afeta o consumo de TODAS as referências — confirmação estruturada */}
+      <AlertDialog open={confirmUnitOpen} onOpenChange={setConfirmUnitOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alterar unidade de compra/produção?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso afeta o cálculo de consumo de TODAS as referências que usam estas variantes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmUnitOpen(false); void doSaveGroupForm(); }}>
+              Continuar e salvar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

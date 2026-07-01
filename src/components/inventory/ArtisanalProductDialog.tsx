@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Flask as FlaskConical, ArrowRight, Package, Scissors, CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -110,24 +111,26 @@ function getOutputName(product: Product, groupName?: string): string {
 
    const handleSave = async () => {
      if (targetProducts.length === 0) return;
+     // Valida ANTES de tocar no banco — senão os produtos ficavam marcados
+     // como artesanais sem receita quando a validação abortava o save.
+     if (form.isArtisanal) {
+       if (!form.baseMaterial.trim()) {
+         toast.error('Informe a matéria-prima base.');
+         return;
+       }
+       if (Number(form.yieldPerMeter) <= 0) {
+         toast.error('Rendimento deve ser maior que zero.');
+         return;
+       }
+     }
      setSaving(true);
      try {
        // Update all products in the batch
-       await Promise.all(targetProducts.map(p => 
+       await Promise.all(targetProducts.map(p =>
          setArtisanal.mutateAsync({ id: p.id, value: form.isArtisanal })
        ));
- 
+
        if (form.isArtisanal) {
-        if (!form.baseMaterial.trim()) {
-          toast.error('Informe a matéria-prima base.');
-          setSaving(false);
-          return;
-        }
-        if (Number(form.yieldPerMeter) <= 0) {
-          toast.error('Rendimento deve ser maior que zero.');
-          setSaving(false);
-          return;
-        }
 
         const payload = {
           name: `Receita: ${outputName}`,
@@ -168,6 +171,7 @@ function getOutputName(product: Product, groupName?: string): string {
              <FlaskConical className="h-5 w-5 text-primary" />
              Produção Artesanal
            </DialogTitle>
+         <DialogDescription>Defina matéria-prima base e rendimento da receita artesanal.</DialogDescription>
          </DialogHeader>
  
          <div className="space-y-4">
@@ -222,19 +226,12 @@ function getOutputName(product: Product, groupName?: string): string {
               <div className="space-y-3">
                  <div className="space-y-1">
                    <Label className="text-xs text-muted-foreground">Grupo de matéria-prima base</Label>
-                   <Select
+                   <SearchableSelect
                      value={form.baseMaterial}
-                     onValueChange={v => set('baseMaterial', v)}
-                   >
-                     <SelectTrigger className="h-9">
-                       <SelectValue placeholder="Selecione o grupo base..." />
-                     </SelectTrigger>
-                     <SelectContent>
-                       {groups.map(g => (
-                         <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
-                       ))}
-                     </SelectContent>
-                   </Select>
+                     onChange={v => set('baseMaterial', v)}
+                     options={groups.map(g => ({ value: g.name, label: g.name }))}
+                     placeholder="Selecione o grupo base..."
+                   />
                  </div>
 
                 <div className="grid grid-cols-2 gap-3">

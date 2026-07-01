@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 
@@ -53,8 +53,10 @@ export default function PackagingStockPanel() {
     });
   };
 
+  const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (!editDialogId) return;
+    if (!editDialogId || saving) return;
+    setSaving(true);
     try {
       const product = products.find(p => p.id === editDialogId);
       const prevStock = Number(product?.quantity || 0);
@@ -86,6 +88,8 @@ export default function PackagingStockPanel() {
       setEditDialogId(null);
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -205,6 +209,7 @@ export default function PackagingStockPanel() {
             <DialogTitle className="flex items-center gap-2">
               <Ruler className="h-5 w-5 text-primary" /> Editar Embalagem
             </DialogTitle>
+          <DialogDescription>Ajuste os dados e o estoque da embalagem.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -244,8 +249,8 @@ export default function PackagingStockPanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogId(null)}>Cancelar</Button>
-            <Button onClick={handleSave}>
-              <Save className="h-4 w-4 mr-1" /> Salvar
+            <Button onClick={handleSave} disabled={saving}>
+              <Save className="h-4 w-4 mr-1" /> {saving ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

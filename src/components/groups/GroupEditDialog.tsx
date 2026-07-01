@@ -8,7 +8,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
 import { useContractors } from '@/hooks/useContractors';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -126,7 +126,6 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success(`${selected.size} ${selected.size === 1 ? 'item adicionado' : 'itens adicionados'} ao grupo "${groupName}"`);
       setSelected(new Set());
-      toast.success("Grupo de material atualizado/adicionado");
       onOpenChange(false);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
@@ -143,6 +142,7 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
             <Plus className="h-5 w-5" />
             Adicionar itens ao grupo "{groupName}"
           </DialogTitle>
+        <DialogDescription>Selecione produtos para incluir no grupo.</DialogDescription>
         </DialogHeader>
 
         <div className="relative">
@@ -672,6 +672,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 </div>
                 <div className="min-w-0">
                   <DialogTitle className="truncate text-lg font-bold leading-tight">{group.name}</DialogTitle>
+                  <DialogDescription className="sr-only">Edite setor, hierarquia, especificações e itens do grupo.</DialogDescription>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <span className="font-mono uppercase tracking-wider text-[10px]">Editar grupo</span>
                     <span>·</span>
@@ -871,7 +872,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
               {/* Artesanal */}
               {show.artisanal && (
-              <div className="rounded-lg border-2 border-amber-200 p-4 bg-amber-50/50 space-y-3">
+              <div className="rounded-lg border-2 border-amber-500/40 p-4 bg-amber-500/10 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <FlaskConical className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
@@ -943,7 +944,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                       </Select>
                     </div>
                     {artYieldPerMeter > 0 && (
-                      <p className="text-xs text-amber-700 bg-amber-100 rounded px-2 py-1">
+                      <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded px-2 py-1">
                         Cada 1 m de base gera {artYieldPerMeter.toFixed(2)} m² de produto acabado
                         {artLaborCost > 0 ? ` · MO: R$ ${artLaborCost.toFixed(2)}/m` : ''}
                       </p>
@@ -1168,19 +1169,6 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     </p>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-end gap-3 pt-4 border-t bg-muted/5">
-                  <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleSave} disabled={saving}>
-                    {saving
-                      ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      : sectorChanged
-                        ? <ArrowsLeftRight className="h-4 w-4 mr-1.5" weight="bold" />
-                        : <Save className="h-4 w-4 mr-1" />}
-                    {sectorChanged ? `Mover para ${sectorLabel(sector)} e salvar` : 'Salvar Grupo e Itens'}
-                  </Button>
-                </CardFooter>
               </Card>
             </TabsContent>
 
@@ -1274,6 +1262,23 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               )}
             </TabsContent>
           </Tabs>
+
+          {/* Footer global do dialog — Salvar visível em TODAS as abas (antes
+              vivia num CardFooter da aba Geral; nas outras abas não tinha como
+              salvar/cancelar). */}
+          <DialogFooter className="mt-4 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving
+                ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                : sectorChanged
+                  ? <ArrowsLeftRight className="h-4 w-4 mr-1.5" weight="bold" />
+                  : <Save className="h-4 w-4 mr-1" />}
+              {sectorChanged ? `Mover para ${sectorLabel(sector)} e salvar` : 'Salvar Grupo e Itens'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

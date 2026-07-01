@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -108,18 +109,23 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const submitData = {
       ...form,
       technical_sheet_id: form.technical_sheet_id || null,
     } as any;
-    if (editing) {
-      updateRef.mutate({ id: editing.id, data: submitData });
-    } else {
-      addRef.mutate(submitData);
+    try {
+      if (editing) {
+        await updateRef.mutateAsync({ id: editing.id, data: submitData });
+      } else {
+        await addRef.mutateAsync(submitData);
+      }
+      // Só fecha no sucesso — falha mantém o form preenchido na tela
+      setDialogOpen(false);
+    } catch {
+      // erro já toasteado pelo hook (onError)
     }
-    setDialogOpen(false);
   };
 
   const formatCurrency = (v: number) =>
@@ -229,11 +235,14 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Referência' : 'Nova Referência'}</DialogTitle>
+          <DialogDescription>Modelo de calçado com ficha técnica, grade, cores e preços.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             {/* Image upload */}
             <div className="flex items-center gap-4">
-              <div
+              <button
+                type="button"
+                aria-label="Enviar foto do modelo"
                 className="h-24 w-24 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center overflow-hidden cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -247,7 +256,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                     <span className="text-xs text-muted-foreground">Foto</span>
                   </div>
                 )}
-              </div>
+              </button>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
               <div className="flex-1 space-y-1">
                 <p className="text-sm font-medium">Foto do Modelo</p>
@@ -260,8 +269,8 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
                 <Label>Ficha Técnica</Label>
                 <Select value={form.technical_sheet_id} onValueChange={v => setForm(f => ({ ...f, technical_sheet_id: v === '_none' ? '' : v }))}>
                   <SelectTrigger className="mt-1">
@@ -281,7 +290,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label htmlFor="ref-name">Nome do Modelo</Label>
                 <Input id="ref-name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required className="mt-1" placeholder="Ex: Sandália Bella" />
               </div>
@@ -308,7 +317,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                 <Label htmlFor="ref-collection">Coleção</Label>
                 <Input id="ref-collection" value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))} className="mt-1" placeholder="Ex: Verão 2026" />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label className="mb-1.5 block">Grade de Numeração</Label>
                 <div className="flex gap-2 mb-2">
                   <Button
@@ -338,7 +347,7 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                   ))}
                 </div>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label>Cores / Variações</Label>
                 <ColorsMultiSelect
                   value={form.colors}
@@ -362,14 +371,14 @@ export default function References({ embedded }: { embedded?: boolean } = {}) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label htmlFor="ref-desc">Descrição / Observações</Label>
                 <Textarea id="ref-desc" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="mt-1" rows={2} />
               </div>
             </div>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit">{editing ? 'Salvar' : 'Criar'}</Button>
+              <Button type="submit" disabled={addRef.isPending || updateRef.isPending}>{addRef.isPending || updateRef.isPending ? 'Salvando...' : editing ? 'Salvar' : 'Criar'}</Button>
             </div>
           </form>
           {editing && (
@@ -617,45 +626,18 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="col-span-2 sm:col-span-3">
               <Label className="text-xs">Material do Estoque</Label>
-              <Select value={form.product_id} onValueChange={v => setForm(f => ({ ...f, product_id: v }))}>
-                <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione o material..." /></SelectTrigger>
-                <SelectContent>
-                  {COMPONENT_CATEGORIES.map(cat => {
-                    const catProducts = availableProducts.filter(p => p.category === cat.key);
-                    if (catProducts.length === 0) return null;
-                    return (
-                      <div key={cat.key}>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50">{cat.label}</div>
-                        {catProducts.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <span className="flex items-center gap-2">
-                              {p.name}
-                              <span className="text-muted-foreground font-mono text-xs">({p.sku})</span>
-                              <span className="text-muted-foreground text-xs">• {p.unit}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </div>
-                    );
-                  })}
-                  {/* Products without matching category */}
-                  {(() => {
-                    const catKeys: string[] = COMPONENT_CATEGORIES.map(c => c.key);
-                    const uncategorized = availableProducts.filter(p => !catKeys.includes(p.category));
-                    if (uncategorized.length === 0) return null;
-                    return (
-                      <div>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50">Outros</div>
-                        {uncategorized.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} ({p.sku})
-                          </SelectItem>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={form.product_id}
+                onChange={v => setForm(f => ({ ...f, product_id: v }))}
+                options={availableProducts.map(p => ({
+                  value: p.id,
+                  label: p.name,
+                  description: `${p.sku} · ${p.unit}`,
+                  keywords: p.category,
+                }))}
+                placeholder="Selecione o material..."
+                className="mt-1"
+              />
             </div>
             <div>
               <Label className="text-xs">Consumo por Par</Label>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,6 +130,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Novo Grupo de Material</DialogTitle>
+        <DialogDescription>O setor define a aba do Estoque onde o grupo aparece.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-3">
@@ -167,7 +168,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
                        type="button"
                        variant="outline"
                        size="sm"
-                       className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                       className="text-xs border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
                        onClick={() => setDuplicateMatch(null)}
                      >
                        Sim, é o mesmo

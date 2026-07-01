@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -966,6 +966,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             <Package className="h-5 w-5 text-primary" />
             Consumo de Materiais — {orderNumber}
           </DialogTitle>
+        <DialogDescription className="sr-only">Consumo calculado por material com disponibilidade em estoque.</DialogDescription>
         </DialogHeader>
 
         {loading ? (

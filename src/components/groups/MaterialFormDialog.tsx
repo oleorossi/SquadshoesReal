@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -102,6 +103,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing, onSubm
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Material' : 'Novo Material'}</DialogTitle>
+        <DialogDescription>Dados técnicos, valores e NF do material deste fornecedor.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-5 mt-2">
           {/* Dados do Material */}
@@ -236,7 +238,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing, onSubm
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Preço Unitário (R$)</Label>
-                <Input type="number" step="0.01" min={0} value={form.unit_price} onChange={e => set('unit_price', Number(e.target.value))} className="mt-1" />
+                <CurrencyInput value={form.unit_price} onChange={v => set('unit_price', v)} className="mt-1" />
               </div>
               <div>
                 <Label>Pedido Mínimo</Label>
@@ -263,7 +265,7 @@ export default function MaterialFormDialog({ open, onOpenChange, editing, onSubm
               </div>
               <div>
                 <Label>Valor NF (R$)</Label>
-                <Input type="number" step="0.01" min={0} value={form.invoice_value} onChange={e => set('invoice_value', Number(e.target.value))} className="mt-1" />
+                <CurrencyInput value={form.invoice_value} onChange={v => set('invoice_value', v)} className="mt-1" />
               </div>
               <div>
                 <Label>Chave NF-e</Label>

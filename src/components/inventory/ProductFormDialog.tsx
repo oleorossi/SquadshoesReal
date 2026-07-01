@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { stripColorFromName } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   AlertDialog,
@@ -1018,6 +1018,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Material' : 'Novo Material'}</DialogTitle>
+        <DialogDescription>Cadastre ou edite dados, dimensões, conversões e preços do material.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
@@ -1073,11 +1074,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             </div>
           )}
            {/* Reforma 2026-05: grid de 2 colunas. Nome e Nome Técnico ocupam linha
-                inteira (col-span-2) pra acomodar textos longos. SKU/Grupo lado-a-lado;
+                inteira (sm:col-span-2) pra acomodar textos longos. SKU/Grupo lado-a-lado;
                 Fornecedor span 2 também. Removidos: "Item Padrão de Solado", "Cor"
                 e "Rendimento Técnico" — viram parte de outros fluxos. */}
-           <div className="grid grid-cols-2 gap-4 mt-4">
-             <div className="col-span-2">
+           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+             <div className="sm:col-span-2">
               <Label htmlFor="name" className={attempted && errors.name ? 'text-destructive' : ''}>Nome *</Label>
               <Input
                 id="name"
@@ -1120,7 +1121,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                        className="text-xs border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
                         onClick={() => {
                           onOpenChange(false);
                           toast.info('Este item já está cadastrado. Localize-o na lista de materiais.', { duration: 5000 });
@@ -1146,7 +1147,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 );
               })()}
             </div>
-             <div className="col-span-2">
+             <div className="sm:col-span-2">
                <Label htmlFor="technical_name">Nome Técnico</Label>
               <Textarea
                 id="technical_name"
@@ -1212,7 +1213,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               })()}
             </div>
 
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label>Fornecedor</Label>
               <Select value={form.supplier_id || 'none'} onValueChange={v => update('supplier_id', v === 'none' ? null : v)}>
                 <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
@@ -1287,7 +1288,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
 
             {isSolado && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label>Cor do Solado</Label>
                 <Select value={soladoColor} onValueChange={setSoladoColor}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a cor" /></SelectTrigger>
@@ -1324,12 +1325,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
 
             {hasGrade && (
-              <div className="col-span-2 p-3 rounded-lg border bg-muted/30">
+              <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30">
                 <Label className="flex items-center gap-2 text-sm font-semibold mb-3">
                   <Footprints className="h-4 w-4 text-primary" />
                   Faixa de Numeração
                 </Label>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label className="text-xs text-muted-foreground">De (número inicial)</Label>
                     <Select value={sizeFrom != null ? String(sizeFrom) : ''} onValueChange={v => setSizeFrom(Number(v))}>
@@ -1373,7 +1374,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
 
             {hasGrade && (
-              <div className="col-span-2 p-3 rounded-lg border bg-muted/30">
+              <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30">
                 <SoleSizeConjugationsEditor
                   soleGroupId={form.group_id}
                   sizeFrom={sizeFrom}
@@ -1383,7 +1384,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
 
             {hasGrade && sizeFrom != null && sizeTo != null && sizeTo >= sizeFrom && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label className="text-xs font-semibold">Grade de Numeração (pares por tamanho)</Label>
                 {soleConjugations.length > 0 && (
                   <p className="text-xs text-primary mt-1 mb-1">Numerações conjugadas ativas — grade usa chaves conjugadas</p>
@@ -1411,9 +1412,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
 
-            <div className="col-span-2 p-3 rounded-lg border bg-muted/30">
+            <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30">
               <Label className="text-sm font-semibold">Dimensões do Material</Label>
-              <div className="grid grid-cols-4 gap-3 mt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
                 <div>
                   <Label className="text-xs text-muted-foreground">Altura</Label>
                   <NumberInput
@@ -1465,7 +1466,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             </div>
 
             {isSolado && (
-              <div className="col-span-2 p-3 rounded-lg border bg-muted/30 mb-4 space-y-2">
+              <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30 mb-4 space-y-2">
                 <Label className="flex items-center gap-2 text-sm font-semibold">
                   <Box className="h-4 w-4 text-primary" />
                   Embalagem
@@ -1481,7 +1482,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             {/* "Rendimento Técnico (dm²/par por numeração)" removido em 2026-05
                 — agora vive em outra tela específica de consumo. */}
 
-            <div className="col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
+            <div className="sm:col-span-2 p-3 rounded-lg border bg-muted/30 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Label className="text-sm font-semibold">Unidades de Medida</Label>
                 {/* Quick-fill: aplica template do CONVERSION_TEMPLATES */}
@@ -1502,7 +1503,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-muted-foreground">Unidade de Consumo</Label>
                   <Select value={form.unit} onValueChange={v => update('unit', v)}>
@@ -1527,7 +1528,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
               {(form.purchase_unit && form.purchase_unit !== form.unit) && (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-muted-foreground">Fator de Conversão</Label>
                       <NumberInput
@@ -1636,7 +1637,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
 
             {hasGrade && sizeFrom != null && sizeTo != null && sizeTo >= sizeFrom ? (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label className="text-xs font-semibold">Estoque Mínimo por Numeração</Label>
                 <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: `repeat(${gradeSizes.length}, minmax(0, 1fr))` }}>
                   {gradeSizes.map(size => (
@@ -1675,14 +1676,14 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               const selectedGroup = groups.find(g => g.name === form.category);
               const hasGroupPrice = selectedGroup && selectedGroup.package_price > 0 && selectedGroup.package_weight_kg > 0;
               return (
-                <div className="col-span-2 rounded-lg border p-3 bg-muted/30 space-y-3">
+                <div className="sm:col-span-2 rounded-lg border p-3 bg-muted/30 space-y-3">
                   <Label className="text-sm font-semibold">Custo do Material</Label>
                   {hasGroupPrice && (
                     <p className="text-xs text-muted-foreground -mt-1">
                       Grupo <span className="font-semibold">{selectedGroup.name}</span>: R$ {selectedGroup.package_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} por {selectedGroup.package_weight_kg}kg
                     </p>
                   )}
-                  <div className={`grid gap-3 ${hasGroupPrice ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                  <div className={`grid gap-3 ${hasGroupPrice ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1'}`}>
                     {hasGroupPrice && (
                       <>
                         <div>
@@ -1712,7 +1713,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                         </div>
                       </>
                     )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 col-span-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
                       <div>
                         <Label className="text-xs text-muted-foreground">
                           {form.unit === 'kg' ? 'Custo por kg (R$)' : ['metro', 'm', 'metros'].includes(form.unit) ? 'Custo por metro (R$)' : form.unit === 'par' ? 'Custo por par (R$)' : 'Custo Unitário (R$)'}
@@ -1789,7 +1790,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               </div>
             )}
             {!isEditing && createComponentSheet && (
-              <p className="text-xs text-muted-foreground col-span-2 -mt-2">
+              <p className="text-xs text-muted-foreground sm:col-span-2 -mt-2">
                 Ao ativar, este item (e todo o grupo) será adicionado automaticamente à lista de Fichas de Componentes.
               </p>
             )}
@@ -1810,7 +1811,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-muted-foreground">Família atual</Label>
                       <p className="mt-1 text-sm font-medium">
