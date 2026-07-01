@@ -459,6 +459,37 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return { itens, pares, atrasados };
   }, [orders, osOverview, todayISO]);
 
+  // Total a pagar (OS com conta a pagar gerada e ainda não quitada).
+  const aPagar = useMemo(() => {
+    let count = 0, value = 0;
+    for (const o of orders) {
+      const ov = osOverview?.get(o.id);
+      if (ov?.has_payable && ov.payment_status !== 'paid') { count++; value += Number(o.total_value || 0); }
+    }
+    return { count, value };
+  }, [orders, osOverview]);
+
+  // Faixa de prazo UNIFICADA do card (substitui as 2 exibições que existiam:
+  // a da seção de gargalo + a do rodapé). Uma só, colorida pela urgência.
+  const renderDeadlineBand = (o: ServiceOrder) => {
+    if (!isOsActive(o.status) || !o.quoted_deadline) return null;
+    const due = o.quoted_deadline;
+    const lateDays = Math.round(
+      (new Date(todayISO + 'T00:00:00').getTime() - new Date(due + 'T00:00:00').getTime()) / 86400000,
+    );
+    const fmt = `${due.slice(8, 10)}/${due.slice(5, 7)}`;
+    const inField = osInField(o);
+    let cls: string, text: string, Icon: typeof Truck;
+    if (lateDays > 0) { cls = 'bg-red-500/10 text-red-700 dark:text-red-400'; text = `Atrasado +${lateDays}d · prazo ${fmt}`; Icon = AlertTriangle; }
+    else if (lateDays === 0) { cls = 'bg-amber-500/10 text-amber-700 dark:text-amber-400'; text = `Vence hoje · ${fmt}`; Icon = Clock; }
+    else { cls = 'bg-muted text-muted-foreground'; text = `${inField ? 'Na rua' : 'Prazo'} · vence ${fmt} (em ${-lateDays}d)`; Icon = inField ? Truck : Calendar; }
+    return (
+      <div className={cn('mt-2.5 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold', cls)}>
+        <Icon className="h-3.5 w-3.5 shrink-0" />{text}
+      </div>
+    );
+  };
+
   // OS → linha do relatório de custos (pagamento/vencimento vêm do overview).
   const toOsCostRow = useCallback((o: ServiceOrder): CostReportRow => {
     const ov = osOverview?.get(o.id);
@@ -1308,18 +1339,21 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             (Aguardando prazo / Concluídas) enquanto não houver dado, pra não
             virar ruído permanente. Reaparecem sozinhos quando o ciclo de vida
             da OS começar a finalizar. */}
+        {/* KPIs OPERACIONAL-FIRST (otimização 2026-06-30): urgência primeiro
+            (Atrasados → Na rua → Pendentes → A pagar), depois resumo. Cards de
+            valor 0 ficam ocultos pra não virar ruído. */}
         <StatGrid>
-          <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} hint={`${contractors.length} total`} />
-          <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} hint={`${stats.inProgressOrders} em andamento`} tone="warning" />
-          {/* Operacional "na rua" (fundido da antiga aba): pares em campo + atrasados */}
-          {fieldStats.itens > 0 && (
-            <StatCard icon={Truck} label="Na rua" value={fieldStats.pares} hint={`${fieldStats.itens} OS em campo`} />
-          )}
           {fieldStats.atrasados > 0 && (
             <StatCard icon={AlertTriangle} label="Atrasados" value={fieldStats.atrasados} hint="OS com prazo vencido" tone="destructive" />
           )}
-          {/* OS criadas por gargalo aguardando contratada confirmar prazo —
-              cada uma dessas mantém uma OP bloqueada de avançar pra Montagem. */}
+          {fieldStats.itens > 0 && (
+            <StatCard icon={Truck} label="Na rua" value={fieldStats.pares} hint={`${fieldStats.itens} OS em campo`} />
+          )}
+          <StatCard icon={Clock} label="OS Pendentes" value={stats.pendingOrders} hint={`${stats.inProgressOrders} em andamento`} tone="warning" />
+          {aPagar.count > 0 && (
+            <StatCard icon={DollarSign} label="A pagar" value={formatCurrency(aPagar.value)} hint={`${aPagar.count} OS`} tone="warning" />
+          )}
+          {/* OS de gargalo aguardando prazo — cada uma mantém uma OP bloqueada. */}
           {(stats.pendingQuotes > 0 || stats.blockedOps > 0) && (
             <StatCard
               icon={AlertCircle}
@@ -1333,6 +1367,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             <StatCard icon={CheckCircle2} label="OS Concluídas" value={stats.completedOrders} tone="success" />
           )}
           <StatCard icon={DollarSign} label="Valor Total OS" value={formatCurrency(stats.totalValue)} />
+          <StatCard icon={Users} label="Prestadores Ativos" value={stats.activeContractors} hint={`${contractors.length} total`} />
         </StatGrid>
 
         <Tabs {...(embedded ? { value: activeTab ?? "orders", onValueChange: onActiveTabChange } : { defaultValue: "orders" })}>
@@ -1367,7 +1402,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Button
                     key={chip.value}
                     size="sm"
-                    variant={statusFilter === chip.value ? 'default' : 'outline'}
+                    variant={statusFilter === chip.value
+                      ? ((chip.value === 'na_rua' || chip.value === 'atrasados') ? 'destructive' : 'default')
+                      : 'outline'}
                     className="h-8 gap-1.5 text-xs"
                     onClick={() => setStatusFilter(chip.value)}
                   >
@@ -1468,8 +1505,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     const isPendingReceive = isBottleneckOS
                       && o.status !== 'received' && o.status !== 'Concluído'
                       && o.status !== 'Cancelado' && o.status !== 'cancelled';
-                    const todayIso = new Date().toISOString().slice(0, 10);
-                    const isLate = !!o.quoted_deadline && o.quoted_deadline < todayIso && isPendingReceive;
                     const active = isOsActive(o.status);
                     const selected = selectedOsIds.has(o.id);
                     return (
@@ -1503,6 +1538,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </div>
                           </div>
                         </div>
+
+                        {/* Faixa de prazo UNIFICADA (otimização 2026-06-30) — única
+                            exibição de prazo/atraso do card (antes duplicava). */}
+                        {renderDeadlineBand(o)}
 
                         {/* Corpo: descrição + PV + materiais + gargalo */}
                         <div className="mt-2.5 flex-1 space-y-2">
@@ -1548,17 +1587,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </div>
                           )}
 
-                          {isBottleneckOS && (
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
-                              <span className="flex items-center gap-1 text-muted-foreground">
-                                <Calendar className="h-3 w-3" />
-                                <span className={isLate ? 'font-semibold text-red-600' : ''}>
-                                  {o.quoted_deadline ? new Date(o.quoted_deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'sem prazo'}
-                                </span>
-                              </span>
-                              {isLate && <Badge variant="outline" className="h-4 bg-red-500/10 text-[10px] text-red-700 border-red-500/30 dark:text-red-400">atrasado</Badge>}
+                          {/* Setor + OP bloqueada (o prazo/atraso saiu pra faixa unificada). */}
+                          {isBottleneckOS && (o.target_sector || (isPendingReceive && o.order_id)) && (
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                               {o.target_sector && (
-                                <span className="text-muted-foreground">· {(o.target_sector in SECTOR_LABEL) ? SECTOR_LABEL[o.target_sector as SectorKey] : o.target_sector}</span>
+                                <span>{(o.target_sector in SECTOR_LABEL) ? SECTOR_LABEL[o.target_sector as SectorKey] : o.target_sector}</span>
                               )}
                               {isPendingReceive && o.order_id && (
                                 <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400"><Lock className="h-3 w-3" /> OP bloqueada</span>
@@ -1567,22 +1600,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           )}
                         </div>
 
-                        {/* Rodapé: pagamento + ações contextuais + menu */}
-                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+                        {/* Rodapé: pagamento + ações contextuais + menu (faixa) */}
+                        <div className="-mx-3.5 -mb-3.5 mt-3 flex items-center justify-between gap-2 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
                           <div className="flex min-w-0 flex-col gap-0.5">
                             <OsPaymentBadge ov={osOverview?.get(o.id)} />
                             <OsBalanceLine ov={osOverview?.get(o.id)} />
-                            {/* Prazo/atraso da remessa em campo (fundido da Na Rua) */}
-                            {osInField(o) && o.quoted_deadline && (() => {
-                              const due = o.quoted_deadline!;
-                              const lateDays = Math.round(
-                                (new Date(todayISO + 'T00:00:00').getTime() - new Date(due + 'T00:00:00').getTime()) / 86400000,
-                              );
-                              const fmt = `${due.slice(8, 10)}/${due.slice(5, 7)}`;
-                              if (lateDays > 0) return <span className="text-[11px] font-semibold text-red-600">Atrasado +{lateDays}d · prazo {fmt}</span>;
-                              if (lateDays === 0) return <span className="text-[11px] font-semibold text-amber-600">Vence hoje · {fmt}</span>;
-                              return <span className="text-[11px] text-muted-foreground">Na rua · vence {fmt}</span>;
-                            })()}
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
                             {isBottleneckOS && active && isPendingReceive && (
