@@ -76,14 +76,12 @@ export const calculateStrapConsumptionCm = (strap: StrapDefinition, context: Str
     }, 0);
 
     const gradeTotal = gradeEntries.reduce((sum, [, pairs]) => sum + (Number(pairs) || 0), 0);
-    // Espelha o SQL (debit_strap_stock/check_stock_availability): GREATEST(1, ceil(quantity / grade_total)).
-    // Era Math.round — divergia do ceil do SQL (latente: fichas quase sempre vem
-    // pronto, mas alinhamos pra não subcontar 1 ficha em qty fracionária).
-    let fichas = Number(context.fichas);
-    if (!fichas) {
-      const inferred = gradeTotal > 0 && quantity > 0 ? Math.ceil(quantity / gradeTotal) : 1;
-      fichas = Math.max(1, inferred);
-    }
+    // EXATO POR QUANTIDADE (2026-07-01): consumo proporcional à quantidade real,
+    // SEM arredondar pra ficha cheia. Idêntico ao calculateGradeBasedDm2
+    // (cabedal/forro/palmilha) e ao SQL debit_strap_stock/check_stock_availability
+    // após a mesma mudança: v_fichas = quantity / grade_total (fração exata).
+    // Antes usava ceil → em ficha parcial contava a ficha cheia inteira.
+    const fichas = Number(context.fichas) || (gradeTotal > 0 ? quantity / gradeTotal : 0);
     return totalPerFicha * fichas;
   }
 

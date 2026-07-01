@@ -11,10 +11,11 @@ import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapCons
  *   - Tira é LINEAR NATIVA → o motor devolve cm direto; quem converte pra metros é o
  *     caller (÷100). Nunca passa por conversão de área (dm²).
  *   - Com `consumption_per_size` + grade: soma por numeração × fichas, espelhando o SQL
- *     `v_total_cm = Σ(pairs × cm_per_pair)`, `v_fichas = GREATEST(1, ceil(qty/grade_total))`.
+ *     `v_total_cm = Σ(pairs × cm_per_pair)`, `v_fichas = qty / grade_total` — EXATO por
+ *     quantidade (2026-07-01): SEM arredondar pra ficha cheia (era `GREATEST(1, ceil(...))`).
  *   - Sem per-size (ou sem grade): consumo escalar × quantidade total.
  *
- * Referência SQL: migration 20260805120000_fix-strap-insufficient-stock-message.sql.
+ * Referência SQL: migration 20260805120000 + 20260701..._strap-consumption-exact-by-quantity.
  */
 
 describe('calculateStrapConsumptionCm — escalar (sem per-size)', () => {
@@ -54,22 +55,23 @@ describe('calculateStrapConsumptionCm — per-size por numeração (espelha o SQ
     expect(cm).toBe(1960);
   });
 
-  it('fichas inferido = ceil(quantity / grade_total) — espelha GREATEST(1, ceil(...)) do SQL', () => {
-    // grade_total = 5; quantity = 52 → ceil(52/5) = 11 fichas (NÃO round=10).
-    // totalPerFicha = 2×38 + 3×40 = 196 → 196 × 11 = 2156 cm.
+  it('fichas inferido = quantity / grade_total — EXATO por quantidade (sem ceil)', () => {
+    // grade_total = 5; quantity = 52 → 52/5 = 10,4 fichas (fração exata, NÃO ceil=11).
+    // totalPerFicha = 2×38 + 3×40 = 196 → 196 × 10,4 = 2038,4 cm.
     const cm = calculateStrapConsumptionCm(
       { consumption: 40, consumption_per_size: { '35': 38, '36': 40 } },
       { grade: { '35': 2, '36': 3 }, quantity: 52 },
     );
-    expect(cm).toBe(2156);
+    expect(cm).toBeCloseTo(2038.4, 4);
   });
 
-  it('fichas inferido nunca < 1 (quantity < grade_total ⇒ 1 ficha)', () => {
+  it('ficha parcial (quantity < grade_total) consome a FRAÇÃO exata (não arredonda pra 1)', () => {
+    // quantity=1, grade_total=5 → 1/5 ficha. 196 × 0,2 = 39,2 cm (antes forçava 1 ficha=196).
     const cm = calculateStrapConsumptionCm(
       { consumption: 40, consumption_per_size: { '35': 38, '36': 40 } },
-      { grade: { '35': 2, '36': 3 }, quantity: 1 }, // qty < grade_total(5)
+      { grade: { '35': 2, '36': 3 }, quantity: 1 },
     );
-    expect(cm).toBe(196); // ceil(1/5)=1 → uma ficha
+    expect(cm).toBeCloseTo(39.2, 4);
   });
 
   it('numeração sem consumo próprio cai no consumption default', () => {
