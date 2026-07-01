@@ -8,13 +8,16 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, Files, CalendarBlank } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, Files, CalendarBlank, Paperclip } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
+import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
+import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
 import { computePeriodFolha, getDaysInRange, SALARY_DAY_DIVISOR } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
+import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin } from '@/lib/printPayrollBundle';
@@ -103,6 +106,7 @@ export default function Payroll() {
   const [calcRunning, setCalcRunning] = useState(false);
   const [detailRun, setDetailRun] = useState<string | null>(null);
   const [approveRun, setApproveRun] = useState<string | null>(null);
+  const [payRun, setPayRun] = useState<string | null>(null);
   // Visão do Relatório consolidado: tabela (Folha) · calendário de tempo · holerites.
   const [view, setView] = useState<'folha' | 'calendario' | 'holerite'>('folha');
   const [calEmp, setCalEmp] = useState<string>('');
@@ -153,6 +157,10 @@ export default function Payroll() {
   const { data: coverage } = useTimesheetCoverage(appliedFrom, appliedTo);
 
   const employeeMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
+
+  // Resumo de pagamentos por folha (pago/parcial + recibo anexado) das runs visíveis.
+  const runIds = useMemo(() => runs.map(r => r.id), [runs]);
+  const { data: paySummaries = {} } = usePayrollPaymentSummaries(runIds);
 
   const totals = useMemo(() => {
     const proventos = runs.reduce((s, r) => s + (r.total_proventos || 0), 0);
@@ -206,14 +214,11 @@ export default function Payroll() {
     queryKey: ['payroll-comp-records', appliedFrom, appliedTo],
     enabled: !!(appliedFrom && appliedTo),
     staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('time_records')
-        .select('employee_external_id, employee_name, record_date, punches')
-        .gte('record_date', appliedFrom).lte('record_date', appliedTo);
-      if (error) throw error;
-      return (data || []) as any[];
-    },
+    // PAGINADO via helper único (fetchTimeRecordsInRange) — antes esta query NÃO
+    // paginava e o cap de 1000 do PostgREST cortava dias, fazendo o calendário
+    // mostrar "falta" em dias que TINHAM ponto (bug 2026-07-01). Agora usa a
+    // MESMA fonte da folha/atrasos → motores sincronizados.
+    queryFn: () => fetchTimeRecordsInRange(appliedFrom, appliedTo),
   });
   const { data: compAdvances = [] } = useQuery({
     queryKey: ['payroll-comp-advances', appliedFrom, appliedTo],
@@ -391,20 +396,9 @@ export default function Payroll() {
       // matrícula (employee_external_id) ou nome.
       // Paginado: o cap default de 1000 rows do PostgREST cortava dias do fim
       // do período silenciosamente → dia sem ponto = falta descontada errada.
-      const timeRecords: any[] = [];
-      const PAGE = 1000;
-      for (let fromIdx = 0; ; fromIdx += PAGE) {
-        const { data: page, error } = await supabase
-          .from('time_records')
-          .select('employee_external_id, employee_name, record_date, punches')
-          .gte('record_date', cFrom)
-          .lte('record_date', cTo)
-          .order('record_date', { ascending: true })
-          .range(fromIdx, fromIdx + PAGE - 1);
-        if (error) throw error;
-        timeRecords.push(...(page || []));
-        if (!page || page.length < PAGE) break;
-      }
+      // Fonte ÚNICA paginada (mesma do comparativo/calendário e do relatório de
+      // atrasos) — motores do RH sincronizados.
+      const timeRecords = await fetchTimeRecordsInRange(cFrom, cTo);
 
       const byExternalId = new Map<string, Map<string, string[]>>();
       const byExtIdName = new Map<string, Map<string, string[]>>(); // chave `${extId}|${nome}`
@@ -689,6 +683,8 @@ export default function Payroll() {
               const emp = employeeMap.get(r.employee_id);
               const sb = STATUS_BADGES[r.status] || STATUS_BADGES.rascunho;
               const hasAdvance = (r.advances_total || 0) > 0;
+              const sum = paySummaries[r.id];
+              const parcial = r.status === 'aprovado' && !!sum && sum.paidTotal > 0.005 && sum.paidTotal < (r.total_liquido || 0) - 0.005;
               return (
                 <TableRow key={r.id} className={hasAdvance ? 'hover:bg-muted/30 bg-amber-500/5' : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
@@ -714,7 +710,13 @@ export default function Payroll() {
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
-                  <TableCell><Badge variant={sb.variant}>{sb.label}</Badge></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={sb.variant}>{sb.label}</Badge>
+                      {sum?.hasReceipt && <Paperclip className="h-3.5 w-3.5 text-emerald-600" aria-label="Recibo anexado" />}
+                    </div>
+                    {parcial && <div className="text-[10px] text-amber-600 tabular-nums mt-0.5">parcial · {fmt(sum!.paidTotal)}</div>}
+                  </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       {/* Documentos (holerite/espelho/folha) saíram daqui pro botão único
@@ -731,9 +733,15 @@ export default function Payroll() {
                           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                         </Button>
                       )}
-                      {r.status === 'aprovado' && (
-                        <Button size="sm" variant="ghost" onClick={() => updateStatus.mutate({ id: r.id, status: 'pago' })}>
-                          <DollarSign className="h-4 w-4 text-primary" />
+                      {(r.status === 'aprovado' || r.status === 'pago') && (
+                        <Button
+                          size="sm" variant="ghost"
+                          onClick={() => setPayRun(r.id)}
+                          title={r.status === 'pago' ? 'Ver pagamentos e recibos' : 'Registrar pagamento'}
+                        >
+                          {r.status === 'pago'
+                            ? <Receipt className="h-4 w-4 text-emerald-600" />
+                            : <DollarSign className="h-4 w-4 text-primary" />}
                         </Button>
                       )}
                     </div>
@@ -812,6 +820,22 @@ export default function Payroll() {
           )}
         </Panel>
       )}
+
+      {/* Registro de pagamento + recibo assinado */}
+      {(() => {
+        const r = runs.find(x => x.id === payRun) || null;
+        const emp = r ? employeeMap.get(r.employee_id) : null;
+        return (
+          <RegistrarPagamentoDialog
+            open={!!payRun}
+            onOpenChange={(o) => !o && setPayRun(null)}
+            run={r}
+            employeeName={emp?.name || '—'}
+            employeeCpf={(emp as any)?.cpf}
+            employeeRole={(emp as any)?.role}
+          />
+        );
+      })()}
 
       {/* Confirmação de aprovação quando há adiantamento */}
       <AlertDialog open={!!approveRun} onOpenChange={(o) => !o && setApproveRun(null)}>
