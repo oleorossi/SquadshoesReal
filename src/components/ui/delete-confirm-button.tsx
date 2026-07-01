@@ -36,8 +36,8 @@ export default function DeleteConfirmButton({
   return (
     <AlertDialog onOpenChange={(open) => { if (!open) setTyped(''); }}>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className={`${size} text-destructive hover:text-destructive`}>
-          <Trash2 className={iconSize} />
+        <Button variant="ghost" size="icon" aria-label={title} className={`${size} text-destructive hover:text-destructive`}>
+          <Trash2 className={iconSize} aria-hidden="true" />
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
@@ -64,7 +64,7 @@ export default function DeleteConfirmButton({
           <AlertDialogAction
             onClick={onConfirm}
             disabled={!typeOk}
-            className={!typeOk ? 'opacity-50 cursor-not-allowed' : ''}
+            className={`bg-destructive text-destructive-foreground hover:bg-destructive/90 ${!typeOk ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             Excluir
           </AlertDialogAction>

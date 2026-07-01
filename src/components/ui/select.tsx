@@ -19,7 +19,9 @@ const SelectTrigger = React.forwardRef<
     className={cn(
       // Industrial Editorial Pro: borda 1.5px decisive + rounded-sm.
       // Focus: borda foreground sólida sem ring colorido (igual Input).
-      "flex h-10 w-full items-center justify-between rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:border-foreground focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 aria-[invalid=true]:border-primary",
+      // h-9 alinha com o Input (input.tsx) e o SearchableSelect — campos lado
+      // a lado em forms ficavam com 4px de diferença de altura.
+      "flex h-9 w-full items-center justify-between rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:border-foreground focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 aria-[invalid=true]:border-primary",
       className,
     )}
     {...props}
@@ -70,7 +72,9 @@ const SelectContent = React.forwardRef<
       className={cn(
         // Industrial Editorial Pro: popover com borda 1.5px decisive em vez
         // de shadow-md, rounded-sm. Animations só fade (sem zoom/slide).
-        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-sm border-[1.5px] border-foreground bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // max-h respeita a altura disponível calculada pelo Radix (teclado
+        // virtual/landscape), com teto de 24rem no desktop.
+        "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden rounded-sm border-[1.5px] border-foreground bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
         className,
