@@ -3,6 +3,12 @@ name: Weekly Unit Conversion Tests
 # Roda os testes de conversão de unidades (cm↔m, dm², kg, etc.)
 # apenas uma vez por semana — segunda-feira às 06:00 UTC (03:00 BRT).
 # Também pode ser disparado manualmente pela aba Actions.
+#
+# Inclui o guard de paridade SQL (consumptionService.parity.test.ts), que por
+# padrão fica em describe.skip sem RUN_DB_INTEGRATION=1 — sem isso ele nunca
+# rodava em lugar nenhum do CI (achado na revisão de bugs de 2026-07-01).
+# Requer os mesmos secrets já cadastrados pro supabase-migrate.yml:
+#   SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD
 on:
   schedule:
     - cron: "0 6 * * 1"
@@ -29,3 +35,15 @@ jobs:
       - name: TypeScript type check
         # ⚠ -p tsconfig.app.json obrigatório: a raiz é solution file e não checa nada.
         run: bunx tsc -p tsconfig.app.json --noEmit
+
+      - name: SQL parity guard (calculate_order_consumption ↔ ..._by_grade)
+        if: ${{ secrets.SUPABASE_PROJECT_ID != '' && secrets.SUPABASE_DB_PASSWORD != '' }}
+        env:
+          RUN_DB_INTEGRATION: '1'
+          PGHOST: db.${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        run: bunx vitest run src/services/__tests__/consumptionService.parity.test.ts

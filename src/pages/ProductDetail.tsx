@@ -39,19 +39,24 @@ const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
 const CHILD_SIZES = Array.from({ length: 16 }, (_, i) => 21 + i);
 
 
-const PURCHASE_UNITS = ['metro', 'm²', 'dm²', 'chapa', 'kg', 'un', 'rolo', 'cx'] as const;
+const PURCHASE_UNITS = ['m', 'm²', 'dm²', 'placa', 'kg', 'un', 'rolo', 'cx'] as const;
 const PRODUCTION_UNITS = ['dm²', 'm²', 'un', 'par', 'gr', 'ml', 'metros'] as const;
 
 type PurchaseUnit = (typeof PURCHASE_UNITS)[number];
 type ProductionUnit = (typeof PRODUCTION_UNITS)[number];
 
+// Unidade CANÔNICA (CLAUDE.md — 'metro'/'metros' e 'chapa' são sinônimos
+// proibidos de 'm'/'placa'). Achado na revisão de bugs de 2026-07-01: este
+// select gravava o literal 'metro'/'chapa' direto em products.purchase_unit,
+// reintroduzindo o bug que a normalização em massa de 2026-05-30 corrigiu.
 const normalizePurchaseUnit = (value?: string | null): PurchaseUnit => {
   if (!value) return 'un';
   const n = value.trim().toLowerCase();
-  if (n === 'm' || n === 'metro' || n === 'metros') return 'metro';
+  if (n === 'm' || n === 'metro' || n === 'metros') return 'm';
   if (n === 'unidade') return 'un';
   if (n === 'm²' || n === 'm2' || n === 'metro quadrado') return 'm²';
   if (n === 'dm²' || n === 'dm2') return 'dm²';
+  if (n === 'chapa' || n === 'placa' || n === 'folha') return 'placa';
   return PURCHASE_UNITS.includes(n as PurchaseUnit) ? (n as PurchaseUnit) : 'un';
 };
 
@@ -673,7 +678,7 @@ export default function ProductDetail() {
                 <Select value={normalizePurchaseUnit(form.purchase_unit)} onValueChange={v => update('purchase_unit', v)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PURCHASE_UNITS.map(u => <SelectItem key={u} value={u}>{u === 'metro' ? 'Metros' : u === 'm²' ? 'Metro quadrado (m²)' : u === 'dm²' ? 'Decímetro quadrado (dm²)' : u === 'chapa' ? 'Chapa/Folha' : u === 'kg' ? 'Quilo' : u === 'rolo' ? 'Rolo' : u === 'cx' ? 'Caixa' : 'Unidade'}</SelectItem>)}
+                    {PURCHASE_UNITS.map(u => <SelectItem key={u} value={u}>{u === 'm' ? 'Metros' : u === 'm²' ? 'Metro quadrado (m²)' : u === 'dm²' ? 'Decímetro quadrado (dm²)' : u === 'placa' ? 'Chapa/Folha' : u === 'kg' ? 'Quilo' : u === 'rolo' ? 'Rolo' : u === 'cx' ? 'Caixa' : 'Unidade'}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -698,7 +703,7 @@ export default function ProductDetail() {
                 <Select value={normalizePurchaseUnit(form.purchase_order_unit)} onValueChange={v => update('purchase_order_unit', v)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PURCHASE_UNITS.map(u => <SelectItem key={u} value={u}>{u === 'metro' ? 'Metros' : u === 'm²' ? 'Metro quadrado (m²)' : u === 'dm²' ? 'Decímetro quadrado (dm²)' : u === 'chapa' ? 'Chapa' : u === 'kg' ? 'Quilo' : u === 'rolo' ? 'Rolo' : u === 'cx' ? 'Caixa' : 'Unidade'}</SelectItem>)}
+                    {PURCHASE_UNITS.map(u => <SelectItem key={u} value={u}>{u === 'm' ? 'Metros' : u === 'm²' ? 'Metro quadrado (m²)' : u === 'dm²' ? 'Decímetro quadrado (dm²)' : u === 'placa' ? 'Chapa' : u === 'kg' ? 'Quilo' : u === 'rolo' ? 'Rolo' : u === 'cx' ? 'Caixa' : 'Unidade'}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
