@@ -28,11 +28,13 @@ type GradeItem = {
 type SelectionMode = 'any' | 'linear' | 'plate';
 
 // Set CANÔNICO de unidades lineares. DEVE espelhar o branch v_is_linear de
-// get_material_conversion_info no SQL ('m','meters','metros','mt','cm') — senão
-// um produto em 'metros'/'meters' converte dm²→física no SQL mas NÃO no TS
+// get_material_conversion_info no SQL ('m','meters','metros','mt','cm','m linear')
+// — senão um produto nessas unidades converte dm²→física no SQL mas NÃO no TS
 // (areaToStockDivisor devolveria null → PurchasePlanningWizard infla ~100×).
 // 'metro' (singular) é sinônimo aceito em UNIT_SYNONYMS; mantido por segurança.
-const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'metros', 'meters', 'mt']);
+// 'm linear' é o alvo canônico de toCanonical() em nfUnitConversion.ts pra
+// mtl/m lin/ml (linear) — faltava aqui (achado na revisão de bugs 2026-07-01).
+const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'metros', 'meters', 'mt', 'm linear']);
 // 'un' é CONTAGEM, não placa — removido (auditoria 2026-06-11). Mantê-lo aqui
 // fazia um item de contagem com ficha dimensionada passar por convertDm2ToPlates.
 const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas']);
