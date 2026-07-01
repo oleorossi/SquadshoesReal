@@ -2038,7 +2038,6 @@ export function useUpdateSaleOrderStatus() {
       qc.invalidateQueries({ queryKey: ['production_consumptions'] });
       if (vars.status === 'Em Produção') {
         qc.invalidateQueries({ queryKey: ['waves'] });
-        qc.invalidateQueries({ queryKey: ['sector-board'] });
       }
       const msg = vars.status === 'Aprovado'
         ? 'Pedido aprovado — OPs criadas e estoque processado!'
@@ -2524,7 +2523,6 @@ export function useUpdateSaleOrder() {
       // os quadros de produção pra não mostrar OP/onda obsoleta. Auditoria 2026-06-14.
       qc.invalidateQueries({ queryKey: ['waves'] });
       qc.invalidateQueries({ queryKey: ['production_waves'] });
-      qc.invalidateQueries({ queryKey: ['sector-board'] });
       qc.invalidateQueries({ queryKey: ['sector_distribution_plan'] });
       // Editar o PV muda a demanda do MRP — invalida as necessidades/sugestões.
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });

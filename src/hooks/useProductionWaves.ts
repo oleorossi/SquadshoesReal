@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  listWaves, getWaveDetail, createWave, startWave, advanceWaveStage,
+  listWaves, getWaveDetail, createWave, startWave,
   getFinishingPackages, updatePackageStatus, updateMesaCapacity, getWaveSaleOrders,
   syncWaveFromKanban, cancelWave, listWaveOrders, getWavePickupSummary,
 } from '@/services/productionWavesService';
-import { STAGE_LABEL } from '@/types/production-waves';
 import { toast as sonnerToast } from 'sonner';
 
 export function useWaves() {
@@ -30,7 +29,6 @@ export function useCreateWave() {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['sector-board'] });
       sonnerToast.success('Onda criada com sucesso');
     },
     onError: (err: Error) =>
@@ -50,36 +48,12 @@ export function useStartWave() {
       qc.invalidateQueries({ queryKey: ['production_waves'] });
       qc.invalidateQueries({ queryKey: ['wave-detail', waveId] });
       qc.invalidateQueries({ queryKey: ['wave-sale-orders', waveId] });
-      qc.invalidateQueries({ queryKey: ['sector-board'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       sonnerToast.success('Onda iniciada');
     },
     onError: (err: Error) =>
       sonnerToast.error('Erro ao iniciar onda', { description: err.message }),
-  });
-}
-
-export function useAdvanceStage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ waveId, stage }: { waveId: string; stage: import('@/types/production-waves').ProductionStage }) =>
-      advanceWaveStage(waveId, stage),
-    onSuccess: (nextStage, { waveId }) => {
-      qc.invalidateQueries({ queryKey: ['waves'] });
-      qc.invalidateQueries({ queryKey: ['production_waves'] });
-      qc.invalidateQueries({ queryKey: ['wave-detail', waveId] });
-      qc.invalidateQueries({ queryKey: ['wave-sale-orders', waveId] });
-      qc.invalidateQueries({ queryKey: ['sector-board'] });
-      qc.invalidateQueries({ queryKey: ['finishing-packages', waveId] });
-      sonnerToast.success(
-        nextStage
-          ? `Setor liberado: ${STAGE_LABEL[nextStage] ?? nextStage.toUpperCase()}`
-          : 'Onda finalizada!'
-      );
-    },
-    onError: (err: Error) =>
-      sonnerToast.error('Bloqueado', { description: err.message }),
   });
 }
 
@@ -107,7 +81,6 @@ export function useUpdateMesaCapacity() {
     mutationFn: ({ waveId, capacityPerDay }: { waveId: string; capacityPerDay: number }) =>
       updateMesaCapacity(waveId, capacityPerDay),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sector-board'] });
       sonnerToast.success('Capacidade da Mesa atualizada');
     },
     onError: (err: Error) => sonnerToast.error(`Erro ao atualizar capacidade: ${err.message}`),
@@ -123,7 +96,6 @@ export function useSyncWaveFromKanban() {
       qc.invalidateQueries({ queryKey: ['production_waves'] });
       qc.invalidateQueries({ queryKey: ['wave-detail', waveId] });
       qc.invalidateQueries({ queryKey: ['wave-sale-orders', waveId] });
-      qc.invalidateQueries({ queryKey: ['sector-board'] });
       sonnerToast.success('Onda sincronizada com o Kanban');
     },
     onError: (err: Error) =>

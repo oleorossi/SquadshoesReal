@@ -414,7 +414,7 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
                       {s.client_name || '—'}
                     </td>
                     <td className="p-3 text-center font-mono font-bold">
-                      {s.quantity_processed || s.quantity_total}
+                      {s.quantity_processed ?? 0}
                     </td>
                     <td className="p-3 text-right">
                       {s.isAdiantado ? (

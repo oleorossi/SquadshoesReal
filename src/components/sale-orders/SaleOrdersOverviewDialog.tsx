@@ -203,7 +203,6 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
 
       toast.success(`${ids.length} ${ids.length === 1 ? 'pedido atualizado' : 'pedidos atualizados'}.`);
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
-      qc.invalidateQueries({ queryKey: ['kanban-orders'] });
       setBulkMonth(''); setBulkWeek(''); setBulkDeadline('');
       setPendingViolation(null);
     } catch (err: any) {

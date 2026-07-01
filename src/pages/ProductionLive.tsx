@@ -101,7 +101,7 @@ function useLastHourPairsRate() {
       const [stagesRes, stockRes] = await Promise.all([
         supabase
           .from('order_stages')
-          .select('quantity_processed, quantity_total, completed_at')
+          .select('quantity_processed, completed_at')
           .eq('status', 'concluido')
           .gte('completed_at', since),
         supabase
@@ -110,8 +110,9 @@ function useLastHourPairsRate() {
           .gte('created_at', since)
           .in('movement_type', ['out', 'consumption']),
       ]);
+      // quantity_processed é confiável desde a migration 20260902120000 (backfill + finalize preenche) — sem fallback pra quantity_total.
       const stagePairs = (stagesRes.data || []).reduce(
-        (s, r: any) => s + (Number(r.quantity_processed) || Number(r.quantity_total) || 0), 0);
+        (s, r: any) => s + (Number(r.quantity_processed) || 0), 0);
       const stockPairs = (stockRes.data || []).reduce((s, m: any) => s + (Number(m.quantity) || 0), 0);
       return {
         stageCount: (stagesRes.data || []).length,

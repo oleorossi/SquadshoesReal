@@ -57,7 +57,7 @@ export default function PCPDashboard() {
     [orders]
   );
 
-  // WIP by sector
+  // WIP by sector — quantity_processed é fonte confiável desde a migration 20260902120000 (backfill + finalize preenche).
   const wipBySector = useMemo(() => {
     const orderIds = new Set(productionOrders.map(o => o.id));
     return SECTORS.map(sector => {
