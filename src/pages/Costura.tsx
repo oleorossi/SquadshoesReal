@@ -18,7 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
-import { useAllOrderStages } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
@@ -45,6 +46,8 @@ export default function Costura() {
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+  // Realtime: OP liberada/apontada em outro terminal reflete aqui em ~1s.
+  useRealtimeOrderStages();
   const { data: saleOrders = [] } = useSaleOrders();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
@@ -103,7 +106,6 @@ export default function Costura() {
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       } else if (failedCount > 0) {
         toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
       }
@@ -122,7 +124,7 @@ export default function Costura() {
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
       const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => s.stage_name === SECTOR_NAME);
+      const stage = stages.find(s => sameStage(s.stage_name, SECTOR_NAME));
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
@@ -399,7 +401,7 @@ export default function Costura() {
                         const gradeSum = grade ? Object.values(grade).reduce((s, v) => s + Number(v), 0) : 0;
                         const totalPairs = order.quantity || gradeSum || 0;
                         const stages = allStages.filter(s => s.order_id === order.id);
-                        const stage = stages.find(s => s.stage_name === SECTOR_NAME);
+                        const stage = stages.find(s => sameStage(s.stage_name, SECTOR_NAME));
                         const stageStatus = stage?.status || 'pendente';
                         const strapsLabel = getStrapsLabel(order);
                         const images = ref?.images as string[] | null;

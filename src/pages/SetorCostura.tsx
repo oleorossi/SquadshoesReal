@@ -7,12 +7,14 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
+import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
-import { useAllOrderStages } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { toast } from 'sonner';
@@ -38,6 +40,8 @@ export default function SetorCostura() {
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+  // Realtime: OP liberada/apontada em outro terminal reflete aqui em ~1s.
+  useRealtimeOrderStages();
   const { data: saleOrders = [] } = useSaleOrders();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('costura-filter-status', 'active');
   const [searchQuery, setSearchQuery] = usePersistedState('costura-search', '');
@@ -52,7 +56,7 @@ export default function SetorCostura() {
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
       const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => s.stage_name === SECTOR_NAME);
+      const stage = stages.find(s => sameStage(s.stage_name, SECTOR_NAME));
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
@@ -188,7 +192,7 @@ export default function SetorCostura() {
           {costuraOrders.map(order => {
             const ref = references.find(r => r.id === order.reference_id);
             const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-            const stage = allStages.find(s => s.order_id === order.id && s.stage_name === SECTOR_NAME);
+            const stage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, SECTOR_NAME));
             const stageColor = stage?.status === 'concluido' ? 'border-l-emerald-500'
               : stage?.status === 'em_andamento' ? 'border-l-amber-500'
               : 'border-l-red-500';
@@ -223,7 +227,10 @@ export default function SetorCostura() {
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-xs">{(order.status || '').toString()}</Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <SectorStageActions stage={stage} orderNumber={order.order_number} />
+                      <Badge variant="outline" className="text-xs">{(order.status || '').toString()}</Badge>
+                    </div>
                   </div>
                 </CardHeader>
               </Card>

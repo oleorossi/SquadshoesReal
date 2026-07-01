@@ -17,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
-import { useAllOrderStages } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
@@ -43,6 +44,8 @@ export default function Colagem() {
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+  // Realtime: OP liberada/apontada em outro terminal reflete aqui em ~1s.
+  useRealtimeOrderStages();
   const { data: saleOrders = [] } = useSaleOrders();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();
@@ -76,10 +79,10 @@ export default function Colagem() {
   };
 
   const toggleAllOrders = () => {
-    if (selectedOrders.size === aviamentoOrders.length) {
+    if (selectedOrders.size === colagemOrders.length) {
       setSelectedOrders(new Set());
     } else {
-      setSelectedOrders(new Set(aviamentoOrders.map(o => o.id)));
+      setSelectedOrders(new Set(colagemOrders.map(o => o.id)));
     }
   };
 
@@ -100,7 +103,6 @@ export default function Colagem() {
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       }
     } catch (err: any) {
       toast.error(`Erro ao finalizar: ${err.message}`);
@@ -110,14 +112,14 @@ export default function Colagem() {
   };
 
 
-  const aviamentoOrders = useMemo(() => {
+  const colagemOrders = useMemo(() => {
     const q = normalizeForSearch(searchQuery);
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase();
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
       const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => s.stage_name === 'Colagem');
+      const stage = stages.find(s => sameStage(s.stage_name, 'Colagem'));
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
@@ -270,7 +272,7 @@ export default function Colagem() {
         <EditorialPageHeader
           sectionLabel="PRODUÇÃO · COLAGEM"
           title="Setor de Colagem"
-          description="Fichas de controle com checklist de pares para aviamento"
+          description="Fichas de controle com checklist de pares para colagem"
           actions={<>
             <Button
               size="sm"
@@ -301,7 +303,7 @@ export default function Colagem() {
               <DropdownMenuContent align="end" className="w-56">
                 {selectedOrders.size > 0 && (
                   <DropdownMenuItem onClick={() => {
-                    const ids = aviamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    const ids = colagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
                     navigate(`/orders/grouped-summary?sector=colagem&ids=${ids}`);
                   }}>
                     <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
@@ -312,8 +314,8 @@ export default function Colagem() {
                 <DropdownMenuItem onClick={async () => {
               // Use only selected orders, or all if none selected
               const ordersToprint = selectedOrders.size > 0
-                ? aviamentoOrders.filter(o => selectedOrders.has(o.id))
-                : aviamentoOrders;
+                ? colagemOrders.filter(o => selectedOrders.has(o.id))
+                : colagemOrders;
 
               if (ordersToprint.length === 0) {
                 toast.info('Nenhuma OP selecionada para o relatório.');
@@ -564,7 +566,7 @@ export default function Colagem() {
                 ${opChecklistHtml}
                 ${opsHtml}`;
               writePrintWindow(printWin, 'Relatório Colagem', html);
-            }} disabled={aviamentoOrders.length === 0}>
+            }} disabled={colagemOrders.length === 0}>
               <Printer className="h-3.5 w-3.5 mr-2" /> Relatório PDF
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -576,21 +578,21 @@ export default function Colagem() {
         <StatGrid>
           <StatCard
             label="OPs p/ Colagem"
-            value={aviamentoOrders.length}
+            value={colagemOrders.length}
             tone="primary"
           />
           <StatCard
             label="Total de Pares"
-            value={aviamentoOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
+            value={colagemOrders.reduce((s, o) => s + (o.quantity || 0), 0)}
           />
         </StatGrid>
 
         {/* Orders list */}
-        {aviamentoOrders.length === 0 ? (
+        {colagemOrders.length === 0 ? (
           <EmptyState
             icon={Scissors}
-            title="Nenhuma OP com aviamento pendente"
-            description="Não há ordens de produção aguardando aviamento no momento."
+            title="Nenhuma OP com colagem pendente"
+            description="Não há ordens de produção aguardando colagem no momento."
           />
         ) : (
           <div className="space-y-3">
@@ -598,16 +600,16 @@ export default function Colagem() {
             <div className="flex items-center gap-2 px-1">
               <Button
                 size="sm"
-                variant={selectedOrders.size === aviamentoOrders.length ? 'default' : 'outline'}
+                variant={selectedOrders.size === colagemOrders.length ? 'default' : 'outline'}
                 onClick={toggleAllOrders}
                 className="text-xs"
               >
                 <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                {selectedOrders.size === aviamentoOrders.length ? 'Desmarcar Tudo' : 'Selecionar Tudo'}
+                {selectedOrders.size === colagemOrders.length ? 'Desmarcar Tudo' : 'Selecionar Tudo'}
               </Button>
               {selectedOrders.size > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {selectedOrders.size} de {aviamentoOrders.length} selecionadas
+                  {selectedOrders.size} de {colagemOrders.length} selecionadas
                 </span>
               )}
             </div>
@@ -615,7 +617,7 @@ export default function Colagem() {
             {/* Grouped by Economic Group > Sale Order > OPs */}
             {(() => {
               // Build hierarchy: economic_group -> sale_order -> orders
-              type SaleOrderGroup = { saleOrderId: string; saleOrder: any; orders: typeof aviamentoOrders };
+              type SaleOrderGroup = { saleOrderId: string; saleOrder: any; orders: typeof colagemOrders };
               type EconGroup = { econGroupId: string; econGroupName: string; saleOrderGroups: SaleOrderGroup[] };
 
               const getSaleOrderForOP = (op: any) => saleOrders.find((so: any) => so.id === op.sale_order_id);
@@ -624,7 +626,7 @@ export default function Colagem() {
 
               const econMap = new Map<string, EconGroup>();
 
-              aviamentoOrders.forEach(op => {
+              colagemOrders.forEach(op => {
                 const so = getSaleOrderForOP(op);
                 const client = so ? getClientForSO(so) : null;
                 const eg = getEconGroupForClient(client);
@@ -656,8 +658,8 @@ export default function Colagem() {
                 const isExpanded = expandedOrderId === order.id;
                 const isSelected = selectedOrders.has(order.id);
 
-                  const aviamentoStage = allStages.find(s => s.order_id === order.id && s.stage_name === 'Colagem');
-                  const stageColor = aviamentoStage?.status === 'concluido' ? 'border-l-emerald-500' : aviamentoStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
+                  const colagemStage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, 'Colagem'));
+                  const stageColor = colagemStage?.status === 'concluido' ? 'border-l-emerald-500' : colagemStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
                   return (
                   <Card key={order.id} className={`border-l-4 ${isSelected ? 'ring-1 ring-success/30' : ''} ${stageColor}`}>
@@ -711,7 +713,7 @@ export default function Colagem() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <SectorStageActions stage={aviamentoStage} orderNumber={order.order_number} />
+                          <SectorStageActions stage={colagemStage} orderNumber={order.order_number} />
                           <Badge variant="outline" className="text-xs">
                             {(order.status || '').toString()}
                           </Badge>

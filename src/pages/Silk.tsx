@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { printHtml } from '@/lib/printOrder';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -143,7 +144,6 @@ export default function Silk() {
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       }
     } catch (err: any) {
       toast.error(`Erro ao finalizar: ${err.message}`);
@@ -153,11 +153,11 @@ export default function Silk() {
   };
 
   const silkStagesByOrderId = useMemo(() => {
-    return new Map(allStages.filter(stage => stage.stage_name === SECTOR_NAME).map(stage => [stage.order_id, stage]));
+    return new Map(allStages.filter(stage => sameStage(stage.stage_name, SECTOR_NAME)).map(stage => [stage.order_id, stage]));
   }, [allStages]);
 
   const hasPendingSilkStages = useMemo(() => {
-    return allStages.some(stage => stage.stage_name === SECTOR_NAME && (stage.status === 'pendente' || stage.status === 'em_andamento'));
+    return allStages.some(stage => sameStage(stage.stage_name, SECTOR_NAME) && (stage.status === 'pendente' || stage.status === 'em_andamento'));
   }, [allStages]);
 
   const hasProductionOrdersInCache = useMemo(() => {

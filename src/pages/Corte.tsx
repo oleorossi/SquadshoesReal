@@ -15,10 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
-import { useAllOrderStages } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -79,6 +78,8 @@ export default function Corte() {
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+  // Realtime: OP liberada/apontada em outro terminal reflete aqui em ~1s.
+  useRealtimeOrderStages();
   const { data: saleOrders = [] } = useQuery({
     queryKey: ['sale_orders_for_corte'],
     queryFn: async () => {
@@ -134,7 +135,6 @@ export default function Corte() {
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       }
     } catch (err: any) {
       toast.error(`Erro ao finalizar: ${err.message}`);

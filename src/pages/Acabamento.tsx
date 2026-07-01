@@ -16,7 +16,8 @@ import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
-import { useAllOrderStages } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders, PACKAGING_MODE_LABELS, type PackagingMode } from '@/hooks/useSaleOrders';
 import { useClients } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -40,6 +41,8 @@ export default function Acabamento() {
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+  // Realtime: OP liberada/apontada em outro terminal reflete aqui em ~1s.
+  useRealtimeOrderStages();
   const { data: saleOrders = [] } = useSaleOrders();
   const { data: clients = [] } = useClients();
   const queryClient = useQueryClient();
@@ -92,7 +95,6 @@ export default function Acabamento() {
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       } else if (failedCount > 0) {
         toast.error(`Falha ao finalizar ${failedCount} ${failedCount === 1 ? 'OP' : 'OPs'}.`);
       }
@@ -111,7 +113,7 @@ export default function Acabamento() {
       if (filterStatus === 'active' && status !== 'em produção') return false;
       
       const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => s.stage_name === 'Acabamento');
+      const stage = stages.find(s => sameStage(s.stage_name, 'Acabamento'));
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
@@ -569,7 +571,7 @@ export default function Acabamento() {
               const { ref, grade, activeSizes, gradeSum, totalPairs, totalFichas, fichas, imageUrl } = buildPrintContent(order);
               const isExpanded = expandedOrderId === order.id;
 
-              const acabamentoStage = allStages.find(s => s.order_id === order.id && s.stage_name === 'Acabamento');
+              const acabamentoStage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, 'Acabamento'));
               const stageColor = acabamentoStage?.status === 'concluido' ? 'border-l-emerald-500' : acabamentoStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
               return (

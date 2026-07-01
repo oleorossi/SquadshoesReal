@@ -17,7 +17,8 @@ import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
-import { useAllOrderStages } from '@/hooks/useOrderStages';
+import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,6 +40,8 @@ export default function Montagem() {
   const { data: references = [] } = useTechnicalSheets();
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const { data: allStages = [] } = useAllOrderStages(orderIds.length > 0 ? orderIds : undefined);
+  // Realtime: OP liberada/apontada em outro terminal reflete aqui em ~1s.
+  useRealtimeOrderStages();
   const { data: saleOrders = [] } = useSaleOrders();
   const queryClient = useQueryClient();
   const { getStrapsLabel } = useOrderStraps();
@@ -70,7 +73,7 @@ export default function Montagem() {
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
       const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => s.stage_name === STAGE_NAME);
+      const stage = stages.find(s => sameStage(s.stage_name, STAGE_NAME));
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
@@ -128,7 +131,6 @@ export default function Montagem() {
         setSelectedOrders(new Set());
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['production_orders'] });
       } else if (failedCount > 0) {
         toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
       }
@@ -328,7 +330,7 @@ export default function Montagem() {
             const isExpanded = expandedOrderId === order.id;
             const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
 
-            const montagemStage = allStages.find(s => s.order_id === order.id && s.stage_name === STAGE_NAME);
+            const montagemStage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, STAGE_NAME));
             const stageColor = montagemStage?.status === 'concluido' ? 'border-l-emerald-500' : montagemStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
             return (
