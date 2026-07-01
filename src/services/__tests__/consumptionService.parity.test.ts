@@ -6,12 +6,15 @@
  *     src/services/__tests__/consumptionService.parity.test.ts
  *
  * Invoca `run_consumption_parity_tests()` (migration
- * 20260722120000_consumption-consistency-and-parity-guards.sql), que TRAVA o
- * contrato entre `calculate_order_consumption` (escalar) e
- * `..._by_grade`: palmilha pronta unificada (insole_ready_made +
- * sole_classification, sem o legado insole_mode), conversão dm²→unidade nos
- * dois, e fachete no graded. Se alguém redeployar uma versão divergente de
- * qualquer função, o case correspondente falha.
+ * 20260722120000_consumption-consistency-and-parity-guards.sql, atualizada em
+ * 20260902120000_motor-unico-consumo-by-grade.sql), que TRAVA o contrato do
+ * MOTOR ÚNICO: `calculate_order_consumption` (escalar) virou um adaptador fino
+ * que DELEGA a `..._by_grade` — herdando por construção a palmilha pronta
+ * unificada (insole_ready_made + sole_classification, sem o legado
+ * insole_mode), a conversão dm²→unidade e o fachete. O by_grade continua sendo
+ * o único dono dessas regras; a escalar não pode reintroduzir cópia própria da
+ * conversão. Se alguém redeployar uma versão divergente de qualquer função, o
+ * case correspondente falha.
  *
  * A paridade do lado TS (motor canônico do frontend) é travada por
  * src/lib/__tests__/orderConsumption.test.ts. Juntos, os dois suites impedem
@@ -36,8 +39,8 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       });
       const failures = rows.filter((r) => !r.ok);
       expect(failures, JSON.stringify(failures, null, 2)).toHaveLength(0);
-      // 2 de existência + 8 de contrato.
-      expect(rows.length).toBeGreaterThanOrEqual(10);
+      // 2 de existência + 7 de contrato (motor único).
+      expect(rows.length).toBeGreaterThanOrEqual(9);
     });
   },
 );
