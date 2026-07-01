@@ -198,7 +198,13 @@ export default function SaleOrderForm() {
     sessionStorage.removeItem(SALE_ORDER_DRAFT_KEY);
     localStorage.removeItem(SALE_ORDER_DRAFT_KEY);
     setPendingDraft(null);
+    toast.success('Rascunho descartado');
   };
+
+  // Dispensar (Esc/X/clique fora) ≠ Descartar: fechar o dialog só esconde o
+  // aviso — o rascunho continua no storage pra próxima visita. Apagar de vez
+  // é SÓ pelo botão "Descartar" explícito.
+  const dismissDraftPrompt = () => setPendingDraft(null);
 
   useEffect(() => {
     if (!referencesLoading && !isEdit) {
@@ -1181,7 +1187,7 @@ export default function SaleOrderForm() {
       {/* Dialog de rascunho — opt-in pra restaurar / descartar */}
       <Dialog
         open={!!pendingDraft}
-        onOpenChange={(o) => { if (!o) discardDraft(); }}
+        onOpenChange={(o) => { if (!o) dismissDraftPrompt(); }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>

@@ -1,5 +1,9 @@
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
@@ -275,13 +279,25 @@ export default function SaleOrders() {
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
 
+  // Guard de descarte: Esc/clique fora não pode apagar um form longo em
+  // silêncio — se há dados digitados, pede confirmação antes de resetar.
+  const [confirmDiscard, setConfirmDiscard] = useState<null | 'create' | 'edit'>(null);
+
+  const resetCreateForm = () => {
+    setDialogOpen(false);
+    setForm(emptyForm);
+    setItems([{ ...emptyItem }]);
+    setSelectedClientId('');
+  };
+  const createDirty = () =>
+    selectedClientId !== '' ||
+    JSON.stringify(form) !== JSON.stringify(emptyForm) ||
+    JSON.stringify(items) !== JSON.stringify([emptyItem]);
+
   const closeCreateDialog = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      setForm(emptyForm);
-      setItems([{ ...emptyItem }]);
-      setSelectedClientId('');
-    }
+    if (open) { setDialogOpen(true); return; }
+    if (createDirty()) { setConfirmDiscard('create'); return; }
+    resetCreateForm();
   };
 
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -313,14 +329,26 @@ export default function SaleOrders() {
   const [editItems, setEditItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
   const [editSelectedClientId, setEditSelectedClientId] = useState<string>('');
 
+  // Snapshot do estado carregado no openEditDialog — dirty = difere do snapshot.
+  const editInitialRef = useRef<string>('');
+  const editSnapshot = (f: SaleOrderFormData, i: SaleOrderItemFormData[], c: string) =>
+    JSON.stringify({ f, i, c });
+
+  const resetEditForm = () => {
+    setEditDialogOpen(false);
+    setEditForm(emptyForm);
+    setEditItems([{ ...emptyItem }]);
+    setEditSelectedClientId('');
+    setEditOrderId(null);
+  };
+  const editDirty = () =>
+    editInitialRef.current !== '' &&
+    editSnapshot(editForm, editItems, editSelectedClientId) !== editInitialRef.current;
+
   const closeEditDialog = (open: boolean) => {
-    setEditDialogOpen(open);
-    if (!open) {
-      setEditForm(emptyForm);
-      setEditItems([{ ...emptyItem }]);
-      setEditSelectedClientId('');
-      setEditOrderId(null);
-    }
+    if (open) { setEditDialogOpen(true); return; }
+    if (editDirty()) { setConfirmDiscard('edit'); return; }
+    resetEditForm();
   };
   // Filter & selection states (persisted across navigation)
   const [searchTerm, setSearchTerm] = usePersistedState('searchTerm', '');
@@ -944,7 +972,7 @@ export default function SaleOrders() {
   const openEditDialog = async (order: any) => {
     setEditOrderId(order.id);
     const rep = representatives.find(r => r.name === order.representative);
-    setEditForm({
+    const nextForm: SaleOrderFormData = {
       company_id: (order as any).company_id ?? null,
       client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
       client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
@@ -956,23 +984,27 @@ export default function SaleOrders() {
       is_factoring: order.is_factoring || false,
       factoring_config_id: order.factoring_config_id || '',
       packaging_mode: (order.packaging_mode || 'individual_amarrado') as PackagingMode,
-    });
+    };
+    setEditForm(nextForm);
     const client = clients.find(c => c.id === order.client_id)
       || clients.find(c => c.razao_social === order.client_name);
     setEditSelectedClientId(client?.id || '');
 
     const { data: orderItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', order.id);
+    let nextItems: SaleOrderItemFormData[];
     if (orderItems && orderItems.length > 0) {
-      setEditItems(orderItems.map(i => {
+      nextItems = orderItems.map(i => {
         const grade = (i.grade as Record<string, number>) || {};
         const gradeTotal = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
         const qty = Number(i.quantity) || 0;
         const fichas = gradeTotal > 0 ? Math.max(1, Math.round(qty / gradeTotal)) : 1;
         return { reference_id: i.reference_id, color: i.color || '', grade, unit_price: Number(i.unit_price) || 0, quantity: qty, fichas, strap_colors: (i.strap_colors as any[]) || [], material_variant_id: (i as any).material_variant_id || null };
-      }));
+      });
     } else {
-      setEditItems([{ ...emptyItem }]);
+      nextItems = [{ ...emptyItem }];
     }
+    setEditItems(nextItems);
+    editInitialRef.current = editSnapshot(nextForm, nextItems, client?.id || '');
     setEditDialogOpen(true);
     setDetailDialogOpen(false);
   };
@@ -2895,6 +2927,30 @@ export default function SaleOrders() {
           <SaleOrderFormPanel form={editForm} setForm={setEditForm} items={editItems} setItems={setEditItems} clients={clients} representatives={representatives} references={references} isAdmin={isAdmin} selectedClientId={editSelectedClientId} onClientSelect={handleEditClientSelect} onSubmit={handleEditSubmit} onCancel={() => closeEditDialog(false)} isPending={updateOrder.isPending} submitLabel="Salvar Alterações" />
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de descarte — criar/editar PV com dados não salvos */}
+      <AlertDialog open={confirmDiscard !== null} onOpenChange={(o) => { if (!o) setConfirmDiscard(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O formulário tem dados não salvos. Fechar agora descarta tudo que foi preenchido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmDiscard === 'create') resetCreateForm(); else resetEditForm();
+                setConfirmDiscard(null);
+              }}
+            >
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Summary Dialog */}
       <Dialog open={summaryDialogOpen} onOpenChange={setSummaryDialogOpen}>

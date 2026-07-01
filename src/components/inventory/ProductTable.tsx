@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle } from '@phosphor-icons/react';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -34,12 +34,8 @@ function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: s
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl p-2 bg-background/95 backdrop-blur-sm">
-        <button
-          className="absolute top-2 right-2 z-10 rounded-full bg-background/80 p-1.5 hover:bg-muted transition-colors"
-          onClick={() => onOpenChange(false)}
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {/* O X de fechar já vem do primitive DialogContent (com aria-label) */}
+        <DialogTitle className="sr-only">{alt}</DialogTitle>
         <div className="flex items-center justify-center min-h-[300px]">
           <img src={src} alt={alt} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
         </div>
