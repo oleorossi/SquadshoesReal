@@ -56,6 +56,11 @@ export function SearchableSelect({
     );
   }, [options, search]);
 
+  // Teto de renderização: com catálogos de centenas de itens, montar tudo de
+  // uma vez trava a abertura do popover — o refino vem da busca, não do scroll.
+  const RENDER_CAP = 100;
+  const visible = filtered.length > RENDER_CAP ? filtered.slice(0, RENDER_CAP) : filtered;
+
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
       <PopoverTrigger asChild>
@@ -84,7 +89,7 @@ export function SearchableSelect({
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup heading={heading ? `${heading} (${filtered.length})` : undefined}>
-              {filtered.map(o => (
+              {visible.map(o => (
                 <CommandItem
                   key={o.value} value={o.value}
                   onSelect={() => { onChange(o.value); setOpen(false); setSearch(''); }}
@@ -97,6 +102,11 @@ export function SearchableSelect({
                   </div>
                 </CommandItem>
               ))}
+              {filtered.length > RENDER_CAP && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  Mostrando {RENDER_CAP} de {filtered.length} — digite pra refinar
+                </div>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>
