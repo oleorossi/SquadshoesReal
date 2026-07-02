@@ -8,7 +8,7 @@ import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
 import { EmptyState } from '@/components/ui/empty-state';
-import { autoCreateSolePO } from '@/lib/soleAutoPO';
+import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -803,6 +803,25 @@ function getWeekOptions() {
             toast.error(`Estoque de solado insuficiente: ${soleErr.message}`);
           }
           return;
+        }
+        // Achado C (auditoria 2026-07-01): com p_force_soft=true o RPC não erra por
+        // falta (o if acima era caminho quase morto) — a OC automática dispara do
+        // RESULTADO do débito (déficit por numeração da reserva sole_grade vs
+        // stock_grade), ANTES do consume: o consumo abaixo fará débito parcial e a
+        // OC cobre o que faltou. O caminho por erro segue como fallback.
+        try {
+          const po = await autoCreateSolePOFromShortfall({
+            orderId: order.id,
+            orderRef: (order as any).order_number || String(order.id).slice(0, 8),
+          });
+          if (po) {
+            toast.warning(
+              `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`,
+              { duration: 8000 }
+            );
+          }
+        } catch (poErr: any) {
+          console.error('Erro ao gerar OC de solado por déficit (OP → Em Produção):', poErr?.message);
         }
         // Reserve→Debit (Phase 1): aplica o débito real (consome reservas, decrementa stock)
         const { error: consumeErr } = await (supabase.rpc as any)('consume_all_reservations_for_order', {

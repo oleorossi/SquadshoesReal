@@ -6,6 +6,25 @@ export interface SoleAutoPOResult {
   accumulated: boolean; // true if added to an existing open OC
 }
 
+/** Contexto resolvido do produto de solado + déficit, pronto pra virar OC. */
+interface SolePOContext {
+  orderId: string;
+  orderRef: string;
+  /** Cor do cabedal do pedido (fallback de cor no item da OC). */
+  color: string;
+  soleProductId: string;
+  soleProductColor: string;
+  soleProductGroupId: string | null;
+  currentStock: number;
+  minStock: number;
+  unitPrice: number;
+  unit: string;
+  /** Déficit por numeração (chaves já no formato do stock_grade, ex. "33/34"). */
+  perSizeShortage: Record<string, number>;
+  /** Grade gravada no item da OC (o que pedir por numeração). */
+  poItemGrade: Record<string, number>;
+}
+
 /**
  * When sole stock is insufficient for an order, resolves the sole product,
  * finds a supplier via group_suppliers, and auto-creates (or accumulates into)
@@ -135,7 +154,122 @@ export async function autoCreateSolePO(params: {
   const shortage = Object.values(perSizeShortage).reduce((s, v) => s + v, 0);
   if (shortage <= 0) return null; // estoque cobre todos os tamanhos, nada a pedir
 
-  const orderQty = shortage;
+  // Comportamento legado preservado: o item da OC grava a grade COMPLETA
+  // pedida (quantity = só o déficit). A variante por shortfall grava o déficit.
+  return criarOuAcumularOCDeSolado({
+    orderId,
+    orderRef,
+    color,
+    soleProductId,
+    soleProductColor,
+    soleProductGroupId,
+    currentStock,
+    minStock,
+    unitPrice,
+    unit,
+    perSizeShortage,
+    poItemGrade: grade,
+  });
+}
+
+/**
+ * Achado C (auditoria 2026-07-01): com `p_force_soft=true` o
+ * `debit_sole_stock_by_grade` NUNCA erra por falta de estoque (vira reserva
+ * soft / débito parcial) — então os callers que só chamavam `autoCreateSolePO`
+ * dentro de `if (soleErr)` estavam com a OC automática efetivamente MORTA.
+ *
+ * Esta variante dispara a partir do RESULTADO do débito: o RPC retorna void,
+ * mas persiste em `material_reservations` (kind='sole_grade') o PRODUTO que a
+ * cascata canônica resolveu (conjugações de cor incluídas) e a
+ * `effective_grade` já remapeada pras chaves conjugadas do `stock_grade`
+ * (ex. "33/34"). Comparamos essa necessidade com o `stock_grade` BRUTO atual
+ * (mesma base que o débito hard usa — solado não tem reserva por numeração)
+ * e criamos/acumulamos OC só pro déficit por numeração.
+ *
+ * Retorna null quando não há reserva de solado, não há déficit ou não foi
+ * possível criar a OC. O caminho antigo por erro (`autoCreateSolePO`) segue
+ * como fallback nos callers.
+ */
+export async function autoCreateSolePOFromShortfall(params: {
+  orderId: string;
+  orderRef: string;
+}): Promise<SoleAutoPOResult | null> {
+  const { orderId, orderRef } = params;
+
+  // ── Step 1: lê o resultado do débito (reserva sole_grade da OP) ───────────
+  const { data: reservations, error: rsvErr } = await (supabase as any)
+    .from('material_reservations')
+    .select('product_id, quantity_reserved, metadata')
+    .eq('order_id', orderId)
+    .eq('status', 'reserved')
+    .eq('metadata->>kind', 'sole_grade');
+  if (rsvErr || !reservations || reservations.length === 0) return null;
+
+  for (const rsv of reservations as Array<{ product_id: string; quantity_reserved: number; metadata: any }>) {
+    const effectiveGrade = (rsv.metadata?.effective_grade || {}) as Record<string, number>;
+    const needEntries = Object.entries(effectiveGrade)
+      .map(([k, v]) => [k, Number(v) || 0] as const)
+      .filter(([, v]) => v > 0);
+    if (needEntries.length === 0) continue;
+
+    // ── Step 2: produto que o DÉBITO resolveu (não re-resolve a cascata) ────
+    const { data: p } = await supabase
+      .from('products')
+      .select('id, name, color, group_id, quantity, stock_grade, min_stock, unit_price, unit')
+      .eq('id', rsv.product_id)
+      .maybeSingle();
+    if (!p) continue;
+
+    const sg = ((p as any).stock_grade || {}) as Record<string, any>;
+    const stockGrade: Record<string, number> = Object.fromEntries(
+      Object.entries(sg)
+        .filter(([k]) => !k.startsWith('_'))
+        .map(([k, v]) => [k, Number(v) || 0])
+    );
+
+    // ── Step 3: déficit por numeração (mesma conta LEAST do débito hard) ────
+    // Se a reserva já é um saldo de baixa parcial (partial_pending), o déficit
+    // É a própria effective_grade — o débito hard já subtraiu o disponível.
+    const isPartialPending = rsv.metadata?.partial_pending === true;
+    const perSizeShortage: Record<string, number> = {};
+    for (const [sizeKey, needed] of needEntries) {
+      const available = isPartialPending ? 0 : (stockGrade[sizeKey] ?? 0);
+      const deficit = Math.max(0, needed - available);
+      if (deficit > 0) perSizeShortage[sizeKey] = deficit;
+    }
+    if (Object.values(perSizeShortage).reduce((s, v) => s + v, 0) <= 0) continue;
+
+    const gradeSum = Object.values(stockGrade).reduce((s, v) => s + v, 0);
+    const cabedalColor = String(rsv.metadata?.color || '');
+
+    return criarOuAcumularOCDeSolado({
+      orderId,
+      orderRef,
+      color: cabedalColor,
+      soleProductId: (p as any).id,
+      soleProductColor: (p as any).color || '',
+      soleProductGroupId: (p as any).group_id || null,
+      currentStock: gradeSum > 0 ? gradeSum : (Number((p as any).quantity) || 0),
+      minStock: Number((p as any).min_stock) || 0,
+      unitPrice: Number((p as any).unit_price) || 0,
+      unit: (p as any).unit || 'par',
+      perSizeShortage,
+      poItemGrade: perSizeShortage,
+    });
+  }
+
+  return null;
+}
+
+/** Passos 3–5 compartilhados: fornecedor → OC aberta (acumula) → OC nova. */
+async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPOResult | null> {
+  const {
+    orderId, orderRef, color, soleProductId, soleProductColor, soleProductGroupId,
+    currentStock, minStock, unitPrice, unit, perSizeShortage, poItemGrade,
+  } = ctx;
+
+  const orderQty = Object.values(perSizeShortage).reduce((s, v) => s + v, 0);
+  if (orderQty <= 0) return null;
 
   const gradeDesc = Object.entries(perSizeShortage)
     .filter(([, q]) => q > 0)
@@ -183,7 +317,7 @@ export async function autoCreateSolePO(params: {
     current_stock: currentStock,
     min_stock: minStock,
     max_stock: minStock + orderQty,
-    grade,
+    grade: poItemGrade,
     color: soleProductColor || color || null,
   };
 
@@ -200,7 +334,7 @@ export async function autoCreateSolePO(params: {
       p_current_stock: currentStock,
       p_min_stock: minStock,
       p_max_stock: minStock + orderQty,
-      p_grade_delta: grade,
+      p_grade_delta: poItemGrade,
       p_color: soleProductColor || color || null,
     });
     // upsert_po_item_atomic already updates purchase_orders.total_value in

@@ -18,11 +18,35 @@ function useAllSheetMaterials() {
   return useQuery({
     queryKey: ['all_sheet_materials'],
     queryFn: async () => {
+      // Auditoria 2026-07-01 (achado A): consumption_per_size do BOM removido do
+      // plano — o motor usa só o ESCALAR quantity_per_unit (parity com o modal
+      // de consumo e o by_grade do servidor). `category` entra pro filtro de
+      // caixa por packaging_mode.
       const { data, error } = await supabase
         .from('sheet_materials')
-        .select('sheet_id, product_id, quantity_per_unit, consumption_per_size, products(id, name, sku, unit, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal)');
+        .select('sheet_id, product_id, quantity_per_unit, products(id, name, sku, unit, category, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal)');
       if (error) throw error;
       return data as unknown as SheetMaterial[];
+    },
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * packaging_mode por PV (sale_orders) — a OP não guarda o modo; ele mora no
+ * pedido. Usado pra filtrar a caixa ALTERNATIVA do BOM (colmeia × individual).
+ */
+function usePvPackagingModes() {
+  return useQuery({
+    queryKey: ['weekly_pv_packaging_modes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select('id, packaging_mode');
+      if (error) throw error;
+      const map = new Map<string, string | null>();
+      for (const r of (data || []) as any[]) map.set(r.id, r.packaging_mode ?? null);
+      return map;
     },
     staleTime: 60 * 1000,
   });
@@ -61,6 +85,7 @@ export default function WeeklyPurchasingContent() {
   const { data: componentSheets, isLoading: loadingCS } = useComponentSheets();
   const { data: allSheetMaterials, isLoading: loadingSM } = useAllSheetMaterials();
   const { data: buyByDates } = useBuyByDates();
+  const { data: pvPackagingModes } = usePvPackagingModes();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('active');
   const [viewMode, setViewMode] = useState<'matrix' | 'weekly'>('weekly');
@@ -86,6 +111,8 @@ export default function WeeklyPurchasingContent() {
         planned_delivery: o.planned_delivery,
         created_at: o.created_at,
         grade: o.grade as Record<string, number> | null,
+        // Achado A: modo de embalagem do PV — filtra caixa alternativa do BOM.
+        packaging_mode: o.sale_order_id ? (pvPackagingModes?.get(o.sale_order_id) ?? null) : null,
       }));
 
     // A5 (auditoria): passa as fichas de componente (largura + perda) p/ converter
@@ -93,7 +120,7 @@ export default function WeeklyPurchasingContent() {
     // buyByDates: âncora JIT (data-limite de compra reverse-scheduled da view) — define
     // a SEMANA de compra; planned_start vira só fallback.
     return generateWeeklyPurchasingPlan(filteredOrders, allSheetMaterials, (componentSheets as any) || [], buyByDates || new Map());
-  }, [orders, allSheetMaterials, componentSheets, statusFilter, buyByDates]);
+  }, [orders, allSheetMaterials, componentSheets, statusFilter, buyByDates, pvPackagingModes]);
 
   const filteredPlan = useMemo(() => {
     if (!result) return [];

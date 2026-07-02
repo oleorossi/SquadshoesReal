@@ -10,6 +10,7 @@ import {
   normalizeColorKey,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import {
   aggregateArtisanalStrapCut,
   isArtisanalStrap,
@@ -28,6 +29,11 @@ export type ConsumptionRow = {
   /** Material de área (dm²/par) cuja ficha de componente não tem largura →
    *  não dá pra converter pra metros; valor fica em dm² e a UI deve avisar. */
   widthMissing?: boolean;
+  /** Equivalência em PLACAS (informação secundária) quando a linha de palmilha
+   *  sai em dm² — a unidade de ESTOQUE do produto-placa (ex.: PLACA 1.0 EVA,
+   *  unit='dm²'). Estoque/débito/compra são em dm²; exibir só "placas" tornava
+   *  a comparação com estoque inválida (auditoria 2026-07-01). */
+  plateEquivalent?: number;
 };
 
 export const COMPONENT_ORDER = [
@@ -70,10 +76,12 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   if (existing) {
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
+    // Equivalência em placas soma junto (é linear na mesma proporção do dm²).
+    if (row.plateEquivalent) existing.plateEquivalent = (existing.plateEquivalent || 0) + row.plateEquivalent;
     return;
   }
 
-  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing });
+  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing, plateEquivalent: row.plateEquivalent });
 };
 
 export async function calculateBomForOrders(orderIds: string[]): Promise<ConsumptionRow[]> {
@@ -81,7 +89,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
   const { data: ordersData, error: ordersError } = await supabase
     .from('orders')
-    .select('id, reference_id, color, quantity, grade, sale_order_item_id')
+    .select('id, reference_id, color, quantity, grade, sale_order_item_id, sale_order_id')
     .in('id', orderIds);
 
   if (ordersError) throw ordersError;
@@ -89,6 +97,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
   const refIds = [...new Set(ordersData.map(o => o.reference_id).filter(Boolean))];
   const saleOrderItemIds = [...new Set(ordersData.map(o => o.sale_order_item_id).filter(Boolean))] as string[];
+  const saleOrderIds = [...new Set(ordersData.map(o => o.sale_order_id).filter(Boolean))] as string[];
 
   const [
     { data: sheetsData },
@@ -98,6 +107,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     { data: componentSheets },
     { data: saleOrderItems },
     { data: soleColorMappings },
+    { data: saleOrdersPkg },
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
@@ -119,12 +129,21 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       .from('technical_sheet_sole_colors')
       .select('sheet_id, product_color, sole_product_id')
       .in('sheet_id', refIds),
+    // packaging_mode do PV — a ficha pode listar VÁRIAS caixas no BOM (colmeia +
+    // individual) como alternativas; o pedido escolhe uma via packaging_mode e a
+    // Lista de Separação deve mostrar SÓ a do modo (espelha o modal/orderConsumption).
+    saleOrderIds.length > 0
+      ? supabase.from('sale_orders').select('id, packaging_mode').in('id', saleOrderIds)
+      : Promise.resolve({ data: [] }),
   ]);
 
   if (materialsError) throw materialsError;
 
   const sheetsMap = new Map((sheetsData || []).map(s => [s.id, s]));
   const saleItemsMap = new Map((saleOrderItems || []).map((si: any) => [si.id, si]));
+  const packagingModeBySaleOrder = new Map<string, string | null>(
+    (saleOrdersPkg || []).map((so: any) => [so.id, so.packaging_mode ?? null]),
+  );
   const soleColorMap = new Map<string, string>();
   for (const m of (soleColorMappings || []) as any[]) {
     if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
@@ -224,7 +243,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       color: order.color || '—',
       quantity: order.quantity,
       grade: order.grade as Record<string, number> | null,
-      fichas: 1,
+      // `fichas` NÃO é forçado (era hardcoded 1): null deixa o fallback EXATO
+      // (quantity ÷ gradeTotal) dos motores agir — escala-invariante, correto
+      // tanto quando orders.grade é a grade REAL (Σ = quantity ⇒ 1×) quanto
+      // quando é a grade BASE (Σ = 1 ficha ⇒ quantity/base). Com 1 fixo, OPs
+      // com grade base subcontavam tiras/per-size (auditoria 2026-07-01).
+      fichas: null,
       strap_colors: saleItem?.strap_colors ?? null,
     };
     const itemQuantity = Number(item.quantity) || 0;
@@ -313,13 +337,35 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // Aplica waste_pct também no caminho que usa dimensões do grupo, para
       // manter paridade com convertDm2ToPlates() (fallback).
       const insoleWastePct = Number(insoleSheet?.waste_pct) || 0;
-      const insolePlates = groupPlateArea > 0
-        ? (insoleDm2 / groupPlateArea) * (1 + insoleWastePct / 100)
+      // Área da placa: dimensões do GRUPO prevalecem; fallback = dimensões da
+      // própria ficha de componente (mesma conta do convertDm2ToPlates).
+      const insolePlateAreaDm2 = groupPlateArea > 0 ? groupPlateArea : calcGroupPlateAreaDm2(insoleSheet);
+      const insolePlates = insolePlateAreaDm2 > 0
+        ? (insoleDm2 / insolePlateAreaDm2) * (1 + insoleWastePct / 100)
         : convertDm2ToPlates(insoleDm2, insoleSheet);
-      addConsumptionRow(consumptionMap, {
-        componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
-        productUnit: 'placa', color: '—', totalQuantity: insolePlates,
-      });
+      // Unidade de ESTOQUE do produto-placa conhecido (ficha de componente
+      // escolhida no modo 'plate'). Quando o produto é estocado/debitado/
+      // comprado em dm² (ex.: PLACA 1.0 EVA, unit='dm²'), a linha SAI em dm² —
+      // emitir "placas" tornava a comparação com estoque inválida (estoque em
+      // dm² vs consumo em placas; auditoria 2026-07-01). A equivalência em
+      // placas vira informação secundária (plateEquivalent). Sem produto em
+      // dm² conhecido, mantém o comportamento em 'placa'.
+      const insoleStockUnit = ((insoleSheet as any)?.products?.unit || '').toString().trim();
+      const insoleStockIsDm2 = ['dm²', 'dm2'].includes(insoleStockUnit.toLowerCase());
+      if (insoleStockIsDm2) {
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
+          productUnit: insoleStockUnit, color: '—',
+          // Perda aplicada igual ao caminho de placas (paridade convertDm2ToPlates).
+          totalQuantity: insoleDm2 * (1 + insoleWastePct / 100),
+          plateEquivalent: insolePlateAreaDm2 > 0 ? insolePlates : undefined,
+        });
+      } else {
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
+          productUnit: 'placa', color: '—', totalQuantity: insolePlates,
+        });
+      }
     }
 
     // Solado — cor REAL do solado resolvido (soleColorMap, espelha resolve_sole_color
@@ -358,6 +404,28 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
 
     const itemMaterials = (materials || []).filter((m) => m.sheet_id === order.reference_id);
+
+    // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
+    // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
+    // caixa do modo escolhido — senão a Lista de Separação somava/exibia os dois
+    // modos no grupo "Embalagem". Pré-varre os tipos de caixa presentes nesta
+    // ficha pra o filtro só agir quando há alternativa real (espelha o modal —
+    // orderConsumption.ts / shouldShowCaixaForMode).
+    const itemPackagingMode = order.sale_order_id
+      ? (packagingModeBySaleOrder.get(order.sale_order_id) ?? null)
+      : null;
+    const presentCaixaTypes = new Set<CollectiveType>();
+    if (itemPackagingMode) {
+      for (const m of itemMaterials) {
+        const p = m.products as any;
+        if (!p) continue;
+        const gName = (m.product_groups as any)?.name || p.category || p.name || '';
+        if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
+        const t = caixaCollectiveTypeFromName(p.name);
+        if (t) presentCaixaTypes.add(t);
+      }
+    }
+
     for (const material of itemMaterials) {
       const product = material.products as any;
       const group = material.product_groups as any;
@@ -366,8 +434,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const groupName = group?.name || product.category || product.name || 'Outros';
       const groupKey = groupName.toLowerCase();
       const specHasGroup = specGroupsWithConsumption.has(groupKey);
+      const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
+
+      // Embalagem com modo definido: pula a caixa que NÃO é a do packaging_mode
+      // do pedido (só quando há alternativas reais na ficha — ver pré-varredura).
+      if (bomType === 'Embalagem'
+        && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
+
       if (specHasGroup) {
-        const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
         const isLiningGroup = liningMatch?.group?.toLowerCase() === groupKey;
         const isInsoleGroup = sheet?.insole_material?.toLowerCase() === groupKey;
@@ -409,7 +483,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       }
 
       addConsumptionRow(consumptionMap, {
-        componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''),
+        componentType: bomType,
         groupName, materialName: product.name || groupName, productUnit,
         color: material.color || '—', totalQuantity: totalQty,
         widthMissing,
@@ -594,7 +668,9 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
   const [{ data: sheetsData }, { data: saleOrderItems }, { data: productGroups }, { data: dimProducts }] = await Promise.all([
     supabase.from('technical_sheets').select('id, strap_colors').in('id', refIds),
     saleOrderItemIds.length > 0
-      ? supabase.from('sale_order_items').select('id, strap_colors, fichas').in('id', saleOrderItemIds)
+      // `fichas` de propósito FORA do select: não entra mais no cálculo (grade
+      // real da OP + fallback exato — ver comentário no loop abaixo).
+      ? supabase.from('sale_order_items').select('id, strap_colors').in('id', saleOrderItemIds)
       : Promise.resolve({ data: [] as any[] }),
     supabase.from('product_groups').select('id, name, dimensions_width, dimensions_unit'),
     // Largura cadastrada por PRODUTO (fallback quando o grupo não tem largura).
@@ -708,10 +784,16 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
       });
       if (!artisanal) continue;
 
+      // NÃO passar `fichas` do sale_order_item: `orders.grade` aqui é a grade
+      // REAL da OP (Σ = quantity), enquanto `fichas` do item se refere à grade
+      // BASE do PV. Como fichas > 0 tem prioridade no motor, o total virava
+      // Σ(pares_da_grade_REAL × cm/par) × fichas — supercontagem de 30–92×
+      // (ex.: OP-2026-00729, 60×; auditoria 2026-07-01). O fallback do motor
+      // (quantity ÷ gradeTotal) é escala-invariante: correto tanto pra grade
+      // base quanto pra real.
       const cm = calculateStrapConsumptionCm(strap, {
         grade,
         quantity: itemQuantity,
-        fichas: saleItem?.fichas,
       });
       const metros = cm / 100;
       if (metros <= 0) continue;

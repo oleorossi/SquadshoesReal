@@ -85,11 +85,11 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
   const [{ data: sheets }, { data: soleMappings }, { data: palmilhaMappings }] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, primary_sole_id, insole_material, insole_has_lining, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_buffer_material_dias')
+      .select('id, primary_sole_id, sole_group_id, insole_material, insole_has_lining, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_buffer_material_dias')
       .in('id', sheetIds),
     supabase
       .from('technical_sheet_sole_colors')
-      .select('sheet_id, product_color, sole_product_id')
+      .select('sheet_id, product_color, sole_product_id, sole_group_id')
       .in('sheet_id', sheetIds),
     (supabase as any)
       .from('technical_sheet_palmilha_colors')
@@ -105,12 +105,100 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
 
   const sheetMap = new Map((sheets || []).map((s: any) => [s.id, s]));
 
-  // sole color mapping: "sheetId::cabedelColor" → sole_product_id
-  const soleColorMap = new Map<string, string>();
+  // sole color mapping: "sheetId::cabedelColor" → { productId, groupId }
+  // (mantém o group_id pro fallback P2 quando o mapping não fixa produto)
+  const soleColorMap = new Map<string, { productId: string | null; groupId: string | null }>();
   for (const m of soleMappings || []) {
     const key = `${(m as any).sheet_id}::${normalizeColorKey((m as any).product_color)}`;
-    soleColorMap.set(key, (m as any).sole_product_id);
+    soleColorMap.set(key, {
+      productId: (m as any).sole_product_id || null,
+      groupId: (m as any).sole_group_id || null,
+    });
   }
+
+  // ── Achado B (auditoria 2026-07-01): a resolução do solado aqui espelhava só
+  // parte da cascata do motor canônico (`resolve_sole_color`), pulando a
+  // PRIORIDADE 0 — regra ativa em `sole_color_conjugations` (cabedal → cor do
+  // solado por grupo). Resultado: a checagem/sugestão de compra apontava um
+  // PRODUTO diferente do que o débito realmente consome. Cascata espelhada:
+  //   P0: sole_group_id da ficha + conjugação ativa (match exato de cor
+  //       accent-insensitive, senão a regra default) → produto do grupo na cor
+  //       alvo, maior estoque primeiro;
+  //   P1: mapping explícito (technical_sheet_sole_colors.sole_product_id);
+  //   P2: mapping antigo só com group_id → produto do grupo com maior estoque;
+  //   P3: primary_sole_id da ficha.
+  const candidateGroupIds = [
+    ...new Set([
+      ...(sheets || []).map((s: any) => s.sole_group_id).filter(Boolean),
+      ...(soleMappings || [])
+        .filter((m: any) => !m.sole_product_id && m.sole_group_id)
+        .map((m: any) => m.sole_group_id),
+    ]),
+  ] as string[];
+
+  // Regras de conjugação de COR por grupo: { exatas: corCabedal→corSolado, default }
+  const colorConjByGroup = new Map<string, { exact: Map<string, string>; def: string | null }>();
+  // Produtos ativos dos grupos candidatos, ordenados por estoque desc (igual ao
+  // ORDER BY p.quantity DESC do resolve_sole_color).
+  const groupProducts = new Map<string, Array<{ id: string; color: string | null; quantity: number }>>();
+
+  if (candidateGroupIds.length > 0) {
+    const [{ data: colorConjs }, { data: gProducts }] = await Promise.all([
+      (supabase as any)
+        .from('sole_color_conjugations')
+        .select('sole_group_id, cabedal_color, palmilha_color, is_default')
+        .eq('active', true)
+        .in('sole_group_id', candidateGroupIds),
+      supabase
+        .from('products')
+        .select('id, color, group_id, quantity')
+        .eq('active', true)
+        .in('group_id', candidateGroupIds),
+    ]);
+    for (const c of (colorConjs || []) as Array<{ sole_group_id: string; cabedal_color: string | null; palmilha_color: string; is_default: boolean | null }>) {
+      let entry = colorConjByGroup.get(c.sole_group_id);
+      if (!entry) { entry = { exact: new Map(), def: null }; colorConjByGroup.set(c.sole_group_id, entry); }
+      if (c.is_default && entry.def == null) entry.def = c.palmilha_color;
+      const cabKey = normalizeColorKey(c.cabedal_color);
+      if (cabKey && !entry.exact.has(cabKey)) entry.exact.set(cabKey, c.palmilha_color);
+    }
+    for (const p of (gProducts || []) as any[]) {
+      const arr = groupProducts.get(p.group_id) || [];
+      arr.push({ id: p.id, color: p.color, quantity: Number(p.quantity) || 0 });
+      groupProducts.set(p.group_id, arr);
+    }
+    for (const arr of groupProducts.values()) arr.sort((a, b) => b.quantity - a.quantity);
+  }
+
+  /** Cascata de resolução do solado (espelha resolve_sole_color do banco). */
+  const resolveSoleProductId = (sheet: any, refId: string, cabedalColor: string | null): string | null => {
+    const colorKey = normalizeColorKey(cabedalColor);
+
+    // P0: conjugação ativa do grupo da ficha (cor exata → default)
+    if (sheet?.sole_group_id && colorKey) {
+      const conj = colorConjByGroup.get(sheet.sole_group_id);
+      const targetColor = conj?.exact.get(colorKey) ?? conj?.def ?? null;
+      if (targetColor) {
+        const targetKey = normalizeColorKey(targetColor);
+        const hit = (groupProducts.get(sheet.sole_group_id) || [])
+          .find(p => normalizeColorKey(p.color) === targetKey);
+        if (hit) return hit.id;
+      }
+    }
+
+    // P1: mapping explícito com sole_product_id
+    const mapping = soleColorMap.get(`${refId}::${colorKey}`);
+    if (mapping?.productId) return mapping.productId;
+
+    // P2: mapping antigo só com group_id → maior estoque do grupo
+    if (mapping?.groupId) {
+      const first = (groupProducts.get(mapping.groupId) || [])[0];
+      if (first) return first.id;
+    }
+
+    // P3: primary_sole_id da ficha
+    return sheet?.primary_sole_id || null;
+  };
 
   // palmilha mapping: sheetId → Map<cabedal_color_lower, palmilha_color>
   const palmilhaMap = new Map<string, Map<string, string>>();
@@ -135,9 +223,8 @@ export async function checkSoleAvailability(items: ItemInput[]): Promise<SoleAva
     const sheet = sheetMap.get(item.reference_id) as any;
     if (!sheet) continue;
 
-    // ── Sole ──
-    const soleKey = `${item.reference_id}::${normalizeColorKey(item.color)}`;
-    const soleId = soleColorMap.get(soleKey) || sheet.primary_sole_id;
+    // ── Sole ── (cascata canônica P0→P3; ver resolveSoleProductId acima)
+    const soleId = resolveSoleProductId(sheet, item.reference_id, item.color);
     if (soleId) {
       const existing = requiredSoles.get(soleId) || { qty: 0, references: new Set<string>(), sizeBreakdown: {} as Record<string, number>, orderNumbers: new Set<string>() };
       existing.qty += item.totalPairs;

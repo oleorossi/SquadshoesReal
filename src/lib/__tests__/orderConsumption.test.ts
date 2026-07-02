@@ -406,4 +406,117 @@ describe('orderConsumption — motor canônico', () => {
     expect(soleTwo.totalQuantity).toBe(soleOne.totalQuantity * 2);
     expect(soleTwo.sizeBreakdown).toEqual({ '34': 8, '35': 8, '36': 8, '37': 8, '38': 8, '39': 8 });
   });
+
+  // ── (a) Palmilha na unidade de ESTOQUE do produto (auditoria motores 2026-07-01)
+  // O único produto vivo de placa (PLACA 1.0 EVA) tem unit='dm²' — débito e
+  // estoque operam em dm². Emitir a linha em 'placa' tornava a comparação
+  // verde/vermelho do modal ~150× inválida. Quando a unidade de estoque é de
+  // ÁREA, a linha sai em dm² cru; 'par' e 'placa' seguem nos demais casos.
+  it('palmilha com estoque em dm² (ficha de componente do grupo) emite a linha em dm², não em placas', () => {
+    const ctx = buildContext();
+    // Espelha o caso vivo: grupo EVA PLACA com ficha de componente cujo produto
+    // tem unit='dm²' (PLACA 1.0 EVA). 5 dm²/par × 24 = 120 dm².
+    ctx.allProducts.push({ id: 'p-placa-eva', name: 'PLACA 1.0 EVA', unit: 'dm²', color: '', group_id: 'g-eva', quantity: 76, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+    ctx.componentSheets.push({ product_id: 'p-placa-eva', dimensions_width: 1000, dimensions_length: 1500, dimensions_unit: 'mm', yield_per_size: {}, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-eva', name: 'PLACA 1.0 EVA', color: '', unit: 'dm²' } } as any);
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const placa = rows.find(r => r.componentType === 'Palmilha')!;
+    expect(placa.groupName).toBe('EVA PLACA');
+    expect(placa.productUnit).toBe('dm2');
+    // dm² CRU (comparável 1:1 com products.quantity), sem conversão a placas.
+    expect(placa.totalQuantity).toBeCloseTo(120, 6);
+
+    // A Forração Palmilha (napa do forro, linear) NÃO muda com esse fix.
+    const palmForr = rows.find(r => r.componentType === 'Forração Palmilha')!;
+    expect(palmForr.productUnit).toBe('metro');
+    expect(palmForr.totalQuantity).toBeCloseTo(1.44, 6);
+  });
+
+  it('palmilha com estoque em dm² via produto ÚNICO do grupo (sem ficha de componente) também emite dm²', () => {
+    const ctx = buildContext();
+    ctx.allProducts.push({ id: 'p-placa-eva', name: 'PLACA 1.0 EVA', unit: 'dm²', color: '', group_id: 'g-eva', quantity: 76, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const placa = rows.find(r => r.componentType === 'Palmilha')!;
+    expect(placa.productUnit).toBe('dm2');
+    expect(placa.totalQuantity).toBeCloseTo(120, 6);
+  });
+
+  it('palmilha pronta comprada por PAR (produto pinado unit=par) mantém a linha em par', () => {
+    const ctx = buildContext();
+    ctx.allProducts.push({ id: 'p-palm-pronta', name: 'PALMILHA PRONTA 123', unit: 'par', color: 'BEGE', group_id: 'g-eva', quantity: 100, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+    ctx.palmilhaColorMap.set('sheet-1::preto', { color: 'BEGE', productId: 'p-palm-pronta' });
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const palm = rows.find(r => r.componentType === 'Palmilha')!;
+    expect(palm.productUnit).toBe('par');
+    expect(palm.totalQuantity).toBe(24);
+    expect(palm.materialName).toBe('PALMILHA PRONTA 123');
+  });
+
+  it('palmilha com produto PINADO em dm² emite dm² (unidade do produto vence o par legado)', () => {
+    const ctx = buildContext();
+    ctx.allProducts.push({ id: 'p-placa-pin', name: 'PLACA PINADA', unit: 'dm²', color: 'BEGE', group_id: 'g-eva', quantity: 100, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+    ctx.palmilhaColorMap.set('sheet-1::preto', { color: 'BEGE', productId: 'p-placa-pin' });
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const palm = rows.find(r => r.componentType === 'Palmilha')!;
+    expect(palm.productUnit).toBe('dm2');
+    expect(palm.totalQuantity).toBeCloseTo(120, 6);
+    expect(palm.materialName).toBe('PLACA PINADA');
+  });
+
+  it('palmilha SEM unidade de estoque conhecida preserva o legado (placa via dimensões do grupo)', () => {
+    // buildContext não tem produto nem ficha de componente no grupo EVA PLACA —
+    // unidade desconhecida → segue o golden: 120 dm² ÷ 50 dm²/placa = 2,4 placa.
+    const rows = computeConsumptionForItems([buildItem()], buildContext());
+    const placa = rows.find(r => r.componentType === 'Palmilha')!;
+    expect(placa.productUnit).toBe('placa');
+    expect(placa.totalQuantity).toBeCloseTo(2.4, 6);
+  });
+
+  // ── (b) Solado nunca some do modal (auditoria motores 2026-07-01) ──────────
+  // sole_consumption 0/null zerava o total e addConsumptionRow APAGAVA a linha,
+  // enquanto SQL/débito ignoram o campo e baixam 1 par/par. Default = 1.
+  it('sole_consumption 0 ou null NÃO apaga o solado — default 1 par/par', () => {
+    for (const v of [0, null]) {
+      const item = buildItem({ technical_sheets: buildSheet({ sole_consumption: v }) });
+      const rows = computeConsumptionForItems([item], buildContext());
+      const solado = rows.find(r => r.componentType === 'Solado');
+      expect(solado, `sole_consumption=${v}`).toBeDefined();
+      expect(solado!.totalQuantity).toBe(24);
+      expect(solado!.groupName).toBe('SOLADO TR 01');
+      expect(solado!.sizeBreakdown).toEqual({ '34': 4, '35': 4, '36': 4, '37': 4, '38': 4, '39': 4 });
+    }
+  });
+
+  it('sole_consumption > 1 mantém o multiplicador (banco vivo: ficha STX usa 2)', () => {
+    const item = buildItem({ technical_sheets: buildSheet({ sole_consumption: 2 }) });
+    const rows = computeConsumptionForItems([item], buildContext());
+    const solado = rows.find(r => r.componentType === 'Solado')!;
+    expect(solado.totalQuantity).toBe(48);
+  });
+
+  it('ficha SEM sole_material/consumption mas com solado resolvido por mapping não duplica com o BOM', () => {
+    // Com o default de 1 par/par, a linha da ficha passou a existir mesmo sem
+    // sole_material — o dedup do BOM-solado precisa cobrir esse caso, senão o
+    // mesmo solado aparece 2× (ficha + BOM).
+    const ctx = buildContext();
+    ctx.productGroups.push({ id: 'g-sole-01', name: 'SOLADO 01', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+    ctx.allProducts.push({ id: 'p-sole-01', name: '01 - PRETO', unit: 'par', color: 'PRETO', group_id: 'g-sole-01', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+    ctx.soleColorMap.set('sheet-1::PRETO', 'p-sole-01');
+    ctx.materials.push({
+      sheet_id: 'sheet-1', product_id: 'p-sole-01', group_id: 'g-sole-01', quantity_per_unit: 1, color: '',
+      products: { name: '01 - PRETO', unit: 'par', category: 'Solado', color: 'PRETO' },
+      product_groups: { name: 'SOLADO 01' },
+    } as any);
+
+    const item = buildItem({ technical_sheets: buildSheet({ sole_material: '', sole_consumption: 0 }) });
+    const rows = computeConsumptionForItems([item], ctx);
+    const soles = rows.filter(r => r.componentType === 'Solado');
+    expect(soles).toHaveLength(1);
+    expect(soles[0].groupName).toBe('SOLADO 01');
+    expect(soles[0].totalQuantity).toBe(24);
+    expect(soles[0].soleProductId).toBe('p-sole-01');
+  });
 });

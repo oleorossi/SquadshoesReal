@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { autoCreateSolePO } from '@/lib/soleAutoPO';
+import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { calculateFactoringDiscount } from '@/lib/factoringCalc';
 import { computeARSchedule, type InstallmentSchedule } from '@/lib/saleOrderAR';
@@ -34,6 +34,34 @@ export const opStageOrder = (name: string, idx: number): number => {
   const n = canonicalStageOrder(name);
   return n === 99 ? idx + 1 : n;
 };
+
+/**
+ * Achado D (auditoria 2026-07-01): tira com COR VAZIA em `strap_colors` gera
+ * consumo fantasma — `debit_strap_stock` recebe o array cru do item e uma cor
+ * em branco não resolve produto nenhum (o lado SQL passa a emitir warning, mas
+ * a OP nasceria com débito furado). Este helper varre os itens e lista as
+ * tiras sem cor pra BLOQUEAR a aprovação do PV antes de criar OP.
+ *
+ * Retorna mensagens "Tira X (item REF/cor)" — vazio quando está tudo ok.
+ */
+export function listarTirasSemCor(
+  items: Array<{ strap_colors?: any[] | null; color?: string | null; reference_label?: string | null }>,
+): string[] {
+  const problemas: string[] = [];
+  for (const item of items || []) {
+    const straps = Array.isArray(item?.strap_colors) ? item.strap_colors : [];
+    for (let i = 0; i < straps.length; i++) {
+      const strap = straps[i];
+      if (!strap || typeof strap !== 'object') continue;
+      const cor = String((strap as any).color ?? '').trim();
+      if (cor) continue;
+      const nomeTira = String((strap as any).label || (strap as any).group_name || '').trim() || `Tira ${i + 1}`;
+      const contexto = [item.reference_label, item.color].filter(Boolean).join(' / ');
+      problemas.push(contexto ? `${nomeTira} (${contexto})` : nomeTira);
+    }
+  }
+  return problemas;
+}
 
 /**
  * Parse ISO billing-week string ('2026-W16') to the Monday date of that week.
@@ -1054,6 +1082,32 @@ export function useUpdateSaleOrderStatus() {
         );
       }
 
+      // Achado D (auditoria 2026-07-01): bloquear APROVAÇÃO de PV com tira de
+      // COR VAZIA em strap_colors — a OP nasceria com consumo fantasma (o
+      // débito de tira não resolve produto sem cor). Guard ANTES do claim pra
+      // não deixar o PV meio-aprovado.
+      if (status === 'Aprovado') {
+        const { data: itemsGuard, error: itemsGuardErr } = await supabase
+          .from('sale_order_items')
+          .select('color, strap_colors, technical_sheets(name, code)')
+          .eq('sale_order_id', id);
+        if (itemsGuardErr) throw new Error(`Falha ao validar tiras do pedido: ${itemsGuardErr.message}`);
+        const tirasSemCor = listarTirasSemCor(
+          (itemsGuard || []).map((it: any) => ({
+            strap_colors: it.strap_colors,
+            color: it.color,
+            reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
+          })),
+        );
+        if (tirasSemCor.length > 0) {
+          throw new Error(
+            `Não é possível aprovar: tira sem COR definida — ${tirasSemCor.slice(0, 4).join('; ')}` +
+            `${tirasSemCor.length > 4 ? ` e mais ${tirasSemCor.length - 4}` : ''}. ` +
+            'Edite o item do pedido e defina a cor de cada tira antes de aprovar.'
+          );
+        }
+      }
+
       // Require an authorized NF-e before marking as Expedido — without one,
       // physical goods would leave the warehouse with no fiscal document.
       if (status === 'Expedido') {
@@ -1521,6 +1575,25 @@ export function useUpdateSaleOrderStatus() {
                       // produced silent inventory drift: nothing tied the incoming stock
                       // to this OP, so a concurrent OP could consume it.
                       secondaryDebitErrors.push(`solado: ${soleErr.message}${autoPoNote}`);
+                    } else {
+                      // Achado C (auditoria 2026-07-01): com p_force_soft=true o RPC
+                      // NUNCA erra por falta (vira reserva/parcial) — o if acima era
+                      // caminho morto. A OC automática dispara do RESULTADO do débito
+                      // (déficit por numeração da reserva sole_grade vs stock_grade).
+                      try {
+                        const po = await autoCreateSolePOFromShortfall({
+                          orderId: createdOp.id,
+                          orderRef: (createdOp as any).order_number || createdOp.id.slice(0, 8),
+                        });
+                        if (po) {
+                          toast.warning(
+                            `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`,
+                            { duration: 8000 },
+                          );
+                        }
+                      } catch (poErr: any) {
+                        console.error('Erro ao gerar OC de solado por déficit (Em Produção):', poErr?.message);
+                      }
                     }
                   }
                   // Debit strap materials (Em Produção path)
@@ -1692,6 +1765,10 @@ export function useUpdateSaleOrderStatus() {
                 p_order_quantity: item.quantity,
                 p_color: item.color || '',
                 p_order_grade: effectiveGrade,
+                // Auditoria 2026-07-01: sem o modo, a checagem contava as DUAS
+                // caixas (colmeia + individual) quando a ficha tem ambas no BOM
+                // — mesma regra de filter_caixa_by_packaging_mode do custeio.
+                p_packaging_mode: pkgMode,
               } as any);
 
               const shortages = (stockCheck || []).filter((s: any) => !s.sufficient);
@@ -1771,6 +1848,23 @@ export function useUpdateSaleOrderStatus() {
                   }
                   if (!solePOHandledAprov) {
                     secondaryDebitErrorsAprov.push(`solado: ${soleErrAprov.message}`);
+                  }
+                } else {
+                  // Achado C: soft debit não erra por falta — OC automática vem do
+                  // RESULTADO (déficit por numeração), erro fica como fallback.
+                  try {
+                    const po = await autoCreateSolePOFromShortfall({
+                      orderId: createdOp.id,
+                      orderRef: (createdOp as any).order_number || createdOp.id.slice(0, 8),
+                    });
+                    if (po) {
+                      toast.warning(
+                        `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`,
+                        { duration: 8000 },
+                      );
+                    }
+                  } catch (poErr: any) {
+                    console.error('Erro ao gerar OC de solado por déficit (Aprovado):', poErr?.message);
                   }
                 }
               }
@@ -2408,6 +2502,18 @@ export function useUpdateSaleOrder() {
               } catch (poErr) {
                 console.error('Falha ao criar OC automática de solado:', poErr);
               }
+            } else {
+              // Achado C: soft debit não erra por falta — OC automática vem do
+              // RESULTADO (déficit por numeração), erro fica como fallback.
+              try {
+                const po = await autoCreateSolePOFromShortfall({
+                  orderId: newOp.id,
+                  orderRef: (newOp as any).order_number || `PV ${String(id).slice(0, 8)}`,
+                });
+                if (po) toast.warning(`Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`, { duration: 8000 });
+              } catch (poErr) {
+                console.error('Falha ao criar OC automática de solado (déficit):', poErr);
+              }
             }
           }
 
@@ -2650,6 +2756,18 @@ export function useResyncOPsFromSheets() {
                     if (po) toast.warning(`Solado insuficiente — OC ${po.poNumber} criada automaticamente (${po.supplierName}).`, { duration: 8000 });
                   } catch (poErr) {
                     console.error('Falha ao criar OC automática de solado:', poErr);
+                  }
+                } else {
+                  // Achado C: soft debit não erra por falta — OC automática vem do
+                  // RESULTADO (déficit por numeração), erro fica como fallback.
+                  try {
+                    const po = await autoCreateSolePOFromShortfall({
+                      orderId: op.id,
+                      orderRef: (op as any).order_number || String(op.id).slice(0, 8),
+                    });
+                    if (po) toast.warning(`Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`, { duration: 8000 });
+                  } catch (poErr) {
+                    console.error('Falha ao criar OC automática de solado (déficit):', poErr);
                   }
                 }
               }
@@ -3018,6 +3136,18 @@ export function useResyncOPsFromPV() {
               if (po) toast.info(`OC de solado ${po.accumulated ? 'acumulada' : 'criada'}: ${po.poNumber} (${po.supplierName})`);
             } catch (poErr: any) {
               console.error('Erro ao criar OC de solado (resync):', poErr?.message);
+            }
+          } else {
+            // Achado C: soft debit não erra por falta — OC automática vem do
+            // RESULTADO (déficit por numeração), erro fica como fallback.
+            try {
+              const po = await autoCreateSolePOFromShortfall({
+                orderId: newOp.id,
+                orderRef: (newOp as any).order_number || newOp.id,
+              });
+              if (po) toast.info(`Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`);
+            } catch (poErr: any) {
+              console.error('Erro ao criar OC de solado por déficit (resync):', poErr?.message);
             }
           }
         }

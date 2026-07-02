@@ -108,6 +108,38 @@ export default function SaleOrderForm() {
     reference_id: canonicalReferenceIdMap.get(item.reference_id) || item.reference_id,
   });
 
+  // GUARD (auditoria 2026-07-01, achado ALTO — tira com cor vazia): uma linha de
+  // tira sem cor passava por TODOS os guards existentes — colorIssues exige cor
+  // ESCOLHIDA sem produto (strapMissing pula `!s?.color`), o strapShortages pula
+  // a linha sem cor (`if (!color) continue`) e o `incomplete` do pós-save só pega
+  // strap_colors=[] inteiro. Resultado: o PV salvava e o débito da tira era
+  // PULADO em silêncio na conversão pra OP (debit_strap_stock não resolve produto
+  // sem cor). Não há fluxo legítimo de "tira sem cor até definir depois": o
+  // próprio StrapShortageDialog já trata item sem cor como BLOCKER pós-save
+  // ("Volte ao PV e preencha primeiro") — então bloqueamos ANTES, no save,
+  // apontando exatamente qual tira está sem cor.
+  const findTiraSemCor = (its: SaleOrderItemFormData[]): string | null => {
+    for (let i = 0; i < its.length; i++) {
+      const straps = Array.isArray((its[i] as any).strap_colors)
+        ? ((its[i] as any).strap_colors as any[])
+        : [];
+      const semCor = straps.filter((s) => s && !String(s.color || '').trim());
+      if (semCor.length === 0) continue;
+      const ref = canonicalReferences.find((r: any) => r.id === its[i].reference_id) as any;
+      const refLabel = ref
+        ? `${ref.code || ''} ${ref.name || ''}`.trim() || `item ${i + 1}`
+        : `item ${i + 1}`;
+      const tiras = semCor
+        .map((s) => String(s.label || s.group_name || 'TIRA').trim() || 'TIRA')
+        .join(', ');
+      return (
+        `Tira sem cor no item ${i + 1} (${refLabel}): ${tiras}. ` +
+        `Selecione a cor de cada tira antes de salvar — sem cor, o débito de estoque da tira é pulado.`
+      );
+    }
+    return null;
+  };
+
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
   const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
 
@@ -619,6 +651,12 @@ export default function SaleOrderForm() {
       toast.error('Selecione uma cor para todos os itens.');
       return;
     }
+    // Paridade com handleSubmit: dialogs de confirmação chamam doSubmit direto,
+    // então o guard de tira sem cor também precisa valer aqui.
+    {
+      const tiraSemCor = findTiraSemCor(validItems);
+      if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
+    }
     if (validItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
@@ -681,6 +719,11 @@ export default function SaleOrderForm() {
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
+    // GUARD: bloqueia salvar com TIRA de cor vazia (débito pulado em silêncio).
+    {
+      const tiraSemCor = findTiraSemCor(validItems);
+      if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
+    }
     // GUARD: bloqueia salvar com cor não cadastrada no material (cabedal/forração/
     // tira). Sem produto na cor, o débito é pulado (ruptura). Cadastre antes.
     {
@@ -829,6 +872,9 @@ export default function SaleOrderForm() {
             item.color || '',
             (item as any).grade ?? null,
             (item as any).strap_colors ?? null,
+            // Modo de embalagem do PV: filtra a caixa do modo errado quando a
+            // ficha tem colmeia E individual no BOM (paridade com o custeio).
+            f.packaging_mode || null,
           );
           return { availability, refLabel, color: item.color };
         })

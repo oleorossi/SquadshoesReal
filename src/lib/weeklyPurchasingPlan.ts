@@ -1,5 +1,7 @@
  import { format, parseISO, addDays, isTuesday, nextTuesday, isBefore, startOfDay } from 'date-fns';
 import { convertDm2ToLinearMeters, convertDm2ToPlates, isLinearWidthMissing, type ComponentSheetCandidate } from './materialConsumption';
+import { classifyBomMaterial } from './orderConsumption';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from './packagingPairsPerBox';
 
 /**
  * Chave do mapa de datas-limite de compra (view purchase_projection_timeline).
@@ -17,18 +19,24 @@ export interface WeeklyOrder {
   planned_delivery: string | null;
   created_at: string;
   grade?: Record<string, number> | null;
+  /**
+   * Modo de embalagem do PEDIDO (sale_orders.packaging_mode do PV da OP).
+   * Usado pra filtrar caixas ALTERNATIVAS do BOM (colmeia × individual) —
+   * sem ele o plano soma as duas e infla a compra de embalagem.
+   */
+  packaging_mode?: string | null;
 }
 
 export interface SheetMaterial {
   sheet_id: string;
   product_id: string;
   quantity_per_unit: number;
-  consumption_per_size?: Record<string, number> | null;
   products: {
     id: string;
     name: string;
     sku: string;
     unit: string;
+    category?: string | null;
     quantity: number;
     min_stock?: number;
     reserved_stock?: number;
@@ -61,7 +69,13 @@ export interface WeeklyPlanResult {
 
 /**
  * Calcula a quantidade necessária na UNIDADE FÍSICA do produto.
- * Usa consumo por numeração quando há grade; senão, consumo médio × qtd total.
+ *
+ * Auditoria 2026-07-01 (achado A — parity com by_grade/modal): o consumo do BOM
+ * usa SEMPRE o ESCALAR `quantity_per_unit` (por par), igual ao motor canônico
+ * (orderConsumption.ts) e ao lado SQL (`calculate_order_consumption_by_grade`).
+ * Antes este plano lia `sheet_materials.consumption_per_size` — a MESMA fonte
+ * do bug da cola 5000× (valores gravados por cluster/agregado, não por par) —
+ * e a projeção de compra explodia nos materiais afetados.
  *
  * A5 (auditoria): material de ÁREA cortado de bobina/placa (napa/couro/forro) tem o
  * consumo armazenado em dm²/par e precisa ser convertido pela LARGURA da ficha de
@@ -75,21 +89,9 @@ function calculateRequiredAmount(
   cs: ComponentSheetCandidate | null
 ): number {
   const wastePct = Number(cs?.waste_pct) || 0;
-  const perSize = mat.consumption_per_size;
-  const grade = order.grade;
 
   // Total bruto na unidade de CONSUMO armazenada (dm²/par p/ material de área)
-  let rawTotal = 0;
-  if (perSize && grade && Object.keys(perSize).length > 0 && Object.keys(grade).length > 0) {
-    for (const [size, pairs] of Object.entries(grade)) {
-      const pairsNum = Number(pairs) || 0;
-      if (pairsNum <= 0) continue;
-      const consumptionForSize = perSize[size] !== undefined ? Number(perSize[size]) : (Number(mat.quantity_per_unit) || 0);
-      rawTotal += pairsNum * consumptionForSize;
-    }
-  } else {
-    rawTotal = order.quantity * (Number(mat.quantity_per_unit) || 0);
-  }
+  const rawTotal = order.quantity * (Number(mat.quantity_per_unit) || 0);
 
   const unit = (mat.products?.unit || '').toLowerCase();
   const isLinear = ['m', 'metro', 'metros', 'cm'].includes(unit);
@@ -131,6 +133,23 @@ export function generateWeeklyPurchasingPlan(
     materialsBySheet.set(sm.sheet_id, arr);
   }
 
+  // Achado A (auditoria 2026-07-01): a ficha pode listar VÁRIAS caixas no BOM
+  // (colmeia + individual) como ALTERNATIVAS — o pedido escolhe UMA via
+  // packaging_mode. Pré-varre os tipos de caixa presentes por ficha pra o
+  // filtro (shouldShowCaixaForMode, o MESMO helper do modal de consumo) só
+  // agir quando há alternativa real. Sem isso o plano somava as duas caixas.
+  const caixaTypesBySheet = new Map<string, Set<CollectiveType>>();
+  for (const sm of sheetMaterials) {
+    const p = sm.products;
+    if (!p) continue;
+    if (classifyBomMaterial('', p.name || '', p.category || '') !== 'Embalagem') continue;
+    const t = caixaCollectiveTypeFromName(p.name);
+    if (!t) continue;
+    let set = caixaTypesBySheet.get(sm.sheet_id);
+    if (!set) { set = new Set(); caixaTypesBySheet.set(sm.sheet_id, set); }
+    set.add(t);
+  }
+
   const productMap = new Map<string, SheetMaterial['products']>();
   for (const sm of sheetMaterials) {
     if (sm.products && !productMap.has(sm.product_id)) {
@@ -147,6 +166,18 @@ export function generateWeeklyPurchasingPlan(
     const materials = materialsBySheet.get(order.reference_id) || [];
     for (const mat of materials) {
       if (!mat.products || mat.products.is_artisanal) continue;
+
+      // Achado A: caixa de embalagem que NÃO é a do packaging_mode do pedido
+      // é alternativa não usada — pula (só quando há ≥2 tipos na mesma ficha).
+      if (
+        order.packaging_mode &&
+        classifyBomMaterial('', mat.products.name || '', mat.products.category || '') === 'Embalagem' &&
+        !shouldShowCaixaForMode(
+          mat.products.name,
+          order.packaging_mode,
+          caixaTypesBySheet.get(order.reference_id) || new Set<CollectiveType>(),
+        )
+      ) continue;
 
       // A5: a perda + a largura vêm da ficha de COMPONENTE do produto (não da reference_id).
       const cs = csByProduct.get(mat.product_id) || null;

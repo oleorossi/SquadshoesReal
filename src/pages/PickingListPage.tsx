@@ -355,7 +355,7 @@ export default function PickingListPage() {
         <td style="padding:4px 8px;font-weight:500">${escapeHtml(row.groupName)}</td>
         <td style="padding:4px 8px">${row.materialName !== row.groupName ? escapeHtml(row.materialName) : ''}</td>
         <td style="padding:4px 8px">${escapeHtml(row.color)}</td>
-        <td style="padding:4px 8px;text-align:right;font-family:monospace;font-weight:700">${row.totalQuantity.toFixed(2)}</td>
+        <td style="padding:4px 8px;text-align:right;font-family:monospace;font-weight:700">${row.totalQuantity.toFixed(2)}${row.plateEquivalent ? `<div style="font-size:9px;font-weight:400;color:#6b7280">≈ ${row.plateEquivalent.toFixed(2)} placas</div>` : ''}</td>
         <td style="padding:4px 8px;text-align:center">${formatUnit(row.productUnit)}</td>
       </tr>`;
     }).join('');
@@ -943,6 +943,11 @@ export default function PickingListPage() {
                             </TableCell>
                             <TableCell className="py-2 text-right font-mono font-bold">
                               {row.totalQuantity.toFixed(2)}
+                              {row.plateEquivalent != null && row.plateEquivalent > 0 && (
+                                <div className="text-[10px] font-normal text-muted-foreground" title="Equivalência em placas — o consumo/estoque deste material é em dm²">
+                                  ≈ {row.plateEquivalent.toFixed(2)} placas
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell className="py-2 text-center text-muted-foreground text-sm">
                               {formatUnit(row.productUnit)}

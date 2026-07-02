@@ -23527,6 +23527,7 @@ export type Database = {
           available_now: number | null
           category: string | null
           conversion_rate: number | null
+          conversion_warning: string | null
           earliest_deadline: string | null
           lead_time_days: number | null
           min_order_quantity: number | null
@@ -25594,6 +25595,7 @@ export type Database = {
           p_color?: string
           p_order_grade?: Json
           p_order_quantity: number
+          p_packaging_mode?: string
           p_reference_id: string
           p_strap_colors?: Json
         }
@@ -25923,6 +25925,7 @@ export type Database = {
       fn_projected_demand: {
         Args: never
         Returns: {
+          conversion_warning: string
           earliest_deadline: string
           order_ids: string[]
           orders_count: number
@@ -26158,6 +26161,7 @@ export type Database = {
           base_shortage: number
           base_stock_qty: number
           color: string
+          conversion_warning: string
           is_artisanal: boolean
           needed_qty: number
           os_send_date: string

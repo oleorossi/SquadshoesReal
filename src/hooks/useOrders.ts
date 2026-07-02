@@ -44,18 +44,23 @@ export function useCheckStockAvailability() {
     color?: string,
     grade?: Record<string, number> | null,
     strapColors?: any[] | null,
+    packagingMode?: string | null,
   ) => {
     // strapColors vem de sale_order_items (com cor real escolhida pelo cliente),
     // não da ficha (que tem template sem cor). Sem isso a RPC não conseguia
     // detectar shortage de tiras → MaterialPurchaseConfirmDialog não abria pra
     // tiras → OS pra terceiro nunca era criada automaticamente.
     // Bug histórico até 2026-05-17.
+    // packagingMode (auditoria 2026-07-01): sem ele a RPC contava as DUAS
+    // caixas (colmeia + individual) quando a ficha tem ambas no BOM — mesma
+    // regra de filter_caixa_by_packaging_mode usada no custeio.
     const { data, error } = await supabase.rpc('check_stock_availability', {
       p_reference_id: referenceId,
       p_order_quantity: quantity,
       p_color: color || '',
       p_order_grade: grade ?? null,
       p_strap_colors: strapColors ?? null,
+      p_packaging_mode: packagingMode ?? null,
     } as any);
     if (error) throw error;
     return data as Array<{

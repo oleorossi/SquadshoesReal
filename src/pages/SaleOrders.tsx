@@ -32,7 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,7 +52,7 @@ import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
 import { printOperatorFichas } from '@/lib/printOperatorFichas';
-import { autoCreateSolePO } from '@/lib/soleAutoPO';
+import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { resolveSenderCnpj } from '@/lib/companySender';
 import { openPrintWindow, writeRawPrintWindow } from '@/lib/printOrder';
@@ -1198,6 +1198,28 @@ export default function SaleOrders() {
     const errors: string[] = [];
     for (const order of pendingOrders) {
       try {
+        // Achado D (auditoria 2026-07-01): mesmo guard da aprovação individual —
+        // tira com COR VAZIA em strap_colors gera consumo fantasma na OP. Checa
+        // ANTES do claim pra pular o PV sem deixá-lo meio-aprovado.
+        {
+          const { data: guardItems, error: guardErr } = await supabase
+            .from('sale_order_items')
+            .select('color, strap_colors, technical_sheets(name, code)')
+            .eq('sale_order_id', order.id);
+          if (guardErr) { errors.push(`${order.order_number}: falha ao validar tiras — ${guardErr.message}`); continue; }
+          const tirasSemCor = listarTirasSemCor(
+            (guardItems || []).map((it: any) => ({
+              strap_colors: it.strap_colors,
+              color: it.color,
+              reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
+            })),
+          );
+          if (tirasSemCor.length > 0) {
+            errors.push(`${order.order_number}: tira sem COR definida (${tirasSemCor.slice(0, 3).join('; ')}) — defina a cor antes de aprovar.`);
+            continue;
+          }
+        }
+
         // Atomic claim: flip status to Aprovado FIRST so only one concurrent
         // call (double-click, two browser tabs) wins the pipeline for this PV.
         const { data: pvClaimed, error: pvClaimErr } = await supabase
@@ -1307,6 +1329,17 @@ export default function SaleOrders() {
                       orderRef: order.order_number,
                     });
                     if (po) errors.push(`${order.order_number}: OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`);
+                  } catch (_e) { /* logged */ }
+                } else {
+                  // Achado C (auditoria 2026-07-01): com p_force_soft=true o RPC não
+                  // erra por falta — a OC automática dispara do RESULTADO do débito
+                  // (déficit por numeração); o caminho por erro fica como fallback.
+                  try {
+                    const po = await autoCreateSolePOFromShortfall({
+                      orderId: createdOp.id,
+                      orderRef: order.order_number,
+                    });
+                    if (po) errors.push(`${order.order_number}: solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`);
                   } catch (_e) { /* logged */ }
                 }
               }

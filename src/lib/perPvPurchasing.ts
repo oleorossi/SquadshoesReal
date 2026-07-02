@@ -50,6 +50,11 @@ export interface PvMaterialNeed {
    *  cor diferente (matched_by='color_mismatch'). GUARD: a OC marca a linha e
    *  bloqueia a geração até cadastrar a cor. */
   color_mismatch?: boolean | null;
+  /** Aviso de conversão dm²→física (largura faltando na ficha de componente).
+   *  Linhas com warning vêm com a parcela afetada FORA de needed_qty (senão a
+   *  OC compraria ~100× em dm² cru); needed 0 + warning ⇒ resolver o cadastro
+   *  da largura antes de comprar. Auditoria 2026-07-01. */
+  conversion_warning?: string | null;
 }
 
 export interface DraftPurchaseOrderItem {

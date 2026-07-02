@@ -176,6 +176,13 @@ export const calcGroupPlateAreaDm2 = (group: any): number => {
   return (l * w) / 10000;
 };
 
+/** Unidades de ESTOQUE de área (canônica `dm²` + grafias legadas). Diferente de
+ *  PLATE_UNITS (materialConsumption.ts), aqui `placa` fica DE FORA: estoque
+ *  contado em placas compara em placas; estoque medido em área compara em dm². */
+const AREA_STOCK_UNITS = new Set(['dm2', 'dm²', 'm2', 'm²', 'cm2', 'cm²']);
+const isAreaStockUnit = (unit?: string | null): boolean =>
+  AREA_STOCK_UNITS.has((unit || '').toLowerCase().trim());
+
 /** Acumula uma linha no mapa, somando por (componentType, grupo, cor, unidade). */
 const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: MaterialConsumptionRow) => {
   const totalQuantity = Number(row.totalQuantity) || 0;
@@ -251,7 +258,9 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
       .in('sheet_id', unique),
     supabase
       .from('products')
-      .select('id, name, color, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      // `unit` entrou pra resolução da unidade de ESTOQUE da palmilha (fix
+      // auditoria motores 2026-07-01: linha em dm² quando o estoque é em dm²).
+      .select('id, name, unit, color, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
       .eq('active', true),
     supabase
       .from('product_groups')
@@ -703,19 +712,62 @@ export function computeConsumptionForItems(
       const palmColor = palmMapping?.color || '—';
       const palmProductId = palmMapping?.productId;
 
-      // PLACA (base): produto específico (unidade) ou material convertido a placas
-      if (palmProductId) {
-        const prod = (allProducts || []).find((p: any) => p.id === palmProductId);
+      // PLACA (base): produto específico (unidade) ou material convertido a placas.
+      //
+      // FIX auditoria motores 2026-07-01 (a): a linha sai na unidade de ESTOQUE
+      // do produto de palmilha quando ela é conhecida e é de ÁREA. O produto
+      // vivo de placa (PLACA 1.0 EVA) tem `unit='dm²'` — débito e estoque
+      // operam em dm²; emitir "≈11,2 placas" contra um estoque de ~1.684,8 dm²
+      // invalidava a comparação verde/vermelho do modal (150×). Em dm² a linha
+      // compara 1:1 com `products.quantity`. A equivalência em placas fica
+      // derivável na UI (dm² ÷ área da placa do grupo) — NÃO vai como sufixo no
+      // materialName porque várias OPs agregam na mesma linha e o texto
+      // congelaria o valor da primeira. 'par' segue valendo pra palmilha pronta
+      // comprada por par; 'placa' segue quando o estoque é contado em placas ou
+      // a unidade é desconhecida (comportamento legado).
+      const pinnedPalmProduct = palmProductId
+        ? (allProducts || []).find((p: any) => p.id === palmProductId)
+        : null;
+      const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
+      const insoleGroupProducts = insoleGroup
+        ? (allProducts || []).filter((p: any) => p.group_id === insoleGroup.id)
+        : [];
+      // Unidade de estoque "conhecida": produto pinado do mapping > produto da
+      // ficha de componente preferida do grupo (mode 'plate') > produto do
+      // grupo que casa na cor da palmilha > produto único do grupo. null =
+      // desconhecida → preserva o caminho legado.
+      const palmStockUnit: string | null = palmProductId
+        ? (pinnedPalmProduct?.unit || null)
+        : (((insoleSheet?.products as any)?.unit as string | undefined)
+          || insoleGroupProducts.find((p: any) => normColor(p.color) === normColor(palmColor))?.unit
+          || (insoleGroupProducts.length === 1 ? insoleGroupProducts[0]?.unit : null)
+          || null);
+
+      if (isAreaStockUnit(palmStockUnit)) {
+        // Estoque em ÁREA: emite o consumo em dm² CRU (sem perda) — é o que o
+        // débito baixa do estoque. A perda de corte (waste_pct) só entra quando
+        // há CONVERSÃO dm²→física (regra canônica do CLAUDE.md), como no ramo
+        // de placas abaixo.
+        const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
           groupName: insoleGroupName,
-          materialName: prod?.name || 'Palmilha',
+          materialName: pinnedPalmProduct?.name || 'Palmilha',
+          productUnit: 'dm2',
+          color: pinnedPalmProduct?.color || palmColor,
+          totalQuantity: insoleDm2,
+        });
+      } else if (palmProductId) {
+        // Palmilha pronta comprada por PAR (produto pinado no mapping de cor).
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Palmilha',
+          groupName: insoleGroupName,
+          materialName: pinnedPalmProduct?.name || 'Palmilha',
           productUnit: 'par',
-          color: prod?.color || palmColor,
+          color: pinnedPalmProduct?.color || palmColor,
           totalQuantity: itemQuantity,
         });
       } else {
-        const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
         const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
         // Aplica waste_pct também no caminho que usa dimensões do grupo, p/ paridade
@@ -813,7 +865,14 @@ export function computeConsumptionForItems(
       materialName: 'Solado',
       productUnit: 'par',
       color: soleColor,
-      totalQuantity: (Number(sheet?.sole_consumption) || 0) * itemQuantity,
+      // FIX auditoria motores 2026-07-01 (b): default 1 par/par. Com `|| 0`,
+      // `sole_consumption` 0/null zerava o total e addConsumptionRow APAGAVA o
+      // solado do modal/ficha — enquanto SQL/débito ignoram o campo e baixam
+      // 1 par por par (banco vivo 2026-07-02: 7 fichas com 0, 38 com 1, 1 com
+      // 2). 1 par/par é o CANÔNICO; o multiplicador > 1 é preservado porque a
+      // ficha STX usa 2 (⚠ o débito SQL não aplica o multiplicador — a linha
+      // do modal fica conservadora, nunca menor que o débito real).
+      totalQuantity: (Number(sheet?.sole_consumption) || 1) * itemQuantity,
       sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
       soleProductId: soleProductIdResolved,
     });
@@ -961,8 +1020,13 @@ export function computeConsumptionForItems(
 
       const isSoleBom = normalizeText(product.category) === 'solado'
         || bomComponentType === 'Solado';
+      // `soleGroupName` não-vazio = a ficha RESOLVEU um solado (mapping/
+      // coligação/primary) mesmo sem sole_material/sole_consumption — com o
+      // default de 1 par/par (fix (b) acima), a linha da ficha passou a existir
+      // nesses casos e o BOM duplicaria o solado sem esta condição extra.
       const sheetHasSole = String(sheet?.sole_material || '').trim().length > 0
-        || (Number(sheet?.sole_consumption) || 0) > 0;
+        || (Number(sheet?.sole_consumption) || 0) > 0
+        || soleGroupName.trim().length > 0;
       if (isSoleBom && sheetHasSole) continue;
 
       // Materiais coloridos do BOM (cabedal/forração/tiras) cadastrados numa COR
