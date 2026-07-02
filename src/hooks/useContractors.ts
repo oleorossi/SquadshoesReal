@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { isOsDone } from '@/lib/osStatusMachine';
 
 export interface Contractor {
   id: string;
@@ -104,12 +105,23 @@ export function useServiceOrders() {
   return useQuery({
     queryKey: ['service_orders'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('service_orders')
-        .select('*, contractors(*)')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data as unknown as ServiceOrder[]).map(o => ({
+      // Paginação em blocos: o PostgREST corta em ~1000 linhas sem range e o
+      // volume de OS cresce ~300/mês — sem isso as OS antigas sumiam em silêncio
+      // da lista/planejamento (auditoria 2026-07-02).
+      const PAGE = 1000;
+      const all: any[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('service_orders')
+          .select('*, contractors(*)')
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
+      }
+      return (all as unknown as ServiceOrder[]).map(o => ({
         ...o,
         materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
       }));
@@ -307,12 +319,23 @@ export function useUpdateServiceOrder() {
         ...safe
       } = updates as any;
       if (safe.status === '') throw new Error('Status inválido.');
-      // Block downgrading a 'Concluído' OS to an earlier state without going through
-      // the explicit cancel flow (which reverses AP and artisanal stock).
+      // Guarda de OS finalizada. Cobre TODAS as grafias de "concluída" ('Concluído',
+      // 'received', 'finalizado'...) via isOsDone — antes o check era `=== 'Concluído'`
+      // e vazava as OS finalizadas pelo fluxo de gargalos (auditoria 2026-07-02).
       if (safe.status && safe.status !== 'Cancelado') {
-        const { data: current, error: currErr } = await supabase.from('service_orders').select('status').eq('id', id).single();
+        const { data: current, error: currErr } = await supabase
+          .from('service_orders').select('status, unit_price, total_value').eq('id', id).single();
         if (currErr) throw new Error(`Falha ao carregar OS: ${currErr.message}`);
-        if (current?.status === 'Concluído') throw new Error('OS já concluída. Use a opção Cancelar para reverter.');
+        if (isOsDone(current?.status)) {
+          // Editar valor de OS finalizada dessincroniza a conta a pagar (o trigger
+          // só sincroniza AP 'pending'; se já foi paga, o valor pago diverge).
+          const priceChanged =
+            (safe.unit_price !== undefined && Math.abs(Number(safe.unit_price) - Number(current?.unit_price ?? 0)) > 0.005) ||
+            (safe.total_value !== undefined && Math.abs(Number(safe.total_value) - Number(current?.total_value ?? 0)) > 0.005);
+          if (priceChanged) throw new Error('OS já finalizada — cancele e reemita para alterar valores (editar agora dessincronizaria a conta a pagar).');
+          // Rebaixar status de OS finalizada só pelo fluxo de Cancelar.
+          if (!isOsDone(safe.status)) throw new Error('OS já concluída. Use a opção Cancelar para reverter.');
+        }
       }
       // Atomic claim when transitioning to Concluído: prevent double AP/stock debit
       // if two browser tabs save simultaneously from a stale 'Pendente' cache.
@@ -337,7 +360,7 @@ export function useDeleteServiceOrder() {
     mutationFn: async (id: string) => {
       const { data: os, error: fetchErr } = await supabase
         .from('service_orders')
-        .select('artisanal_stock_entry_done')
+        .select('artisanal_stock_entry_done, status, materials_sent')
         .eq('id', id)
         .single();
       if (fetchErr) throw fetchErr;
@@ -345,6 +368,34 @@ export function useDeleteServiceOrder() {
         throw new Error(
           'Não é possível excluir uma OS com saída já lançada. ' +
           'O estoque debitado não seria restaurado. Cancele a OS manualmente se necessário.'
+        );
+      }
+      // #10: Bloqueia exclusão quando há histórico de envio/retorno (pares na rua):
+      // o FK ON DELETE CASCADE apagaria o ledger de dispatches/returns em silêncio,
+      // perdendo a rastreabilidade dos pares em campo. Oriente a cancelar.
+      // (supabase as any): service_order_dispatches ainda não está no types.ts
+      // gerado (criada via migration MCP) — mesmo padrão do ServiceOrderDispatchDialog.
+      const [dispRes, retRes] = await Promise.all([
+        (supabase as any).from('service_order_dispatches').select('id', { count: 'exact', head: true }).eq('service_order_id', id),
+        (supabase as any).from('service_order_returns').select('id', { count: 'exact', head: true }).eq('service_order_id', id),
+      ]);
+      if (dispRes.error) throw new Error(`Falha ao verificar envios da OS: ${dispRes.error.message}`);
+      if (retRes.error) throw new Error(`Falha ao verificar retornos da OS: ${retRes.error.message}`);
+      if ((dispRes.count || 0) > 0 || (retRes.count || 0) > 0) {
+        throw new Error(
+          'Não é possível excluir: esta OS tem envios/retornos registrados (pares na rua). ' +
+          'Cancele a OS em vez de excluir para preservar o histórico.'
+        );
+      }
+      // #8: Bloqueia exclusão quando há materiais debitados e a OS não foi cancelada
+      // (a exclusão não restitui o estoque). Cancele primeiro — o cancelamento estorna
+      // os materiais — e então exclua.
+      const mats = Array.isArray(os?.materials_sent) ? (os!.materials_sent as any[]) : [];
+      const hasDebitedMaterials = mats.some(m => m && Number(m.meters) > 0);
+      if (hasDebitedMaterials && os?.status !== 'Cancelado') {
+        throw new Error(
+          'Não é possível excluir: esta OS tem materiais debitados do estoque. ' +
+          'Cancele a OS primeiro (o cancelamento estorna os materiais) e depois exclua.'
         );
       }
       // Block deletion if there's an active AP linked to this service order.

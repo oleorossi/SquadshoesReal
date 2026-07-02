@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useOrders } from '@/hooks/useOrders';
 import { checkSoleAvailability } from '@/lib/soleAvailability';
+import { rateGradeToTotal } from '@/lib/gradeDistribution';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
@@ -121,7 +122,10 @@ export default function SolePurchaseTab() {
             current_stock: s.available,
             min_stock: 0,
             max_stock: 0,
-            grade: s.size_breakdown ?? null,
+            // Rateia a grade (size_breakdown = demanda TOTAL do PV) pro que de fato
+            // será comprado (suggested_purchase_qty = falta líquida/MOQ) — senão
+            // soma(grade) ≠ quantity e o recebimento trava (mergeReceivedGrade).
+            grade: rateGradeToTotal(s.size_breakdown, s.suggested_purchase_qty),
             color: s.sole_color ?? null,
           })),
         });

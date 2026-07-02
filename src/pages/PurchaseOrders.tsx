@@ -129,6 +129,45 @@ function mergeReceivedGrade(
   return merged;
 }
 
+/**
+ * Pré-voo de recebimento (auditoria 2026-07-02): valida TODAS as conversões e a
+ * coerência das grades ANTES de creditar qualquer item. Assim um único item
+ * mal-configurado (fator de conversão faltando ou grade que não soma a
+ * quantidade) NÃO deixa a OC parcialmente creditada — o loop de crédito só roda
+ * quando o lote inteiro está apto. Lança com a mesma mensagem acionável.
+ */
+async function preflightReceive(items: PurchaseOrderItem[]): Promise<void> {
+  const pending = items.filter((it) => {
+    const already = Number(it.received_quantity ?? 0);
+    return !it.received_at && Number(it.quantity) - already > 0.0001;
+  });
+  const ids = [...new Set(pending.map((it) => it.product_id))];
+  if (ids.length === 0) return;
+  const { data: prods, error } = await supabase
+    .from('products')
+    .select('id, name, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width')
+    .in('id', ids);
+  if (error) throw new Error(error.message);
+  const byId = new Map((prods || []).map((p: any) => [p.id, p]));
+  for (const it of pending) {
+    const prod: any = byId.get(it.product_id);
+    if (!prod) continue;
+    const factor = effectiveConversionFactorStrict({
+      unit: prod.unit || 'un',
+      purchase_unit: prod.purchase_unit,
+      conversion_rate: prod.conversion_rate,
+      dimensions_width: prod.dimensions_width,
+    });
+    if (factor == null) {
+      throw new Error(
+        `${prod.name || 'Produto'}: unidade de compra "${prod.purchase_unit}" sem regra de conversão pra "${prod.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
+      );
+    }
+    // Mesma condição de mergeReceivedGrade: a grade tem que somar a quantidade.
+    mergeReceivedGrade(it.grade, it.quantity, prod.stock_grade, factor, prod.name || 'Produto');
+  }
+}
+
 const VALID_PO_STATUS_FILTERS = ['all', 'pending', 'approved', 'sent', 'parcial', 'received', 'cancelled'];
 // Opções do multi-select de status (sem 'all'; conjunto vazio = todos).
 const PO_STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -828,12 +867,15 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       toast.info('Parcelas já lançadas anteriormente — nenhuma entrada duplicada criada.');
       return;
     }
-    const today = new Date();
+    // Ancora o vencimento na EMISSÃO da OC (created_at), não no clique de
+    // aprovar/finalizar — senão as parcelas 30/60/90 escorregam para frente e
+    // distorcem aging e fluxo de caixa (auditoria 2026-07-02).
+    const anchor = (order as any).created_at ? new Date((order as any).created_at) : new Date();
     const installments = buildInstallments(order.total_value, paymentDays);
     for (let i = 0; i < installments.length; i++) {
       const { days, amount } = installments[i];
       if (amount <= 0) continue; // skip zero-amount installments
-      const dueDate = new Date(today);
+      const dueDate = new Date(anchor);
       dueDate.setDate(dueDate.getDate() + days);
       const { error } = await supabase.from('accounts_payable').insert({
         description: `OC ${order.order_number}${installments.length > 1 ? ` — Parcela ${i + 1}/${installments.length}` : ''}`,
@@ -885,6 +927,10 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         return;
       }
       claimed = true;
+
+      // 0. Pré-voo: valida conversões e grades do lote inteiro antes de creditar
+      // ou lançar financeiro — evita crédito parcial por 1 item mal-configurado.
+      await preflightReceive(items);
 
       // 1. Create AP entries (idempotent)
       const paymentDays = await resolvePaymentDays();
@@ -983,6 +1029,11 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           .eq('id', orderId)
           .eq('status', 'receiving');
       }
+      // Recarrega itens/estoque: um retry precisa enxergar received_at atualizado
+      // pra NÃO re-creditar o que já entrou (o cache tinha staleTime alto → o
+      // fechamento de `items` ficava obsoleto e re-creditava tudo no 2º clique).
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
       toast.error(err.message);
     } finally {
       setReceiving(false);
@@ -1009,6 +1060,10 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         return;
       }
       claimed = true;
+
+      // 0. Pré-voo: valida conversões e grades do lote antes de creditar
+      // qualquer item (evita crédito parcial por 1 item mal-configurado).
+      await preflightReceive(items);
 
       const today = new Date().toISOString().slice(0, 10);
       // Give stock to each item (atomic via SELECT FOR UPDATE).
@@ -1102,6 +1157,11 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           .eq('id', orderId)
           .eq('status', 'receiving');
       }
+      // Recarrega itens/estoque: um retry precisa enxergar received_at atualizado
+      // pra NÃO re-creditar o que já entrou (o cache tinha staleTime alto → o
+      // fechamento de `items` ficava obsoleto e re-creditava tudo no 2º clique).
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
       toast.error(err.message);
     } finally {
       setReceiving(false);

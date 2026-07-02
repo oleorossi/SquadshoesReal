@@ -128,7 +128,10 @@ export function printPurchaseOrderGrouped(order: POData, items: POItem[]) {
       const rows = g.items.map(item => {
         const colorLabel = item.color ?? '—';
         const rowGrade = item.grade || {};
-        const rowTotal = sizes.reduce((s, sz) => s + (rowGrade[sz] ?? 0), 0) || item.quantity;
+        // Total/valor da linha ancorados em item.quantity (o que é precificado e
+        // soma no rodapé g.totalValue). Antes usava a soma da grade → quando grade
+        // ≠ quantity a linha divergia do total (auditoria 2026-07-02).
+        const rowTotal = Number(item.quantity) || sizes.reduce((s, sz) => s + (rowGrade[sz] ?? 0), 0);
         grandRowTotal += rowTotal;
 
         const sizeCells = sizes.map(sz => {
@@ -395,10 +398,11 @@ export function printSupplierPOs(
       const rows = mItems.map(item => {
         const colorLabel = item.color ?? item.product?.color ?? '—';
         const rowGrade = item.grade || {};
-        // Mirror printPurchaseOrderGrouped (line 131): prefer grade sum so the
-        // row total column always equals the sum of the displayed size cells.
-        // Falling back to item.quantity when the grade is empty.
-        const rowTotal = sizes.reduce((s, sz) => s + (rowGrade[sz] ?? 0), 0) || item.quantity;
+        // Total/valor da linha ancorados em item.quantity (o que é precificado e
+        // soma no grandTotal + resumo do grupo); a grade fica só como distribuição
+        // por numeração. Antes usava a soma da grade → quando grade ≠ quantity a
+        // linha divergia do total geral (auditoria 2026-07-02).
+        const rowTotal = Number(item.quantity) || sizes.reduce((s, sz) => s + (rowGrade[sz] ?? 0), 0);
         modelTotal += rowTotal;
 
         const sizeCells = sizes.map(sz => {

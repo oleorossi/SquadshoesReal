@@ -1043,6 +1043,17 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     const updatedMats = mats.map((mat, mi) => mi === index ? { ...mat, completed: !mat.completed } : mat);
     const allDone = updatedMats.length > 0 && updatedMats.every(mat => mat.completed);
     if (allDone && o.status !== 'Concluído') {
+      // OS por par (não-artesanal, valor por par): a conclusão TEM que passar pelo
+      // diálogo de retorno pra capturar pares bons/defeito — senão a conta a pagar
+      // sai pelo valor CHEIO (qtd × preço) ignorando perda (auditoria 2026-07-02).
+      // Persiste o check dos materiais e abre o retorno; NÃO conclui direto aqui.
+      if (!(o as any).artisanal_recipe_id && Number(o.unit_price) > 0) {
+        await supabase.from('service_orders').update({ materials_sent: updatedMats as any }).eq('id', o.id);
+        queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+        setReturnDialogOs({ ...o, materials_sent: updatedMats } as any);
+        return;
+      }
+      // Artesanal / valor fixo: mantém a conclusão direta (valor não depende de retorno).
       const { data: claimed } = await supabase
         .from('service_orders')
         .update({ status: 'Concluído', materials_sent: updatedMats as any })
@@ -1064,7 +1075,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     } else {
       updateOrder.mutate({ id: o.id, materials_sent: updatedMats } as any);
     }
-  }, [updateOrder, queryClient, produceArtisanalOutput]);
+  }, [updateOrder, queryClient, produceArtisanalOutput, setReturnDialogOs]);
 
 
   // ── Bloco C: form manual disciplinado ──────────────────────────────────────
@@ -1143,7 +1154,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
     const originalOrder = orders.find(o => o.id === editingOrder.id);
     const justCompleted = editingOrder.status === 'Concluído' && originalOrder?.status !== 'Concluído';
-    const justCancelled = editingOrder.status === 'Cancelado' && originalOrder?.status === 'Concluído';
+    // Qualquer transição → Cancelado (não só de Concluído): senão cancelar uma OS
+    // Pendente/Em Andamento caía no diff (zero) e NÃO estornava os materiais que
+    // foram debitados na criação — vazamento de estoque (auditoria 2026-07-02).
+    const justCancelled = editingOrder.status === 'Cancelado' && originalOrder?.status !== 'Cancelado';
     const contractorName = contractors.find(c => c.id === editingOrder.contractor_id)?.name || '';
 
     const doArtisanalCompletion = async (osId: string, osNumber: string, ord: typeof payload) => {
@@ -1176,11 +1190,32 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               }
             }
           } else if (justCancelled) {
-            // Reverse artisanal stock + cancel AP when transitioning Concluído → Cancelado
+            // Reverte estoque ao cancelar a OS.
             try {
-              await cancelArtisanalOutput(osId, originalOrder?.order_number || '', originalOrder as any);
+              if ((originalOrder as any)?.artisanal_recipe_id) {
+                // Artesanal: reversão da saída + base (trigger server-side).
+                await cancelArtisanalOutput(osId, originalOrder?.order_number || '', originalOrder as any);
+              } else {
+                // Não-artesanal: re-credita os materiais enviados (debitados na
+                // criação) — mesma resolução produto+cor do branch de diff.
+                const matsToRestore = getMaterials(originalOrder as any)
+                  .filter(m => m.material?.trim() && m.color?.trim() && Number(m.meters) > 0);
+                for (const mat of matsToRestore) {
+                  const product = products.find(p => {
+                    const group = (productGroups as any[]).find((g: any) => g.name === mat.material);
+                    if (group && p.group_id === group.id) { const pc = p.color?.trim() || ''; if (pc === mat.color) return true; if (getDerivedProductColor(p) === mat.color) return true; return false; }
+                    if (!group) { const base = getBaseName(p.name) || p.name; if (base !== mat.material) return false; const pc = p.color?.trim() || ''; if (pc === mat.color) return true; if (getDerivedProductColor(p) === mat.color) return true; }
+                    return false;
+                  });
+                  if (!product) { toast.warning(`Material "${mat.material} (${mat.color})" não encontrado — confira o estoque manualmente.`); continue; }
+                  const prev = Number(product.quantity) || 0;
+                  const r = await adjustStockSafe({ productId: product.id, expectedPrevious: prev, newQty: prev + mat.meters, reason: `Estorno material OS ${originalOrder?.order_number || ''} (cancelamento)`, orderId: osId });
+                  if (r.success) toast.info(`Material restituído: ${mat.material} (${mat.color}) +${mat.meters.toFixed(2)}m`);
+                  else toast.error(`Erro ao restituir ${mat.material}: ${r.errorMessage || ''}`);
+                }
+              }
             } catch (e: any) {
-              toast.error(`Falha ao estornar artesanal: ${e?.message || 'erro desconhecido'}`);
+              toast.error(`Falha ao estornar materiais: ${e?.message || 'erro desconhecido'}`);
             }
           } else {
             // Diff materials and debit/restore incremental changes
@@ -1614,7 +1649,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 <Truck className="h-3 w-3" /> Enviar
                               </Button>
                             )}
-                            {active && o.status !== 'Em Andamento' && (
+                            {active && o.status !== 'Em Andamento' && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status)) && (
                               <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
                                 <Play className="h-3 w-3" /> Processar
                               </Button>
@@ -2440,10 +2475,20 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     <SelectContent>
                       <SelectItem value="Pendente">Pendente</SelectItem>
                       <SelectItem value="Em Andamento">Em Andamento</SelectItem>
-                      <SelectItem value="Concluído">Concluído</SelectItem>
+                      {/* "Concluído" só p/ artesanal (valor fixo). OS por par conclui
+                          pelo botão "Entregue" (registra pares bons/defeito) pra a
+                          conta a pagar não sair pelo valor cheio. */}
+                      {(isArtisanal || editingOrder.status === 'Concluído') && (
+                        <SelectItem value="Concluído">Concluído</SelectItem>
+                      )}
                       <SelectItem value="Cancelado">Cancelado</SelectItem>
                     </SelectContent>
                   </Select>
+                  {!isArtisanal && editingOrder.status !== 'Concluído' && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Para concluir, use o botão <span className="font-medium">Entregue</span> na lista — ele registra os pares bons/defeito e calcula o pagamento correto.
+                    </p>
+                  )}
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
