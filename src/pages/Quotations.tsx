@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,10 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileXls as FileSpreadsheet, Plus, Trash as Trash2, CircleNotch as Loader2, CaretRight as ChevronRight, Trophy, Package, Users, ArrowLeft, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
+import { FileXls as FileSpreadsheet, Plus, CircleNotch as Loader2, CaretRight as ChevronRight, Trophy, Package, Users, ArrowLeft, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -441,9 +443,11 @@ function ItemsTab({ quotationId, items, disabled }: { quotationId: string; items
                   <p className="text-xs text-muted-foreground font-mono">{it.quantity} {it.unit}</p>
                 </div>
                 {!disabled && (
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => del.mutate(it.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <DeleteConfirmButton
+                    title="Remover item da cotação?"
+                    description="Os preços já digitados pelos fornecedores para este item serão descartados."
+                    onConfirm={() => del.mutate(it.id)}
+                  />
                 )}
               </CardContent>
             </Card>
@@ -457,16 +461,16 @@ function ItemsTab({ quotationId, items, disabled }: { quotationId: string; items
             <CardContent className="pt-4 space-y-2">
               <div>
                 <Label>Produto</Label>
-                <Select value={productId} onValueChange={(v) => {
-                  setProductId(v);
-                  const p = products.find((p: any) => p.id === v);
-                  if (p?.unit) setUnit(p.unit);
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                  <SelectContent>
-                    {products.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={productId}
+                  onChange={(v) => {
+                    setProductId(v);
+                    const p = products.find((p: any) => p.id === v);
+                    if (p?.unit) setUnit(p.unit);
+                  }}
+                  options={products.map((p: any) => ({ value: p.id, label: p.name }))}
+                  placeholder="Selecionar..."
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -572,9 +576,11 @@ function ResponsesTab({
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" onClick={() => setEditingResponseId(r.id)}>Preços / Termos</Button>
                     {!disabled && (
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => delResponse.mutate(r.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <DeleteConfirmButton
+                        title="Remover resposta do fornecedor?"
+                        description="Todos os preços por item já digitados desta resposta serão descartados."
+                        onConfirm={() => delResponse.mutate(r.id)}
+                      />
                     )}
                   </div>
                 </div>
@@ -586,15 +592,15 @@ function ResponsesTab({
 
       {!disabled && (
         <div className="flex gap-2">
-          <Select value={addingSupplierId} onValueChange={setAddingSupplierId}>
-            <SelectTrigger className="flex-1"><SelectValue placeholder="Selecionar fornecedor..." /></SelectTrigger>
-            <SelectContent>
-              {suppliers
-                .filter((s: any) => !responses.some((r: any) => r.supplier_id === s.id))
-                .map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
-              }
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={addingSupplierId}
+            onChange={setAddingSupplierId}
+            options={suppliers
+              .filter((s: any) => !responses.some((r: any) => r.supplier_id === s.id))
+              .map((s: any) => ({ value: s.id, label: s.name }))}
+            placeholder="Selecionar fornecedor..."
+            className="flex-1"
+          />
           <Button onClick={() => addResponse.mutate()} disabled={!addingSupplierId || addResponse.isPending} className="gap-1.5">
             <Plus className="h-4 w-4" /> Adicionar
           </Button>
@@ -636,8 +642,11 @@ function ResponseEditDialog({
   const [editForm, setEditForm] = useState<any>({});
   const [pricesEdit, setPricesEdit] = useState<Record<string, { unit_price: number; discount_pct: number }>>({});
 
-  // Reset form when dialog opens
-  useMemo(() => {
+  // Inicializa o form uma única vez por abertura do dialog (keyed pelo id da
+  // resposta). Antes era um useMemo com deps [response, items, pricesByCell] —
+  // como pricesByCell é recriado a cada refetch, o memo re-executava e RESETAVA
+  // o que o usuário estava digitando no meio da edição.
+  useEffect(() => {
     if (response) {
       setEditForm({
         delivery_days: response.delivery_days ?? '',
@@ -658,7 +667,8 @@ function ResponseEditDialog({
       }
       setPricesEdit(initial);
     }
-  }, [response, items, pricesByCell]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response?.id]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -718,13 +728,14 @@ function ResponseEditDialog({
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{response?.suppliers?.name ?? 'Editar resposta'}</DialogTitle>
+          <DialogDescription>Termos comerciais e preços por item da resposta do fornecedor.</DialogDescription>
         </DialogHeader>
 
         {!response ? (
           <p className="text-sm text-muted-foreground py-4">Carregando…</p>
         ) : (
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Prazo de entrega (dias)</Label>
                 <Input type="number" min={0} value={editForm.delivery_days ?? ''}
@@ -777,10 +788,10 @@ function ResponseEditDialog({
               <Label className="mb-2 block">Preços por item</Label>
               <div className="space-y-2">
                 {items.map((it: any) => (
-                  <div key={it.id} className="grid grid-cols-12 gap-2 items-center text-sm">
-                    <div className="col-span-5 truncate">{it.products?.name || it.product_id}</div>
-                    <div className="col-span-2 font-mono text-xs text-right">{it.quantity} {it.unit}</div>
-                    <div className="col-span-3">
+                  <div key={it.id} className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center text-sm">
+                    <div className="col-span-2 sm:col-span-5 truncate">{it.products?.name || it.product_id}</div>
+                    <div className="col-span-2 sm:col-span-2 font-mono text-xs text-right">{it.quantity} {it.unit}</div>
+                    <div className="col-span-1 sm:col-span-3">
                       <Input
                         type="number" step="0.01" min={0}
                         placeholder="Preço unit."
@@ -791,7 +802,7 @@ function ResponseEditDialog({
                         }))}
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-1 sm:col-span-2">
                       <Input
                         type="number" step="0.01" min={0} max={100}
                         placeholder="% desc"
@@ -858,6 +869,7 @@ function NewQuotationDialog({
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-4 w-4" /> Nova Cotação
           </DialogTitle>
+          <DialogDescription>Defina prazo e contexto da RFQ — itens e fornecedores são adicionados depois.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>

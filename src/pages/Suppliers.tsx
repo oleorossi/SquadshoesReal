@@ -11,7 +11,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   useSuppliers, useAddSupplier, useUpdateSupplier, useDeleteSupplier,
@@ -642,12 +642,14 @@ function SupplierItemsDialog({ supplier, onOpenChange }: { supplier: Supplier | 
             <Package className="h-5 w-5 text-primary" />
             Itens de {supplier?.trade_name || supplier?.name}
           </DialogTitle>
+          <DialogDescription>Produtos vinculados a este fornecedor com estoque e custo médio.</DialogDescription>
         </DialogHeader>
         {linkedProducts.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground">
-            <Package className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">Nenhum item vinculado a este fornecedor.</p>
-          </div>
+          <EmptyState
+            icon={Package}
+            title="Nenhum item vinculado"
+            description="Vincule produtos a este fornecedor no cadastro de materiais."
+          />
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">{linkedProducts.length} item(ns) encontrado(s)</p>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -65,6 +65,9 @@ export function MesaCapacityDialog({
             <TrendingUp className="w-4 h-4 text-purple-500" />
             Capacidade do Aviamento — {waveCode}
           </DialogTitle>
+          <DialogDescription>
+            Ajuste a capacidade diária do Aviamento e veja o impacto na data de disponibilidade da onda.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -147,7 +150,6 @@ export function MesaCapacityDialog({
           <Button
             onClick={handleConfirm}
             disabled={update.isPending || newCapacity === currentCapacity}
-            className="bg-purple-500 hover:bg-purple-600 text-white"
           >
             {update.isPending ? 'Salvando...' : 'Confirmar nova capacidade'}
           </Button>

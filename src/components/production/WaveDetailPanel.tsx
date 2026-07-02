@@ -57,7 +57,7 @@ export function WaveDetailPanel({
         {wave && (
           <div className="space-y-6 mt-4">
             {/* progresso de setores */}
-            <div className="grid grid-cols-9 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
               {STAGE_ORDER.map((stage) => {
                 const s = wave.stages.find((x) => x.stage === stage);
                 const statusClass =
@@ -143,6 +143,8 @@ export function WaveDetailPanel({
                           size="sm"
                           variant="ghost"
                           className="h-7 px-2 shrink-0"
+                          aria-label="Abrir pedido de venda"
+                          title="Abrir pedido de venda"
                           onClick={() => { navigate(`/sales/edit/${so.sale_order_id}`); onOpenChange(false); }}
                         >
                           <ExternalLink className="h-3.5 w-3.5" />

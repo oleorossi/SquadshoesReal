@@ -194,7 +194,7 @@ export default function SolePurchaseTab() {
             </TableHeader>
             <TableBody>
               {processedShortages.map(s => (
-                <TableRow key={s.sole_product_id} className={!s.has_valid_supplier ? "bg-amber-50/30" : ""}>
+                <TableRow key={s.sole_product_id} className={!s.has_valid_supplier ? "bg-amber-500/5" : ""}>
                   <TableCell>
                     <TooltipProvider>
                       <Tooltip>
@@ -222,7 +222,7 @@ export default function SolePurchaseTab() {
                       const sheet = technicalSheets.find(ts => ts.cor_solado_id === s.sole_product_id || ts.primary_sole_id === s.sole_product_id);
                       const silkUrl = (s as any).silk_url || (sheet as any)?.default_silk_url;
                       return silkUrl ? (
-                        <Badge variant="outline" className="gap-1 text-xs border-blue-200 bg-blue-50 text-blue-700">
+                        <Badge variant="outline" className="gap-1 text-xs border-blue-500/20 bg-blue-500/10 text-blue-600">
                           <Layers className="h-3 w-3" /> Possui Silk
                         </Badge>
                       ) : (
@@ -236,7 +236,7 @@ export default function SolePurchaseTab() {
                         value={s.resolved_supplier_id || "none"} 
                         onValueChange={(val) => handleSupplierChange(s.sole_product_id, val)}
                       >
-                        <SelectTrigger className={`h-8 text-xs ${!s.has_valid_supplier ? "border-amber-400 bg-amber-50" : ""}`}>
+                        <SelectTrigger className={`h-8 text-xs ${!s.has_valid_supplier ? "border-amber-500/40 bg-amber-500/10" : ""}`}>
                           <SelectValue placeholder="Selecionar fornecedor..." />
                         </SelectTrigger>
                         <SelectContent>

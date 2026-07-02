@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Warning as AlertTriangle, Pulse as Activity, Truck, CircleNotch as Loader2, PaperPlaneRight as Send, CheckCircle as CheckCircle2, Calendar, TrendUp as TrendingUp, ArrowRight, Gear as Settings, Bell, Clock, Medal as Award, WarningCircle as AlertCircle, BellRinging as BellRing, X } from '@phosphor-icons/react';
@@ -867,6 +868,7 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-4 w-4" /> Configurações do Centro de Controle
           </DialogTitle>
+          <DialogDescription>Preferências de alertas e notificações do centro de controle.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -1063,6 +1065,7 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
             <Truck className="h-4 w-4" /> Terceirizar OP {target.orderNumber}
             <Badge variant="outline" className="text-xs">{target.sector}</Badge>
           </DialogTitle>
+          <DialogDescription>Escolha a costureira/mesa, quantidade e valor para gerar a ordem de serviço.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
@@ -1116,8 +1119,7 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
             </div>
             <div>
               <Label>Valor unitário (R$/par)</Label>
-              <Input type="number" step="0.01" min={0} value={unitPrice}
-                onChange={e => setUnitPrice(+e.target.value)} />
+              <CurrencyInput value={unitPrice} onChange={setUnitPrice} />
               <p className="text-xs text-muted-foreground mt-1 font-mono">Total: R$ {total.toFixed(2)}</p>
             </div>
 
@@ -1192,6 +1194,7 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-4 w-4" /> Confirmar prazo da costureira
           </DialogTitle>
+          <DialogDescription>Defina a data combinada de devolução da OS terceirizada.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">

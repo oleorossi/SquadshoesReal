@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -120,10 +120,10 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
             <AlertTriangle className="h-5 w-5 text-amber-600" />
             Capacidade extrapolada — transbordo para terceiros
           </DialogTitle>
-          <p className="text-xs text-muted-foreground mt-1">
+          <DialogDescription className="text-xs mt-1">
             {overflow.length} {overflow.length === 1 ? 'OP em setor' : 'OPs em setores'} com utilização superior a 100% nesta onda.
             Selecione um terceiro pra cada OP que você quer transferir, ou deixe "Manter interno" pra produzir aqui mesmo (vai atrasar).
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
@@ -212,7 +212,7 @@ export function CapacityOverflowDialog({ open, onClose, orderIds, onComplete }: 
               ? `${outsourcedCount} ${outsourcedCount === 1 ? 'OP será terceirizada' : 'OPs serão terceirizadas'}`
               : 'Nenhuma OP selecionada — produção continua interna'}
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={handleSkip} disabled={commit.isPending}>
               Pular (manter tudo interno)
             </Button>

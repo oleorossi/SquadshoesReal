@@ -1,17 +1,16 @@
- import { useState, useMemo } from 'react';
- import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+ import { useState } from 'react';
+ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
  import { Label } from '@/components/ui/label';
- import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+ import { SearchableSelect } from '@/components/ui/searchable-select';
  import { useSuppliers } from '@/hooks/useSuppliers';
  import { useProducts } from '@/hooks/useProducts';
  import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
- import { Plus, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
+ import { Plus, Trash as Trash2, CircleNotch as Loader2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { toast } from 'sonner';
  import { effectiveConversionFactor, describeConversion } from '@/lib/purchaseConversion';
- import { searchMatchesAny } from '@/lib/searchUtils';
 
  type OrderItem = {
    product_id: string;
@@ -37,16 +36,8 @@
    const [notes, setNotes] = useState('');
    const [items, setItems] = useState<OrderItem[]>([]);
    const [isSubmitting, setIsSubmitting] = useState(false);
-   const [productFilter, setProductFilter] = useState('');
 
-   // Filtro tolerante a espaços/acentos/hífens ("SP10" acha "SP 10").
-   const filteredProducts = useMemo(
-     () => products.filter(p => searchMatchesAny(productFilter, p.name, p.sku)),
-     [products, productFilter],
-   );
- 
    const handleAddItem = (productId: string) => {
-     setProductFilter('');
      const product = products.find(p => p.id === productId);
      if (!product) return;
      
@@ -140,22 +131,19 @@
        <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-y-auto">
          <DialogHeader>
            <DialogTitle>Nova Ordem de Compra</DialogTitle>
+           <DialogDescription>Selecione o fornecedor e os itens; a OC é salva na unidade de compra de cada produto.</DialogDescription>
          </DialogHeader>
  
          <div className="space-y-4 py-4">
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              <div className="space-y-2">
                <Label>Fornecedor</Label>
-               <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
-                 <SelectTrigger>
-                   <SelectValue placeholder="Selecione o fornecedor" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {suppliers.map(s => (
-                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
+               <SearchableSelect
+                 value={selectedSupplierId}
+                 onChange={setSelectedSupplierId}
+                 options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+                 placeholder="Selecione o fornecedor"
+               />
              </div>
              <div className="space-y-2">
                <Label>Observações</Label>
@@ -165,31 +153,13 @@
  
            <div className="space-y-2">
              <Label>Adicionar Produto</Label>
-             <Select onValueChange={handleAddItem}>
-               <SelectTrigger>
-                 <SelectValue placeholder="Selecione um produto para adicionar" />
-               </SelectTrigger>
-               <SelectContent>
-                 <div className="relative">
-                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                   <Input
-                     className="pl-8 border-0 ring-0 focus-visible:ring-0"
-                     placeholder="Filtrar..."
-                     value={productFilter}
-                     onChange={e => setProductFilter(e.target.value)}
-                     // Radix Select captura teclas pra typeahead — sem isso o
-                     // input não recebe a digitação dentro do SelectContent.
-                     onKeyDown={e => e.stopPropagation()}
-                   />
-                 </div>
-                 {filteredProducts.map(p => (
-                   <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
-                 ))}
-                 {filteredProducts.length === 0 && (
-                   <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum produto encontrado</div>
-                 )}
-               </SelectContent>
-             </Select>
+             <SearchableSelect
+               value=""
+               onChange={handleAddItem}
+               options={products.map(p => ({ value: p.id, label: p.name, description: p.sku || undefined, keywords: p.sku || undefined }))}
+               placeholder="Selecione um produto para adicionar"
+               emptyText="Nenhum produto encontrado"
+             />
            </div>
  
            <div className="rounded-md border">

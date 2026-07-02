@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Progress } from '@/components/ui/progress';
 import { ClipboardText as ClipboardCheck, Plus, ArrowLeft, Scan as ScanLine, CircleNotch as Loader2, CheckCircle as CheckCircle2, Trash as Trash2, Warning as AlertTriangle, Play, X, CaretRight as ChevronRight, Package } from '@phosphor-icons/react';
 import { format } from 'date-fns';
@@ -125,6 +127,8 @@ function PickingList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCre
 
 function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
+  const [confirmCommit, setConfirmCommit] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const { data: session } = useQuery({
     queryKey: ['picking_session', id],
@@ -261,10 +265,7 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
           )}
           {!['concluida', 'cancelada'].includes(session.status) && hasUncommitted && (
             <Button size="sm" className="gap-1.5"
-              onClick={() => {
-                if (!confirm('Dar baixa no estoque dos itens separados? Isso debita o estoque real e não estorna automaticamente.')) return;
-                commitStock.mutate();
-              }}
+              onClick={() => setConfirmCommit(true)}
               disabled={commitStock.isPending}>
               {commitStock.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-3.5 w-3.5" />} Dar baixa no estoque
             </Button>
@@ -287,10 +288,7 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
             </Button>
           )}
           {!['concluida','cancelada'].includes(session.status) && (
-            <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={() => {
-              if (!confirm('Cancelar essa sessão? Não pode reverter.')) return;
-              updateStatus.mutate('cancelada');
-            }}>
+            <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={() => setConfirmCancel(true)}>
               <X className="h-3.5 w-3.5" /> Cancelar
             </Button>
           )}
@@ -335,6 +333,43 @@ function PickingSession({ id, onBack }: { id: string; onBack: () => void }) {
         items={items}
         sessionStatus={session.status}
       />
+
+      <AlertDialog open={confirmCommit} onOpenChange={setConfirmCommit}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dar baixa no estoque?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Os itens separados serão debitados do estoque real. A baixa não é estornada automaticamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmCommit(false); commitStock.mutate(); }}>
+              Dar baixa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar esta sessão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A sessão será marcada como cancelada. Esta ação não pode ser revertida.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setConfirmCancel(false); updateStatus.mutate('cancelada'); }}
+            >
+              Cancelar sessão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -619,6 +654,7 @@ function AddItemDialog({ sessionId, open, onClose }: { sessionId: string; open: 
       const { data } = await (supabase as any).from('products').select('id, name, code, ean, unit').eq('active', true).order('name').limit(2000);
       return data || [];
     },
+    enabled: open,
   });
 
   const add = useMutation({
@@ -644,20 +680,24 @@ function AddItemDialog({ sessionId, open, onClose }: { sessionId: string; open: 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Adicionar item à sessão</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Adicionar item à sessão</DialogTitle>
+          <DialogDescription>Escolha o produto e a quantidade esperada para separação.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
             <Label>Produto</Label>
-            <Select value={productId} onValueChange={setProductId}>
-              <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-              <SelectContent>
-                {products.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name} {p.code && `(${p.code})`} {p.ean && ` · EAN ${p.ean}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={productId}
+              onChange={setProductId}
+              options={products.map((p: any) => ({
+                value: p.id,
+                label: p.name,
+                description: [p.code && `(${p.code})`, p.ean && `EAN ${p.ean}`].filter(Boolean).join(' · ') || undefined,
+                keywords: [p.code, p.ean].filter(Boolean).join(' '),
+              }))}
+              placeholder="Selecionar..."
+            />
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
@@ -710,6 +750,7 @@ function NewSessionDialog({
         .limit(200);
       return data || [];
     },
+    enabled: open,
   });
 
   const create = useMutation({
@@ -749,6 +790,7 @@ function NewSessionDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Nova Sessão de Picking</DialogTitle>
+          <DialogDescription>Escolha o tipo de separação e, se for por pedido, o PV de origem dos itens.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>

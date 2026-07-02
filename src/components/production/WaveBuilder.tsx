@@ -2,7 +2,7 @@
 // Step 1 — select pending orders for the week.
 // Step 2 — review calculated timeline + material needs, then create wave.
 import React, { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -437,6 +437,9 @@ export function WaveBuilder({
             <CalendarDays className="w-5 h-5 text-primary" />
             {step === 'select' ? 'Criar onda de produção semanal' : 'Revisão de materiais e cronograma'}
           </DialogTitle>
+          <DialogDescription>
+            Selecione os pedidos da semana e revise materiais/cronograma antes de criar a onda.
+          </DialogDescription>
         </DialogHeader>
 
         {/* ── STEP 1: Order selection ─────────────────────────────────────── */}
@@ -500,8 +503,7 @@ export function WaveBuilder({
                         >
                           <div onClick={e => e.stopPropagation()}>
                             <Checkbox
-                              checked={group.allSelected}
-                              data-state={group.someSelected && !group.allSelected ? 'indeterminate' : undefined}
+                              checked={group.allSelected ? true : group.someSelected ? 'indeterminate' : false}
                               disabled={group.orders.every(o => conflictIds.has(o.id))}
                               onCheckedChange={() => toggleClient(group)}
                             />

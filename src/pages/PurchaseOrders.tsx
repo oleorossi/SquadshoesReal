@@ -487,12 +487,45 @@ export default function PurchaseOrders() {
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleBulkAction('sent')}>
                   <Send className="h-3.5 w-3.5" /> Enviar
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={() => handleBulkAction('cancelled')}>
-                  <XCircle className="h-3.5 w-3.5" /> Cancelar
-                </Button>
-                <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => handleBulkAction('delete')}>
-                  <Trash2 className="h-3.5 w-3.5" /> Excluir
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="outline" className="gap-1.5 text-destructive">
+                      <XCircle className="h-3.5 w-3.5" /> Cancelar
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancelar {selectedIds.size} ordem(ns) de compra?</AlertDialogTitle>
+                      <AlertDialogDescription>As OCs selecionadas serão marcadas como canceladas.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleBulkAction('cancelled')}>Cancelar OCs</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="destructive" className="gap-1.5">
+                      <Trash2 className="h-3.5 w-3.5" /> Excluir
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir {selectedIds.size} ordem(ns) de compra?</AlertDialogTitle>
+                      <AlertDialogDescription>Essa ação não pode ser desfeita.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => handleBulkAction('delete')}
+                      >
+                        Excluir
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={handleBulkPDF}>
                   <FileDown className="h-3.5 w-3.5" /> PDF por Fornecedor
                 </Button>
@@ -697,6 +730,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const order = orders.find(o => o.id === orderId);
   const [editingItems, setEditingItems] = useState<Record<string, { quantity: number; unit_price: number }>>({});
   const [receiving, setReceiving] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [gradeEditorItemId, setGradeEditorItemId] = useState<string | null>(null);
   // Recebimento parcial por item (Fase C)
   const [partialItem, setPartialItem] = useState<PurchaseOrderItem | null>(null);
@@ -815,6 +849,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   };
 
   const handleSendToFinance = async () => {
+    if (approving) return;
+    setApproving(true);
     try {
       const paymentDays = await resolvePaymentDays();
       await createAPEntries(paymentDays);
@@ -822,6 +858,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       toast.success(`Aprovada — ${paymentDays.length} parcela(s) lançadas no financeiro!`);
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -1183,6 +1221,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
             </div>
           </DialogTitle>
+          <DialogDescription className="sr-only">Detalhes, itens e recebimento da ordem de compra</DialogDescription>
         </DialogHeader>
 
         {/* Resumo — fornecedor + Valor Total (âncora) no topo; meta/datas abaixo. */}
@@ -1490,8 +1529,10 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             </Button>
           )}
           {order.status === 'pending' && (
-            <Button variant="default" className="gap-1" onClick={handleSendToFinance}>
-              <CheckCircle2 className="h-4 w-4" /> Aprovar e Lançar Financeiro
+            <Button variant="default" className="gap-1" onClick={handleSendToFinance} disabled={approving}>
+              {approving
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando...</>
+                : <><CheckCircle2 className="h-4 w-4" /> Aprovar e Lançar Financeiro</>}
             </Button>
           )}
           {isReceivable && (
@@ -1772,15 +1813,11 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <ClipboardList className="h-5 w-5 text-primary" />
-              Resumo Detalhado — Ordens Pendentes ({orderIds.length})
-            </DialogTitle>
-            <Button size="sm" className="gap-1.5" onClick={handlePrintPDF} disabled={grouped.length === 0}>
-              <FileText className="h-4 w-4" /> Gerar PDF
-            </Button>
-          </div>
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <ClipboardList className="h-5 w-5 text-primary" />
+            Resumo Detalhado — Ordens Pendentes ({orderIds.length})
+          </DialogTitle>
+          <DialogDescription>Itens agregados das ordens pendentes, agrupados por categoria.</DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
@@ -1835,6 +1872,9 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
         )}
 
         <DialogFooter>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePrintPDF} disabled={grouped.length === 0}>
+            <FileText className="h-4 w-4" /> Gerar PDF
+          </Button>
           <Button variant="outline" onClick={onClose}>Fechar</Button>
         </DialogFooter>
       </DialogContent>

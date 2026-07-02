@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
@@ -318,6 +318,7 @@ function getWeekOptions() {
   const [consumptionOrderIds, setConsumptionOrderIds] = useState<string[]>([]);
   const [consumptionTitle, setConsumptionTitle] = useState('');
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
+  const [bulkCancelIds, setBulkCancelIds] = useState<Set<string> | null>(null);
 
   const [form, setForm] = useState<OrderFormData & { color: string; planned_start: string; planned_delivery: string; production_line: string; responsible: string; packaging_type: string; packaging_product_id: string; packaging_quantity: number; sale_order_id: string }>({
     reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', packaging_type: '', packaging_product_id: '', packaging_quantity: 0, sale_order_id: '',
@@ -619,12 +620,15 @@ function getWeekOptions() {
     navigate('/imprimir-fichas?orderIds=' + Array.from(ids).join(','));
   };
 
-  const handleBulkCancel = async (ids: Set<string>) => {
+  const handleBulkCancel = (ids: Set<string>) => {
     if (ids.size === 0) return;
-    const confirmed = window.confirm(
-      `Cancelar ${ids.size} OP(s)? Esta ação marcará as OPs como "Cancelada" e não pode ser desfeita facilmente.`,
-    );
-    if (!confirmed) return;
+    setBulkCancelIds(new Set(ids));
+  };
+
+  const confirmBulkCancel = async () => {
+    const ids = bulkCancelIds;
+    setBulkCancelIds(null);
+    if (!ids || ids.size === 0) return;
     try {
       const { error } = await supabase
         .from('orders')
@@ -1825,6 +1829,7 @@ function getWeekOptions() {
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{detailTitle}</DialogTitle>
+            <DialogDescription className="sr-only">Detalhes, grade e status das ordens de produção selecionadas</DialogDescription>
           </DialogHeader>
           <div className="space-y-6 mt-2">
             {detailOrders.map(order => {
@@ -1901,7 +1906,7 @@ function getWeekOptions() {
                       }}>
                         <Printer className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { setDetailDialogOpen(false); setDeleteOrderId(order.id); }}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Excluir OP" aria-label="Excluir OP" onClick={() => { setDetailDialogOpen(false); setDeleteOrderId(order.id); }}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1987,6 +1992,7 @@ function getWeekOptions() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova Ordem de Produção</DialogTitle>
+            <DialogDescription>Informe cliente, referência e grade; o estoque é verificado antes do lançamento.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handlePrepareOrder} className="space-y-4 mt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2009,7 +2015,7 @@ function getWeekOptions() {
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[450px] p-0" align="start">
+                  <PopoverContent className="w-[min(450px,calc(100vw-2rem))] p-0" align="start">
                     <Command>
                       <CommandInput placeholder="Digite o nome do cliente ou nº do pedido..." />
                       <CommandList>
@@ -2057,7 +2063,7 @@ function getWeekOptions() {
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[450px] p-0" align="start">
+                  <PopoverContent className="w-[min(450px,calc(100vw-2rem))] p-0" align="start">
                     <Command>
                       <CommandInput placeholder="Buscar referência..." />
                       <CommandList>
@@ -2196,13 +2202,13 @@ function getWeekOptions() {
               <Label>Observações</Label>
               <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="mt-1" rows={2} />
             </div>
-            <div className="flex justify-end gap-3">
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={!form.reference_id || form.quantity < 1 || checking}>
                 {checking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Verificar Estoque e Lançar
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -2274,6 +2280,27 @@ function getWeekOptions() {
             {allSufficient && (
               <AlertDialogAction onClick={handleConfirmOrder}>Confirmar e Debitar</AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk cancel confirmation */}
+      <AlertDialog open={!!bulkCancelIds} onOpenChange={(open) => { if (!open) setBulkCancelIds(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar {bulkCancelIds?.size ?? 0} OP(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              As OPs selecionadas serão marcadas como "Cancelada". Esta ação não pode ser desfeita facilmente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmBulkCancel}
+            >
+              Cancelar OPs
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

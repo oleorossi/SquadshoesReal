@@ -339,7 +339,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               </>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {drafts.length > 0 && (
               <Button variant="outline" onClick={handlePrintPdf} disabled={generate.isPending} className="gap-2">
                 <FileText className="h-4 w-4" /> Gerar PDF
