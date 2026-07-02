@@ -79,7 +79,7 @@ export default function TerceirizadosHub() {
         description="Acompanhamento na rua, ordens de serviço, cadastro de contratadas e relatório — tudo num só lugar."
       />
       <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
-        <TabsList className="h-auto flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-lg">
+        <TabsList indicator="none" className="h-auto flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-lg">
           {/* OPERACIONAL */}
           <TabsTrigger value="orders" className={TRIGGER}>
             <ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço

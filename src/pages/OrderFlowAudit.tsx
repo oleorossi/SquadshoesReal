@@ -483,7 +483,7 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-muted/50 p-1 h-12 inline-flex">
+          <TabsList indicator="none" className="bg-muted/50 p-1 h-12 inline-flex">
             <TabsTrigger value="flow" className="gap-2 px-6 font-bold uppercase text-xs data-[state=active]:bg-background shadow-none">
               <Layers className="h-4 w-4" /> Fluxo de Pedidos
             </TabsTrigger>

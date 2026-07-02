@@ -75,10 +75,13 @@ function QuadroProducao() {
         ))}
       </div>
       <Suspense fallback={<TabLoader />}>
-        {mode === 'matriz' && <ProductionFlow embedded />}
-        {mode === 'cartoes' && <ProductionLive embedded />}
-        {mode === 'timeline' && <ProductionTimeline embedded />}
-        {mode === 'lote' && <SectorAggregatedView embedded />}
+        {/* key={mode} → cross-fade curto ao alternar Matriz/Cartões/Timeline/Lote */}
+        <div key={mode} className="animate-fade-in">
+          {mode === 'matriz' && <ProductionFlow embedded />}
+          {mode === 'cartoes' && <ProductionLive embedded />}
+          {mode === 'timeline' && <ProductionTimeline embedded />}
+          {mode === 'lote' && <SectorAggregatedView embedded />}
+        </div>
       </Suspense>
     </div>
   );

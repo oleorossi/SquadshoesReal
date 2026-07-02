@@ -601,7 +601,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", isGroupCollapsed && "-rotate-90")} />
                     </button>
                     {!isGroupCollapsed && (
-                      <div className="mt-0.5 space-y-0.5">
+                      <div className="mt-0.5 space-y-0.5 animate-slide-down">
                         {visibleItems.map((item) => {
                           const isFavorite = favorites.some(f => f.path === item.path);
                           const isSubItem = !!(item as any).parent;
@@ -889,7 +889,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
               <div className="md:hidden">
                 <PageHeader />
               </div>
-              <div className="animate-in fade-in duration-200">
+              {/* Transição de página: keyed por pathname (NÃO search — senão
+                  troca de aba via ?tab=/?sub=/?modo= remontaria a página inteira)
+                  pra re-disparar o keyframe `page-enter` a cada navegação. */}
+              <div key={location.pathname} className="page-enter">
                 {children}
               </div>
             </main>

@@ -62,7 +62,7 @@ export default function Setores() {
      <div className="space-y-4">
        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
-            <TabsList className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
+            <TabsList indicator="none" className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
              <TabsTrigger value="corte" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
                <Scissors className="h-4 w-4" /> Corte Palmilha
              </TabsTrigger>

@@ -46,7 +46,7 @@ export default function PricingCalculator() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
+        <TabsList indicator="none" className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
           <TabsTrigger
             value="manual"
             className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"

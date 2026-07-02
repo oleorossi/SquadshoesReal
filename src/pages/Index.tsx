@@ -99,7 +99,7 @@ export default function Index() {
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MainTab)}>
         {/* ── Tab bar principal ── */}
-        <TabsList className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
+        <TabsList indicator="none" className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
           <TabsTrigger
             value="materials"
             className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"

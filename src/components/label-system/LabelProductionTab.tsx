@@ -1578,7 +1578,7 @@ export function LabelProductionTab() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4 bg-muted/50 p-1">
+        <TabsList indicator="none" className="mb-4 bg-muted/50 p-1">
           <TabsTrigger value="individual" className="gap-2 px-6 h-8 text-xs font-semibold">Lista de Referências</TabsTrigger>
           <TabsTrigger value="history" className="gap-2 px-6 h-8 text-xs font-semibold">Histórico de Lotes</TabsTrigger>
         </TabsList>

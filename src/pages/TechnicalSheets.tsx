@@ -1957,7 +1957,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       </div>
 
       <Tabs defaultValue="id">
-        <TabsList className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
+        <TabsList indicator="none" className="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible h-auto gap-1 bg-muted/50 p-1.5 rounded-lg border">
           {/* Cada tab agora mostra um indicador discreto de "completude" ou
               contagem (badge) pro usuário saber onde tem trabalho pendente. */}
           <TabsTrigger value="id" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
