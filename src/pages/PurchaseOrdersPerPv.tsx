@@ -108,7 +108,7 @@ export default function PurchaseOrdersPerPv() {
                 {pos.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono text-xs">{o.order_number}</TableCell>
-                    <TableCell className={o.supplier_id ? '' : 'text-amber-700'}>{o.supplier_name}</TableCell>
+                    <TableCell className={o.supplier_id ? '' : 'text-amber-600 dark:text-amber-400 font-medium'}>{o.supplier_name}</TableCell>
                     <TableCell><Badge variant="outline" className="text-xs">{STATUS_LABEL[o.status] || o.status}</Badge></TableCell>
                     <TableCell className="text-right tabular-nums">{formatCurrency(o.total_value)}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">{fmtDate(o.created_at)}</TableCell>
