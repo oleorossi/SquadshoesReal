@@ -75,7 +75,9 @@ export function useProducaoKPIs(period: PeriodFilter) {
       // OPs fora do período nas métricas por setor e truncava acima do cap)
       const orderIds = allOrders.map(o => o.id);
       const allStages: { id: string; order_id: string; stage_name: string; status: string; started_at: string | null; completed_at: string | null }[] = [];
-      const CHUNK = 100;
+      // 50 OPs × ~10 estágios ≈ 500 rows/chunk — folga segura sob o cap de
+      // 1000 rows do PostgREST (100 OPs encostava no limite e truncava).
+      const CHUNK = 50;
       for (let i = 0; i < orderIds.length; i += CHUNK) {
         const { data, error } = await supabase
           .from('order_stages')

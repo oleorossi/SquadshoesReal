@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -83,6 +83,15 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   // Load all stages for this order to check the DAG constraint
   const { data: allStages = [] } = useOrderStages(stage?.order_id);
 
+  // Linha FRESCA do estágio: o prop `stage` é snapshot de useState nos callers
+  // (Orders/ProductionFlow) e NÃO acompanha refetches. Como a RPC de
+  // apontamento é INCREMENTAL, o delta é calculado sobre `serverProcessed`
+  // (cache fresco + resposta da RPC) — nunca sobre o snapshot, senão dois
+  // "Salvar Progresso" seguidos duplicariam pares (review 2026-07-01).
+  const liveStage = allStages.find(s => s.id === stage?.id) ?? stage;
+  const [serverProcessed, setServerProcessed] = useState(0);
+  const qtyDirty = useRef(false);
+
   // DAG ALINHADO AO BANCO (fn_guard_manual_stage_transition): preps são
   // paralelos e o fluxo parcial libera quando o pré-requisito apontou >0
   // pares. A regra antiga (sequencial estrito por stage_order) bloqueava
@@ -96,6 +105,8 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
 
   useEffect(() => {
     if (stage) {
+      qtyDirty.current = false;
+      setServerProcessed(stage.quantity_processed);
       setForm({
         quantity_processed: stage.quantity_processed,
         observations: stage.observations || '',
@@ -104,6 +115,16 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       });
     }
   }, [stage]);
+
+  // Segue o servidor (refetch/realtime) enquanto o operador não digitou nada.
+  useEffect(() => {
+    if (!liveStage) return;
+    setServerProcessed(liveStage.quantity_processed);
+    if (!qtyDirty.current) {
+      setForm(f => ({ ...f, quantity_processed: liveStage.quantity_processed }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStage?.quantity_processed, liveStage?.id]);
 
   if (!stage) return null;
 
@@ -140,15 +161,26 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     });
   };
 
+  // Aplica a resposta da RPC como nova base do delta (fecha a janela entre o
+  // mutate e o refetch — sem isso, salvar 2× rápido apontaria em dobro).
+  const applyRpcResult = (res: unknown) => {
+    const q = (res as { quantity_processed?: number } | null)?.quantity_processed;
+    if (typeof q === 'number') {
+      setServerProcessed(q);
+      qtyDirty.current = false;
+    }
+  };
+
   const handleStart = async () => {
     try {
       await saveFields();
-      await apontar.mutateAsync({
+      const res = await apontar.mutateAsync({
         orderId: stage.order_id,
         stageName: stage.stage_name,
-        quantity: Math.max(0, form.quantity_processed - stage.quantity_processed),
+        quantity: Math.max(0, form.quantity_processed - serverProcessed),
         operatorEmployeeId: operatorEmployeeId || null,
       });
+      applyRpcResult(res);
       toast.success('Setor iniciado!');
     } catch {
       // apontar.mutateAsync já mostra toast de erro (inclui bloqueio do DAG)
@@ -158,14 +190,15 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   const handleSaveProgress = async () => {
     try {
       await saveFields();
-      const delta = form.quantity_processed - stage.quantity_processed;
+      const delta = form.quantity_processed - serverProcessed;
       if (delta !== 0) {
-        await apontar.mutateAsync({
+        const res = await apontar.mutateAsync({
           orderId: stage.order_id,
           stageName: stage.stage_name,
           quantity: delta,
           operatorEmployeeId: operatorEmployeeId || null,
         });
+        applyRpcResult(res);
         toast.success(`Apontado: ${delta > 0 ? '+' : ''}${delta} pares (${form.quantity_processed}/${stage.quantity_total}).`);
       }
     } catch {
@@ -187,14 +220,14 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       // informado (parcial consciente fica registrado como refugo/saldo).
       const target = form.quantity_processed > 0
         ? form.quantity_processed
-        : (stage.quantity_processed > 0 ? stage.quantity_processed : stage.quantity_total);
+        : (serverProcessed > 0 ? serverProcessed : stage.quantity_total);
       // A RPC finaliza o setor, resolve/inicia o PRÓXIMO (paralelismo prep +
       // blocked_until), atualiza orders.production_step e finaliza a OP quando
       // era o último setor — substitui o antigo hack do Acabamento.
       await apontar.mutateAsync({
         orderId: stage.order_id,
         stageName: stage.stage_name,
-        quantity: target - stage.quantity_processed,
+        quantity: target - serverProcessed,
         operatorEmployeeId,
         finalize: true,
       });
@@ -295,7 +328,10 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
                 min={0}
                 max={stage.quantity_total}
                 value={form.quantity_processed}
-                onChange={e => setForm(f => ({ ...f, quantity_processed: Number(e.target.value) }))}
+                onChange={e => {
+                  qtyDirty.current = true;
+                  setForm(f => ({ ...f, quantity_processed: Number(e.target.value) }));
+                }}
                 className="font-mono w-32"
                 disabled={stage.status === 'concluido'}
               />
@@ -383,7 +419,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
           </div>
 
           {/* Operário responsável — obrigatório pra finalizar */}
-          {stage.status === 'em_andamento' && (
+          {(liveStage ?? stage).status === 'em_andamento' && (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 mt-3">
               <Label className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
                 Operário responsável *
@@ -411,20 +447,23 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             </div>
           )}
 
-          {/* Actions */}
+          {/* Actions — status FRESCO (liveStage) e busy-guard: a RPC é
+              incremental, então duplo clique sem disable apontaria em dobro */}
           <div className="flex justify-end gap-2 pt-2 border-t">
-            {stage.status === 'pendente' && (
-              <Button onClick={handleStart} className="gap-2" disabled={!!blockingStage}>
+            {(liveStage ?? stage).status === 'pendente' && (
+              <Button onClick={handleStart} className="gap-2" disabled={!!blockingStage || apontar.isPending || update.isPending}>
                 {blockingStage ? <Lock className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 {blockingStage ? `Aguardando ${blockingStage.stage_name}` : 'Iniciar Etapa'}
               </Button>
             )}
-            {stage.status === 'em_andamento' && (
+            {(liveStage ?? stage).status === 'em_andamento' && (
               <>
-                <Button variant="outline" onClick={handleSaveProgress}>Salvar Progresso</Button>
+                <Button variant="outline" onClick={handleSaveProgress} disabled={apontar.isPending || update.isPending}>
+                  Salvar Progresso
+                </Button>
                 <Button
                   onClick={handleComplete}
-                  disabled={!operatorEmployeeId}
+                  disabled={!operatorEmployeeId || apontar.isPending || update.isPending}
                   className="gap-2 bg-success hover:bg-success/90 text-success-foreground"
                   title={!operatorEmployeeId ? 'Selecione o operário responsável para finalizar' : ''}
                 >
@@ -432,7 +471,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
                 </Button>
               </>
             )}
-            {stage.status === 'concluido' && (
+            {(liveStage ?? stage).status === 'concluido' && (
               <p className="text-sm text-success font-medium flex items-center gap-1">
                 <CheckCircle2 className="h-4 w-4" /> Etapa concluída
               </p>

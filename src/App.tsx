@@ -59,13 +59,14 @@ const Contractors = lazy(() => import("./pages/Contractors"));
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const PurchaseOrdersPerPv = lazy(() => import("./pages/PurchaseOrdersPerPv"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
-// ProducaoDashboard/ProductionLive/ProductionTimeline saíram das rotas standalone
-// (2026-07-01): /producao → /pcp?tab=dashboard e live/timeline viraram modos do
-// Quadro de Produção dentro do hub (/pcp?tab=quadro&modo=...). Os componentes
-// continuam vivos — o PCPHub os importa como abas/modos.
+// ProductionLive/ProductionTimeline saíram das rotas standalone (2026-07-01):
+// live/timeline viraram modos do Quadro de Produção dentro do hub
+// (/pcp?tab=quadro&modo=...) — os componentes continuam vivos, o PCPHub os
+// importa como modos. ProducaoDashboard.tsx foi DELETADO (2026-07-02): era
+// duplicata do PCPDashboard (aba dashboard do hub) com fórmulas divergentes;
+// /producao redireciona pra /pcp?tab=dashboard.
 const BankHours = lazy(() => import("./pages/BankHours"));
 const EspelhoPontoPage = lazy(() => import("./pages/EspelhoPontoPage"));
-// ProductionDashboardPage removido — funcionalidade unificada em /producao (ProducaoDashboard).
 // FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
 // Labels page removed — unified into LabelSystem

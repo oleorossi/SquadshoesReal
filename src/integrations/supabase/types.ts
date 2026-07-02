@@ -12160,7 +12160,7 @@ export type Database = {
           note: string | null
           operator_employee_id: string | null
           order_id: string
-          order_stage_id: string
+          order_stage_id: string | null
           quantity: number
           stage_name: string
         }
@@ -12171,7 +12171,7 @@ export type Database = {
           note?: string | null
           operator_employee_id?: string | null
           order_id: string
-          order_stage_id: string
+          order_stage_id?: string | null
           quantity: number
           stage_name: string
         }
