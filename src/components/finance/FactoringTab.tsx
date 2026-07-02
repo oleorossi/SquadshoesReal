@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Plus, PencilSimple as Pencil, Trash as Trash2, Percent, FileText, CaretDown as ChevronDown, CaretUp as ChevronUp } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -253,12 +253,12 @@ export default function FactoringTab() {
                   <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{c.notes || '—'}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex gap-1 justify-end">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(c)}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Editar factoring" onClick={() => openEdit(c)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir factoring"><Trash2 className="h-3.5 w-3.5" /></Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader><AlertDialogTitle>Excluir factoring?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
@@ -292,7 +292,10 @@ export default function FactoringTab() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{editing ? 'Editar' : 'Nova'} Factoring</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Editar' : 'Nova'} Factoring</DialogTitle>
+            <DialogDescription>Configure nome, taxa de juros mensal e prazo de recebimento.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>Nome</Label>

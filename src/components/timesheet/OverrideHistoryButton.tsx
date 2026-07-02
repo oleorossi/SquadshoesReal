@@ -78,7 +78,7 @@ export function OverrideHistoryButton({ timeRecordId, label = 'Histórico' }: Pr
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[420px] p-0" align="end">
+      <PopoverContent className="w-[min(420px,calc(100vw-1rem))] p-0" align="end">
         <div className="px-4 py-3 border-b border-border bg-muted/40">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Trilha de Auditoria

@@ -183,7 +183,7 @@ export default function InvoicesEntradaTab() {
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir nota fiscal">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </AlertDialogTrigger>

@@ -143,8 +143,8 @@ export function NfeDevolucaoDialog({ open, onOpenChange, nfeId, nfeNumero, saleO
             ) : itemsWithSaldo.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground text-sm">Nenhum item no pedido.</div>
             ) : (
-              <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-xs">
+              <div className="rounded-lg border overflow-x-auto">
+                <table className="w-full min-w-[560px] text-xs">
                   <thead className="bg-muted/40 text-muted-foreground">
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold">Ref / Cor</th>

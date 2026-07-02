@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -893,7 +894,10 @@ export default function Payroll() {
       {/* Detalhe do holerite */}
       <Dialog open={!!detailRun} onOpenChange={(o) => !o && setDetailRun(null)}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>Holerite — salário − descontos</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Holerite — salário − descontos</DialogTitle>
+            <DialogDescription>Proventos, descontos e líquido a receber do funcionário no período.</DialogDescription>
+          </DialogHeader>
           {(() => {
             const r = runs.find(x => x.id === detailRun);
             if (!r) return null;
@@ -970,7 +974,10 @@ export default function Payroll() {
           documentos" + "Exportar Excel" + "Por setor". */}
       <Dialog open={docDialogOpen} onOpenChange={setDocDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Gerar relatório</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Gerar relatório</DialogTitle>
+            <DialogDescription>Escolha os relatórios e o escopo; a prévia mostra o mesmo HTML da impressão.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-4">
             {/* Período filtrado em cima */}
             <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
@@ -1011,10 +1018,16 @@ export default function Payroll() {
               {/* Escopo */}
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Funcionário</p>
-                <select value={docScope} onChange={e => setDocScope(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
-                  <option value="all">Todos os funcionários ({runs.length})</option>
-                  {runs.map(r => <option key={r.id} value={r.employee_id}>{employeeMap.get(r.employee_id)?.name || '—'}</option>)}
-                </select>
+                <SearchableSelect
+                  value={docScope}
+                  onChange={setDocScope}
+                  options={[
+                    { value: 'all', label: `Todos os funcionários (${runs.length})` },
+                    ...runs.map(r => ({ value: r.employee_id, label: employeeMap.get(r.employee_id)?.name || '—' })),
+                  ]}
+                  placeholder="Funcionário"
+                  searchPlaceholder="Buscar funcionário..."
+                />
                 {hasPerEmp && docScope === 'all' && scopeEmps.length > 1 && (
                   <p className="text-[11px] text-muted-foreground mt-1.5">
                     Impressão <b>funcionário a funcionário</b>: cada pessoa com o conjunto de documentos dela junto.

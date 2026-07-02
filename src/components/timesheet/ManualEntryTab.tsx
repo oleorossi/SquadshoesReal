@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Clipboard as ClipboardEdit, Plus, Trash as Trash2, FloppyDisk as Save, CaretLeft as ChevronLeft, CaretRight as ChevronRight, User, Users as Users2, X, Clock } from '@phosphor-icons/react';
 
@@ -319,7 +319,7 @@ export default function ManualEntryTab() {
                                     key={i}
                                     className={`font-mono text-xs rounded px-1 inline-block mx-0.5 ${
                                       isManualPunch(punches[i] || '') || hasManual
-                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                        ? 'bg-emerald-500/10 text-emerald-600'
                                         : 'bg-muted/60 text-foreground'
                                     }`}
                                   >
@@ -347,6 +347,9 @@ export default function ManualEntryTab() {
             <DialogTitle className="flex items-center gap-2">
               <ClipboardEdit className="h-4 w-4" /> Editar Registro de Ponto
             </DialogTitle>
+            <DialogDescription>
+              Adicione ou remova batidas manuais do dia; as alterações ficam na trilha de auditoria.
+            </DialogDescription>
           </DialogHeader>
           {cellDialog && (
             <div className="space-y-4">
@@ -387,7 +390,7 @@ export default function ManualEntryTab() {
                           <Badge
                             variant="outline"
                             className={`font-mono text-xs flex-1 justify-center ${manual
-                              ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
                               : ''}`}
                           >
                             <Clock className="h-3 w-3 mr-1" />{clean}
@@ -396,7 +399,8 @@ export default function ManualEntryTab() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            aria-label={`Remover batida ${clean}`}
                             onClick={() => removePunch(idx)}
                           >
                             <X className="h-3 w-3" />

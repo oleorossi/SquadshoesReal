@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Badge } from '@/components/ui/badge';
 import { CurrencyDollar, Clock, Info, Wallet } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,7 +27,9 @@ export function PayHoursDialog({
   open, onOpenChange, employeeId, employeeName, balanceMinutes,
 }: PayHoursDialogProps) {
   const balanceHours = Math.floor(balanceMinutes / 60 * 100) / 100;
-  const [hours, setHours] = useState<number>(0);
+  // Horas como STRING pra aceitar vírgula pt-BR ("1,5") sem o cursor pular —
+  // Number(e.target.value) com vírgula zerava o campo silenciosamente.
+  const [hoursStr, setHoursStr] = useState<string>('');
   const [hourlyRate, setHourlyRate] = useState<number>(0);
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
@@ -75,12 +78,16 @@ export function PayHoursDialog({
         ? +(Number(employee.salary) / 220).toFixed(2)
         : 0;
     setHourlyRate(suggested);
-    setHours(0);
+    setHoursStr('');
     setNotes('');
     setBankAccountId('');
     setPaymentDate(new Date().toISOString().slice(0, 10));
   }, [open, employee]);
 
+  const hours = useMemo(() => {
+    const n = Number(hoursStr.trim().replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [hoursStr]);
   const total = useMemo(() => +(hours * hourlyRate).toFixed(2), [hours, hourlyRate]);
   const exceedsBalance = hours > balanceHours + 0.001;
   const usesSalaryFallback = employee && !employee.overtime_hourly_rate && employee.salary;
@@ -124,19 +131,17 @@ export function PayHoursDialog({
             <div className="flex items-center gap-2 mt-1">
               <Input
                 id="hours"
-                type="number"
-                step="0.25"
-                min={0}
-                max={balanceHours}
-                value={hours || ''}
-                onChange={e => setHours(Number(e.target.value))}
-                placeholder="0"
+                type="text"
+                inputMode="decimal"
+                value={hoursStr}
+                onChange={e => setHoursStr(e.target.value)}
+                placeholder="Ex.: 1,5"
                 className="flex-1"
               />
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setHours(balanceHours)}
+                onClick={() => setHoursStr(balanceHours.toFixed(2).replace('.', ','))}
                 disabled={balanceHours <= 0}
                 className="shrink-0"
               >
@@ -153,14 +158,10 @@ export function PayHoursDialog({
           {/* Valor da hora */}
           <div>
             <Label htmlFor="hourly_rate">Valor por hora (R$)</Label>
-            <Input
+            <CurrencyInput
               id="hourly_rate"
-              type="number"
-              step="0.01"
-              min={0}
-              value={hourlyRate || ''}
-              onChange={e => setHourlyRate(Number(e.target.value))}
-              placeholder="0,00"
+              value={hourlyRate}
+              onChange={setHourlyRate}
               className="mt-1"
             />
             {usesSalaryFallback && (

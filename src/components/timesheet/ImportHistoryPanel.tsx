@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CircleNotch as Loader2, FileXls as FileSpreadsheet, Warning as AlertTriangle, CheckCircle as CheckCircle2, XCircle, Eye, ClockCounterClockwise as History, ArrowsClockwise as RefreshCw, Download } from '@phosphor-icons/react';
 import { useTimeImportLogs, useDeleteTimeImportLog, getImportFileUrl, TimeImportLog } from '@/hooks/useTimeImportLogs';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -193,6 +193,7 @@ export default function ImportHistoryPanel() {
               <FileSpreadsheet className="h-4 w-4" />
               {selected?.file_name}
             </DialogTitle>
+            <DialogDescription>Detalhes da importação de ponto: linhas processadas, avisos e erros.</DialogDescription>
           </DialogHeader>
           {selected && (
             <div className="space-y-4">

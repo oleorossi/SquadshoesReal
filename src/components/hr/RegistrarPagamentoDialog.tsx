@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +52,7 @@ export function RegistrarPagamentoDialog({ open, onOpenChange, run, employeeName
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; amount: number } | null>(null);
 
   const liquido = run?.total_liquido ?? 0;
   const paidTotal = round2(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0));
@@ -146,8 +151,9 @@ export function RegistrarPagamentoDialog({ open, onOpenChange, run, employeeName
                   ? <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Abrir recibo anexado" onClick={() => openReceipt(p.receipt_path)}><FileArrowDown className="h-4 w-4 text-emerald-600" /></Button>
                   : <span className="text-[10px] text-muted-foreground/70 px-1" title="Sem recibo anexado">sem recibo</span>}
                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Imprimir recibo pra assinar" onClick={() => printFor(p)}><Printer className="h-4 w-4" /></Button>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:text-red-700" title="Remover pagamento"
-                  onClick={() => { if (window.confirm('Remover este pagamento? O recibo anexado também será excluído.')) del.mutate({ id: p.id }); }}>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:text-red-700" title="Remover pagamento" aria-label="Remover pagamento"
+                  disabled={del.isPending}
+                  onClick={() => setDeleteTarget({ id: p.id, amount: Number(p.amount) || 0 })}>
                   <Trash className="h-4 w-4" />
                 </Button>
               </div>
@@ -230,6 +236,28 @@ export function RegistrarPagamentoDialog({ open, onOpenChange, run, employeeName
             </Button>
           )}
         </DialogFooter>
+
+        <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remover pagamento?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteTarget ? `Pagamento de ${formatCurrency(deleteTarget.amount)}. ` : ''}
+                O recibo anexado também será excluído e a folha pode voltar pra aprovado.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={del.isPending}
+                onClick={() => { if (deleteTarget) del.mutate({ id: deleteTarget.id }); setDeleteTarget(null); }}
+              >
+                Remover
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

@@ -15,11 +15,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SortableTableHead, useTableSort } from '@/components/ui/sortable-table-head';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Progress } from '@/components/ui/progress';
@@ -163,15 +164,21 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? 'Editar' : 'Nova'} Conta a Pagar</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2"><Label>Descrição</Label><Input value={form.description || ''} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Editar' : 'Nova'} Conta a Pagar</DialogTitle>
+          <DialogDescription>Preencha os dados da conta; vencimento e valor são obrigatórios.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2"><Label>Descrição</Label><Input value={form.description || ''} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
           <div>
             <Label>Fornecedor</Label>
-            <Select value={form.supplier_id || ''} onValueChange={v => setForm((f: any) => ({ ...f, supplier_id: v }))}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-            </Select>
+            <SearchableSelect
+              value={form.supplier_id || ''}
+              onChange={v => setForm((f: any) => ({ ...f, supplier_id: v }))}
+              options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+              placeholder="Selecione"
+              searchPlaceholder="Buscar fornecedor..."
+            />
           </div>
           <div>
             <Label>Categoria</Label>
@@ -189,7 +196,7 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
           <div><Label>Valor</Label><CurrencyInput value={form.amount || 0} onChange={v => setForm((f: any) => ({ ...f, amount: v }))} /></div>
           <div><Label>Nº Boleto</Label><Input value={form.boleto_number || ''} onChange={e => setForm((f: any) => ({ ...f, boleto_number: e.target.value }))} /></div>
           <div><Label>Forma Pagamento</Label><Input value={form.payment_method || ''} onChange={e => setForm((f: any) => ({ ...f, payment_method: e.target.value }))} /></div>
-          <div className="col-span-2"><Label>Código de Barras / Linha Digitável</Label><Input value={form.barcode || ''} onChange={e => setForm((f: any) => ({ ...f, barcode: e.target.value }))} placeholder="Cole aqui o código de barras do boleto" className="font-mono text-xs" /></div>
+          <div className="sm:col-span-2"><Label>Código de Barras / Linha Digitável</Label><Input value={form.barcode || ''} onChange={e => setForm((f: any) => ({ ...f, barcode: e.target.value }))} placeholder="Cole aqui o código de barras do boleto" className="font-mono text-xs" /></div>
           <div><Label>Banco</Label><Input value={form.bank_name || ''} onChange={e => setForm((f: any) => ({ ...f, bank_name: e.target.value }))} /></div>
           <div>
             <Label>Parcela</Label>
@@ -199,14 +206,14 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
               <Input type="number" min={1} className="w-16" value={form.total_installments || 1} onChange={e => setForm((f: any) => ({ ...f, total_installments: +e.target.value }))} />
             </div>
           </div>
-          <div className="col-span-2"><Label>Observações</Label><Textarea value={form.notes || ''} onChange={e => setForm((f: any) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+          <div className="sm:col-span-2"><Label>Observações</Label><Textarea value={form.notes || ''} onChange={e => setForm((f: any) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
           {editing && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <FinanceAttachments accountType="payable" accountId={editing.id} />
             </div>
           )}
           {!editing && (
-            <div className="col-span-2 flex items-center gap-4 rounded-md border p-3 bg-muted/30">
+            <div className="sm:col-span-2 flex items-center gap-4 rounded-md border p-3 bg-muted/30">
               <div className="flex items-center gap-2">
                 <Checkbox id="is_recurring" checked={form.is_recurring || false} onCheckedChange={v => setForm((f: any) => ({ ...f, is_recurring: !!v }))} />
                 <Label htmlFor="is_recurring" className="cursor-pointer font-medium">Conta Fixa (Recorrente)</Label>
@@ -221,7 +228,7 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
             </div>
           )}
           {overdueWarning && (
-            <div className="col-span-2 p-3 rounded-lg border border-warning bg-warning/10 space-y-2">
+            <div className="sm:col-span-2 p-3 rounded-lg border border-warning bg-warning/10 space-y-2">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-warning" />
                 <p className="text-sm font-semibold text-warning">Esta conta já está vencida!</p>
@@ -265,9 +272,12 @@ function ReceivableFormDialog({ open, onOpenChange, editing, onSave }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? 'Editar' : 'Nova'} Conta a Receber</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2"><Label>Descrição</Label><Input value={form.description || ''} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Editar' : 'Nova'} Conta a Receber</DialogTitle>
+          <DialogDescription>Preencha os dados da conta; vencimento e valor são obrigatórios.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2"><Label>Descrição</Label><Input value={form.description || ''} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
           <div><Label>Cliente</Label><Input value={form.client_name || ''} onChange={e => setForm((f: any) => ({ ...f, client_name: e.target.value }))} /></div>
           <div><Label>CNPJ</Label><Input value={form.client_cnpj || ''} onChange={e => setForm((f: any) => ({ ...f, client_cnpj: e.target.value }))} /></div>
           <div>
@@ -288,9 +298,9 @@ function ReceivableFormDialog({ open, onOpenChange, editing, onSave }: {
               <Input type="number" min={1} className="w-16" value={form.total_installments || 1} onChange={e => setForm((f: any) => ({ ...f, total_installments: +e.target.value }))} />
             </div>
           </div>
-          <div className="col-span-2"><Label>Observações</Label><Textarea value={form.notes || ''} onChange={e => setForm((f: any) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+          <div className="sm:col-span-2"><Label>Observações</Label><Textarea value={form.notes || ''} onChange={e => setForm((f: any) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
           {editing && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <FinanceAttachments accountType="receivable" accountId={editing.id} />
             </div>
           )}
@@ -369,7 +379,7 @@ function FinancialEntriesTab() {
                     <TableCell className={`text-right font-mono ${e.type === 'receita' ? 'text-green-600' : 'text-destructive'}`}>{fmt(e.amount)}</TableCell>
                     <TableCell className="text-right">
                       <AlertDialog>
-                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir lançamento"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir lançamento?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                           <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteEntry.mutate(e.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
@@ -385,8 +395,11 @@ function FinancialEntriesTab() {
 
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Novo Lançamento</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
+          <DialogHeader>
+            <DialogTitle>Novo Lançamento</DialogTitle>
+            <DialogDescription>Registre uma receita, despesa ou transferência manual no período.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><Label>Data</Label><Input type="date" value={form.entry_date} onChange={e => setForm((f: any) => ({ ...f, entry_date: e.target.value }))} /></div>
             <div>
               <Label>Tipo</Label>
@@ -395,21 +408,27 @@ function FinancialEntriesTab() {
                 <SelectContent><SelectItem value="receita">Receita</SelectItem><SelectItem value="despesa">Despesa</SelectItem><SelectItem value="transferencia">Transferência</SelectItem></SelectContent>
               </Select>
             </div>
-            <div className="col-span-2"><Label>Descrição</Label><Input value={form.description} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
+            <div className="sm:col-span-2"><Label>Descrição</Label><Input value={form.description} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
             <div><Label>Valor</Label><CurrencyInput value={form.amount} onChange={v => setForm((f: any) => ({ ...f, amount: v }))} /></div>
             <div>
               <Label>Conta Contábil</Label>
-              <Select value={form.account_id || ''} onValueChange={v => setForm((f: any) => ({ ...f, account_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableSelect
+                value={form.account_id || ''}
+                onChange={v => setForm((f: any) => ({ ...f, account_id: v }))}
+                options={accounts.map((a: any) => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+                placeholder="Selecione"
+                searchPlaceholder="Buscar conta..."
+              />
             </div>
             <div>
               <Label>Centro de Custo</Label>
-              <Select value={form.cost_center_id || ''} onValueChange={v => setForm((f: any) => ({ ...f, cost_center_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{centers.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableSelect
+                value={form.cost_center_id || ''}
+                onChange={v => setForm((f: any) => ({ ...f, cost_center_id: v }))}
+                options={centers.map((c: any) => ({ value: c.id, label: `${c.code} - ${c.name}` }))}
+                placeholder="Selecione"
+                searchPlaceholder="Buscar centro de custo..."
+              />
             </div>
             <div>
               <Label>Conta Bancária</Label>
@@ -427,7 +446,7 @@ function FinancialEntriesTab() {
                 <SelectContent><SelectItem value="manual">Manual</SelectItem><SelectItem value="nf">NF</SelectItem><SelectItem value="pedido">Pedido</SelectItem><SelectItem value="op">OP</SelectItem></SelectContent>
               </Select>
             </div>
-            <div className="col-span-2"><Label>Observações</Label><Textarea value={form.notes || ''} onChange={e => setForm((f: any) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+            <div className="sm:col-span-2"><Label>Observações</Label><Textarea value={form.notes || ''} onChange={e => setForm((f: any) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(false)}>Cancelar</Button>
@@ -483,7 +502,7 @@ function ProductionCostTab() {
                     <TableCell className="text-xs">{l.cost_centers?.name || '—'}</TableCell>
                     <TableCell className="text-right">
                       <AlertDialog>
-                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir operação"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir operação?</AlertDialogTitle></AlertDialogHeader>
                           <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteLabor.mutate(l.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
@@ -520,7 +539,7 @@ function ProductionCostTab() {
                   <TableCell className="text-xs">{o.cost_centers?.name || '—'}</TableCell>
                   <TableCell className="text-right">
                     <AlertDialog>
-                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir rateio"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir rateio?</AlertDialogTitle></AlertDialogHeader>
                         <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteOverhead.mutate(o.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                       </AlertDialogContent>
@@ -536,12 +555,15 @@ function ProductionCostTab() {
       {/* Labor Dialog */}
       <Dialog open={laborDialog} onOpenChange={setLaborDialog}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Nova Operação de Mão de Obra</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><Label>Operação</Label><Input value={laborForm.operation_name} onChange={e => setLaborForm(f => ({ ...f, operation_name: e.target.value }))} placeholder="ex: Costura, Montagem" /></div>
+          <DialogHeader>
+            <DialogTitle>Nova Operação de Mão de Obra</DialogTitle>
+            <DialogDescription>Cadastre a operação com custo por hora e tempo por unidade.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2"><Label>Operação</Label><Input value={laborForm.operation_name} onChange={e => setLaborForm(f => ({ ...f, operation_name: e.target.value }))} placeholder="ex: Costura, Montagem" /></div>
             <div><Label>Custo/Hora (R$)</Label><CurrencyInput value={laborForm.hour_cost} onChange={v => setLaborForm(f => ({ ...f, hour_cost: v }))} /></div>
             <div><Label>Tempo/Unid (min)</Label><Input type="number" min={0} step={0.5} value={laborForm.time_per_unit_minutes} onChange={e => setLaborForm(f => ({ ...f, time_per_unit_minutes: +e.target.value }))} /></div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label>Centro de Custo</Label>
               <Select value={laborForm.cost_center_id || ''} onValueChange={v => setLaborForm(f => ({ ...f, cost_center_id: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
@@ -559,8 +581,11 @@ function ProductionCostTab() {
       {/* Overhead Dialog */}
       <Dialog open={overheadDialog} onOpenChange={setOverheadDialog}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Novo Rateio de Overhead</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
+          <DialogHeader>
+            <DialogTitle>Novo Rateio de Overhead</DialogTitle>
+            <DialogDescription>Defina o custo indireto do período e a base de rateio.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><Label>Período</Label><Input type="month" value={ohForm.period} onChange={e => setOhForm(f => ({ ...f, period: e.target.value }))} /></div>
             <div><Label>Tipo</Label><Input value={ohForm.cost_type} onChange={e => setOhForm(f => ({ ...f, cost_type: e.target.value }))} placeholder="ex: Energia, Aluguel" /></div>
             <div><Label>Valor Total</Label><CurrencyInput value={ohForm.total_amount} onChange={v => setOhForm(f => ({ ...f, total_amount: v }))} /></div>
@@ -571,7 +596,7 @@ function ProductionCostTab() {
                 <SelectContent><SelectItem value="hora_maquina">Hora Máquina</SelectItem><SelectItem value="area">Área (m²)</SelectItem><SelectItem value="qty_produzida">Qty Produzida</SelectItem></SelectContent>
               </Select>
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label>Centro de Custo</Label>
               <Select value={ohForm.cost_center_id || ''} onValueChange={v => setOhForm(f => ({ ...f, cost_center_id: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
@@ -634,8 +659,11 @@ function BudgetTab() {
       </Card>
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Novo Orçamento</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
+          <DialogHeader>
+            <DialogTitle>Novo Orçamento</DialogTitle>
+            <DialogDescription>Defina os valores orçado e realizado da conta no período.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><Label>Período</Label><Input type="month" value={form.period} onChange={e => setForm(f => ({ ...f, period: e.target.value }))} /></div>
             <div>
               <Label>Conta</Label>
@@ -1167,9 +1195,9 @@ export default function Finance() {
                                         </AlertDialogContent>
                                       </AlertDialog>
                                     )}
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingPayable(p); setPayableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Editar conta" onClick={() => { setEditingPayable(p); setPayableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                                     <AlertDialog>
-                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir conta?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                                         <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deletePayable.mutate(p.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                                       </AlertDialogContent>
@@ -1288,9 +1316,9 @@ export default function Finance() {
                                         </AlertDialogContent>
                                       </AlertDialog>
                                     )}
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingReceivable(r); setReceivableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Editar conta" onClick={() => { setEditingReceivable(r); setReceivableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                                     <AlertDialog>
-                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir conta?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                                         <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteReceivable.mutate(r.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                                       </AlertDialogContent>

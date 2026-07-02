@@ -12,8 +12,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -97,6 +101,11 @@ function CCeDialog({
             <FileEdit className="h-4 w-4" />
             {isEdit ? `Editar CCe #${editing.sequencia}` : 'Nova Carta de Correção'}
           </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? 'Edite o texto da correção do rascunho antes de emitir.'
+              : 'Escolha a NF-e autorizada e descreva a correção (15 a 1000 caracteres).'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -203,14 +212,13 @@ function MarkEmittedDialog({
           <DialogTitle className="flex items-center gap-2 text-green-600">
             <Send className="h-4 w-4" /> Marcar CCe como emitida
           </DialogTitle>
+          <DialogDescription>
+            Cole o protocolo de autorização retornado pela SEFAZ. Use quando a CCe foi
+            transmitida fora do sistema e precisa ser registrada aqui.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <p className="text-sm text-muted-foreground">
-            Cole o protocolo de autorização retornado pela SEFAZ. Use quando a CCe foi
-            transmitida fora do sistema e precisa ser registrada aqui.
-          </p>
-
           <div>
             <Label>Protocolo SEFAZ</Label>
             <Input
@@ -253,7 +261,7 @@ function CCeRow({
   cce: NfeCCe & { nfe_emitidas?: any };
   onEdit: (c: NfeCCe & { nfe_emitidas?: any }) => void;
   onMarkEmitted: (c: NfeCCe) => void;
-  onDelete: (id: string) => void;
+  onDelete: (c: NfeCCe) => void;
 }) {
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
@@ -291,7 +299,7 @@ function CCeRow({
               variant="ghost" size="icon"
               title="Excluir rascunho"
               className="text-red-500 hover:text-red-600"
-              onClick={() => onDelete(cce.id)}
+              onClick={() => onDelete(cce)}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -310,6 +318,7 @@ export default function NfeCCePanel() {
   const [editingCCe, setEditingCCe] = useState<(NfeCCe & { nfe_emitidas?: any }) | null>(null);
   const [creating, setCreating] = useState(false);
   const [emittingTarget, setEmittingTarget] = useState<NfeCCe | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<NfeCCe | null>(null);
 
   const { data: cces = [], isLoading } = useNfeCCes(
     statusFilter ? { status: statusFilter } : undefined,
@@ -327,10 +336,6 @@ export default function NfeCCePanel() {
     );
   }, [cces, searchText]);
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Apagar este rascunho de CCe?')) return;
-    del.mutate(id);
-  };
 
   return (
     <div className="space-y-4">
@@ -399,7 +404,7 @@ export default function NfeCCePanel() {
                   cce={c}
                   onEdit={setEditingCCe}
                   onMarkEmitted={setEmittingTarget}
-                  onDelete={handleDelete}
+                  onDelete={setDeleteTarget}
                 />
               ))}
             </div>
@@ -407,7 +412,11 @@ export default function NfeCCePanel() {
         </CardContent>
       </Card>
 
+      {/* key força remount por alvo: sem ela, o useState inicial do CCeDialog
+          nunca recarrega ao trocar de 'Nova CCe' pra 'Editar' (texto ficava vazio
+          ou vazava entre aberturas). */}
       <CCeDialog
+        key={editingCCe?.id ?? (creating ? 'new' : 'closed')}
         open={creating || !!editingCCe}
         onClose={() => {
           setCreating(false);
@@ -421,6 +430,28 @@ export default function NfeCCePanel() {
         open={!!emittingTarget}
         onClose={() => setEmittingTarget(null)}
       />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar rascunho de CCe?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `NF ${deleteTarget.nfe_number} · Sequência ${deleteTarget.sequencia}. Esta ação não pode ser desfeita.`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (deleteTarget) del.mutate(deleteTarget.id); setDeleteTarget(null); }}
+            >
+              Apagar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

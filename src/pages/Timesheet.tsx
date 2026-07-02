@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -188,6 +188,7 @@ function WorkScheduleTab() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Horário' : 'Novo Horário de Trabalho'}</DialogTitle>
+            <DialogDescription>Configure a jornada semanal, tolerância e multiplicadores de hora extra.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div>
@@ -1165,6 +1166,7 @@ function TimesheetRecordsTab() {
               <Users2 className="h-5 w-5" />
               Resumo Individual — {selectedEmployee}
             </DialogTitle>
+            <DialogDescription>Horas trabalhadas, esperadas e déficit do funcionário no período.</DialogDescription>
           </DialogHeader>
 
           {selectedEmployee && selectedEmployee !== '__all__' && summaries.length > 0 && (() => {

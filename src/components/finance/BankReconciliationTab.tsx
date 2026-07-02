@@ -22,6 +22,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Bank as Landmark, Upload, CheckCircle as CheckCircle2, Warning as AlertTriangle, X, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { useAccountsPayable, useAccountsReceivable } from '@/hooks/useFinance';
 import { supabase } from '@/integrations/supabase/client';
@@ -192,6 +196,7 @@ export default function BankReconciliationTab() {
   const [raw, setRaw] = useState('');
   const [reconciled, setReconciled] = useState<Set<string>>(new Set()); // chave: stmtIdx + ':' + matchId
   const [busy, setBusy] = useState(false);
+  const [confirmAutoOpen, setConfirmAutoOpen] = useState(false);
 
   const lines = useMemo(() => parseStatement(raw), [raw]);
 
@@ -301,7 +306,6 @@ export default function BankReconciliationTab() {
   // idempotente mesmo se o estado React estiver defasado dentro do loop.
   const autoReconcileHighConfidence = async () => {
     if (!autoMatchable.length || busy) return;
-    if (!window.confirm(`Conciliar automaticamente ${autoMatchable.length} lançamento(s) de ALTA confiança? Cada conta será marcada como paga/recebida com a data do extrato.`)) return;
     const batch = [...autoMatchable];
     for (const { lineIdx, match } of batch) {
       await reconcile(lineIdx, match);
@@ -344,10 +348,29 @@ export default function BankReconciliationTab() {
               <RefreshCw className="h-3.5 w-3.5 mr-1" /> Recarregar contas
             </Button>
             {autoMatchable.length > 0 && (
-              <Button size="sm" onClick={autoReconcileHighConfidence} disabled={busy} className="gap-1">
+              <Button size="sm" onClick={() => setConfirmAutoOpen(true)} disabled={busy} className="gap-1">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Conciliar {autoMatchable.length} de alta confiança
               </Button>
             )}
+            <AlertDialog open={confirmAutoOpen} onOpenChange={setConfirmAutoOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Conciliar {autoMatchable.length} lançamento{autoMatchable.length === 1 ? '' : 's'} de alta confiança?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cada conta será marcada como paga/recebida com a data do extrato.
+                    A ação segue o fluxo normal de baixa e gera audit trail.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { setConfirmAutoOpen(false); autoReconcileHighConfidence(); }}>
+                    Conciliar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             {summary.total > 0 && (
               <div className="flex items-center gap-2 text-xs flex-wrap">
                 <Badge variant="outline">{summary.total} linha(s)</Badge>

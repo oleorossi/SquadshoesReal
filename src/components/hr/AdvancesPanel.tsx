@@ -6,7 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { CircleNotch as Loader2, Plus, Wallet, MagnifyingGlass as Search, Warning as AlertTriangle, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import {
@@ -31,6 +35,7 @@ export default function AdvancesPanel() {
   });
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [settleTarget, setSettleTarget] = useState<{ id: string; name: string; pending: number; pendingCount: number } | null>(null);
   const [form, setForm] = useState({
     employee_id: '',
     amount: 0,
@@ -150,7 +155,10 @@ export default function AdvancesPanel() {
         <Button size="sm" className="gap-1.5" onClick={() => openNew()}><Plus className="h-4 w-4" /> Novo vale</Button>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Registrar vale</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Registrar vale</DialogTitle>
+              <DialogDescription>Lance o adiantamento com valor e data; o saldo pendente é abatido na folha.</DialogDescription>
+            </DialogHeader>
             <div className="space-y-3">
               <div>
                 <Label>Funcionário</Label>
@@ -304,11 +312,7 @@ export default function AdvancesPanel() {
                           <Button
                             size="sm" variant="outline"
                             className="h-7 text-xs gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-                            onClick={() => {
-                              if (window.confirm(`Dar baixa em ${b.pendingCount} vale(s) pendente(s) de ${b.name} (${fmt(b.pending)})? Use depois que a folha já descontou o saldo.`)) {
-                                settleEmployee.mutate(b.id);
-                              }
-                            }}
+                            onClick={() => setSettleTarget({ id: b.id, name: b.name, pending: b.pending, pendingCount: b.pendingCount })}
                             disabled={settleEmployee.isPending}
                             title="Dar baixa em todos os vales pendentes deste funcionário"
                           >
@@ -412,6 +416,31 @@ export default function AdvancesPanel() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Confirmação de baixa em lote dos vales pendentes de um funcionário */}
+      <AlertDialog open={!!settleTarget} onOpenChange={o => { if (!o) setSettleTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Dar baixa em {settleTarget?.pendingCount ?? 0} vale{(settleTarget?.pendingCount ?? 0) === 1 ? '' : 's'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {settleTarget
+                ? `${settleTarget.name} — ${fmt(settleTarget.pending)} em aberto. Use depois que a folha já descontou o saldo.`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={settleEmployee.isPending}
+              onClick={() => { if (settleTarget) settleEmployee.mutate(settleTarget.id); setSettleTarget(null); }}
+            >
+              Dar baixa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

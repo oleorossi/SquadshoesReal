@@ -8,7 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -55,6 +55,9 @@ export function MdfeFromManifestDialog({ open, onClose }: Props) {
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Truck className="size-5" /> Gerar MDF-e de um romaneio</DialogTitle>
+          <DialogDescription>
+            Escolha um romaneio da Logística pra montar o rascunho do MDF-e com veículo, motorista e NF-e vinculadas.
+          </DialogDescription>
         </DialogHeader>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Carregando romaneios…</p>

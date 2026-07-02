@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import {
   useWorkSchedules, useHolidays, useTimeRecords, useImportBatches,
@@ -411,6 +411,7 @@ export default function ExceptionsTab() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Resolver Exceção</DialogTitle>
+            <DialogDescription>Registre a justificativa da resolução; ela fica no histórico do dia.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div>

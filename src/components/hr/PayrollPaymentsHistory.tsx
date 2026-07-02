@@ -4,6 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Panel } from '@/components/ui/panel';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -26,6 +30,7 @@ export default function PayrollPaymentsHistory() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [q, setQ] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<PayrollPaymentWithRefs | null>(null);
 
   const { data: payments = [], isLoading } = usePayrollPaymentsHistory({
     employeeId: employeeId === 'all' ? null : employeeId,
@@ -158,8 +163,9 @@ export default function PayrollPaymentsHistory() {
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Imprimir recibo" onClick={() => printFor(p)}><Printer className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:text-red-700" title="Remover pagamento"
-                        onClick={() => { if (window.confirm('Remover este pagamento? O recibo anexado também será excluído e a folha pode voltar a "aprovado".')) del.mutate({ id: p.id }); }}>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:text-red-700" title="Remover pagamento" aria-label="Remover pagamento"
+                        disabled={del.isPending}
+                        onClick={() => setDeleteTarget(p)}>
                         <Trash className="h-4 w-4" />
                       </Button>
                     </div>
@@ -170,6 +176,30 @@ export default function PayrollPaymentsHistory() {
           </Table>
         )}
       </Panel>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover pagamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `${deleteTarget.employee?.name || '—'} — ${formatCurrency(deleteTarget.amount)} em ${formatDateBR(deleteTarget.paid_on)}. `
+                : ''}
+              O recibo anexado também será excluído e a folha pode voltar a "aprovado".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={del.isPending}
+              onClick={() => { if (deleteTarget) del.mutate({ id: deleteTarget.id }); setDeleteTarget(null); }}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

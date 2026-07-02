@@ -1,5 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -63,6 +67,7 @@ async function callEmitNfe(saleOrderId: string, dryRun: boolean): Promise<{ ok: 
 export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
   const [stage, setStage] = useState<'preview' | 'confirm' | 'emitting' | 'done'>('preview');
   const [items, setItems] = useState<PvState[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const qc = useQueryClient();
 
   // Inicializa quando abre — dispara previews em paralelo
@@ -111,13 +116,6 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
   /** Emite em SEQUÊNCIA (não paralelo) pra não estourar rate-limit do GestaoClick. */
   const handleEmitAll = async () => {
     if (emitableIds.length === 0) return;
-    const ok = window.confirm(
-      `EMITIR ${emitableIds.length} NF-e${emitableIds.length === 1 ? '' : 's'} agora?\n\n` +
-      'Cada NF vai ser enviada pro GestaoClick em sequência (~3-5s cada). ' +
-      'Não dá pra cancelar no meio. PVs com erro de preview são pulados.\n\n' +
-      'Confirmar emissão?'
-    );
-    if (!ok) return;
 
     setStage('emitting');
     for (const id of emitableIds) {
@@ -141,7 +139,16 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
     : (allPreviewed ? 100 : ((stats.previewOk + stats.previewErr) / Math.max(1, items.length)) * 100);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        // Guarda: durante a emissão sequencial NÃO deixa fechar (Esc, X ou clique
+        // fora) — o loop continuaria invisível e reabrir dispararia previews em
+        // paralelo com a emissão ainda viva.
+        if (!v && stage === 'emitting') return;
+        onOpenChange(v);
+      }}
+    >
       <DialogContent className="w-[95vw] max-w-6xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -237,12 +244,12 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
             {stage === 'done' ? 'Pode fechar este dialog.' : `${emitableIds.length} pronto${emitableIds.length === 1 ? '' : 's'} pra emissão`}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {stage === 'done' ? 'Fechar' : 'Cancelar'}
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={stage === 'emitting'}>
+              {stage === 'done' ? 'Fechar' : stage === 'emitting' ? 'Aguarde a emissão terminar…' : 'Cancelar'}
             </Button>
             {stage !== 'done' && stage !== 'emitting' && (
               <Button
-                onClick={handleEmitAll}
+                onClick={() => setConfirmOpen(true)}
                 disabled={!allPreviewed || emitableIds.length === 0}
                 className="gap-1.5"
               >
@@ -252,6 +259,26 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
             )}
           </div>
         </div>
+
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Emitir {emitableIds.length} NF-e{emitableIds.length === 1 ? '' : 's'} agora?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Cada NF será enviada pro GestaoClick em sequência (~3-5s cada). Não dá pra
+                cancelar no meio — PVs com erro de preview são pulados.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Voltar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setConfirmOpen(false); handleEmitAll(); }}>
+                Confirmar emissão
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

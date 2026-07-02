@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircleNotch as Loader2, Eye, CheckCircle, WarningCircle as AlertCircle, CalendarBlank } from '@phosphor-icons/react';
@@ -98,6 +98,9 @@ export function NfePreviewDialog({
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-4 w-4" /> Conferir NF-e{orderNumber ? ` — ${orderNumber}` : ''}
           </DialogTitle>
+          <DialogDescription>
+            Preview gerado via dry-run do emit-nfe — confira parcelas e totais antes de confirmar a emissão.
+          </DialogDescription>
         </DialogHeader>
 
         {preview.isPending && !previewData && (

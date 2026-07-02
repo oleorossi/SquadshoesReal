@@ -20,7 +20,7 @@ import { formatDateBR } from '@/lib/dateOnly';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, Trash as Trash2, CurrencyDollar, FileText } from '@phosphor-icons/react';
+import { Clock, TrendUp as TrendingUp, TrendDown as TrendingDown, Scales as Scale, Users, Buildings as Building2, MagnifyingGlass as Search, CircleNotch as Loader2, CaretRight as ChevronRight, Plus, CurrencyDollar, FileText } from '@phosphor-icons/react';
 import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -44,6 +44,8 @@ import {
   useDeleteBankHoursMovement,
 } from '@/hooks/useRH';
 import { PayHoursDialog } from '@/components/rh/PayHoursDialog';
+import { EmployeeCombobox } from '@/components/hr/EmployeeCombobox';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { cn } from '@/lib/utils';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
@@ -279,18 +281,20 @@ export default function BankHours() {
               <Button size="sm" className="h-9"><Plus className="h-4 w-4 mr-2" />Novo lançamento</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Novo lançamento no banco de horas</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Novo lançamento no banco de horas</DialogTitle>
+                <DialogDescription>
+                  Registre crédito, débito, compensação, ajuste ou pagamento de HE no saldo do funcionário.
+                </DialogDescription>
+              </DialogHeader>
               <div className="space-y-3">
                 <div>
                   <Label>Funcionário</Label>
-                  <Select value={form.employee_id} onValueChange={v => setForm(f => ({ ...f, employee_id: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      {allEmployees.filter(e => e.active).map(e => (
-                        <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <EmployeeCombobox
+                    value={form.employee_id}
+                    onChange={v => setForm(f => ({ ...f, employee_id: v }))}
+                    employees={allEmployees}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -303,7 +307,7 @@ export default function BankHours() {
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="credit">Crédito (HE não paga)</SelectItem>
-                        <SelectItem value="pay">Pagar na folha (HE)</SelectItem>
+                        <SelectItem value="payment">Pagar na folha (HE)</SelectItem>
                         <SelectItem value="debit">Débito (folga)</SelectItem>
                         <SelectItem value="compensation">Compensação</SelectItem>
                         <SelectItem value="adjustment">Ajuste manual</SelectItem>
@@ -813,13 +817,11 @@ export default function BankHours() {
                                 <div className={cn('font-mono text-sm font-bold tabular-nums', balanceClass(mov.minutes))}>
                                   {formatHours(mov.minutes)}
                                 </div>
-                                <button
-                                  onClick={() => deleteMovement.mutate(mov.id)}
-                                  className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                                  aria-label="Excluir lançamento"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                <DeleteConfirmButton
+                                  onConfirm={() => deleteMovement.mutate(mov.id)}
+                                  title="Excluir lançamento?"
+                                  description={`${TYPE_LABELS[mov.movement_type] || mov.movement_type} de ${formatDateBR(mov.movement_date)} (${formatHours(mov.minutes)}). O saldo do banco de horas será recalculado. Esta ação não pode ser desfeita.`}
+                                />
                               </div>
                             );
                           })}

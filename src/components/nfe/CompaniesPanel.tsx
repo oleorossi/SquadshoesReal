@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
 import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Star, Buildings as Building2 } from '@phosphor-icons/react';
@@ -46,6 +46,9 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
           <Building2 className="h-4 w-4" />
           {company ? 'Editar Empresa' : 'Nova Empresa / CNPJ'}
         </DialogTitle>
+        <DialogDescription>
+          Dados fiscais e endereço do CNPJ emissor de NF-e. CNPJ e Razão Social são obrigatórios.
+        </DialogDescription>
       </DialogHeader>
 
       <div className="space-y-4 py-2">
@@ -53,7 +56,7 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Ambiente</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Ambiente</Label>
                 <Select value={form.ambiente || 'homologacao'} onValueChange={v => set('ambiente', v)}>
@@ -92,7 +95,7 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Dados Fiscais</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><Label>CNPJ *</Label><Input value={form.cnpj || ''} onChange={e => set('cnpj', e.target.value)} placeholder="00.000.000/0000-00" /></div>
               <div><Label>Inscrição Estadual</Label><Input value={form.inscricao_estadual || ''} onChange={e => set('inscricao_estadual', e.target.value)} /></div>
               <div><Label>Razão Social *</Label><Input value={form.razao_social || ''} onChange={e => set('razao_social', e.target.value)} /></div>
@@ -118,15 +121,15 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Endereço</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><Label>Logradouro</Label><Input value={form.logradouro || ''} onChange={e => set('logradouro', e.target.value)} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2"><Label>Logradouro</Label><Input value={form.logradouro || ''} onChange={e => set('logradouro', e.target.value)} /></div>
               <div><Label>Número</Label><Input value={form.numero || ''} onChange={e => set('numero', e.target.value)} /></div>
               <div><Label>Complemento</Label><Input value={form.complemento || ''} onChange={e => set('complemento', e.target.value)} /></div>
               <div><Label>Bairro</Label><Input value={form.bairro || ''} onChange={e => set('bairro', e.target.value)} /></div>
               <div><Label>Cidade</Label><Input value={form.cidade || ''} onChange={e => set('cidade', e.target.value)} /></div>
               <div><Label>UF</Label><Input value={form.uf || ''} onChange={e => set('uf', e.target.value)} maxLength={2} /></div>
               <div><Label>CEP</Label><Input value={form.cep || ''} onChange={e => set('cep', e.target.value)} placeholder="00000-000" /></div>
-              <div className="col-span-2"><Label>Código do Município (IBGE)</Label><Input value={form.codigo_municipio || ''} onChange={e => set('codigo_municipio', e.target.value)} placeholder="Ex: 3550308" /></div>
+              <div className="sm:col-span-2"><Label>Código do Município (IBGE)</Label><Input value={form.codigo_municipio || ''} onChange={e => set('codigo_municipio', e.target.value)} placeholder="Ex: 3550308" /></div>
             </div>
           </CardContent>
         </Card>
@@ -208,12 +211,12 @@ export default function CompaniesPanel() {
                         <Star className="h-3.5 w-3.5" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar empresa" onClick={() => openEdit(c)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600" disabled={deleteCompany.isPending}>
+                        <Button variant="ghost" size="icon" aria-label="Excluir empresa" className="text-red-500 hover:text-red-600" disabled={deleteCompany.isPending}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </AlertDialogTrigger>
