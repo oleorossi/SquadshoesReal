@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -228,12 +228,12 @@ export default function Clients() {
 
   const handleGroupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Fecha só no sucesso — falha mantém o dialog aberto com os dados digitados.
     if (editingGroup) {
-      updateGroup.mutate({ id: editingGroup.id, data: groupForm });
+      updateGroup.mutate({ id: editingGroup.id, data: groupForm }, { onSuccess: () => setGroupDialog(false) });
     } else {
-      createGroup.mutate(groupForm);
+      createGroup.mutate(groupForm, { onSuccess: () => setGroupDialog(false) });
     }
-    setGroupDialog(false);
   };
 
   const toggleGroup = (key: string) => setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
@@ -587,6 +587,7 @@ export default function Clients() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingGroup ? 'Editar Grupo Econômico' : 'Novo Grupo Econômico'}</DialogTitle>
+            <DialogDescription className="sr-only">Dados, logos, lojas e representante do grupo econômico.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleGroupSubmit} className="space-y-4 mt-2">
             <Tabs defaultValue="dados">
@@ -682,10 +683,12 @@ export default function Clients() {
                 </TabsContent>
               )}
             </Tabs>
-            <div className="flex justify-end gap-3 pt-2">
+            <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setGroupDialog(false)}>Cancelar</Button>
-              <Button type="submit">{editingGroup ? 'Salvar' : 'Criar'}</Button>
-            </div>
+              <Button type="submit" disabled={createGroup.isPending || updateGroup.isPending}>
+                {(createGroup.isPending || updateGroup.isPending) ? 'Salvando…' : editingGroup ? 'Salvar' : 'Criar'}
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -695,6 +698,7 @@ export default function Clients() {
         <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Adicionar Lojas ao Grupo</DialogTitle>
+            <DialogDescription className="sr-only">Busque e selecione os clientes a vincular ao grupo.</DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

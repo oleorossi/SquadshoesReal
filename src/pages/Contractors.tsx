@@ -17,7 +17,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1003,6 +1003,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const [returnDialogOs, setReturnDialogOs] = useState<ServiceOrder | null>(null);
   // Envio parcial em parcelas (checklist "Enviar pra rua" + movimentos).
   const [dispatchDialogOs, setDispatchDialogOs] = useState<ServiceOrder | null>(null);
+  // Confirmação estilizada de exclusão de OS (substitui window.confirm nativo).
+  const [deleteOsTarget, setDeleteOsTarget] = useState<ServiceOrder | null>(null);
   const markDelivered = useCallback((o: ServiceOrder) => {
     setReturnDialogOs(o);
   }, []);
@@ -1064,11 +1066,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     }
   }, [updateOrder, queryClient, produceArtisanalOutput]);
 
-  const confirmAndDeleteOs = useCallback((o: ServiceOrder) => {
-    if (window.confirm(`Excluir a OS ${o.order_number}? Esta ação não pode ser desfeita.`)) {
-      deleteOrder.mutate(o.id);
-    }
-  }, [deleteOrder]);
 
   // ── Bloco C: form manual disciplinado ──────────────────────────────────────
   // Tarifa vigente da contratada+setor → pré-preenche o preço (só quando vazio).
@@ -1629,7 +1626,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações da OS"><MoreVertical className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44">
                                 <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
@@ -1641,7 +1638,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
-                                  onSelect={(e) => { e.preventDefault(); confirmAndDeleteOs(o); }}
+                                  onSelect={() => setDeleteOsTarget(o)}
                                 >
                                   <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
                                 </DropdownMenuItem>
@@ -1705,9 +1702,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           {!r.active && <Badge variant="outline" className="text-xs mt-0.5">Inativo</Badge>}
                         </div>
                         <div className="flex gap-0.5 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingRecipe(r); setIsEditingRecipe(true); setRecipeDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar receita ${r.name}`} onClick={() => { setEditingRecipe(r); setIsEditingRecipe(true); setRecipeDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                           <AlertDialog>
-                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
+                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir receita ${r.name}`}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
                             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir receita?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteRecipe.mutate(r.id)}>Excluir</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                           </AlertDialog>
                         </div>
@@ -1819,9 +1816,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" title="Tabela de preços por serviço (R$/par com vigência)" onClick={() => setRatesContractor(c)}>
                                 Tarifas
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar ${c.name}`} onClick={() => openEditContractor(c)}><Pencil className="h-3.5 w-3.5" /></Button>
                               <AlertDialog>
-                                <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
+                                <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir ${c.name}`}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
                                 <AlertDialogContent>
                                   <AlertDialogHeader><AlertDialogTitle>Excluir prestador?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                                   <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteContractor.mutate(c.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
@@ -1847,6 +1844,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><FlaskConical className="h-5 w-5 text-primary" /> {isEditingRecipe ? 'Editar' : 'Nova'} Receita Artesanal</DialogTitle>
+            <DialogDescription>Cadastre a transformação de matéria-prima em produto artesanal.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div className="space-y-1.5">
@@ -1920,7 +1918,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                    </Popover>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Rendimento (m saída / 1m base) *</Label>
                   <Input type="number" step="0.01" min={0.01} value={editingRecipe.yield_per_meter || ''} onChange={e => setEditingRecipe(p => ({ ...p, yield_per_meter: Number(e.target.value) }))} className="h-9 font-mono" placeholder="Ex: 88" />
@@ -1965,9 +1963,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Handshake className="h-5 w-5 text-primary" /> {isEditing ? 'Editar' : 'Novo'} Prestador</DialogTitle>
+            <DialogDescription>Dados cadastrais e prazo de pagamento do prestador.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
-            <div className="col-span-2 space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+            <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Nome / Razão Social *</Label>
               <Input value={editingContractor.name || ''} onChange={e => setEditingContractor(p => ({ ...p, name: e.target.value }))} className="h-9" />
             </div>
@@ -1987,7 +1986,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               <Label className="text-xs font-medium text-muted-foreground">Email</Label>
               <Input value={editingContractor.email || ''} onChange={e => setEditingContractor(p => ({ ...p, email: e.target.value }))} className="h-9" />
             </div>
-            <div className="col-span-2 space-y-1.5">
+            <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Tipo de Serviço</Label>
               <Input placeholder="Ex: Costura, Palmilha, Pesponto..." value={editingContractor.service_type || ''} onChange={e => setEditingContractor(p => ({ ...p, service_type: e.target.value }))} className="h-9" />
             </div>
@@ -2005,7 +2004,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </SelectContent>
               </Select>
             </div>
-            <div className="col-span-2 space-y-1.5">
+            <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Endereço</Label>
               <Input value={editingContractor.address || ''} onChange={e => setEditingContractor(p => ({ ...p, address: e.target.value }))} className="h-9" />
             </div>
@@ -2017,7 +2016,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               <Label className="text-xs font-medium text-muted-foreground">UF</Label>
               <Input value={editingContractor.state || ''} onChange={e => setEditingContractor(p => ({ ...p, state: e.target.value }))} maxLength={2} className="h-9 uppercase" />
             </div>
-            <div className="col-span-2 space-y-1.5">
+            <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
               <Textarea value={editingContractor.notes || ''} onChange={e => setEditingContractor(p => ({ ...p, notes: e.target.value }))} rows={2} className="resize-none" />
             </div>
@@ -2034,6 +2033,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> {isEditing ? 'Editar' : 'Nova'} Ordem de Serviço</DialogTitle>
+            <DialogDescription>Prestador, materiais enviados e cobrança da OS.</DialogDescription>
           </DialogHeader>
 
           <Tabs value={orderTab} onValueChange={setOrderTab}>
@@ -2043,12 +2043,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             </TabsList>
 
             <TabsContent value="dados" className="mt-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 flex items-center gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2 flex items-center gap-2.5">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Prestador &amp; Vínculo</span>
                   <span className="h-px flex-1 bg-border/70" />
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Prestador *</Label>
                   <Select value={editingOrder.contractor_id || ''} onValueChange={v => setEditingOrder(p => ({ ...p, contractor_id: v }))}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o prestador" /></SelectTrigger>
@@ -2059,11 +2059,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Descrição do Serviço *</Label>
                   <Input value={editingOrder.description || ''} onChange={e => setEditingOrder(p => ({ ...p, description: e.target.value }))} className="h-9" />
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Setor / serviço {!isArtisanal && '*'}</Label>
                   <Select value={editingOrder.target_sector || ''} onValueChange={v => setEditingOrder(p => ({ ...p, target_sector: v }))}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor terceirizado" /></SelectTrigger>
@@ -2084,7 +2084,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     <p className="flex items-center gap-1 text-[11px] text-amber-600"><AlertTriangle className="h-3 w-3" /> FÁBRICA é trabalho interno — não gera conta a pagar.</p>
                   )}
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                     Pedido de Venda (PV) — rastreio
                     {/* Quando há múltiplos PVs vinculados (OS auto agregada),
@@ -2142,7 +2142,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 </div>
 
                 {/* ── Artisanal Production Panel ── */}
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <div className="flex items-center justify-between rounded-lg border px-3 py-2 bg-muted/20">
                     <div className="flex items-center gap-2">
                       <FlaskConical className="h-4 w-4 text-primary" />
@@ -2172,7 +2172,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         const recipe = recipes.find(r => r.id === artRecipeId);
                         if (!recipe) return null;
                         return (
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs text-muted-foreground">Cor do Produto Artesanal</Label>
                               <Popover>
@@ -2213,7 +2213,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               <Input value={artBaseColor || artOutputColor || '—'} disabled className="h-9 bg-muted/40" />
                               <p className="text-[11px] text-muted-foreground">= cor do produto (a tira é cortada da NAPA da mesma cor).</p>
                             </div>
-                            <div className="col-span-2 space-y-1.5">
+                            <div className="sm:col-span-2 space-y-1.5">
                               <Label className="text-xs text-muted-foreground">Metros necessários para o pedido (m)</Label>
                               <Input type="number" step="0.01" min={0} value={artNeededForOrder || ''} onChange={e => setArtNeededForOrder(Number(e.target.value))} className="h-9 font-mono" placeholder="0.00" />
                             </div>
@@ -2290,7 +2290,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
                 {/* Materials section — hidden in artisanal mode (auto-computed) */}
                 {!isArtisanal && (
-                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Materiais Enviados</span>
                   <span className="h-px flex-1 bg-border/70" />
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={addMaterial}><Plus className="h-3 w-3" /> Adicionar</Button>
@@ -2298,7 +2298,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 )}
 
                 {!isArtisanal && (
-                <div className="col-span-2 space-y-2">
+                <div className="sm:col-span-2 space-y-2">
                   {(editingOrder.materials_sent || []).map((mat, idx) => (
                     <div key={idx} className={cn("flex items-end gap-2 p-3 rounded-lg border bg-muted/20 transition-colors", mat.completed ? "border-green-300 bg-green-50/50 dark:bg-green-950/20" : "border-border")}>
                       {/* Check de "dar baixa" só faz sentido editando uma OS existente —
@@ -2338,7 +2338,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         <Label className="text-xs text-muted-foreground">Metros</Label>
                         <Input type="number" step="0.01" min={0} placeholder="0.00" value={mat.meters || ''} onChange={e => updateMaterial(idx, 'meters', Number(e.target.value))} className="h-8 text-sm font-mono" />
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeMaterial(idx)} disabled={(editingOrder.materials_sent || []).length <= 1}><X className="h-3.5 w-3.5 text-destructive" /></Button>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Remover material" onClick={() => removeMaterial(idx)} disabled={(editingOrder.materials_sent || []).length <= 1}><X className="h-3.5 w-3.5 text-destructive" /></Button>
                     </div>
                   ))}
                   {(() => {
@@ -2354,13 +2354,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
                 {/* Artisanal summary when stock ok (no production needed) */}
                 {isArtisanal && artisanalCalc?.stockOk && (
-                  <div className="col-span-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 rounded p-3 text-sm">
+                  <div className="sm:col-span-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 rounded p-3 text-sm">
                     <CheckCircle2 className="h-4 w-4" />
                     Estoque suficiente — nenhum material precisa ser enviado para o terceirizado.
                   </div>
                 )}
 
-                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Cobrança</span>
                   <span className="h-px flex-1 bg-border/70" />
                 </div>
@@ -2412,7 +2412,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     className="h-9 font-mono"
                   />
                 </div>
-                <div className="col-span-2 flex items-end justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3.5 py-3">
+                <div className="sm:col-span-2 flex items-end justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3.5 py-3">
                   <div className="text-xs text-muted-foreground">
                     <span className="font-semibold uppercase tracking-wide text-foreground">Total</span>
                     {!isArtisanal && (
@@ -2429,11 +2429,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     )}
                   </p>
                 </div>
-                <div className="col-span-2 flex items-center gap-2.5 pt-1">
+                <div className="sm:col-span-2 flex items-center gap-2.5 pt-1">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Status &amp; Observações</span>
                   <span className="h-px flex-1 bg-border/70" />
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Status</Label>
                   <Select value={editingOrder.status || 'Pendente'} onValueChange={v => setEditingOrder(p => ({ ...p, status: v }))}>
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
@@ -2445,7 +2445,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Observações</Label>
                   <Textarea value={editingOrder.notes || ''} onChange={e => setEditingOrder(p => ({ ...p, notes: e.target.value }))} rows={2} className="resize-none" />
                 </div>
@@ -2486,6 +2486,54 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             </TabsContent>
           </Tabs>
 
+          <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
+            <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
+            <Button variant="secondary" className="h-9 gap-1" onClick={() => {
+              const contractor = contractors.find(c => c.id === editingOrder.contractor_id);
+              const validMats = (editingOrder.materials_sent || []).filter(m => m.material?.trim());
+              const fakeOrder: ServiceOrder = {
+                id: editingOrder.id || '', contractor_id: editingOrder.contractor_id || '',
+                order_number: isEditing ? (orders.find(o => o.id === editingOrder.id)?.order_number || 'NOVA') : 'NOVA',
+                description: editingOrder.description || '', service_date: editingOrder.service_date || format(new Date(), 'yyyy-MM-dd'),
+                service_time: editingOrder.service_time || '', quantity: editingOrder.quantity || 1,
+                unit_price: editingOrder.unit_price || 0, total_value: editingOrder.total_value || 0,
+                status: editingOrder.status || 'Pendente', notes: editingOrder.notes || '',
+                material_name: validMats[0]?.material || '', material_meters: validMats[0]?.meters || 0,
+                material_color: validMats[0]?.color || '', materials_sent: validMats,
+                receipt_number: '', receipt_generated_at: null, signed_photo_url: null,
+                sale_order_id: editingOrder.sale_order_id || null,
+                created_at: '', updated_at: '',
+              };
+              printReceipt(fakeOrder, contractor);
+            }}><Printer className="h-4 w-4" /> Gerar OS</Button>
+            <Button onClick={handleSaveOrder} disabled={!manualOsValid || createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de exclusão de OS */}
+      <AlertDialog open={!!deleteOsTarget} onOpenChange={(open) => { if (!open) setDeleteOsTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir a OS {deleteOsTarget?.order_number}?</AlertDialogTitle>
+            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (deleteOsTarget) deleteOrder.mutate(deleteOsTarget.id); setDeleteOsTarget(null); }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Overlays de fluxo da OS — precisam ficar FORA do Dialog da OS: o Radix
+          desmonta o conteúdo do Dialog quando open=false, e os botões
+          "Enviar"/"Entregue" dos cards da lista abrem estes dialogs com o
+          dialog de OS fechado. */}
       <ServiceOrderReturnDialog
         open={!!returnDialogOs}
         onOpenChange={(o) => { if (!o) setReturnDialogOs(null); }}
@@ -2514,31 +2562,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         } : null}
         onReceive={() => { const o = dispatchDialogOs; if (o) openReceiveDialog(o); }}
       />
-
-          <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
-            <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
-            <Button variant="secondary" className="h-9 gap-1" onClick={() => {
-              const contractor = contractors.find(c => c.id === editingOrder.contractor_id);
-              const validMats = (editingOrder.materials_sent || []).filter(m => m.material?.trim());
-              const fakeOrder: ServiceOrder = {
-                id: editingOrder.id || '', contractor_id: editingOrder.contractor_id || '',
-                order_number: isEditing ? (orders.find(o => o.id === editingOrder.id)?.order_number || 'NOVA') : 'NOVA',
-                description: editingOrder.description || '', service_date: editingOrder.service_date || format(new Date(), 'yyyy-MM-dd'),
-                service_time: editingOrder.service_time || '', quantity: editingOrder.quantity || 1,
-                unit_price: editingOrder.unit_price || 0, total_value: editingOrder.total_value || 0,
-                status: editingOrder.status || 'Pendente', notes: editingOrder.notes || '',
-                material_name: validMats[0]?.material || '', material_meters: validMats[0]?.meters || 0,
-                material_color: validMats[0]?.color || '', materials_sent: validMats,
-                receipt_number: '', receipt_generated_at: null, signed_photo_url: null,
-                sale_order_id: editingOrder.sale_order_id || null,
-                created_at: '', updated_at: '',
-              };
-              printReceipt(fakeOrder, contractor);
-            }}><Printer className="h-4 w-4" /> Gerar OS</Button>
-            <Button onClick={handleSaveOrder} disabled={!manualOsValid || createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <ContractorHistoryDialog
         contractorId={historyContractor?.id || null}

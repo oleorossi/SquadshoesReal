@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { Scissors, Sparkle as Sparkles, Info, Package, Stack as Layers, Printer } from '@phosphor-icons/react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Scissors, Sparkle as Sparkles, Info, Package, Stack as Layers, Printer, Warning } from '@phosphor-icons/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 
@@ -215,14 +218,16 @@ export function ConstructionConfigPanel({
   const activeModel = detectModel(construction_type, insole_ready_made);
   const hasSilk = detectHasSilk(current_production_sectors);
 
+  // Audit visual: dialog estilizado pra confirmação de substituição de roteiro
+  // personalizado. Substitui window.confirm() nativo (mesmo padrão do
+  // missingDialogOpen de SoleTechnicalDetails.tsx).
+  const [pendingSectors, setPendingSectors] = useState<string[] | null>(null);
+
   const guardedSectorChange = (next: string[]) => {
     if (!onProductionSectorsChange) return;
     if (!isCanonicalRouting(current_production_sectors)) {
-      const ok = window.confirm(
-        `O roteiro de produção foi personalizado (${current_production_sectors?.length ?? 0} setores). ` +
-        `Trocar de modelo irá substituí-lo por:\n\n${next.join(' → ')}\n\nDeseja continuar?`,
-      );
-      if (!ok) return;
+      setPendingSectors(next);
+      return;
     }
     onProductionSectorsChange(next);
   };
@@ -422,6 +427,43 @@ export function ConstructionConfigPanel({
       {/* "Corte a Faca" toggle removido em mai/2026 — coluna foi dropada
           no banco (migration 20260502232827) e a checkbox quebrava o save
           com erro "column corte_a_faca does not exist in schema cache". */}
+
+      {/* Confirmação de substituição de roteiro personalizado */}
+      <Dialog open={!!pendingSectors} onOpenChange={(open) => { if (!open) setPendingSectors(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <Warning className="h-5 w-5" />
+              Substituir roteiro personalizado?
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-2">
+              <p className="text-sm text-foreground">
+                O roteiro de produção foi personalizado
+                ({current_production_sectors?.length ?? 0} setores). Trocar de modelo
+                irá substituí-lo por:
+              </p>
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs font-mono">
+                {pendingSectors?.join(' → ')}
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setPendingSectors(null)}>
+              Manter roteiro atual
+            </Button>
+            <Button
+              variant="default"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                if (pendingSectors) onProductionSectorsChange?.(pendingSectors);
+                setPendingSectors(null);
+              }}
+            >
+              Substituir roteiro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

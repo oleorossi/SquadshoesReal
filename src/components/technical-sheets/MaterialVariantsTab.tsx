@@ -14,8 +14,10 @@
    DialogContent,
    DialogHeader,
    DialogTitle,
+   DialogDescription,
    DialogFooter,
  } from '@/components/ui/dialog';
+ import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
  import {
    useReferenceMaterialVariants,
    useAddReferenceMaterialVariant,
@@ -395,19 +397,12 @@ import { supabase } from '@/integrations/supabase/client';
                        >
                          <Copy className="h-3.5 w-3.5" />
                        </Button>
-                       <Button
-                         variant="ghost"
-                         size="icon"
-                         className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                         onClick={async () => {
-                           if (window.confirm('Excluir esta variante?')) {
-                             await deleteVariant.mutateAsync(v.id);
-                           }
-                         }}
-                         title="Excluir variante"
-                       >
-                         <Trash2 className="h-3.5 w-3.5" />
-                       </Button>
+                       <DeleteConfirmButton
+                         onConfirm={() => deleteVariant.mutateAsync(v.id)}
+                         title="Excluir variante?"
+                         description="O BOM específico desta variante será removido."
+                         size="h-8 w-8"
+                       />
                      </div>
                    </TableCell>
                  </TableRow>
@@ -423,6 +418,9 @@ import { supabase } from '@/integrations/supabase/client';
              <DialogTitle>
                {editingVariant ? 'Editar Variante' : duplicatingFromId ? 'Duplicar Variante' : 'Nova Variante de Material'}
              </DialogTitle>
+             <DialogDescription className="sr-only">
+               Nome do material, SKU, EAN/GTIN e status da variante.
+             </DialogDescription>
            </DialogHeader>
 
            {duplicatingFromId && (

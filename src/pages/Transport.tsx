@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
  import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -162,25 +162,36 @@ function CapacityTab() {
      setPackingResult(result);
    };
 
+  // Fechar/resetar só no sucesso — se a mutation falhar, o dialog continua
+  // aberto com o que o usuário digitou.
   const handleSaveBau = () => {
     if (!bauForm.nome.trim()) return;
-    addBau.mutate(bauForm);
-    setBauDialog(false);
-    setBauForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0 });
+    addBau.mutate(bauForm, {
+      onSuccess: () => {
+        setBauDialog(false);
+        setBauForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0 });
+      },
+    });
   };
 
   const handleSaveBox = () => {
     if (!boxForm.nome.trim()) return;
-    addBoxType.mutate(boxForm);
-    setBoxDialog(false);
-    setBoxForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0, empilhamento_maximo: 0 });
+    addBoxType.mutate(boxForm, {
+      onSuccess: () => {
+        setBoxDialog(false);
+        setBoxForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0, empilhamento_maximo: 0 });
+      },
+    });
   };
 
   const handleSaveItem = () => {
     if (!itemForm.nome.trim()) return;
-    addItemType.mutate(itemForm);
-    setItemDialog(false);
-    setItemForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0 });
+    addItemType.mutate(itemForm, {
+      onSuccess: () => {
+        setItemDialog(false);
+        setItemForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0 });
+      },
+    });
   };
 
   const handleConfirmDelete = () => {
@@ -432,9 +443,10 @@ function CapacityTab() {
 
       {/* Dialogs */}
       <Dialog open={bauDialog} onOpenChange={(open) => { setBauDialog(open); if (!open) setBauForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0 }); }}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Novo Baú</DialogTitle>
+            <DialogDescription className="sr-only">Nome e dimensões internas do baú do veículo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -458,15 +470,16 @@ function CapacityTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBauDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveBau}>Salvar</Button>
+            <Button onClick={handleSaveBau} disabled={addBau.isPending}>{addBau.isPending ? 'Salvando…' : 'Salvar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={boxDialog} onOpenChange={(open) => { setBoxDialog(open); if (!open) setBoxForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0, empilhamento_maximo: 0 }); }}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Novo Tipo de Caixa</DialogTitle>
+            <DialogDescription className="sr-only">Nome, dimensões e empilhamento máximo da caixa.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -494,15 +507,16 @@ function CapacityTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBoxDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveBox}>Salvar</Button>
+            <Button onClick={handleSaveBox} disabled={addBoxType.isPending}>{addBoxType.isPending ? 'Salvando…' : 'Salvar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={itemDialog} onOpenChange={(open) => { setItemDialog(open); if (!open) setItemForm({ nome: '', comprimento_cm: 0, largura_cm: 0, altura_cm: 0 }); }}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Novo Item Individual</DialogTitle>
+            <DialogDescription className="sr-only">Nome e dimensões do item avulso.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -526,7 +540,7 @@ function CapacityTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveItem}>Salvar</Button>
+            <Button onClick={handleSaveItem} disabled={addItemType.isPending}>{addItemType.isPending ? 'Salvando…' : 'Salvar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -637,12 +651,12 @@ function CarriersTab() {
   const handleSave = () => {
     if (!form.nome.trim()) return;
     const payload = { ...form };
+    // Fecha só no sucesso — falha mantém o dialog aberto com os dados digitados.
     if (editingCompany) {
-      updateCompany.mutate({ id: editingCompany.id, data: payload });
+      updateCompany.mutate({ id: editingCompany.id, data: payload }, { onSuccess: () => setDialogOpen(false) });
     } else {
-      addCompany.mutate(payload);
+      addCompany.mutate(payload, { onSuccess: () => setDialogOpen(false) });
     }
-    setDialogOpen(false);
   };
 
   const handleConfirmDelete = () => {
@@ -698,13 +712,13 @@ function CarriersTab() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => { setSelectedCompanyId(company.id); setRatesDialogOpen(true); }}>
+                    <Button size="sm" variant="ghost" aria-label={`Tarifas por estado de ${company.nome}`} onClick={() => { setSelectedCompanyId(company.id); setRatesDialogOpen(true); }}>
                       <MapPin className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => openEditDialog(company)}>
+                    <Button size="sm" variant="ghost" aria-label={`Editar ${company.nome}`} onClick={() => openEditDialog(company)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteDialog({ id: company.id, name: company.nome })}>
+                    <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Excluir ${company.nome}`} onClick={() => setDeleteDialog({ id: company.id, name: company.nome })}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -731,6 +745,7 @@ function CarriersTab() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingCompany ? 'Editar Transportadora' : 'Nova Transportadora'}</DialogTitle>
+            <DialogDescription>Dados cadastrais, endereço e condições de pagamento.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -818,7 +833,9 @@ function CarriersTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>{editingCompany ? 'Salvar' : 'Cadastrar'}</Button>
+            <Button onClick={handleSave} disabled={addCompany.isPending || updateCompany.isPending}>
+              {(addCompany.isPending || updateCompany.isPending) ? 'Salvando…' : editingCompany ? 'Salvar' : 'Cadastrar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -852,7 +869,7 @@ function CarriersTab() {
 // ============= RATES DIALOG =============
 
 function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { data: rates = [] } = useTransportCompanyRates(companyId);
+  const { data: rates = [], isLoading: ratesLoading } = useTransportCompanyRates(companyId);
   const upsertRates = useUpsertTransportCompanyRates();
   const { data: companies = [] } = useTransportCompanies();
 
@@ -860,8 +877,13 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
 
   const [localRates, setLocalRates] = useState<Record<string, { valor_capital: number; valor_interior: number; tipo_valor: 'POR_KG' | 'POR_M3' | 'FIXO'; minimo: number }>>({});
 
-  // Initialize local rates from database
-  useMemo(() => {
+  // Inicializa o estado local 1× por abertura (após o primeiro load), em vez do
+  // antigo useMemo-com-setState que re-resetava localRates a CADA refetch de
+  // 'rates' — apagando edições não salvas.
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (!open) { initializedRef.current = false; return; }
+    if (initializedRef.current || ratesLoading) return;
     const initial: typeof localRates = {};
     for (const rate of rates) {
       initial[rate.estado] = {
@@ -872,7 +894,8 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
       };
     }
     setLocalRates(initial);
-  }, [rates]);
+    initializedRef.current = true;
+  }, [open, rates, ratesLoading]);
 
   const handleSave = () => {
     const toSave = Object.entries(localRates)
@@ -882,7 +905,7 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
         estado,
         ...v,
       }));
-    upsertRates.mutate(toSave as any);
+    upsertRates.mutate(toSave as any, { onSuccess: () => onOpenChange(false) });
   };
 
   const updateRate = (estado: string, field: string, value: any) => {
@@ -903,6 +926,7 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Tarifas por Estado - {company?.nome}</DialogTitle>
+          <DialogDescription>Valores de frete por estado (capital/interior) desta transportadora.</DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-[60vh]">
           <Table>
@@ -968,7 +992,9 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
         </ScrollArea>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button onClick={handleSave}>Salvar Tarifas</Button>
+          <Button onClick={handleSave} disabled={upsertRates.isPending}>
+            {upsertRates.isPending ? 'Salvando…' : 'Salvar Tarifas'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

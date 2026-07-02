@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
@@ -632,8 +632,11 @@ export function OperationsTab({
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Operação</DialogTitle>
+            <DialogDescription className="sr-only">
+              Nome, estágio, tempo padrão, custo por hora e recurso da operação.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Nome da Operação</Label>
               <Input value={editForm.operation_name} onChange={e => setEditForm(f => ({ ...f, operation_name: e.target.value }))} className="mt-1 h-9 text-sm" />

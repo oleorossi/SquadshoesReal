@@ -25,7 +25,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Buildings as Building2, Users, ShoppingCart, CurrencyDollar as DollarSign, Phone, Note as StickyNote, Paperclip, ClockCounterClockwise as HistoryIcon, Warning as AlertTriangle, Crown, Plus, Trash as Trash2, PencilSimple as Edit3, Upload, ArrowSquareOut as ExternalLink, TrendUp as TrendingUp, Calendar, ShieldWarning as ShieldAlert, CheckCircle as CheckCircle2, FileText, ChatText as MessageSquare, FloppyDisk as Save } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -690,8 +691,13 @@ function ContatosTab({ groupId }: { groupId: string }) {
                       <p className="font-bold text-sm mt-1">{c.name}</p>
                     </div>
                     <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(c)}><Edit3 className="h-3 w-3" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => del.mutate({ id: c.id, groupId })}><Trash2 className="h-3 w-3" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Editar contato ${c.name}`} onClick={() => handleEdit(c)}><Edit3 className="h-3 w-3" /></Button>
+                      <DeleteConfirmButton
+                        onConfirm={() => del.mutate({ id: c.id, groupId })}
+                        title="Excluir contato?"
+                        description="Esta ação não pode ser desfeita."
+                        iconSize="h-3 w-3"
+                      />
                     </div>
                   </div>
                   {c.email && <p className="text-xs flex items-center gap-1"><a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a></p>}
@@ -712,7 +718,10 @@ function ContatosTab({ groupId }: { groupId: string }) {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing?.id ? 'Editar' : 'Novo'} contato</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing?.id ? 'Editar' : 'Novo'} contato</DialogTitle>
+            <DialogDescription className="sr-only">Papel, nome e formas de contato da pessoa no grupo econômico.</DialogDescription>
+          </DialogHeader>
           {editing && (
             <div className="space-y-3 py-2">
               <div className="grid grid-cols-2 gap-3">

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, ClipboardText as ClipboardList, MagnifyingGlass as Search, CaretRight as ChevronRight } from '@phosphor-icons/react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -177,6 +177,9 @@ export function SheetsAuditPanel({
             <ClipboardList className="h-5 w-5 text-primary" />
             Auditoria de Fichas Técnicas
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Pendências de cadastro por ficha técnica e por solado.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>

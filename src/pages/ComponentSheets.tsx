@@ -7,7 +7,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -1001,7 +1001,10 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-foreground">{baseName}</h2>
+                <DialogTitle className="text-lg font-bold text-foreground">{baseName}</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Ficha de componente {prod?.sku ? `— SKU ${prod.sku}` : ''}
+                </DialogDescription>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="secondary" className="text-xs">{prod?.category}</Badge>
                   <span className="text-xs text-muted-foreground font-mono">{prod?.sku}</span>
@@ -1010,7 +1013,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
               <div className="flex items-center gap-1 shrink-0">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" aria-label="Excluir ficha">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </AlertDialogTrigger>

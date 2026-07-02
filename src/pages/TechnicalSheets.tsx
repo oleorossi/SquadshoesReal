@@ -146,7 +146,7 @@ import { Label } from '@/components/ui/label';
 import { RequiredMark } from '@/components/ui/required-mark';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -195,7 +195,7 @@ import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
 import { Link as Link2 } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
@@ -493,13 +493,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 <Wand2 className="h-5 w-5 text-primary" />
                 Aplicar Solado em Massa
               </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="text-sm text-muted-foreground">
+              <DialogDescription>
                 Aplicar em <span className="font-semibold text-foreground">{filteredSheets.length}</span> {filteredSheets.length === 1 ? 'ficha listada' : 'fichas listadas'}.
                 Os dados (consumo, processo e grupo) serão copiados da ficha mais recente que utiliza o solado escolhido.
-              </div>
-
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <Label>Solado a aplicar</Label>
                 <Select value={bulkSoleSelected} onValueChange={setBulkSoleSelected}>
@@ -540,7 +539,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setBulkSoleDialogOpen(false)} disabled={bulkSoleApplying}>
                 Cancelar
               </Button>
@@ -548,7 +547,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 {bulkSoleApplying ? 'Aplicando...' : 'Aplicar'}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -801,7 +800,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                       </TableCell>
                       <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setImageDialogSheet(sheet); }}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setImageDialogSheet(sheet); }} aria-label="Alterar foto">
                             <ImagePlus className="h-3.5 w-3.5" />
                           </Button>
                           <DeleteConfirmButton onConfirm={() => deleteSheet.mutate(sheet.id)} title="Excluir ficha?" size="h-7 w-7" iconSize="h-3 w-3" />
@@ -820,6 +819,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova Ficha Técnica</DialogTitle>
+            <DialogDescription className="sr-only">
+              Preencha os dados de identificação para criar uma nova ficha técnica.
+            </DialogDescription>
           </DialogHeader>
           <QuickCreateForm onCreated={(id) => { setDialogOpen(false); setExpandedId(id); }} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
@@ -833,6 +835,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               <ClipboardCopy className="h-5 w-5 text-primary" />
               Copiar Ficha Técnica
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Escolha a ficha de origem e o nome da nova ficha.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -848,10 +853,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               </div>
               <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
                 {(sheets as any[])
-                  .filter((s: any) => {
-                    const q = cloneSearchTerm.toLowerCase();
-                    return !q || normalizeForSearch(s.name).includes(q) || normalizeForSearch(s.code).includes(q);
-                  })
+                  .filter((s: any) => searchMatchesAny(cloneSearchTerm, s.name, s.code))
                   .slice(0, 30)
                   .map((s: any) => (
                     <button
@@ -890,7 +892,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-2">
+            <DialogFooter className="pt-2">
               <Button variant="outline" onClick={() => setCloneDialogOpen(false)}>Cancelar</Button>
               <Button
                 disabled={!cloneSourceId || !cloneNewName.trim() || cloneSheet.isPending}
@@ -903,7 +905,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 {cloneSheet.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
                 Copiar Ficha
               </Button>
-            </div>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -912,6 +914,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Alterar Foto — {imageDialogSheet?.name}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Envie ou substitua a foto desta ficha técnica.
+            </DialogDescription>
           </DialogHeader>
           {imageDialogSheet && (
             <SheetImageEditor sheet={imageDialogSheet} onSaved={() => setImageDialogSheet(null)} updateSheet={updateSheet} />
@@ -6472,6 +6477,9 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
           <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Editar Material no BOM</DialogTitle>
+              <DialogDescription className="sr-only">
+                Consumo por par, cor e consumo por numeração do material.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div>
@@ -6586,12 +6594,12 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
               </div>
             </div>
             
-            <div className="flex justify-end gap-2 pt-4">
-              <Button size="sm" variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
-              <Button size="sm" onClick={handleUpdateSubmit} disabled={updateMaterial.isPending}>
+            <DialogFooter className="pt-4">
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
+              <Button onClick={handleUpdateSubmit} disabled={updateMaterial.isPending}>
                 {updateMaterial.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Salvar'}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

@@ -5,7 +5,7 @@ import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, Image as ImageIco
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -218,10 +218,13 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Editar Silk' : 'Cadastrar Nova Silk'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Nome, arte e escopo (cliente ou grupo econômico) da silk deste solado.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {/* Arte + nome */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Nome da Silk</label>
                 <Input
@@ -240,7 +243,8 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
                       </div>
                       <button
                         onClick={() => setForm(f => ({ ...f, silk_url: '' }))}
-                        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remover imagem"
+                        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -264,7 +268,7 @@ export function SoleSilkPanel({ soleProductId, soleName }: Props) {
             </div>
 
             {/* Escopo */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Cliente (opcional)</label>
                 <Select

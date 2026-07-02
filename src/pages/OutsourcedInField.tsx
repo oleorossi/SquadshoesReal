@@ -941,7 +941,7 @@ export default function OutsourcedInFieldPage({ embedded, onRequestCreateOS }: {
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações da OS">
                                 <DotsThreeVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -991,13 +991,13 @@ export default function OutsourcedInFieldPage({ embedded, onRequestCreateOS }: {
                               </DropdownMenuItem>
                               {it.sale_order_id && (
                                 <DropdownMenuItem asChild>
-                                  <a
-                                    href={`/sales/${it.sale_order_id}`}
+                                  <Link
+                                    to={`/sales/${it.sale_order_id}`}
                                     className="text-xs gap-2 flex items-center"
                                   >
                                     <ArrowSquareOut className="h-3.5 w-3.5" />
                                     Abrir PV
-                                  </a>
+                                  </Link>
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>

@@ -4,7 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Plus, PencilSimple as Pencil, Trash as Trash2, Stack as Layers, FileText, Tag, X, Palette } from '@phosphor-icons/react';
@@ -181,6 +185,9 @@ function VariantFormDialog({
             <Layers className="h-5 w-5 text-primary" />
             {editing ? 'Editar grupo de material' : 'Novo grupo de material'}
           </DialogTitle>
+          <DialogDescription>
+            Material principal com SKU e NCM próprios para a NF-e.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -197,7 +204,7 @@ function VariantFormDialog({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs font-semibold flex items-center gap-1">
                 <Tag className="h-3 w-3" /> SKU / Código NF-e
@@ -219,7 +226,7 @@ function VariantFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">NCM (opcional)</Label>
               <Input
@@ -291,12 +298,12 @@ export function MaterialVariantsPanel({ referenceId, referenceName, referenceNcm
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ReferenceMaterialVariant | null>(null);
+  const [deleting, setDeleting] = useState<ReferenceMaterialVariant | null>(null);
 
   const openNew = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (v: ReferenceMaterialVariant) => { setEditing(v); setFormOpen(true); };
 
   const handleDelete = async (v: ReferenceMaterialVariant) => {
-    if (!window.confirm(`Excluir grupo "${v.material_name}"?\n\nAtenção: a operação falhará se pedidos existentes referenciarem este grupo (restrição fiscal).`)) return;
     await deleteVariant.mutateAsync(v.id);
     toast.success('Grupo de material excluído');
   };
@@ -379,7 +386,8 @@ export function MaterialVariantsPanel({ referenceId, referenceName, referenceNcm
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     disabled={deleteVariant.isPending}
-                    onClick={() => handleDelete(v)}
+                    onClick={() => setDeleting(v)}
+                    aria-label={`Excluir grupo ${v.material_name}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -421,6 +429,26 @@ export function MaterialVariantsPanel({ referenceId, referenceName, referenceNcm
         referenceNcm={referenceNcm}
         existingVariants={variants}
       />
+
+      <AlertDialog open={!!deleting} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir grupo "{deleting?.material_name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Atenção: a operação falhará se pedidos existentes referenciarem este grupo (restrição fiscal).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (deleting) handleDelete(deleting); setDeleting(null); }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

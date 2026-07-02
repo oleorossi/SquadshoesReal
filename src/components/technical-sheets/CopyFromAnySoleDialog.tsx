@@ -114,7 +114,7 @@ export function CopyFromAnySoleDialog({
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
             <div className="text-xs space-y-2 flex-1">
-              <p className="font-semibold text-amber-800">
+              <p className="font-semibold text-amber-700 dark:text-amber-400">
                 Este solado já tem specs cadastradas.
               </p>
               <div className="flex items-center gap-2">
@@ -123,7 +123,7 @@ export function CopyFromAnySoleDialog({
                   checked={overwrite}
                   onCheckedChange={(v) => setOverwrite(!!v)}
                 />
-                <Label htmlFor="overwrite-check" className="cursor-pointer text-amber-900">
+                <Label htmlFor="overwrite-check" className="cursor-pointer text-amber-700 dark:text-amber-400">
                   Substituir specs existentes pelas do solado escolhido
                 </Label>
               </div>

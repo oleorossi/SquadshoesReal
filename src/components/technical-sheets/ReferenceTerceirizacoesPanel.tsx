@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { formatCurrency } from '@/lib/utils';
 import { useContractors } from '@/hooks/useContractors';
 import {
@@ -106,15 +107,11 @@ export function ReferenceTerceirizacoesPanel({ sheetId }: { sheetId: string }) {
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(e)} aria-label="Editar">
                         <PencilSimple className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          if (window.confirm(`Remover a terceirização "${e.description}"?`)) del.mutate(e.id);
-                        }}
-                        aria-label="Remover"
-                      >
-                        <Trash className="h-3.5 w-3.5" />
-                      </Button>
+                      <DeleteConfirmButton
+                        onConfirm={() => del.mutate(e.id)}
+                        title="Remover terceirização?"
+                        description={`"${e.description}" deixará de aparecer como opção no pedido de venda.`}
+                      />
                     </div>
                   </td>
                 </tr>

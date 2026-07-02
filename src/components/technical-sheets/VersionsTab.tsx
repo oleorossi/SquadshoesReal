@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useBomVersions, useCreateBomVersion, useUpdateBomVersionStatus } from '@/hooks/useBomVersions';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSheetMaterials, SheetFormData } from '@/hooks/useTechnicalSheets';
@@ -141,7 +141,7 @@ export function VersionsTab({ sheetId, form, updateField }: {
                     <TableCell className="text-xs">{v.approved_by || '—'}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setViewingVersion(v)}>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setViewingVersion(v)} aria-label="Ver versão">
                           <Eye className="h-3 w-3" />
                         </Button>
                         {v.status === 'draft' && (
@@ -177,6 +177,9 @@ export function VersionsTab({ sheetId, form, updateField }: {
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Versão {viewingVersion?.version_number} — {viewingVersion?.description}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Snapshot completo dos dados da ficha nesta versão.
+            </DialogDescription>
           </DialogHeader>
           {viewingVersion && (
             <div className="space-y-4 text-xs">

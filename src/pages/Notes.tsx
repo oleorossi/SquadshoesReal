@@ -26,8 +26,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
@@ -127,6 +131,8 @@ export default function Notes() {
   // topTab: aba superior — Nota (com editor) ou Tarefas (lista de tasks).
   const [topTab, setTopTab] = useState<'note' | 'tasks'>('note');
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  // Confirmação estilizada de exclusão (nota/pasta) — substitui confirm() nativo.
+  const [confirmDelete, setConfirmDelete] = useState<{ title: string; description: string; action: () => void } | null>(null);
   const [folderName, setFolderName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
@@ -451,7 +457,11 @@ export default function Notes() {
                 active={activeFolderId === f.id}
                 onClick={() => setActiveFolderId(f.id)}
                 icon={<Folder className="h-3.5 w-3.5" />}
-                onDelete={() => deleteFolder.mutate(f.id)}
+                onDelete={() => setConfirmDelete({
+                  title: `Excluir a pasta "${f.name}"?`,
+                  description: 'As notas dentro dela vão para "Sem pasta".',
+                  action: () => deleteFolder.mutate(f.id),
+                })}
               />
             ))}
           </div>
@@ -508,7 +518,14 @@ export default function Notes() {
                     onToggle={toggleExpand}
                     onAddChild={(parentId) => handleNewNote(parentId)}
                     onPin={togglePin}
-                    onDelete={(id) => { deleteNote.mutate(id); if (selectedId === id) setSelectedId(null); }}
+                    onDelete={(id) => {
+                      const n = notes.find(nt => nt.id === id);
+                      setConfirmDelete({
+                        title: `Excluir "${n?.title || 'Sem título'}"?`,
+                        description: 'A nota e todas as sub-páginas serão excluídas. Esta ação não pode ser desfeita.',
+                        action: () => { deleteNote.mutate(id); if (selectedId === id) setSelectedId(null); },
+                      });
+                    }}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                     onDropAsChild={handleDropAsChild}
@@ -759,10 +776,32 @@ export default function Notes() {
         </main>
       </div>
 
+      {/* Confirmação de exclusão (nota / pasta) */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDelete?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDelete?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { confirmDelete?.action(); setConfirmDelete(null); }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Dialog nova pasta */}
       <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Nova pasta</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Nova pasta</DialogTitle>
+            <DialogDescription className="sr-only">Nome da nova pasta para organizar as notas.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-2">
             <Label>Nome</Label>
             <Input
@@ -828,7 +867,7 @@ function FolderRow({ label, count, active, onClick, icon, onDelete }: {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (confirm(`Excluir a pasta "${label}"? As notas dentro dela vão para "Sem pasta".`)) onDelete();
+            onDelete();
           }}
           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
           aria-label={`Excluir pasta ${label}`}
@@ -942,11 +981,7 @@ function NoteTreeRow({
                 <Plus className="h-3.5 w-3.5 mr-2" /> Nova sub-página
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => {
-                  if (confirm(`Excluir "${node.title || 'Sem título'}" e todas as sub-páginas?`)) {
-                    onDelete(node.id);
-                  }
-                }}
+                onSelect={() => onDelete(node.id)}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
@@ -1251,13 +1286,11 @@ function TaskRow({ task, onToggle, onChangePriority, onChangeText, onDelete }: {
             <SelectItem value="baixa">⚪ Baixa</SelectItem>
           </SelectContent>
         </Select>
-        <button
-          onClick={() => { if (confirm("Excluir tarefa?")) onDelete(); }}
-          className="h-7 w-7 inline-flex items-center justify-center rounded-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          aria-label="Excluir tarefa"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <DeleteConfirmButton
+          onConfirm={onDelete}
+          title="Excluir tarefa?"
+          description="Esta ação não pode ser desfeita."
+        />
       </div>
     </div>
   );

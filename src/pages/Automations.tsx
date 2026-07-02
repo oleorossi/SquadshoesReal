@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -452,6 +452,7 @@ export default function Automations() {
                         <Button
                           size="icon" variant="ghost" className="h-7 w-7 text-destructive"
                           onClick={() => setDeleteWfId(wf.id)}
+                          aria-label={`Excluir workflow ${wf.name}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -540,6 +541,7 @@ export default function Automations() {
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Editar Automação' : 'Nova Automação'}</DialogTitle>
+            <DialogDescription className="sr-only">Gatilho, condições e ações do workflow de automação.</DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="flex-1 pr-1">
@@ -655,7 +657,7 @@ export default function Automations() {
                           className="h-7 text-xs flex-1"
                         />
                       )}
-                      <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive shrink-0" onClick={() => removeCondition(cond.id)}>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive shrink-0" aria-label="Remover condição" onClick={() => removeCondition(cond.id)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
@@ -692,7 +694,7 @@ export default function Automations() {
                           <Badge variant="outline" className="text-xs h-4 px-1 shrink-0">{i + 1}</Badge>
                           <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="text-xs font-medium flex-1">{action.label}</span>
-                          <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive shrink-0" onClick={() => removeAction(action.id)}>
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive shrink-0" aria-label="Remover ação" onClick={() => removeAction(action.id)}>
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
@@ -754,6 +756,7 @@ export default function Automations() {
               })()}
               {detailWf?.name}
             </DialogTitle>
+            <DialogDescription className="sr-only">Detalhes do fluxo, condições e histórico da automação.</DialogDescription>
           </DialogHeader>
           {detailWf && (
             <div className="space-y-4">

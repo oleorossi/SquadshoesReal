@@ -5,7 +5,7 @@ import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, MagnifyingGlass a
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -308,6 +308,9 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Editar Cadastro' : 'Novo Cadastro de Silk'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Solado, categoria, nome e arte da silk, com escopo por cliente ou grupo econômico.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto px-1">
             <div className="space-y-2">
@@ -356,7 +359,7 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Nome da Silk</label>
                 <Input
@@ -375,7 +378,8 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
                       </div>
                       <button
                         onClick={() => setFormData(prev => ({ ...prev, silk_url: '' }))}
-                        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remover imagem"
+                        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -402,7 +406,7 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
             </div>
 
             {scope !== 'default' && (
-              <div className={scope === 'all' ? 'grid grid-cols-2 gap-4' : ''}>
+              <div className={scope === 'all' ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}>
                 {(scope === 'all' || scope === 'client') && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium">

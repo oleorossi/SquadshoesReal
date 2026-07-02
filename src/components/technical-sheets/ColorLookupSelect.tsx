@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, CaretUpDown as ChevronsUpDown, Plus, Circle, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -159,7 +159,7 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
         <StockIndicator colorId={value} />
 
         {value && (
-          <Button variant="ghost" size="sm" className="h-9 px-2 text-xs text-muted-foreground" onClick={() => onChange(null)}>
+          <Button variant="ghost" size="sm" className="h-9 px-2 text-xs text-muted-foreground" onClick={() => onChange(null)} aria-label="Limpar cor">
             ✕
           </Button>
         )}
@@ -169,6 +169,9 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova Cor</DialogTitle>
+            <DialogDescription className="sr-only">
+              Cadastre uma nova cor com nome e referência HEX.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
