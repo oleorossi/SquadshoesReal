@@ -31,6 +31,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
 import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
 
@@ -231,6 +233,7 @@ export default function PurchaseOrders() {
    const [createDialogOpen, setCreateDialogOpen] = useState(false);
    const [avulsoOpen, setAvulsoOpen] = useState(false);
    const [pdfBusy, setPdfBusy] = useState(false);
+   const [bulkBusy, setBulkBusy] = useState(false);
 
   // Extract unique supplier names for filter
   const uniqueSuppliers = useMemo(() => {
@@ -332,20 +335,25 @@ export default function PurchaseOrders() {
 
   const handleBulkAction = async (action: 'approved' | 'cancelled' | 'sent' | 'delete') => {
     const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    const results = action === 'delete'
-      ? await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)))
-      : await Promise.allSettled(ids.map(id => updateOrder.mutateAsync({ id, data: { status: action } })));
-    const failed = results.filter(r => r.status === 'rejected');
-    setSelectedIds(new Set());
-    if (failed.length === 0) {
-      toast.success(action === 'delete'
-        ? `${ids.length} OC(s) excluída(s)`
-        : `${ids.length} OC(s) atualizada(s) para "${STATUS_MAP[action]?.label}"`);
-    } else {
-      const successCount = ids.length - failed.length;
-      const firstErr = (failed[0] as PromiseRejectedResult).reason?.message || 'erro desconhecido';
-      toast.error(`${successCount} OK, ${failed.length} falharam. Primeiro erro: ${firstErr}`);
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const results = action === 'delete'
+        ? await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)))
+        : await Promise.allSettled(ids.map(id => updateOrder.mutateAsync({ id, data: { status: action } })));
+      const failed = results.filter(r => r.status === 'rejected');
+      setSelectedIds(new Set());
+      if (failed.length === 0) {
+        toast.success(action === 'delete'
+          ? `${ids.length} OC(s) excluída(s)`
+          : `${ids.length} OC(s) atualizada(s) para "${STATUS_MAP[action]?.label}"`);
+      } else {
+        const successCount = ids.length - failed.length;
+        const firstErr = (failed[0] as PromiseRejectedResult).reason?.message || 'erro desconhecido';
+        toast.error(`${successCount} OK, ${failed.length} falharam. Primeiro erro: ${firstErr}`);
+      }
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -447,7 +455,7 @@ export default function PurchaseOrders() {
                 {/* Status multi-select (vazio = todos) */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="h-10 gap-1.5 w-44 justify-between font-normal">
+                    <Button variant="outline" className="h-9 gap-1.5 w-44 justify-between font-normal">
                       <span className="flex items-center gap-1.5 truncate">
                         <Funnel className="h-4 w-4 shrink-0" />
                         {statusSet.size === 0 ? 'Todos os status' : `${statusSet.size} status`}
@@ -518,17 +526,51 @@ export default function PurchaseOrders() {
 
             {/* Bulk actions bar */}
             {selectedIds.size > 0 && (
-              <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/40">
-                <span className="text-sm font-medium">{selectedIds.size} selecionada(s)</span>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleBulkAction('approved')}>
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
-                </Button>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleBulkAction('sent')}>
-                  <Send className="h-3.5 w-3.5" /> Enviar
-                </Button>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-3 rounded-lg border bg-muted/40">
+                <span className="text-sm font-medium">
+                  {bulkBusy ? <Loader2 className="inline h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  {selectedIds.size} selecionada(s)
+                </span>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="outline" className="gap-1.5 text-destructive">
+                    <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy}>
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Aprovar {selectedIds.size} ordem(ns) de compra?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        As OCs selecionadas passam para <b>Aprovada</b>. Isto <b>não</b> lança as parcelas no
+                        financeiro — para gerar as contas a pagar, abra cada OC e use “Aprovar e Lançar Financeiro”.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleBulkAction('approved')}>Aprovar</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkBusy}>
+                      <Send className="h-3.5 w-3.5" /> Enviar
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Marcar {selectedIds.size} OC(s) como enviadas?</AlertDialogTitle>
+                      <AlertDialogDescription>As OCs selecionadas passam para “Enviada ao fornecedor”.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleBulkAction('sent')}>Enviar</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="outline" className="gap-1.5 text-destructive" disabled={bulkBusy}>
                       <XCircle className="h-3.5 w-3.5" /> Cancelar
                     </Button>
                   </AlertDialogTrigger>
@@ -545,7 +587,7 @@ export default function PurchaseOrders() {
                 </AlertDialog>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="destructive" className="gap-1.5">
+                    <Button size="sm" variant="destructive" className="gap-1.5" disabled={bulkBusy}>
                       <Trash2 className="h-3.5 w-3.5" /> Excluir
                     </Button>
                   </AlertDialogTrigger>
@@ -565,10 +607,10 @@ export default function PurchaseOrders() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={handleBulkPDF}>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={handleBulkPDF} disabled={bulkBusy}>
                   <FileDown className="h-3.5 w-3.5" /> PDF por Fornecedor
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Limpar seleção</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} disabled={bulkBusy}>Limpar seleção</Button>
               </div>
             )}
 
@@ -597,9 +639,26 @@ export default function PurchaseOrders() {
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <TableRow key={`sk-${i}`}>
+                        <TableCell colSpan={11}><Skeleton className="h-8 w-full" /></TableCell>
+                      </TableRow>
+                    ))
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Nenhuma ordem de compra encontrada</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={11} className="p-0">
+                        <EmptyState
+                          icon={ShoppingCart}
+                          title="Nenhuma ordem de compra encontrada"
+                          description={hasActiveFilters
+                            ? 'Nenhuma OC bate com os filtros atuais. Limpe os filtros para ver todas.'
+                            : 'Crie a primeira OC ou gere automaticamente pelo planejamento de compras.'}
+                          action={hasActiveFilters
+                            ? <Button variant="outline" size="sm" className="gap-1.5" onClick={clearFilters}><XIcon className="h-3.5 w-3.5" /> Limpar filtros</Button>
+                            : <Button size="sm" className="gap-1.5" onClick={() => setCreateDialogOpen(true)}><Plus className="h-4 w-4" /> Nova OC</Button>}
+                        />
+                      </TableCell>
+                    </TableRow>
                   ) : filtered.map(o => {
                     const st = STATUS_MAP[o.status] || STATUS_MAP.pending;
                     const today = new Date().toISOString().slice(0, 10);
@@ -699,9 +758,23 @@ export default function PurchaseOrders() {
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'approved' } })} aria-label="Aprovar ordem de compra">
                                   <CheckCircle2 className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'cancelled' } })} aria-label="Cancelar ordem de compra">
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled={updateOrder.isPending} aria-label="Cancelar ordem de compra">
+                                      <XCircle className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Cancelar a OC {o.order_number}?</AlertDialogTitle>
+                                      <AlertDialogDescription>A ordem de compra será marcada como cancelada.</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'cancelled' } })}>Cancelar OC</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </>
                             )}
                             {o.status === 'approved' && (

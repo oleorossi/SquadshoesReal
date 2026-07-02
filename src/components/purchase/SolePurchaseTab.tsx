@@ -7,6 +7,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useOrders } from '@/hooks/useOrders';
 import { checkSoleAvailability } from '@/lib/soleAvailability';
 import { rateGradeToTotal } from '@/lib/gradeDistribution';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
@@ -183,7 +184,12 @@ export default function SolePurchaseTab() {
         {isLoadingOrders || isLoadingAvailability ? (
           <div className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>
         ) : processedShortages.length === 0 ? (
-          <p className="text-center text-muted-foreground py-10">Nenhuma necessidade de compra de solados.</p>
+          <EmptyState
+            icon={Package}
+            title="Sem necessidade de compra de solados"
+            description="Todos os solados das OPs abertas têm estoque suficiente. Faltas aparecem aqui automaticamente."
+            size="sm"
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -205,9 +211,9 @@ export default function SolePurchaseTab() {
                         <TooltipTrigger asChild>
                           <div>
                             {s.has_valid_supplier ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
                             ) : (
-                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                              <AlertTriangle className="h-4 w-4 text-amber-600" />
                             )}
                           </div>
                         </TooltipTrigger>

@@ -1437,7 +1437,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     variant={statusFilter === chip.value
                       ? ((chip.value === 'na_rua' || chip.value === 'atrasados') ? 'destructive' : 'default')
                       : 'outline'}
-                    className="h-8 gap-1.5 text-xs"
+                    className="h-9 gap-1.5 text-xs"
                     onClick={() => setStatusFilter(chip.value)}
                   >
                     {chip.label}
@@ -1740,17 +1740,17 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                           <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar receita ${r.name}`} onClick={() => { setEditingRecipe(r); setIsEditingRecipe(true); setRecipeDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir receita ${r.name}`}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
-                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir receita?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteRecipe.mutate(r.id)}>Excluir</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir a receita “{r.name}”?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteRecipe.mutate(r.id)}>Excluir</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                           </AlertDialog>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 text-sm">
-                        <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 rounded px-2 py-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded px-2 py-1 flex-1 min-w-0">
                           <Package className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate text-xs font-medium">{r.base_product_name}</span>
                         </div>
                         <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded px-2 py-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded px-2 py-1 flex-1 min-w-0">
                           <Scissors className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate text-xs font-medium">{r.artisanal_product_name}</span>
                         </div>
@@ -1855,7 +1855,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               <AlertDialog>
                                 <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir ${c.name}`}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
                                 <AlertDialogContent>
-                                  <AlertDialogHeader><AlertDialogTitle>Excluir prestador?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
+                                  <AlertDialogHeader><AlertDialogTitle>Excluir o prestador “{c.name}”?</AlertDialogTitle><AlertDialogDescription>Prestadores com OS vinculadas não podem ser excluídos — nesse caso, inative em vez de excluir. Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                                   <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteContractor.mutate(c.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
@@ -2279,18 +2279,18 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             ) : (
                               <div className="space-y-1.5">
                                 {forOrderMeters > 0 && (
-                                  <div className="flex items-center justify-between rounded bg-blue-50 dark:bg-blue-950/30 px-2 py-1.5">
+                                  <div className="flex items-center justify-between rounded bg-blue-500/10 px-2 py-1.5">
                                     <span className="text-xs text-blue-700 dark:text-blue-400 font-medium">🔵 Para o pedido</span>
                                     <span className="font-mono text-sm font-bold text-blue-700 dark:text-blue-400">{forOrderMeters.toFixed(2)}m</span>
                                   </div>
                                 )}
                                 {forStockMeters > 0 && (
-                                  <div className="flex items-center justify-between rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                                  <div className="flex items-center justify-between rounded bg-amber-500/10 px-2 py-1.5">
                                     <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">🟡 Para repor estoque mínimo</span>
                                     <span className="font-mono text-sm font-bold text-amber-700 dark:text-amber-400">{forStockMeters.toFixed(2)}m</span>
                                   </div>
                                 )}
-                                <div className="flex items-center justify-between rounded bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1.5">
+                                <div className="flex items-center justify-between rounded bg-emerald-500/10 px-2 py-1.5">
                                   <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold">✅ Total a produzir</span>
                                   <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400">{totalToProduce.toFixed(2)}m</span>
                                 </div>
@@ -2314,7 +2314,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       })()}
 
                       {!artisanalCalc && artRecipeId && (
-                        <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 rounded p-2">
+                        <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 rounded p-2">
                           <AlertTriangle className="h-4 w-4 shrink-0" />
                           Selecione a cor e informe os metros necessários para calcular a produção.
                         </div>
@@ -2335,7 +2335,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 {!isArtisanal && (
                 <div className="sm:col-span-2 space-y-2">
                   {(editingOrder.materials_sent || []).map((mat, idx) => (
-                    <div key={idx} className={cn("flex items-end gap-2 p-3 rounded-lg border bg-muted/20 transition-colors", mat.completed ? "border-green-300 bg-green-50/50 dark:bg-green-950/20" : "border-border")}>
+                    <div key={idx} className={cn("flex items-end gap-2 p-3 rounded-lg border bg-muted/20 transition-colors", mat.completed ? "border-green-500/40 bg-green-500/10" : "border-border")}>
                       {/* Check de "dar baixa" só faz sentido editando uma OS existente —
                           numa OS nova ainda não há o que baixar. */}
                       {isEditing && (
@@ -2389,7 +2389,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
                 {/* Artisanal summary when stock ok (no production needed) */}
                 {isArtisanal && artisanalCalc?.stockOk && (
-                  <div className="sm:col-span-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 rounded p-3 text-sm">
+                  <div className="sm:col-span-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded p-3 text-sm">
                     <CheckCircle2 className="h-4 w-4" />
                     Estoque suficiente — nenhum material precisa ser enviado para o terceirizado.
                   </div>
@@ -2530,6 +2530,20 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               </div>
             </TabsContent>
           </Tabs>
+
+          {!manualOsValid && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <div>
+                Para salvar, faltam:
+                <ul className="mt-0.5 list-disc pl-4">
+                  {!editingOrder.contractor_id && <li>selecionar o prestador</li>}
+                  {!isArtisanal && !editingOrder.target_sector && <li>selecionar o setor</li>}
+                  {!isArtisanal && !(Number(editingOrder.unit_price) > 0) && <li>informar o valor por par (maior que zero)</li>}
+                </ul>
+              </div>
+            </div>
+          )}
 
           <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
             <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
