@@ -38,11 +38,12 @@ interface SoleTechnicalDetailsProps {
 
 interface SoleSpec {
   size: number;
-  // NOTA: o forro do CABEDAL (antes `lining_consumption_dm2`) saiu daqui em
-  // 2026-06-30 — não é padronizado por solado, é cabedal a cabedal. A forração
-  // do cabedal agora vive SÓ na ficha técnica do modelo (`technical_sheets`).
-  // Esta ficha do solado define apenas o que é comum a todas as cores/cabedais:
-  // placa da palmilha, forração da palmilha (napa que reveste a placa) e fachete.
+  // Forro do CABEDAL por numeração (dm²/par). Voltou pro solado em 2026-07-01
+  // (a pedido do dono): o CONSUMO do forro é por solado/número (fonte única
+  // aqui); a ficha do modelo escolhe só o GRUPO/cor do material. A conversão
+  // dm²→metros usa a largura da ficha de componente do material no motor.
+  // Aplica a QUALQUER solado (inclusive palmilha pronta — todo cabedal tem forro).
+  lining_consumption_dm2: number | null;
   insole_consumption_dm2: number | null;
   insole_lining_consumption_dm2: number | null;
   fachete_lining_consumption_dm2: number | null;
@@ -184,7 +185,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       const next = { ...prev };
       for (const s of row.sizes) {
         next[s] = {
-          ...(next[s] || { size: s, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
+          ...(next[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
           [field]: numValue,
         };
       }
@@ -296,6 +297,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     (specsData || []).forEach((item: any) => {
       specsMap[item.size] = {
         size: item.size,
+        lining_consumption_dm2: item.lining_consumption_dm2 ?? null,
         insole_consumption_dm2: item.insole_consumption_dm2,
         insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
@@ -386,6 +388,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     filteredSpecs.forEach((item: any) => {
       specsMap[item.size] = {
         size: item.size,
+        lining_consumption_dm2: item.lining_consumption_dm2 ?? null,
         insole_consumption_dm2: item.insole_consumption_dm2,
         insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
@@ -424,7 +427,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setSizes(next);
     setSpecs((prev) => ({
       ...prev,
-      [n]: { size: n, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null },
+      [n]: { size: n, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null },
     }));
     setNewSize("");
   };
@@ -442,13 +445,13 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   // novo modelo de displayRows (linhas conjugadas atômicas) — handleRowInputChange
   // já escreve em todos os sizes da linha em uma chamada.
 
-  const fillRemaining = (field: "insole_consumption_dm2" | "insole_lining_consumption_dm2" | "fachete_lining_consumption_dm2") => {
+  const fillRemaining = (field: "lining_consumption_dm2" | "insole_consumption_dm2" | "insole_lining_consumption_dm2" | "fachete_lining_consumption_dm2") => {
     const firstValue = Object.values(specs).find((s) => s[field] !== null)?.[field];
     if (firstValue === undefined || firstValue === null) return;
     const next = { ...specs };
     sizes.forEach((size) => {
       if (!next[size] || next[size][field] === null) {
-        next[size] = { ...(next[size] || { size, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }), [field]: firstValue };
+        next[size] = { ...(next[size] || { size, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }), [field]: firstValue };
       }
     });
     setSpecs(next);
@@ -497,9 +500,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       const dataToUpsert = sizes.map((size) => ({
         sole_id: soleId,
         size,
-        // Forro do cabedal saiu da ficha do solado (2026-06-30): sempre null aqui.
-        // A forração do cabedal é definida na ficha técnica do modelo.
-        lining_consumption_dm2: null,
+        // Forro do cabedal voltou pro solado (2026-07-01): consumo por número aqui.
+        lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
         insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
         insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
@@ -529,7 +531,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
           const siblingData = sizes.map(size => ({
             sole_id: sibling.id,
             size,
-            lining_consumption_dm2: null,
+            lining_consumption_dm2: specs[size]?.lining_consumption_dm2 ?? null,
             insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
             insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
             fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
@@ -930,22 +932,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
           (forro do cabedal saiu daqui em 2026-06-30, placa/forração de
           palmilha não se aplicam a solado pronto) → mostra só uma nota.
       */}
-      {sizes.length > 0 && isPalmilhaPronta && !isFachetado && (
-        <Card className="border border-border bg-muted/20 shadow-sm">
-          <CardContent className="py-4 flex items-start gap-3">
-            <div className="bg-violet-500/15 p-1.5 rounded-md shrink-0">
-              <Footprints className="h-5 w-5 text-violet-600 dark:text-violet-300" />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              <strong className="text-foreground">Sem consumo por numeração neste solado.</strong>{' '}
-              Solado de <strong>palmilha pronta</strong> já vem forrado de fábrica (sem placa nem
-              forração de palmilha) e o forro do <strong>cabedal</strong> é definido na ficha técnica
-              do modelo, cabedal a cabedal.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-      {sizes.length > 0 && !(isPalmilhaPronta && !isFachetado) && (
+      {sizes.length > 0 && (
         <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 shadow-sm">
           <div className="px-4 pt-4 pb-2 flex items-start gap-3">
             <div className="bg-primary/15 p-1.5 rounded-md shrink-0">
@@ -960,12 +947,12 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Define quantos <strong>dm²/par</strong> são consumidos de
-                {isPalmilhaPronta ? ' Fachete' : ` Palmilha (placa + forração)${isFachetado ? ' + fachete' : ''}`} por tamanho.
+                {` Forro do cabedal${!isPalmilhaPronta ? ' + Palmilha (placa + forração)' : ''}${isFachetado ? ' + fachete' : ''}`} por tamanho.
                 <strong className="text-foreground"> Vale pra QUALQUER material</strong> que o PV escolher
                 (couro, lona, sintético, etc.) — independe da seleção do Passo 3.
                 <span className="block mt-1 text-[11px] text-muted-foreground">
-                  O forro do <strong>cabedal</strong> não é definido aqui — ele é cabedal a
-                  cabedal, na ficha técnica do modelo.
+                  O <strong>forro do cabedal</strong> agora é definido AQUI (consumo por número);
+                  a ficha do modelo escolhe só o <strong>grupo/cor</strong> do material.
                 </span>
                 {isPalmilhaPronta && (
                   <span className="block mt-1 text-[11px] text-violet-700 dark:text-violet-300">
@@ -981,7 +968,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
               <div>
                 {/* Título consolidado no banner acima — aqui só sublabel com dica */}
                 <CardDescription className="text-xs">
-                  Preencha {isPalmilhaPronta ? 'fachete' : `palmilha (placa + forração)${isFachetado ? ' + fachete' : ''}`} por tamanho. Conjugadas (🔗) aparecem como UMA
+                  Preencha {`forro do cabedal${!isPalmilhaPronta ? ' + palmilha (placa + forração)' : ''}${isFachetado ? ' + fachete' : ''}`} por tamanho. Conjugadas (🔗) aparecem como UMA
                   linha. Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span>.
                 </CardDescription>
               </div>
@@ -1004,6 +991,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                         return next;
                       });
                     };
+                    replicate('lining_consumption_dm2');
                     if (!isPalmilhaPronta) {
                       replicate('insole_consumption_dm2');
                       replicate('insole_lining_consumption_dm2');
@@ -1034,6 +1022,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-20 text-center font-bold">TAM</TableHead>
+                    <TableHead>
+                      <div className="flex items-center justify-between">
+                        <span title="Área do forro que reveste o cabedal — a napa/cor vem do grupo escolhido na ficha do modelo">Forro do Cabedal (dm²/par)</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Replicar primeiro valor para tamanhos vazios" onClick={() => fillRemaining("lining_consumption_dm2")}>
+                          <RefreshCw className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableHead>
                     {!isPalmilhaPronta && (
                       <TableHead>
                         <div className="flex items-center justify-between">
@@ -1093,6 +1089,17 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                             <span className="font-bold">{row.key}</span>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          className="h-8 text-right font-mono"
+                          value={getRowInputValue(row, "lining_consumption_dm2")}
+                          onChange={(e) => handleRowInputChange(row, "lining_consumption_dm2", e.target.value)}
+                          onBlur={() => handleRowInputBlur(row, "lining_consumption_dm2")}
+                          placeholder="0.00"
+                        />
                       </TableCell>
                       {!isPalmilhaPronta && (
                         <TableCell className="p-1.5">
@@ -1157,6 +1164,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-center py-2">TAM</th>
+                  <th className="text-right py-2 px-4">Forro Cabedal (dm²)</th>
                   {!isPalmilhaPronta && <th className="text-right py-2 px-4">Palmilha · Placa (dm²)</th>}
                   {!isPalmilhaPronta && <th className="text-right py-2 px-4">Palmilha · Forração (dm²)</th>}
                   {isFachetado && <th className="text-right py-2 px-4">Fachete (dm²)</th>}
@@ -1166,6 +1174,9 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 {referencePreview?.specs.map((spec: any, i: number) => (
                   <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="text-center py-2 font-bold">{spec.size}</td>
+                    <td className="text-right py-2 px-4 font-mono">
+                      {spec.lining_consumption_dm2 != null ? safeToFixed(spec.lining_consumption_dm2, 2) : "-"}
+                    </td>
                     {!isPalmilhaPronta && (
                       <td className="text-right py-2 px-4 font-mono">
                         {spec.insole_consumption_dm2 !== null ? safeToFixed(spec.insole_consumption_dm2, 2) : "-"}

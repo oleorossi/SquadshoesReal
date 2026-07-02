@@ -113,6 +113,12 @@ export type ConsumptionContext = {
   /** sole_product_id → consumo de FACHETE por numeração (dm²/par), de
    *  `sole_technical_specs.fachete_lining_consumption_dm2`. Só solados fachetados. */
   facheteSpecBySole: Map<string, Record<string, number>>;
+  /** sole_product_id → consumo do FORRO DO CABEDAL por numeração (dm²/par), de
+   *  `sole_technical_specs.lining_consumption_dm2`. Fonte do consumo do forro
+   *  (2026-07-01): a ficha do modelo só escolhe o grupo/cor; o consumo é por
+   *  solado. Espelha o fallback `v_spec.lining_consumption_dm2` do SQL by_grade.
+   *  Opcional (testes antigos constroem o contexto sem ele). */
+  liningSpecBySole?: Map<string, Record<string, number>>;
 };
 
 /**
@@ -353,6 +359,25 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     }
   }
 
+  // FORRO DO CABEDAL por numeração (dm²/par) vindo do SOLADO
+  // (`sole_technical_specs.lining_consumption_dm2`). Fonte do consumo do forro
+  // desde 2026-07-01: a ficha só escolhe o grupo/cor; o consumo é por solado.
+  // `.gt(0)` limita às linhas realmente preenchidas (solado × numeração).
+  const liningSpecBySole = new Map<string, Record<string, number>>();
+  {
+    const { data: liningSpecs } = await (supabase as any)
+      .from('sole_technical_specs')
+      .select('sole_id, size, lining_consumption_dm2')
+      .gt('lining_consumption_dm2', 0);
+    for (const r of (liningSpecs || []) as any[]) {
+      const v = Number(r.lining_consumption_dm2) || 0;
+      if (v <= 0 || r.size == null) continue;
+      const m = liningSpecBySole.get(r.sole_id) || {};
+      m[String(r.size)] = v;
+      liningSpecBySole.set(r.sole_id, m);
+    }
+  }
+
   return {
     materials: materials || [],
     allProducts: allProducts || [],
@@ -369,6 +394,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     soleColorGroupMap,
     sheetPrimarySoleMap,
     facheteSpecBySole,
+    liningSpecBySole,
   };
 }
 
@@ -402,6 +428,7 @@ export function computeConsumptionForItems(
   // Mapas opcionais (testes antigos constroem o contexto sem eles).
   const soleColorGroupMap = ctx.soleColorGroupMap ?? new Map<string, string>();
   const sheetPrimarySoleMap = ctx.sheetPrimarySoleMap ?? new Map<string, string>();
+  const liningSpecBySole = ctx.liningSpecBySole ?? new Map<string, Record<string, number>>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
   const normColor = (s: string | null | undefined): string =>
@@ -621,16 +648,32 @@ export function computeConsumptionForItems(
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
       const soleProductId = resolveSoleProductId(item.reference_id, orderColor);
-      // Consumo por NUMERAÇÃO como primário (espelha o cabedal + o lado SQL):
-      // usa technical_sheets.lining_consumption_per_size quando preenchido; senão
-      // cai no escalar lining_consumption (via fallback dentro do helper). Antes a
-      // tela ignorava o per-size do forro → divergia do custeio/MRP. (2026-06-20)
       const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
+      // FORRAÇÃO ALTERNATIVA (lining_accessories): consumo por número da própria
+      // ficha (é escolha do modelo). A PRINCIPAL não usa mais per_size da ficha.
       const liningOverride = isPrincipalLining
-        ? (sheet?.lining_consumption_per_size && Object.keys(sheet.lining_consumption_per_size).length > 0 ? sheet.lining_consumption_per_size : null)
+        ? null
         : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
-      const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption);
+      // FONTE DO CONSUMO DO FORRO DO CABEDAL (principal) = o SOLADO, por numeração
+      // (`sole_technical_specs.lining_consumption_dm2`, dm²/par). A ficha só escolhe
+      // grupo/cor. Espelha o fachete (dm²→metro pela largura da ficha do material)
+      // e o fallback `v_spec.lining_consumption_dm2` do SQL by_grade. Prioridade
+      // idêntica ao SQL: solado → escalar `lining_consumption` (per_size da ficha
+      // saiu — o grid foi removido; 0 fichas tinham valor). (2026-07-01)
+      const liningSolePerSize = isPrincipalLining ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
+      const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
+      const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
+      let liningTotal: number;
+      if (isPrincipalLining && liningSoleVals.length > 0) {
+        // sheet=null → usa o override PURO em dm² (não trata como metro); depois
+        // converte dm²→metro pela largura da ficha do material (igual fachete).
+        const avgLiningSole = liningSoleVals.reduce((a, b) => a + b, 0) / liningSoleVals.length;
+        const liningDm2 = calculateGradeBasedDm2(item, avgLiningSole, null, liningSolePerSize, soleProductId, sheet?.sole_drives_consumption);
+        liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
+      } else {
+        liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption).total;
+      }
       const liningPin = isPrincipalLining && (sheet as any)?.lining_material_product_id
         ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
         : null;
@@ -641,7 +684,7 @@ export function computeConsumptionForItems(
         productUnit: 'metro',
         color: mappedLiningColor,
         totalQuantity: liningTotal,
-        widthMissing: isLinearWidthMissing(liningSheet, 'm'),
+        widthMissing: liningWidthMissing,
       });
     }
 

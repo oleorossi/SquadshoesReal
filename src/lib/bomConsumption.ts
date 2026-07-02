@@ -130,6 +130,23 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
   }
 
+  // FORRO DO CABEDAL por número (dm²/par) do SOLADO — fonte do consumo do forro
+  // (2026-07-01), espelha orderConsumption/custeio. A ficha só escolhe grupo/cor.
+  const liningSpecBySole = new Map<string, Record<string, number>>();
+  {
+    const { data: liningSpecs } = await (supabase as any)
+      .from('sole_technical_specs')
+      .select('sole_id, size, lining_consumption_dm2')
+      .gt('lining_consumption_dm2', 0);
+    for (const r of (liningSpecs || []) as any[]) {
+      const v = Number(r.lining_consumption_dm2) || 0;
+      if (v <= 0 || r.size == null) continue;
+      const m = liningSpecBySole.get(r.sole_id) || {};
+      m[String(r.size)] = v;
+      liningSpecBySole.set(r.sole_id, m);
+    }
+  }
+
   const getComponentSheetsForGroup = (groupName: string) => {
     const normalizedGroup = normalizeText(groupName);
     return (componentSheets || []).filter((cs: any) => {
@@ -252,14 +269,25 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (liningMatch) {
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const soleProductId = soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
-      // Consumo de forro por NUMERAÇÃO como primário (espelha cabedal/modal/SQL):
-      // lining_consumption_per_size quando preenchido; senão escalar (fallback no helper).
       const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
+      // Alternativa: consumo por número da própria ficha. Principal: do SOLADO.
       const liningOverride = isPrincipalLining
-        ? (sheet?.lining_consumption_per_size && Object.keys(sheet.lining_consumption_per_size).length > 0 ? sheet.lining_consumption_per_size : null)
+        ? null
         : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
-      const { total: liningTotal } = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption);
+      // FORRO DO CABEDAL (principal) = SOLADO por número (lining_consumption_dm2,
+      // dm²→metro pela largura da ficha, igual fachete); fallback escalar. (2026-07-01)
+      const liningSolePerSize = isPrincipalLining ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
+      const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
+      const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
+      let liningTotal: number;
+      if (isPrincipalLining && liningSoleVals.length > 0) {
+        const avgLiningSole = liningSoleVals.reduce((a, b) => a + b, 0) / liningSoleVals.length;
+        const liningDm2 = calculateGradeBasedDm2(item, avgLiningSole, null, liningSolePerSize, soleProductId, sheet?.sole_drives_consumption);
+        liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
+      } else {
+        liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption).total;
+      }
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração',
         productUnit: 'metro', color: orderColor, totalQuantity: liningTotal,

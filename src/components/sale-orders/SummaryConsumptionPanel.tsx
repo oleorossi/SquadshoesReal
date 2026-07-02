@@ -178,6 +178,23 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
       }
 
+      // FORRO DO CABEDAL por número (dm²/par) do SOLADO — fonte do consumo do
+      // forro (2026-07-01), espelha orderConsumption/custeio/bom. Ficha só escolhe grupo/cor.
+      const liningSpecBySole = new Map<string, Record<string, number>>();
+      {
+        const { data: liningSpecs } = await (supabase as any)
+          .from('sole_technical_specs')
+          .select('sole_id, size, lining_consumption_dm2')
+          .gt('lining_consumption_dm2', 0);
+        for (const r of (liningSpecs || []) as any[]) {
+          const v = Number(r.lining_consumption_dm2) || 0;
+          if (v <= 0 || r.size == null) continue;
+          const m = liningSpecBySole.get(r.sole_id) || {};
+          m[String(r.size)] = v;
+          liningSpecBySole.set(r.sole_id, m);
+        }
+      }
+
       // Build map of reference_id -> sheet strap_colors
       const sheetStrapsMap = new Map<string, any[]>();
       for (const s of (sheetStrapData || [])) {
@@ -373,15 +390,20 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         if (liningMatch) {
           const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear' });
           const soleProductId = soleColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || null;
-          const { total: liningTotal } = calculateConsumptionWithUnit(
-            gradeItem, 
-            liningMatch.consumption, 
-            liningSheet, 
-            'metro', 
-            sheet?.lining_consumption_per_size,
-            soleProductId,
-            sheet?.sole_drives_consumption
-          );
+          // FORRO DO CABEDAL (principal) = SOLADO por número (lining_consumption_dm2,
+          // dm²→metro pela largura); fallback escalar. Espelha orderConsumption. (2026-07-01)
+          const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
+          const liningSolePerSize = isPrincipalLining ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
+          const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
+          const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
+          let liningTotal: number;
+          if (isPrincipalLining && liningSoleVals.length > 0) {
+            const avgLiningSole = liningSoleVals.reduce((a, b) => a + b, 0) / liningSoleVals.length;
+            const liningDm2 = calculateGradeBasedDm2(gradeItem, avgLiningSole, null, liningSolePerSize, soleProductId, sheet?.sole_drives_consumption);
+            liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
+          } else {
+            liningTotal = calculateConsumptionWithUnit(gradeItem, liningMatch.consumption, liningSheet, 'metro', sheet?.lining_consumption_per_size, soleProductId, sheet?.sole_drives_consumption).total;
+          }
           addConsumptionRow(consumptionMap, { componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração', productUnit: 'metro', color: orderColor, totalQuantity: liningTotal });
         }
 
