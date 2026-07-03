@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, Clock, Wrench, CurrencyDollar as DollarSign, Gauge, Calendar, TrendUp as TrendingUp, Factory } from '@phosphor-icons/react';
+import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, Clock, Wrench, CurrencyDollar as DollarSign, Gauge, Calendar, TrendUp as TrendingUp, Factory, Timer } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -16,6 +16,7 @@ import {
   BomOperationFormData, emptyOperationForm, PRODUCTION_STAGES,
 } from '@/hooks/useBomOperations';
 import { KnifeSizeRangesEditor, type KnifeBucket } from './KnifeSizeRangesEditor';
+import TimeStudyDialog from './TimeStudyDialog';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -123,6 +124,20 @@ export function OperationsTab({
 }: OperationsTabProps) {
   const { data: operations = [], isLoading } = useBomOperations(sheetId);
   const { data: costPolicy } = useCostPolicies();
+  // Rótulo da ficha pro cabeçalho do dialog de cronoanálise (referência travada).
+  const { data: sheetLabel } = useQuery({
+    queryKey: ['sheet_label', sheetId],
+    enabled: !!sheetId,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('technical_sheets')
+        .select('name, code')
+        .eq('id', sheetId)
+        .single();
+      return data ? (data.code ? `${data.code} · ${data.name}` : data.name) : 'Ficha atual';
+    },
+  });
   const addOp = useAddBomOperation();
   const updateOp = useUpdateBomOperation();
   const deleteOp = useDeleteBomOperation();
@@ -131,6 +146,9 @@ export function OperationsTab({
   const [form, setForm] = useState<BomOperationFormData>({ ...emptyOperationForm });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<BomOperationFormData>({ ...emptyOperationForm });
+  // Cronoanálise direto da linha do BOM: dialog pré-preenchido com a operação
+  // (referência travada; "Salvar e aplicar ao BOM" atualiza tempo + custeio).
+  const [timeStudyOp, setTimeStudyOp] = useState<any | null>(null);
 
   // Local state for production fields
   // Removidos: localAssemblyTime / localDifficulty / _localCapacity — card
@@ -619,6 +637,13 @@ export function OperationsTab({
                   <TableCell className="text-xs text-right font-mono font-semibold">{formatCurrency(op.cost_per_pair || 0)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      <Button
+                        variant="ghost" size="icon" className="h-6 w-6 text-primary"
+                        onClick={() => setTimeStudyOp(op)}
+                        title="Cronometrar esta operação (cronoanálise)"
+                      >
+                        <Timer className="h-3 w-3" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={() => handleEdit(op)}>
                         <Pencil className="h-3 w-3" />
                       </Button>
@@ -693,6 +718,20 @@ export function OperationsTab({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Cronoanálise pré-preenchida pela linha do BOM (referência travada). */}
+      <TimeStudyDialog
+        open={!!timeStudyOp}
+        onOpenChange={(v) => { if (!v) setTimeStudyOp(null); }}
+        prefill={timeStudyOp ? {
+          sheetId,
+          sheetLabel: sheetLabel ?? 'Ficha atual',
+          bomOperationId: timeStudyOp.id,
+          operationName: timeStudyOp.operation_name,
+          stage: timeStudyOp.stage,
+          costPerHour: Number(timeStudyOp.cost_per_hour) || 0,
+        } : null}
+      />
     </div>
   );
 }

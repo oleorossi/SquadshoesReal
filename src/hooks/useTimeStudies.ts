@@ -123,10 +123,17 @@ function toRow(data: TimeStudyFormData) {
 export function useAddTimeStudy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: TimeStudyFormData) => {
+    // Retorna o id criado — o fluxo "Salvar e aplicar ao BOM" (TimeStudyDialog)
+    // precisa dele pra chamar apply_time_study_to_bom em sequência.
+    mutationFn: async (data: TimeStudyFormData): Promise<string> => {
       validate(data);
-      const { error } = await supabase.from('time_studies' as any).insert(toRow(data) as any);
+      const { data: created, error } = await supabase
+        .from('time_studies' as any)
+        .insert(toRow(data) as any)
+        .select('id')
+        .single();
       if (error) throw error;
+      return (created as any).id as string;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['time_studies'] });
