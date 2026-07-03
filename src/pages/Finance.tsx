@@ -50,6 +50,7 @@ import UnifiedFinanceTab from '@/components/finance/UnifiedFinanceTab';
 import ComissoesTab from '@/components/finance/ComissoesTab';
 import FactoringTab from '@/components/finance/FactoringTab';
 import BankReconciliationTab from '@/components/finance/BankReconciliationTab';
+import BoletoUploadDialog from '@/components/finance/BoletoUploadDialog';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
@@ -707,6 +708,7 @@ export default function Finance() {
   const deleteReceivable = useDeleteAccountReceivable();
 
   const [payableDialog, setPayableDialog] = useState(false);
+  const [boletoUploadDialog, setBoletoUploadDialog] = useState(false);
   const [receivableDialog, setReceivableDialog] = useState(false);
   const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
   const [editingReceivable, setEditingReceivable] = useState<AccountReceivable | null>(null);
@@ -1075,6 +1077,7 @@ export default function Finance() {
                     actions={
                       <>
                         <Button size="sm" variant="outline" onClick={() => exportPayablesBatch(filteredP)}><FileDown className="h-4 w-4 mr-1" /> CSV</Button>
+                        <Button size="sm" variant="outline" onClick={() => setBoletoUploadDialog(true)}><FileUp className="h-4 w-4 mr-1" /> Importar Boletos</Button>
                         <Button size="sm" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
                       </>
                     }
@@ -1373,6 +1376,7 @@ export default function Finance() {
       </div>
 
       <PayableFormDialog open={payableDialog} onOpenChange={setPayableDialog} editing={editingPayable} suppliers={suppliers.map(s => ({ id: s.id, name: s.name }))} onSave={handleSavePayable} />
+      <BoletoUploadDialog open={boletoUploadDialog} onOpenChange={setBoletoUploadDialog} suppliers={suppliers.map(s => ({ id: s.id, name: s.name }))} />
       <ReceivableFormDialog open={receivableDialog} onOpenChange={setReceivableDialog} editing={editingReceivable} onSave={handleSaveReceivable} />
     </>
   );
