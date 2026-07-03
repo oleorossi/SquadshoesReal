@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2, LinkSimple, Receipt } from '@phosphor-icons/react';
+import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2, LinkSimple, Receipt, FileText } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -13,6 +13,9 @@ const Timesheet            = lazy(() => import('./Timesheet'));
 const FolhaConsolidada     = lazy(() => import('@/components/hr/FolhaConsolidada'));
 const PunchReconciliation  = lazy(() => import('./PunchReconciliationPage'));
 const PayrollPaymentsHistory = lazy(() => import('@/components/hr/PayrollPaymentsHistory'));
+// A aba Relatórios reusa a página Folha em modo somente-relatórios (reportsOnly):
+// mesmo seletor de período + o gerador de documentos (inclui o Espelho de ponto).
+const PayrollReports       = lazy(() => import('./Payroll'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -23,7 +26,7 @@ const TabLoader = () => (
 // Refocus 2026-06-01: RH é pagamento por hora trabalhada. Abas 'painel'
 // (KPIs de banco de horas) e 'fechamento' (HE/jornada esperada) foram
 // aposentadas — caem na 'folha' via LEGACY_TAB_MAP + guard.
-const TABS = ['funcionarios', 'ponto', 'reconciliacao', 'folha', 'pagamentos'] as const;
+const TABS = ['funcionarios', 'ponto', 'reconciliacao', 'folha', 'relatorios', 'pagamentos'] as const;
 type Tab = typeof TABS[number];
 
 const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
@@ -31,6 +34,7 @@ const tabs: { value: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { value: 'ponto',         label: 'Ponto',          icon: AlarmClock },
   { value: 'reconciliacao', label: 'Reconciliação',  icon: LinkSimple },
   { value: 'folha',         label: 'Folha',          icon: DollarSign },
+  { value: 'relatorios',    label: 'Relatórios',     icon: FileText },
   { value: 'pagamentos',    label: 'Pagamentos',     icon: Receipt },
 ];
 
@@ -39,17 +43,16 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
   ponto:         { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
   reconciliacao: { section: 'RH · PONTO',         title: 'Reconciliação de prestadores', description: 'Vincular cada ID do relógio ao prestador certo' },
   folha:         { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Quanto cada funcionário tem a receber, com base no ponto importado' },
+  relatorios:    { section: 'RH · FOLHA',         title: 'Relatórios',       description: 'Folha, calendário, holerite, consolidado por setor e o espelho do relógio de ponto (registro bruto)' },
   pagamentos:    { section: 'RH · FOLHA',         title: 'Pagamentos',       description: 'Registro de pagamentos da folha e recibos assinados — puxe qualquer pagamento depois' },
 };
 
-// URLs/estado legados que apontavam pra abas aposentadas → folha/relatórios.
-// Relatórios foi removido (2026-06-21): folha é a tela única (ponto → quanto pagar).
-// URLs legadas que apontavam pra relatórios/abas aposentadas caem na folha.
+// URLs/estado legados que apontavam pra abas aposentadas → folha.
+// (2026-07-03) "Relatórios" voltou como aba própria — não mapear mais pra folha.
 const LEGACY_TAB_MAP: Record<string, Tab> = {
   'painel':      'folha',
   'fechamento':  'folha',
   'banco-horas': 'folha',
-  'relatorios':  'folha',
   'absenteismo': 'folha',
   'headcount':   'funcionarios',
 };
@@ -128,6 +131,7 @@ export default function RHHub() {
           <TabsContent value="ponto"><Timesheet /></TabsContent>
           <TabsContent value="reconciliacao"><PunchReconciliation /></TabsContent>
           <TabsContent value="folha"><FolhaConsolidada /></TabsContent>
+          <TabsContent value="relatorios"><PayrollReports reportsOnly /></TabsContent>
           <TabsContent value="pagamentos"><PayrollPaymentsHistory /></TabsContent>
         </Suspense>
       </Tabs>
