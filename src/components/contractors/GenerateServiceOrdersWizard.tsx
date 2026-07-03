@@ -61,10 +61,11 @@ export function GenerateServiceOrdersWizard({
 
   const { data: lines = [], isLoading: loadingLines } = usePvOutsourceableLines(saleOrderId || null);
 
-  // Reset ao abrir
+  // Reset ao abrir. Com PV pré-selecionado (atalho no pedido), começa direto no
+  // passo "Serviços e OPs" — o passo Pedido fica acessível voltando no stepper.
   useEffect(() => {
     if (open) {
-      setStep(0);
+      setStep(initialSaleOrderId ? 1 : 0);
       setSaleOrderId(initialSaleOrderId || '');
       setSelectedKeys(new Set());
       setQtyByKey({});
@@ -309,7 +310,9 @@ export function GenerateServiceOrdersWizard({
           {/* ── Passo 2: Serviços e OPs ─────────────────────────────── */}
           {step === 1 && (
             <div className="space-y-2.5">
-              {groups.length === 0 ? (
+              {loadingLines ? (
+                <div className="py-10 text-center text-sm text-muted-foreground">Carregando serviços e OPs...</div>
+              ) : groups.length === 0 ? (
                 <EmptyState icon={Handshake} title="Nada a terceirizar" description="Este pedido não tem OPs com setores terceirizáveis." />
               ) : groups.map((g) => {
                 const selCount = g.lines.filter((l) => selectedKeys.has(keyOf(l))).length;

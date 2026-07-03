@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
+import { ArrowLeft, CircleNotch as Loader2, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -9,6 +9,7 @@ import {
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCard';
+import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
@@ -19,7 +20,7 @@ import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { useAuth } from '@/hooks/useAuth';
 import { useCheckStockAvailability } from '@/hooks/useOrders';
 import { getCanonicalReferenceIdMap, getCanonicalSaleOrderReferences } from '@/lib/saleOrderReferences';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { checkSoleAvailability, SoleAvailabilityResult } from '@/lib/soleAvailability';
@@ -309,6 +310,15 @@ export default function SaleOrderForm() {
   const [strapShortagePvId, setStrapShortagePvId] = useState<string | null>(null);
   const [strapShortagePvNumber, setStrapShortagePvNumber] = useState<string | null>(null);
   const [strapShortagePendingNav, setStrapShortagePendingNav] = useState<boolean>(false);
+
+  // Atalho "Gerar OS por Pedido" — abre o assistente de terceirização já com este
+  // PV selecionado. genOsNavAfter=true quando aberto na finalização (fechar → /sales).
+  const queryClient = useQueryClient();
+  const [genOsOpen, setGenOsOpen] = useState(false);
+  const [genOsPvId, setGenOsPvId] = useState<string | null>(null);
+  const [genOsNavAfter, setGenOsNavAfter] = useState(false);
+  const [postSaveOsOpen, setPostSaveOsOpen] = useState(false);
+  const [postSaveOsPvId, setPostSaveOsPvId] = useState<string | null>(null);
   // Live min billing date for the persistent red badge in the form panel.
   // Edit mode → server compute_min_billing_date(id). New mode → frontend
   // computeMinBillingForNewOrder over current items. Recomputed with debounce.
@@ -608,6 +618,14 @@ export default function SaleOrderForm() {
         setOutsourceCosturaPendingNav(true);
         setOutsourceCosturaOpen(true);
       } else {
+        // Atalho de finalização: se o pedido tem algum serviço terceirizável pendente,
+        // oferece gerar OS por pedido antes de sair (best-effort — falha não bloqueia).
+        try {
+          const { data: outLines } = await (supabase as any).rpc('get_pv_outsourceable_lines', { p_sale_order_id: pvId });
+          const actionable = (outLines || []).some((l: any) =>
+            !l.already_has_os && String(l.sector_status || '').toLowerCase() !== 'concluido');
+          if (actionable) { setPostSaveOsPvId(pvId); setPostSaveOsOpen(true); return; }
+        } catch { /* segue pro fluxo normal */ }
         navigate('/sales');
       }
     };
@@ -1186,6 +1204,14 @@ export default function SaleOrderForm() {
                   {form?.order_number || id?.substring(0, 8)}
                 </Badge>
               )}
+              {isEdit && id && (
+                <Button
+                  variant="outline" size="sm" className="h-9 gap-1.5"
+                  onClick={() => { setGenOsPvId(id); setGenOsNavAfter(false); setGenOsOpen(true); }}
+                >
+                  <Handshake className="h-4 w-4" /> Gerar OS
+                </Button>
+              )}
               <Button variant="ghost" size="sm" className="h-9" onClick={() => navigate('/sales')}>Cancelar</Button>
             </>
           }
@@ -1352,6 +1378,43 @@ export default function SaleOrderForm() {
         ops={cancelOpsDialog.ops}
         isCancelling={cancelOrdersBatch.isPending}
         onConfirm={handleConfirmCancelOps}
+      />
+
+      {/* Atalho de finalização: oferece gerar OS de terceirização deste pedido */}
+      <Dialog
+        open={postSaveOsOpen}
+        onOpenChange={(o) => { if (!o) { setPostSaveOsOpen(false); navigate('/sales'); } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" weight="fill" /> Pedido salvo
+            </DialogTitle>
+            <DialogDescription>
+              Quer colocar algum serviço deste pedido na rua agora? Ex.: forração de palmilha, solagem.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setPostSaveOsOpen(false); navigate('/sales'); }}>
+              Concluir
+            </Button>
+            <Button onClick={() => { setPostSaveOsOpen(false); setGenOsPvId(postSaveOsPvId); setGenOsNavAfter(true); setGenOsOpen(true); }}>
+              <Handshake className="h-4 w-4 mr-1" /> Gerar OS por Pedido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <GenerateServiceOrdersWizard
+        open={genOsOpen}
+        onOpenChange={(o) => {
+          setGenOsOpen(o);
+          if (!o && genOsNavAfter) { setGenOsNavAfter(false); navigate('/sales'); }
+        }}
+        initialSaleOrderId={genOsPvId || undefined}
+        onGenerated={() => {
+          if (genOsPvId) queryClient.invalidateQueries({ queryKey: ['pv_service_orders', genOsPvId] });
+        }}
       />
     </>
   );
