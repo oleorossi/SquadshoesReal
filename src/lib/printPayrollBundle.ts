@@ -20,6 +20,9 @@ export type BundleDay = {
 export type BundleEmployee = {
   id: string; name: string; role?: string; department?: string;
   run: BundleRun; days: BundleDay[];
+  /** Batidas BRUTAS importadas do relógio, por dia — usado só pelo Espelho
+   *  (registro cru, sem cálculo). Ausente nos demais relatórios. */
+  rawDays?: { date: string; punches: string[] }[];
 };
 
 const fmt = (v: number) =>
@@ -192,7 +195,47 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
   </section>`;
 }
 
-export type PayrollDocs = { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean };
+// ── Espelho relógio de ponto: registro BRUTO importado, SEM cálculo nenhum ────
+//    (nem falta, nem atraso, nem HE). Só a hora que bateu — pra conferir se o
+//    arquivo do relógio está batendo. Uma tabela por funcionário.
+const WEEKDAY_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+function weekdayPt(dateStr: string): string {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return WEEKDAY_PT[new Date(y, m - 1, d).getDay()] ?? '';
+}
+function espelhoSection(e: BundleEmployee, periodTitle: string): string {
+  const days = (e.rawDays || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const rows = days.map(d => {
+    const p = (Array.isArray(d.punches) ? d.punches : []).map(x => String(x).trim()).filter(Boolean);
+    const has = p.length > 0;
+    const entrada = has ? p[0] : '—';
+    const saida = p.length >= 2 ? p[p.length - 1] : '—';
+    const todas = has ? p.join('   ') : '—';
+    const dd = `${String(d.date).slice(8, 10)}/${String(d.date).slice(5, 7)}`;
+    return `<tr>
+      <td style="text-align:center;">${dd}</td>
+      <td style="text-align:center;">${weekdayPt(d.date)}</td>
+      <td style="text-align:center;font-weight:600;">${esc(entrada)}</td>
+      <td style="text-align:center;font-weight:600;">${esc(saida)}</td>
+      <td style="text-align:center;font-family:'Fira Code',monospace;letter-spacing:.3px;">${esc(todas)}</td>
+      <td style="text-align:center;color:${has ? '#047857' : '#b91c1c'};font-weight:600;">${has ? 'Bateu' : 'Não bateu'}</td>
+    </tr>`;
+  }).join('');
+  const bateu = days.filter(d => (Array.isArray(d.punches) ? d.punches : []).some(x => String(x).trim())).length;
+  return `<section class="doc">
+    <h2>Espelho relógio de ponto · ${esc(periodTitle)}</h2>
+    <p class="sub">${esc(e.name)}${e.id ? ' · matrícula ' + esc(e.id) : ''}${e.role ? ' · ' + esc(e.role) : ''}${e.department ? ' · ' + esc(e.department) : ''}
+      · ${days.length} dia(s) importado(s) · ${bateu} com batida</p>
+    <p class="legend" style="margin:0 0 8px;">Registro BRUTO do relógio — sem cálculo de horas, faltas ou atrasos. Confira as batidas.</p>
+    <table class="grid">
+      <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Saída</th><th>Batidas</th><th>Situação</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#6b7280;padding:12px;">Nenhum registro importado neste período.</td></tr>'}</tbody>
+    </table>
+  </section>`;
+}
+
+export type PayrollDocs = { folha: boolean; calendario: boolean; holerite: boolean; setor?: boolean; espelho?: boolean };
 
 /**
  * Monta o HTML do documento (sem abrir janela). Fonte ÚNICA usada tanto pela
@@ -205,6 +248,9 @@ export function buildPayrollHtml(params: {
   periodTitle: string;
   docs: PayrollDocs;
   employees: BundleEmployee[];
+  /** Lista do Espelho (registro bruto) — independente do escopo da folha, pois
+   *  o Espelho não precisa da folha calculada. Cada item usa `rawDays`. */
+  espelhoEmployees?: BundleEmployee[];
   autoPrint?: boolean;
   /** 'employee' (padrão): relatórios gerais (Folha/Setor) 1× no topo, depois o
    *  pacote de cada funcionário (Calendário + Holerite) JUNTO — impressão
@@ -212,7 +258,9 @@ export function buildPayrollHtml(params: {
   groupBy?: 'employee' | 'type';
 }): string {
   const { periodTitle, docs, employees } = params;
-  if (employees.length === 0) return '';
+  const espelhoEmps = params.espelhoEmployees ?? [];
+  const wantsEspelho = !!docs.espelho && espelhoEmps.length > 0;
+  if (employees.length === 0 && !wantsEspelho) return '';
   const groupBy = params.groupBy ?? 'employee';
 
   const sections: string[] = [];
@@ -233,6 +281,10 @@ export function buildPayrollHtml(params: {
     if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
     if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
   }
+  // Espelho: registro bruto, uma página por funcionário, DEPOIS dos demais docs.
+  // Vem da própria lista `espelhoEmployees` (não da folha) — funciona mesmo sem
+  // a folha calculada, já que é só conferência das batidas importadas.
+  if (docs.espelho) espelhoEmps.forEach(e => sections.push(`<section class="emp">${espelhoSection(e, periodTitle)}</section>`));
   if (sections.length === 0) return '';
 
   const printScript = params.autoPrint === false
@@ -275,6 +327,7 @@ export function printPayrollBundle(params: {
   periodTitle: string;
   docs: PayrollDocs;
   employees: BundleEmployee[];
+  espelhoEmployees?: BundleEmployee[];
   groupBy?: 'employee' | 'type';
 }): void {
   const html = buildPayrollHtml(params);
