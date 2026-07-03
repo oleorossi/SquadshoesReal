@@ -499,12 +499,20 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       setSoleEditProduct(product);
       return;
     }
+    // Variantes de cor = mesmo NOME-BASE dentro do grupo, NÃO todo o group_id.
+    // Grupos de estoque (ex.: COMPONENTES) guardam materiais heterogêneos
+    // (Binóculo, Fivela, Ilhós) — agrupar pelo group_id inteiro fazia o lápis de
+    // uma linha abrir os vizinhos como se fossem "variantes de cor" do item
+    // clicado. Escopar por nome-base espelha o subagrupamento que a própria lista
+    // já usa (createSubGroups + o lápis do cabeçalho de subgrupo).
     if (product.group_id) {
-      const groupVariants = products.filter(p => p.group_id === product.group_id);
-      if (groupVariants.length > 0) {
-        // Usa o nome base normalizado pra o título do dialog
-        const baseName = (product.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || product.name;
-        setMasterVariant({ baseName, groupId: product.group_id, baseKey: null });
+      const baseKey = getBaseName(product) || product.name.toUpperCase();
+      const colorVariants = products.filter(p =>
+        p.group_id === product.group_id &&
+        (getBaseName(p) || p.name.toUpperCase()) === baseKey,
+      );
+      if (colorVariants.length > 1) {
+        setMasterVariant({ baseName: baseKey, groupId: product.group_id, baseKey });
         return;
       }
     }
