@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { stripColorFromName } from '@/lib/utils';
+import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
@@ -155,10 +156,14 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
         if (targetGroupId) {
           groupId = targetGroupId;
         } else {
-          // Create new group
+          // Create new group. Setor é obrigatório desde 20260901140000 (CHECK +
+          // NOT NULL) — deriva da categoria dos itens agrupados (a category dos
+          // produtos nasce do setor do grupo, então é o melhor sinal disponível).
+          const itemCat = (items as any[]).find(p => p?.category)?.category;
+          const sector = SECTOR_OPTIONS.some(o => o.value === itemCat) ? itemCat : 'Componente';
           const { data, error } = await supabase
             .from('product_groups')
-            .insert({ name: baseName, description: 'Agrupado automaticamente' })
+            .insert({ name: baseName, description: 'Agrupado automaticamente', sector })
             .select()
             .single();
           if (error) throw error;

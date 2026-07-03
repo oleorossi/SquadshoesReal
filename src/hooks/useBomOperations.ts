@@ -62,9 +62,11 @@ export function useAddBomOperation() {
     mutationFn: async ({ sheetId, data }: { sheetId: string; data: BomOperationFormData }) => {
       if (!Number.isFinite(data.standard_time_minutes) || data.standard_time_minutes < 0) throw new Error('Tempo padrão deve ser um número não-negativo.');
       if (!Number.isFinite(data.cost_per_hour) || data.cost_per_hour < 0) throw new Error('Custo por hora deve ser um número não-negativo.');
+      // Operação criada pela UI é sempre 'manual' — o generate_bom_operations v2
+      // preserva manual/cronoanálise e só regenera capacidade/default/pendente.
       const { error } = await supabase
         .from('bom_operations')
-        .insert({ sheet_id: sheetId, ...data } as any);
+        .insert({ sheet_id: sheetId, ...data, time_source: 'manual' } as any);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -81,9 +83,16 @@ export function useUpdateBomOperation() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<BomOperationFormData> }) => {
       if (data.standard_time_minutes !== undefined && (!Number.isFinite(data.standard_time_minutes) || data.standard_time_minutes < 0)) throw new Error('Tempo padrão deve ser um número não-negativo.');
       if (data.cost_per_hour !== undefined && (!Number.isFinite(data.cost_per_hour) || data.cost_per_hour < 0)) throw new Error('Custo por hora deve ser um número não-negativo.');
+      // Se o usuário mexeu em tempo/custo/ativação, a linha passa a ser 'manual'
+      // (deixa de ser regenerável pelo generate_bom_operations v2).
+      const takesOwnership =
+        data.standard_time_minutes !== undefined ||
+        data.cost_per_hour !== undefined ||
+        data.active !== undefined;
+      const payload = takesOwnership ? { ...data, time_source: 'manual' } : data;
       const { error } = await supabase
         .from('bom_operations')
-        .update(data as any)
+        .update(payload as any)
         .eq('id', id);
       if (error) throw error;
     },

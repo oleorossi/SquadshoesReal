@@ -30,7 +30,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
 import { NetMarginChart } from '@/components/finance/NetMarginChart';
-import { useMissingARSaleOrders, useReconcileMissingAR } from '@/hooks/useReconcileMissingAR';
+import { useMissingARSaleOrders, useReconcileMissingAR, isReconciliavel } from '@/hooks/useReconcileMissingAR';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -85,6 +85,8 @@ export default function FinanceiroDashboard() {
   const { data: missingAR } = useMissingARSaleOrders();
   const reconcile = useReconcileMissingAR();
   const missingTotal = (missingAR ?? []).reduce((s, o) => s + o.total, 0);
+  const reconciliaveis = (missingAR ?? []).filter(isReconciliavel);
+  const semNf = (missingAR ?? []).filter((o) => !isReconciliavel(o));
 
   return (
     <AppLayout>
@@ -106,31 +108,37 @@ export default function FinanceiroDashboard() {
           }
         />
 
-        {/* Reconciliação de receita: PVs faturados (NF autorizada) sem conta a receber.
-            A NF autoriza de forma assíncrona pelo servidor e a receita não nasce — aqui
-            o gestor reconcilia em 1 clique (caminho canônico, idempotente). */}
+        {/* Reconciliação de receita: PVs faturados sem conta a receber (view
+            server-side v_faturado_sem_ar). O cron sync-ar resolve os casos com NF
+            a cada 30min; este banner é o espelho imediato — 1 clique reconcilia
+            os que têm NF, e os SEM NF são listados pra decisão (emitir NF-e,
+            registrar NF externa ou marcar como venda informal). */}
         {missingAR && missingAR.length > 0 && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-3">
             <div className="flex items-start gap-2.5 min-w-0">
               <Warning className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" weight="fill" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                  {missingAR.length} {missingAR.length === 1 ? 'pedido faturado' : 'pedidos faturados'} com NF autorizada sem conta a receber
+                  {missingAR.length} {missingAR.length === 1 ? 'pedido faturado' : 'pedidos faturados'} sem conta a receber · {fmt(missingTotal)}
                 </p>
                 <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
-                  A NF autorizou pela sincronização automática e a receita não foi gerada · {fmt(missingTotal)}
+                  {reconciliaveis.length > 0 && `${reconciliaveis.length} com NF — reconciliável em 1 clique`}
+                  {reconciliaveis.length > 0 && semNf.length > 0 && ' · '}
+                  {semNf.length > 0 && `${semNf.length} sem NF — emitir NF-e ou registrar NF externa no PV (${semNf.map((o) => o.order_number).slice(0, 4).join(', ')}${semNf.length > 4 ? '…' : ''})`}
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              className="shrink-0 gap-1.5"
-              disabled={reconcile.isPending}
-              onClick={() => reconcile.mutate(missingAR)}
-            >
-              {reconcile.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
-              Reconciliar {missingAR.length}
-            </Button>
+            {reconciliaveis.length > 0 && (
+              <Button
+                size="sm"
+                className="shrink-0 gap-1.5"
+                disabled={reconcile.isPending}
+                onClick={() => reconcile.mutate(reconciliaveis)}
+              >
+                {reconcile.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
+                Reconciliar {reconciliaveis.length}
+              </Button>
+            )}
           </div>
         )}
 

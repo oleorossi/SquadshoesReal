@@ -33,6 +33,9 @@ type ItemMargin = {
   totalCost: number;
   margin: number;
   marginPct: number;
+  /** breakdown.labor_status do SQL: 'ok' | 'tempo_pendente' | 'sem_tempo' | 'sem_operacoes' */
+  laborStatus?: string;
+  laborPendingSectors?: string[];
   error?: string;
 };
 
@@ -107,6 +110,15 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                     errs.push(`${tag}: unidade incompatível em ${conversionIssues.join(', ')}`);
                   }
                 }
+                // P0.1: status explícito da MO vindo do breakdown persistível.
+                const laborStatus = (cost.breakdown as any)?.labor_status as string | undefined;
+                const laborPendingSectors = (((cost.breakdown as any)?.labor_pending_sectors ?? []) as string[]);
+                if (laborStatus === 'sem_tempo' || laborStatus === 'sem_operacoes') {
+                  const tag = `${refName} (${it.color || '—'})`;
+                  errs.push(`${tag}: mão de obra R$0 — ${laborStatus === 'sem_operacoes'
+                    ? 'ficha sem operações de MO'
+                    : `sem tempo/taxa em ${laborPendingSectors.join(', ') || 'todos os setores'}`}`);
+                }
                 return {
                   itemId: it.id, referenceId: it.reference_id ?? null, refName, refCode, color: it.color || '—',
                   quantity: qty, unitPrice, revenue,
@@ -115,6 +127,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                   overheadCost: Number(cost.overhead_cost) || 0,
                   packagingCost: Number(cost.packaging_cost) || 0,
                   totalCost, margin, marginPct,
+                  laborStatus, laborPendingSectors,
                 };
               } catch (err: any) {
                 errs.push(`${refName} (${it.color || '—'}): ${err.message || 'erro no cálculo'}`);
@@ -261,7 +274,22 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                       <TableCell className="text-right font-mono">{it.quantity}</TableCell>
                       <TableCell className="text-right font-mono tabular-nums">{fmt(it.revenue)}</TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
-                        {it.error ? <span className="text-amber-600 italic">—</span> : fmt(it.totalCost)}
+                        {it.error ? <span className="text-amber-600 italic">—</span> : (
+                          <div className="flex items-center justify-end gap-1.5">
+                            {it.laborStatus && it.laborStatus !== 'ok' && (
+                              <Badge
+                                variant="outline"
+                                className="border-amber-500/40 text-amber-600 text-[10px] font-sans"
+                                title={it.laborPendingSectors?.length
+                                  ? `Setores sem tempo/taxa de MO: ${it.laborPendingSectors.join(', ')}`
+                                  : 'Mão de obra pendente de configuração'}
+                              >
+                                MO pendente
+                              </Badge>
+                            )}
+                            {fmt(it.totalCost)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className={cn(
                         'text-right font-mono tabular-nums font-semibold',

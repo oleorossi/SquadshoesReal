@@ -5,7 +5,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import {
   useContractors, useServiceOrders, useServiceOrderOverview, useCreateContractor, useUpdateContractor, useDeleteContractor,
+  useBulkReceiveServiceOrders, useArchiveServiceOrders,
   useCreateServiceOrder, useUpdateServiceOrder, useDeleteServiceOrder, useContractorSectorRate,
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
@@ -101,6 +102,7 @@ const STATUS_CHIPS: { value: string; label: string }[] = [
   // tratados à parte de matchesStatusChip (precisam do overview/prazo).
   { value: 'na_rua', label: 'Na rua' },
   { value: 'atrasados', label: 'Atrasados' },
+  { value: 'paradas', label: 'Paradas +15d' },
   { value: 'Pendente', label: 'Pendente' },
   { value: 'Em Andamento', label: 'Em Processamento' },
   { value: 'Concluído', label: 'Entregue' },
@@ -264,6 +266,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const createRecipe = useCreateArtisanalRecipe();
   const updateRecipe = useUpdateArtisanalRecipe();
   const deleteRecipe = useDeleteArtisanalRecipe();
+  const bulkReceive = useBulkReceiveServiceOrders();
+  const archiveOs = useArchiveServiceOrders();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = usePersistedState('contractors-search', '');
@@ -295,6 +299,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   }, [setSearchParams]);
   const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
   const [osPdfBusy, setOsPdfBusy] = useState(false);
+  const [showArchivedOs, setShowArchivedOs] = useState(false);
   const toggleOsSelect = useCallback((id: string) => {
     setSelectedOsIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }, []);
@@ -415,8 +420,12 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   const searchedOrders = useMemo(() => {
     const q = normalizeForSearch(search);
-    return orders.filter(o => normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q));
-  }, [orders, search]);
+    return orders.filter(o => {
+      // Arquivadas (triagem P0.3) ficam fora das listas por default.
+      if (!showArchivedOs && o.archived_at) return false;
+      return normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q);
+    });
+  }, [orders, search, showArchivedOs]);
 
   // ── Operacional "Na rua" (fundido da antiga aba, 2026-06-30) ──────────────
   // "Na rua" = OS com pares ainda em campo (overview.qty_in_field > 0).
@@ -433,11 +442,22 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     (o: ServiceOrder) => osInField(o) && !!o.quoted_deadline && o.quoted_deadline < todayISO,
     [osInField, todayISO],
   );
+  // "Paradas +15d" = OS ativa criada/agendada há mais de 15 dias que nunca
+  // avançou de status (triagem P0.3 — o gap real era o ciclo parado: OS Pendente
+  // nunca vira Concluído e a conta a pagar nunca nasce).
+  const osStale = useCallback((o: ServiceOrder) => {
+    if (!isOsActive(o.status)) return false;
+    const ref = o.service_date || o.created_at?.slice(0, 10);
+    if (!ref) return false;
+    const ageDays = Math.round((new Date(todayISO + 'T00:00:00').getTime() - new Date(ref + 'T00:00:00').getTime()) / 86400000);
+    return ageDays > 15;
+  }, [todayISO]);
   const matchChip = useCallback((o: ServiceOrder, chip: string) => {
     if (chip === 'na_rua') return osInField(o);
     if (chip === 'atrasados') return osLate(o);
+    if (chip === 'paradas') return osStale(o);
     return matchesStatusChip(o.status, chip);
-  }, [osInField, osLate]);
+  }, [osInField, osLate, osStale]);
 
   const statusChipCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -524,6 +544,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   const selectedOrders = useMemo(() => orders.filter(o => selectedOsIds.has(o.id)), [orders, selectedOsIds]);
   const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
+  // Triagem P0.3: elegíveis pro recebimento total em lote (ativas, não arquivadas).
+  const bulkReceivable = useMemo(
+    () => selectedOrders.filter(o => isOsActive(o.status) && !o.archived_at),
+    [selectedOrders],
+  );
   const allOsSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOsIds.has(o.id));
   const toggleSelectAllOs = useCallback(() => {
     setSelectedOsIds(prev => (filteredOrders.length > 0 && filteredOrders.every(o => prev.has(o.id))) ? new Set() : new Set(filteredOrders.map(o => o.id)));
@@ -1446,6 +1471,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </span>
                   </Button>
                 ))}
+                {/* Triagem P0.3: arquivadas ficam fora das listas por default. */}
+                <Button
+                  size="sm"
+                  variant={showArchivedOs ? 'secondary' : 'ghost'}
+                  className="h-9 text-xs text-muted-foreground"
+                  onClick={() => setShowArchivedOs(v => !v)}
+                >
+                  {showArchivedOs ? 'Ocultar arquivadas' : 'Mostrar arquivadas'}
+                </Button>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 {/* Filtros de relatório (prestador / período / base) + PDF num popover —
@@ -2666,7 +2700,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         ]}
       />
 
-      {/* Rodapé fixo de seleção de OS: totais somados + relatório PDF */}
+      {/* Rodapé fixo de seleção de OS: totais somados + relatório PDF + ações
+          da triagem P0.3 (receber em lote / arquivar). */}
       <SelectionTotalsBar
         count={selectedOsIds.size}
         total={osSelectionSummary.total}
@@ -2675,6 +2710,66 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         onClear={() => setSelectedOsIds(new Set())}
         onGeneratePdf={() => handleGenerateOsPdf('selecao')}
         generating={osPdfBusy}
+        extraActions={
+          <>
+            {bulkReceivable.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1.5" disabled={bulkReceive.isPending}>
+                    {bulkReceive.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    Receber {bulkReceivable.length}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Receber {bulkReceivable.length} OS por completo?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cada OS será marcada como Entregue e <strong>gera conta a pagar</strong> pelos
+                      pares bons. OS de prestador interno (FÁBRICA) concluem sem gerar conta a pagar.
+                      Retorno com perda/defeito deve usar o recebimento individual da OS.
+                      {bulkReceivable.some(o => o.dispatch_tracked) && ' OS divididas entre prestadores serão puladas.'}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => {
+                      bulkReceive.mutate(bulkReceivable.map(o => ({
+                        id: o.id, order_number: o.order_number, quantity: o.quantity, dispatch_tracked: o.dispatch_tracked,
+                      })), { onSuccess: () => setSelectedOsIds(new Set()) });
+                    }}>
+                      Receber em lote
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1.5" disabled={archiveOs.isPending}>
+                  <Archive className="h-3.5 w-3.5" /> Arquivar
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Arquivar {selectedOsIds.size} OS?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Elas somem das listagens (o histórico é preservado e dá pra revê-las com
+                    "Mostrar arquivadas"). Use pra encerrar a triagem de OS antigas que não
+                    representam serviço real em aberto.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => {
+                    archiveOs.mutate([...selectedOsIds], { onSuccess: () => setSelectedOsIds(new Set()) });
+                  }}>
+                    Arquivar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        }
       />
     </>
   );

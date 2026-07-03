@@ -19,3 +19,9 @@ verify_jwt = false
 # parado, banco local atrás do GestaoClick). A função se protege sozinha.
 [functions.sync-nfe-from-provider]
 verify_jwt = false
+
+# Mesma razão acima: chamada pelo pg_cron (trigger_sync_ar_cron, */30) via
+# X-Cron-Secret (vault nfe_sync_cron_secret). A função valida o secret ou
+# Bearer == service role key no handler — nunca roda anônima.
+[functions.sync-ar]
+verify_jwt = false

@@ -38,6 +38,20 @@ const STAGE_COLORS: Record<string, string> = {
    'Expedição': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
 };
 
+// Proveniência do tempo-padrão (bom_operations.time_source). 'manual' e
+// 'cronoanalise' nunca são sobrescritas pelo generate_bom_operations v2.
+const TIME_SOURCE_LABELS: Record<string, string> = {
+  capacidade: 'Capacidade',
+  default: 'Padrão da categoria',
+  cronoanalise: 'Cronoanálise',
+  manual: 'Manual',
+  pendente: 'Pendente',
+};
+const TIME_SOURCE_STYLES: Record<string, string> = {
+  cronoanalise: 'border-green-500/40 text-green-600',
+  pendente: 'border-amber-500/40 text-amber-600',
+};
+
 const DAILY_WORK_MINUTES = 480; // 8h
 
 const formatCurrency = (v: any) => globalFormatCurrency(v);
@@ -577,6 +591,7 @@ export function OperationsTab({
                 <TableHead className="text-xs">Operação</TableHead>
                 <TableHead className="text-xs">Estágio</TableHead>
                 <TableHead className="text-xs">Recurso</TableHead>
+                <TableHead className="text-xs">Fonte do tempo</TableHead>
                 <TableHead className="text-xs text-right">Tempo (min)</TableHead>
                 <TableHead className="text-xs text-right">R$/hora</TableHead>
                 <TableHead className="text-xs text-right">Custo/Par</TableHead>
@@ -594,6 +609,11 @@ export function OperationsTab({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{op.resource_name || '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`text-xs ${TIME_SOURCE_STYLES[op.time_source] || ''}`}>
+                      {TIME_SOURCE_LABELS[op.time_source] || op.time_source || '—'}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-xs text-right font-mono">{safeToFixed(op.standard_time_minutes, 1)}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{formatCurrency(op.cost_per_hour)}</TableCell>
                   <TableCell className="text-xs text-right font-mono font-semibold">{formatCurrency(op.cost_per_pair || 0)}</TableCell>
@@ -608,7 +628,7 @@ export function OperationsTab({
                 </TableRow>
               ))}
               <TableRow className="bg-muted/20 font-bold">
-                <TableCell colSpan={4} className="text-xs">Total MOD</TableCell>
+                <TableCell colSpan={5} className="text-xs">Total MOD</TableCell>
                 <TableCell className="text-xs text-right font-mono font-bold">{safeToFixed(totalTimeMin, 1)}</TableCell>
                 <TableCell></TableCell>
                 <TableCell className="text-xs text-right font-mono font-bold text-primary">{formatCurrency(totalMODCost)}</TableCell>

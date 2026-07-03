@@ -82,6 +82,10 @@ export interface ServiceOrder {
   source_item_key?: string | null;
   payment_due_date?: string | null;
   is_avulsa?: boolean | null;
+  /** OS dividida entre prestadores — paga por RECEBIMENTO, não pelo fluxo normal. */
+  dispatch_tracked?: boolean | null;
+  /** Soft-archive da triagem de OS órfãs (P0.3, 2026-07). Preenchida = fora das listas default. */
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
   contractors?: Contractor;
@@ -421,5 +425,89 @@ export function useDeleteServiceOrder() {
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['service_orders'] }); qc.invalidateQueries({ queryKey: ['service_order_overview'] }); toast.success('Ordem de serviço removida!'); },
     onError: (e: any) => toast.error(e.message),
+  });
+}
+
+/**
+ * P0.3 (2026-07): recebimento TOTAL em lote — insere um retorno com o saldo na
+ * rua de cada OS selecionada. A cadeia EXISTENTE faz o resto:
+ * tg_apply_service_order_return → status 'Concluído' → tg_create_ap_for_service_order
+ * → conta a pagar pelos pares bons (com guarda FÁBRICA payment_days≥999 e
+ * anti-duplicata). Perda/defeito usa o ServiceOrderReturnDialog individual —
+ * o lote assume retorno 100% bom (caso comum da triagem).
+ * OS divididas (dispatch_tracked) são puladas: exigem retorno por prestador.
+ */
+export function useBulkReceiveServiceOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (orders: Array<Pick<ServiceOrder, 'id' | 'order_number' | 'quantity' | 'dispatch_tracked'>>) => {
+      let ok = 0;
+      const skipped: string[] = [];
+      const failed: string[] = [];
+      for (const o of orders) {
+        try {
+          if (o.dispatch_tracked) { skipped.push(o.order_number); continue; }
+          // Saldo na rua = enviado − devolvido (view); OS sem dispatch usa quantity.
+          const { data: bal } = await (supabase as any)
+            .from('v_service_order_balance')
+            .select('qty_in_field')
+            .eq('service_order_id', o.id)
+            .maybeSingle();
+          const inField = Math.max(0, Number(bal?.qty_in_field ?? o.quantity ?? 0));
+          if (inField <= 0) { skipped.push(o.order_number); continue; }
+          const { error } = await (supabase as any).from('service_order_returns').insert({
+            service_order_id: o.id,
+            qty_good: inField,
+            qty_defect: 0,
+            qty_loss: 0,
+            contractor_id: null,
+          });
+          if (error) throw error;
+          ok++;
+        } catch (e: any) {
+          console.error('Receber em lote falhou na OS', o.order_number, e);
+          failed.push(o.order_number);
+        }
+      }
+      return { ok, skipped, failed };
+    },
+    onSuccess: ({ ok, skipped, failed }) => {
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
+      qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
+      qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
+      const parts = [`${ok} OS recebida(s) — conta a pagar gerada pelos pares bons.`];
+      if (skipped.length > 0) parts.push(`${skipped.length} pulada(s) (dividida ou sem saldo): ${skipped.slice(0, 4).join(', ')}${skipped.length > 4 ? '…' : ''}`);
+      if (failed.length > 0) parts.push(`falhou em: ${failed.join(', ')}`);
+      (failed.length > 0 ? toast.warning : toast.success)(parts.join(' '));
+    },
+    onError: (e: any) => toast.error(`Falha no recebimento em lote: ${e.message}`),
+  });
+}
+
+/**
+ * P0.3 (2026-07): arquiva OS da triagem (soft-archive via archived_at — NÃO é um
+ * status: grafia desconhecida normalizaria pra Pendente em osStatusMachine).
+ * Some das listagens default; histórico preservado; reversível via SQL.
+ */
+export function useArchiveServiceOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await (supabase as any)
+        .from('service_orders')
+        .update({ archived_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) throw error;
+      return ids.length;
+    },
+    onSuccess: (n: number) => {
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['service_order_overview'] });
+      toast.success(`${n} OS arquivada(s) — use "Mostrar arquivadas" pra revê-las.`);
+    },
+    onError: (e: any) => toast.error(`Falha ao arquivar: ${e.message}`),
   });
 }

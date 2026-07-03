@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
+import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { z } from 'zod';
 
 export const ProductSchema = z.object({
@@ -392,11 +393,14 @@ export function useAutoGroupProducts() {
         const upperBase = baseName.toUpperCase();
         let groupId = groupMap.get(upperBase);
 
-        // Create group if it doesn't exist
+        // Create group if it doesn't exist. Setor é obrigatório desde
+        // 20260901140000 — deriva da categoria dos itens (fallback 'Componente').
         if (!groupId) {
+          const itemCat = (items as any[]).find(p => p?.category)?.category;
+          const sector = SECTOR_OPTIONS.some(o => o.value === itemCat) ? itemCat : 'Componente';
           const { data: newGroup, error } = await supabase
             .from('product_groups')
-            .insert({ name: baseName, description: `Agrupamento automático: ${items.length} variações` })
+            .insert({ name: baseName, description: `Agrupamento automático: ${items.length} variações`, sector })
             .select()
             .single();
           if (error) continue;
