@@ -27,6 +27,7 @@ import { cn, stripColorFromName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
+import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { SoleTechnicalDetails } from "@/components/technical-sheets/SoleTechnicalDetails";
  import { SoleStandardItemsPanel } from "@/components/technical-sheets/SoleStandardItemsPanel";
  import { SoleSilkPanel } from "@/components/technical-sheets/SoleSilkPanel";
@@ -235,6 +236,42 @@ export default function ProductDetail() {
 
       const validatedData = ProductSchema.parse(baseData);
       await updateProduct.mutateAsync({ id: product.id, data: validatedData as any });
+
+      // `useUpdateProduct` remove quantity/stock_grade do UPDATE plano (precisam
+      // do audit trail + controle de concorrência do RPC adjust_stock). Sem este
+      // passo o campo "Quantidade Atual" mostrava sucesso mas o novo saldo era
+      // descartado silenciosamente. Persistir a mudança de saldo pelo caminho
+      // correto (mesmo RPC usado por StockAdjustmentPage/SoladoGradeDialog).
+      const previousQty = Number(product.quantity ?? 0);
+      let newQty: number;
+      let newGrade: Record<string, number> | null = null;
+      if (hasGrade) {
+        // soladoGrade pode carregar metadados (_size_from/_size_to) — não somar
+        // essas chaves no total, mas preservá-las no grade gravado.
+        newGrade = soladoGrade;
+        newQty = Object.entries(soladoGrade)
+          .filter(([k]) => !k.startsWith('_'))
+          .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+      } else {
+        newQty = Number(form.quantity ?? 0);
+      }
+      const currentGrade = (product.stock_grade && typeof product.stock_grade === 'object' && !Array.isArray(product.stock_grade))
+        ? (product.stock_grade as Record<string, number>) : {};
+      const qtyChanged = Math.abs(newQty - previousQty) > 1e-9;
+      const gradeChanged = hasGrade && JSON.stringify(newGrade) !== JSON.stringify(currentGrade);
+      if (qtyChanged || gradeChanged) {
+        const res = await adjustStockSafe({
+          productId: product.id,
+          expectedPrevious: previousQty,
+          newQty,
+          reason: 'Ajuste manual pelo cadastro do material',
+          newGrade,
+        });
+        if (!res.success) {
+          toast.error(res.errorMessage || 'Falha ao ajustar o estoque do material');
+          return; // não sinaliza sucesso — o saldo não foi persistido
+        }
+      }
 
       // Save component sheet
       const hasYieldData = Object.values(yieldPerSize).some(v => v > 0);
