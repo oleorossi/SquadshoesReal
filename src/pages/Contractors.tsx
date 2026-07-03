@@ -1,6 +1,7 @@
 import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
+import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -270,6 +271,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const archiveOs = useArchiveServiceOrders();
   const queryClient = useQueryClient();
 
+  const [genOsOpen, setGenOsOpen] = useState(false);
   const [search, setSearch] = usePersistedState('contractors-search', '');
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
@@ -1537,6 +1539,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </div>
                   </PopoverContent>
                 </Popover>
+                <Button variant="outline" size="sm" onClick={() => setGenOsOpen(true)} className="h-9 gap-1.5"><Handshake className="h-4 w-4" /> Gerar OS por Pedido</Button>
                 <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>
               </div>
             </div>
@@ -2778,6 +2781,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     <>
       {embedded ? inner : <AppLayout>{inner}</AppLayout>}
       {overlays}
+      <GenerateServiceOrdersWizard
+        open={genOsOpen}
+        onOpenChange={setGenOsOpen}
+        onGenerated={() => {
+          queryClient.invalidateQueries({ queryKey: ['service_orders'] });
+          queryClient.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
+        }}
+      />
     </>
   );
 }

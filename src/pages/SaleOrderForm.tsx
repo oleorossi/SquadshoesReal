@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
-import { PvGeneratedServiceOrdersCard } from '@/components/sale-orders/PvGeneratedServiceOrdersCard';
+import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCard';
 import { useCreateSaleOrder, useUpdateSaleOrder, SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
 import { useCancelOrdersBatch } from '@/hooks/useOrders';
@@ -1222,10 +1222,10 @@ export default function SaleOrderForm() {
           onColorIssueChange={handleColorIssueChange}
         />
 
-        {/* Terceirização integrada: OS geradas automaticamente a partir deste PV */}
+        {/* OS deste pedido (read-only) — geração fica em Terceirizados → Gerar OS por Pedido */}
         {isEdit && id && (
           <div className="mt-4">
-            <PvGeneratedServiceOrdersCard saleOrderId={id} />
+            <PvServiceOrdersCard saleOrderId={id} />
           </div>
         )}
       </div>
