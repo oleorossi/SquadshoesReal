@@ -46,7 +46,7 @@ export function buildEmployeePrintData(
     days: summaries,
     schedule: {
       overtime_multiplier: sch?.overtime_multiplier ?? 1.5,
-      holiday_multiplier: sch?.holiday_multiplier ?? 2,
+      holiday_multiplier: sch?.holiday_multiplier ?? 1.5,
       minimum_overtime_minutes: sch?.minimum_overtime_minutes || 0,
     },
     hourlySalary: (Number(emp?.salary) || 0) / MONTHLY_HOURS_DIVISOR,

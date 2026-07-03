@@ -35,6 +35,16 @@
 
 ---
 
+## ✅ Correções aplicadas nesta PR (2026-07-03)
+
+- **A1, A2, A3** corrigidos (display — não mudam pagamento).
+- **B4 (feriado)** unificado em **1,5×** por decisão do usuário: migration
+  `20260703200000_unify-holiday-multiplier-1.5x.sql` zera a divergência (as 17
+  escalas passam a `holiday_multiplier = 1.5`, default da coluna = 1.5) + fallbacks
+  do frontend `2.0 → 1.5`. A folha já pagava 1,5× flat; o espelho/calendário/Overview
+  deixam de exibir 2×. **Nenhum valor de folha muda.**
+- Demais itens (A4, A5, B1–B3, B5, C*) permanecem **abertos** — ver abaixo.
+
 ## A. Incompatibilidades CONFIRMADAS (bugs — corrigir)
 
 ### A1 · PreFolha soma colunas mortas → HE e DSR aparecem R$ 0,00

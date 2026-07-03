@@ -130,7 +130,7 @@ export function KPIsRH() {
         </CardContent>
       </Card>
 
-      <Card title={`Soma de HE 50% + HE 100% + adicional noturno no mês ${periodLabel}.`}>
+      <Card title={`Soma da HE (1,5×) paga no mês ${periodLabel}.`}>
         <CardContent className="pt-5 pb-4">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -139,7 +139,7 @@ export function KPIsRH() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Custo HE (mês)</p>
               <p className="text-lg font-bold font-mono leading-tight">{fmt(data.heCusto)}</p>
-              <p className="text-xs text-muted-foreground">50% + 100% + noturno</p>
+              <p className="text-xs text-muted-foreground">HE 1,5×</p>
             </div>
           </div>
         </CardContent>

@@ -5,8 +5,9 @@
  *  - exportar pra Excel/CSV pra contador conferir
  *  - decidir quais payroll_runs aprovar/ajustar antes do "Aprovar folha"
  *
- * Fonte: payroll_runs filtrado pelo period selecionado. Cada row tem
- * todas as parcelas (50/100/noturno/DSR/faltas/INSS/IRRF/VR/VA/VT).
+ * Fonte: payroll_runs filtrado pelo period selecionado. HE = overtime_amount
+ * (modelo atual = HE única 1,5×; as colunas 50/100/noturno/DSR são legado NÃO
+ * escrito e por isso saíram do relatório — davam R$0). Ver docs/AUDITORIA_RH_COMPATIBILIDADE.md.
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -35,12 +36,7 @@ interface PayrollRow {
   status: string;
   base_salary: number;
   overtime_50_minutes: number;
-  overtime_50_value: number;
-  overtime_100_minutes: number;
-  overtime_100_value: number;
-  night_minutes: number;
-  night_bonus_value: number;
-  dsr_value: number;
+  overtime_amount: number;
   absent_days: number;
   absence_discount: number;
   vr_value: number;
@@ -92,16 +88,15 @@ export default function PreFolha() {
     return [...runs].sort((a, b) => (a.employees?.name || '').localeCompare(b.employees?.name || ''));
   }, [runs]);
 
-  // Agregações pra header e totalizadores
+  // Agregações pra header e totalizadores.
+  // HE = overtime_amount (valor da HE 1,5× que a Payroll grava). As colunas legadas
+  // overtime_50_value/overtime_100_*/night_*/dsr_value NÃO são mais escritas pela
+  // Payroll (modelo atual = HE única 1,5×), então somá-las dava HE = R$0 no relatório
+  // do contador. Alinhado com KPIsRH (fix auditoria 2026-06-17). Ver AUDITORIA_RH_*.
   const totals = useMemo(() => {
     return runs.reduce((acc, r) => ({
-      he50Min: acc.he50Min + (r.overtime_50_minutes || 0),
-      he50Value: acc.he50Value + (r.overtime_50_value || 0),
-      he100Min: acc.he100Min + (r.overtime_100_minutes || 0),
-      he100Value: acc.he100Value + (r.overtime_100_value || 0),
-      nightMin: acc.nightMin + (r.night_minutes || 0),
-      nightValue: acc.nightValue + (r.night_bonus_value || 0),
-      dsr: acc.dsr + (r.dsr_value || 0),
+      heMin: acc.heMin + (r.overtime_50_minutes || 0),
+      heValue: acc.heValue + (r.overtime_amount || 0),
       absentDays: acc.absentDays + (r.absent_days || 0),
       absentValue: acc.absentValue + (r.absence_discount || 0),
       proventos: acc.proventos + (r.total_proventos || 0),
@@ -110,8 +105,7 @@ export default function PreFolha() {
       pendentes: acc.pendentes + (r.status === 'draft' || !r.approved_at ? 1 : 0),
       aprovadas: acc.aprovadas + (r.approved_at ? 1 : 0),
     }), {
-      he50Min: 0, he50Value: 0, he100Min: 0, he100Value: 0,
-      nightMin: 0, nightValue: 0, dsr: 0,
+      heMin: 0, heValue: 0,
       absentDays: 0, absentValue: 0,
       proventos: 0, descontos: 0, liquido: 0,
       pendentes: 0, aprovadas: 0,
@@ -121,8 +115,7 @@ export default function PreFolha() {
   const exportCsv = () => {
     const headers = [
       'Funcionário', 'Setor', 'Status',
-      'Salário base', 'HE 50% (h)', 'HE 50% (R$)', 'HE 100% (h)', 'HE 100% (R$)',
-      'Noturno (h)', 'Noturno (R$)', 'DSR (R$)',
+      'Salário base', 'HE 1,5× (h)', 'HE 1,5× (R$)',
       'Faltas (dias)', 'Desc. faltas (R$)',
       'VR (R$)', 'VA (R$)', 'VT (R$)', 'VT desc. func. (R$)',
       'Plano saúde (R$)', 'INSS (R$)', 'IRRF (R$)', 'Adiantamentos (R$)',
@@ -132,9 +125,7 @@ export default function PreFolha() {
       r.employees?.name || '—',
       r.employees?.department || '—',
       r.approved_at ? 'Aprovada' : 'Rascunho',
-      r.base_salary, fmtMin(r.overtime_50_minutes), r.overtime_50_value,
-      fmtMin(r.overtime_100_minutes), r.overtime_100_value,
-      fmtMin(r.night_minutes), r.night_bonus_value, r.dsr_value,
+      r.base_salary, fmtMin(r.overtime_50_minutes), r.overtime_amount,
       r.absent_days, r.absence_discount,
       r.vr_value, r.va_value, r.vt_total_value, r.vt_employee_discount,
       r.health_plan_discount, r.inss_value, r.irrf_value, r.advances_total,
@@ -193,9 +184,9 @@ export default function PreFolha() {
                 )}
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">HE total</p>
-                <p className="font-mono text-lg font-bold">{fmt(totals.he50Value + totals.he100Value + totals.nightValue)}</p>
-                <p className="text-xs text-muted-foreground">{fmtMin(totals.he50Min + totals.he100Min + totals.nightMin)}</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">HE total (1,5×)</p>
+                <p className="font-mono text-lg font-bold">{fmt(totals.heValue)}</p>
+                <p className="text-xs text-muted-foreground">{fmtMin(totals.heMin)}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Faltas</p>
@@ -219,10 +210,7 @@ export default function PreFolha() {
                   <TableRow className="bg-muted/40">
                     <TableHead className="text-xs uppercase tracking-wider">Funcionário</TableHead>
                     <TableHead className="text-xs uppercase tracking-wider">Setor</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wider">HE 50%</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wider">HE 100%</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wider">Noturno</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wider">DSR</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider">HE 1,5×</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider">Faltas</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider">Proventos</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider">Descontos</TableHead>
@@ -237,17 +225,8 @@ export default function PreFolha() {
                       <TableCell className="text-muted-foreground">{r.employees?.department || '—'}</TableCell>
                       <TableCell className="text-right font-mono">
                         <div>{fmtMin(r.overtime_50_minutes)}</div>
-                        <div className="text-xs text-muted-foreground">{fmt(r.overtime_50_value)}</div>
+                        <div className="text-xs text-muted-foreground">{fmt(r.overtime_amount)}</div>
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        <div>{fmtMin(r.overtime_100_minutes)}</div>
-                        <div className="text-xs text-muted-foreground">{fmt(r.overtime_100_value)}</div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        <div>{fmtMin(r.night_minutes)}</div>
-                        <div className="text-xs text-muted-foreground">{fmt(r.night_bonus_value)}</div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">{fmt(r.dsr_value)}</TableCell>
                       <TableCell className={cn('text-right font-mono', r.absent_days > 0 && 'text-rose-600')}>
                         {r.absent_days > 0 ? (
                           <>
