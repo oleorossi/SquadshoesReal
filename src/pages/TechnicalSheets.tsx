@@ -196,7 +196,7 @@ import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
-import { Link as Link2 } from '@phosphor-icons/react';
+import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
@@ -1657,9 +1657,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         const insoleGroup = matchedGroups.find((g: any) => g.name === insoleGroupName);
 
         if (liningGroup && productGroupId === liningGroup.id && !liningApplied) {
+          // Forro do cabedal: só o escalar como fallback. O consumo por número
+          // vive no SOLADO (sole_technical_specs.lining_consumption_dm2), não na
+          // ficha — não repopular lining_consumption_per_size aqui (2026-07-01).
           updateField('lining_consumption', Number(avg.toFixed(4)));
-          updateField('lining_consumption_per_size', sizeMap);
-          flashField('lining_consumption_per_size');
           liningApplied = true;
         }
         if (insoleGroup && productGroupId === insoleGroup.id && !insoleApplied) {
@@ -3057,30 +3058,22 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         });
                       })()}
                     </div>
-                    {/* ── Forração — re-adicionado 2026-06-20 a pedido do dono ──
-                        Seletor do GRUPO de material de forro. As cores da forração
-                        vêm dos produtos deste grupo (o mapa "Cor da Forração por Cor
-                        de Cabedal" e o débito por cor puxam dele). O consumo por
-                        numeração (lining_consumption_per_size) é o primário no motor. */}
+                    {/* ── Forração (forro do cabedal) ──
+                        A ficha escolhe só o GRUPO/cor do material. As cores vêm dos
+                        produtos deste grupo (mapa "Cor da Forração por Cor de Cabedal"
+                        + débito por cor). O CONSUMO por número saiu daqui em 2026-07-01
+                        e vive no SOLADO (Solados → Consumos → "Forro do Cabedal"), único
+                        por referência — o motor lê `sole_technical_specs.lining_consumption_dm2`. */}
                     <div className="space-y-2 pt-2 border-t border-border/40">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Scissors className="h-3.5 w-3.5 text-purple-600" />
                           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Forração</span>
-                          {form.lining_material && (() => {
-                            const ls = (form as any).lining_consumption_per_size || {};
-                            const vals = Object.values(ls).map(Number).filter((v: number) => v > 0);
-                            const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.lining_consumption) || 0);
-                            return avg > 0 ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
-                                <CheckCircle className="h-3 w-3" weight="fill" /> Completo
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
-                                <AlertTriangle className="h-3 w-3" weight="fill" /> Falta consumo
-                              </span>
-                            );
-                          })()}
+                          {form.lining_material && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                              Consumo por número no solado
+                            </span>
+                          )}
                         </div>
                         {form.sole_group_id && (
                           <Button
@@ -3168,33 +3161,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         );
                       })()}
 
-                      {form.lining_material && (() => {
-                        const liningUnit = getUnitForGroupName(form.lining_material);
-                        return (
-                          <div>
-                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Consumo de Forração por Numeração ({liningUnit}/par)
-                            </Label>
-                            <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-                              Preencha o consumo de forro número a número. A média alimenta o custo automaticamente.
-                              As <strong>cores</strong> vêm dos produtos deste grupo (mapa Cabedal → Forro abaixo).
-                            </p>
-                            {renderSizeGrid(
-                              (form as any).lining_consumption_per_size || {},
-                              liningUnit,
-                              (newPerSize) => {
-                                updateField('lining_consumption_per_size' as any, newPerSize);
-                                const filled = Object.values(newPerSize).filter((v: any) => Number(v) > 0);
-                                if (filled.length > 0) {
-                                  const avg = filled.reduce((a: number, b: any) => a + Number(b), 0) / filled.length;
-                                  updateField('lining_consumption', Math.round(avg * 10000) / 10000);
-                                }
-                              },
-                              'emerald',
-                            )}
-                          </div>
-                        );
-                      })()}
+                      {/* Consumo do forro do cabedal por número saiu daqui (2026-07-01):
+                          é definido no SOLADO (Solados → Consumos → "Forro do Cabedal"),
+                          único por referência. A ficha só define o grupo/cor. */}
+                      {form.lining_material && (
+                        <p className="text-[11px] text-muted-foreground mt-1 flex items-start gap-1.5">
+                          <Info className="h-3.5 w-3.5 mt-px shrink-0" />
+                          <span>
+                            O <strong>consumo</strong> do forro é por número, definido no{' '}
+                            <strong>Solado</strong> (Solados → Consumos → “Forro do Cabedal”) —
+                            vale pra todas as referências que usam esse solado. Aqui você escolhe só o material.
+                          </span>
+                        </p>
+                      )}
 
                       {/* ── Forração multi-grupo (Fase 2): Material 1 = lining_material
                           (acima); grupos extras em lining_materials[]. Espelha o bloco
