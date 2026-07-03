@@ -162,6 +162,9 @@ export default function BoletoUploadDialog({ open, onOpenChange, suppliers }: Pr
     setSaving(true);
     let created = 0;
     let attachFailures = 0;
+    // Linhas já gravadas — removidas do estado ao final pra que uma nova
+    // tentativa (após falha parcial) não relance as contas já criadas.
+    const launchedIds: string[] = [];
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -187,6 +190,7 @@ export default function BoletoUploadDialog({ open, onOpenChange, suppliers }: Pr
           .single();
         if (error) throw error;
         created++;
+        launchedIds.push(r.id);
 
         // Anexa o PDF original ao lançamento (best-effort — não bloqueia o lote).
         try {
@@ -225,6 +229,11 @@ export default function BoletoUploadDialog({ open, onOpenChange, suppliers }: Pr
       if (created > 0) queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
     } finally {
       setSaving(false);
+      // Tira da lista o que já foi gravado — evita lançamento duplicado se o
+      // usuário corrigir o restante e clicar "Lançar" de novo.
+      if (launchedIds.length) {
+        setRows((prev) => prev.filter((r) => !launchedIds.includes(r.id)));
+      }
     }
   };
 

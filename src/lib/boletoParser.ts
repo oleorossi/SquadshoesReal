@@ -82,6 +82,33 @@ function onlyDigits(s: string): string {
  * Estratégia: varre o texto agrupando runs de dígitos/separadores e tenta casar
  * uma sequência que, ao remover não-dígitos, dê 47 ou 48 dígitos.
  */
+/**
+ * Verifica se uma sequência de dígitos é uma linha digitável válida
+ * (dígitos verificadores conferem). Usada para varrer janelas dentro de blocos
+ * ruidosos — a linha real bate o DV, sequências deslocadas praticamente nunca.
+ */
+function digitableIsValid(d: string): boolean {
+  if (d.length === 47) return parseBancario(d, 0).valid;
+  if (d.length === 48 && d.startsWith('8')) return parseConcessionaria(d).valid;
+  return false;
+}
+
+/**
+ * Desliza uma janela de 47 (bancário) e 48 (concessionária) dígitos sobre uma
+ * sequência maior e devolve a primeira sub-sequência cujos DVs conferem.
+ */
+function findValidWindow(digits: string): string | null {
+  for (let i = 0; i + 47 <= digits.length; i++) {
+    const w47 = digits.slice(i, i + 47);
+    if (digitableIsValid(w47)) return w47;
+    if (i + 48 <= digits.length) {
+      const w48 = digits.slice(i, i + 48);
+      if (w48[0] === '8' && digitableIsValid(w48)) return w48;
+    }
+  }
+  return null;
+}
+
 export function extractDigitableLine(text: string): string | null {
   if (!text) return null;
 
@@ -90,17 +117,29 @@ export function extractDigitableLine(text: string): string | null {
   const blockRe = /[\d][\d.\s]{40,}[\d]/g;
   const matches = text.match(blockRe) || [];
 
+  // 1ª passada: blocos com o tamanho exato (caso comum, sem custo de varredura).
   for (const raw of matches) {
     const digits = onlyDigits(raw);
     // Uma linha digitável tem exatamente 47 (bancário) ou 48 (concessionária).
-    // Blocos maiores podem conter a linha + ruído: tenta janelas.
     if (digits.length === 47 || digits.length === 48) return digits;
   }
 
-  // Fallback: junta todos os dígitos do texto e procura 47/48 em sequência
-  // usando as âncoras conhecidas (concessionária começa com 8).
+  // 2ª passada: blocos maiores que a linha (ex.: linha colada a "Nosso Número"
+  // ou a uma 2ª cópia do código) — desliza uma janela e valida pelos DVs.
+  for (const raw of matches) {
+    const digits = onlyDigits(raw);
+    if (digits.length <= 48) continue;
+    const found = findValidWindow(digits);
+    if (found) return found;
+  }
+
+  // Fallback: junta todos os dígitos do texto (cobre linha quebrada em blocos
+  // separados por caracteres não numéricos) e varre por uma janela válida.
   const all = onlyDigits(text);
-  // 48 dígitos iniciando com 8 (concessionária)
+  const found = findValidWindow(all);
+  if (found) return found;
+
+  // Último recurso: âncora de concessionária (começa com 8), mesmo sem DV.
   const conc = all.match(/8\d{47}/);
   if (conc) return conc[0].slice(0, 48);
 
@@ -245,19 +284,31 @@ function parseConcessionaria(line: string): ParsedBoleto {
     line.slice(24, 36),
     line.slice(36, 48),
   ];
+
+  // Identificador de valor efetivo/referência (3º dígito): define o valor e o
+  // algoritmo de DV dos blocos.
+  //   6 = valor efetivo, DV mod 10   ·  7 = qtd. de moeda, DV mod 10
+  //   8 = valor efetivo, DV mod 11   ·  9 = qtd. de moeda, DV mod 11
+  const valueId = line[2];
+  const useMod11 = valueId === '8' || valueId === '9';
+  const isEffectiveValue = valueId === '6' || valueId === '8';
+
   let barcode = '';
   let valid = true;
   for (const b of blocks) {
     const body = b.slice(0, 11);
     const dv = parseInt(b[11], 10);
-    if (mod10(body) !== dv && mod11Conc(body) !== dv) valid = false;
+    const expected = useMod11 ? mod11Conc(body) : mod10(body);
+    if (expected !== dv) valid = false;
     barcode += body;
   }
 
-  // Identificador de valor (pos 3 do barcode): 6/7 = valor em reais (10 dígitos, pos 4..14).
+  // Valor (11 dígitos, pos 5..15 do barcode) só é R$ quando "valor efetivo"
+  // (id 6/8). Em "quantidade de moeda" (7/9) o campo não é reais → deixa null
+  // pra o usuário preencher.
   const valorStr = barcode.slice(4, 15);
   const valorCents = parseInt(valorStr, 10);
-  const amount = valorCents > 0 ? valorCents / 100 : null;
+  const amount = isEffectiveValue && valorCents > 0 ? valorCents / 100 : null;
 
   return {
     digitableLine: line,

@@ -64,6 +64,15 @@ describe('extractDigitableLine', () => {
   it('retorna null quando não há linha digitável', () => {
     expect(extractDigitableLine('boleto sem código algum aqui')).toBeNull();
   });
+
+  it('acha a linha mesmo colada a outros números (bloco > 48 dígitos)', () => {
+    // "Nosso Número" e uma 2ª cópia de dígitos coladas por espaços fundem tudo
+    // num bloco só; a varredura por janela + DV recupera a linha real.
+    const messy =
+      'Nosso Numero 000012345 ' +
+      '00190.50095 40144.816069 06809.350314 3 37370000000100 000067890';
+    expect(extractDigitableLine(messy)).toBe('00190500954014481606906809350314337370000000100');
+  });
 });
 
 describe('formatDigitableLine', () => {
