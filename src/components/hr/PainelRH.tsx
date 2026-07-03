@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Users as Users2, CurrencyDollar as DollarSign, Wallet, CircleNotch as Loader2, UserCheck, ArrowRight, Buildings as Building2, CalendarBlank as CalendarClock, TrendUp as TrendingUp, Warning as AlertTriangle, Cake, Clipboard as ClipboardEdit, FileText, Alarm as AlarmClock } from '@phosphor-icons/react';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { useBankHoursBalances } from '@/hooks/useRH';
+import { sumAbsenceBusinessDays, mandatoryHolidaySet } from '@/lib/absenteeism';
 import {
   LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
@@ -72,17 +73,19 @@ function usePainelData() {
       const monthStart = startOfMonth(now).toISOString().slice(0, 10);
       const monthEnd = endOfMonth(now).toISOString().slice(0, 10);
 
-      const [employeesRes, advancesRes, absencesRes, schedulesRes] = await Promise.all([
+      const [employeesRes, advancesRes, absencesRes, schedulesRes, holidaysRes] = await Promise.all([
         supabase.from('employees').select('*'),
         supabase.from('employee_advances').select('*').gte('advance_date', monthStart).lte('advance_date', monthEnd),
         (supabase as any).from('employee_absences').select('*').gte('end_date', monthStart).lte('start_date', monthEnd),
         supabase.from('work_schedules').select('id, name, weekly_hours'),
+        (supabase as any).from('holidays').select('holiday_date, optional'),
       ]);
 
       const employees = (employeesRes.data || []) as any[];
       const advances = (advancesRes.data || []) as any[];
       const absences = (absencesRes.data || []) as any[];
       const schedules = (schedulesRes.data || []) as any[];
+      const holidaysSet = mandatoryHolidaySet((holidaysRes.data || []) as any[]);
 
       const active = employees.filter(e => e.active);
       const inactive = employees.filter(e => !e.active);
@@ -119,13 +122,10 @@ function usePainelData() {
         .sort((a, b) => a.daysLeft - b.daysLeft)
         .slice(0, 8);
 
-      // Ausências do mês
+      // Ausências do mês — dias ÚTEIS recortados no mês (canônico A4, mesma
+      // regra de KPIsRH/AbsenceReport via src/lib/absenteeism.ts).
       const absencesMonth = absences.length;
-      const absentDays = absences.reduce((s, a) => {
-        const d1 = new Date(a.start_date + 'T00:00:00');
-        const d2 = new Date(a.end_date + 'T00:00:00');
-        return s + Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
-      }, 0);
+      const absentDays = sumAbsenceBusinessDays(absences, monthStart, monthEnd, holidaysSet);
 
       // Headcount evolução 12m
       const headcount = buildHeadcount12m(employees);
@@ -248,7 +248,7 @@ export default function PainelRH({ onNavigateTab }: Props) {
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Ausências (mês)</p>
                 <p className="display text-2xl tabular-nums">{data.absentDays}</p>
-                <p className="text-xs text-muted-foreground">{data.absencesMonth} ocorrência{data.absencesMonth > 1 ? 's' : ''}</p>
+                <p className="text-xs text-muted-foreground">dias úteis · {data.absencesMonth} ocorrência{data.absencesMonth !== 1 ? 's' : ''}</p>
               </div>
             </div>
           </CardContent>

@@ -43,7 +43,14 @@
   escalas passam a `holiday_multiplier = 1.5`, default da coluna = 1.5) + fallbacks
   do frontend `2.0 → 1.5`. A folha já pagava 1,5× flat; o espelho/calendário/Overview
   deixam de exibir 2×. **Nenhum valor de folha muda.**
-- Demais itens (A4, A5, B1–B3, B5, C*) permanecem **abertos** — ver abaixo.
+- **A4 (absenteísmo)** unificado por decisão do usuário: **fonte única =
+  `employee_absences`**, taxa = **dias úteis** de ausência (**todos os tipos**,
+  inclui férias/licenças) ÷ (dias úteis × ativos). Novo helper canônico
+  `src/lib/absenteeism.ts` (com teste `absenteeism.test.ts`) usado por **PainelRH,
+  KPIsRH e AbsenceReport**. KPIsRH deixou de puxar de `payroll_runs`; AbsenceReport
+  troca dias corridos por dias úteis; PainelRH conta dias úteis. Os 3 passam a
+  mostrar o MESMO número.
+- Demais itens (A5, B1–B3, B5, C*) permanecem **abertos** — ver abaixo.
 
 ## A. Incompatibilidades CONFIRMADAS (bugs — corrigir)
 

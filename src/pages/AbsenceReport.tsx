@@ -17,28 +17,10 @@ import {
   useAbsences, useUpsertAbsence, useDeleteAbsence,
   ABSENCE_TYPE_LABELS, type AbsenceType,
 } from '@/hooks/useRH';
-
-function daysBetween(a: string, b: string): number {
-  const d1 = new Date(a + 'T00:00:00');
-  const d2 = new Date(b + 'T00:00:00');
-  return Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
-}
-
-function businessDaysInPeriod(from: string, to: string, holidaysSet: Set<string> = new Set()): number {
-  let count = 0;
-  const cur = new Date(from + 'T00:00:00');
-  const end = new Date(to + 'T00:00:00');
-  while (cur <= end) {
-    const dow = cur.getDay();
-    const iso = cur.toISOString().slice(0, 10);
-    // PR 2026-05-28: desconta feriados obrigatórios da contagem de dias úteis.
-    // Antes "Maio" mostrava 21 dias úteis ignorando Dia do Trabalho (1/5) +
-    // Corpus Christi — taxa de absenteísmo ficava inflada nesses meses.
-    if (dow !== 0 && dow !== 6 && !holidaysSet.has(iso)) count++;
-    cur.setDate(cur.getDate() + 1);
-  }
-  return count;
-}
+import {
+  businessDaysInPeriod, absenceBusinessDays, sumAbsenceBusinessDays,
+  absenteeismRate, mandatoryHolidaySet,
+} from '@/lib/absenteeism';
 
 export default function AbsenceReport() {
   const today = new Date();
@@ -53,10 +35,7 @@ export default function AbsenceReport() {
   const { data: absences = [], isLoading } = useAbsences({ from, to });
   const { data: holidaysList = [] } = useHolidays();
   // Feriados OBRIGATÓRIOS (optional !== true) excluídos da contagem de dias úteis.
-  const holidaysSet = useMemo(
-    () => new Set((holidaysList as any[]).filter(h => h.optional !== true).map(h => h.holiday_date as string)),
-    [holidaysList],
-  );
+  const holidaysSet = useMemo(() => mandatoryHolidaySet(holidaysList as any[]), [holidaysList]);
   const upsert = useUpsertAbsence();
   const remove = useDeleteAbsence();
 
@@ -70,11 +49,11 @@ export default function AbsenceReport() {
 
   // Métricas
   const stats = useMemo(() => {
-    const totalAbsentDays = absences.reduce((s, a) => s + daysBetween(a.start_date, a.end_date), 0);
+    // Canônico (A4): dias ÚTEIS de ausência recortados na janela ÷ (dias úteis × ativos).
+    const totalAbsentDays = sumAbsenceBusinessDays(absences, from, to, holidaysSet);
     const justificadas = absences.filter(a => a.absence_type !== 'falta_injustificada').length;
     const injustificadas = absences.filter(a => a.absence_type === 'falta_injustificada').length;
-    const totalBizDays = businessDaysInPeriod(from, to, holidaysSet) * Math.max(1, activeEmpCount);
-    const taxa = totalBizDays > 0 ? (totalAbsentDays / totalBizDays) * 100 : 0;
+    const taxa = absenteeismRate(totalAbsentDays, businessDaysInPeriod(from, to, holidaysSet), activeEmpCount);
     return { totalAbsentDays, justificadas, injustificadas, taxa };
   }, [absences, from, to, activeEmpCount, holidaysSet]);
 
@@ -84,23 +63,23 @@ export default function AbsenceReport() {
     for (const a of absences) {
       const cur = map.get(a.absence_type) || { count: 0, days: 0 };
       cur.count++;
-      cur.days += daysBetween(a.start_date, a.end_date);
+      cur.days += absenceBusinessDays(a, from, to, holidaysSet);
       map.set(a.absence_type, cur);
     }
     return Array.from(map.entries()).sort((a, b) => b[1].days - a[1].days);
-  }, [absences]);
+  }, [absences, from, to, holidaysSet]);
 
   // Por funcionário (top absenteistas)
   const byEmployee = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of absences) {
-      map.set(a.employee_id, (map.get(a.employee_id) || 0) + daysBetween(a.start_date, a.end_date));
+      map.set(a.employee_id, (map.get(a.employee_id) || 0) + absenceBusinessDays(a, from, to, holidaysSet));
     }
     return Array.from(map.entries())
       .map(([id, days]) => ({ id, days, name: empMap.get(id)?.name || '?' }))
       .sort((a, b) => b.days - a.days)
       .slice(0, 10);
-  }, [absences, empMap]);
+  }, [absences, empMap, from, to, holidaysSet]);
 
   const [form, setForm] = useState({
     employee_id: '',
@@ -193,10 +172,10 @@ export default function AbsenceReport() {
 
       {/* KPIs */}
       <StatGrid>
-        <StatCard label="Dias ausentes" value={stats.totalAbsentDays} hint="no período" />
+        <StatCard label="Dias ausentes" value={stats.totalAbsentDays} hint="dias úteis no período" />
         <StatCard label="Justificadas" value={stats.justificadas} hint="ocorrências" tone="success" />
         <StatCard label="Injustificadas" value={stats.injustificadas} hint="ocorrências" tone="destructive" />
-        <StatCard label="Taxa de absenteísmo" value={`${stats.taxa.toFixed(2)}%`} hint="dias ausentes / dias úteis" tone="primary" />
+        <StatCard label="Taxa de absenteísmo" value={`${stats.taxa.toFixed(2)}%`} hint="dias úteis ausentes / (dias úteis × ativos)" tone="primary" />
       </StatGrid>
 
       {/* Top tipos */}
@@ -281,7 +260,7 @@ export default function AbsenceReport() {
                 <TableCell className="font-mono text-xs">
                   {new Date(a.start_date + 'T00:00:00').toLocaleDateString('pt-BR')} → {new Date(a.end_date + 'T00:00:00').toLocaleDateString('pt-BR')}
                 </TableCell>
-                <TableCell className="text-right font-mono font-bold">{daysBetween(a.start_date, a.end_date)}</TableCell>
+                <TableCell className="text-right font-mono font-bold">{absenceBusinessDays(a, from, to, holidaysSet)}</TableCell>
                 <TableCell>{a.paid ? <span className="text-emerald-600 text-xs">Sim</span> : <span className="text-destructive text-xs">Não</span>}</TableCell>
                 <TableCell className="text-muted-foreground truncate max-w-[200px]">{a.notes || '—'}</TableCell>
                 <TableCell>

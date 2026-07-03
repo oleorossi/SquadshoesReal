@@ -1,7 +1,9 @@
 /**
  * KPIs de mercado pro Painel RH — complementa os cards atuais (Ativos,
  * Folha, Adiantamentos, Ausências) com indicadores derivados do ponto +
- * folha. Fontes: payroll_runs (HE/noturno/DSR/faltas) do mês corrente.
+ * folha. HE vem de payroll_runs; absenteísmo vem de employee_absences
+ * (fonte única canônica — A4, ver docs/AUDITORIA_RH_COMPATIBILIDADE.md e
+ * src/lib/absenteeism.ts), pra bater com PainelRH e AbsenceReport.
  *
  * Cores semafóricas seguem benchmarks padrão (HR analytics):
  *  - Absenteísmo: verde <3% / âmbar 3-4% / vermelho >4%
@@ -12,8 +14,9 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Calendar, Alarm as AlarmClock, CurrencyDollar as DollarSign, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
-import { startOfMonth, format } from 'date-fns';
+import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { businessDaysInPeriod, sumAbsenceBusinessDays, absenteeismRate, mandatoryHolidaySet } from '@/lib/absenteeism';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -35,37 +38,50 @@ function useKPIsRH() {
   return useQuery<KPIData>({
     queryKey: ['rh_kpis_mes'],
     queryFn: async () => {
-      const period = format(startOfMonth(new Date()), 'yyyy-MM');
-      const [runsRes, empRes] = await Promise.all([
+      const monthStartD = startOfMonth(new Date());
+      const monthEndD = endOfMonth(new Date());
+      const period = format(monthStartD, 'yyyy-MM');
+      const monthStart = format(monthStartD, 'yyyy-MM-dd');
+      const monthEnd = format(monthEndD, 'yyyy-MM-dd');
+      const [runsRes, empRes, absRes, holRes] = await Promise.all([
         (supabase as any)
           .from('payroll_runs')
           // HE do modelo ATUAL da folha: he_minutes é gravado em overtime_50_minutes
           // e he_value em overtime_amount (Payroll.tsx). As colunas overtime_100_*/
           // night_* são LEGADO (modelo 50/100/noturno, não escrito mais) — somá-las
           // dava Custo HE = 0/defasado vs a folha. (fix auditoria 2026-06-17)
-          .select('employee_id, absent_days, business_days, worked_minutes, overtime_50_minutes, overtime_amount')
+          .select('employee_id, worked_minutes, overtime_50_minutes, overtime_amount')
           .eq('period', period),
         supabase.from('employees').select('id, active').eq('active', true),
+        // Absenteísmo canônico (A4): fonte = employee_absences, TODOS os tipos,
+        // dias úteis. Antes vinha de payroll_runs (absent_days/business_days) e
+        // divergia de PainelRH/AbsenceReport. Ver src/lib/absenteeism.ts.
+        (supabase as any).from('employee_absences').select('start_date, end_date')
+          .gte('end_date', monthStart).lte('start_date', monthEnd),
+        (supabase as any).from('holidays').select('holiday_date, optional'),
       ]);
 
       const runs = (runsRes.data || []) as any[];
       const employees = (empRes.data || []) as any[];
+      const absences = (absRes.data || []) as any[];
+      const holidays = mandatoryHolidaySet((holRes.data || []) as any[]);
       const funcsAtivos = employees.length;
 
       const totals = runs.reduce((acc, r) => ({
-        absentDays: acc.absentDays + (Number(r.absent_days) || 0),
-        businessDays: acc.businessDays + (Number(r.business_days) || 0),
         workedMin: acc.workedMin + (Number(r.worked_minutes) || 0),
         heMin: acc.heMin + (Number(r.overtime_50_minutes) || 0),
         heValue: acc.heValue + (Number(r.overtime_amount) || 0),
-      }), { absentDays: 0, businessDays: 0, workedMin: 0, heMin: 0, heValue: 0 });
+      }), { workedMin: 0, heMin: 0, heValue: 0 });
 
       const funcsComHE = new Set(runs.filter(r =>
         (Number(r.overtime_50_minutes) || 0) > 0
       ).map(r => r.employee_id)).size;
 
+      const absentBizDays = sumAbsenceBusinessDays(absences, monthStart, monthEnd, holidays);
+      const bizDays = businessDaysInPeriod(monthStart, monthEnd, holidays);
+
       return {
-        absenteismoPct: totals.businessDays > 0 ? (totals.absentDays / totals.businessDays) * 100 : 0,
+        absenteismoPct: absenteeismRate(absentBizDays, bizDays, funcsAtivos),
         hePct: totals.workedMin > 0 ? (totals.heMin / totals.workedMin) * 100 : 0,
         heCusto: totals.heValue,
         funcsComHE,
@@ -96,7 +112,7 @@ export function KPIsRH() {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <Card title={`Faltas / dias úteis no mês ${periodLabel}. Benchmark: <3% saudável, ≥4% pede investigação.`}>
+      <Card title={`Dias úteis de ausência (todos os tipos) / (dias úteis × ativos) no mês ${periodLabel}. Benchmark: <3% saudável, ≥4% pede investigação.`}>
         <CardContent className="pt-5 pb-4">
           <div className="flex items-center gap-3">
             <div className={cn('h-10 w-10 rounded-lg flex items-center justify-center shrink-0', absSemaphore.bg)}>
