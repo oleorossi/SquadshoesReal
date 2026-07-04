@@ -1,6 +1,7 @@
 import { Plus, Trash as Trash2, Calculator, Info } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useCan } from '@/hooks/useAccessControl';
 
 /**
  * ⚠ SCAFFOLD NÃO LIGADO — este componente não está importado em lugar nenhum
@@ -34,6 +35,7 @@ interface MaterialListBOMProps {
 }
 
 export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: MaterialListBOMProps) {
+  const perm = useCan('/fichas-tecnicas');
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -41,9 +43,11 @@ export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: 
           <Calculator className="w-5 h-5 text-primary" />
           Lista de Materiais & Consumo (BOM)
         </div>
-        <Button onClick={onAddMaterial} size="sm">
-          <Plus className="w-4 h-4 mr-1" /> Adicionar Insumo
-        </Button>
+        {perm.canEdit && (
+          <Button onClick={onAddMaterial} size="sm">
+            <Plus className="w-4 h-4 mr-1" /> Adicionar Insumo
+          </Button>
+        )}
       </div>
 
       <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
@@ -91,14 +95,16 @@ export function MaterialListBOM({ materials, onAddMaterial, onRemoveMaterial }: 
                   </div>
                 </td>
                 <td className="px-4 py-2 text-center">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => onRemoveMaterial(index)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  {perm.canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => onRemoveMaterial(index)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}

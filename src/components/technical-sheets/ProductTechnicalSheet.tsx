@@ -2,6 +2,7 @@ import { Stack as Layers, Scissors, Cube as Box, Info } from '@phosphor-icons/re
 import { Card } from '@/components/ui/card';
 import { InlineEdit } from '../ui/InlineEdit';
 import { parseSafeNumber, safeToFixed } from '@/lib/utils';
+import { useCan } from '@/hooks/useAccessControl';
 
 export interface ProductTechnicalSheetProps {
   product: {
@@ -22,6 +23,7 @@ export interface ProductTechnicalSheetProps {
 }
 
 export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
+  const perm = useCan('/fichas-tecnicas');
   return (
     <div className="space-y-6">
       {/* 1. CABEÇALHO E ESTRUTURA BASE */}
@@ -88,9 +90,11 @@ export function ProductTechnicalSheet({ product }: ProductTechnicalSheetProps) {
             <Scissors className="w-4 h-4 text-destructive" />
             Listagem de Materiais e Consumo
           </div>
-          <button className="text-xs bg-card hover:bg-muted border px-3 py-1 rounded shadow-sm transition-all flex items-center gap-1">
-            + Adicionar Componente
-          </button>
+          {perm.canEdit && (
+            <button className="text-xs bg-card hover:bg-muted border px-3 py-1 rounded shadow-sm transition-all flex items-center gap-1">
+              + Adicionar Componente
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">

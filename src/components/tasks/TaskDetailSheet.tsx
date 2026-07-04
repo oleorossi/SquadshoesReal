@@ -16,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
+import { useCan } from '@/hooks/useAccessControl';
 import { cn } from '@/lib/utils';
 import { DueDatePicker } from '@/components/tasks/TaskMeta';
 import {
@@ -37,6 +38,8 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
   const updateTask = useUpdateNoteTask();
   const deleteTask = useDeleteNoteTask();
   const createTask = useCreateNoteTask();
+  // Gates de ação da área Tarefas (/tarefas). Admin e sem-granular sempre passam.
+  const perm = useCan('/tarefas');
 
   const [draftTitle, setDraftTitle] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
@@ -266,6 +269,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 />
               ))}
             </div>
+            {perm.canEdit && (
             <div className="flex items-center gap-2 mt-2">
               <Input
                 value={newSubtask}
@@ -285,6 +289,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
                 {createTask.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               </Button>
             </div>
+            )}
           </section>
         </div>
 
@@ -295,6 +300,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
             <span>· Concluída {format(new Date(task.completed_at), 'dd MMM yyyy', { locale: ptBR })}</span>
           )}
           <div className="flex-1" />
+          {perm.canDelete && (
           <DeleteConfirmButton
             onConfirm={() => { deleteTask.mutate({ id: task.id, note_id: task.note_id }); onClose(); }}
             title="Excluir tarefa?"
@@ -302,6 +308,7 @@ export function TaskDetailSheet({ task, subtasks, onClose }: {
               ? `A tarefa e suas ${subtasks.length} subtarefa${subtasks.length === 1 ? '' : 's'} serão excluídas.`
               : 'Esta ação não pode ser desfeita.'}
           />
+          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -316,6 +323,7 @@ function SubtaskRow({ subtask, onToggle, onChangeText, onDelete }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(subtask.text);
+  const perm = useCan('/tarefas');
 
   return (
     <div className={cn('group flex items-center gap-2.5 py-2', subtask.done && 'opacity-50')}>
@@ -348,14 +356,14 @@ function SubtaskRow({ subtask, onToggle, onChangeText, onDelete }: {
           </p>
         )}
       </div>
-      <button
+      {perm.canEdit && <button
         type="button"
         onClick={onDelete}
         className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
         aria-label="Excluir subtarefa"
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </button>}
     </div>
   );
 }
