@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useCan } from '@/hooks/useAccessControl';
 import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass as Search, Percent, X } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
@@ -706,6 +707,9 @@ export default function Finance() {
   const updateReceivable = useUpdateAccountReceivable();
   const deletePayable = useDeleteAccountPayable();
   const deleteReceivable = useDeleteAccountReceivable();
+  // Gates de ação por área (referência de adoção do controle CRUD). Admin e
+  // usuários sem permissão granular sempre passam — não restringe quem já podia.
+  const finPerm = useCan('/finance');
 
   const [payableDialog, setPayableDialog] = useState(false);
   const [boletoUploadDialog, setBoletoUploadDialog] = useState(false);
@@ -1119,6 +1123,7 @@ export default function Finance() {
                     actions={
                       <>
                         {selectedPayables.size > 0 && (<>
+                          {finPerm.canEdit && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="h-4 w-4 mr-1" /> Pago ({selectedPayables.size})</Button>
@@ -1127,6 +1132,8 @@ export default function Finance() {
                               <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkPaid}>Confirmar</AlertDialogAction></AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          )}
+                          {finPerm.canDelete && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Excluir ({selectedPayables.size})</Button>
@@ -1135,10 +1142,11 @@ export default function Finance() {
                               <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkDeletePayables}>Excluir</AlertDialogAction></AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          )}
                         </>)}
                         <Button size="sm" variant="outline" onClick={() => exportPayablesBatch(filteredP)}><FileDown className="h-4 w-4 mr-1" /> CSV</Button>
-                        <Button size="sm" variant="outline" onClick={() => setBoletoUploadDialog(true)}><FileUp className="h-4 w-4 mr-1" /> Importar Boletos</Button>
-                        <Button size="sm" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
+                        {finPerm.canCreate && <Button size="sm" variant="outline" onClick={() => setBoletoUploadDialog(true)}><FileUp className="h-4 w-4 mr-1" /> Importar Boletos</Button>}
+                        {finPerm.canCreate && <Button size="sm" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>}
                       </>
                     }
                   >
@@ -1293,6 +1301,7 @@ export default function Finance() {
                     actions={
                       <>
                         {selectedReceivables.size > 0 && (<>
+                          {finPerm.canEdit && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="h-4 w-4 mr-1" /> Recebido ({selectedReceivables.size})</Button>
@@ -1301,6 +1310,8 @@ export default function Finance() {
                               <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkReceived}>Confirmar</AlertDialogAction></AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          )}
+                          {finPerm.canDelete && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Excluir ({selectedReceivables.size})</Button>
@@ -1309,8 +1320,9 @@ export default function Finance() {
                               <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkDeleteReceivables}>Excluir</AlertDialogAction></AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          )}
                         </>)}
-                        <Button size="sm" onClick={() => { setEditingReceivable(null); setReceivableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
+                        {finPerm.canCreate && <Button size="sm" onClick={() => { setEditingReceivable(null); setReceivableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>}
                       </>
                     }
                   >

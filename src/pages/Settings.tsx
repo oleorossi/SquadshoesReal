@@ -23,7 +23,10 @@ import {
 } from '@/hooks/useUserManagement';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getMenuItemsGrouped } from '@/data/navigation';
-import { isRouteAllowed } from '@/hooks/useAccessControl';
+import { isActionAllowed } from '@/hooks/useAccessControl';
+import { buildPermissionTemplates } from '@/data/permissionTemplates';
+import type { PermissionGrant } from '@/hooks/useUserManagement';
+import { Plus } from '@phosphor-icons/react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import RepresentativesPanel from '@/components/settings/RepresentativesPanel';
@@ -60,49 +63,126 @@ const ROLE_COLORS: Record<string, string> = {
   consulta: 'bg-muted text-muted-foreground border-border/50',
 };
 
-/**
- * Permissões POR MENU (item a item). Lista TODOS os itens da sidebar; o admin
- * marca os que o usuário verá. Salvar grava a allow-list de paths em
- * user_permissions (replace-all) → no login do usuário aparecem SÓ os marcados.
- * (User 2026-06-17.) Pré-marca pelo acesso EFETIVO atual (grants existentes ou,
- * sem grants, o RBAC da role) pra o admin ajustar em cima do que já é visível.
- */
+/* ── Permissões por ÁREA + AÇÃO (CRUD) ──────────────────────────────────────
+ * Lista todas as telas da sidebar agrupadas por área; por tela o admin define
+ * Ver / Criar / Editar / Excluir. Modelos de perfil pré-preenchem a matriz
+ * (ponto de partida editável). Salvar grava 1 row por tela concedida em
+ * user_permissions (allow-list + flags de ação). Pré-carrega pelo acesso
+ * EFETIVO atual (grants existentes ou, sem grants, o RBAC da role).
+ *
+ * ⚠ Enforcement: 'Ver' (rota) já vale em todo o sistema. Os gates de ação
+ * (criar/editar/excluir) são lidos por useAccessControl.can()/useCan() e vão
+ * sendo adotados área a área via <PermissionButton> — a matriz já grava a
+ * intenção pra cada área herdar quando for ligada. */
+type ActionSet = { view: boolean; create: boolean; edit: boolean; delete: boolean };
+type ActionKey = keyof ActionSet;
+const EMPTY_ACTIONS: ActionSet = { view: false, create: false, edit: false, delete: false };
+const FULL_ACTIONS: ActionSet = { view: true, create: true, edit: true, delete: true };
+const VIEW_ONLY: ActionSet = { view: true, create: false, edit: false, delete: false };
+
+const ACTION_META: ReadonlyArray<{ key: ActionKey; label: string; icon: typeof Eye; tone: 'primary' | 'destructive' }> = [
+  { key: 'view', label: 'Ver', icon: Eye, tone: 'primary' },
+  { key: 'create', label: 'Criar', icon: Plus, tone: 'primary' },
+  { key: 'edit', label: 'Editar', icon: Pencil, tone: 'primary' },
+  { key: 'delete', label: 'Excluir', icon: Trash2, tone: 'destructive' },
+];
+
+function ActionToggle({ active, tone, icon: Icon, label, onClick }: {
+  active: boolean; tone: 'primary' | 'destructive'; icon: typeof Eye; label: string; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      className={cn(
+        'flex h-8 w-8 items-center justify-center rounded-md border transition-colors',
+        active
+          ? tone === 'destructive'
+            ? 'bg-destructive text-destructive-foreground border-destructive'
+            : 'bg-primary text-primary-foreground border-primary'
+          : 'bg-card text-muted-foreground/50 border-border hover:bg-muted/50 hover:text-foreground',
+      )}
+    >
+      <Icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
+    </button>
+  );
+}
+
 function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles: string[] }) {
   const { data: permissions = [] } = useUserPermissions(userId);
   const replacePerms = useReplaceUserPermissions();
   const grouped = useMemo(() => getMenuItemsGrouped(), []);
+  const templates = useMemo(() => buildPermissionTemplates(), []);
   const isAdminTarget = userRoles.includes('admin');
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  // Acesso efetivo atual de cada item (mesma regra do login).
-  const initialChecked = useMemo(() => {
-    const s = new Set<string>();
+  // Acesso efetivo atual por tela (mesma regra do login) → estado inicial da matriz.
+  const initialGrants = useMemo(() => {
+    const g: Record<string, ActionSet> = {};
+    const input = { isAdmin: isAdminTarget, roles: userRoles, perms: permissions };
     for (const items of Object.values(grouped)) {
       for (const it of items) {
-        if (isRouteAllowed(it.path, { isAdmin: isAdminTarget, roles: userRoles, perms: permissions })) {
-          s.add(it.path);
-        }
+        if (!isActionAllowed(it.path, 'view', input)) continue;
+        g[it.path] = {
+          view: true,
+          create: isActionAllowed(it.path, 'create', input),
+          edit: isActionAllowed(it.path, 'edit', input),
+          delete: isActionAllowed(it.path, 'delete', input),
+        };
       }
     }
-    return s;
+    return g;
   }, [grouped, isAdminTarget, userRoles, permissions]);
 
-  const [checked, setChecked] = useState<Set<string>>(initialChecked);
+  const [grants, setGrants] = useState<Record<string, ActionSet>>(initialGrants);
   const [dirty, setDirty] = useState(false);
-  // Re-sincroniza com o servidor enquanto o admin não mexeu (evita sobrescrever
-  // edição em andamento). Após salvar, dirty volta a false e re-sincroniza.
-  useEffect(() => { if (!dirty) setChecked(initialChecked); }, [initialChecked, dirty]);
+  // Re-sincroniza com o servidor enquanto o admin não mexeu.
+  useEffect(() => { if (!dirty) setGrants(initialGrants); }, [initialGrants, dirty]);
 
-  const toggle = (path: string) => {
+  const setScreen = (path: string, next: ActionSet | null) => {
     setDirty(true);
-    setChecked(prev => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n; });
+    setGrants(prev => {
+      const n = { ...prev };
+      if (!next || (!next.view && !next.create && !next.edit && !next.delete)) delete n[path];
+      else n[path] = next;
+      return n;
+    });
   };
-  const markGroup = (items: { path: string }[], on: boolean) => {
+  const toggleAction = (path: string, action: ActionKey) => {
+    const cur = grants[path] ?? EMPTY_ACTIONS;
+    const next: ActionSet = { ...cur, [action]: !cur[action] };
+    if (action === 'view' && !next.view) { setScreen(path, null); return; } // desligar Ver limpa a tela
+    if (action !== 'view' && next[action]) next.view = true;                // agir exige poder ver
+    setScreen(path, next);
+  };
+  const setGroup = (items: { path: string }[], mode: 'full' | 'view' | 'clear') => {
     setDirty(true);
-    setChecked(prev => { const n = new Set(prev); for (const it of items) on ? n.add(it.path) : n.delete(it.path); return n; });
+    setGrants(prev => {
+      const n = { ...prev };
+      for (const it of items) {
+        if (mode === 'clear') delete n[it.path];
+        else n[it.path] = mode === 'full' ? { ...FULL_ACTIONS } : { ...VIEW_ONLY };
+      }
+      return n;
+    });
+  };
+  const applyTemplate = (t: ReturnType<typeof buildPermissionTemplates>[number]) => {
+    setDirty(true);
+    const next: Record<string, ActionSet> = {};
+    for (const p of t.paths) next[p] = { ...t.actions };
+    setGrants(next);
+    toast.success(`Modelo "${t.label}" aplicado — ajuste e salve.`);
   };
 
   const save = async () => {
-    await replacePerms.mutateAsync({ userId, paths: Array.from(checked) });
+    const rows: PermissionGrant[] = Object.entries(grants)
+      .filter(([, a]) => a.view)
+      .map(([path, a]) => ({ path, can_create: a.create, can_edit: a.edit, can_delete: a.delete }));
+    await replacePerms.mutateAsync({ userId, grants: rows });
     setDirty(false);
   };
 
@@ -110,54 +190,126 @@ function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles
     return (
       <p className="text-sm text-muted-foreground rounded-lg border bg-muted/20 px-3 py-2.5">
         <ShieldCheck className="h-4 w-4 inline mr-1.5 text-primary" />
-        Administrador tem acesso a <strong>todos os menus</strong> — sem restrição por item.
+        Administrador tem acesso <strong>total</strong> — sem restrição por área ou ação.
       </p>
     );
   }
 
   const total = Object.values(grouped).reduce((s, items) => s + items.length, 0);
+  const grantedCount = Object.values(grants).filter(a => a.view).length;
+  const q = search.trim().toLowerCase();
+  const groupsToRender = Object.entries(grouped)
+    .map(([group, items]) => [
+      group,
+      q ? items.filter(it => it.label.toLowerCase().includes(q) || it.path.toLowerCase().includes(q)) : items,
+    ] as const)
+    .filter(([, items]) => items.length > 0);
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Marque os menus que este usuário verá ao logar. O <strong>Painel</strong> fica sempre disponível.
-        Salvar substitui as permissões atuais pela seleção (allow-list).
-      </p>
-      {Object.entries(grouped).map(([group, items]) => {
-        if (items.length === 0) return null;
-        const allOn = items.every(it => checked.has(it.path));
-        return (
-          <div key={group}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">{group}</p>
-              <button type="button" onClick={() => markGroup(items, !allOn)} className="text-xs text-primary hover:underline">
-                {allOn ? 'Desmarcar todos' : 'Marcar todos'}
-              </button>
-            </div>
-            <div className="space-y-1">
-              {items.map(it => {
-                const on = checked.has(it.path);
-                return (
-                  <label
-                    key={it.path}
-                    className={cn(
-                      'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
-                      on ? 'bg-primary/5 border-primary/30' : 'bg-card hover:bg-muted/30',
-                    )}
-                  >
-                    <Checkbox checked={on} onCheckedChange={() => toggle(it.path)} />
-                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{it.label}</span>
-                    <code className="text-xs text-muted-foreground">{it.path}</code>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+    <div className="space-y-5">
+      <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
+        Defina por área o que este operador pode <strong className="text-foreground">Ver</strong>, <strong className="text-foreground">Criar</strong>, <strong className="text-foreground">Editar</strong> e <strong className="text-foreground">Excluir</strong>.
+        Salvar substitui as permissões atuais. O <strong>Painel</strong> fica sempre disponível.
+      </div>
 
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <span className="text-xs text-muted-foreground">{checked.size}/{total} menus selecionados</span>
+      {/* Modelos de perfil — pré-preenchem a matriz (ponto de partida) */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2">
+          Modelos de perfil · clique para começar por um
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {templates.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => applyTemplate(t)}
+              title={t.description}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left transition-all hover:shadow-sm',
+                ROLE_COLORS[t.key] ?? 'bg-card',
+              )}
+            >
+              {ROLE_ICONS[t.key]}
+              <span className="text-xs font-semibold">{t.label}</span>
+              <span className="text-[10px] opacity-70 tabular-nums">{t.paths.length}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Busca + legenda das colunas */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tela ou rota..." className="pl-8 h-9 text-xs" />
+        </div>
+        <div className="hidden sm:flex items-center gap-1 pr-0.5">
+          {ACTION_META.map(a => (
+            <span key={a.key} className="inline-flex w-8 items-center justify-center text-[10px] uppercase tracking-wide text-muted-foreground/70" title={a.label}>
+              {a.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Áreas */}
+      <div className="space-y-3">
+        {groupsToRender.length === 0 && (
+          <p className="text-xs text-muted-foreground py-6 text-center">Nenhuma tela para "{search}".</p>
+        )}
+        {groupsToRender.map(([group, items]) => {
+          const grantedInGroup = items.filter(it => grants[it.path]?.view).length;
+          const isCollapsed = collapsed.has(group) && !q;
+          return (
+            <div key={group} className="rounded-lg border overflow-hidden">
+              <div className="flex items-center gap-2 bg-muted/40 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setCollapsed(prev => { const n = new Set(prev); n.has(group) ? n.delete(group) : n.add(group); return n; })}
+                  className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', isCollapsed && '-rotate-90')} />
+                  {group}
+                </button>
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px] tabular-nums">{grantedInGroup}/{items.length}</Badge>
+                <div className="ml-auto flex items-center gap-1.5 text-[11px]">
+                  <button type="button" onClick={() => setGroup(items, 'full')} className="text-primary hover:underline">Tudo</button>
+                  <span className="text-muted-foreground/40">·</span>
+                  <button type="button" onClick={() => setGroup(items, 'view')} className="text-muted-foreground hover:text-foreground hover:underline">Só ver</button>
+                  <span className="text-muted-foreground/40">·</span>
+                  <button type="button" onClick={() => setGroup(items, 'clear')} className="text-muted-foreground hover:text-foreground hover:underline">Limpar</button>
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div className="divide-y">
+                  {items.map(it => {
+                    const a = grants[it.path] ?? EMPTY_ACTIONS;
+                    return (
+                      <div key={it.path} className={cn('flex items-center gap-3 px-3 py-1.5 transition-colors', a.view ? 'bg-primary/[0.04]' : 'hover:bg-muted/20')}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate leading-tight">{it.label}</p>
+                          <code className="text-[10px] text-muted-foreground">{it.path}</code>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {ACTION_META.map(m => (
+                            <ActionToggle key={m.key} active={a[m.key]} tone={m.tone} icon={m.icon} label={m.label} onClick={() => toggleAction(it.path, m.key)} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Barra de salvar */}
+      <div className="sticky bottom-0 -mx-1 flex items-center justify-between gap-3 border-t bg-background/95 px-1 py-3 backdrop-blur">
+        <span className="text-xs text-muted-foreground">
+          <strong className="text-foreground tabular-nums">{grantedCount}</strong>/{total} telas concedidas
+        </span>
         <Button onClick={save} disabled={!dirty || replacePerms.isPending} className="gap-2">
           {replacePerms.isPending
             ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>

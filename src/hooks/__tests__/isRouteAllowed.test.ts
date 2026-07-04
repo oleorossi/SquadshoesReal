@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRouteAllowed, resolveMenuOwner, resolveModuleForPath } from '@/hooks/useAccessControl';
+import { isRouteAllowed, isActionAllowed, resolveMenuOwner, resolveModuleForPath } from '@/hooks/useAccessControl';
 
 // Catálogo de menu controlado pros testes de "dono" da rota (sibling resolution).
 const MENU = [
@@ -120,5 +120,57 @@ describe('isRouteAllowed — retrocompat grant por MÓDULO (legado)', () => {
   it('grant de módulo NÃO cobre outros módulos', () => {
     expect(isRouteAllowed('/sales', o)).toBe(false);
     expect(isRouteAllowed('/pcp', o)).toBe(false);
+  });
+});
+
+// Grant por PATH com as 4 flags de ação (novo modelo CRUD).
+const grant = (module: string, a: { c?: boolean; e?: boolean; d?: boolean } = {}) =>
+  ({ module, can_view: true, can_create: !!a.c, can_edit: !!a.e, can_delete: !!a.d });
+
+describe('isActionAllowed — ações CRUD por área', () => {
+  it('admin pode tudo', () => {
+    const o = { isAdmin: true, roles: ['admin'], perms: [], allMenuPaths: MENU };
+    for (const act of ['view', 'create', 'edit', 'delete'] as const) {
+      expect(isActionAllowed('/sales', act, o)).toBe(true);
+    }
+  });
+
+  it('RBAC legado (sem granular): ver a tela ⇒ pode agir', () => {
+    const prod = { isAdmin: false, roles: ['producao'], perms: [], allMenuPaths: MENU };
+    expect(isActionAllowed('/orders', 'view', prod)).toBe(true);
+    expect(isActionAllowed('/orders', 'create', prod)).toBe(true);
+    expect(isActionAllowed('/orders', 'delete', prod)).toBe(true);
+    // fora do papel (RH não pertence a produção): nem ver, nem agir
+    expect(isActionAllowed('/rh', 'edit', prod)).toBe(false);
+  });
+
+  it('granular por path respeita cada flag de ação', () => {
+    const o = {
+      isAdmin: false, roles: ['comercial'], allMenuPaths: MENU,
+      perms: [grant('/sales', { e: true }), grant('/orders', { c: true, e: true, d: true })],
+    };
+    // /sales: só editar
+    expect(isActionAllowed('/sales', 'view', o)).toBe(true);
+    expect(isActionAllowed('/sales', 'create', o)).toBe(false);
+    expect(isActionAllowed('/sales', 'edit', o)).toBe(true);
+    expect(isActionAllowed('/sales', 'delete', o)).toBe(false);
+    // /orders: tudo
+    expect(isActionAllowed('/orders', 'delete', o)).toBe(true);
+    // tela não concedida: nada
+    expect(isActionAllowed('/pcp', 'view', o)).toBe(false);
+    expect(isActionAllowed('/pcp', 'edit', o)).toBe(false);
+  });
+
+  it('sem ver a tela, nenhuma ação passa', () => {
+    const o = { isAdmin: false, roles: ['comercial'], allMenuPaths: MENU, perms: [grant('/sales', { c: true })] };
+    expect(isActionAllowed('/rh', 'view', o)).toBe(false);
+    expect(isActionAllowed('/rh', 'create', o)).toBe(false);
+  });
+
+  it('grant legado por MÓDULO concede as ações (sem split)', () => {
+    const o = { isAdmin: false, roles: ['consulta'], perms: [perm('estoque')], allMenuPaths: MENU };
+    expect(isActionAllowed('/estoque', 'view', o)).toBe(true);
+    expect(isActionAllowed('/estoque', 'edit', o)).toBe(true);
+    expect(isActionAllowed('/estoque', 'delete', o)).toBe(true);
   });
 });

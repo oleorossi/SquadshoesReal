@@ -166,7 +166,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
 /**
  * Modules each role can access.
  */
-const ROLE_MODULES: Record<string, string[]> = {
+export const ROLE_MODULES: Record<string, string[]> = {
   admin: ['*'], // all
   gerente: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
@@ -254,11 +254,22 @@ export function resolveMenuOwner(path: string, allMenuPaths: string[] = ALL_MENU
   return best;
 }
 
+/** Ações controláveis por área/tela (module = path). 'view' governa a rota. */
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete';
+
+export interface PermRow {
+  module: string;
+  can_view: boolean;
+  can_create?: boolean;
+  can_edit?: boolean;
+  can_delete?: boolean;
+}
+
 export interface RouteAccessInput {
   isAdmin: boolean;
   roles: string[];
   /** Linhas de user_permissions (module pode ser key de módulo OU path '/...'). */
-  perms: Array<{ module: string; can_view: boolean }>;
+  perms: PermRow[];
   allMenuPaths?: string[];
 }
 
@@ -305,6 +316,52 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
   const roleMods = getAllowedModules(roles);
   if (roleMods.has('*')) return true;
   return roleMods.has(mod);
+}
+
+const ACTION_COL: Record<Exclude<PermissionAction, 'view'>, keyof PermRow> = {
+  create: 'can_create',
+  edit: 'can_edit',
+  delete: 'can_delete',
+};
+
+/**
+ * Pode executar uma AÇÃO (criar/editar/excluir) numa tela/área — regra pura.
+ *
+ * Precedência (alinhada com isRouteAllowed):
+ *   0. Precisa PODER VER a tela; sem visão, nenhuma ação.
+ *   1. admin → tudo.
+ *   2. 'view' → delega pra isRouteAllowed.
+ *   3. tem granular (rows por PATH com flags): usa a flag da AÇÃO na row dona.
+ *        - grant legado por MÓDULO (key, sem flags de ação) → concede a ação
+ *          (retrocompat: antes ver o módulo já dava tudo).
+ *   4. sem granular → RBAC por role: ver a tela ⇒ pode agir (comportamento
+ *      legado — não havia gate de ação antes desta feature).
+ *
+ * Backward-compat garantida pela migration: linhas antigas com can_view=true
+ * foram backfilladas com as 3 ações=true, então usuários existentes não perdem
+ * capacidade quando os gates passam a valer.
+ */
+export function isActionAllowed(path: string, action: PermissionAction, input: RouteAccessInput): boolean {
+  const { isAdmin, roles, perms } = input;
+  if (isAdmin || roles.includes('admin')) return true;
+  if (!isRouteAllowed(path, input)) return false; // sem ver, nada
+  if (action === 'view') return true;
+
+  const allMenuPaths = input.allMenuPaths ?? ALL_MENU_PATHS;
+  const grantsView = perms.filter((p) => p.can_view);
+  const hasGranular = grantsView.length > 0;
+  // RBAC legado (sem rows): ver a tela já concedia todas as ações.
+  if (!hasGranular) return true;
+
+  const owner = resolveMenuOwner(path, allMenuPaths);
+  const pathRow = owner ? perms.find((p) => p.module === owner && p.can_view) : undefined;
+  if (pathRow) return Boolean(pathRow[ACTION_COL[action]]);
+
+  // Retrocompat: liberado por key de módulo (grant antigo sem split de ação).
+  const mod = resolveModuleForPath(path);
+  const grantedModules = new Set(grantsView.filter((p) => !p.module.startsWith('/')).map((p) => p.module));
+  if (mod && grantedModules.has(mod)) return true;
+  return false;
 }
 
  export type PermissionStatus = 'loading' | 'ready' | 'error';
@@ -392,6 +449,13 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
     return isRouteAllowed(path, { isAdmin, roles: roleKeys, perms: granularPerms });
   };
 
+  /** Pode executar uma ação (view/create/edit/delete) numa tela/área. Admin
+   *  sempre pode; sem rows granulares cai no RBAC legado (ver ⇒ agir). */
+  const can = (path: string, action: PermissionAction = 'view'): boolean => {
+    if (!user) return false;
+    return isActionAllowed(path, action, { isAdmin, roles: roleKeys, perms: granularPerms });
+  };
+
   /** Check if a module key is accessible. Mantido por compatibilidade de API
    *  (sem consumidores externos hoje). Path-grants não implicam módulo inteiro. */
   const canAccessModule = (moduleKey: string): boolean => {
@@ -409,8 +473,30 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
     roles: roleKeys,
     canAccessRoute,
     canAccessModule,
+    can,
     canSeeFinancialValues,
   };
+}
+
+/**
+ * Conveniência: resolve as 4 capacidades de uma tela/área de uma vez.
+ * Uso: `const perm = useCan('/finance'); perm.canDelete && <BotãoExcluir/>`.
+ */
+export function useCan(path: string) {
+  const { can, loading, isAdmin } = useAccessControl();
+  return useMemo(
+    () => ({
+      loading,
+      isAdmin,
+      canView: can(path, 'view'),
+      canCreate: can(path, 'create'),
+      canEdit: can(path, 'edit'),
+      canDelete: can(path, 'delete'),
+    }),
+    // `can` é recriado a cada render (closure sobre perms/roles); depender de
+    // path + loading/isAdmin cobre as mudanças reais de permissão.
+    [path, loading, isAdmin], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 }
 
 export { ROUTE_MODULE_MAP };

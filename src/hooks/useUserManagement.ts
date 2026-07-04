@@ -25,7 +25,9 @@ export type UserPermission = {
   user_id: string;
   module: string;
   can_view: boolean;
+  can_create: boolean;
   can_edit: boolean;
+  can_delete: boolean;
 };
 
 export const MODULES = [
@@ -225,17 +227,26 @@ export function useSetUserPermission() {
   });
 }
 
+/** Uma tela concedida + suas ações. `path` implica can_view=true. */
+export type PermissionGrant = {
+  path: string;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+};
+
 /**
- * Substitui TODAS as permissões granulares de um usuário pela allow-list de
- * PATHS de menu informada (permissão por item, user 2026-06-17). Apaga as rows
- * antigas (inclusive grants de módulo legados) e grava 1 row por path liberado
- * (module = path '/...'). Resultado: o login mostra SÓ os menus selecionados.
+ * Substitui TODAS as permissões granulares de um usuário pelos grants por TELA
+ * informados (permissão por item + ação CRUD). Apaga as rows antigas (inclusive
+ * grants de módulo legados) e grava 1 row por tela liberada (module = path
+ * '/...') com as 4 flags. Resultado: o login mostra SÓ os menus selecionados e
+ * os gates de ação passam a valer nas áreas cobertas.
  * Lista vazia = usuário sem granular → volta a valer o RBAC por role.
  */
 export function useReplaceUserPermissions() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ userId, paths }: { userId: string; paths: string[] }) => {
+    mutationFn: async ({ userId, grants }: { userId: string; grants: PermissionGrant[] }) => {
       const { error: delErr } = await supabase
         .from('user_permissions')
         .delete()
@@ -243,19 +254,28 @@ export function useReplaceUserPermissions() {
       if (delErr) throw delErr;
       // Só grava paths que são itens REAIS da sidebar — evita poluir a tabela
       // com path digitado errado (que deixaria o usuário em allow-list sem
-      // acesso a nada). can_edit=false (não usado pelo controle de acesso, que
-      // só lê can_view — alinhado com a edge function create-user).
+      // acesso a nada). Dedup por path (última ocorrência vence).
       const valid = new Set(getAllMenuItems().map((i) => i.path));
-      const clean = Array.from(new Set(paths.filter((p) => typeof p === 'string' && valid.has(p))));
-      if (clean.length > 0) {
-        const rows = clean.map((module) => ({ user_id: userId, module, can_view: true, can_edit: false }));
+      const byPath = new Map<string, PermissionGrant>();
+      for (const g of grants) {
+        if (typeof g?.path === 'string' && valid.has(g.path)) byPath.set(g.path, g);
+      }
+      if (byPath.size > 0) {
+        const rows = Array.from(byPath.values()).map((g) => ({
+          user_id: userId,
+          module: g.path,
+          can_view: true,
+          can_create: !!g.can_create,
+          can_edit: !!g.can_edit,
+          can_delete: !!g.can_delete,
+        }));
         const { error: insErr } = await supabase.from('user_permissions').insert(rows);
         if (insErr) throw insErr;
       }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['user_permissions'] });
-      toast.success('Permissões de menu salvas!');
+      toast.success('Permissões salvas!');
     },
     onError: (err: Error) => toast.error(`Erro ao salvar permissões: ${err.message}`),
   });
