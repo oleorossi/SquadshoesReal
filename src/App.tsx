@@ -37,6 +37,7 @@ const DesignPreview = lazy(() => import("./pages/DesignPreview"));
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
  const TechnicalSheets = lazy(() => import("./pages/TechnicalSheets"));
 const EscalonamentoCadPage = lazy(() => import("./pages/EscalonamentoCadPage"));
+const StrapCalculator = lazy(() => import("./pages/StrapCalculator"));
 const Silks = lazy(() => import("./pages/Silks"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Orders = lazy(() => import("./pages/Orders"));
@@ -637,6 +638,12 @@ const router = createBrowserRouter([
          // em 2026-06-28). Escaneia molde / importa DXF → curva de consumo por nº.
          path: "escalonamento",
          element: <EscalonamentoCadPage />,
+       },
+       {
+         // Calculadora de Tiras — rendimento de corte artesanal (tira reta, 1D).
+         // Ferramenta avulsa; parity travada com strapRollCut (motor do PV).
+         path: "calculadora-tiras",
+         element: <StrapCalculator />,
        },
        {
          path: "silks",
