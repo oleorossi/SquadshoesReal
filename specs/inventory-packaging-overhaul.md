@@ -165,9 +165,10 @@ Linhas de box_type (Estoque/Demanda/Sugestão); "Gerar OC" cria PO contra o box_
       painel morto `inventory/PackagingStockPanel` deletado (silo vazio — sem migração).
 - [x] Débito: 17 testes de paridade provam idempotência, `individual_amarrado`+fitilho, default
       pares/caixa =12 e avisos; migration compile-checada (aplicar via dry-run+merge).
-- [~] MRP: pré-requisito `purchase_order_items.box_type_id` entregue. `fn_projected_packaging_demand`
-      + `v_mrp_needs` UNION + Gerar-OC de caixa ficam gated (view canônica; correção depende de
-      dado real — 0 caixas vinculadas hoje). Desenho documentado na migration.
+- [x] MRP lista box_types com Sugestão correta (`fn_projected_packaging_demand` + `v_mrp_needs`
+      UNION + `is_packaging`); "Gerar OC" pula embalagem (compra em `/embalagens`, sinalizado na
+      linha). Validado via transação+ROLLBACK com pedido real (SALTINHO BLOCO): 88 produtos
+      preservados, 2 box rows, demanda=18. Aplicar migrations via dry-run+merge.
 - [x] `bunx tsc -p tsconfig.app.json --noEmit` limpo; `npm run check:tokens` sem violações.
 - [x] Suíte: 1079 testes passando / 2 skipped (DB integration). Consumo/paridade intactos.
 
