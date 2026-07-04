@@ -127,6 +127,9 @@ export type SheetFormData = {
   insole_consumption: number;
   sole_consumption: number;
   direct_components: any[];
+  /** Opt-in: quando true, os componentes vêm de technical_sheet_component_colors
+   *  (por cor predominante) em vez de direct_components. Poucos modelos usam. */
+  component_colors_enabled: boolean;
   default_silk_url: string;
   lining_consumption_per_size: Record<string, number>;
   insole_consumption_per_size: Record<string, number>;
@@ -189,7 +192,7 @@ export const emptySheetForm: SheetFormData = {
   heel_height: '',
   fit_type: 'normal',
   version_number: 'v1',
-  images: [], color_images: [], consumption_loss_pct: 8, safety_margin_pct: 5, components_accessories: [],
+  images: [], color_images: [], consumption_loss_pct: 8, safety_margin_pct: 5, components_accessories: [], component_colors_enabled: false,
   upper_consumption: 0, lining_consumption: 0, lining_accessories: [], lining_materials: [], insole_consumption: 0, sole_consumption: 0,
   direct_components: [],
   default_silk_url: '',

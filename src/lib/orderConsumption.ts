@@ -119,6 +119,11 @@ export type ConsumptionContext = {
    *  solado. Espelha o fallback `v_spec.lining_consumption_dm2` do SQL by_grade.
    *  Opcional (testes antigos constroem o contexto sem ele). */
   liningSpecBySole?: Map<string, Record<string, number>>;
+  /** (sheet_id::corPredominanteNormalizada) → lista de componentes por cor
+   *  (opt-in via technical_sheets.component_colors_enabled). Espelha o gate SQL:
+   *  quando a flag está ligada e há entrada pra a cor do pedido, esta lista
+   *  SUBSTITUI direct_components. Opcional (testes antigos não constroem). */
+  componentColorMap?: Map<string, Array<{ productId: string; quantityPerUnit: number }>>;
 };
 
 /**
@@ -149,7 +154,8 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   sole_group_id,
   lining_accessories,
   components_accessories,
-  direct_components
+  direct_components,
+  component_colors_enabled
 `;
 
 /** Classifica um material de BOM (sheet_materials) num componentType. */
@@ -251,7 +257,7 @@ export async function fetchTechnicalSheetsForConsumption(
 export async function fetchConsumptionContext(refIds: string[]): Promise<ConsumptionContext> {
   const unique = [...new Set(refIds.filter(Boolean))];
 
-  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }] = await Promise.all([
+  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }, { data: componentColorMappings }] = await Promise.all([
     supabase
       .from('sheet_materials')
       .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category, color), product_groups!sheet_materials_group_id_fkey(name)')
@@ -276,6 +282,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     (supabase as any).from('technical_sheet_palmilha_colors').select('sheet_id, cabedal_color, palmilha_color, palmilha_product_id').in('sheet_id', unique),
     (supabase as any).from('technical_sheet_lining_colors').select('sheet_id, cabedal_color, lining_color').in('sheet_id', unique),
     supabase.from('technical_sheets').select('id, sole_group_id, primary_sole_id').in('id', unique),
+    (supabase as any).from('technical_sheet_component_colors').select('sheet_id, cabedal_color, product_id, quantity_per_unit').in('sheet_id', unique),
   ]);
 
   if (materialsError) throw materialsError;
@@ -307,6 +314,18 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   const liningDefaultMap = new Map<string, string>();
   for (const m of (liningColorMappings || []) as any[]) {
     if (m.cabedal_color === '__DEFAULT__') liningDefaultMap.set(m.sheet_id, m.lining_color);
+  }
+
+  // Componentes por cor (opt-in). Chave (sheet_id::corNormalizada) → lista de
+  // {productId, quantityPerUnit}. normalizeColorKey = lower+sem-acento, igual ao
+  // lower(btrim(unaccent(...))) do SQL — mantém a paridade do match de cor.
+  const componentColorMap = new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
+  for (const m of (componentColorMappings || []) as any[]) {
+    if (!m.product_id) continue;
+    const key = `${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`;
+    const arr = componentColorMap.get(key) || [];
+    arr.push({ productId: m.product_id, quantityPerUnit: Number(m.quantity_per_unit) || 0 });
+    componentColorMap.set(key, arr);
   }
 
   // reference_id → strap_colors da ficha
@@ -404,6 +423,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     sheetPrimarySoleMap,
     facheteSpecBySole,
     liningSpecBySole,
+    componentColorMap,
   };
 }
 
@@ -438,6 +458,7 @@ export function computeConsumptionForItems(
   const soleColorGroupMap = ctx.soleColorGroupMap ?? new Map<string, string>();
   const sheetPrimarySoleMap = ctx.sheetPrimarySoleMap ?? new Map<string, string>();
   const liningSpecBySole = ctx.liningSpecBySole ?? new Map<string, Record<string, number>>();
+  const componentColorMap = ctx.componentColorMap ?? new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
   const normColor = (s: string | null | undefined): string =>
@@ -940,7 +961,18 @@ export function computeConsumptionForItems(
     // motor — direct_components só era lido em calculate_order_consumption SQL,
     // gerando inconsistência: ficha pedia 8 binóculos/par e o modal/ficha de
     // operador mostrava só o que vinha do BOM (qty=1 em outras refs).
-    const directComponents = Array.isArray(sheet?.direct_components) ? sheet.direct_components : [];
+    // Componentes por cor (opt-in) OU direct_components (fallback). Espelha o
+    // gate do SQL (calculate_order_consumption_by_grade): com component_colors_enabled
+    // ligado e mapeamento pra a cor do pedido, a lista POR COR substitui
+    // direct_components por completo (cada cor lista tudo). Sem flag, ou cor sem
+    // mapeamento, cai em direct_components.
+    const hasOrderColor = !!orderColor && orderColor !== '—';
+    const perColorComponents = (hasOrderColor && sheet?.component_colors_enabled)
+      ? componentColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`)
+      : undefined;
+    const directComponents = (perColorComponents && perColorComponents.length > 0)
+      ? perColorComponents.map((r) => ({ product_id: r.productId, quantity: r.quantityPerUnit }))
+      : (Array.isArray(sheet?.direct_components) ? sheet.direct_components : []);
     const directProductIds = new Set<string>();
     for (const dc of directComponents) {
       const pid = (dc as any)?.product_id;

@@ -28,6 +28,7 @@ export const CONSUMPTION_SOURCES = [
   'primary_sole',
   'sole_standard_per_size',
   'direct_components',
+  'component_color',
   // valores legados/auxiliares que o SQL pode emitir em casos antigos
   'fallback_default',
   'sole_driven_default',

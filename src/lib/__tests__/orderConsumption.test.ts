@@ -361,6 +361,80 @@ describe('orderConsumption — motor canônico', () => {
     expect(binos[0].totalQuantity).toBe(8 * 24 + 1 * 24); // 192 (direct) + 24 (BOM) = 216
   });
 
+  describe('componentes por cor (opt-in) — paridade com o SQL', () => {
+    // Espelha o gate de calculate_order_consumption_by_grade: com a flag ligada e
+    // mapeamento pra a cor do pedido, a lista por cor SUBSTITUI direct_components.
+    function ctxComponentColors(): ConsumptionContext {
+      const ctx = buildContext();
+      ctx.productGroups.push({ id: 'g-comp', name: 'COMPONENTES', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.allProducts.push(
+        { id: 'p-turq', name: 'ABS TURQUEZA AZUL 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+        { id: 'p-marrom', name: 'ABS MARROM 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+        { id: 'p-perola', name: 'REDONDO PEROLA 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+        { id: 'p-fallback', name: 'ELASTICO PADRAO', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+      );
+      ctx.componentColorMap = new Map([
+        ['sheet-C::caramelo', [{ productId: 'p-turq', quantityPerUnit: 8 }, { productId: 'p-marrom', quantityPerUnit: 8 }]],
+        ['sheet-C::off white', [{ productId: 'p-perola', quantityPerUnit: 8 }, { productId: 'p-marrom', quantityPerUnit: 8 }]],
+      ]);
+      return ctx;
+    }
+    const sheetC = (over: Record<string, any> = {}) => buildSheet({
+      id: 'sheet-C', component_colors_enabled: true,
+      direct_components: [{ product_id: 'p-fallback', quantity: 2, unit: 'un', product_name: 'ELASTICO PADRAO' }],
+      ...over,
+    });
+    // O modal agrega componentes por grupo+cor+unidade (Turqueza e Marrom, ambos
+    // grupo COMPONENTES sem cor, fundem numa linha somada com o nome do 1º). O
+    // DÉBITO (SQL) permanece por product_id — a paridade aqui é sobre a QUANTIDADE
+    // agregada por cor + qual produto lidera a linha, o suficiente pra distinguir
+    // Caramelo (Turqueza) de Off White (Pérola) e do fallback (Elástico).
+    const compTotal = (rows: any[]) =>
+      rows.filter(r => r.groupName === 'COMPONENTES').reduce((s: number, r: any) => s + r.totalQuantity, 0);
+    const compNames = (rows: any[]) => rows.filter(r => r.groupName === 'COMPONENTES').map(r => r.materialName || '');
+
+    it('Caramelo debita Turqueza + Marrom (16/par no total), sem Pérola nem fallback', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'CARAMELO', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      expect(compTotal(rows)).toBe((8 + 8) * 24); // 384 (turq 8 + marrom 8) × 24 pares
+      expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(true);
+      expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(false);
+      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(false);
+    });
+
+    it('Off White debita Pérola + Marrom (16/par no total), sem Turqueza', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'OFF WHITE', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      expect(compTotal(rows)).toBe((8 + 8) * 24); // 384 (perola 8 + marrom 8)
+      expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(true);
+      expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(false);
+    });
+
+    it('cor sem mapeamento cai no fallback direct_components', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'AZUL', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      expect(compTotal(rows)).toBe(2 * 24); // 48 (só o Elástico padrão)
+      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(true);
+      expect(compNames(rows).some(n => n.includes('TURQUEZA') || n.includes('PEROLA'))).toBe(false);
+    });
+
+    it('flag desligada: ignora o mapeamento e usa direct_components (regressão)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'CARAMELO', technical_sheets: sheetC({ component_colors_enabled: false }) })],
+        ctxComponentColors(),
+      );
+      expect(compTotal(rows)).toBe(2 * 24); // 48 (fallback), mapeamento ignorado
+      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(true);
+      expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(false);
+    });
+  });
+
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
     // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
     // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em
