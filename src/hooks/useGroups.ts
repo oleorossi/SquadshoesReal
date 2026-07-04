@@ -74,6 +74,10 @@ export function useAddGroup() {
       pairs_per_box_master?: number | null;
       pairs_per_box_colmeia?: number | null;
       pairs_per_box_fitilho?: number | null;
+      box_type_id?: string | null;
+      box_type_master_id?: string | null;
+      box_type_colmeia_id?: string | null;
+      box_type_fitilho_id?: string | null;
     }) => {
       const { data, error } = await supabase.from('product_groups').insert(form as any).select().single();
       if (error) throw error;

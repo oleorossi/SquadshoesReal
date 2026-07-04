@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Stack as Layers, Truck } from '@phosphor-icons/react';
  import { useAddGroup, useGroups } from "@/hooks/useGroups";
+import { useIndividualPackaging } from "@/hooks/usePackaging";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
@@ -38,6 +39,10 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     pairs_per_box_master: null as number | null,
     pairs_per_box_colmeia: null as number | null,
     pairs_per_box_fitilho: null as number | null,
+    box_type_id: "" as string,
+    box_type_master_id: "" as string,
+    box_type_colmeia_id: "" as string,
+    box_type_fitilho_id: "" as string,
   });
   // Setor segue a sugestão automática pelo nome até o usuário escolher manualmente.
   const [sectorTouched, setSectorTouched] = useState(false);
@@ -74,6 +79,8 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
  
 
   const addGroup = useAddGroup();
+  const { data: boxOptions = [] } = useIndividualPackaging({ is_active: true });
+  const NO_BOX = "__none__";
 
   const reset = () => {
     setForm({
@@ -86,6 +93,10 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
       pairs_per_box_master: null,
       pairs_per_box_colmeia: null,
       pairs_per_box_fitilho: null,
+      box_type_id: "",
+      box_type_master_id: "",
+      box_type_colmeia_id: "",
+      box_type_fitilho_id: "",
     });
     setSectorTouched(false);
   };
@@ -111,6 +122,10 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
         pairs_per_box_master: form.pairs_per_box_master,
         pairs_per_box_colmeia: form.pairs_per_box_colmeia,
         pairs_per_box_fitilho: form.pairs_per_box_fitilho,
+        box_type_id: form.box_type_id || null,
+        box_type_master_id: form.box_type_master_id || null,
+        box_type_colmeia_id: form.box_type_colmeia_id || null,
+        box_type_fitilho_id: form.box_type_fitilho_id || null,
       });
       reset();
       onOpenChange(false);
@@ -256,49 +271,47 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
             </Label>
           </div>
 
-          <div className="rounded-lg border p-3 bg-muted/30 space-y-2">
-            <Label className="text-sm font-medium">Pares por embalagem (opcional)</Label>
-            <p className="text-xs text-muted-foreground -mt-1">
-              Use somente os tipos de caixa aplicáveis a este grupo. Pode ajustar depois na edição.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label htmlFor="ppb-ind-create" className="text-xs">Individual</Label>
-                <Input
-                  id="ppb-ind-create" type="number" min={1} step={1}
-                  value={form.pairs_per_box_individual ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_individual: parseIntOrNull(e.target.value) }))}
-                  className="mt-1 h-8" placeholder="Ex: 1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="ppb-mas-create" className="text-xs">Master</Label>
-                <Input
-                  id="ppb-mas-create" type="number" min={1} step={1}
-                  value={form.pairs_per_box_master ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_master: parseIntOrNull(e.target.value) }))}
-                  className="mt-1 h-8" placeholder="Ex: 12"
-                />
-              </div>
-              <div>
-                <Label htmlFor="ppb-col-create" className="text-xs">Colmeia</Label>
-                <Input
-                  id="ppb-col-create" type="number" min={1} step={1}
-                  value={form.pairs_per_box_colmeia ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_colmeia: parseIntOrNull(e.target.value) }))}
-                  className="mt-1 h-8" placeholder="Ex: 24"
-                />
-              </div>
-              <div>
-                <Label htmlFor="ppb-fit-create" className="text-xs">Fitilho</Label>
-                <Input
-                  id="ppb-fit-create" type="number" min={1} step={1}
-                  value={form.pairs_per_box_fitilho ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, pairs_per_box_fitilho: parseIntOrNull(e.target.value) }))}
-                  className="mt-1 h-8" placeholder="Ex: 2"
-                />
-              </div>
+          <div className="rounded-lg border p-3 bg-muted/30 space-y-3">
+            <div>
+              <Label className="text-sm font-medium">Embalagem (opcional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Vincule a caixa e os pares/caixa por tipo — o débito de embalagem lê isto do
+                grupo do solado. Use só os tipos aplicáveis. Pode ajustar depois na edição.
+              </p>
             </div>
+            {([
+              { key: 'individual', label: 'Individual', ph: '1', pairsField: 'pairs_per_box_individual', boxField: 'box_type_id' },
+              { key: 'master', label: 'Master', ph: '12', pairsField: 'pairs_per_box_master', boxField: 'box_type_master_id' },
+              { key: 'colmeia', label: 'Colmeia', ph: '24', pairsField: 'pairs_per_box_colmeia', boxField: 'box_type_colmeia_id' },
+              { key: 'fitilho', label: 'Fitilho', ph: '2', pairsField: 'pairs_per_box_fitilho', boxField: 'box_type_fitilho_id' },
+            ] as const).map((row) => (
+              <div key={row.key} className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                <div>
+                  <Label className="text-xs">{row.label} — caixa</Label>
+                  <Select
+                    value={(form as any)[row.boxField] || NO_BOX}
+                    onValueChange={(v) => setForm((f) => ({ ...f, [row.boxField]: v === NO_BOX ? "" : v }))}
+                  >
+                    <SelectTrigger className="mt-1 h-8"><SelectValue placeholder="Sem caixa" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_BOX}>Sem caixa</SelectItem>
+                      {boxOptions.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>{b.product_name || b.internal_code}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-20">
+                  <Label className="text-xs">Pares/cx</Label>
+                  <Input
+                    type="number" min={1} step={1}
+                    value={(form as any)[row.pairsField] ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, [row.pairsField]: parseIntOrNull(e.target.value) }))}
+                    className="mt-1 h-8" placeholder={row.ph}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">

@@ -1551,7 +1551,9 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
   );
 }
 
-const PRODUCT_UNITS = ['par', 'dm²', 'm²', 'cm²', 'm', 'm linear', 'metros', 'kg', 'g', 'L', 'ml', 'un', 'jg', 'pc', 'rolo', 'cx', 'folha'];
+// 'm linear'/'metros' removidos (2026-07-04): sinônimos não-canônicos de 'm' — o
+// trigger normalize_product_unit já grava 'm', então ofertá-los só confundia.
+const PRODUCT_UNITS = ['par', 'dm²', 'm²', 'cm²', 'm', 'kg', 'g', 'L', 'ml', 'un', 'jg', 'pc', 'rolo', 'cx', 'folha'];
 
 /* ─── Inline editor for consumption per item (commits on blur) ─── */
 function ConsumptionEditCell({

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { syncFinancialRecordsCore } from '@/lib/financialSync';
@@ -1198,7 +1199,7 @@ export function useUpdateSaleOrderStatus() {
                     }
                   }
                   // Debit packaging — hard debit: OP entra Em Produção, embalagem sai do estoque agora
-                  const { error: pkgErr } = await supabase.rpc('debit_packaging_for_order', {
+                  const { data: pkgData2, error: pkgErr } = await supabase.rpc('debit_packaging_for_order', {
                     p_sale_order_id: id,
                     p_order_id: createdOp.id,
                     p_reference_id: item.reference_id,
@@ -1209,6 +1210,8 @@ export function useUpdateSaleOrderStatus() {
                   if (pkgErr) {
                     console.error('Erro embalagem:', pkgErr.message);
                     secondaryDebitErrors.push(`embalagem: ${pkgErr.message}`);
+                  } else {
+                    warnPackagingDebit(pkgData2);
                   }
 
                   // If any secondary debit failed, restore and cancel the OP so it
@@ -1472,7 +1475,7 @@ export function useUpdateSaleOrderStatus() {
               }
 
               // Debit packaging — hard debit: OP entra Aprovado, embalagem sai do estoque agora
-              const { error: pkgErrAprov } = await supabase.rpc('debit_packaging_for_order', {
+              const { data: pkgDataAprov, error: pkgErrAprov } = await supabase.rpc('debit_packaging_for_order', {
                 p_sale_order_id: id,
                 p_order_id: createdOp.id,
                 p_reference_id: item.reference_id,
@@ -1483,6 +1486,8 @@ export function useUpdateSaleOrderStatus() {
               if (pkgErrAprov) {
                 console.error('Erro ao debitar embalagem (Aprovado):', pkgErrAprov.message);
                 secondaryDebitErrorsAprov.push(`embalagem: ${pkgErrAprov.message}`);
+              } else {
+                warnPackagingDebit(pkgDataAprov);
               }
 
               if (secondaryDebitErrorsAprov.length > 0) {
@@ -2123,7 +2128,7 @@ export function useUpdateSaleOrder() {
 
           // Packaging debit — hard debit: OP nova já entra produzindo, embalagem sai agora
           if (newOp?.id) {
-            const { error: pkgUpdErr } = await (supabase as any).rpc('debit_packaging_for_order', {
+            const { data: pkgDataUpd, error: pkgUpdErr } = await (supabase as any).rpc('debit_packaging_for_order', {
               p_sale_order_id: id,
               p_order_id: newOp.id,
               p_reference_id: item.reference_id,
@@ -2132,6 +2137,7 @@ export function useUpdateSaleOrder() {
               p_force_soft: false,
             });
             if (pkgUpdErr) console.error('Erro ao debitar embalagem (update PV):', pkgUpdErr.message);
+            else warnPackagingDebit(pkgDataUpd);
           }
 
           // Create production stages from technical sheet sectors
@@ -2753,7 +2759,7 @@ export function useResyncOPsFromPV() {
         }
 
         // Debit packaging (resync) — hard debit: OP entra ativa, embalagem sai agora
-        const { error: pkgErr } = await (supabase as any).rpc('debit_packaging_for_order', {
+        const { data: pkgDataResync, error: pkgErr } = await (supabase as any).rpc('debit_packaging_for_order', {
           p_sale_order_id: saleOrderId,
           p_order_id: newOp.id,
           p_reference_id: item.reference_id,
@@ -2762,6 +2768,7 @@ export function useResyncOPsFromPV() {
           p_force_soft: false,
         });
         if (pkgErr) console.error('Erro embalagem (resync):', pkgErr.message);
+        else warnPackagingDebit(pkgDataResync);
 
         const { data: sheetData } = await supabase
           .from('technical_sheets')
