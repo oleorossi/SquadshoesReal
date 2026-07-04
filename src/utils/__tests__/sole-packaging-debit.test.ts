@@ -28,7 +28,9 @@ const fullStock = (qty = 1000): Record<string, BoxTypeRow> => ({
 describe("resolveTypesForMode", () => {
   it("modo individual → só caixa individual", () => {
     expect(resolveTypesForMode("individual")).toEqual(["individual"]);
-    expect(resolveTypesForMode("individual_amarrado")).toEqual(["individual"]);
+  });
+  it("modo individual_amarrado → individual + fitilho (amarrado == fitilho)", () => {
+    expect(resolveTypesForMode("individual_amarrado")).toEqual(["individual", "fitilho"]);
   });
   it("modo individual_master → individual + master", () => {
     expect(resolveTypesForMode("individual_master")).toEqual(["individual", "master"]);
@@ -50,9 +52,10 @@ describe("boxesNeeded (CEIL com fallback de pairs)", () => {
   it("pairs = 1 → 1 caixa por par", () => {
     expect(boxesNeeded(36, 1)).toBe(36);
   });
-  it("pairs nulo/zero → fallback para 1 (1 caixa por par)", () => {
-    expect(boxesNeeded(10, null)).toBe(10);
-    expect(boxesNeeded(10, 0)).toBe(10);
+  it("pairs nulo/zero → fallback para o default canônico 12 (#4)", () => {
+    expect(boxesNeeded(10, null)).toBe(1);   // CEIL(10/12)
+    expect(boxesNeeded(10, 0)).toBe(1);
+    expect(boxesNeeded(25, null)).toBe(3);   // CEIL(25/12)
   });
 });
 
@@ -126,12 +129,12 @@ describe("planPackagingDebit — skips e erros", () => {
     ).toThrow(/Estoque insuficiente para embalagem "Caixa Master 12"/);
   });
 
-  it("pairs=0 no solado → fallback para 1 (1 caixa por par)", () => {
+  it("pairs=0 no solado → fallback para o default canônico 12 (#4)", () => {
     const zeroPairs: SoleGroupPackaging = { ...sole, pairs_per_box_master: 0 };
     const r = planPackagingDebit({ sole: zeroPairs, boxes: fullStock(), orderQuantity: 5, mode: "individual_master" });
     expect(r).toEqual([
-      expect.objectContaining({ packaging_type: "individual", boxes_needed: 5 }),
-      expect.objectContaining({ packaging_type: "master",     boxes_needed: 5 }),
+      expect.objectContaining({ packaging_type: "individual", boxes_needed: 5 }),   // pairs=1 explícito
+      expect.objectContaining({ packaging_type: "master",     boxes_needed: 1 }),   // CEIL(5/12)
     ]);
   });
 });

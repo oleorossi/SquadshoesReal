@@ -1,10 +1,15 @@
 /**
- * Espelho puro da RPC `debit_packaging_for_order` (migration 20260428181824).
+ * Espelho puro da RPC `debit_packaging_for_order`
+ * (migration atual: 20260704120000_fix-packaging-debit-idempotency-and-fallback-defaults).
  *
  * A RPC real lê `product_groups` (solado da ficha técnica) e debita estoque em
  * `box_types` + `stock_movements`. Esta função reproduz APENAS a lógica de
  * cálculo (quais tipos debitar, quantas caixas e validação de estoque), para
  * que possamos testá-la sem ir ao Postgres.
+ *
+ * Fora do escopo deste espelho (são efeitos de estado no banco): a idempotência
+ * por `order_id` (#5) e os avisos `skipped_no_box_linked`/`no_packaging_configured`
+ * no JSON de retorno — cobertos direto na RPC.
  *
  * Mantenha em sincronia com a migration. Se a RPC mudar, atualize aqui.
  */
@@ -53,9 +58,10 @@ export function resolveTypesForMode(mode: PackagingMode): PackagingType[] {
     case "individual_master":
       return ["individual", "master"];
     case "individual_fitilho":
+    case "individual_amarrado":
+      // Amarrado == fitilho: debita individual + fitilho (alinhado à RPC viva).
       return ["individual", "fitilho"];
     case "individual":
-    case "individual_amarrado":
     default:
       return ["individual"];
   }
@@ -81,10 +87,14 @@ function pickPairs(sole: SoleGroupPackaging, t: PackagingType): number | null {
 
 /**
  * Calcula o número de caixas necessárias.
- * Espelha: `CEIL(qty / GREATEST(COALESCE(NULLIF(pairs,0),1), 1))`.
+ * Espelha a RPC: pares/caixa sem valor cai no default canônico 12 (alinhado com a
+ * NF `compute_sale_order_nfe_volumes`), não mais 1 — #4. Para uma caixa que
+ * comporta 1 par, cadastre `pairs_per_box_*` = 1 explicitamente (valor específico
+ * sempre vence). CEIL(qty / GREATEST(COALESCE(NULLIF(pairs,0),12), 1)).
  */
+export const DEFAULT_PAIRS_PER_BOX = 12;
 export function boxesNeeded(orderQuantity: number, pairsPerBox: number | null): number {
-  const pairs = !pairsPerBox || pairsPerBox <= 0 ? 1 : pairsPerBox;
+  const pairs = !pairsPerBox || pairsPerBox <= 0 ? DEFAULT_PAIRS_PER_BOX : pairsPerBox;
   return Math.ceil(orderQuantity / Math.max(pairs, 1));
 }
 
