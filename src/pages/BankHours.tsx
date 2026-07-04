@@ -260,7 +260,7 @@ export default function BankHours() {
       movement_type: form.movement_type,
       minutes: finalMins,
       description: form.description,
-      // overtime_pct só relevante pra 'payment' — payrollCalc usa pra separar 50/100.
+      // overtime_pct só relevante pra 'payment' — separa a faixa da HE (50/100).
       overtime_pct: form.movement_type === 'payment' ? form.overtime_pct : null,
     } as any);
     setMovementDialogOpen(false);

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import type { BenefitsConfig } from '@/lib/payrollCalc';
+import type { BenefitsConfig } from '@/lib/benefitsConfig';
 
 // ── benefits_config ──────────────────────────────────────────────────
 export function useBenefitsConfig() {
@@ -50,7 +50,7 @@ export interface BankHoursMovement {
    * Tipo do lançamento:
    * - credit/debit/adjustment/compensation/payout — legados
    * - 'pay' — RH marca HE pra pagamento na folha do mês (decisão 2026-05-21).
-   *   Quando 'pay', payrollCalc lê esses minutos via overtime_pct (50/100).
+   *   `overtime_pct` (50/100) separa a faixa da HE marcada pra pagar.
    */
   movement_type: 'credit' | 'debit' | 'adjustment' | 'compensation' | 'payment';
   minutes: number;
