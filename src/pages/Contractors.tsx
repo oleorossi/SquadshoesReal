@@ -2,8 +2,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
-import { escapeHtml } from '@/lib/htmlUtils';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { printServiceOrderRemessa } from '@/lib/printServiceOrderRemessa';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
@@ -169,86 +169,6 @@ function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
   );
 }
 
-function printReceipt(order: ServiceOrder, contractor: Contractor | undefined) {
-  const w = window.open('', '_blank', 'width=800,height=600');
-  if (!w) return;
-  const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-  const fmtDate = (d: string) => d ? format(new Date(d + 'T12:00:00'), 'dd/MM/yyyy') : '—';
-  const materials = getMaterials(order);
-  const materialsHtml = materials.length > 0 ? `
-    <div class="material-box">
-      <h4>Materiais Enviados</h4>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="border-bottom:1px solid #d97706;">
-          <th style="text-align:left;padding:4px 8px;">Material</th>
-          <th style="text-align:left;padding:4px 8px;">Cor</th>
-          <th style="text-align:right;padding:4px 8px;">Metros</th>
-        </tr></thead>
-        <tbody>${materials.map(m => `<tr>
-          <td style="padding:4px 8px;">${escapeHtml(m.material) || '—'}</td>
-          <td style="padding:4px 8px;">${escapeHtml(m.color) || '—'}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:monospace;">${Number(m.meters).toFixed(2)}m</td>
-        </tr>`).join('')}</tbody>
-      </table>
-    </div>` : '';
-
-  w.document.write(`<!DOCTYPE html><html><head><title>Recibo ${order.receipt_number || order.order_number}</title>
-    <style>
-      body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #1a1a1a; }
-      .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 16px; margin-bottom: 24px; }
-      .header h1 { font-size: 22px; margin: 0; }
-      .header p { color: #666; margin: 4px 0 0; font-size: 13px; }
-      .badge { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-      .section { margin-bottom: 20px; }
-      .section h3 { font-size: 13px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
-      .field label { font-size: 11px; color: #888; display: block; }
-      .field span { font-size: 14px; font-weight: 500; }
-      .total-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; text-align: center; margin-top: 20px; }
-      .total-box .amount { font-size: 28px; font-weight: 700; color: #15803d; }
-      .material-box { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-top: 12px; }
-      .material-box h4 { font-size: 12px; text-transform: uppercase; color: #92400e; margin: 0 0 8px; }
-      .footer { margin-top: 40px; display: flex; justify-content: space-between; gap: 40px; }
-      .signature { flex: 1; border-top: 1px solid #333; padding-top: 8px; text-align: center; font-size: 12px; color: #666; }
-      @media print { body { margin: 20px; } }
-    </style>
-  </head><body>
-    <div class="header">
-      <h1>RECIBO DE SERVIÇO TERCEIRIZADO</h1>
-      <p>${escapeHtml(order.receipt_number || order.order_number)} &nbsp;•&nbsp; ${fmtDate(order.service_date)}</p>
-    </div>
-    <div class="section">
-      <h3>Prestador de Serviço</h3>
-      <div class="grid">
-        <div class="field"><label>Nome</label><span>${escapeHtml(contractor?.name) || '—'}</span></div>
-        <div class="field"><label>CPF/CNPJ</label><span>${escapeHtml(contractor?.cnpj_cpf) || '—'}</span></div>
-        <div class="field"><label>Telefone</label><span>${escapeHtml(contractor?.phone) || '—'}</span></div>
-        <div class="field"><label>Tipo de Serviço</label><span>${escapeHtml(contractor?.service_type) || '—'}</span></div>
-      </div>
-    </div>
-    <div class="section">
-      <h3>Detalhes do Serviço</h3>
-      <div class="grid">
-        <div class="field"><label>Nº OS</label><span>${escapeHtml(order.order_number)}</span></div>
-        <div class="field"><label>Status</label><span class="badge">${escapeHtml(order.status)}</span></div>
-        <div class="field" style="grid-column: span 2;"><label>Descrição</label><span>${escapeHtml(order.description)}</span></div>
-        <div class="field"><label>Valor Unitário</label><span>${fmtCurrency(Number(order.unit_price))}</span></div>
-      </div>
-    </div>
-    ${materialsHtml}
-    <div class="total-box">
-      <div style="font-size:12px;color:#666;text-transform:uppercase;">Valor Total</div>
-      <div class="amount">${fmtCurrency(Number(order.total_value))}</div>
-    </div>
-    ${order.notes ? `<div class="section" style="margin-top:20px;"><h3>Observações</h3><p style="font-size:13px;">${escapeHtml(order.notes)}</p></div>` : ''}
-    <div class="footer">
-      <div class="signature">Contratante</div>
-      <div class="signature">Prestador de Serviço</div>
-    </div>
-  </body></html>`);
-  w.document.close();
-  setTimeout(() => w.print(), 300);
-}
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
   const navigate = useNavigate();
@@ -335,6 +255,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // TODOS os pedidos, sem corte de 50 nem filtro de status que escondia pedidos.
   const [pvSearch, setPvSearch] = useState('');
   const [pvOpen, setPvOpen] = useState(false);
+  // Seleção dos itens do PV vinculado à OS (mesmo modelo do atalho "Gerar OS" do
+  // pedido): marca os itens cobertos e a soma dos pares vira a Quantidade da OS.
+  const [osPvItemSel, setOsPvItemSel] = useState<Set<string>>(new Set());
+  const osPvPrevRef = useRef<string | null>(null); // rastreia troca de PV p/ só sobrescrever a qtd numa mudança ativa
   // Artisanal OS state
   const [isArtisanal, setIsArtisanal] = useState(false);
   const [artRecipeId, setArtRecipeId] = useState('');
@@ -354,6 +278,61 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     queryFn: async () => { const { data } = await supabase.from('group_supplier_materials').select('group_id, color, material_name').eq('active', true); return data || []; },
     staleTime: 0, gcTime: 30_000,
   });
+
+  // Itens do PV vinculado à OS aberta (ref · cor + pares). Alimenta o seletor de
+  // itens do dialog e a guia de remessa (cartões por item).
+  const { data: osPvItemsRaw = [] } = useQuery({
+    queryKey: ['os_dialog_pv_items', editingOrder.sale_order_id],
+    enabled: orderDialog && !!editingOrder.sale_order_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('sale_order_items')
+        .select('id, color, quantity, reference_id, technical_sheets(code, name)')
+        .eq('sale_order_id', editingOrder.sale_order_id as string);
+      return data || [];
+    },
+    staleTime: 60_000,
+  });
+  const osPvItems = useMemo(
+    () => (osPvItemsRaw as any[]).map((it) => {
+      const ts = it.technical_sheets;
+      const code = ts?.code || ts?.name || '';
+      const label = [code, it.color || '—'].filter(Boolean).join(' · ');
+      return { id: it.id as string, label, pairs: Number(it.quantity) || 0 };
+    }).filter((i) => i.pairs > 0),
+    [osPvItemsRaw],
+  );
+  const osSelItems = useMemo(() => osPvItems.filter((i) => osPvItemSel.has(i.id)), [osPvItems, osPvItemSel]);
+  const osSelPares = osSelItems.reduce((s, i) => s + i.pairs, 0);
+
+  // Ao carregar os itens do PV: pré-marca todos. Só sobrescreve a Quantidade da OS
+  // quando o usuário TROCA o PV ativamente (não na abertura de uma OS existente —
+  // aí preserva a quantidade já gravada).
+  useEffect(() => {
+    if (!orderDialog) return;
+    const pv = editingOrder.sale_order_id || null;
+    if (pv && osPvItems.length > 0) {
+      setOsPvItemSel(new Set(osPvItems.map((i) => i.id)));
+      if (osPvPrevRef.current !== null && osPvPrevRef.current !== pv) {
+        const sum = osPvItems.reduce((s, i) => s + i.pairs, 0);
+        if (sum > 0) setEditingOrder((p) => ({ ...p, quantity: sum }));
+      }
+      osPvPrevRef.current = pv;
+    } else if (!pv) {
+      setOsPvItemSel(new Set());
+      osPvPrevRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderDialog, editingOrder.sale_order_id, osPvItems]);
+
+  // Liga/desliga um item do PV e recalcula a Quantidade (Σ pares marcados).
+  const toggleOsPvItem = (id: string) => {
+    const next = new Set(osPvItemSel);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setOsPvItemSel(next);
+    const sum = osPvItems.filter((i) => next.has(i.id)).reduce((s, i) => s + i.pairs, 0);
+    if (sum > 0) setEditingOrder((p) => ({ ...p, quantity: sum }));
+  };
 
   const uniqueSortedColors = (colors: string[]) => Array.from(new Set(colors.map(c => c.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const getDerivedProductColor = (product: any) => { const n = product.name?.trim() || ''; if (n.includes(':')) return n.split(':').pop()?.trim() || ''; if (n.includes(' - ')) return n.split(' - ').pop()?.trim() || ''; return ''; };
@@ -570,7 +549,26 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
             {o.receipt_number && (
-              <DropdownMenuItem onClick={() => printReceipt(o, contractors.find(c => c.id === o.contractor_id))}>
+              <DropdownMenuItem onClick={() => {
+                const so = (saleOrders as any[]).find(s => s.id === o.sale_order_id);
+                printServiceOrderRemessa(
+                  {
+                    order_number: o.order_number,
+                    target_sector: o.target_sector || null,
+                    description: o.description || '',
+                    service_date: o.service_date || '',
+                    quantity: Number(o.quantity || 0),
+                    unit_price: Number(o.unit_price || 0),
+                    total_value: Number(o.total_value || 0),
+                    notes: o.notes || '',
+                    materials_sent: getMaterials(o),
+                    sale_order_number: so?.order_number || null,
+                    client_order_number: so?.client_order_number || null,
+                    client_name: so?.client_name || null,
+                  },
+                  contractors.find(c => c.id === o.contractor_id),
+                );
+              }}>
                 <Printer className="mr-2 h-3.5 w-3.5" /> Recibo {o.receipt_number}
               </DropdownMenuItem>
             )}
@@ -2224,8 +2222,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       </Dialog>
 
       {/* ── Service Order Dialog ── */}
-      <Dialog open={orderDialog} onOpenChange={open => { setOrderDialog(open); if (!open) { setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }] }); setIsEditing(false); setOrderTab('dados'); resetArtisanal(); } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={orderDialog} onOpenChange={open => { setOrderDialog(open); if (!open) { setEditingOrder({ ...emptyOrder, materials_sent: [{ ...emptyMaterial }] }); setIsEditing(false); setOrderTab('dados'); resetArtisanal(); setOsPvItemSel(new Set()); osPvPrevRef.current = null; } }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> {isEditing ? 'Editar' : 'Nova'} Ordem de Serviço</DialogTitle>
             <DialogDescription>Prestador, materiais enviados e cobrança da OS.</DialogDescription>
@@ -2335,6 +2333,35 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </PopoverContent>
                   </Popover>
                 </div>
+
+                {/* ── Itens do PV vinculado (mesmo modelo do atalho "Gerar OS" do pedido) ── */}
+                {editingOrder.sale_order_id && osPvItems.length > 0 && !isArtisanal && (
+                  <div className="sm:col-span-2 space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Itens do pedido</span>
+                      <span className="text-[11px] text-muted-foreground">{osSelItems.length} de {osPvItems.length} · <b className="text-foreground">{osSelPares.toLocaleString('pt-BR')} pares</b></span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {osPvItems.map((it) => {
+                        const on = osPvItemSel.has(it.id);
+                        return (
+                          <button
+                            type="button" key={it.id} onClick={() => toggleOsPvItem(it.id)}
+                            className={cn(
+                              'w-full flex items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors',
+                              on ? 'border-primary/40 bg-primary/10' : 'border-border bg-background hover:bg-muted/50',
+                            )}
+                          >
+                            <span className={cn('h-4 w-4 rounded border grid place-items-center text-[10px] leading-none text-primary-foreground', on ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>{on ? '✓' : ''}</span>
+                            <span className="text-sm font-medium text-foreground flex-1 truncate">{it.label}</span>
+                            <span className="text-xs tabular-nums text-muted-foreground">{it.pairs.toLocaleString('pt-BR')} pares</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Marque os itens desta OS — a soma dos pares vira a <b className="text-foreground">Quantidade</b> e alimenta a guia de remessa.</p>
+                  </div>
+                )}
 
                 {/* ── Artisanal Production Panel ── */}
                 <div className="sm:col-span-2">
@@ -2707,24 +2734,35 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
           <DialogFooter className="gap-2 sm:gap-0 flex-wrap">
             <Button variant="outline" onClick={() => setOrderDialog(false)} className="h-9">Cancelar</Button>
-            <Button variant="secondary" className="h-9 gap-1" onClick={() => {
+            <Button className="h-9 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => {
               const contractor = contractors.find(c => c.id === editingOrder.contractor_id);
+              const so = (saleOrders as any[]).find(s => s.id === editingOrder.sale_order_id);
               const validMats = (editingOrder.materials_sent || []).filter(m => m.material?.trim());
-              const fakeOrder: ServiceOrder = {
-                id: editingOrder.id || '', contractor_id: editingOrder.contractor_id || '',
-                order_number: isEditing ? (orders.find(o => o.id === editingOrder.id)?.order_number || 'NOVA') : 'NOVA',
-                description: editingOrder.description || '', service_date: editingOrder.service_date || format(new Date(), 'yyyy-MM-dd'),
-                service_time: editingOrder.service_time || '', quantity: editingOrder.quantity || 1,
-                unit_price: editingOrder.unit_price || 0, total_value: editingOrder.total_value || 0,
-                status: editingOrder.status || 'Pendente', notes: editingOrder.notes || '',
-                material_name: validMats[0]?.material || '', material_meters: validMats[0]?.meters || 0,
-                material_color: validMats[0]?.color || '', materials_sent: validMats,
-                receipt_number: '', receipt_generated_at: null, signed_photo_url: null,
-                sale_order_id: editingOrder.sale_order_id || null,
-                created_at: '', updated_at: '',
-              };
-              printReceipt(fakeOrder, contractor);
-            }}><Printer className="h-4 w-4" /> Gerar OS</Button>
+              const qtyVal = Number(editingOrder.quantity || 1);
+              const unitVal = Number(editingOrder.unit_price || 0);
+              printServiceOrderRemessa(
+                {
+                  order_number: isEditing ? (orders.find(o => o.id === editingOrder.id)?.order_number || 'NOVA') : 'NOVA',
+                  target_sector: editingOrder.target_sector || null,
+                  description: editingOrder.description || '',
+                  service_date: editingOrder.service_date || format(new Date(), 'yyyy-MM-dd'),
+                  service_time: editingOrder.service_time || '',
+                  quantity: qtyVal,
+                  unit_price: isArtisanal ? 0 : unitVal,
+                  total_value: isArtisanal ? Number(editingOrder.total_value || editingOrder.unit_price || 0) : qtyVal * unitVal,
+                  notes: editingOrder.notes || '',
+                  materials_sent: validMats,
+                  sale_order_number: so?.order_number || null,
+                  client_order_number: so?.client_order_number || null,
+                  client_name: so?.client_name || null,
+                },
+                contractor ? {
+                  name: contractor.name, trade_name: (contractor as any).trade_name,
+                  cnpj_cpf: contractor.cnpj_cpf, phone: contractor.phone, payment_days: contractor.payment_days,
+                } : undefined,
+                { items: osSelItems },
+              );
+            }}><Printer className="h-4 w-4" /> Gerar PDF</Button>
             <Button onClick={handleSaveOrder} disabled={!manualOsValid || createOrder.isPending || updateOrder.isPending} className="h-9">Salvar</Button>
           </DialogFooter>
         </DialogContent>
