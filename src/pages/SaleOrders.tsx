@@ -8,12 +8,13 @@ import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Baby, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
+import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
+import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
 import GeneratePurchaseOrdersDialog from '@/components/purchase/GeneratePurchaseOrdersDialog';
 import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
@@ -316,6 +317,7 @@ export default function SaleOrders() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [selectedOrderItems, setSelectedOrderItems] = useState<any[]>([]);
+  const [osDialogOpen, setOsDialogOpen] = useState(false); // atalho "Gerar OS" do PV
   const [loadingOrderItems, setLoadingOrderItems] = useState(false);
   const { data: selectedOrderNfes = [] } = useNfeEmitidas(selectedOrder?.id);
 
@@ -2359,8 +2361,9 @@ export default function SaleOrders() {
 
           {selectedOrder && (
             <div className="space-y-4 mt-3">
-              {/* Toolbar de ações do PV */}
-              <div className="flex items-center gap-2 flex-wrap border-b py-2.5">
+              {/* Toolbar de ações do PV — compacta ([&_button]) pra caber todos os
+                  botões numa/duas linhas mesmo com o "Gerar OS" novo. */}
+              <div className="flex items-center gap-1.5 flex-wrap border-b py-2.5 [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
                 <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Operação">
                   {isAdmin && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
@@ -2466,6 +2469,13 @@ export default function SaleOrders() {
                     <Tag className="h-3.5 w-3.5" /> Etiquetas
                   </Button>
                 </div>
+                <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
+                {/* Atalho: cria uma Ordem de Serviço com os itens deste pedido
+                    (terceirização) — mesmo fluxo/tabela da OS do menu. Primário
+                    (vermelho) por ser uma ação de criação, igual Gerar OCs/OPs. */}
+                <Button size="sm" className="gap-2" onClick={() => setOsDialogOpen(true)} title="Gerar Ordem de Serviço com os itens deste pedido — mesmo fluxo do menu Terceirizados">
+                  <Buildings className="h-3.5 w-3.5" /> Gerar OS
+                </Button>
               </div>
 
               <div className="rounded-lg border bg-muted/30 overflow-hidden">
@@ -3073,6 +3083,24 @@ export default function SaleOrders() {
         orderNumber={selectedOrder?.order_number || ''}
         total={Number(selectedOrder?.total) || 0}
       />
+
+      {/* Atalho "Gerar OS" do PV — reusa o form canônico de OS, já com os itens
+          deste pedido pré-selecionados e a OS amarrada ao pedido (sale_order_id). */}
+      {selectedOrder && (
+        <ServiceOrderFormDialog
+          open={osDialogOpen}
+          onOpenChange={setOsDialogOpen}
+          saleOrderId={selectedOrder.id}
+          saleOrderLabel={selectedOrder.order_number}
+          pvItems={(allSaleItems as any[])
+            .filter((it) => it.sale_order_id === selectedOrder.id)
+            .map((it) => {
+              const ref = (references as any[]).find((r) => r.id === it.reference_id);
+              return { id: it.id as string, label: [ref?.code || ref?.name || '', it.color || '—'].filter(Boolean).join(' · '), pairs: Number(it.quantity) || 0 };
+            })
+            .filter((i) => i.pairs > 0)}
+        />
+      )}
 
       {poGenTarget && (
         <GeneratePurchaseOrdersDialog

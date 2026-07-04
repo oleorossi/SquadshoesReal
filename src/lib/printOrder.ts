@@ -680,6 +680,11 @@ export async function buildSaleOrderPrintHtml(
   .pv-sign__box { text-align: center; border-top: 1.5px solid var(--line-strong); padding-top: 6px; }
   .pv-sign__box .l { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
   .pv-sign__box .s { font-size: 9px; color: var(--muted); margin-top: 2px; }
+  /* ── Confirmação do cliente (documento é enviado pro cliente conferir) ── */
+  .pv-greeting { margin: 12px 0 4px; padding: 9px 12px; border-left: 3px solid var(--red); background: var(--soft); font-size: 11px; border-radius: 0 6px 6px 0; }
+  .pv-confirm { margin-top: 22px; page-break-inside: avoid; }
+  .pv-confirm__note { font-size: 10px; color: var(--muted); margin-bottom: 14px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 6px; }
+  .pv-confirm__note strong { color: var(--ink); }
 
   /* ── Rodapé: estático no preview, fixo/repetido na impressão ── */
   .pv-foot { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 8.5px; color: var(--muted); letter-spacing: 0.04em; }
@@ -708,7 +713,7 @@ export async function buildSaleOrderPrintHtml(
       </div>
     </div>
     <div class="pv-doc-id">
-      <div class="pv-doc-kind">Pedido de Venda</div>
+      <div class="pv-doc-kind">Confirmação de Pedido</div>
       <div class="pv-doc-num">${escapeHtml(order.order_number || '—')}</div>
       <div class="pv-doc-status"><span class="dot"></span>${escapeHtml(order.status || '—')}</div>
     </div>
@@ -739,6 +744,10 @@ export async function buildSaleOrderPrintHtml(
     </div>
   </div>
 
+  <div class="pv-greeting">
+    Olá, <strong>${escapeHtml(clName)}</strong> — confira <strong>cores, numerações e quantidades</strong> do seu pedido abaixo. Qualquer ajuste, é só responder.
+  </div>
+
   <div class="pv-items-h">
     <h2>Itens do Pedido</h2>
     <span class="count"><b>${refsCount}</b> ${refsCount === 1 ? 'referência' : 'referências'} · <b>${grandPairs}</b> pares · <b>${money(subtotal)}</b></span>
@@ -762,9 +771,14 @@ export async function buildSaleOrderPrintHtml(
     </div>
   </div>
 
-  <div class="pv-sign">
-    <div class="pv-sign__box"><div class="l">Cliente</div><div class="s">${escapeHtml(clName)}</div></div>
-    <div class="pv-sign__box"><div class="l">Vendedor / Representante</div><div class="s">${escapeHtml(order.representative || '—')}</div></div>
+  <div class="pv-confirm">
+    <div class="pv-confirm__note">
+      Confira <strong>cores, numerações e quantidades</strong>. Estando tudo certo, responda <strong>&ldquo;De acordo&rdquo;</strong> ou assine abaixo. Pagamento <strong>${escapeHtml(order.payment_condition || '—')}</strong> · entrega <strong>${deadline}</strong>.
+    </div>
+    <div class="pv-sign">
+      <div class="pv-sign__box"><div class="l">De acordo — Cliente</div><div class="s">${escapeHtml(clName)} · data ___/___/______</div></div>
+      <div class="pv-sign__box"><div class="l">Vendedor / Representante</div><div class="s">${escapeHtml(order.representative || '—')}</div></div>
+    </div>
   </div>
 
   <div class="pv-foot">

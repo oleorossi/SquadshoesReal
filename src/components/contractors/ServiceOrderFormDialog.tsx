@@ -49,6 +49,11 @@ export interface ServiceOrderFormDialogProps {
   initialContractorId?: string;
   initialSector?: string;
   onCreated?: (serviceOrderId: string) => void;
+  /** Contexto de um PV (atalho "Gerar OS" no pedido): amarra a OS ao pedido e
+   *  lista os itens dele pra seleção. A Quantidade da OS = Σ pares selecionados. */
+  saleOrderId?: string;
+  saleOrderLabel?: string;               // ex.: "PV-00145"
+  pvItems?: { id: string; label: string; pairs: number }[];
 }
 
 const SECTORS = [
@@ -72,6 +77,7 @@ interface MaterialRow extends MaterialSentItem {
 
 export function ServiceOrderFormDialog({
   open, onOpenChange, initialContractorId, initialSector, onCreated,
+  saleOrderId, saleOrderLabel, pvItems,
 }: ServiceOrderFormDialogProps) {
   const qc = useQueryClient();
   const { data: contractors = [] } = useContractors();
@@ -97,6 +103,8 @@ export function ServiceOrderFormDialog({
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [notes, setNotes] = useState<string>('');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
+  // Seleção dos itens do PV (atalho do pedido). Default: todos marcados.
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
   // Tarifa vigente serviço×prestadora (contractor_service_rates — fora do
   // types.ts; regenerar depois). Pré-preenche o valor por par; digitar
@@ -125,15 +133,37 @@ export function ServiceOrderFormDialog({
     if (open) {
       setContractorId(initialContractorId || '');
       setSector(initialSector || 'costura');
-      setDescription('');
       setServiceDate(todayISO());
       setQuotedDeadline('');
-      setQuantity(0);
       setUnitPrice(0);
       setNotes('');
       setMaterials([]);
+      // Atalho do PV: pré-marca todos os itens, soma os pares na Quantidade e
+      // sugere a descrição a partir do pedido + itens.
+      if (pvItems && pvItems.length) {
+        setSelectedItemIds(new Set(pvItems.map((i) => i.id)));
+        setQuantity(pvItems.reduce((s, i) => s + (Number(i.pairs) || 0), 0));
+        setDescription(saleOrderLabel ? `${saleOrderLabel} — ${pvItems.map((i) => i.label).join(', ')}` : '');
+      } else {
+        setSelectedItemIds(new Set());
+        setQuantity(0);
+        setDescription('');
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialContractorId, initialSector]);
+
+  // Liga/desliga um item do PV e recalcula a Quantidade (Σ pares selecionados).
+  const toggleItem = (id: string) => {
+    const next = new Set(selectedItemIds);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setSelectedItemIds(next);
+    setQuantity((pvItems || []).filter((i) => next.has(i.id)).reduce((s, i) => s + (Number(i.pairs) || 0), 0));
+  };
+  const selectedPvItems = useMemo(
+    () => (pvItems || []).filter((i) => selectedItemIds.has(i.id)),
+    [pvItems, selectedItemIds],
+  );
 
   const totalValue = useMemo(() => quantity * unitPrice, [quantity, unitPrice]);
   const selectedContractor = contractors.find((c: any) => c.id === contractorId);
@@ -189,6 +219,9 @@ export function ServiceOrderFormDialog({
         notes: notes.trim() || null,
         quoted_at: quotedDeadline ? new Date().toISOString() : null,
       };
+      // Atalho do PV: amarra a OS ao pedido (aparece no card de OS do PV, via
+      // sale_order_id/source_sale_order_id — mesma consulta do PvServiceOrdersCard).
+      if (saleOrderId) { payload.sale_order_id = saleOrderId; payload.source_sale_order_id = saleOrderId; }
 
       const { data: inserted, error } = await (supabase as any)
         .from('service_orders')
@@ -207,7 +240,7 @@ export function ServiceOrderFormDialog({
           {
             service_order_id: inserted.id,
             order_number: inserted.order_number,
-            sale_order_label: null,
+            sale_order_label: saleOrderLabel || null,
             products: products as any,
             product_groups: productGroups as any,
           },
@@ -245,15 +278,46 @@ export function ServiceOrderFormDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Buildings className="h-5 w-5 text-primary" />
-            Nova Ordem de Serviço
+            {saleOrderLabel ? `Gerar OS · ${saleOrderLabel}` : 'Nova Ordem de Serviço'}
           </DialogTitle>
           <DialogDescription>
-            Lance qtd × valor por par (total calculado automaticamente) e os materiais a entregar
-            ao prestador — o estoque é debitado automaticamente quando a OS é criada.
+            {pvItems && pvItems.length
+              ? 'Selecione os itens deste pedido, o prestador e o setor. A OS nasce amarrada ao pedido.'
+              : 'Lance qtd × valor por par (total calculado automaticamente) e os materiais a entregar ao prestador — o estoque é debitado automaticamente quando a OS é criada.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
+          {/* ── Bloco 0: Itens do PV (só no atalho "Gerar OS" do pedido) ── */}
+          {pvItems && pvItems.length > 0 && (
+            <section className="space-y-2">
+              <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
+                Itens deste pedido{saleOrderLabel ? ` · ${saleOrderLabel}` : ''}
+              </div>
+              <div className="space-y-1.5">
+                {pvItems.map((it) => {
+                  const on = selectedItemIds.has(it.id);
+                  return (
+                    <button
+                      type="button" key={it.id} onClick={() => toggleItem(it.id)}
+                      className={cn(
+                        'w-full flex items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors',
+                        on ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30 hover:bg-muted/50',
+                      )}
+                    >
+                      <span className={cn('h-4 w-4 rounded border grid place-items-center text-[10px] leading-none text-white', on ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>{on ? '✓' : ''}</span>
+                      <span className="text-sm font-medium text-foreground flex-1 truncate">{it.label}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{it.pairs.toLocaleString('pt-BR')} pares</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {selectedPvItems.length} de {pvItems.length} selecionado(s) · <b className="text-foreground">{selectedPvItems.reduce((s, i) => s + i.pairs, 0).toLocaleString('pt-BR')} pares</b> → vira a Quantidade da OS.
+              </p>
+            </section>
+          )}
+
           {/* ── Bloco 1: Contratada + Setor ──────────────────────────── */}
           <section className="space-y-3">
             <div className="text-[10px] tracking-[0.18em] uppercase font-bold text-muted-foreground">
