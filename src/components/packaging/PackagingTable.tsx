@@ -10,8 +10,10 @@ import { Plus, MagnifyingGlass as Search, PencilSimple as Edit, Package } from '
 import type { IndividualPackaging } from '@/types/packaging';
 import PackagingForm from './PackagingForm';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCan } from '@/hooks/useAccessControl';
 
 const PackagingTable = () => {
+  const perm = useCan('/embalagens');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedMaterial, setSelectedMaterial] = useState('all');
@@ -99,20 +101,22 @@ const PackagingTable = () => {
           </Select>
         </div>
 
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-1.5">
-              <Plus className="h-4 w-4" />
-              Nova Embalagem
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Nova Embalagem Individual</DialogTitle>
-            </DialogHeader>
-            <PackagingForm onSubmit={handleCreate} isLoading={createPackaging.isPending} />
-          </DialogContent>
-        </Dialog>
+        {perm.canCreate && (
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Nova Embalagem
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nova Embalagem Individual</DialogTitle>
+              </DialogHeader>
+              <PackagingForm onSubmit={handleCreate} isLoading={createPackaging.isPending} />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Resumo */}
@@ -152,9 +156,11 @@ const PackagingTable = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={stockStatus.variant}>{stockStatus.status}</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => setEditingPackaging(pack)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      {perm.canEdit && (
+                        <Button variant="ghost" size="icon" onClick={() => setEditingPackaging(pack)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
 

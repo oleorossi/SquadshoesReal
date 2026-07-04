@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useCan } from '@/hooks/useAccessControl';
 
 export default function PackagingCatalogTable() {
+  const perm = useCan('/embalagens');
   const { data: catalog = [], isLoading, refetch } = usePackagingCatalog();
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -113,10 +115,12 @@ export default function PackagingCatalogTable() {
             className="pl-9"
           />
         </div>
-        <Button onClick={openNew}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Item
-        </Button>
+        {perm.canCreate && (
+          <Button onClick={openNew}>
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Item
+          </Button>
+        )}
       </div>
 
       <div className="rounded-md border">
@@ -159,12 +163,16 @@ export default function PackagingCatalogTable() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(item.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {perm.canEdit && (
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {perm.canDelete && (
+                      <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(item.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
