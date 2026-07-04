@@ -19,11 +19,13 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { flattenGroupTree } from '@/lib/groupHierarchy';
 import { sectorLabel } from '@/lib/categoryFromGroup';
+import { useCan } from '@/hooks/useAccessControl';
 
 export default function Groups() {
   const { data: groups = [], isLoading, isError } = useGroups();
   const { data: products = [] } = useProducts();
   const deleteGroup = useDeleteGroup();
+  const perm = useCan('/grupos');
 
   const sel = useMarqueeSelection(groups, (g) => g.id);
   const handleBulkDeleteGroups = async () => {
@@ -76,10 +78,12 @@ export default function Groups() {
           title="Grupos de Produtos"
           description="Organize produtos em grupos com fornecedores, materiais e informações técnicas"
           actions={
-            <Button onClick={openAdd} className="gap-2">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Novo Grupo</span>
-            </Button>
+            perm.canCreate && (
+              <Button onClick={openAdd} className="gap-2">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Novo Grupo</span>
+              </Button>
+            )
           }
         />
 
@@ -89,7 +93,7 @@ export default function Groups() {
               icon={FolderOpen}
               title="Nenhum grupo cadastrado"
               description="Crie o primeiro grupo de produtos para organizar fornecedores e materiais."
-              action={<Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button>}
+              action={perm.canCreate ? <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button> : undefined}
             />
           </Panel>
         ) : (
@@ -153,10 +157,14 @@ export default function Groups() {
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerir itens" onClick={() => setItemsGroup(g)}>
                                 <Package className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar grupo" onClick={() => openEdit(g)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <DeleteConfirmButton onConfirm={() => deleteGroup.mutate(g.id)} title="Excluir grupo?" size="h-8 w-8" iconSize="h-4 w-4" />
+                              {perm.canEdit && (
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar grupo" onClick={() => openEdit(g)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {perm.canDelete && (
+                                <DeleteConfirmButton onConfirm={() => deleteGroup.mutate(g.id)} title="Excluir grupo?" size="h-8 w-8" iconSize="h-4 w-4" />
+                              )}
                               <CollapsibleTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
                                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -199,19 +207,21 @@ export default function Groups() {
         onOpenChange={(open) => { if (!open) setItemsGroup(null); }}
       />
 
-      <BulkActionsBar
-        selectedIds={sel.selectedIds}
-        onClear={sel.clear}
-        itemLabel={sel.selectedIds.size === 1 ? 'grupo' : 'grupos'}
-        actions={[
-          {
-            label: 'Excluir',
-            variant: 'destructive',
-            icon: <Trash2 className="h-3.5 w-3.5" />,
-            onClick: handleBulkDeleteGroups,
-          },
-        ]}
-      />
+      {perm.canDelete && (
+        <BulkActionsBar
+          selectedIds={sel.selectedIds}
+          onClear={sel.clear}
+          itemLabel={sel.selectedIds.size === 1 ? 'grupo' : 'grupos'}
+          actions={[
+            {
+              label: 'Excluir',
+              variant: 'destructive',
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: handleBulkDeleteGroups,
+            },
+          ]}
+        />
+      )}
     </>
   );
 }

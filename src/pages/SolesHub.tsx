@@ -26,6 +26,7 @@ import SolesHistoricoTab from '@/components/soles-hub/SolesHistoricoTab';
 import SoleCreateDialog from '@/components/soles-hub/SoleCreateDialog';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useCan } from '@/hooks/useAccessControl';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
 import type { SoleProduct } from '@/components/soles-hub/types';
@@ -71,6 +72,7 @@ export default function SolesHub() {
   const [selectedId, setSelectedId] = usePersistedState<string | null>('soles-hub-selected', null);
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const perm = useCan('/solados');
 
   // Exclusão de solado — reaproveita o fluxo padrão de exclusão de produto
   // (solado É um row de `products`). Faz delete direto se não há vínculos;
@@ -171,10 +173,12 @@ export default function SolesHub() {
                   <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
                 </Card>
               )}
-              <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                Adicionar Solado
-              </Button>
+              {perm.canCreate && (
+                <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
+                  <Plus className="h-4 w-4" />
+                  Adicionar Solado
+                </Button>
+              )}
             </div>
           }
         />
@@ -295,6 +299,7 @@ export default function SolesHub() {
                   </>
                 }
                 actions={
+                  perm.canDelete && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
@@ -329,6 +334,7 @@ export default function SolesHub() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
+                  )
                 }
               >
                   <Tabs value={tab} onValueChange={setTab} className="w-full">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, CalendarBlank as CalendarDays, Warning as AlertTriangle, Wallet } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
+import { useCan } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,6 +50,8 @@ export default function Employees() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
+  // Gates de ação da área RH/Pessoas (/rh). Admin e sem-granular sempre passam.
+  const perm = useCan('/rh');
   const [form, setForm] = useState(emptyEmployee);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
@@ -147,9 +150,11 @@ export default function Employees() {
         <TabsContent value="funcionarios" className="space-y-4 mt-4">
       {/* Header local removido — vive no RHHub. Actions ficam aqui em barra própria. */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
+        {perm.canCreate && (
         <Button onClick={() => { setForm(emptyEmployee); setEditing(null); setDialogOpen(true); }} className="gap-2" size="sm">
           <Plus className="h-4 w-4" /> Novo Funcionário
         </Button>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -295,7 +300,7 @@ export default function Employees() {
                               ? <UserX className="h-4 w-4 text-amber-600" />
                               : <UserCheck className="h-4 w-4 text-emerald-600" />}
                           </Button>
-                          <DeleteConfirmButton onConfirm={() => deleteEmployee.mutate(e.id)} size="icon" />
+                          {perm.canDelete && <DeleteConfirmButton onConfirm={() => deleteEmployee.mutate(e.id)} size="icon" />}
                         </div>
                       </TableCell>
                     </TableRow>

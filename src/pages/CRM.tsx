@@ -17,6 +17,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useCan } from '@/hooks/useAccessControl';
 
 const CHANNEL_ICONS: Record<string, any> = {
   ligacao: Phone, email: Mail, whatsapp: MessageSquare, sms: MessageSquare,
@@ -25,6 +26,9 @@ const CHANNEL_ICONS: Record<string, any> = {
 
 export default function CRM() {
   const qc = useQueryClient();
+  // Gate de permissões do CRM (criar interação) — esconde a ação de usuários
+  // explicitamente restritos; admins/sem-grant continuam vendo tudo.
+  const perm = useCan('/crm');
   const [newOpen, setNewOpen] = useState(false);
   const [contactMode, setContactMode] = useState<'client' | 'external'>('client');
   const [newInt, setNewInt] = useState({
@@ -189,9 +193,11 @@ export default function CRM() {
         title="CRM"
         description="Histórico, campanhas, recompra prevista, NPS"
         actions={
+          perm.canCreate ? (
           <Button size="sm" className="gap-1.5" onClick={() => setNewOpen(true)}>
             <Plus className="h-4 w-4" /> Nova Interação
           </Button>
+          ) : undefined
         }
       />
 

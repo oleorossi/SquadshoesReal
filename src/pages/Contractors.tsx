@@ -6,6 +6,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useCan } from '@/hooks/useAccessControl';
 import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
@@ -272,6 +273,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const queryClient = useQueryClient();
 
   const [genOsOpen, setGenOsOpen] = useState(false);
+  // Gates de ação da área Terceirizados (criar OS / excluir OS). Admin e
+  // usuários sem permissão granular sempre passam.
+  const osPerm = useCan('/terceirizados');
   const [search, setSearch] = usePersistedState('contractors-search', '');
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
@@ -570,13 +574,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 <Printer className="mr-2 h-3.5 w-3.5" /> Recibo {o.receipt_number}
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onSelect={() => setDeleteOsTarget(o)}
-            >
-              <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
-            </DropdownMenuItem>
+            {osPerm.canDelete && <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => setDeleteOsTarget(o)}
+              >
+                <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
+              </DropdownMenuItem>
+            </>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -1610,8 +1616,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </div>
                   </PopoverContent>
                 </Popover>
-                <Button variant="outline" size="sm" onClick={() => setGenOsOpen(true)} className="h-9 gap-1.5"><Handshake className="h-4 w-4" /> Gerar OS por Pedido</Button>
-                <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>
+                {osPerm.canCreate && <Button variant="outline" size="sm" onClick={() => setGenOsOpen(true)} className="h-9 gap-1.5"><Handshake className="h-4 w-4" /> Gerar OS por Pedido</Button>}
+                {osPerm.canCreate && <Button size="sm" onClick={() => openNewOrder()} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Nova OS</Button>}
               </div>
             </div>
 
@@ -1623,7 +1629,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   description={search || hasOsReportFilters || statusFilter !== 'all'
                     ? 'Ajuste a busca, os chips de status ou os filtros de relatório.'
                     : 'Crie a primeira ordem de serviço para uma contratada.'}
-                  action={<Button size="sm" className="gap-1.5" onClick={() => openNewOrder()}><Plus className="h-4 w-4" /> Nova OS</Button>}
+                  action={osPerm.canCreate ? <Button size="sm" className="gap-1.5" onClick={() => openNewOrder()}><Plus className="h-4 w-4" /> Nova OS</Button> : undefined}
                 />
               </Panel>
             ) : (

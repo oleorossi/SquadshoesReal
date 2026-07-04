@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PriceListItemsDialog } from '@/components/sale-orders/PriceListItemsDialog';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useCan } from '@/hooks/useAccessControl';
 
 type PriceList = {
   id?: string;
@@ -42,6 +43,9 @@ const EMPTY: PriceList = {
 
 export default function PriceLists() {
   const qc = useQueryClient();
+  // Gate de permissões das Tabelas de Preço (criar) — esconde a ação de
+  // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
+  const perm = useCan('/price-lists');
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<PriceList>(EMPTY);
   const [itemsFor, setItemsFor] = useState<{ id: string; name: string } | null>(null);
@@ -127,9 +131,11 @@ export default function PriceLists() {
         title="Tabelas de Preço"
         description="Preços por canal, região, cliente e vigência"
         actions={
+          perm.canCreate ? (
           <Button size="sm" className="gap-1.5" onClick={openNew}>
             <Plus className="h-4 w-4" /> Nova Tabela
           </Button>
+          ) : undefined
         }
       />
 
@@ -145,7 +151,7 @@ export default function PriceLists() {
             icon={DollarSign}
             title="Nenhuma tabela de preço cadastrada"
             description="Crie a primeira tabela de preços por canal, região ou cliente."
-            action={<Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nova Tabela</Button>}
+            action={perm.canCreate ? <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Nova Tabela</Button> : undefined}
           />
         </Panel>
       )}

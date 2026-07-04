@@ -32,6 +32,7 @@ import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialo
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { useCan } from '@/hooks/useAccessControl';
 
 
 function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplierName: string }) {
@@ -370,6 +371,7 @@ export default function Suppliers() {
   const addSupplier = useAddSupplier();
   const updateSupplier = useUpdateSupplier();
   const deleteSupplier = useDeleteSupplier();
+  const perm = useCan('/suppliers');
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
@@ -463,10 +465,12 @@ export default function Suppliers() {
                 <FileUp className="h-4 w-4" />
                 <span className="hidden sm:inline">Importar XML</span>
               </Button>
-              <Button onClick={openAdd} className="gap-2">
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Novo Fornecedor</span>
-              </Button>
+              {perm.canCreate && (
+                <Button onClick={openAdd} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Novo Fornecedor</span>
+                </Button>
+              )}
             </>
           }
         />
@@ -490,7 +494,7 @@ export default function Suppliers() {
                 icon={Truck}
                 title={search ? 'Nenhum fornecedor encontrado' : 'Nenhum fornecedor cadastrado'}
                 description={search ? 'Ajuste a busca ou cadastre um novo fornecedor.' : 'Cadastre o primeiro fornecedor.'}
-                action={<Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Fornecedor</Button>}
+                action={perm.canCreate ? <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Fornecedor</Button> : undefined}
               />
             </Panel>
           ) : (
@@ -571,13 +575,17 @@ export default function Suppliers() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)} aria-label="Editar fornecedor">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
+                          {perm.canEdit && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)} aria-label="Editar fornecedor">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setItemsDialogSupplier(s)} title="Ver itens vinculados" aria-label="Ver itens vinculados ao fornecedor">
                             <Package className="h-4 w-4" />
                           </Button>
-                          <DeleteConfirmButton onConfirm={() => deleteSupplier.mutate(s.id)} title="Excluir fornecedor?" size="h-8 w-8" iconSize="h-4 w-4" />
+                          {perm.canDelete && (
+                            <DeleteConfirmButton onConfirm={() => deleteSupplier.mutate(s.id)} title="Excluir fornecedor?" size="h-8 w-8" iconSize="h-4 w-4" />
+                          )}
                           <CollapsibleTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={isExpanded ? 'Recolher detalhes do fornecedor' : 'Expandir detalhes do fornecedor'}>
                               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

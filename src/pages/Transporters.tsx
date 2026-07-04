@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Truck, Plus, PencilSimple as Edit2, Power, CircleNotch as Loader2, Phone, Envelope as Mail, MapPin } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useCan } from '@/hooks/useAccessControl';
 
 const SERVICE_MODES = ['rodoviario', 'aereo', 'aquaviario', 'ferroviario', 'sedex', 'pac', 'fracionado', 'dedicado'];
 
@@ -51,6 +52,7 @@ const emptyForm: TransporterForm = {
 
 export default function Transporters() {
   const qc = useQueryClient();
+  const perm = useCan('/transporters');
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -86,9 +88,11 @@ export default function Transporters() {
         title="Transportadoras"
         description="Cadastro de empresas de frete (rodoviário, sedex, dedicado) usadas em CT-e e expedição."
         actions={
-          <Button onClick={() => setCreating(true)} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Nova Transportadora
-          </Button>
+          perm.canCreate ? (
+            <Button onClick={() => setCreating(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Nova Transportadora
+            </Button>
+          ) : undefined
         }
       />
 
@@ -100,7 +104,7 @@ export default function Transporters() {
             icon={Truck}
             title="Nenhuma transportadora cadastrada"
             description="Cadastre empresas de frete usadas em CT-e e expedição."
-            action={<Button variant="outline" size="sm" onClick={() => setCreating(true)}>Cadastrar primeira</Button>}
+            action={perm.canCreate ? <Button variant="outline" size="sm" onClick={() => setCreating(true)}>Cadastrar primeira</Button> : undefined}
           />
         </Panel>
       ) : (
@@ -142,12 +146,16 @@ export default function Transporters() {
                   </div>
                 )}
                 <div className="flex items-center gap-1.5 pt-1">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditing(r)}>
-                    <Edit2 className="h-3.5 w-3.5 mr-1" /> Editar
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => toggleActive.mutate(r)} title={r.active ? 'Desativar' : 'Reativar'}>
-                    <Power className={`h-3.5 w-3.5 ${r.active ? 'text-emerald-600' : 'text-muted-foreground'}`} />
-                  </Button>
+                  {perm.canEdit && (
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditing(r)}>
+                      <Edit2 className="h-3.5 w-3.5 mr-1" /> Editar
+                    </Button>
+                  )}
+                  {perm.canEdit && (
+                    <Button size="sm" variant="ghost" onClick={() => toggleActive.mutate(r)} title={r.active ? 'Desativar' : 'Reativar'}>
+                      <Power className={`h-3.5 w-3.5 ${r.active ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

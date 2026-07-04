@@ -41,7 +41,7 @@ import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
 import { BulkNfeDialog } from '@/components/nfe/BulkNfeDialog';
 import { useAuth } from '@/hooks/useAuth';
-import { useAccessControl } from '@/hooks/useAccessControl';
+import { useAccessControl, useCan } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
 import { NfeDevolucaoDialog } from '@/components/nfe/NfeDevolucaoDialog';
 import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
@@ -273,6 +273,9 @@ export default function SaleOrders() {
   // e KPIs financeiros sem retirar a navegação.
   const { canSeeFinancialValues, canAccessModule } = useAccessControl();
   const canBuy = canAccessModule('financeiro');
+  // Gate de permissões da tela de Pedidos (criar/excluir) — esconde ações de
+  // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
+  const perm = useCan('/sales');
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1571,10 +1574,12 @@ export default function SaleOrders() {
           description="Gestão comercial e geração de ordens de produção"
           actions={
             <>
+            {perm.canCreate && (
             <Button onClick={() => navigate('/sales/new')} className="gap-2">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Novo Pedido</span>
             </Button>
+            )}
             <Button variant="outline" onClick={() => setImportClientsOpen(true)} className="gap-2" title="Importar lojistas de arquivo (Excel/PDF/Word/Imagem)">
               <Upload className="h-4 w-4" />
               <span className="hidden sm:inline">Importar Clientes</span>
@@ -2184,6 +2189,7 @@ export default function SaleOrders() {
                               <Zap className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                          {perm.canDelete && (
                           <DeleteConfirmButton
                             onConfirm={() => deleteOrder.mutate(order.id)}
                             title={`Excluir ${order.order_number}?`}
@@ -2192,6 +2198,7 @@ export default function SaleOrders() {
                             size="h-7 w-7"
                             iconSize="h-3.5 w-3.5"
                           />
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -2231,7 +2238,7 @@ export default function SaleOrders() {
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
-          { label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkDelete },
+          ...(perm.canDelete ? [{ label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkDelete }] : []),
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
         ]}

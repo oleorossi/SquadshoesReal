@@ -15,6 +15,7 @@ import RoutePlannerOwn from '@/components/own-delivery/RoutePlannerOwn';
 import FleetTab from '@/components/own-delivery/FleetTab';
 import { Link } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useCan } from '@/hooks/useAccessControl';
 
 const formatBrl = (n: number | null | undefined) =>
   n == null
@@ -67,6 +68,7 @@ export default function OwnDeliveriesPage() {
 // Orders tab — pedidos com own_delivery=true sem rota ativa
 // ────────────────────────────────────────────────────────────────────
 function OrdersTab() {
+  const perm = useCan('/entregas');
   const { data: orders = [], isLoading } = useOwnDeliveryOrders();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [planning, setPlanning] = useState(false);
@@ -102,13 +104,15 @@ function OrdersTab() {
             <Button size="sm" variant="outline" onClick={selectAll} disabled={available.length === 0}>
               Selecionar todos
             </Button>
-            <Button
-              size="sm"
-              onClick={() => setPlanning(true)}
-              disabled={selected.size === 0}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />Criar rota
-            </Button>
+            {perm.canCreate && (
+              <Button
+                size="sm"
+                onClick={() => setPlanning(true)}
+                disabled={selected.size === 0}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />Criar rota
+              </Button>
+            )}
           </div>
         }
         flush
@@ -199,6 +203,7 @@ function OrdersTab() {
 // Routes tab
 // ────────────────────────────────────────────────────────────────────
 function RoutesTab() {
+  const perm = useCan('/entregas');
   const [statusFilter, setStatusFilter] = useState<RouteStatus | 'all'>('all');
   const { data: routes = [], isLoading } = useDeliveryRoutes(
     statusFilter === 'all' ? undefined : { status: statusFilter },
@@ -258,12 +263,14 @@ function RoutesTab() {
                     {driverLabel(r.driver_id)}
                   </p>
                 </div>
-                <Button
-                  size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
-                  onClick={() => { if (confirm('Excluir esta rota?')) del.mutate(r.id); }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                {perm.canDelete && (
+                  <Button
+                    size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
+                    onClick={() => { if (confirm('Excluir esta rota?')) del.mutate(r.id); }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
 
               <div className="grid grid-cols-4 gap-2 text-xs">

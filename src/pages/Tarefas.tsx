@@ -22,6 +22,7 @@ import {
   normalizeTags,
   type NoteTaskPriority, type NoteTaskWithNote,
 } from '@/hooks/useNoteTasks';
+import { useCan } from '@/hooks/useAccessControl';
 
 type ViewMode = 'lista' | 'agenda' | 'quadro';
 const ALL_TAGS = '__all__';
@@ -38,6 +39,9 @@ export default function Tarefas() {
   const updateTask = useUpdateNoteTask();
   const deleteTask = useDeleteNoteTask();
   const bulkCreate = useBulkCreateNoteTasks();
+  // Gate de permissões de Tarefas (criar/excluir) — esconde ações de usuários
+  // explicitamente restritos; admins/sem-grant continuam vendo tudo.
+  const perm = useCan('/tarefas');
 
   const [view, setView] = useState<ViewMode>(() => {
     try {
@@ -127,6 +131,7 @@ export default function Tarefas() {
     onOpen: (id: string) => setSelectedTaskId(id),
     updateTask,
     deleteTask,
+    canDelete: perm.canDelete,
   };
 
   return (
@@ -225,6 +230,7 @@ export default function Tarefas() {
               </span>
             )}
             <div className="flex-1" />
+            {perm.canCreate && (
             <Button
               size="sm"
               onClick={handleAdd}
@@ -234,6 +240,7 @@ export default function Tarefas() {
               {bulkCreate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               {lineCount > 1 ? `Adicionar ${lineCount}` : 'Adicionar'}
             </Button>
+            )}
           </div>
         </div>
 
@@ -284,6 +291,7 @@ interface RowActions {
   onOpen: (id: string) => void;
   updateTask: ReturnType<typeof useUpdateNoteTask>;
   deleteTask: ReturnType<typeof useDeleteNoteTask>;
+  canDelete: boolean;
 }
 
 function ListaView({ openTasks, doneTasks, ...rowProps }: {
@@ -341,7 +349,7 @@ function AgendaView({ openTasks, doneTasks, ...rowProps }: {
 // Seção colapsável + linha de tarefa
 // ────────────────────────────────────────────────────────────────────────
 
-function TaskSection({ label, tasks, defaultOpen, tone, subtaskProgress, onOpen, updateTask, deleteTask }: {
+function TaskSection({ label, tasks, defaultOpen, tone, subtaskProgress, onOpen, updateTask, deleteTask, canDelete }: {
   label: string;
   tasks: NoteTaskWithNote[];
   defaultOpen: boolean;
@@ -375,6 +383,7 @@ function TaskSection({ label, tasks, defaultOpen, tone, subtaskProgress, onOpen,
               key={task.id}
               task={task}
               subtasks={subtaskProgress.get(task.id)}
+              canDelete={canDelete}
               onOpen={() => onOpen(task.id)}
               onToggle={() => updateTask.mutate({ id: task.id, note_id: task.note_id, data: { done: !task.done } })}
               onChangePriority={(p) => updateTask.mutate({ id: task.id, note_id: task.note_id, data: { priority: p } })}
@@ -387,9 +396,10 @@ function TaskSection({ label, tasks, defaultOpen, tone, subtaskProgress, onOpen,
   );
 }
 
-function TaskRow({ task, subtasks, onOpen, onToggle, onChangePriority, onDelete }: {
+function TaskRow({ task, subtasks, canDelete, onOpen, onToggle, onChangePriority, onDelete }: {
   task: NoteTaskWithNote;
   subtasks?: SubtaskProgress;
+  canDelete: boolean;
   onOpen: () => void;
   onToggle: () => void;
   onChangePriority: (p: NoteTaskPriority) => void;
@@ -429,7 +439,7 @@ function TaskRow({ task, subtasks, onOpen, onToggle, onChangePriority, onDelete 
             <SelectItem value="baixa">⚪ Baixa</SelectItem>
           </SelectContent>
         </Select>
-        <DeleteConfirmButton onConfirm={onDelete} title="Excluir tarefa?" description="Esta ação não pode ser desfeita." />
+        {canDelete && <DeleteConfirmButton onConfirm={onDelete} title="Excluir tarefa?" description="Esta ação não pode ser desfeita." />}
       </div>
     </div>
   );

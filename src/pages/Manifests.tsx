@@ -17,6 +17,7 @@ import { useSaleOrderWeight } from '@/hooks/useSaleOrderWeight';
 import { IncompleteWeightWarning } from '@/components/weight/IncompleteWeightWarning';
 import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useCan } from '@/hooks/useAccessControl';
 import { cn } from '@/lib/utils';
 
 type ManifestStatus = 'em_montagem' | 'liberado' | 'em_transito' | 'entregue' | 'cancelado';
@@ -51,6 +52,7 @@ export default function Manifests() {
 }
 
 function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
+  const perm = useCan('/manifests');
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['shipping_manifests'],
     queryFn: async () => {
@@ -71,9 +73,11 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
         title="Romaneios de Carga"
         description="Controle interno de viagens — agrupa volumes por veículo/motorista, com destinos múltiplos."
         actions={
-          <Button onClick={onCreate} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Novo Romaneio
-          </Button>
+          perm.canCreate ? (
+            <Button onClick={onCreate} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Novo Romaneio
+            </Button>
+          ) : undefined
         }
       />
 
@@ -87,7 +91,7 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
             icon={FileCheck2}
             title="Nenhum romaneio"
             description="Crie um romaneio para agrupar volumes por veículo e motorista."
-            action={<Button variant="outline" size="sm" onClick={onCreate}>Criar primeiro</Button>}
+            action={perm.canCreate ? <Button variant="outline" size="sm" onClick={onCreate}>Criar primeiro</Button> : undefined}
           />
         </Panel>
       ) : (
@@ -139,6 +143,7 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
 
 function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
+  const perm = useCan('/manifests');
 
   const { data: manifest } = useQuery({
     queryKey: ['shipping_manifest', id],
@@ -259,7 +264,7 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 <Package className="h-3.5 w-3.5" /> Entregue
               </Button>
             )}
-            {editable && (
+            {editable && perm.canDelete && (
               <Button size="sm" variant="outline" className="h-9 gap-1.5 text-destructive" onClick={() => {
                 if (!confirm('Cancelar este romaneio?')) return;
                 updateStatus.mutate('cancelado');
@@ -299,13 +304,14 @@ function VolumesTab({
   onDelete: (id: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const perm = useCan('/manifests');
 
   return (
     <div className="space-y-3">
       <Panel
         eyebrow="FISCAL · ROMANEIO"
         title={`Volumes (${volumes.length})`}
-        actions={editable && (
+        actions={editable && perm.canCreate && (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAdding(true)}>
             <Plus className="h-3.5 w-3.5" /> Adicionar volume
           </Button>
@@ -357,7 +363,7 @@ function VolumesTab({
                     <td className="p-2 text-right font-mono tabular-nums">{Number(v.weight_kg).toFixed(1)} kg</td>
                     <td className="p-2 font-mono text-xs">{v.ean || '—'}</td>
                     <td className="p-2 text-right">
-                      {editable && (
+                      {editable && perm.canDelete && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => onDelete(v.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
