@@ -6,7 +6,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2, FileText, Handshake, Printer, X, Check, CaretUpDown as ChevronsUpDown, Upload, CheckCircle as CheckCircle2, Circle, ClipboardText as ClipboardList, CurrencyDollar as DollarSign, Clock, Users, ArrowRight, Package, Flask as FlaskConical, Scissors, Warning as AlertTriangle, WarningCircle as AlertCircle, CalendarBlank as Calendar, LockKey as Lock, Play, ClockCounterClockwise, ChartLineUp, FileArrowDown as FileDown, Funnel, Truck, DotsThreeVertical as MoreVertical, Archive, List as ListIcon, SquaresFour } from '@phosphor-icons/react';
 import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialog';
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
@@ -276,6 +276,9 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
   const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status-v2', 'active');
+  // Modo de exibição das OS: 'list' (tabela densa, melhor pra varrer muitas OS)
+  // ou 'cards'. Persistido por usuário. Default 'list' a pedido (melhor visão).
+  const [osView, setOsView] = usePersistedState<'list' | 'cards'>('contractors-os-view', 'list');
 
   // ── Filtros do relatório de custos da OS, na URL (compartilháveis) ───────────
   // contractor=id do prestador (vazio=todos), from/to=período, basis=base de data.
@@ -508,6 +511,74 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     return (
       <div className={cn('mt-2.5 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold', cls)}>
         <Icon className="h-3.5 w-3.5 shrink-0" />{text}
+      </div>
+    );
+  };
+
+  // Prazo compacto (1 linha) pro modo lista. Mesma lógica da faixa, sem o box.
+  const renderDeadlineInline = (o: ServiceOrder) => {
+    if (!isOsActive(o.status) || !o.quoted_deadline) return <span className="text-xs text-muted-foreground">—</span>;
+    const due = o.quoted_deadline;
+    const lateDays = Math.round(
+      (new Date(todayISO + 'T00:00:00').getTime() - new Date(due + 'T00:00:00').getTime()) / 86400000,
+    );
+    const fmt = `${due.slice(8, 10)}/${due.slice(5, 7)}`;
+    if (lateDays > 0) return <span className="whitespace-nowrap text-xs font-semibold text-red-700 dark:text-red-400">+{lateDays}d · {fmt}</span>;
+    if (lateDays === 0) return <span className="whitespace-nowrap text-xs font-semibold text-amber-700 dark:text-amber-400">hoje · {fmt}</span>;
+    return <span className="whitespace-nowrap text-xs text-muted-foreground">{fmt} · em {-lateDays}d</span>;
+  };
+
+  // Ações contextuais da OS (Receber/Enviar/Processar/Entregue + menu) —
+  // COMPARTILHADAS entre o card e a linha da tabela. Deriva o estado do próprio
+  // `o` pra ser autocontido.
+  const renderOsActions = (o: ServiceOrder) => {
+    const isBottleneckOS = !!o.target_sector;
+    const active = isOsActive(o.status);
+    const isPendingReceive = isBottleneckOS
+      && o.status !== 'received' && o.status !== 'Concluído'
+      && o.status !== 'Cancelado' && o.status !== 'cancelled';
+    return (
+      <div className="flex shrink-0 items-center justify-end gap-1">
+        {isBottleneckOS && active && isPendingReceive && (
+          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => openReceiveDialog(o)}>
+            <CheckCircle2 className="h-3 w-3" /> Receber
+          </Button>
+        )}
+        {(o as any).dispatch_tracked && active && (
+          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setDispatchDialogOs(o)}>
+            <Truck className="h-3 w-3" /> Enviar
+          </Button>
+        )}
+        {active && o.status !== 'Em Andamento' && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status)) && (
+          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
+            <Play className="h-3 w-3" /> Processar
+          </Button>
+        )}
+        {active && (
+          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10" title="Registrar retorno e marcar como Entregue" onClick={() => markDelivered(o)}>
+            <CheckCircle2 className="h-3 w-3" /> Entregue
+          </Button>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações da OS"><MoreVertical className="h-4 w-4" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
+            {o.receipt_number && (
+              <DropdownMenuItem onClick={() => printReceipt(o, contractors.find(c => c.id === o.contractor_id))}>
+                <Printer className="mr-2 h-3.5 w-3.5" /> Recibo {o.receipt_number}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={() => setDeleteOsTarget(o)}
+            >
+              <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     );
   };
@@ -1559,10 +1630,33 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-0.5 text-xs text-muted-foreground">
                   <span className="font-mono">{filteredOrders.length} OS</span>
-                  <button type="button" className="transition-colors hover:text-foreground" onClick={toggleSelectAllOs}>
-                    {allOsSelected ? 'Limpar seleção' : 'Selecionar todas'}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="inline-flex items-center rounded-md border bg-card p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setOsView('list')}
+                        aria-pressed={osView === 'list'}
+                        title="Modo lista"
+                        className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors', osView === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <ListIcon className="h-3.5 w-3.5" /> Lista
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOsView('cards')}
+                        aria-pressed={osView === 'cards'}
+                        title="Modo cartões"
+                        className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors', osView === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <SquaresFour className="h-3.5 w-3.5" /> Cartões
+                      </button>
+                    </div>
+                    <button type="button" className="transition-colors hover:text-foreground" onClick={toggleSelectAllOs}>
+                      {allOsSelected ? 'Limpar seleção' : 'Selecionar todas'}
+                    </button>
+                  </div>
                 </div>
+                {osView === 'cards' ? (
                 <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                   {filteredOrders.map(o => {
                     const mats = getMaterials(o);
@@ -1675,53 +1769,76 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             <OsPaymentBadge ov={osOverview?.get(o.id)} />
                             <OsBalanceLine ov={osOverview?.get(o.id)} />
                           </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            {isBottleneckOS && active && isPendingReceive && (
-                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => openReceiveDialog(o)}>
-                                <CheckCircle2 className="h-3 w-3" /> Receber
-                              </Button>
-                            )}
-                            {(o as any).dispatch_tracked && active && (
-                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setDispatchDialogOs(o)}>
-                                <Truck className="h-3 w-3" /> Enviar
-                              </Button>
-                            )}
-                            {active && o.status !== 'Em Andamento' && !['pending_quote', 'quoted_unconfirmed'].includes(String(o.status)) && (
-                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" title="Mover para Em Processamento" onClick={() => markInProgress(o)}>
-                                <Play className="h-3 w-3" /> Processar
-                              </Button>
-                            )}
-                            {active && (
-                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs text-green-700 dark:text-green-400 border-green-500/40 hover:bg-green-500/10" title="Registrar retorno e marcar como Entregue" onClick={() => markDelivered(o)}>
-                                <CheckCircle2 className="h-3 w-3" /> Entregue
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações da OS"><MoreVertical className="h-4 w-4" /></Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-44">
-                                <DropdownMenuItem onClick={() => openEditOrder(o)}><Pencil className="mr-2 h-3.5 w-3.5" /> Editar</DropdownMenuItem>
-                                {o.receipt_number && (
-                                  <DropdownMenuItem onClick={() => printReceipt(o, contractors.find(c => c.id === o.contractor_id))}>
-                                    <Printer className="mr-2 h-3.5 w-3.5" /> Recibo {o.receipt_number}
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onSelect={() => setDeleteOsTarget(o)}
-                                >
-                                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Excluir
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          {renderOsActions(o)}
                         </div>
                       </div>
                     );
                   })}
                 </div>
+                ) : (
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 [&_th]:h-9 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                        <TableHead className="w-8"><Checkbox checked={allOsSelected} onCheckedChange={toggleSelectAllOs} aria-label="Selecionar todas" /></TableHead>
+                        <TableHead>Nº OS</TableHead>
+                        <TableHead>Prestador</TableHead>
+                        <TableHead className="hidden md:table-cell">PV</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="hidden lg:table-cell">Prazo</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredOrders.map(o => {
+                        const mats = getMaterials(o);
+                        const linkedPvId = o.sale_order_id || o.source_sale_order_id || null;
+                        const so = linkedPvId ? saleOrders.find((s: any) => s.id === linkedPvId) : null;
+                        const isAuto = !!o.source_sale_order_id;
+                        const selected = selectedOsIds.has(o.id);
+                        const doneCount = mats.filter(m => m.completed).length;
+                        const noValue = Number(o.total_value) === 0 && o.status !== 'Concluído' && o.status !== 'Cancelado' && o.status !== 'cancelled';
+                        return (
+                          <TableRow
+                            key={o.id}
+                            data-state={selected ? 'selected' : undefined}
+                            className="cursor-pointer"
+                            onClick={e => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditOrder(o); }}
+                          >
+                            <TableCell onClick={e => e.stopPropagation()}>
+                              <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} aria-label={`Selecionar OS ${o.order_number}`} />
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap font-mono text-sm font-bold">
+                              <span className="inline-flex items-center gap-1">
+                                {o.order_number}
+                                {o.artisanal_recipe_id && <span title="Produção artesanal"><FlaskConical className="h-3 w-3 text-primary" /></span>}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-sm">{o.contractors?.name || <span className="text-muted-foreground">Sem prestador</span>}</TableCell>
+                            <TableCell className="hidden whitespace-nowrap md:table-cell">
+                              {so
+                                ? <span className="inline-flex items-center gap-1"><span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>{isAuto && <Badge variant="outline" className="h-4 bg-primary/5 px-1 text-[9px] text-primary border-primary/30">PV</Badge>}</span>
+                                : <span className="text-xs text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="max-w-[260px]">
+                              <p className="truncate text-sm text-muted-foreground">{o.description || o.artisanal_output_name || '—'}</p>
+                              {mats.length > 0 && <span className="text-[11px] text-muted-foreground tabular-nums">{doneCount}/{mats.length} {mats.length === 1 ? 'material' : 'materiais'}</span>}
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell">{renderDeadlineInline(o)}</TableCell>
+                            <TableCell className="whitespace-nowrap text-right font-mono text-sm font-bold tabular-nums">
+                              {noValue ? <span className="text-xs font-medium text-muted-foreground">A definir</span> : formatCurrency(Number(o.total_value))}
+                            </TableCell>
+                            <TableCell><Badge variant={statusColor(o.status)} className="whitespace-nowrap text-[10px]">{statusLabel(o.status)}</Badge></TableCell>
+                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>{renderOsActions(o)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                )}
               </div>
             )}
           </TabsContent>
