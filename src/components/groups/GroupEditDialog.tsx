@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
 import { useContractors } from '@/hooks/useContractors';
+import { useIndividualPackaging } from '@/hooks/usePackaging';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
@@ -83,6 +84,10 @@ function getVisibleFields(type: GroupType) {
     // tamanho do calçado (cabedal, forração, palmilha, solado). Componente
     // NÃO entra — fivela/ilhós/ABS consomem 1 unidade por par, fim.
     yieldTab:       isSole || isUpper || isInsole,
+    // Embalagem: o débito de embalagem lê a caixa vinculada + pares/caixa DO
+    // GRUPO DO SOLADO (product_groups.box_type_*_id). Sem esse elo o débito não
+    // tem o que debitar. Editável aqui pra o cadastro solado↔caixa existir.
+    packaging:      isSole,
   };
 }
 
@@ -481,6 +486,20 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   const [linkChildOpen, setLinkChildOpen] = useState(false);
   const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
+
+  // ── Embalagem (elo solado↔caixa) — lida pelo débito SQL debit_packaging_for_order.
+  // '__none__' = sem caixa vinculada (o débito pula esse tipo).
+  const NO_BOX = '__none__';
+  const [boxIndividual, setBoxIndividual] = useState<string>(group.box_type_id || NO_BOX);
+  const [boxMaster, setBoxMaster] = useState<string>(group.box_type_master_id || NO_BOX);
+  const [boxColmeia, setBoxColmeia] = useState<string>(group.box_type_colmeia_id || NO_BOX);
+  const [boxFitilho, setBoxFitilho] = useState<string>(group.box_type_fitilho_id || NO_BOX);
+  const [ppbIndividual, setPpbIndividual] = useState<number>(group.pairs_per_box_individual || 0);
+  const [ppbMaster, setPpbMaster] = useState<number>(group.pairs_per_box_master || 0);
+  const [ppbColmeia, setPpbColmeia] = useState<number>(group.pairs_per_box_colmeia || 0);
+  const [ppbFitilho, setPpbFitilho] = useState<number>(group.pairs_per_box_fitilho || 0);
+  const { data: boxOptions = [] } = useIndividualPackaging({ is_active: true });
+
   const queryClient = useQueryClient();
   const forceDeleteFlow = useForceDeleteProductFlow();
 
@@ -499,6 +518,14 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     setSharedSpecs(group.shared_specs ?? false);
     setParentGroupId(group.parent_group_id || '');
     setUnitWeightKg(group.unit_weight_kg || 0);
+    setBoxIndividual(group.box_type_id || NO_BOX);
+    setBoxMaster(group.box_type_master_id || NO_BOX);
+    setBoxColmeia(group.box_type_colmeia_id || NO_BOX);
+    setBoxFitilho(group.box_type_fitilho_id || NO_BOX);
+    setPpbIndividual(group.pairs_per_box_individual || 0);
+    setPpbMaster(group.pairs_per_box_master || 0);
+    setPpbColmeia(group.pairs_per_box_colmeia || 0);
+    setPpbFitilho(group.pairs_per_box_fitilho || 0);
 
     // If all products in group share the same price/location, set them as defaults
     if (products.length > 0) {
@@ -563,6 +590,18 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           parent_group_id: parentGroupId || null,
           unit_weight_kg: unitWeightKg,
           purchase_multiple: purchaseMultiple > 0 ? purchaseMultiple : null,
+          // Embalagem (só faz sentido em grupo de solado — a aba fica oculta nos
+          // demais, então esses valores permanecem inalterados pra eles).
+          ...(show.packaging ? {
+            box_type_id: boxIndividual === NO_BOX ? null : boxIndividual,
+            box_type_master_id: boxMaster === NO_BOX ? null : boxMaster,
+            box_type_colmeia_id: boxColmeia === NO_BOX ? null : boxColmeia,
+            box_type_fitilho_id: boxFitilho === NO_BOX ? null : boxFitilho,
+            pairs_per_box_individual: ppbIndividual > 0 ? ppbIndividual : null,
+            pairs_per_box_master: ppbMaster > 0 ? ppbMaster : null,
+            pairs_per_box_colmeia: ppbColmeia > 0 ? ppbColmeia : null,
+            pairs_per_box_fitilho: ppbFitilho > 0 ? ppbFitilho : null,
+          } : {}),
         } as any,
       });
 
@@ -697,9 +736,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
           </DialogHeader>
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
-            <TabsList className="grid w-full" style={{ gridTemplateColumns: showYieldTab ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)' }}>
+            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${2 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0)}, 1fr)` }}>
               <TabsTrigger value="general">Geral</TabsTrigger>
               {showYieldTab && <TabsTrigger value="specs">Dimensões</TabsTrigger>}
+              {show.packaging && <TabsTrigger value="packaging">Embalagem</TabsTrigger>}
               <TabsTrigger value="items">Itens ({products.length})</TabsTrigger>
             </TabsList>
 
@@ -1176,6 +1216,47 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
             {showYieldTab && (
               <TabsContent value="specs" className="mt-4">
                 <GroupDimensionsEditor groupId={group.id} />
+              </TabsContent>
+            )}
+
+            {/* Tab: Packaging (elo solado↔caixa lido pelo débito) */}
+            {show.packaging && (
+              <TabsContent value="packaging" className="space-y-4 mt-4">
+                <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  <Package className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    Vincule a caixa e informe os <strong className="text-foreground">pares por caixa</strong> por tipo.
+                    O débito de embalagem na produção lê estes campos do grupo do solado — sem eles, nenhuma
+                    embalagem é debitada. Deixe um tipo sem caixa se ele não for usado.
+                  </span>
+                </div>
+
+                {[
+                  { key: 'individual', label: 'Individual', box: boxIndividual, setBox: setBoxIndividual, ppb: ppbIndividual, setPpb: setPpbIndividual, hint: 'Sem valor: usa o padrão canônico (12 pares/caixa).' },
+                  { key: 'master', label: 'Master', box: boxMaster, setBox: setBoxMaster, ppb: ppbMaster, setPpb: setPpbMaster, hint: 'Caixa que agrupa várias individuais.' },
+                  { key: 'colmeia', label: 'Colmeia', box: boxColmeia, setBox: setBoxColmeia, ppb: ppbColmeia, setPpb: setPpbColmeia, hint: 'Modo colmeia (grade dividida).' },
+                  { key: 'fitilho', label: 'Fitilho / Amarrado', box: boxFitilho, setBox: setBoxFitilho, ppb: ppbFitilho, setPpb: setPpbFitilho, hint: 'Amarrado por fitilho.' },
+                ].map(row => (
+                  <div key={row.key} className="grid grid-cols-1 gap-3 rounded-lg border border-border p-3 sm:grid-cols-[1fr_auto]">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{row.label} — caixa</Label>
+                      <Select value={row.box} onValueChange={row.setBox}>
+                        <SelectTrigger className="h-9"><SelectValue placeholder="Sem caixa vinculada" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_BOX}>Sem caixa vinculada</SelectItem>
+                          {boxOptions.map(b => (
+                            <SelectItem key={b.id} value={b.id}>{b.product_name || b.internal_code}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">{row.hint}</p>
+                    </div>
+                    <div className="space-y-1.5 sm:w-40">
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pares/caixa</Label>
+                      <NumberInput value={row.ppb} onChange={row.setPpb} min={0} step="1" decimals={0} className="h-9" />
+                    </div>
+                  </div>
+                ))}
               </TabsContent>
             )}
 

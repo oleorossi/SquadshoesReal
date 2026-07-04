@@ -17,7 +17,21 @@ export type ProductGroup = {
   package_price: number;
   calculation_method: 'weight' | 'meter';
   parent_group_id: string | null;
+  /** Caixas vinculadas ao grupo (solado) por tipo. Fonte que o débito de embalagem
+   *  (SQL debit_packaging_for_order) lê pra saber qual box_type consumir. Elo
+   *  solado↔caixa: se NULL, o débito não tem o que debitar. */
   box_type_id: string | null;
+  box_type_master_id?: string | null;
+  box_type_colmeia_id?: string | null;
+  box_type_fitilho_id?: string | null;
+  /** Pares por caixa por tipo (embalagem). Individual sem valor cai no default
+   *  canônico (12, alinhado com NF/TS). */
+  pairs_per_box_individual?: number | null;
+  pairs_per_box_master?: number | null;
+  pairs_per_box_colmeia?: number | null;
+  pairs_per_box_fitilho?: number | null;
+  /** Metros de fitilho por amarrado (modo individual_fitilho/amarrado). */
+  metros_fitilho_per_amarrado?: number | null;
   shared_specs?: boolean;
   consumption_unit?: string | null;
   /** Múltiplo de compra padrão do grupo (embalagem); fallback do item. */
