@@ -9,8 +9,9 @@
 --      product_groups.box_type_* + pares/caixa, por packaging_mode. Boxes =
 --      CEIL(pares_do_item / pares_por_caixa); fitilho em metros (× metros/amarrado).
 --      Pares/caixa: product_groups → box_types.pairs_per_box_default → 12 (mesma
---      cascata da NF/débito). Só o caminho product_groups (o que a aba Embalagem
---      cadastra); technical_sheet_box_types não é fonte de demanda aqui.
+--      cascata da NF/débito). Precedência espelha o débito: se a ficha tem caixa
+--      vinculada (technical_sheet_box_types) para os tipos do modo, usa ESSAS
+--      caixas; senão cai no grupo do solado (o que a aba Embalagem cadastra).
 --
 --  (2) v_mrp_needs recriada: mesma definição + coluna `is_packaging` (false p/
 --      produtos) e UNION ALL de box_types como pseudo-produtos (is_packaging=true,
@@ -34,8 +35,14 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
   WITH open_items AS (
-    SELECT so.id AS sale_order_id, so.delivery_deadline, so.packaging_mode,
-           ts.sole_group_id, soi.quantity::numeric AS qty
+    SELECT so.id AS sale_order_id, so.delivery_deadline,
+           ts.id AS sheet_id, ts.sole_group_id, soi.quantity::numeric AS qty,
+           CASE
+             WHEN so.packaging_mode = 'colmeia' THEN ARRAY['colmeia']
+             WHEN so.packaging_mode = 'individual_master' THEN ARRAY['individual','master']
+             WHEN so.packaging_mode IN ('individual_fitilho','individual_amarrado') THEN ARRAY['individual','fitilho']
+             ELSE ARRAY['individual']
+           END AS types
       FROM public.sale_orders so
       JOIN public.sale_order_items soi ON soi.sale_order_id = so.id
       JOIN public.technical_sheets ts ON ts.id = soi.reference_id
@@ -43,35 +50,48 @@ AS $function$
        AND ts.sole_group_id IS NOT NULL
        AND soi.quantity > 0
   ),
-  typed AS (
-    SELECT oi.*, t.pkg_type
+  -- Espelha a precedência do débito: se a FICHA tem caixa vinculada
+  -- (technical_sheet_box_types) para algum dos tipos do modo, o débito usa ESSAS
+  -- caixas e ignora o grupo. Só cai no grupo do solado quando a ficha não tem.
+  flagged AS (
+    SELECT oi.*,
+      EXISTS (
+        SELECT 1 FROM public.technical_sheet_box_types tb
+          JOIN public.box_types bt ON bt.id = tb.box_type_id AND bt.active = true
+         WHERE tb.sheet_id = oi.sheet_id AND bt.tipo::text = ANY(oi.types)
+      ) AS uses_tsbt
       FROM open_items oi
-      CROSS JOIN LATERAL unnest(
-        CASE
-          WHEN oi.packaging_mode = 'colmeia' THEN ARRAY['colmeia']
-          WHEN oi.packaging_mode = 'individual_master' THEN ARRAY['individual','master']
-          WHEN oi.packaging_mode IN ('individual_fitilho','individual_amarrado') THEN ARRAY['individual','fitilho']
-          ELSE ARRAY['individual']
-        END
-      ) AS t(pkg_type)
+  ),
+  typed AS (
+    SELECT f.*, t.pkg_type
+      FROM flagged f
+      CROSS JOIN LATERAL unnest(f.types) AS t(pkg_type)
   ),
   resolved AS (
     SELECT ty.sale_order_id, ty.delivery_deadline, ty.qty, ty.pkg_type,
-      CASE ty.pkg_type
+      CASE WHEN ty.uses_tsbt THEN (
+        SELECT tb.box_type_id FROM public.technical_sheet_box_types tb
+          JOIN public.box_types bt ON bt.id = tb.box_type_id AND bt.active = true
+         WHERE tb.sheet_id = ty.sheet_id AND bt.tipo::text = ty.pkg_type LIMIT 1
+      ) ELSE (CASE ty.pkg_type
         WHEN 'individual' THEN pg.box_type_id
         WHEN 'master'     THEN pg.box_type_master_id
         WHEN 'colmeia'    THEN pg.box_type_colmeia_id
-        WHEN 'fitilho'    THEN pg.box_type_fitilho_id
+        WHEN 'fitilho'    THEN pg.box_type_fitilho_id END)
       END AS box_type_id,
-      CASE ty.pkg_type
+      CASE WHEN ty.uses_tsbt THEN (
+        SELECT bt.pairs_per_box_default FROM public.technical_sheet_box_types tb
+          JOIN public.box_types bt ON bt.id = tb.box_type_id AND bt.active = true
+         WHERE tb.sheet_id = ty.sheet_id AND bt.tipo::text = ty.pkg_type LIMIT 1
+      ) ELSE (CASE ty.pkg_type
         WHEN 'individual' THEN pg.pairs_per_box_individual
         WHEN 'master'     THEN pg.pairs_per_box_master
         WHEN 'colmeia'    THEN pg.pairs_per_box_colmeia
-        WHEN 'fitilho'    THEN pg.pairs_per_box_fitilho
+        WHEN 'fitilho'    THEN pg.pairs_per_box_fitilho END)
       END AS pg_pairs,
       COALESCE(pg.metros_fitilho_per_amarrado, 1.0) AS metros
       FROM typed ty
-      JOIN public.product_groups pg ON pg.id = ty.sole_group_id
+      LEFT JOIN public.product_groups pg ON pg.id = ty.sole_group_id
   ),
   computed AS (
     SELECT r.box_type_id, r.sale_order_id, r.delivery_deadline,

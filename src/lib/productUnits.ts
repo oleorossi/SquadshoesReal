@@ -19,8 +19,10 @@ export const PURCHASE_UNITS = ['m', 'm²', 'dm²', 'placa', 'kg', 'un', 'rolo', 
 export type PurchaseUnit = (typeof PURCHASE_UNITS)[number];
 
 /** Unidades de produção/estoque oferecidas no dropdown — TODAS canônicas de UNITS.
- *  (Substitui a lista divergente do ProductDetail que tinha 'metros' e 'gr'.) */
-export const PRODUCTION_UNITS = ['m', 'dm²', 'm²', 'un', 'par', 'g', 'ml'] as const;
+ *  Cobre o conjunto canônico completo pra NÃO coeragir unidades válidas (kg, cx,
+ *  cm, L…) a 'un' no save (antes a lista era curta e engolia 'kg'). Substitui a
+ *  lista divergente do ProductDetail que tinha 'metros' e 'gr'. */
+export const PRODUCTION_UNITS = ['un', 'par', 'pc', 'cx', 'rolo', 'placa', 'm', 'cm', 'mm', 'dm²', 'm²', 'kg', 'g', 'L', 'ml'] as const;
 export type ProductionUnit = (typeof PRODUCTION_UNITS)[number];
 
 /**

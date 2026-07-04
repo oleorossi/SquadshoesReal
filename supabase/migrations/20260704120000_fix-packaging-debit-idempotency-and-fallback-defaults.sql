@@ -15,9 +15,11 @@
 --
 -- Correções (o caminho PRIMÁRIO por technical_sheet_box_types já usava
 -- box_types.pairs_per_box_default, então só ajustamos seu fallback final 1→12):
---   #5 → guarda de idempotência no topo: se já existe stock_movement de débito
---        de embalagem para p_order_id e não é projeção (force_soft), retorna sem
---        debitar de novo.
+--   #5 → idempotência POR RECONCILIAÇÃO (por caixa): cada caixa debita só a
+--        diferença entre o necessário e o já debitado pra (order_id + aquela
+--        caixa). Reaprovar não duplica; aumentar qtd / adicionar caixa debita só
+--        o extra. Substitui a guarda global "existe algum débito → bloqueia tudo"
+--        (que engolia necessidades incrementais legítimas).
 --   #4 → no fallback por product_groups, pares/caixa =
 --        COALESCE(product_groups.pairs_per_box_<tipo>, box_types.pairs_per_box_default, 12),
 --        alinhando com a NF. (Se uma caixa "individual" realmente comporta 1 par,
@@ -53,6 +55,8 @@ DECLARE
   v_box              RECORD;
   v_amarrados_needed integer;
   v_debit_qty        numeric;
+  v_already          numeric;
+  v_net              numeric;
   v_unit_label       text;
   v_metros           numeric;
   v_handled          boolean := false;
@@ -61,19 +65,11 @@ BEGIN
     RAISE EXCEPTION 'Permission denied: usuário não aprovado';
   END IF;
 
-  -- #5 IDEMPOTÊNCIA: um débito real (não-projeção) por order_id. Bloqueia
-  -- double-debit de reaprovar PV / recriar OP. Projeções (force_soft) não
-  -- gravam stock_movements, então não disparam nem são bloqueadas por esta guarda.
-  IF NOT p_force_soft AND p_order_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.stock_movements
-     WHERE order_id = p_order_id
-       AND description LIKE 'Débito embalagem%'
-  ) THEN
-    RETURN jsonb_build_array(jsonb_build_object(
-      'status', 'already_debited',
-      'order_id', p_order_id
-    ));
-  END IF;
+  -- #5 IDEMPOTÊNCIA POR RECONCILIAÇÃO: em vez de bloquear o pedido inteiro quando
+  -- existir QUALQUER débito, cada caixa debita só a DIFERENÇA entre o necessário e
+  -- o já debitado pra (order_id + aquela caixa) = SUM dos stock_movements de saída
+  -- 'Débito embalagem%'. Assim reaprovar não duplica (net 0) e aumentar a
+  -- quantidade / adicionar caixa debita só o extra. A lógica mora em cada branch.
 
   IF p_packaging_mode = 'colmeia' THEN
     v_types_to_debit := ARRAY['colmeia'];
@@ -121,21 +117,36 @@ BEGIN
 
     PERFORM 1 FROM public.box_types WHERE id = v_box.id FOR UPDATE;
 
-    IF v_box.quantity IS NULL OR v_box.quantity < v_debit_qty THEN
+    -- reconciliação: já debitado pra (order_id + esta caixa)
+    v_already := CASE WHEN p_order_id IS NULL THEN 0 ELSE COALESCE((
+      SELECT SUM(sm.quantity) FROM public.stock_movements sm
+       WHERE sm.order_id = p_order_id AND sm.product_id = v_box.id
+         AND sm.movement_type = 'out' AND sm.description LIKE 'Débito embalagem%'), 0) END;
+    v_net := v_debit_qty - v_already;
+
+    IF v_net <= 0 THEN
+      v_result := v_result || jsonb_build_object(
+        'box_type_id', v_box.id, 'box_name', v_box.nome, 'packaging_type', v_box.tipo,
+        'needed_qty', v_debit_qty, 'already_debited', v_already, 'unit', v_unit_label,
+        'source', 'technical_sheet_box_types', 'status', 'already_debited');
+      CONTINUE;
+    END IF;
+
+    IF v_box.quantity IS NULL OR v_box.quantity < v_net THEN
       RAISE EXCEPTION 'Estoque insuficiente para embalagem "%": disponível % %, necessário % %',
-        v_box.nome, COALESCE(v_box.quantity, 0), v_unit_label, v_debit_qty, v_unit_label;
+        v_box.nome, COALESCE(v_box.quantity, 0), v_unit_label, v_net, v_unit_label;
     END IF;
 
     UPDATE public.box_types
-       SET quantity = quantity - v_debit_qty, updated_at = now()
+       SET quantity = quantity - v_net, updated_at = now()
      WHERE id = v_box.id;
 
     INSERT INTO public.stock_movements (
       product_id, movement_type, quantity,
       previous_stock, new_stock, description, order_id
     ) VALUES (
-      v_box.id, 'out', v_debit_qty,
-      v_box.quantity, v_box.quantity - v_debit_qty,
+      v_box.id, 'out', v_net,
+      v_box.quantity, v_box.quantity - v_net,
       'Débito embalagem ' || v_box.nome || ' (' || v_box.tipo ||
       CASE WHEN v_box.tipo = 'fitilho'
            THEN ', ' || v_amarrados_needed || ' amarrados x ' || v_box.metros_per_amarrado || ' m'
@@ -148,7 +159,7 @@ BEGIN
       'box_type_id', v_box.id, 'box_name', v_box.nome,
       'packaging_type', v_box.tipo,
       'amarrados_needed', v_amarrados_needed,
-      'debited_qty', v_debit_qty, 'unit', v_unit_label,
+      'debited_qty', v_net, 'unit', v_unit_label,
       'source', 'technical_sheet_box_types',
       'status', 'debited_box_types'
     );
@@ -237,21 +248,36 @@ BEGIN
             CONTINUE;
           END IF;
 
-          IF v_box_stock IS NULL OR v_box_stock < v_debit_qty THEN
+          -- reconciliação: já debitado pra (order_id + esta caixa)
+          v_already := CASE WHEN p_order_id IS NULL THEN 0 ELSE COALESCE((
+            SELECT SUM(sm.quantity) FROM public.stock_movements sm
+             WHERE sm.order_id = p_order_id AND sm.product_id = v_box_id
+               AND sm.movement_type = 'out' AND sm.description LIKE 'Débito embalagem%'), 0) END;
+          v_net := v_debit_qty - v_already;
+
+          IF v_net <= 0 THEN
+            v_result := v_result || jsonb_build_object(
+              'box_type_id', v_box_id, 'box_name', v_box_name, 'packaging_type', v_pkg_type,
+              'needed_qty', v_debit_qty, 'already_debited', v_already, 'unit', v_unit_label,
+              'source', 'product_groups', 'status', 'already_debited');
+            CONTINUE;
+          END IF;
+
+          IF v_box_stock IS NULL OR v_box_stock < v_net THEN
             RAISE EXCEPTION 'Estoque insuficiente para embalagem "%": disponível % %, necessário % %',
-              v_box_name, COALESCE(v_box_stock, 0), v_unit_label, v_debit_qty, v_unit_label;
+              v_box_name, COALESCE(v_box_stock, 0), v_unit_label, v_net, v_unit_label;
           END IF;
 
           UPDATE public.box_types
-             SET quantity = quantity - v_debit_qty, updated_at = now()
+             SET quantity = quantity - v_net, updated_at = now()
            WHERE id = v_box_id;
 
           INSERT INTO public.stock_movements (
             product_id, movement_type, quantity,
             previous_stock, new_stock, description, order_id
           ) VALUES (
-            v_box_id, 'out', v_debit_qty,
-            v_box_stock, v_box_stock - v_debit_qty,
+            v_box_id, 'out', v_net,
+            v_box_stock, v_box_stock - v_net,
             'Débito embalagem ' || v_box_name || ' (' || v_pkg_type || ')',
             p_order_id
           );
@@ -260,7 +286,7 @@ BEGIN
             'box_type_id', v_box_id, 'box_name', v_box_name,
             'packaging_type', v_pkg_type,
             'amarrados_needed', v_amarrados_needed,
-            'debited_qty', v_debit_qty, 'unit', v_unit_label,
+            'debited_qty', v_net, 'unit', v_unit_label,
             'source', 'product_groups', 'status', 'debited_box_types'
           );
         END LOOP;

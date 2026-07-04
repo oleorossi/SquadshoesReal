@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMrpNeeds, useGeneratePOFromMrp } from "@/hooks/useMrp";
 import {
@@ -148,9 +149,9 @@ export function MrpNeedsTable() {
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {n.is_packaging ? (
-                      <a href="/embalagens" className="underline decoration-dotted underline-offset-2 hover:text-primary">
+                      <Link to="/embalagens" className="underline decoration-dotted underline-offset-2 hover:text-primary">
                         comprar em Embalagens
-                      </a>
+                      </Link>
                     ) : (
                       n.sku
                     )}
