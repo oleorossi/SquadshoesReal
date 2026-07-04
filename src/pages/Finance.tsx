@@ -712,7 +712,7 @@ export default function Finance() {
   const [receivableDialog, setReceivableDialog] = useState(false);
   const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
   const [editingReceivable, setEditingReceivable] = useState<AccountReceivable | null>(null);
-  const [financeTab, setFinanceTab] = usePersistedState('financeTab', 'dashboard');
+  const [financeTab, setFinanceTab] = usePersistedState('financeTab', 'accounts');
   const [accountsSubTab, setAccountsSubTab] = useState<'payable' | 'receivable'>('payable');
   const [searchParams] = useSearchParams();
 
@@ -721,7 +721,7 @@ export default function Finance() {
   useEffect(() => {
     const VALID_TABS = ['dashboard', 'accounts', 'invoices', 'comissoes-factoring', 'reports'];
     if (!VALID_TABS.includes(financeTab)) {
-      setFinanceTab(financeTab === 'operational' ? 'comissoes-factoring' : 'dashboard');
+      setFinanceTab(financeTab === 'operational' ? 'comissoes-factoring' : 'accounts');
     }
   }, [financeTab, setFinanceTab]);
 
@@ -755,6 +755,7 @@ export default function Finance() {
     }
   }, [requestedTab, setFinanceTab]);
   const [selectedReceivables, setSelectedReceivables] = useState<Set<string>>(new Set());
+  const [selectedPayables, setSelectedPayables] = useState<Set<string>>(new Set());
   const [payableSearch, setPayableSearch] = useState('');
   const [payableStatusFilter, setPayableStatusFilter] = useState<string[]>([]);
   const [payableDateFrom, setPayableDateFrom] = useState('');
@@ -764,6 +765,11 @@ export default function Finance() {
   const [receivableSearch, setReceivableSearch] = useState('');
 
   const toggleReceivable = (id: string) => setSelectedReceivables(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const togglePayable = (id: string) => setSelectedPayables(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
@@ -807,6 +813,42 @@ export default function Finance() {
     const ok = results.filter(r => r.status === 'fulfilled').length;
     if (failed > 0) toast.error(`${ok} marcada(s), ${failed} falha(s) — verifique e tente novamente.`);
     else if (ok > 0) toast.success(`${ok} conta(s) marcada(s) como recebida(s)`);
+  };
+  const handleBulkDeletePayables = async () => {
+    const ids = Array.from(selectedPayables);
+    setSelectedPayables(new Set());
+    const results = await Promise.allSettled(ids.map(id => deletePayable.mutateAsync(id)));
+    const failed = results.filter(r => r.status === 'rejected').length;
+    const ok = ids.length - failed;
+    if (failed > 0) toast.error(`${ok} excluída(s), ${failed} falha(s)`);
+    else toast.success(`${ok} conta(s) excluída(s)`);
+  };
+  const handleBulkMarkPaid = async () => {
+    const todayStr = format(todayMidnight(), 'yyyy-MM-dd');
+    const candidates = Array.from(selectedPayables)
+      .map(id => payables.find(x => x.id === id))
+      .filter((p): p is AccountPayable => !!p && p.status !== 'paid' && p.status !== 'cancelled');
+    setSelectedPayables(new Set());
+    if (candidates.length === 0) return;
+    // Atomic-claim predicate (mesmo padrão do markPaid unário) evita que um bulk
+    // e um pagamento individual concorrentes sobrescrevam linha já processada.
+    const results = await Promise.allSettled(
+      candidates.map(async p => {
+        const { data, error } = await supabase
+          .from('accounts_payable')
+          .update({ status: 'paid', amount_paid: p.amount, payment_date: todayStr })
+          .eq('id', p.id)
+          .not('status', 'in', '(paid,cancelled)')
+          .select('id');
+        if (error) throw error;
+        if (!data || data.length === 0) throw new Error('Already processed');
+      })
+    );
+    qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+    const failed = results.filter(r => r.status === 'rejected').length;
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    if (failed > 0) toast.error(`${ok} marcada(s), ${failed} falha(s) — verifique e tente novamente.`);
+    else if (ok > 0) toast.success(`${ok} conta(s) marcada(s) como paga(s)`);
   };
 
   const loading = loadingP || loadingR;
@@ -976,10 +1018,10 @@ export default function Finance() {
             <Skeleton className="h-80" />
           </div>
         ) : (
-          <Tabs defaultValue="dashboard" value={financeTab} onValueChange={setFinanceTab}>
+          <Tabs defaultValue="accounts" value={financeTab} onValueChange={setFinanceTab}>
             <HubTabsList tabs={[
-              { value: 'dashboard',            label: 'Visão Geral',         icon: BarChart3 },
               { value: 'accounts',             label: 'Contas',              icon: DollarSign },
+              { value: 'dashboard',            label: 'Visão Geral',         icon: BarChart3 },
               { value: 'invoices',             label: 'Notas Fiscais',       icon: FileText },
               { value: 'comissoes-factoring',  label: 'Comissões & Factoring', icon: UserCheck },
               { value: 'reports',              label: 'Relatórios',          icon: BarChart3 },
@@ -1076,6 +1118,24 @@ export default function Finance() {
                     }
                     actions={
                       <>
+                        {selectedPayables.size > 0 && (<>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="h-4 w-4 mr-1" /> Pago ({selectedPayables.size})</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar {selectedPayables.size} conta(s) como paga(s)?</AlertDialogTitle><AlertDialogDescription>O valor total será considerado pago na data de hoje. Contas já pagas ou canceladas são ignoradas.</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkPaid}>Confirmar</AlertDialogAction></AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Excluir ({selectedPayables.size})</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir {selectedPayables.size} conta(s)?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkDeletePayables}>Excluir</AlertDialogAction></AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>)}
                         <Button size="sm" variant="outline" onClick={() => exportPayablesBatch(filteredP)}><FileDown className="h-4 w-4 mr-1" /> CSV</Button>
                         <Button size="sm" variant="outline" onClick={() => setBoletoUploadDialog(true)}><FileUp className="h-4 w-4 mr-1" /> Importar Boletos</Button>
                         <Button size="sm" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Nova Conta</Button>
@@ -1113,6 +1173,15 @@ export default function Finance() {
                         {/* F10: sticky header — usuário não perde contexto da
                             coluna ao rolar tabelas longas */}
                         <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={sortedP.length > 0 && sortedP.every(p => selectedPayables.has(p.id))}
+                              onCheckedChange={checked => {
+                                if (checked) setSelectedPayables(prev => { const n = new Set(prev); sortedP.forEach(p => n.add(p.id)); return n; });
+                                else setSelectedPayables(prev => { const n = new Set(prev); sortedP.forEach(p => n.delete(p.id)); return n; });
+                              }}
+                            />
+                          </TableHead>
                           <SortableTableHead sortKey="description" currentSortKey={payableSort.sortKey} currentDirection={payableSort.sortDirection} onSort={payableSort.handleSort}>Descrição</SortableTableHead>
                           <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
                           <TableHead className="hidden lg:table-cell">Categ.</TableHead>
@@ -1126,7 +1195,7 @@ export default function Finance() {
                         <TableBody>
                           {sortedP.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                                 <p className="mb-2">Nenhuma conta a pagar</p>
                                 <Button size="sm" variant="outline" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}>
                                   <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira conta
@@ -1139,8 +1208,9 @@ export default function Finance() {
                             const remaining = Math.max(0, p.amount - p.amount_paid);
                             const accruals = calculateOverdueAccruals(p.amount, p.due_date);
                             return (
-                              <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50 transition-colors"
+                              <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50 transition-colors" data-state={selectedPayables.has(p.id) ? 'selected' : undefined}
                                 onClick={e => { if ((e.target as HTMLElement).closest('button, [role="checkbox"]')) return; setEditingPayable(p); setPayableDialog(true); }}>
+                                <TableCell><Checkbox checked={selectedPayables.has(p.id)} onCheckedChange={() => togglePayable(p.id)} /></TableCell>
                                 <TableCell className="font-medium max-w-[180px] truncate">{p.description}</TableCell>
                                 <TableCell className="text-sm text-muted-foreground hidden md:table-cell">{p.suppliers?.name || '—'}</TableCell>
                                 <TableCell className="text-xs capitalize hidden lg:table-cell">{p.category}</TableCell>
