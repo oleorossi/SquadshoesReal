@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
 import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
+import { PROPAGABLE_LABELS, computePropagableDiff } from '@/hooks/useVariantPropagation';
 import { sectorOfGroup } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
@@ -95,68 +96,8 @@ const emptyForm: ProductFormData = {
 // mesmo grupo. Excluídos: name, sku, color, quantity, max_stock, min_stock_grade,
 // stock_grade, image_url, group_id, active, linked_last_id, sole_material,
 // heel_height (próprios da variante).
-const PROPAGABLE_FIELDS = [
-  'unit_price', 'price_wholesale', 'price_retail',
-  'unit', 'consumption_unit',
-  'location',
-  'dimensions_length', 'dimensions_width', 'dimensions_thickness', 'dimensions_unit',
-  'yield_per_meter', 'yield_unit',
-  'technical_name', 'category',
-  'supplier_lead_time_days', 'lead_time_days',
-  'min_stock',
-  'supplier_id',
-  'purchase_unit', 'production_unit', 'conversion_rate',
-  'purchase_order_unit', 'min_order_quantity', 'purchase_multiple',
-  'safety_stock',
-  'calculation_method',
-  'is_chemical',
-] as const;
-
-const PROPAGABLE_LABELS: Record<string, string> = {
-  unit_price: 'Preço unitário',
-  price_wholesale: 'Preço atacado',
-  price_retail: 'Preço varejo',
-  unit: 'Unidade',
-  consumption_unit: 'Unidade de consumo',
-  location: 'Localização',
-  dimensions_length: 'Comprimento',
-  dimensions_width: 'Largura',
-  dimensions_thickness: 'Espessura',
-  dimensions_unit: 'Unidade dimensional',
-  yield_per_meter: 'Rendimento',
-  yield_unit: 'Unidade de rendimento',
-  technical_name: 'Nome técnico',
-  category: 'Categoria',
-  supplier_lead_time_days: 'Lead time fornecedor',
-  lead_time_days: 'Lead time',
-  min_stock: 'Estoque mínimo',
-  supplier_id: 'Fornecedor',
-  purchase_unit: 'Unidade de compra',
-  production_unit: 'Unidade de produção',
-  conversion_rate: 'Taxa de conversão',
-  purchase_order_unit: 'Unidade de ordem de compra',
-  min_order_quantity: 'Quantidade mínima',
-  purchase_multiple: 'Múltiplo de compra',
-  safety_stock: 'Estoque de segurança',
-  calculation_method: 'Método de cálculo',
-  is_chemical: 'Material químico',
-};
-
-function computePropagableDiff(original: Product, next: ProductFormData): Record<string, any> {
-  const diff: Record<string, any> = {};
-  for (const f of PROPAGABLE_FIELDS) {
-    const a = (original as any)[f];
-    const b = (next as any)[f];
-    const aN = a == null ? null : a;
-    const bN = b == null ? null : b;
-    if (typeof aN === 'number' || typeof bN === 'number') {
-      if (Number(aN || 0) !== Number(bN || 0)) diff[f] = bN;
-    } else if (String(aN ?? '') !== String(bN ?? '')) {
-      diff[f] = bN;
-    }
-  }
-  return diff;
-}
+// PROPAGABLE_FIELDS / PROPAGABLE_LABELS / computePropagableDiff foram movidos para
+// a fonte única src/hooks/useVariantPropagation.ts (importados acima).
 
 function getBaseName(name: string): string {
   const colonIdx = name.lastIndexOf(':');
