@@ -43,7 +43,7 @@ import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import { useGroups } from '@/hooks/useGroups';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import GroupCreateDialog from '@/components/groups/GroupCreateDialog';
+import GroupDialog from '@/components/groups/GroupDialog';
 import { GroupListDialog } from '@/components/inventory/GroupListDialog';
 
 export function MaterialsTab(props: { defaultGroupName?: string, title?: string }) {
@@ -533,7 +533,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         defaultGroupId={defaultGroupName ? defaultGroupId : undefined}
       />
 
-      <GroupCreateDialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen} />
+      <GroupDialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen} />
       <GroupListDialog open={groupListOpen} onOpenChange={setGroupListOpen} />
       <QuickFamilyDialog open={quickFamilyOpen} onOpenChange={setQuickFamilyOpen} defaultGroupId={defaultGroupId} />
       {forceDeleteFlow.dialog}

@@ -17,7 +17,7 @@ import { useProducts, useUpdateProduct } from '@/hooks/useProducts';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import GroupEditDialog from '@/components/groups/GroupEditDialog';
+import GroupDialog from '@/components/groups/GroupDialog';
 import { normalizeForSearch } from '@/lib/searchUtils';
 
 interface GroupListDialogProps {
@@ -491,7 +491,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
 
       {/* Edit group full dialog */}
       {editingGroupFull && (
-        <GroupEditDialog
+        <GroupDialog
           open={!!editingGroupFull}
           onOpenChange={(o) => { if (!o) setEditingGroupFull(null); }}
           group={editingGroupFull}

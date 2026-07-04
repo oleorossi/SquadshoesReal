@@ -21,7 +21,7 @@ import { useGroups, ProductGroup } from '@/hooks/useGroups';
 import { ManualStockOutDialog } from './ManualStockOutDialog';
 import { SoladoGradeDialog } from './SoladoGradeDialog';
 import { SoleTechnicalEditDialog } from './SoleTechnicalEditDialog';
-import GroupEditDialog from '@/components/groups/GroupEditDialog';
+import GroupDialog from '@/components/groups/GroupDialog';
 import { MasterVariantDialog } from './MasterVariantDialog';
 import { SelectionMarquee } from '@/components/ui/selection-marquee';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
@@ -1001,7 +1001,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort }: Produ
       <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
       <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
       {editingGroup && (
-        <GroupEditDialog open={!!editingGroup} onOpenChange={(o) => { if (!o) setEditingGroup(null); }} group={editingGroup} />
+        <GroupDialog open={!!editingGroup} onOpenChange={(o) => { if (!o) setEditingGroup(null); }} group={editingGroup} />
       )}
       {masterVariant && <MasterVariantDialog open={!!masterVariant} onOpenChange={(o) => { if (!o) setMasterVariant(null); }} baseName={masterVariant.baseName} variants={masterVariantProducts} onEditVariant={handleEditIntercepted} onDeleteVariant={onDelete} />}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />

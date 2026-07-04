@@ -12,8 +12,7 @@ import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { useGroups, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import SupplierPanel from '@/components/groups/SupplierPanel';
-import GroupEditDialog from '@/components/groups/GroupEditDialog';
-import GroupCreateDialog from '@/components/groups/GroupCreateDialog';
+import GroupDialog from '@/components/groups/GroupDialog';
 import GroupItemsManager from '@/components/groups/GroupItemsManager';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
@@ -183,10 +182,10 @@ export default function Groups() {
         )}
       </div>
 
-      <GroupCreateDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <GroupDialog open={dialogOpen} onOpenChange={setDialogOpen} />
 
       {editGroup && (
-        <GroupEditDialog
+        <GroupDialog
           open={!!editGroup}
           onOpenChange={(open) => { if (!open) setEditGroup(null); }}
           group={editGroup}
