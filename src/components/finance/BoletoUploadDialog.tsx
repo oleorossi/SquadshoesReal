@@ -15,7 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { readBoletoPdfs } from '@/lib/pdfBoleto';
-import { formatDigitableLine } from '@/lib/boletoParser';
+import { formatDigitableLine, parseDigitableLine } from '@/lib/boletoParser';
 
 type ReadStatus = 'ok' | 'warning' | 'error';
 
@@ -149,6 +149,48 @@ export default function BoletoUploadDialog({ open, onOpenChange, suppliers }: Pr
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
   const removeRow = (id: string) => setRows((prev) => prev.filter((r) => r.id !== id));
+
+  /**
+   * Digitou/colou a linha digitável (ou código de barras) no campo → decodifica
+   * na hora e preenche valor, vencimento e banco. É o caminho de resgate quando
+   * o PDF não pôde ser lido: o usuário cola os 47/48 dígitos e o resto se ajusta
+   * sozinho — sem digitar valor/vencimento à mão. Usa o MESMO parser do PDF.
+   */
+  const applyDigitable = (id: string, raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length !== 47 && digits.length !== 48) {
+      // Ainda incompleto (ou colado com lixo) — só reflete o texto, sem decodificar.
+      updateRow(id, { barcode: raw });
+      return;
+    }
+    setRows((prev) => prev.map((r) => {
+      if (r.id !== id) return r;
+      try {
+        const p = parseDigitableLine(digits);
+        const dueLabel = p.dueDate ? p.dueDate.split('-').reverse().join('/') : '';
+        const next: BoletoRow = { ...r, barcode: formatDigitableLine(p.digitableLine) };
+        if (p.amount != null) next.amount = p.amount;
+        if (p.dueDate) next.due_date = p.dueDate;
+        if (p.bankName) next.bank_name = p.bankName;
+        // Regenera a descrição só se o usuário ainda não personalizou.
+        const defaultDesc = !r.description || r.description === 'Boleto'
+          || r.description === r.fileName.replace(/\.pdf$/i, '');
+        if (defaultDesc) {
+          next.description = ['Boleto', p.bankName || '', dueLabel ? `venc. ${dueLabel}` : '']
+            .filter(Boolean).join(' ');
+        }
+        const ready = p.amount != null && !!p.dueDate;
+        next.status = !p.valid ? 'warning' : (ready ? 'ok' : 'warning');
+        next.message = !p.valid
+          ? 'Dígitos verificadores não conferem — confira os dados.'
+          : (ready ? null : 'Valor ou vencimento não codificados no boleto — preencha.');
+        return next;
+      } catch {
+        // 47/48 dígitos mas linha inválida — mantém o texto pra o usuário ajustar.
+        return { ...r, barcode: raw };
+      }
+    }));
+  };
 
   const validRows = rows.filter((r) => r.amount > 0 && !!r.due_date);
   const invalidCount = rows.length - validRows.length;
@@ -366,9 +408,13 @@ export default function BoletoUploadDialog({ open, onOpenChange, suppliers }: Pr
                     <Input
                       className="h-8 text-xs font-mono"
                       value={r.barcode}
-                      onChange={(e) => updateRow(r.id, { barcode: e.target.value })}
-                      placeholder="Cole aqui se não foi lido automaticamente"
+                      onChange={(e) => applyDigitable(r.id, e.target.value)}
+                      placeholder="Cole os 47/48 dígitos — valor e vencimento preenchem sozinhos"
                     />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Não leu o PDF? Copie a linha digitável do boleto e cole aqui — o valor, o
+                      vencimento e o banco são preenchidos automaticamente.
+                    </p>
                   </div>
                 </div>
               </div>

@@ -51,6 +51,18 @@ describe('parseDigitableLine (boleto bancário)', () => {
   it('rejeita linha com contagem de dígitos inválida', () => {
     expect(() => parseDigitableLine('123456', NOW)).toThrow();
   });
+
+  // Boleto Sicredi real (o que o usuário tentou importar em 04/07/2026):
+  // fator 1503 cai no ciclo pós-reset de 2025 → vencimento 10/07/2026.
+  it('decodifica boleto Sicredi com fator no ciclo pós-2025 (venc. 10/07/2026)', () => {
+    const line = '74891.12610 00145.501011 14343.261039 7 15030000107970';
+    const p = parseDigitableLine(line, NOW);
+    expect(p.bankCode).toBe('748');
+    expect(p.bankName).toBe('Sicredi');
+    expect(p.amount).toBe(1079.7); // 0000107970 centavos
+    expect(p.dueDate).toBe('2026-07-10');
+    expect(p.valid).toBe(true);
+  });
 });
 
 describe('extractDigitableLine', () => {
