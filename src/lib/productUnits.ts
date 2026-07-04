@@ -18,6 +18,11 @@ export { UNITS, UNIT_LABELS };
 export const PURCHASE_UNITS = ['m', 'm²', 'dm²', 'placa', 'kg', 'un', 'rolo', 'cx'] as const;
 export type PurchaseUnit = (typeof PURCHASE_UNITS)[number];
 
+/** Unidades de produção/estoque oferecidas no dropdown — TODAS canônicas de UNITS.
+ *  (Substitui a lista divergente do ProductDetail que tinha 'metros' e 'gr'.) */
+export const PRODUCTION_UNITS = ['m', 'dm²', 'm²', 'un', 'par', 'g', 'ml'] as const;
+export type ProductionUnit = (typeof PRODUCTION_UNITS)[number];
+
 /**
  * Normaliza qualquer grafia de unidade para o canônico de `UNITS`.
  * 'metro'/'metros'/'mtl'/'mt'/'mts'/'m linear' → 'm' (NUNCA 'metros').
@@ -44,7 +49,11 @@ export const normalizePurchaseUnit = (value?: string | null): PurchaseUnit => {
 };
 
 /**
- * Normaliza a unidade de PRODUÇÃO/ESTOQUE para o canônico de `UNITS`.
- * Diferente do normalizador antigo do ProductDetail, JAMAIS devolve 'metros'.
+ * Normaliza a unidade de PRODUÇÃO/ESTOQUE para uma das `PRODUCTION_UNITS`
+ * (todas canônicas; fallback 'un'). Diferente do normalizador antigo do
+ * ProductDetail, JAMAIS devolve 'metros' — 'metro'/'metros' viram 'm'.
  */
-export const normalizeProductionUnit = (value?: string | null): string => normalizeUnit(value);
+export const normalizeProductionUnit = (value?: string | null): ProductionUnit => {
+  const n = normalizeUnit(value);
+  return (PRODUCTION_UNITS as readonly string[]).includes(n) ? (n as ProductionUnit) : 'un';
+};
