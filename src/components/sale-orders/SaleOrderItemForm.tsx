@@ -18,6 +18,10 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAllGroupColors } from '@/hooks/useGroupColors';
 import CreateStrapProductDialog from './CreateStrapProductDialog';
+import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
+import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
+import { useAddComponentSheet } from '@/hooks/useComponentSheets';
+import type { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -88,6 +92,48 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const [pendingStrapGroupName, setPendingStrapGroupName] = useState('');
   const [pendingStrapColor, setPendingStrapColor] = useState('');
   const [pendingStrapIndex, setPendingStrapIndex] = useState<number | null>(null);
+
+  // Cadastro da COR PRINCIPAL (forração/cabedal) via a MESMA tela do Estoque
+  // (ProductFormDialog), aberta como modal aqui no PV. Só o caminho da cor
+  // principal usa isto; as TIRAS continuam no CreateStrapProductDialog.
+  const addProductMut = useAddProduct();
+  const addComponentSheetMut = useAddComponentSheet();
+  const [colorProductDialogOpen, setColorProductDialogOpen] = useState(false);
+  const [colorProductGroupId, setColorProductGroupId] = useState<string | null>(null);
+  const [colorProductColor, setColorProductColor] = useState('');
+
+  // onSubmit do ProductFormDialog: insere o produto igual ao Estoque
+  // (MaterialsTab.handleAdd) — valida, cria, cria ficha de componente quando o
+  // grupo é auto_component_sheet, revalida o pool de cores e seleciona a cor nova.
+  const handleCreateColorProduct = async (data: ProductFormData, createSheet?: boolean) => {
+    const validated = ProductSchema.parse(data);
+    const result = await addProductMut.mutateAsync(validated as any);
+    const grp = (productGroups as any[]).find(g => g.id === data.group_id);
+    if ((createSheet || grp?.auto_component_sheet) && result?.id) {
+      try {
+        await addComponentSheetMut.mutateAsync({
+          product_id: result.id,
+          dimensions_length: data.dimensions_length || 0,
+          dimensions_width: data.dimensions_width || 0,
+          dimensions_thickness: data.dimensions_thickness || 0,
+          dimensions_unit: data.dimensions_unit || 'mm',
+          yield_per_size: {},
+          waste_pct: 8,
+          notes: '',
+        });
+      } catch (err) {
+        console.error('Erro ao criar ficha de componente automática:', err);
+      }
+    }
+    // Revalida os mesmos caches de cor que o CreateStrapProductDialog invalida.
+    qc.invalidateQueries({ queryKey: ['products_for_colors'] });
+    qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
+    qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
+    qc.invalidateQueries({ queryKey: ['products'] });
+    // Seleciona a cor recém-criada no item (o form não edita cor → é a semeada).
+    const createdColor = (data.color || colorProductColor || '').trim();
+    if (createdColor) onUpdate(index, 'color', createdColor);
+  };
   const prevRefId = useRef(item.reference_id);
   const isFirstRender = useRef(true);
   // Tracks the last reference_id for which strap structure was synced. Prevents
@@ -1116,14 +1162,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 value={item.color}
                 onSelect={(v) => onUpdate(index, 'color', v)}
                 onAddNew={mainGroupForNewColor ? (color) => {
-                  // Reusa o CreateStrapProductDialog pra criar produto na cor
-                  // principal (forração/cabedal). Sentinela index=-1 indica
-                  // "cor principal, não tira" pro callback onCreated.
-                  setPendingStrapGroupId(mainGroupForNewColor.id);
-                  setPendingStrapGroupName(mainGroupForNewColor.name);
-                  setPendingStrapColor(color);
-                  setPendingStrapIndex(-1);
-                  setCreateStrapDialog(true);
+                  // Cor principal (forração/cabedal) → abre a MESMA tela do
+                  // Estoque (ProductFormDialog) como modal, com grupo + cor
+                  // pré-preenchidos. Tiras continuam no CreateStrapProductDialog.
+                  setColorProductGroupId(mainGroupForNewColor.id);
+                  setColorProductColor(color);
+                  setColorProductDialogOpen(true);
                 } : undefined}
               />
               {onSaveStateAndNavigate && activeMaterialVariants.length === 0 && (
@@ -1548,6 +1592,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           setPendingStrapGroupName('');
         }}
       />
+
+      {/* Cadastro da COR PRINCIPAL na MESMA tela do Estoque. Montado só quando
+          aberto (o form carrega vários hooks) — evita overhead por item do PV. */}
+      {colorProductDialogOpen && colorProductGroupId && (
+        <ProductFormDialog
+          open
+          onOpenChange={(o) => { if (!o) { setColorProductDialogOpen(false); setColorProductGroupId(null); setColorProductColor(''); } }}
+          onSubmit={handleCreateColorProduct}
+          defaultGroupId={colorProductGroupId}
+          defaultColor={colorProductColor}
+        />
+      )}
 
       {/* EditColorVariantsDialog removido — variante de cor saiu do escopo. */}
     </div>

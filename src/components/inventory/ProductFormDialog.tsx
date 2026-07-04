@@ -56,6 +56,9 @@ interface ProductFormDialogProps {
   product?: Product | null;
   onEditProduct?: (product: Product) => void;
   defaultGroupId?: string;
+  /** Cor a semear ao CRIAR (fluxo "cadastrar cor" vindo do PV). Preenche
+   *  form.color (o form não tem campo de cor visível) e o nome `GRUPO: Cor`. */
+  defaultColor?: string;
 }
 
 /** Normalize legacy purchase unit strings to the canonical UNITS values. */
@@ -107,7 +110,7 @@ function getBaseName(name: string): string {
   return name.trim().toUpperCase();
 }
 
-export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultiple, product, onEditProduct, defaultGroupId }: ProductFormDialogProps) {
+export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultiple, product, onEditProduct, defaultGroupId, defaultColor }: ProductFormDialogProps) {
   const [form, setForm] = useState<ProductFormData>(emptyForm);
   const [soladoColor, setSoladoColor] = useState('');
   const [soladoGrade, setSoladoGrade] = useState<Record<string, number>>({});
@@ -388,7 +391,16 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       }
     } else {
       const defaultGroup = defaultGroupId ? groups.find(g => g.id === defaultGroupId) : null;
-      setForm({ ...emptyForm, group_id: defaultGroupId || null, category: defaultGroup ? sectorOfGroup(defaultGroup) : '' });
+      // Fluxo "cadastrar cor" (PV): semeia a cor digitada e o nome `GRUPO: Cor`.
+      const seededColor = (defaultColor || '').trim();
+      const seededName = seededColor ? `${defaultGroup?.name ? defaultGroup.name + ': ' : ''}${seededColor}` : '';
+      setForm({
+        ...emptyForm,
+        group_id: defaultGroupId || null,
+        category: defaultGroup ? sectorOfGroup(defaultGroup) : '',
+        color: seededColor,
+        name: seededName,
+      });
       setSoladoColor('');
       setSoladoGrade({});
       setMinStockGrade({});
