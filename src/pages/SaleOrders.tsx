@@ -2137,7 +2137,7 @@ export default function SaleOrders() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar PDF" onClick={() => { void printSaleOrderPdf(order); }}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar pedido (PDF)" onClick={() => { void printSaleOrderPdf(order); }}>
                             <Printer className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar por grupo" onClick={() => openDupDialog(order.id)}>
@@ -2441,8 +2441,8 @@ export default function SaleOrders() {
                 <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
                 <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Impressão e documentos">
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printOperatorFichas(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }} title="Fichas de operador (Corte Forração / Aviamento / Montagem) geradas do pedido — N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Fichas Operador</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar PDF</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printOperatorFichas(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }} title="Fichas de operador (Corte Forração / Aviamento / Montagem) geradas do pedido — N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Ficha Montagem</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar Pedido</Button>
                   {/* Botão "Etiquetas" — abre /etiquetas pré-filtrado pelo PV.
                       Antes printava térmica direto (perdia acesso a caixa externa,
                       hangtag, etc). Agora navega pra página completa de etiquetas
