@@ -1,7 +1,7 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- M7 (parte 2/2) — Embalagem (box_types) no MRP
 --
--- Depende de 20260704130000 (purchase_order_items.box_type_id).
+-- Depende de 20260706190000 (purchase_order_items.box_type_id).
 --
 --  (1) fn_projected_packaging_demand(): demanda de caixa por box_type a partir
 --      dos pedidos abertos, espelhando a resolução do débito

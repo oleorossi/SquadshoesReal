@@ -45,4 +45,4 @@ CREATE INDEX IF NOT EXISTS idx_purchase_order_items_box_type_id
 COMMENT ON COLUMN public.purchase_order_items.box_type_id IS
   'Quando a linha da OC é embalagem (caixa/saco), aponta pra box_types.id. '
   'Mutuamente informativa com product_id (linha de produto). Ver migration '
-  '20260704130000 pra o desenho do restante do M7 (MRP de embalagem).';
+  '20260706200000 pra o desenho do restante do M7 (MRP de embalagem).';

@@ -1,6 +1,6 @@
 /**
  * Espelho puro da RPC `debit_packaging_for_order`
- * (migration atual: 20260704120000_fix-packaging-debit-idempotency-and-fallback-defaults).
+ * (migration atual: 20260706180000_fix-packaging-debit-idempotency-and-fallback-defaults).
  *
  * A RPC real lê `product_groups` (solado da ficha técnica) e debita estoque em
  * `box_types` + `stock_movements`. Esta função reproduz APENAS a lógica de
