@@ -29,16 +29,18 @@ export function MrpNeedsTable() {
   // conversão direto de products pra exibir a sugestão em unidade de compra com
   // o MESMO fator usado no recebimento (effectiveConversionFactor prioriza a
   // largura da ficha pra m→dm², em vez de dividir só por conversion_rate).
-  const productIdsKey = data.map((d) => d.product_id).sort().join(',');
+  // Ids de PRODUTO (exclui linhas de embalagem — box_types não estão em products).
+  const productIds = data.filter((d) => !d.is_packaging).map((d) => d.product_id);
+  const productIdsKey = [...productIds].sort().join(',');
   const { data: convCtxById = new Map<string, PurchaseConversionContext>() } = useQuery({
     queryKey: ['mrp-needs-conversion-ctx', productIdsKey],
-    enabled: data.length > 0,
+    enabled: productIds.length > 0,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data: rows, error } = await supabase
         .from('products')
         .select('id, unit, purchase_unit, conversion_rate, dimensions_width')
-        .in('id', data.map((d) => d.product_id));
+        .in('id', productIds);
       if (error) throw error;
       return new Map<string, PurchaseConversionContext>(
         (rows || []).map((r: any) => [r.id as string, {
@@ -51,15 +53,18 @@ export function MrpNeedsTable() {
     },
   });
 
-  // Só linhas com sugestão > 0 são selecionáveis (checkbox de linha fica
-  // disabled nas demais) — o "selecionar todos" compara com essa contagem.
-  const selectableCount = data.filter((d) => d.suggested_qty > 0).length;
+  // Só linhas de PRODUTO com sugestão > 0 são selecionáveis. Linhas de embalagem
+  // (is_packaging) não geram OC aqui — a compra de caixa é feita em /embalagens —,
+  // então ficam com checkbox disabled e fora do "selecionar todos".
+  const isSelectable = (d: { suggested_qty: number; is_packaging?: boolean }) =>
+    d.suggested_qty > 0 && !d.is_packaging;
+  const selectableCount = data.filter(isSelectable).length;
 
   const toggleAll = () =>
     setSelected((prev) =>
       prev.size === selectableCount
         ? new Set()
-        : new Set(data.filter((d) => d.suggested_qty > 0).map((d) => d.product_id)),
+        : new Set(data.filter(isSelectable).map((d) => d.product_id)),
     );
 
   const toggleRow = (id: string) =>
@@ -129,12 +134,27 @@ export function MrpNeedsTable() {
                   <Checkbox
                     checked={selected.has(n.product_id)}
                     onCheckedChange={() => toggleRow(n.product_id)}
-                    disabled={n.suggested_qty <= 0}
+                    disabled={!isSelectable(n)}
                   />
                 </TableCell>
                 <TableCell>
-                  <div className="font-medium">{n.product_name}</div>
-                  <div className="text-xs text-muted-foreground">{n.sku}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{n.product_name}</span>
+                    {n.is_packaging && (
+                      <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-semibold uppercase tracking-wide">
+                        Embalagem
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {n.is_packaging ? (
+                      <a href="/embalagens" className="underline decoration-dotted underline-offset-2 hover:text-primary">
+                        comprar em Embalagens
+                      </a>
+                    ) : (
+                      n.sku
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-sm">
                   {n.supplier_name ?? (

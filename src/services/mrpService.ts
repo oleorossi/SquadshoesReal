@@ -25,6 +25,10 @@ export interface MrpNeed {
   orders_count: number | null;
   suggested_qty: number;
   order_by_date: string | null;
+  /** true quando a linha é uma caixa (box_types), não um produto de estoque. A
+   *  compra de embalagem é feita no módulo /embalagens — o MRP só mostra a
+   *  necessidade; "Gerar OC" não gera PO pra estas linhas. */
+  is_packaging?: boolean;
 }
 
 export async function listMrpNeeds(): Promise<MrpNeed[]> {
