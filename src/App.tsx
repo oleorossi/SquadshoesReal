@@ -107,7 +107,6 @@ const PCPHub = lazy(() => import("./pages/PCPHub"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
 // ProductionWavesPage: rota standalone /pcp/ondas virou redirect pro hub
 // (/pcp?tab=ondas) em 2026-07-01 — o PCPHub importa o componente como aba.
-const ArtisanalRecipes = lazy(() => import("./pages/ArtisanalRecipes"));
 const BaseConsumption = lazy(() => import("./pages/BaseConsumption"));
 const StockAlerts = lazy(() => import("./pages/StockAlerts"));
 const StockReservations = lazy(() => import("./pages/StockReservations"));
@@ -854,8 +853,10 @@ const router = createBrowserRouter([
         element: <Navigate to="/terceirizados?tab=orders" replace />,
       },
       {
+        // Receitas Artesanais virou aba do hub Terceirizados (2026-07-04).
+        // Rota antiga preservada como redirect pra bookmarks/atalhos.
         path: "artisanal-recipes",
-        element: <ArtisanalRecipes />,
+        element: <Navigate to="/terceirizados?tab=recipes" replace />,
       },
       {
         // Rota legada: agora aba dentro do hub /rh (Funcionários)

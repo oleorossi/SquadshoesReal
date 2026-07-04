@@ -82,7 +82,9 @@ export const menuGroups = [
       { name: "Calculadora de Tiras", icon: Scissors, path: "/calculadora-tiras" },
       { name: "Solados",          icon: Footprints,   path: "/solados" },
       { name: "Silks",            icon: Sparkles,     path: "/silks" },
-      { name: "Receitas",         icon: Sparkles,     path: "/artisanal-recipes" },
+      // "Receitas" (/artisanal-recipes) movida pro hub Terceirizados como aba
+      // (2026-07-04, pedido do dono): a receita alimenta a produção artesanal
+      // via terceirizados. A rota antiga redireciona pra /terceirizados?tab=recipes.
     ],
   },
   {

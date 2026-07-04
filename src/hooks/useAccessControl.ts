@@ -114,7 +114,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/component-sheets': 'produtos',
   '/orders/summary': 'ordens',
   '/orders/grouped-summary': 'ordens',
-  '/artisanal-recipes': 'estoque',
+  '/artisanal-recipes': 'terceirizados', // virou aba do hub Terceirizados (2026-07-04)
   '/expedicao': 'expedicao',
   '/silk-registrations': 'produtos',
   '/silks': 'produtos',

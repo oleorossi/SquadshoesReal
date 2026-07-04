@@ -15,9 +15,12 @@
  *   CADASTRO:
  *   • Prestadores          → cadastro/CRUD das contratadas (Contractors)
  *   • Tarifas por Referência → R$/par por ficha (TerceirizacaoCoberturaPanel)
+ *   • Receitas Artesanais    → receitas de produção artesanal (ArtisanalRecipes)
  *
- * (A antiga aba "Receitas" foi removida na auditoria 2026-06-28 — duplicava
- *  Engenharia → Receitas /artisanal-recipes, que segue como página própria.)
+ * A aba "Receitas" (removida em 2026-06-28) voltou pro hub em 2026-07-04 a
+ * pedido do dono — a receita alimenta a produção artesanal via terceirizados.
+ * A rota /artisanal-recipes agora redireciona pra /terceirizados?tab=recipes e
+ * o item saiu do menu Engenharia.
  *
  * As páginas originais são renderizadas em modo `embedded` (sem header/AppLayout
  * próprios — o header é deste hub). Contractors mantém seus 4 painéis, mas a
@@ -31,18 +34,22 @@ import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   ChartBar as BarChart3, ClipboardText as ClipboardList,
-  ChartLineUp, Users, Tag,
+  ChartLineUp, Users, Tag, Sparkle as Sparkles,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
+import ArtisanalRecipes from './ArtisanalRecipes';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
 
 const TRIGGER = 'gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md';
 
 // Abas servidas pelo componente Contractors (uma única instância controlada).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
-const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
+// 'recipes' (Receitas Artesanais) trazido do menu Engenharia pra cá em 2026-07-04
+// (pedido do dono): a receita alimenta a produção artesanal via terceirizados,
+// então mora no hub. Renderiza a página ArtisanalRecipes embutida.
+const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio', 'recipes']);
 const DEFAULT_TAB = 'orders';
 
 export default function TerceirizadosHub() {
@@ -99,10 +106,16 @@ export default function TerceirizadosHub() {
           <TabsTrigger value="cobertura" className={TRIGGER}>
             <Tag className="h-3.5 w-3.5" /> Tarifas por Referência
           </TabsTrigger>
+          <TabsTrigger value="recipes" className={TRIGGER}>
+            <Sparkles className="h-3.5 w-3.5" /> Receitas Artesanais
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="cobertura">
           <TerceirizacaoCoberturaPanel />
+        </TabsContent>
+        <TabsContent value="recipes">
+          <ArtisanalRecipes embedded />
         </TabsContent>
         <TabsContent value="relatorio">
           <ContractorReportsPage embedded />

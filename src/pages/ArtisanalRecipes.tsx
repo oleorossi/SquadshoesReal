@@ -45,7 +45,7 @@ const emptyRecipe: Partial<ArtisanalRecipe> = {
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-export default function ArtisanalRecipes() {
+export default function ArtisanalRecipes({ embedded = false }: { embedded?: boolean } = {}) {
    const { data: recipes = [], isLoading, isError } = useArtisanalRecipes();
    const { data: contractors = [] } = useContractors();
    const { data: products = [] } = useProducts();
@@ -148,17 +148,26 @@ export default function ArtisanalRecipes() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <EditorialPageHeader
-        sectionLabel="ENGENHARIA · RECEITAS"
-        title="Produtos Artesanais"
-        description="Receitas de transformação de matéria-prima em produtos artesanais via terceirizados"
-        actions={
+      {/* Header — omitido quando embutido numa aba (ex.: hub Terceirizados);
+          a ação "Nova Receita" vira uma barra compacta pra não sumir. */}
+      {embedded ? (
+        <div className="flex justify-end">
           <Button onClick={openNew} className="gap-1.5">
             <Plus className="h-4 w-4" /> Nova Receita
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <EditorialPageHeader
+          sectionLabel="ENGENHARIA · RECEITAS"
+          title="Produtos Artesanais"
+          description="Receitas de transformação de matéria-prima em produtos artesanais via terceirizados"
+          actions={
+            <Button onClick={openNew} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Nova Receita
+            </Button>
+          }
+        />
+      )}
 
       <Tabs defaultValue="recipes" className="space-y-4">
         <TabsList>

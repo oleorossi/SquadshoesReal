@@ -134,7 +134,7 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
               <Warning className="h-3.5 w-3.5" /> {cut.warning}
             </span>
             {cut.widthMissing && (
-              <Link to="/artisanal-recipes" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
+              <Link to="/terceirizados?tab=recipes" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
                 Cadastrar largura em Receitas → Produtos artesanais →
               </Link>
             )}
