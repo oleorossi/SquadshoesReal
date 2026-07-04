@@ -62,6 +62,16 @@ Deno.serve(async (req) => {
 
   const results: Array<{ sale_order_id: string; order_number?: string; situacao_nf?: string; ok: boolean; error?: string }> = [];
 
+  // Heartbeat (#6): registra o resultado desta execução em sync_ar_runs pra
+  // tornar detectável um halt silencioso — net.http_post do cron é
+  // fire-and-forget, então cron.job_run_details fica verde mesmo com 500/timeout.
+  const trigger = body.sale_order_id ? "single" : (cronSecretHeader ? "cron" : "manual");
+  const logRun = async (scanned: number, synced: number, failedCount: number, err: string | null) => {
+    const { error: logErr } = await admin.from("sync_ar_runs")
+      .insert({ trigger, scanned, synced, failed: failedCount, error: err ? err.slice(0, 2000) : null });
+    if (logErr) console.error("sync-ar: falha ao gravar heartbeat sync_ar_runs:", logErr.message);
+  };
+
   const runOne = async (saleOrderId: string, orderNumber?: string, situacao?: string, allowMissingNf = false) => {
     try {
       await syncFinancialRecordsCore(admin, saleOrderId, { allowMissingNf });
@@ -81,6 +91,7 @@ Deno.serve(async (req) => {
       .from("v_faturado_sem_ar")
       .select("id, order_number, situacao_nf");
     if (error) {
+      await logRun(0, 0, 0, `v_faturado_sem_ar: ${error.message}`);
       return new Response(JSON.stringify({ error: `v_faturado_sem_ar: ${error.message}` }), { status: 500, headers: corsHeaders });
     }
     for (const row of pending ?? []) {
@@ -93,6 +104,10 @@ Deno.serve(async (req) => {
 
   const ok = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
+  await logRun(
+    results.length, ok, failed.length,
+    failed.length > 0 ? failed.map((f) => `${f.order_number ?? f.sale_order_id}: ${f.error}`).join("; ") : null,
+  );
   console.log(`sync-ar: ${ok} PV(s) sincronizado(s), ${failed.length} falha(s)`, failed);
   return new Response(JSON.stringify({ synced: ok, failed, results }), { headers: corsHeaders });
 });

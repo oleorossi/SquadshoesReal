@@ -133,7 +133,7 @@ export default function FinanceiroDashboard() {
                 size="sm"
                 className="shrink-0 gap-1.5"
                 disabled={reconcile.isPending}
-                onClick={() => reconcile.mutate(reconciliaveis)}
+                onClick={() => reconcile.mutate(missingAR)}
               >
                 {reconcile.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                 Reconciliar {reconciliaveis.length}

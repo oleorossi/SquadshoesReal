@@ -30,6 +30,17 @@ export type DbClient = any;
 
 export const BACKFILL_SEM_NF_MARKER = 'backfill-sem-nf';
 
+/**
+ * Data de hoje no fuso de Brasília (America/Sao_Paulo, UTC-3, sem horário de
+ * verão). A edge function `sync-ar` roda em UTC — sem isto, um faturamento à
+ * noite no Brasil (ex.: 22:30 de 31/07 = 01:30 UTC de 01/08) seria carimbado no
+ * dia/mês seguinte, jogando a receita pro período errado na DRE. Funciona igual
+ * no browser e no Deno. (code-review 2026-07-04, finding #4)
+ */
+function brDateISO(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+}
+
 export interface SyncFinancialOptions {
   /**
    * Permite gerar AR para PV Faturado SEM documento fiscal (decisão explícita
@@ -236,10 +247,15 @@ export async function syncFinancialRecordsCore(
         .limit(1);
       must('Verificar NF-e autorizada (gate de receita)', authErr);
       const hasAuthorizedNfe = !!authNfe && authNfe.length > 0;
+      // NF externa = marcador EXPLÍCITO (checkbox nfe_external ou número externo
+      // digitado). NÃO usar so.nfe: esse campo texto é populado pelo trigger
+      // sync_nfe_numero SÓ em NF autorizada e NUNCA é limpo quando a NF é
+      // cancelada na SEFAZ e detectada pelo poller (sync-nfe-from-provider não
+      // toca sale_orders). Usá-lo aqui ressuscitava receita fantasma de PV cuja
+      // NF-e foi cancelada. (code-review 2026-07-04, finding #2)
       const hasExternalNfe =
         so.nfe_external === true ||
-        String(so.external_nfe_number ?? '').trim() !== '' ||
-        String(so.nfe ?? '').trim() !== '';
+        String(so.external_nfe_number ?? '').trim() !== '';
 
       if (!hasAuthorizedNfe && !hasExternalNfe) {
         if (opts.allowMissingNf) {
@@ -352,7 +368,7 @@ export async function syncFinancialRecordsCore(
         description: `Faturamento - ${so.client_name} - ${so.order_number || ''}`,
         amount: total,
         type: 'receita',
-        entry_date: new Date().toISOString().split('T')[0],
+        entry_date: brDateISO(),
         reference_id: saleOrderId,
         reference_type: 'sale_order',
         status: 'confirmed',
@@ -381,18 +397,23 @@ export async function syncFinancialRecordsCore(
           description: factoringDesc,
           amount: factoringDiscount,
           type: 'despesa',
-          entry_date: new Date().toISOString().split('T')[0],
+          entry_date: brDateISO(),
           reference_id: saleOrderId,
           reference_type: 'sale_order_factoring',
           status: 'confirmed',
         });
         must('Inserir financial_entry de juros factoring', error);
       } else {
+        // Idempotência: o valor do desconto é TRAVADO na criação. Recalcular
+        // aqui vs `new Date()` encolhia a despesa a cada re-sync (menos dias de
+        // juros até o vencimento) e fazia browser(UTC-3) e edge(UTC) se
+        // sobrescreverem perto da meia-noite. Só o rótulo é atualizado.
+        // (code-review 2026-07-04, finding #3)
         const { error } = await db.from('financial_entries')
-          .update({ amount: factoringDiscount, description: factoringDesc })
+          .update({ description: factoringDesc })
           .eq('reference_id', saleOrderId)
           .eq('reference_type', 'sale_order_factoring');
-        must('Atualizar financial_entry de juros factoring', error);
+        must('Atualizar rótulo de juros factoring', error);
       }
     } else if (existingFactoringEntry && existingFactoringEntry.length > 0) {
       // Factoring foi desligado pós-faturamento ou desconto zerado: remove entry
