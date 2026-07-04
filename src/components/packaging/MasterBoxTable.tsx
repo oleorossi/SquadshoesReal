@@ -6,8 +6,10 @@ import { Plus, Cube as Box } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useCan } from '@/hooks/useAccessControl';
 
 export default function MasterBoxTable() {
+  const perm = useCan('/embalagens');
   const { data: boxes, isLoading } = useBoxTypes();
   const masterBoxes = boxes?.filter(b => !b.interno) ?? [];
 
@@ -28,9 +30,11 @@ export default function MasterBoxTable() {
           <Box className="h-5 w-5 text-primary" />
           Caixas Master
         </CardTitle>
-        <Button size="sm" className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nova Caixa Master
-        </Button>
+        {perm.canCreate && (
+          <Button size="sm" className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova Caixa Master
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {masterBoxes.length === 0 ? (

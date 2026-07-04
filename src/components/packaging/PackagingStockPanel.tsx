@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { Cube as Box, PencilSimple as Pencil, MagnifyingGlass as Search, Plus, Funnel as Filter, Copy, Trash as Trash2 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDeleteIndividualPackaging, useDuplicateIndividualPackaging } from '@/hooks/usePackaging';
+import { useCan } from '@/hooks/useAccessControl';
 
 type BoxKind = 'individual' | 'master' | 'colmeia' | 'fitilho';
 
@@ -81,6 +82,7 @@ const emptyForm = {
 
 export default function PackagingStockPanel() {
   const qc = useQueryClient();
+  const perm = useCan('/embalagens');
   const [editingBox, setEditingBox] = useState<BoxRow | null>(null);
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BoxRow | null>(null);
@@ -515,10 +517,12 @@ export default function PackagingStockPanel() {
           </Select>
         </div>
 
-        <Button onClick={openNewDialog} className="gap-2 w-full sm:w-auto">
-          <Plus className="h-4 w-4" />
-          Nova Embalagem
-        </Button>
+        {perm.canCreate && (
+          <Button onClick={openNewDialog} className="gap-2 w-full sm:w-auto">
+            <Plus className="h-4 w-4" />
+            Nova Embalagem
+          </Button>
+        )}
       </div>
 
       {/* Stock table */}
@@ -612,32 +616,38 @@ export default function PackagingStockPanel() {
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-0.5">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => openEditDialog(b)}
-                          title="Editar"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => duplicateMutation.mutate(b.id)}
-                          disabled={duplicateMutation.isPending}
-                          title="Duplicar"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setDeleteTarget(b)}
-                          title="Excluir"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {perm.canEdit && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openEditDialog(b)}
+                            title="Editar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {perm.canCreate && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => duplicateMutation.mutate(b.id)}
+                            disabled={duplicateMutation.isPending}
+                            title="Duplicar"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {perm.canDelete && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setDeleteTarget(b)}
+                            title="Excluir"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

@@ -28,6 +28,7 @@ import {
   TechnicalReferenceRow,
 } from '@/hooks/useTechnicalReferences';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { useCan } from '@/hooks/useAccessControl';
 
 const CATEGORIES = [
   { value: 'furniture', label: 'Mobiliário' },
@@ -403,6 +404,7 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
   const addMat = useAddTechRefMaterial();
   const updateMat = useUpdateTechRefMaterial();
   const deleteMat = useDeleteTechRefMaterial();
+  const perm = useCan('/fichas-tecnicas');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -464,15 +466,17 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
           <Package className="h-3.5 w-3.5" />
           Materiais ({materials.length})
         </h4>
-        <Button
-          variant={showCatalog ? 'default' : 'outline'}
-          size="sm"
-          className="h-7 gap-1 text-xs"
-          onClick={() => setShowCatalog(!showCatalog)}
-        >
-          <Plus className="h-3 w-3" />
-          {showCatalog ? 'Fechar Catálogo' : 'Adicionar do Estoque'}
-        </Button>
+        {perm.canEdit && (
+          <Button
+            variant={showCatalog ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            onClick={() => setShowCatalog(!showCatalog)}
+          >
+            <Plus className="h-3 w-3" />
+            {showCatalog ? 'Fechar Catálogo' : 'Adicionar do Estoque'}
+          </Button>
+        )}
       </div>
 
       {/* Materials table */}
@@ -608,6 +612,7 @@ function MaterialRow({
   onUpdate: (data: any) => void;
   onDelete: () => void;
 }) {
+  const perm = useCan('/fichas-tecnicas');
   const product = mat.products;
   const totalNeeded = mat.quantity_needed * (1 + mat.waste_factor / 100);
   const available = product?.quantity ?? 0;
@@ -695,12 +700,14 @@ function MaterialRow({
         )}
       </TableCell>
       <TableCell>
-        <DeleteConfirmButton
-          onConfirm={onDelete}
-          title="Remover material?"
-          size="h-6 w-6"
-          iconSize="h-3 w-3"
-        />
+        {perm.canEdit && (
+          <DeleteConfirmButton
+            onConfirm={onDelete}
+            title="Remover material?"
+            size="h-6 w-6"
+            iconSize="h-3 w-3"
+          />
+        )}
       </TableCell>
     </TableRow>
   );

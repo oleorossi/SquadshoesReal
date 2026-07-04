@@ -16,6 +16,7 @@ import { useProducts } from '@/hooks/useProducts';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { SignedImage } from '@/components/ui/signed-image';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { useCan } from '@/hooks/useAccessControl';
 
 type SilkScope = 'all' | 'default' | 'client' | 'economic_group';
 
@@ -34,6 +35,7 @@ interface SilkGlobalPanelProps {
 
 export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
   const queryClient = useQueryClient();
+  const perm = useCan('/silks');
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -206,10 +208,12 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button onClick={() => { resetForm(); setDialogOpen(true); }} className="gap-2" size="sm">
-          <Plus className="h-4 w-4" />
-          Novo Cadastro
-        </Button>
+        {perm.canCreate && (
+          <Button onClick={() => { resetForm(); setDialogOpen(true); }} className="gap-2" size="sm">
+            <Plus className="h-4 w-4" />
+            Novo Cadastro
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -285,14 +289,18 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => handleEdit(reg)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <DeleteConfirmButton
-                              onConfirm={() => deleteMutation.mutate(reg.id)}
-                              title="Excluir cadastro?"
-                              description="Esta ação não pode ser desfeita."
-                            />
+                            {perm.canEdit && (
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(reg)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {perm.canDelete && (
+                              <DeleteConfirmButton
+                                onConfirm={() => deleteMutation.mutate(reg.id)}
+                                title="Excluir cadastro?"
+                                description="Esta ação não pode ser desfeita."
+                              />
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
