@@ -385,7 +385,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const { data: productGroups = [] } = useQuery({
     queryKey: ['product_groups_colors'],
     queryFn: async () => {
-      const { data } = await supabase.from('product_groups').select('id, name, colors');
+      const { data } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic');
       return data || [];
     },
     staleTime: 5 * 60 * 1000,

@@ -270,7 +270,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const { data: allGroupColors = [] } = useAllGroupColors();
   const { data: productGroups = [] } = useQuery({
     queryKey: ['product_groups_colors'],
-    queryFn: async () => { const { data } = await supabase.from('product_groups').select('id, name, colors'); return data || []; },
+    // inclui is_color_agnostic pra não colidir com a MESMA queryKey no PV
+    // (SaleOrderItemForm), cujo guard de cor lê essa flag — selects divergentes
+    // sob a mesma key faziam o campo sumir do cache conforme a navegação.
+    queryFn: async () => { const { data } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic'); return data || []; },
     staleTime: 0, gcTime: 30_000,
   });
   const { data: groupSupplierMaterials = [] } = useQuery({
