@@ -4,6 +4,7 @@
 // adicionar itens existentes ao grupo e editar atributos do item (reusa o
 // ProductFormDialog do estoque). Tudo via products.group_id (useSetProductsGroup).
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,8 +18,7 @@ import {
 } from '@phosphor-icons/react';
 import { useProducts, useUpdateProduct, useSetProductsGroup, useBulkSetProductPrice } from '@/hooks/useProducts';
 import type { ProductGroup } from '@/hooks/useGroups';
-import type { Product, ProductFormData } from '@/types/inventory';
-import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
+import type { Product } from '@/types/inventory';
 
 interface Props {
   group: ProductGroup | null;
@@ -35,6 +35,7 @@ const byName = (a: Product, b: Product) => String(a.name ?? '').localeCompare(St
 const ADD_LIMIT = 200;
 
 export default function GroupItemsManager({ group, groups, open, onOpenChange }: Props) {
+  const navigate = useNavigate();
   const { data: products = [] } = useProducts();
   const setGroup = useSetProductsGroup();
   const updateProduct = useUpdateProduct();
@@ -47,8 +48,6 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
   const [bulkPrice, setBulkPrice] = useState<number>(0);
   const [addSearch, setAddSearch] = useState('');
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
 
   // Reset quando troca de grupo ou reabre.
   useEffect(() => {
@@ -102,12 +101,6 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
     await setGroup.mutateAsync({ ids: [...addSelected], group_id: group.id });
     setAddSelected(new Set()); setMode('list');
   };
-  const handleEditSubmit = async (data: ProductFormData) => {
-    if (!editingProduct) return;
-    await updateProduct.mutateAsync({ id: editingProduct.id, data: data as any });
-    setEditOpen(false); setEditingProduct(null);
-  };
-
   const allChecked = items.length > 0 && items.every(p => selected.has(p.id));
   const colCls = 'px-3 py-2 text-left';
 
@@ -174,7 +167,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                           <td className="px-3 py-2 text-muted-foreground">{(p as any).color || '—'}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{Number((p as any).quantity ?? 0).toLocaleString('pt-BR')} <span className="text-muted-foreground text-xs">{(p as any).unit || ''}</span></td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar item" onClick={() => { setEditingProduct(p); setEditOpen(true); }}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar item" onClick={() => navigate(`/estoque/${p.id}`)}>
                               <PencilSimple className="h-4 w-4" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-600 dark:hover:text-red-400" title="Remover do grupo" disabled={busy} onClick={() => doRemoveOne(p.id)}>
@@ -274,14 +267,6 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
         </DialogContent>
       </Dialog>
 
-      {/* editor de item (reusa o form do estoque) */}
-      <ProductFormDialog
-        open={editOpen}
-        onOpenChange={(o) => { setEditOpen(o); if (!o) setEditingProduct(null); }}
-        onSubmit={handleEditSubmit}
-        product={editingProduct}
-        defaultGroupId={group.id}
-      />
     </>
   );
 }

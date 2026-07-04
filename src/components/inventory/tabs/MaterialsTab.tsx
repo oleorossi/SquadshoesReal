@@ -314,7 +314,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   };
 
   const handleDelete = (id: string) => forceDeleteFlow.tryDelete(id);
-  const openEdit = (product: Product) => { setEditingProduct(product); setDialogOpen(true); };
+  // Editar abre o editor CANÔNICO (página /estoque/:id, com painéis de solado/
+  // silk/histórico). O modal ProductFormDialog fica só para CRIAR novo material.
+  const openEdit = (product: Product) => navigate(`/estoque/${product.id}`);
   const openAdd = () => { setEditingProduct(null); setDialogOpen(true); };
 
   return (
@@ -524,12 +526,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       <ProductFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSubmit={editingProduct ? handleEdit : handleAdd}
-        product={editingProduct}
-        onEditProduct={(p) => {
-          setEditingProduct(p);
-          setDialogOpen(true);
-        }}
+        onSubmit={handleAdd}
+        product={null}
+        onEditProduct={(p) => navigate(`/estoque/${p.id}`)}
         defaultGroupId={defaultGroupName ? defaultGroupId : undefined}
       />
 
