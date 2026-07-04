@@ -28,18 +28,135 @@
    ReferenceMaterialVariant
  } from '@/hooks/useReferenceMaterialVariants';
  import { useProducts } from '@/hooks/useProducts';
+ import { useGroups } from '@/hooks/useGroups';
+ import { sectorOfGroup } from '@/lib/categoryFromGroup';
  import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+
+// Setores (product_groups.sector) que alimentam cada seletor de grupo do dialog.
+// Espelham SECTOR_OPTIONS em categoryFromGroup.ts.
+const SECTOR_CABEDAL = 'Cabedal';
+const SECTOR_FORRO = 'Forração da Palmilha';
+const SECTOR_PALMILHA = 'Palmilha';
+
+/** Sugere um sufixo de SKU a partir do nome do grupo (2 primeiras palavras,
+ *  sem acento, MAIÚSCULO, só alfanumérico). Ex.: "NAPA SANTORINE" → "NAPASANTORINE". */
+function skuSlug(groupName: string): string {
+  return (groupName || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .split(/\s+/).slice(0, 2).join('')
+    .toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
  
   interface MaterialVariantsTabProps {
     sheetId: string;
     sheetCode?: string;
   }
 
+/**
+ * Seletor de grupo de material (product_groups) com busca. Reusado para
+ * Cabedal / Forro / Palmilha. `allowInherit` mostra a opção "Herda a ficha"
+ * (limpa a seleção → o motor resolve pela ficha).
+ */
+function GroupCombobox({
+  value, onChange, groups, describe, placeholder, allowInherit = false, ariaLabel,
+}: {
+  value: string | null | undefined;
+  onChange: (id: string | null) => void;
+  groups: { id: string; name: string }[];
+  describe?: (groupId: string) => string | null;
+  placeholder: string;
+  allowInherit?: boolean;
+  ariaLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? groups.find(g => g.id === value) : null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={ariaLabel}
+          className="w-full justify-between font-normal h-9 text-sm"
+        >
+          <span className={cn('truncate', !selected && 'text-muted-foreground')}>
+            {selected ? selected.name : (allowInherit ? 'Herda a ficha' : placeholder)}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar grupo…" className="h-9" />
+          <CommandList>
+            <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
+            <CommandGroup>
+              {allowInherit && (
+                <CommandItem value="__herda__" onSelect={() => { onChange(null); setOpen(false); }} className="text-sm py-2">
+                  <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
+                  <span className="text-muted-foreground">Herda a ficha</span>
+                </CommandItem>
+              )}
+              {groups.map(g => {
+                const sub = describe?.(g.id);
+                return (
+                  <CommandItem key={g.id} value={g.name} onSelect={() => { onChange(g.id); setOpen(false); }} className="text-sm py-2">
+                    <Check className={cn('mr-2 h-4 w-4', value === g.id ? 'opacity-100' : 'opacity-0')} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-medium truncate">{g.name}</span>
+                      {sub && <span className="text-xs text-muted-foreground font-mono truncate">{sub}</span>}
+                    </div>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
   export function MaterialVariantsTab({ sheetId, sheetCode }: MaterialVariantsTabProps) {
    const { data: variants = [], isLoading } = useReferenceMaterialVariants(sheetId);
    const { data: products = [] } = useProducts();
-   
+   const { data: groups = [] } = useGroups();
+
+   // Grupos por componente (Cabedal / Forro / Palmilha), filtrados pelo setor.
+   const cabedalGroups  = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_CABEDAL), [groups]);
+   const forroGroups    = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_FORRO), [groups]);
+   const palmilhaGroups = useMemo(() => groups.filter(g => sectorOfGroup(g) === SECTOR_PALMILHA), [groups]);
+
+   // Produto representativo de um grupo (1º ativo por nome) — fonte das sugestões
+   // de SKU/NCM/preço e do resumo (cores) no seletor.
+   const groupProducts = useMemo(() => {
+     const m = new Map<string, typeof products>();
+     for (const p of products) {
+       if (!p.group_id || !p.active) continue;
+       const arr = m.get(p.group_id) ?? [];
+       arr.push(p);
+       m.set(p.group_id, arr);
+     }
+     for (const arr of m.values()) arr.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+     return m;
+   }, [products]);
+   const repProduct = (groupId?: string | null) => (groupId ? groupProducts.get(groupId)?.[0] : undefined);
+   const groupColorCount = (groupId?: string | null) =>
+     groupId ? new Set((groupProducts.get(groupId) ?? []).map(p => (p.color || '').trim()).filter(Boolean)).size : 0;
+   // Subtítulo do item no seletor: SKU do produto representativo + nº de cores.
+   const describeGroup = (groupId: string): string | null => {
+     const rp = repProduct(groupId);
+     const cc = groupColorCount(groupId);
+     const parts = [
+       (rp as any)?.sku ? `SKU ${(rp as any).sku}` : null,
+       cc > 0 ? `${cc} cor${cc > 1 ? 'es' : ''}` : null,
+     ].filter(Boolean) as string[];
+     return parts.length ? parts.join(' · ') : null;
+   };
+
    const addVariant = useAddReferenceMaterialVariant();
    const updateVariant = useUpdateReferenceMaterialVariant();
    const deleteVariant = useDeleteReferenceMaterialVariant();
@@ -60,16 +177,18 @@ import { supabase } from '@/integrations/supabase/client';
       unit_price_override: null,
       active: true,
       upper_material_product_id: null,
+      upper_material_group_id: null,
       upper_consumption_override: null,
       lining_material_product_id: null,
+      lining_material_group_id: null,
       lining_consumption_override: null,
       insole_material_product_id: null,
+      insole_material_group_id: null,
       insole_consumption_override: null,
       sole_material_product_id: null,
       sole_consumption_override: null,
     });
 
-    const [materialSearchOpen, setMaterialSearchOpen] = useState(false);
   const [suggestingNcm, setSuggestingNcm] = useState(false);
 
   const handleSuggestNcm = async () => {
@@ -178,11 +297,37 @@ import { supabase } from '@/integrations/supabase/client';
           unit_price_override: null,
           active: true,
           upper_material_product_id: null,
+          upper_material_group_id: null,
+          lining_material_group_id: null,
+          insole_material_group_id: null,
           display_order: variants.length
         });
       }
      setIsDialogOpen(true);
    };
+
+   // Seleção de grupo de Cabedal: aponta o grupo, LIMPA o pin de produto legado
+   // (pra o motor resolver por grupo+cor) e auto-preenche identidade fiscal a
+   // partir do grupo/produto representativo — só nos campos ainda vazios, pra
+   // não sobrescrever o que o usuário já digitou.
+   const handlePickCabedalGroup = (groupId: string | null) => {
+     const group = groupId ? cabedalGroups.find(g => g.id === groupId) : null;
+     const rep = repProduct(groupId);
+     setFormData(prev => ({
+       ...prev,
+       upper_material_group_id: groupId,
+       upper_material_product_id: null,
+       upper_consumption_override: null,
+       material_name: group?.name ?? prev.material_name ?? '',
+       sku: prev.sku && prev.sku.trim() ? prev.sku : (group ? `${sheetCode ? sheetCode + '-' : ''}${skuSlug(group.name)}` : prev.sku),
+       ncm: prev.ncm && prev.ncm.trim() ? prev.ncm : ((rep as any)?.ncm ?? prev.ncm ?? ''),
+       unit_price_override: prev.unit_price_override != null ? prev.unit_price_override : ((rep?.unit_price as number | undefined) ?? null),
+     }));
+   };
+   const handlePickLiningGroup = (groupId: string | null) =>
+     setFormData(prev => ({ ...prev, lining_material_group_id: groupId, lining_material_product_id: null, lining_consumption_override: null }));
+   const handlePickInsoleGroup = (groupId: string | null) =>
+     setFormData(prev => ({ ...prev, insole_material_group_id: groupId, insole_material_product_id: null, insole_consumption_override: null }));
 
    const handleOpenDuplicateDialog = (source: ReferenceMaterialVariant) => {
      setEditingVariant(null);
@@ -196,6 +341,9 @@ import { supabase } from '@/integrations/supabase/client';
        unit_price_override: source.unit_price_override,
        active: source.active,
        upper_material_product_id: source.upper_material_product_id,
+       upper_material_group_id: source.upper_material_group_id,
+       lining_material_group_id: source.lining_material_group_id,
+       insole_material_group_id: source.insole_material_group_id,
        display_order: variants.length,
      });
      setIsDialogOpen(true);
@@ -232,7 +380,8 @@ import { supabase } from '@/integrations/supabase/client';
          // mandássemos `undefined` explícito aqui, o spread `{...sourceData,
          // ...overrides}` zeraria (clobber → NULL) os overrides/pins da origem.
          const { material_name, sku, barcode, ncm, description_override,
-                 unit_price_override, active, upper_material_product_id } = formData;
+                 unit_price_override, active, upper_material_product_id,
+                 upper_material_group_id, lining_material_group_id, insole_material_group_id } = formData;
          await duplicateVariant.mutateAsync({
            source_variant_id: duplicatingFromId,
            sheet_id: sheetId,
@@ -245,6 +394,9 @@ import { supabase } from '@/integrations/supabase/client';
              unit_price_override,
              active,
              upper_material_product_id,
+             upper_material_group_id,
+             lining_material_group_id,
+             insole_material_group_id,
              display_order: variants.length,
            },
          });
@@ -294,11 +446,12 @@ import { supabase } from '@/integrations/supabase/client';
        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
          <p className="font-medium text-primary mb-1">Como funciona</p>
          <p>
-           Cadastre aqui as variações de material principal desta referência (ex.: <strong>Napa</strong>,
-           <strong> Santorini</strong>, <strong>Metálica</strong>). No PV, aparece <strong>uma única
-           entrada</strong> da referência com dropdown pra selecionar a variante. Desde a migration
-           20260525140000, cada variante pode ter linhas de BOM próprias em <code>sheet_materials</code>
-           (use <code>material_variant_id</code>) — quando NULL, a linha vale pra todas as variantes.
+           Cada variante aponta pra outro <strong>grupo de material</strong> (ex.: <strong>NAPA
+           SANTORINE</strong>, <strong>NAPA TITANIUM</strong>) — mesma referência, mesma <strong>área
+           (dm²/par)</strong> da ficha. Muda só a origem: o <strong>SKU</strong> e o <strong>valor de
+           consumo</strong> (metros/custo) saem sozinhos da largura da ficha de componente e do preço
+           do grupo. A <strong>cor</strong> vem do PV. No PV, a referência aparece com dropdown pra
+           escolher a variante.
          </p>
        </div>
        <div className="flex justify-between items-center">
@@ -431,251 +584,185 @@ import { supabase } from '@/integrations/supabase/client';
              </div>
            )}
 
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="material_name" className="text-right text-xs">Material</Label>
-                <div className="col-span-3">
-                  <Popover open={materialSearchOpen} onOpenChange={setMaterialSearchOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={materialSearchOpen}
-                        className="w-full justify-between font-normal text-xs h-9"
-                      >
-                        {formData.material_name || "Selecionar material de cabedal..."}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[350px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Buscar material..." className="h-9" />
-                        <CommandList>
-                          <CommandEmpty>Nenhum material encontrado.</CommandEmpty>
-                          <CommandGroup>
-                            {products
-                              .filter(p => p.active && (p.category || '').toLowerCase() === 'cabedal')
-                              .map((product) => (
-                                <CommandItem
-                                  key={product.id}
-                                  value={product.name}
-                                  onSelect={(currentValue) => {
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      material_name: currentValue,
-                                      upper_material_product_id: product.id,
-                                      unit_price_override: prev.unit_price_override || product.unit_price
-                                    }));
-                                    setMaterialSearchOpen(false);
-                                  }}
-                                  className="text-xs py-2"
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      formData.material_name === product.name ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{product.name}</span>
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                      SKU: {product.sku} | Estoque: {product.quantity} {product.unit}
-                                    </span>
-                                  </div>
-                                </CommandItem>
-                              ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+            <div className="space-y-5 py-2 max-h-[65vh] overflow-y-auto px-0.5">
+              {/* SEÇÃO — Material (grupos). A variante aponta GRUPOS; a cor vem do PV.
+                  Área (dm²/par) é sempre a da ficha; muda só a origem do material. */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Package className="h-3.5 w-3.5 text-primary" />
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Material</h4>
                 </div>
-              </div>
-             <div className="grid grid-cols-4 items-center gap-4">
-               <Label htmlFor="sku" className="text-right">SKU</Label>
-               <Input 
-                 id="sku" 
-                 className="col-span-3 font-mono text-sm" 
-                 value={formData.sku || ''} 
-                 onChange={e => setFormData(prev => ({ ...prev, sku: e.target.value }))}
-                 placeholder="Código interno"
-               />
-             </div>
- 
-             <div className="grid grid-cols-4 items-center gap-4">
-               <Label htmlFor="barcode" className="text-right">EAN/GTIN</Label>
-               <Input 
-                 id="barcode" 
-                 className="col-span-3 font-mono text-sm" 
-                 value={formData.barcode || ''} 
-                 onChange={e => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
-                 placeholder="Código de barras"
-               />
-             </div>
- 
-             <div className="grid grid-cols-4 items-center gap-4">
-               <Label htmlFor="ncm" className="text-right">NCM</Label>
-              <div className="col-span-3 flex items-center gap-2">
-                <Input 
-                  id="ncm" 
-                  className="flex-1 font-mono text-sm" 
-                  value={formData.ncm || ''} 
-                  onChange={e => setFormData(prev => ({ ...prev, ncm: e.target.value }))}
-                  placeholder="Classificação fiscal"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSuggestNcm}
-                  disabled={suggestingNcm}
-                  title="Sugerir NCM via IA"
-                >
-                  {suggestingNcm ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                </Button>
-              </div>
-             </div>
- 
-             <div className="grid grid-cols-4 items-center gap-4">
-               <Label htmlFor="price" className="text-right">Preço Ov.</Label>
-               <div className="col-span-3 flex items-center gap-2">
-                 <Input 
-                   id="price" 
-                   type="number" 
-                   step="0.01"
-                   className="flex-1"
-                   value={formData.unit_price_override || ''} 
-                   onChange={e => setFormData(prev => ({ ...prev, unit_price_override: e.target.value ? parseFloat(e.target.value) : null }))}
-                   placeholder="Opcional: preço específico"
-                 />
-                 <div title="Se preenchido, este preço será usado em vez do custo calculado da ficha técnica.">
-                   <Info className="h-4 w-4 text-muted-foreground" />
-                 </div>
-               </div>
-             </div>
- 
-             <div className="grid grid-cols-4 items-start gap-4">
-               <Label htmlFor="description" className="text-right mt-2">Descrição</Label>
-               <textarea 
-                 id="description" 
-                 className="col-span-3 min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                 value={formData.description_override || ''} 
-                 onChange={e => setFormData(prev => ({ ...prev, description_override: e.target.value }))}
-                 placeholder="Descrição específica para esta variante"
-               />
-             </div>
- 
-             <div className="grid grid-cols-4 items-center gap-4">
-               <Label htmlFor="active" className="text-right">Ativo</Label>
-               <div className="col-span-3 flex items-center gap-2">
-                 <Switch 
-                   id="active" 
-                   checked={formData.active} 
-                   onCheckedChange={checked => setFormData(prev => ({ ...prev, active: checked }))} 
-                 />
-                 <span className="text-xs text-muted-foreground">{formData.active ? 'Variante disponível para pedidos' : 'Variante oculta'}</span>
-               </div>
-             </div>
 
-             {/* Overrides de consumo por componente — opcional.
-                 Vazio (NULL) = herda da ficha técnica. Preenchido = sobrescreve
-                 no cálculo de consumo de OPs desta variante. Ex.: cabedal em
-                 Sintético consome 5% menos que Couro. */}
-             <details className="mt-2 rounded-md border border-border/60 bg-muted/20">
-               <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted/30">
-                 Overrides de consumo por componente (avançado)
-               </summary>
-               <div className="p-3 space-y-3 text-xs">
-                 <p className="text-muted-foreground leading-relaxed">
-                   Use estes campos pra sobrescrever consumo (dm²/par) ou produto de um componente específico
-                   <strong> apenas</strong> nesta variante. Deixe vazio pra usar o que está na ficha técnica.
-                 </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Cabedal (napa) <span className="text-destructive">*</span></Label>
+                  <GroupCombobox
+                    value={formData.upper_material_group_id}
+                    onChange={handlePickCabedalGroup}
+                    groups={cabedalGroups}
+                    describe={describeGroup}
+                    placeholder="Selecionar grupo de napa…"
+                    ariaLabel="Grupo de cabedal"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    A área (dm²/par) é a da ficha — muda só o material, o SKU e o valor de consumo.
+                  </p>
+                </div>
 
-                 {/* Cabedal — consumo (produto já tem na seção acima) */}
-                 <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Cabedal dm²/par</Label>
-                   <Input
-                     type="number"
-                     step="0.01"
-                     min="0"
-                     placeholder="usa ficha"
-                     value={formData.upper_consumption_override ?? ''}
-                     onChange={e => setFormData(prev => ({ ...prev, upper_consumption_override: e.target.value === '' ? null : Number(e.target.value) }))}
-                     className="col-span-3 h-8 text-xs"
-                   />
-                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Forro</Label>
+                    <GroupCombobox
+                      value={formData.lining_material_group_id}
+                      onChange={handlePickLiningGroup}
+                      groups={forroGroups}
+                      describe={describeGroup}
+                      placeholder="Herda a ficha"
+                      allowInherit
+                      ariaLabel="Grupo de forro"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Palmilha</Label>
+                    <GroupCombobox
+                      value={formData.insole_material_group_id}
+                      onChange={handlePickInsoleGroup}
+                      groups={palmilhaGroups}
+                      describe={describeGroup}
+                      placeholder="Herda a ficha"
+                      allowInherit
+                      ariaLabel="Grupo de palmilha"
+                    />
+                  </div>
+                </div>
+              </section>
 
-                 {/* Forro — produto + consumo */}
-                 <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Forração · produto</Label>
-                   <select
-                     className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
-                     value={formData.lining_material_product_id ?? ''}
-                     onChange={e => setFormData(prev => ({ ...prev, lining_material_product_id: e.target.value || null }))}
-                   >
-                     <option value="">— Usar ficha técnica —</option>
-                     {products.filter(p => p.active && /forr|forra/i.test(p.category || '')).map(p => (
-                       <option key={p.id} value={p.id}>{p.name} {p.sku ? `· ${p.sku}` : ''}</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Forração dm²/par</Label>
-                   <Input
-                     type="number"
-                     step="0.01"
-                     min="0"
-                     placeholder="usa ficha"
-                     value={formData.lining_consumption_override ?? ''}
-                     onChange={e => setFormData(prev => ({ ...prev, lining_consumption_override: e.target.value === '' ? null : Number(e.target.value) }))}
-                     className="col-span-3 h-8 text-xs"
-                   />
-                 </div>
+              {/* SEÇÃO — Identidade fiscal (auto-preenchida do grupo, editável) */}
+              <section className="space-y-3 border-t border-border/60 pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-3.5 w-3.5 text-primary" />
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identidade fiscal</h4>
+                  </div>
+                  {formData.upper_material_group_id && (
+                    <span className="text-[10px] text-muted-foreground">Auto-preenchido · editável</span>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="material_name" className="text-xs font-medium">Nome da variante <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="material_name"
+                    className="h-9"
+                    value={formData.material_name || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, material_name: e.target.value }))}
+                    placeholder="ex: NAPA SANTORINE"
+                  />
+                </div>
 
-                 {/* Palmilha — produto + consumo */}
-                 <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Palmilha · produto</Label>
-                   <select
-                     className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
-                     value={formData.insole_material_product_id ?? ''}
-                     onChange={e => setFormData(prev => ({ ...prev, insole_material_product_id: e.target.value || null }))}
-                   >
-                     <option value="">— Usar ficha técnica —</option>
-                     {products.filter(p => p.active && /palmilha/i.test(p.category || '')).map(p => (
-                       <option key={p.id} value={p.id}>{p.name} {p.sku ? `· ${p.sku}` : ''}</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Palmilha dm²/par</Label>
-                   <Input
-                     type="number"
-                     step="0.01"
-                     min="0"
-                     placeholder="usa ficha"
-                     value={formData.insole_consumption_override ?? ''}
-                     onChange={e => setFormData(prev => ({ ...prev, insole_consumption_override: e.target.value === '' ? null : Number(e.target.value) }))}
-                     className="col-span-3 h-8 text-xs"
-                   />
-                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sku" className="text-xs font-medium">SKU</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="sku"
+                      className="h-9 flex-1 font-mono text-sm"
+                      value={formData.sku || ''}
+                      onChange={e => setFormData(prev => ({ ...prev, sku: e.target.value }))}
+                      placeholder="Código do produto"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 shrink-0 gap-1.5"
+                      onClick={() => setFormData(prev => ({ ...prev, sku: generateNextSku() }))}
+                      title="Gerar próximo SKU"
+                    >
+                      <Hash className="h-3.5 w-3.5" /> Gerar
+                    </Button>
+                  </div>
+                </div>
 
-                 {/* Solado — produto override */}
-                 <div className="grid grid-cols-4 items-center gap-2">
-                   <Label className="text-right text-xs">Solado · produto</Label>
-                   <select
-                     className="col-span-3 h-8 text-xs rounded-md border border-input bg-background px-2"
-                     value={formData.sole_material_product_id ?? ''}
-                     onChange={e => setFormData(prev => ({ ...prev, sole_material_product_id: e.target.value || null }))}
-                   >
-                     <option value="">— Usar primary_sole da ficha —</option>
-                     {products.filter(p => p.active && /solado|sola/i.test(p.category || '')).map(p => (
-                       <option key={p.id} value={p.id}>{p.name} {p.sku ? `· ${p.sku}` : ''}</option>
-                     ))}
-                   </select>
-                 </div>
-               </div>
-             </details>
-           </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="barcode" className="text-xs font-medium">EAN / GTIN</Label>
+                    <Input
+                      id="barcode"
+                      className="h-9 font-mono text-sm"
+                      value={formData.barcode || ''}
+                      onChange={e => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
+                      placeholder="Código de barras"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ncm" className="text-xs font-medium">NCM</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="ncm"
+                        className="h-9 flex-1 font-mono text-sm"
+                        value={formData.ncm || ''}
+                        onChange={e => setFormData(prev => ({ ...prev, ncm: e.target.value }))}
+                        placeholder="Classificação fiscal"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={handleSuggestNcm}
+                        disabled={suggestingNcm}
+                        title="Sugerir NCM via IA"
+                        aria-label="Sugerir NCM via IA"
+                      >
+                        {suggestingNcm ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="price" className="text-xs font-medium flex items-center gap-1.5">
+                    Preço unitário <span className="font-normal text-muted-foreground">(opcional)</span>
+                    <span title="Se preenchido, substitui o custo calculado da ficha técnica na NF-e/pedido.">
+                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                    </span>
+                  </Label>
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="h-9 tabular-nums"
+                    value={formData.unit_price_override ?? ''}
+                    onChange={e => setFormData(prev => ({ ...prev, unit_price_override: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="Herda o custo da ficha"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="description" className="text-xs font-medium">
+                    Descrição NF-e <span className="font-normal text-muted-foreground">(opcional)</span>
+                  </Label>
+                  <textarea
+                    id="description"
+                    className="min-h-[64px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={formData.description_override || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, description_override: e.target.value }))}
+                    placeholder="Descrição específica para esta variante"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
+                  <Switch
+                    id="active"
+                    checked={formData.active}
+                    onCheckedChange={checked => setFormData(prev => ({ ...prev, active: checked }))}
+                  />
+                  <Label htmlFor="active" className="text-sm cursor-pointer flex-1">
+                    {formData.active ? 'Disponível para pedidos' : 'Variante oculta'}
+                  </Label>
+                </div>
+
+             </section>
+            </div>
 
            <DialogFooter>
              <Button variant="outline" onClick={() => { setIsDialogOpen(false); setDuplicatingFromId(null); }}>Cancelar</Button>

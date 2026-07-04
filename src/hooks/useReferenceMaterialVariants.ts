@@ -15,15 +15,24 @@ const ALL_ACTIVE_KEY = ['reference_material_variants', 'all_active'] as const;
    ncm: string;
    description_override: string;
    upper_material_product_id: string | null;
-   /** Override de consumo (dm²/par) do cabedal. NULL = usa ficha. */
+   /** Grupo de cabedal (napa) da variação. Resolve produto por grupo+cor do PV.
+    *  NULL = herda a ficha. Precedência no motor: product_id (legado) > este grupo
+    *  > pin da ficha > grupo da ficha. É a fonte do redesenho "variante por grupo". */
+   upper_material_group_id: string | null;
+   /** Override de consumo (dm²/par) do cabedal. NULL = usa ficha. (LEGADO: o
+    *  redesenho por grupo não escreve mais este campo — área é sempre a da ficha.) */
    upper_consumption_override: number | null;
    /** Produto de forro override pra esta variação. NULL = resolve pelo grupo da ficha. */
    lining_material_product_id: string | null;
-   /** Override de consumo (dm²/par) do forro. NULL = usa ficha. */
+   /** Grupo de forração da variação. Resolve por grupo+cor do PV. NULL = herda a ficha. */
+   lining_material_group_id: string | null;
+   /** Override de consumo (dm²/par) do forro. NULL = usa ficha. (LEGADO — ver upper.) */
    lining_consumption_override: number | null;
    /** Produto de palmilha override. NULL = resolve pelo grupo da ficha. */
    insole_material_product_id: string | null;
-   /** Override de consumo (dm²/par) da palmilha. NULL = usa ficha. */
+   /** Grupo de palmilha (forração) da variação. Resolve por grupo+cor do PV. NULL = herda a ficha. */
+   insole_material_group_id: string | null;
+   /** Override de consumo (dm²/par) da palmilha. NULL = usa ficha. (LEGADO — ver upper.) */
    insole_consumption_override: number | null;
    /** Solado SKU override. NULL = usa primary_sole_id da ficha. */
    sole_material_product_id: string | null;
@@ -260,9 +269,9 @@ export type VariantSummary = { id: string; material_name: string; sku: string | 
  *  omitidos, o UPDATE não toca neles (preserva valores existentes) e o INSERT
  *  cai no default do banco (NULL). NÃO enviar null explícito num edit parcial. */
 type VariantOverrideKeys =
-  | 'upper_consumption_override'
-  | 'lining_material_product_id' | 'lining_consumption_override'
-  | 'insole_material_product_id' | 'insole_consumption_override'
+  | 'upper_material_group_id' | 'upper_consumption_override'
+  | 'lining_material_product_id' | 'lining_material_group_id' | 'lining_consumption_override'
+  | 'insole_material_product_id' | 'insole_material_group_id' | 'insole_consumption_override'
   | 'sole_material_product_id' | 'sole_consumption_override';
 
 export type ReferenceMaterialVariantInsert =

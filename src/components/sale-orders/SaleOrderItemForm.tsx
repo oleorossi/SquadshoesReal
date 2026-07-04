@@ -429,9 +429,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const mainGroupForNewColor = useMemo<{ id: string; name: string } | null>(() => {
     if (item.material_variant_id) {
       const variant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
-      // reference_material_variants NÃO tem group_id/group_name — o grupo é
-      // resolvido via produto de cabedal da variante (upper_material_product_id
-      // → products.group_id → product_groups.name).
+      // NOVO (variante por grupo): a variante aponta upper_material_group_id direto.
+      if (variant?.upper_material_group_id) {
+        const group = (productGroups as any[]).find((g: any) => g.id === variant.upper_material_group_id);
+        if (group) return { id: group.id, name: group.name };
+      }
+      // Legado: variante que fixava um produto de cabedal
+      // (upper_material_product_id → products.group_id → product_groups.name).
       if (variant?.upper_material_product_id) {
         const prod = (allProducts as any[]).find((p: any) => p.id === variant.upper_material_product_id);
         if (prod?.group_id) {
@@ -527,6 +531,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (sel?.available_colors?.length) {
         return [...sel.available_colors].sort((a, b) => a.localeCompare(b, 'pt-BR'));
       }
+      // Variante por grupo (NOVO): as cores oferecidas são EXCLUSIVAMENTE as do
+      // grupo de cabedal escolhido — a cor do item = cor do cabedal (forro/palmilha
+      // seguem por mapeamento). Cor fora do grupo é barrada pelo guard de cor.
+      // Só para variante PURA por grupo (sem pin de produto legado): variantes
+      // antigas (com upper_material_product_id, agora com group_id via backfill)
+      // mantêm o pool UNIÃO de antes — não estreita o dropdown delas.
+      if (sel?.upper_material_group_id && !sel?.upper_material_product_id) {
+        const groupColors = getColorsFromGroupId(sel.upper_material_group_id);
+        if (groupColors.length) return uniqueSortedColors(groupColors);
+      }
     }
 
     const colorSet = new Set<string>();
@@ -545,6 +559,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       : activeMaterialVariants;
     variantsForColors.forEach(v => {
       (v.available_colors || []).forEach(color => colorSet.add(color));
+      // NOVO: grupos apontados pela variante (por grupo) → cores dos produtos do grupo.
+      [v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id]
+        .filter(Boolean)
+        .forEach(groupId => getColorsFromGroupId(groupId as string).forEach(color => colorSet.add(color)));
+      // Legado: variante que fixava produto → cores do grupo do produto.
       [v.upper_material_product_id, v.lining_material_product_id, v.insole_material_product_id]
         .filter(Boolean)
         .forEach(productId => {
