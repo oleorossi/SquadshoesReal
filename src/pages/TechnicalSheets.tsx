@@ -3499,6 +3499,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   addRow={addComponentColorRow}
                   updateRow={updateComponentColorRow}
                   deleteRow={deleteComponentColorRow}
+                  onSetPredominante={(gid) => updateField('cor_predominante_id', gid)}
                 />
               )}
             </div>
@@ -4909,7 +4910,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
    /* ===== Component Color Mapping Panel (cor predominante → lista de componentes) =====
       Opt-in (technical_sheets.component_colors_enabled). Cada cor lista a lista COMPLETA
       de componentes; reusa DirectComponentSelect (grupo → produto) + NumberInput. */
-   function ComponentColorMappingPanel({ sheetId, corPredominanteId, products, mappings, addRow, updateRow, deleteRow }: {
+   function ComponentColorMappingPanel({ sheetId, corPredominanteId, products, groups, mappings, addRow, updateRow, deleteRow, onSetPredominante }: {
      sheetId: string;
      corPredominanteId: string | null;
      products: any[];
@@ -4918,6 +4919,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
      addRow: any;
      updateRow: any;
      deleteRow: any;
+     onSetPredominante: (groupId: string) => void;
    }) {
      const cabedelColors = useMemo(() => {
        if (!corPredominanteId) return [];
@@ -4931,6 +4933,16 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
        return Array.from(colors).sort((a, b) => a.localeCompare(b, 'pt-BR'));
      }, [corPredominanteId, products]);
 
+     // Grupos elegíveis pra "cor predominante": os que têm produtos ativos com cor
+     // (o grupo que carrega as cores do modelo — normalmente o material do cabedal).
+     const eligibleGroups = useMemo(() => {
+       const gids = new Set(
+         products.filter((p: any) => p.active && p.color?.trim() && p.group_id).map((p: any) => p.group_id),
+       );
+       return (groups || []).filter((g: any) => gids.has(g.id))
+         .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+     }, [products, groups]);
+
      // cor (lower/trim) → linhas de componente daquela cor
      const byColor = useMemo(() => {
        const m = new Map<string, any[]>();
@@ -4943,24 +4955,41 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
        return m;
      }, [mappings]);
 
-     if (!corPredominanteId || cabedelColors.length === 0) {
-       return (
-         <div className="rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
-           Configure a <strong className="text-foreground">cor predominante</strong> e as cores do produto primeiro
-           para listar os componentes por cor.
-         </div>
-       );
-     }
-
      const configuredCount = cabedelColors.filter(c => (byColor.get(c.toLowerCase()) || []).length > 0).length;
+     const ready = !!corPredominanteId && cabedelColors.length > 0;
 
      return (
        <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
          <div className="flex items-center gap-2">
            <Wand2 className="h-4 w-4 text-primary" />
            <h4 className="text-sm font-bold">Componentes por Cor</h4>
-           <Badge variant="outline" className="text-xs ml-auto">{configuredCount}/{cabedelColors.length} configuradas</Badge>
+           {ready && <Badge variant="outline" className="text-xs ml-auto">{configuredCount}/{cabedelColors.length} configuradas</Badge>}
          </div>
+
+         {/* Grupo de cor predominante — fonte das cores do modelo (ex.: o material do
+             cabedal). É o mesmo campo usado pelas harmonizações de forração/palmilha/solado. */}
+         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+           <Label className="text-xs text-muted-foreground shrink-0">Grupo de cor predominante</Label>
+           <Select value={corPredominanteId || ''} onValueChange={(v) => onSetPredominante(v)}>
+             <SelectTrigger className="h-8 text-xs sm:max-w-xs"><SelectValue placeholder="Escolha o grupo que carrega as cores…" /></SelectTrigger>
+             <SelectContent>
+               {eligibleGroups.length === 0 && (
+                 <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum grupo com cores cadastradas</div>
+               )}
+               {eligibleGroups.map((g: any) => (
+                 <SelectItem key={g.id} value={g.id} className="text-xs">{g.name}</SelectItem>
+               ))}
+             </SelectContent>
+           </Select>
+         </div>
+
+         {!ready ? (
+           <p className="text-xs text-muted-foreground">
+             Escolha acima o grupo cujas cores o modelo usa (as mesmas escolhidas no pedido).
+             Cada cor vira um card pra listar seus componentes. Lembre de <strong className="text-foreground">Salvar</strong> a ficha depois.
+           </p>
+         ) : (
+         <>
          <p className="text-xs text-muted-foreground">
            Cada cor lista os componentes debitados quando ela for escolhida no pedido. Cor sem lista usa o padrão acima.
          </p>
@@ -5011,6 +5040,8 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
              );
            })}
          </div>
+         </>
+         )}
        </div>
      );
    }
