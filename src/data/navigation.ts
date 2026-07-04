@@ -110,6 +110,10 @@ export const menuGroups = [
     icon: Truck,
     items: [
       { name: "Expedição",        icon: Package,        path: "/expedicao" },
+      // Embalagens (/embalagens) exposto no menu (2026-07-04): módulo próprio de
+      // cadastro/estoque de caixas (box_types) + vínculos + débito. Era órfão
+      // (só via URL/Cmd+K). Continua sendo uma aba do hub Expedição também.
+      { name: "Embalagens",       icon: Box,            path: "/embalagens" },
       // "Transporte" (/transporte) exposto (2026-06-28): hub de baús/embalagens/
       // tarifas/simulador/rotas — era órfão (só alcançável por cards da Expedição).
       { name: "Transporte",       icon: Truck,          path: "/transporte" },

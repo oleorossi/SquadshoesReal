@@ -26,7 +26,8 @@ const MATERIAL_CATEGORIES = [
   { value: 'Palmilha',  label: 'Palmilha' },
   { value: 'Químico',   label: 'Químicos' },
   { value: 'Componente',label: 'Componentes' },
-  { value: 'Embalagem', label: 'Embalagem' },
+  // 'Embalagem' REMOVIDO em 04/07/2026 — embalagem tem módulo próprio em
+  // /embalagens (box_types). O silo products/Embalagem estava vazio (0 itens).
 ];
 
 // Tabs principais
