@@ -709,7 +709,10 @@ export default function Finance() {
   const deleteReceivable = useDeleteAccountReceivable();
   // Gates de ação por área (referência de adoção do controle CRUD). Admin e
   // usuários sem permissão granular sempre passam — não restringe quem já podia.
-  const finPerm = useCan('/finance');
+  // ⚠ Usa o path do ITEM DE MENU ('/financeiro'), não a rota-redirect '/finance':
+  // os grants granulares são gravados por path de menu, e resolveMenuOwner casa
+  // por esse path. Usar '/finance' (sem item de menu) zeraria os gates.
+  const finPerm = useCan('/financeiro');
 
   const [payableDialog, setPayableDialog] = useState(false);
   const [boletoUploadDialog, setBoletoUploadDialog] = useState(false);

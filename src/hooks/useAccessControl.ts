@@ -27,6 +27,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',
   '/escalonamento': 'produtos',
+  '/calculadora-tiras': 'produtos',
   '/orders': 'ordens',
   '/setores': 'ordens',
   '/shop-floor': 'ordens',
@@ -355,7 +356,15 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
 
   const owner = resolveMenuOwner(path, allMenuPaths);
   const pathRow = owner ? perms.find((p) => p.module === owner && p.can_view) : undefined;
-  if (pathRow) return Boolean(pathRow[ACTION_COL[action]]);
+  if (pathRow) {
+    const v = pathRow[ACTION_COL[action]];
+    // Coluna AUSENTE (row legado, gravado antes das colunas de ação existirem,
+    // ou lido de cache pré-migration) => trata como acesso completo (semântica
+    // antiga: ver a tela = poder tudo nela). Só NEGA quando a flag existe e é
+    // explicitamente false — restrição salva pela matriz nova. Sem isso, um
+    // usuário existente perderia ações no intervalo entre deploy e backfill.
+    return v === undefined || v === null ? true : Boolean(v);
+  }
 
   // Retrocompat: liberado por key de módulo (grant antigo sem split de ação).
   const mod = resolveModuleForPath(path);
@@ -404,7 +413,10 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
  
    const loading = status === 'loading';
    const isError = status === 'error';
- 
+   // Permissões do próprio usuário ainda na 1ª busca. Os gates de AÇÃO usam isto
+   // pra NÃO liberar por RBAC (fail-open) antes dos grants granulares chegarem.
+   const permsLoading = !!user && permsQuery.isPending && permsQuery.fetchStatus === 'fetching';
+
 
   const roleKeys = useMemo(() => roles.map(r => r.role), [roles]);
    const isAdmin = useMemo(() => roleKeys.includes('admin'), [roleKeys]);
@@ -474,29 +486,33 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
     canAccessRoute,
     canAccessModule,
     can,
+    permsLoading,
     canSeeFinancialValues,
   };
 }
 
 /**
  * Conveniência: resolve as 4 capacidades de uma tela/área de uma vez.
- * Uso: `const perm = useCan('/finance'); perm.canDelete && <BotãoExcluir/>`.
+ * Uso: `const perm = useCan('/financeiro'); perm.canDelete && <BotãoExcluir/>`.
+ * ⚠ Passe o path do ITEM DE MENU (o que a matriz grava), não uma rota-redirect.
  */
 export function useCan(path: string) {
-  const { can, loading, isAdmin } = useAccessControl();
-  return useMemo(
-    () => ({
-      loading,
-      isAdmin,
-      canView: can(path, 'view'),
-      canCreate: can(path, 'create'),
-      canEdit: can(path, 'edit'),
-      canDelete: can(path, 'delete'),
-    }),
-    // `can` é recriado a cada render (closure sobre perms/roles); depender de
-    // path + loading/isAdmin cobre as mudanças reais de permissão.
-    [path, loading, isAdmin], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const { can, loading, isAdmin, permsLoading } = useAccessControl();
+  // NÃO memoizar: `can` fecha sobre perms/roles que chegam async — memoizar por
+  // deps incompletas congelava gates desatualizados (fail-open) e não recalculava
+  // quando os grants chegavam. Recalcular a cada render é barato e sempre reflete
+  // os grants atuais. Enquanto as permissões do próprio usuário carregam, um
+  // não-admin pode ter restrições que ainda não chegaram → negar as AÇÕES até
+  // saber (conservador). Admin não depende de perms (can() já curto-circuita).
+  const actionsReady = isAdmin || !permsLoading;
+  return {
+    loading: loading || permsLoading,
+    isAdmin,
+    canView: can(path, 'view'),
+    canCreate: actionsReady && can(path, 'create'),
+    canEdit: actionsReady && can(path, 'edit'),
+    canDelete: actionsReady && can(path, 'delete'),
+  };
 }
 
 export { ROUTE_MODULE_MAP };

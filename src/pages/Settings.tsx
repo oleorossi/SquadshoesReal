@@ -72,8 +72,9 @@ const ROLE_COLORS: Record<string, string> = {
  *
  * ⚠ Enforcement: 'Ver' (rota) já vale em todo o sistema. Os gates de ação
  * (criar/editar/excluir) são lidos por useAccessControl.can()/useCan() e vão
- * sendo adotados área a área via <PermissionButton> — a matriz já grava a
- * intenção pra cada área herdar quando for ligada. */
+ * sendo adotados área a área (ex.: Financeiro Contas usa `useCan('/financeiro')`
+ * pra esconder criar/editar/excluir) — a matriz já grava a intenção pra cada
+ * área herdar quando for ligada. */
 type ActionSet = { view: boolean; create: boolean; edit: boolean; delete: boolean };
 type ActionKey = keyof ActionSet;
 const EMPTY_ACTIONS: ActionSet = { view: false, create: false, edit: false, delete: false };
