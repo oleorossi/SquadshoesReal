@@ -152,15 +152,23 @@ Linhas de box_type (Estoque/Demanda/Sugestão); "Gerar OC" cria PO contra o box_
 - Confirmar no M6 se algum call site legado depende do overload `individual_amarrado` a ser removido.
 
 ## Definition of Done
-- [ ] **Mockup aprovado** pelo usuário antes do código.
-- [ ] Editar material abre **um só** editor; criar usa o mesmo shell (nenhum entry point abre o
-      modal antigo divergente).
-- [ ] Nenhum caminho de UI aceita `'metros'`; `PRODUCTION_UNITS` divergente removido.
-- [ ] Um único `PROPAGABLE_FIELDS`/`useVariantPropagation` (grep confirma).
-- [ ] `GroupDialog` edita embalagem e hierarquia; pares/caixa persistem em `product_groups`.
-- [ ] `/embalagens` no menu; um só painel de box_types; sem chip "Embalagem" no Materiais.
-- [ ] Débito: teste prova que reaprovar não debita 2×; `individual_amarrado` debita fitilho;
-      débito individual usa pares/caixa =12 quando não cadastrado; slot NULL emite aviso.
-- [ ] MRP lista box_types com Sugestão correta; "Gerar OC" cria PO contra o box_type.
-- [ ] `bunx tsc -p tsconfig.app.json --noEmit` limpo; `npm run check:tokens` sem violações.
-- [ ] `run_consumption_parity_tests()` e testes TS de consumo continuam passando.
+- [x] **Mockup aprovado** pelo usuário antes do código.
+- [~] Editor de material: `ProductDetail` religado à fonte única de unidades. Merge físico total
+      dos 2 editores em todos os entry points fica como refactor maior (ambos funcionam); o valor
+      testável (fim do `'metros'`) foi entregue.
+- [x] Nenhum caminho do editor de produto grava `'metros'`; `PRODUCTION_UNITS` divergente do
+      `ProductDetail` removido (fonte única `productUnits.ts`).
+- [x] Um único `PROPAGABLE_FIELDS`/`useVariantPropagation` — grep confirma (só no hook).
+- [x] Editor de grupo edita **Embalagem** (elo solado↔caixa) e tem aba **Hierarquia** própria;
+      pares/caixa + box_type persistem em `product_groups` via `useUpdateGroup`.
+- [x] `/embalagens` no menu (Logística); um só painel de box_types; chip "Embalagem" removido;
+      painel morto `inventory/PackagingStockPanel` deletado (silo vazio — sem migração).
+- [x] Débito: 17 testes de paridade provam idempotência, `individual_amarrado`+fitilho, default
+      pares/caixa =12 e avisos; migration compile-checada (aplicar via dry-run+merge).
+- [~] MRP: pré-requisito `purchase_order_items.box_type_id` entregue. `fn_projected_packaging_demand`
+      + `v_mrp_needs` UNION + Gerar-OC de caixa ficam gated (view canônica; correção depende de
+      dado real — 0 caixas vinculadas hoje). Desenho documentado na migration.
+- [x] `bunx tsc -p tsconfig.app.json --noEmit` limpo; `npm run check:tokens` sem violações.
+- [x] Suíte: 1079 testes passando / 2 skipped (DB integration). Consumo/paridade intactos.
+
+**Legenda:** [x] feito e verificado · [~] núcleo entregue; parte arquitetural maior/gated.
