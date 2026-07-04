@@ -19,6 +19,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '@/lib/utils';
+import { useCan } from '@/hooks/useAccessControl';
 
 type QuotationStatus = 'aberta' | 'enviada' | 'recebida' | 'analisada' | 'aprovada' | 'cancelada' | 'expirada';
 
@@ -57,6 +58,7 @@ export default function Quotations() {
 }
 
 function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
+  const perm = useCan('/quotations');
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['purchase_quotations'],
     queryFn: async () => {
@@ -77,9 +79,11 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
         title="Cotações (RFQ)"
         description="Cotação multifornecedor — registre itens, respostas e escolha o vencedor."
         actions={
-          <Button onClick={onCreate} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Nova Cotação
-          </Button>
+          perm.canCreate ? (
+            <Button onClick={onCreate} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Nova Cotação
+            </Button>
+          ) : undefined
         }
       />
 
@@ -93,7 +97,7 @@ function QuotationsList({ onOpen, onCreate }: { onOpen: (id: string) => void; on
             icon={FileSpreadsheet}
             title="Nenhuma cotação criada"
             description="Crie uma RFQ para cotar materiais com múltiplos fornecedores."
-            action={<Button variant="outline" size="sm" onClick={onCreate}>Criar primeira RFQ</Button>}
+            action={perm.canCreate ? <Button variant="outline" size="sm" onClick={onCreate}>Criar primeira RFQ</Button> : undefined}
           />
         </Panel>
       ) : (
@@ -386,6 +390,7 @@ function QuotationDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
 function ItemsTab({ quotationId, items, disabled }: { quotationId: string; items: any[]; disabled: boolean }) {
   const qc = useQueryClient();
+  const perm = useCan('/quotations');
   const [adding, setAdding] = useState(false);
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
@@ -442,7 +447,7 @@ function ItemsTab({ quotationId, items, disabled }: { quotationId: string; items
                   <p className="font-medium text-sm">{it.products?.name || it.product_id}</p>
                   <p className="text-xs text-muted-foreground font-mono">{it.quantity} {it.unit}</p>
                 </div>
-                {!disabled && (
+                {!disabled && perm.canDelete && (
                   <DeleteConfirmButton
                     title="Remover item da cotação?"
                     description="Os preços já digitados pelos fornecedores para este item serão descartados."
@@ -455,7 +460,7 @@ function ItemsTab({ quotationId, items, disabled }: { quotationId: string; items
         </div>
       )}
 
-      {!disabled && (
+      {!disabled && perm.canCreate && (
         adding ? (
           <Card>
             <CardContent className="pt-4 space-y-2">
@@ -510,6 +515,7 @@ function ResponsesTab({
   disabled: boolean;
 }) {
   const qc = useQueryClient();
+  const perm = useCan('/quotations');
   const [addingSupplierId, setAddingSupplierId] = useState('');
   const [editingResponseId, setEditingResponseId] = useState<string | null>(null);
 
@@ -575,7 +581,7 @@ function ResponsesTab({
                   </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" onClick={() => setEditingResponseId(r.id)}>Preços / Termos</Button>
-                    {!disabled && (
+                    {!disabled && perm.canDelete && (
                       <DeleteConfirmButton
                         title="Remover resposta do fornecedor?"
                         description="Todos os preços por item já digitados desta resposta serão descartados."
@@ -590,7 +596,7 @@ function ResponsesTab({
         </div>
       )}
 
-      {!disabled && (
+      {!disabled && perm.canCreate && (
         <div className="flex gap-2">
           <SearchableSelect
             value={addingSupplierId}

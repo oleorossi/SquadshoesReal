@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validateCnpj } from '@/lib/validateCnpj';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { useCan } from '@/hooks/useAccessControl';
 
 const emptyClient: ClientFormData = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
@@ -59,6 +60,9 @@ export default function Clients() {
   const createGroup = useCreateEconomicGroup();
   const updateGroup = useUpdateEconomicGroup();
   const deleteGroup = useDeleteEconomicGroup();
+  // Gate de permissões da tela de Clientes (criar/excluir) — esconde ações de
+  // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
+  const perm = useCan('/clients');
 
   // Audit B4 (round 28): aceita ?q= na URL pra search global navegar contextualmente
   // (ex: /clients?q=12345678 destaca o cliente clicado no buscador top-bar).
@@ -359,9 +363,11 @@ export default function Clients() {
                 <Button variant="outline" onClick={() => setExcelDialog(true)} className="gap-2">
                   <FileUp className="h-4 w-4" />Importar Arquivo
                 </Button>
+                {perm.canCreate && (
                 <Button onClick={openAddClient} className="gap-2">
                   <Plus className="h-4 w-4" />Novo Cliente
                 </Button>
+                )}
               </div>
             </div>
 
@@ -371,7 +377,7 @@ export default function Clients() {
                   icon={Users}
                   title={search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
                   description={search ? 'Ajuste a busca ou cadastre um novo cliente.' : 'Cadastre o primeiro lojista da carteira.'}
-                  action={<Button onClick={openAddClient} className="gap-2"><Plus className="h-4 w-4" />Novo Cliente</Button>}
+                  action={perm.canCreate ? <Button onClick={openAddClient} className="gap-2"><Plus className="h-4 w-4" />Novo Cliente</Button> : undefined}
                 />
               </Panel>
             ) : (
@@ -484,7 +490,7 @@ export default function Clients() {
                                 <TableCell className="text-right">
                                   <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditClient(c)} aria-label="Editar cliente"><Pencil className="h-4 w-4" /></Button>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteClientId(c.id)} aria-label="Excluir cliente"><Trash2 className="h-4 w-4" /></Button>
+                                    {perm.canDelete && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteClientId(c.id)} aria-label="Excluir cliente"><Trash2 className="h-4 w-4" /></Button>}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -507,7 +513,7 @@ export default function Clients() {
                   icon={Building2}
                   title="Nenhum grupo econômico cadastrado"
                   description="Agrupe lojas da mesma rede para visão consolidada da carteira."
-                  action={<Button onClick={openAddGroup} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button>}
+                  action={perm.canCreate ? <Button onClick={openAddGroup} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button> : undefined}
                 />
               </Panel>
             ) : (
@@ -515,7 +521,7 @@ export default function Clients() {
                 eyebrow="COMERCIAL · CARTEIRA"
                 title="Grupos Econômicos"
                 subtitle={`${economicGroups.length} ${economicGroups.length === 1 ? 'grupo' : 'grupos'}`}
-                actions={<Button onClick={openAddGroup} size="sm" className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button>}
+                actions={perm.canCreate ? <Button onClick={openAddGroup} size="sm" className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button> : undefined}
                 flush
               >
                 <Table>
@@ -551,7 +557,7 @@ export default function Clients() {
                             <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir 360°" aria-label="Abrir visão 360° do grupo econômico" onClick={() => navigate(`/grupos-economicos/${g.id}`)}><ExternalLink className="h-4 w-4" /></Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Edição rápida" aria-label="Edição rápida do grupo econômico" onClick={() => openEditGroup(g)}><Pencil className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteGroupId(g.id)} aria-label="Excluir grupo econômico"><Trash2 className="h-4 w-4" /></Button>
+                              {perm.canDelete && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteGroupId(g.id)} aria-label="Excluir grupo econômico"><Trash2 className="h-4 w-4" /></Button>}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -780,14 +786,14 @@ export default function Clients() {
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
         itemLabel={sel.selectedIds.size === 1 ? 'cliente' : 'clientes'}
-        actions={[
+        actions={perm.canDelete ? [
           {
             label: 'Excluir',
             variant: 'destructive',
             icon: <Trash2 className="h-3.5 w-3.5" />,
             onClick: handleBulkDeleteClients,
           },
-        ]}
+        ] : []}
       />
     </AppLayout>
   );

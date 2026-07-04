@@ -35,6 +35,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
 import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
+import { useCan } from '@/hooks/useAccessControl';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -187,6 +188,7 @@ export default function PurchaseOrders() {
   const { data: paymentsMap } = usePurchaseOrderPayments();
   const updateOrder = useUpdatePurchaseOrder();
   const deleteOrder = useDeletePurchaseOrder();
+  const perm = useCan('/purchase-orders');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
 
@@ -414,12 +416,16 @@ export default function PurchaseOrders() {
                   <AlertTriangle className="h-3.5 w-3.5" /> {overdueCount} em atraso
                 </Badge>
               )}
-              <Button variant="outline" onClick={() => setAvulsoOpen(true)} className="gap-2">
-                <Receipt className="h-4 w-4" /> Lançar Avulsa
-              </Button>
-              <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" /> Nova OC
-              </Button>
+              {perm.canCreate && (
+                <Button variant="outline" onClick={() => setAvulsoOpen(true)} className="gap-2">
+                  <Receipt className="h-4 w-4" /> Lançar Avulsa
+                </Button>
+              )}
+              {perm.canCreate && (
+                <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
+                  <Plus className="h-4 w-4" /> Nova OC
+                </Button>
+              )}
             </>
           }
         />
@@ -585,6 +591,7 @@ export default function PurchaseOrders() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+                {perm.canDelete && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button size="sm" variant="destructive" className="gap-1.5" disabled={bulkBusy}>
@@ -607,6 +614,7 @@ export default function PurchaseOrders() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+                )}
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={handleBulkPDF} disabled={bulkBusy}>
                   <FileDown className="h-3.5 w-3.5" /> PDF por Fornecedor
                 </Button>
@@ -655,7 +663,7 @@ export default function PurchaseOrders() {
                             : 'Crie a primeira OC ou gere automaticamente pelo planejamento de compras.'}
                           action={hasActiveFilters
                             ? <Button variant="outline" size="sm" className="gap-1.5" onClick={clearFilters}><XIcon className="h-3.5 w-3.5" /> Limpar filtros</Button>
-                            : <Button size="sm" className="gap-1.5" onClick={() => setCreateDialogOpen(true)}><Plus className="h-4 w-4" /> Nova OC</Button>}
+                            : perm.canCreate ? <Button size="sm" className="gap-1.5" onClick={() => setCreateDialogOpen(true)}><Plus className="h-4 w-4" /> Nova OC</Button> : undefined}
                         />
                       </TableCell>
                     </TableRow>
@@ -782,6 +790,7 @@ export default function PurchaseOrders() {
                                 <Send className="h-4 w-4" />
                               </Button>
                             )}
+                            {perm.canDelete && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/60 hover:text-destructive" aria-label="Excluir ordem de compra">
@@ -799,6 +808,7 @@ export default function PurchaseOrders() {
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

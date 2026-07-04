@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { useCan } from '@/hooks/useAccessControl';
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(v);
@@ -150,6 +151,7 @@ function PriceTrend({ latest, previous }: { latest: number; previous: number | n
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function InputCostsPage() {
   const qc = useQueryClient();
+  const perm = useCan('/custos-insumos');
   const { data: products = [], isLoading: loadingProducts } = useProducts();
   const { data: priceSummaries = [], isLoading: loadingPrices } = useProductPriceSummary();
   const { data: suppliers = [] } = useSuppliers();
@@ -409,11 +411,15 @@ export default function InputCostsPage() {
                               </TooltipContent>
                             </Tooltip>
                           )}
-                          <PriceCell
-                            productId={p.id}
-                            value={currentPrice}
-                            onSaved={onPriceSaved}
-                          />
+                          {perm.canEdit ? (
+                            <PriceCell
+                              productId={p.id}
+                              value={currentPrice}
+                              onSaved={onPriceSaved}
+                            />
+                          ) : (
+                            <span className="font-mono text-sm">{fmt(currentPrice)}</span>
+                          )}
                         </div>
                       </TableCell>
 

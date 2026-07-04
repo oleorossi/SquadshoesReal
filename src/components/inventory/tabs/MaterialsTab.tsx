@@ -20,6 +20,7 @@ import {
 import { ProductTable } from '@/components/inventory/ProductTable';
 import { TableViewProvider, useTableView, ALL_COLUMNS } from '@/components/inventory/TableViewContext';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
+import { useCan } from '@/hooks/useAccessControl';
 import { QuickFamilyDialog } from '@/components/inventory/QuickFamilyDialog';
 import { InventoryStatusFilters } from '@/components/inventory/InventoryStatusFilters';
 import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
@@ -140,6 +141,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   
   
   const [dialogOpen, setDialogOpen] = useState(returnTo === 'sale-order');
+  // Gate de criação de material da área Estoque (/estoque). Admin e usuários
+  // sem permissão granular sempre passam.
+  const perm = useCan('/estoque');
   // ... existing code (unused variables removed)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -407,25 +411,31 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                 <DropdownMenuItem onClick={() => barcodeInputRef.current?.focus()}>
                   <Barcode className="h-4 w-4 mr-2" /> Escanear código de barras
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setXmlDialogOpen(true)}>
-                  <FileUp className="h-4 w-4 mr-2" /> Importar XML (NF-e)
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Organização</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => setQuickFamilyOpen(true)}>
-                  <Layers className="h-4 w-4 mr-2" /> Cadastro rápido com cores (família)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
-                  <Layers className="h-4 w-4 mr-2" /> Nova família (vazia)
-                </DropdownMenuItem>
+                {perm.canCreate && (
+                  <DropdownMenuItem onClick={() => setXmlDialogOpen(true)}>
+                    <FileUp className="h-4 w-4 mr-2" /> Importar XML (NF-e)
+                  </DropdownMenuItem>
+                )}
+                {perm.canCreate && <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Organização</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => setQuickFamilyOpen(true)}>
+                    <Layers className="h-4 w-4 mr-2" /> Cadastro rápido com cores (família)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
+                    <Layers className="h-4 w-4 mr-2" /> Nova família (vazia)
+                  </DropdownMenuItem>
+                </>}
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {perm.canCreate && (
             <Button className="h-9 gap-2 shadow-sm shrink-0 whitespace-nowrap" onClick={openAdd}>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Adicionar {title}</span>
               <span className="inline sm:hidden">Adicionar</span>
             </Button>
+            )}
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, useDownloadNfeFile, usePreviewNfe, NfeEmitida, type NfePreviewResponse } from '@/hooks/useNfe';
-import { useAccessControl } from '@/hooks/useAccessControl';
+import { useAccessControl, useCan } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -421,6 +421,7 @@ export default function NfePage() {
   const navigate = useNavigate();
   const { data: companies = [] } = useCompanies();
   const { isAdmin, roles } = useAccessControl();
+  const perm = useCan('/nfe');
   const canEmitNfe = isAdmin || roles.includes('gerente') || roles.includes('nfe_operator');
   const syncFromProvider = useSyncNfeFromProvider();
 
@@ -491,9 +492,11 @@ export default function NfePage() {
                 : <RefreshCw className="h-4 w-4" />}
               Sincronizar com GestaoClick
             </Button>
-            <Button onClick={() => setEmitOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" /> Emitir NF-e
-            </Button>
+            {perm.canCreate && (
+              <Button onClick={() => setEmitOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" /> Emitir NF-e
+              </Button>
+            )}
           </>
         ) : undefined}
       />
@@ -610,7 +613,7 @@ export default function NfePage() {
                 icon={FileText}
                 title="Nenhuma NF-e encontrada"
                 description="Ajuste os filtros ou emita uma nova nota fiscal."
-                action={canEmitNfe ? (
+                action={canEmitNfe && perm.canCreate ? (
                   <Button variant="outline" size="sm" onClick={() => setEmitOpen(true)}>
                     Emitir primeira NF-e
                   </Button>
@@ -619,7 +622,7 @@ export default function NfePage() {
             ) : (
               <div className="divide-y divide-border/50">
                 {filtered.map((n: any) => (
-                  <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} onView={setViewTarget} canCancel={canEmitNfe} />
+                  <NfeRow key={n.id} nfe={n} onCancel={setCancelTarget} onView={setViewTarget} canCancel={canEmitNfe && perm.canDelete} />
                 ))}
               </div>
             )}

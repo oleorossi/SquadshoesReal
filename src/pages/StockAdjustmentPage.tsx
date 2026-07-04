@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from "@/components/ui/empty-state";
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { useCan } from '@/hooks/useAccessControl';
 
 interface Product {
   id: string;
@@ -154,6 +155,7 @@ function loadStoredFilters() {
 
 export default function StockAdjustmentPage() {
   const qc = useQueryClient();
+  const perm = useCan('/ajuste-estoque');
   const stored = loadStoredFilters();
   const [search, setSearch] = useState("");
   // Debounce só pro filtro (re-render de toda a tabela de produtos por tecla).
@@ -807,22 +809,24 @@ export default function StockAdjustmentPage() {
 
         {/* E2: bloqueia Salvar quando motivo vazio. E1 (audit): bloqueia também
             quando há produtos com conflito de versão. */}
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={saving || totalPending === 0 || !reason.trim() || conflictedIds.size > 0}
-          className="h-8 gap-1.5 shrink-0"
-          title={
-            conflictedIds.size > 0
-              ? 'Há produtos alterados em outra sessão. Recarregue a página antes de salvar.'
-              : !reason.trim() && totalPending > 0
-                ? 'Preencha o motivo do ajuste antes de salvar'
-                : undefined
-          }
-        >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Salvar
-        </Button>
+        {perm.canEdit && (
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || totalPending === 0 || !reason.trim() || conflictedIds.size > 0}
+            className="h-8 gap-1.5 shrink-0"
+            title={
+              conflictedIds.size > 0
+                ? 'Há produtos alterados em outra sessão. Recarregue a página antes de salvar.'
+                : !reason.trim() && totalPending > 0
+                  ? 'Preencha o motivo do ajuste antes de salvar'
+                  : undefined
+            }
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Salvar
+          </Button>
+        )}
 
         {totalPending > 0 && (
           <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground shrink-0"

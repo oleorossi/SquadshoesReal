@@ -180,6 +180,7 @@ import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSole
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useProducts } from '@/hooks/useProducts';
 import { useReadyStock } from '@/hooks/useReadyStock';
+import { useCan } from '@/hooks/useAccessControl';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -284,6 +285,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const addSheet = useAddSheet();
   const deleteSheet = useDeleteSheet();
   const updateSheet = useUpdateSheet();
+  const perm = useCan('/fichas-tecnicas');
 
   const cloneSheet = useCloneSheet();
 
@@ -465,14 +467,18 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 {bulkSoleApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 <span className="hidden sm:inline">Aplicar Solado em Massa</span>
               </Button>
-              <Button variant="outline" onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }} className="gap-2">
-                <ClipboardCopy className="h-4 w-4" />
-                <span className="hidden sm:inline">Copiar</span>
-              </Button>
-              <Button onClick={() => setDialogOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Nova Ficha</span>
-              </Button>
+              {perm.canCreate && (
+                <Button variant="outline" onClick={() => { setCloneSourceId(''); setCloneNewName(''); setCloneSearchTerm(''); setCloneDialogOpen(true); }} className="gap-2">
+                  <ClipboardCopy className="h-4 w-4" />
+                  <span className="hidden sm:inline">Copiar</span>
+                </Button>
+              )}
+              {perm.canCreate && (
+                <Button onClick={() => setDialogOpen(true)} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Nova Ficha</span>
+                </Button>
+              )}
             </>
           }
         />
@@ -803,7 +809,9 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setImageDialogSheet(sheet); }} aria-label="Alterar foto">
                             <ImagePlus className="h-3.5 w-3.5" />
                           </Button>
-                          <DeleteConfirmButton onConfirm={() => deleteSheet.mutate(sheet.id)} title="Excluir ficha?" size="h-7 w-7" iconSize="h-3 w-3" />
+                          {perm.canDelete && (
+                            <DeleteConfirmButton onConfirm={() => deleteSheet.mutate(sheet.id)} title="Excluir ficha?" size="h-7 w-7" iconSize="h-3 w-3" />
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
