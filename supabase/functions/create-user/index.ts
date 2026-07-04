@@ -170,11 +170,19 @@ Deno.serve(async (req) => {
       : [];
 
     if (cleanModules.length > 0) {
+      // Tela concedida na criação = acesso completo por padrão (ver + criar +
+      // editar + excluir), consistente com o backfill da migration
+      // 20260905120000 e com os modelos de perfil da UI. O admin restringe as
+      // ações depois em Configurações → Usuários → matriz de permissões.
+      // ⚠ Requer deploy DEPOIS que a migration (colunas can_create/can_delete)
+      // estiver aplicada, senão o insert falha por coluna inexistente.
       const permRows = cleanModules.map(module => ({
         user_id: newUserId,
         module,
         can_view: true,
-        can_edit: false,
+        can_create: true,
+        can_edit: true,
+        can_delete: true,
       }));
       const { error: permErr } = await adminClient.from("user_permissions").insert(permRows);
       if (permErr) {
