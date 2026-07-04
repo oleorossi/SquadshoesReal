@@ -154,6 +154,17 @@ function weekDaysOf(iso: string) {
   const mon = mondayOf(iso);
   return Array.from({ length: 5 }, (_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return isoOf(x); });
 }
+// Dias corridos (ISO) de um intervalo [from,to] inclusivo — base do calendário.
+const WD_SHORT7 = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const dowIdx = (iso: string) => (new Date(iso + "T00:00:00").getDay() + 6) % 7; // 0=Seg … 6=Dom
+function daysInRange(from: string, to: string): string[] {
+  const out: string[] = [];
+  if (!from || !to || from > to) return out;
+  let d = new Date(from + "T00:00:00");
+  const end = new Date(to + "T00:00:00");
+  for (let g = 0; d <= end && g < 400; g++) { out.push(isoOf(d)); d = new Date(d.getTime() + 86400000); }
+  return out;
+}
 
 /** Intervalo {from,to} (ISO) do período (Produtividade + Fichas). */
 function periodRange(mode: PeriodMode, cFrom: string, cTo: string): { from: string; to: string } {
@@ -206,6 +217,64 @@ function imprimirRelatorio(rows: AggRow[], label: string, intervalo: string, tot
       <td class="n med">${totals.medio}</td><td class="n"></td>
       <td class="n dif">${totals.dificil}</td><td class="n"></td>
       <td class="n">${totals.pares}</td><td class="n">${fmtBRL(totals.pago)}</td></tr></tfoot></table>
+    <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
+}
+
+/* ---------- Impressão do CALENDÁRIO de produção (montador × dia, A4 paisagem) ---------- */
+interface CalCell { pares: number; medio: number; dificil: number; fichas: number; }
+interface CalRow {
+  key: string; nome: string; cells: Record<string, CalCell>;
+  medio: number; dificil: number; pares: number; fichas: number; pago: number;
+}
+function imprimirCalendario(p: { rows: CalRow[]; days: string[]; setorLabel: string; periodo: string; intervalo: string }) {
+  const { rows, days } = p;
+  const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
+  const dayHead = days.map((d) => {
+    const we = dowIdx(d) >= 5;
+    return `<th class="day${we ? " we" : ""}">${WD_SHORT7[dowIdx(d)]}<br>${d.slice(8, 10)}/${d.slice(5, 7)}</th>`;
+  }).join("");
+  const body = rows.map((r) => {
+    const cells = days.map((d) => {
+      const c = r.cells[d]; const we = dowIdx(d) >= 5;
+      if (!c || c.pares <= 0) return `<td class="c${we ? " we" : ""}">·</td>`;
+      const sp = [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>");
+      return `<td class="c has${we ? " we" : ""}"><b>${c.pares}</b><div class="sp">${sp}</div></td>`;
+    }).join("");
+    return `<tr><td class="mont">${esc(r.nome)}</td>${cells}`
+      + `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>`
+      + `<td class="n b">${nf(r.pares)}</td><td class="n f">${r.fichas}</td><td class="n pg">${fmtBRL(r.pago)}</td></tr>`;
+  }).join("");
+  const dayTot = days.map((d) => {
+    const s = rows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
+    return `<td class="c${dowIdx(d) >= 5 ? " we" : ""}">${s || ""}</td>`;
+  }).join("");
+  const tMed = rows.reduce((s, r) => s + r.medio, 0), tDif = rows.reduce((s, r) => s + r.dificil, 0);
+  const tPar = rows.reduce((s, r) => s + r.pares, 0), tFic = rows.reduce((s, r) => s + r.fichas, 0);
+  const tPag = rows.reduce((s, r) => s + r.pago, 0);
+  const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    h1{font-size:16px;margin:0 0 2px} .sub{font-size:10px;color:#555;margin-bottom:10px}
+    .lg{font-size:9px;color:#555;margin:2px 0 10px} .lg b.med{color:#b45309} .lg b.dif{color:#c81e2e}
+    table{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
+    th,td{border:1px solid #bbb;padding:2px 3px;text-align:center;overflow:hidden}
+    th{background:#f1f0ed;font-size:8px;text-transform:uppercase;color:#444}
+    th.day{width:22px;line-height:1.05} th.day.we,td.c.we{background:#f4f2ee}
+    td.mont,th.mont{text-align:left;font-weight:700;white-space:nowrap;width:96px;background:#fafafa}
+    td.c{color:#bbb} td.c.has{color:#111} td.c b{font-size:9px;font-weight:800} td.c .sp{font-size:6.5px;line-height:1}
+    td.c .med{color:#b45309;font-weight:700} td.c .dif{color:#c81e2e;font-weight:700} td.c .x{color:#bbb;margin:0 1px}
+    td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px} td.n.med{color:#b45309;font-weight:700} td.n.dif{color:#c81e2e;font-weight:700}
+    td.n.b{font-weight:800} td.n.pg{font-weight:800;width:56px} td.n.f{color:#c81e2e;font-weight:700;width:28px}
+    th.sum{background:#e9e7e2}
+    tfoot td{font-weight:800;background:#f6f5f2} tfoot td.c{color:#111}
+    @page{size:A4 landscape;margin:8mm}`;
+  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Calendário — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
+    <h1>Calendário de Produção — ${esc(p.setorLabel)}</h1>
+    <div class="sub">${esc(p.periodo)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
+    <div class="lg">Cada célula = <b>pares do dia</b>; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>. Colunas cinza = fim de semana.</div>
+    <table>
+      <thead><tr><th class="mont">Montador</th>${dayHead}<th class="sum">Méd</th><th class="sum">Dif</th><th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pagto</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="${days.length + 6}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
+      <tfoot><tr><td class="mont">TOTAL (${rows.length})</td>${dayTot}<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td><td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pg">${fmtBRL(tPag)}</td></tr></tfoot>
+    </table>
     <script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
 }
 
@@ -494,11 +563,35 @@ export default function FichaMontadoresPage() {
     return Array.from(m.entries());
   }, [fichasFiltradas]);
 
+  // Gera o CALENDÁRIO de produção (montador × dia) em PDF — o que cada montador
+  // fez em cada dia do período, com o split médio/difícil e o pagamento.
+  function gerarCalendario() {
+    const days = daysInRange(range.from, range.to);
+    if (!days.length) { toast.error("Selecione um período válido."); return; }
+    const map = new Map<string, CalRow>();
+    for (const f of fichasFiltradas) {
+      const key = aggKeyOf(f);
+      const pd = isChamada(f) ? paresDiffOf(f) : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) };
+      const fich = isChamada(f) ? fichasDiaOf(f) : 1;
+      let r = map.get(key);
+      if (!r) { r = { key, nome: f.montador || "(sem montador)", cells: {}, medio: 0, dificil: 0, pares: 0, fichas: 0, pago: 0 }; map.set(key, r); }
+      const c = r.cells[f.dia] || { pares: 0, medio: 0, dificil: 0, fichas: 0 };
+      c.pares += pd.total; c.medio += pd.medio; c.dificil += pd.dificil; c.fichas += fich;
+      r.cells[f.dia] = c;
+      r.pares += pd.total; r.medio += pd.medio; r.dificil += pd.dificil; r.fichas += fich;
+    }
+    const rows = Array.from(map.values())
+      .map((r) => ({ ...r, pago: r.medio * (valorMedioPor[r.key] ?? 0) + r.dificil * (valorDificilPor[r.key] ?? 0) }))
+      .sort((a, b) => b.pares - a.pares);
+    if (!rows.length) { toast.error("Sem lançamentos no período pra gerar o calendário."); return; }
+    imprimirCalendario({ rows, days, setorLabel: cfgSetor.label, periodo: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}` });
+  }
+
   const lbl = "block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
   const TABS: { id: Tab; label: string; icon: any }[] = [
     { id: "lancamento", label: "Chamada do dia", icon: ClipboardText },
     { id: "produtividade", label: "Produtividade", icon: ChartBar },
-    { id: "fichas", label: "Fichas salvas", icon: ListChecks },
+    { id: "fichas", label: "Relatórios", icon: ListChecks },
   ];
 
   // estilo dos inputs de pares por dificuldade (Médio âmbar · Difícil vermelho)
@@ -852,13 +945,21 @@ export default function FichaMontadoresPage() {
         </div>
       )}
 
-      {/* ════ FICHAS SALVAS (período) ════ */}
+      {/* ════ RELATÓRIOS (período) ════ */}
       {tab === "fichas" && (
         <section>
-          <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">Lançamentos do período</h2>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground">Produção do período</h2>
             {loading && <span className="text-xs text-muted-foreground">carregando…</span>}
             {!loading && <span className="text-xs text-muted-foreground">{fichasFiltradas.length} lançamento(s)</span>}
+            <Button
+              type="button" size="sm" className="ml-auto gap-1.5"
+              disabled={fichasFiltradas.length === 0}
+              onClick={gerarCalendario}
+              title="Gera um PDF em calendário: o que cada montador fez em cada dia do período (com médio/difícil e pagamento)."
+            >
+              <Printer className="h-4 w-4" /> Calendário em PDF
+            </Button>
           </div>
           {!loading && fichasFiltradas.length === 0 && (
             <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nenhum lançamento no período selecionado.</p>
