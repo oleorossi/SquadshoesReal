@@ -1,6 +1,6 @@
 import { printHtml, writePrintWindow, openPrintWindow } from './printOrder';
 import { calculateHourlyPayroll, splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
-import { SALARY_DAY_DIVISOR, SALARY_HOUR_DIVISOR } from './salaryPayroll';
+import { SALARY_DAY_DIVISOR, SALARY_HOUR_DIVISOR, atrasoCapMinutes } from './salaryPayroll';
 import { escapeHtml } from './htmlUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -693,8 +693,9 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
       if (worked === 0) { faltaCount++; dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: 0, saldo: 0, kind: 'falta' }); continue; }
       expectedPresentMin += expected; workedTotalMin += worked;
       // BRUTO por-dia: excedente do dia → HE, déficit do dia → atraso (sem compensar entre dias).
+      // Atraso capado por-dia (atrasoCapMinutes) pra o holerite bater com a folha.
       const dayBal = worked - expected;
-      if (dayBal > 0) heMin += dayBal; else if (dayBal < 0) atrasoMin += -dayBal;
+      if (dayBal > 0) heMin += dayBal; else if (dayBal < 0) atrasoMin += Math.min(-dayBal, atrasoCapMinutes());
       dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked, saldo: worked - expected, kind: worked >= expected ? 'ok' : 'curto' });
     } else if (worked > 0) {
       workedTotalMin += worked; heMin += worked;                    // fds/feriado = tudo hora extra

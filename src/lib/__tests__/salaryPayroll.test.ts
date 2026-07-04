@@ -188,6 +188,16 @@ describe('calculateSalaryPayroll — BRUTO por-dia (atraso e HE por dia, sem com
     expect(r.atraso_desconto).toBeCloseTo(20, 2); // 2h × 10
     expect(r.he_value).toBeCloseTo(30, 2);        // 2h × 10 × 1,5
   });
+
+  it('atraso é capado em 1 valor-dia: dia quase-vazio NÃO custa mais que uma falta', () => {
+    // Dia de 9h (540) com só 30min batidos → déficit bruto 510. Sem teto o desconto
+    // seria 510/60×10 = R$85 > valor-dia (R$73,33) = mais caro que faltar. Capado a
+    // 440min (=(220/30)×60) → desconto = 440/60×10 = R$73,33 = exatamente 1 valor-dia.
+    const r = calculateSalaryPayroll(2200, [work('2026-05-04', MON, ['08:00', '08:30'])], 0);
+    expect(r.atraso_minutes).toBe(440);                 // capado (não 510)
+    expect(r.atraso_desconto).toBeCloseTo(73.33, 2);    // = valor_dia
+    expect(r.atraso_desconto).toBeCloseTo(r.valor_dia, 2);
+  });
 })
 
 const SCHED = {

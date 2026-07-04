@@ -36,6 +36,25 @@ export const SALARY_DAY_DIVISOR = 30;
 /** Atraso/saída-cedo e HE usam valor-hora = salário ÷ 220. */
 export const SALARY_HOUR_DIVISOR = 220;
 
+/**
+ * Teto de atraso POR-DIA em minutos (auditoria 2026-07-04).
+ *
+ * Os divisores são inconsistentes de propósito (falta ÷30, atraso ÷220), então
+ * SEM teto o atraso de um dia quase-vazio passa de 1 valor-dia: com 220/30, um
+ * dia de 9h zerado custaria `9×(sal÷220)=0,0409·sal` contra `sal÷30=0,0333·sal`
+ * de uma falta — mostrar 1 minuto sairia MAIS CARO que faltar o dia inteiro.
+ * O teto `(hora÷dia)×60` = 440 min (com 220/30) faz um dia inteiro de atraso
+ * custar exatamente 1 valor-dia, igual a uma falta limpa. Independe do salário.
+ * Cap nos MINUTOS (não só no R$) pra manter `atraso_desconto == min × valor-hora`
+ * no holerite.
+ */
+export function atrasoCapMinutes(
+  dayDivisor: number = SALARY_DAY_DIVISOR,
+  hourDivisor: number = SALARY_HOUR_DIVISOR,
+): number {
+  return dayDivisor > 0 ? (hourDivisor / dayDivisor) * 60 : Infinity;
+}
+
 // ─── Jornada da escala (FONTE ÚNICA) ─────────────────────────────────────────
 // Usada pela folha (Payroll) E pela Avaliação de Jornada (printTimesheet) pra
 // garantir que "esperado" seja idêntico nos dois — evita o atraso descontar
@@ -153,6 +172,7 @@ export function calculateSalaryPayroll(
   const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
   const valorHora = hourDivisor > 0 ? sal / hourDivisor : 0;
   const valorMin = valorHora / 60;
+  const atrasoCap = atrasoCapMinutes(dayDivisor, hourDivisor); // teto de atraso/dia (min)
   // Base de proventos do período: proporcional aos dias quando periodDays vier (paga-se
   // por quinzena). Com monthDays, prorateia por periodDays/monthDays (as 2 quinzenas
   // somam o salário EXATO, sem dia a mais); sem ele, legado valor-dia×periodDays.
@@ -226,7 +246,9 @@ export function calculateSalaryPayroll(
       const rawBal = worked - d.expectedMinutes;
       const dayBal = Math.abs(rawBal) <= toleranceMin ? 0 : rawBal;
       if (dayBal > 0) { heMin += dayBal; heDays.push({ date: d.date, minutes: dayBal }); }
-      else if (dayBal < 0) { atrasoMin += -dayBal; lateDays.push({ date: d.date, minutes: -dayBal }); }
+      // Atraso capado por-dia (ver atrasoCapMinutes): um dia quase-vazio não pode
+      // descontar mais que 1 valor-dia, senão sai mais caro que uma falta limpa.
+      else if (dayBal < 0) { const late = Math.min(-dayBal, atrasoCap); atrasoMin += late; lateDays.push({ date: d.date, minutes: late }); }
     } else if (worked > 0) {
       // Dia NÃO útil (fim de semana/feriado) trabalhado: esperado = 0 → TUDO é hora extra.
       workedMin += worked;
