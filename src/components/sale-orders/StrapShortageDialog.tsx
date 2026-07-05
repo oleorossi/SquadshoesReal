@@ -15,7 +15,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Warning as AlertTriangle, Hammer, ShoppingBag, CheckCircle as CheckCircle2, SkipForward } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, Hammer, ShoppingBag, CheckCircle as CheckCircle2, SkipForward, UsersThree, Lightning } from '@phosphor-icons/react';
 import {
   detectStrapShortagesForSaleOrder,
   type StrapShortage,
@@ -67,6 +67,8 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
   const [incomplete, setIncomplete] = useState<StrapIncompleteItem[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [suppliersByGroup, setSuppliersByGroup] = useState<Map<string, Supplier>>(new Map());
+  // Prestador "mestre": escolhido no topo e aplicado a TODAS as tiras de uma vez.
+  const [bulkContractor, setBulkContractor] = useState('');
 
   useEffect(() => {
     if (!open || !saleOrderId) return;
@@ -104,6 +106,7 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
         setSuppliersByGroup(supByGroup);
 
         const initialContractor = ordered[0]?.id || '';
+        setBulkContractor(initialContractor);
         setRows(report.shortages.map(s => ({
           shortage: s,
           mode: 'artesanal' as Mode,
@@ -122,6 +125,22 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
   const updateRow = (idx: number, patch: Partial<RowState>) => {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
   };
+
+  /** Aplica UM prestador a TODAS as tiras de uma vez (mestre no topo). Cada item
+   *  continua editável individualmente abaixo. */
+  const applyBulkContractor = (contractorId: string) => {
+    setBulkContractor(contractorId);
+    setRows(prev => prev.map(r => ({ ...r, contractor_id: contractorId })));
+  };
+
+  /** Aplica um modo (Artesanal/Comprar) a todas as tiras de uma vez. */
+  const applyBulkMode = (mode: Mode) => {
+    setRows(prev => prev.map(r => ({ ...r, mode })));
+  };
+
+  // Resumo pro cabeçalho do controle mestre (quantos itens em cada modo).
+  const artesanalCount = rows.filter(r => r.mode === 'artesanal').length;
+  const comprarCount = rows.length - artesanalCount;
 
   /**
    * Pular esta etapa: fecha SEM gerar OS/OC e SEM escolher quem faz as tiras.
@@ -158,7 +177,7 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
       let zeroRateCount = 0;
       for (const r of artesanal) {
         if (!r.contractor_id) {
-          throw new Error(`Selecione contractor pra ${r.shortage.strap_label} ${r.shortage.strap_color}.`);
+          throw new Error(`Selecione o prestador pra ${r.shortage.strap_label} ${r.shortage.strap_color}.`);
         }
         const materialName = `TIRA ${r.shortage.strap_label} ${r.shortage.strap_color}`.trim();
         const desc = `TIRA ARTESANAL · ${r.shortage.strap_label} ${r.shortage.strap_color}` +
@@ -231,7 +250,7 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-600" />
-            Tiras em falta · {saleOrderNumber}
+            Tiras em falta{saleOrderNumber ? ` · ${saleOrderNumber}` : ''}
           </DialogTitle>
           <DialogDescription>
             Pra cada tira sem estoque, escolha <strong>Artesanal</strong> (gera OS pra contractor
@@ -260,6 +279,68 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
           <div className="rounded-md border border-emerald-300/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-3 text-sm text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
             Estoque suficiente pra todas as tiras deste PV.
+          </div>
+        )}
+
+        {/* Controle MESTRE — define prestador + modo pra TODAS as tiras de uma vez.
+            Cada item continua editável individualmente na lista abaixo. */}
+        {!loading && rows.length > 0 && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <UsersThree className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                Aplicar a todas as {rows.length} tiras
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-muted-foreground">Modo (todas)</Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Button
+                    type="button"
+                    variant={comprarCount === 0 ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-9 gap-1.5 text-xs"
+                    onClick={() => applyBulkMode('artesanal')}
+                  >
+                    <Hammer className="h-3.5 w-3.5" /> Artesanal
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={artesanalCount === 0 ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-9 gap-1.5 text-xs"
+                    onClick={() => applyBulkMode('comprar')}
+                  >
+                    <ShoppingBag className="h-3.5 w-3.5" /> Comprar
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-muted-foreground">Prestador (todas artesanais)</Label>
+                <Select value={bulkContractor} onValueChange={applyBulkContractor}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Selecionar prestador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contractors.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">
+                        Nenhum prestador ativo. Cadastre em Terceiros › Prestadores.
+                      </div>
+                    )}
+                    {contractors.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}{c.service_type ? ` · ${c.service_type}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Lightning className="h-3 w-3 text-primary shrink-0" />
+              Define de uma vez; você ainda pode ajustar itens específicos abaixo.
+            </p>
           </div>
         )}
 
@@ -301,19 +382,19 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
                   {r.mode === 'artesanal' && (
                     <div>
                       <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                        Contractor
+                        Prestador <span className="font-normal normal-case tracking-normal text-muted-foreground/70">(deste item)</span>
                       </Label>
                       <Select
                         value={r.contractor_id}
                         onValueChange={(v) => updateRow(idx, { contractor_id: v })}
                       >
                         <SelectTrigger className="mt-1 h-9 text-sm">
-                          <SelectValue placeholder="Selecionar contractor" />
+                          <SelectValue placeholder="Selecionar prestador" />
                         </SelectTrigger>
                         <SelectContent>
                           {contractors.length === 0 && (
                             <div className="px-3 py-2 text-xs text-muted-foreground">
-                              Nenhum contractor ativo. Cadastre em Terceiros › Prestadores.
+                              Nenhum prestador ativo. Cadastre em Terceiros › Prestadores.
                             </div>
                           )}
                           {contractors.map(c => (

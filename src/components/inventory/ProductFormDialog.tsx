@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
 import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
 import { PROPAGABLE_LABELS, computePropagableDiff } from '@/hooks/useVariantPropagation';
-import { sectorOfGroup } from '@/lib/categoryFromGroup';
+import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
@@ -164,6 +164,37 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     }),
     [allGroups],
   );
+  // Item só entra em grupo-FOLHA (grupo sem filhos): famílias/containers são
+  // excluídas (o banco também bloqueia). Agrupado por Setor, com o caminho da
+  // família no rótulo (Setor › Família › Grupo). Ver specs/grupos-estoque.md.
+  const leafGroupsBySector = useMemo(() => {
+    const parentIds = new Set<string>();
+    for (const g of allGroups) if (g.parent_group_id) parentIds.add(g.parent_group_id as string);
+    const byId = new Map(allGroups.map(g => [g.id, g] as const));
+    const leaves = groups.filter(g => !parentIds.has(g.id));
+    const bucket = new Map<string, { g: (typeof leaves)[number]; label: string }[]>();
+    for (const g of leaves) {
+      const sec = (g.sector as string) || sectorOfGroup(g) || '—';
+      const parent = g.parent_group_id ? byId.get(g.parent_group_id as string) : null;
+      const label = parent ? `${parent.name} › ${g.name}` : g.name;
+      if (!bucket.has(sec)) bucket.set(sec, []);
+      bucket.get(sec)!.push({ g, label });
+    }
+    for (const [, list] of bucket) list.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    const order = SECTOR_OPTIONS.map(o => o.value);
+    return Array.from(bucket.entries()).sort((a, b) => {
+      const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+  }, [groups, allGroups]);
+  // Grupo selecionado que NÃO está entre as folhas (ex.: editando um solado, que
+  // esta tela filtra) — mantido visível pra o Select não zerar o valor.
+  const currentGroupOutsideLeaves = useMemo(() => {
+    if (!form.group_id) return null;
+    const inLeaves = leafGroupsBySector.some(([, list]) => list.some(x => x.g.id === form.group_id));
+    if (inLeaves) return null;
+    return allGroups.find(g => g.id === form.group_id) ?? null;
+  }, [form.group_id, leafGroupsBySector, allGroups]);
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
   const { data: allProductsData } = useProducts();
@@ -1120,7 +1151,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               {attempted && errors.sku && <p className="text-xs text-destructive mt-1">SKU é obrigatório</p>}
             </div>
             <div className="col-span-1">
-              <Label>Família</Label>
+              <Label>Grupo (folha)</Label>
               <Select value={form.group_id || 'none'} onValueChange={v => {
                 const gid = v === 'none' ? null : v;
                 update('group_id', gid);
@@ -1148,9 +1179,22 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Sem grupo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem grupo</SelectItem>
-                  {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                  {currentGroupOutsideLeaves && (
+                    <SelectItem value={currentGroupOutsideLeaves.id}>{currentGroupOutsideLeaves.name}</SelectItem>
+                  )}
+                  {leafGroupsBySector.map(([sec, list]) => (
+                    <SelectGroup key={sec}>
+                      <SelectLabel>{sectorLabel(sec)}</SelectLabel>
+                      {list.map(({ g, label }) => (
+                        <SelectItem key={g.id} value={g.id}>{label}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
                 </SelectContent>
               </Select>
+              {form.group_id && form.category && (
+                <p className="text-xs text-muted-foreground mt-1">Setor herdado do grupo: <span className="font-medium text-foreground">{sectorLabel(form.category)}</span></p>
+              )}
               {(() => {
                 const sg = form.group_id ? groups.find(g => g.id === form.group_id) : null;
                 if (sg && sg.package_weight_kg > 0 && sg.package_price > 0) {
