@@ -91,6 +91,13 @@ export function splitDayMinutes(
   punches: string[],
   dayOfWeek: number,
   isHoliday: boolean,
+  /**
+   * Troca de dia / compensação (folga trocada): quando true, o dia é tratado como
+   * dia útil NORMAL mesmo caindo em sábado/domingo/feriado — o corte das 18:00
+   * ainda vale, mas o fim de semana/feriado NÃO joga tudo pra 1,5×. Usado quando
+   * o funcionário trabalha um dia em troca de outro (tabela workday_swaps).
+   */
+  forceNormalDay: boolean = false,
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
   if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
@@ -108,7 +115,7 @@ export function splitDayMinutes(
   //    2026-06-21). Cai no ramo de span 1º→último abaixo + desconto de almoço, em
   //    vez de virar pendência. Antes qualquer ímpar zerava (decisão 2026-06).
   if (n % 2 !== 0 && n < 5) return { normal: 0, premium: 0, incomplete: true };
-  const allPremium = isHoliday || dayOfWeek === 0 || dayOfWeek === 6;
+  const allPremium = !forceNormalDay && (isHoliday || dayOfWeek === 0 || dayOfWeek === 6);
 
   // Intervalos trabalhados: pares reais (par 4+) ou span do 1º ao último (2 batidas
   // OU ímpar ≥5 = batida extra → última batida é a saída).

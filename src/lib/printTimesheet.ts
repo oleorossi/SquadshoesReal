@@ -25,6 +25,8 @@ export interface EmployeeTimesheetData {
     isHoliday: boolean;
     isAbsent: boolean;
     status: string;
+    /** Dia de troca (workday_swaps) trabalhado → split como dia útil normal (sem 1,5×). */
+    swapWorked?: boolean;
   }[];
   schedule: {
     overtime_multiplier: number;
@@ -62,7 +64,7 @@ function hoursWorkedDetail(emp: EmployeeTimesheetData) {
   const days = emp.days.map(d => {
     const punches = Array.isArray(d.punches) ? d.punches : [];
     const sp = punches.length >= 2
-      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday)
+      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapWorked)
       : { normal: 0, premium: 0, incomplete: punches.length === 1 };
     return {
       date: d.date,
@@ -681,7 +683,7 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
   for (const d of emp.days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
     const sp = punches.length >= 2
-      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday)
+      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapWorked)
       : { normal: 0, premium: 0, incomplete: punches.length === 1 };
     const isWorkday = (d.expectedMinutes || 0) > 0;                 // dia de escala (esperado>0)
     const expected = isWorkday ? (schedExpected ?? (d.expectedMinutes || 0)) : 0;  // escala (540)

@@ -233,6 +233,15 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
     expect(r.he_minutes).toBe(240); // 4h no feriado
   });
 
+  it('falta_dates lista as datas de falta (dia útil coberto sem batida)', () => {
+    // seg/ter com batida; qua/qui/sex sem batida → 3 faltas (period sem clamp).
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05']) punches.set(d, full);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.falta_days).toBe(3);
+    expect(r.falta_dates).toEqual(['2026-05-06', '2026-05-07', '2026-05-08']);
+  });
+
   it('maxCoveredDate (clamp) ignora dias não importados — não viram falta', () => {
     const punches = new Map<string, string[]>();
     for (const d of ['2026-05-04', '2026-05-05', '2026-05-06']) punches.set(d, full);
@@ -241,6 +250,97 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
     expect(r.falta_days).toBe(0);
     const r2 = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
     expect(r2.falta_days).toBe(2); // sem clamp, qui/sex viram falta
+  });
+});
+
+describe('computePeriodFolha — troca de dia / compensação (workday_swaps)', () => {
+  // 2026-05-03 é um DOMINGO. Sem troca, trabalhar nele = tudo hora extra.
+  it('domingo SEM troca = tudo hora extra', () => {
+    const punches = new Map<string, string[]>([['2026-05-03', full]]); // 9h no domingo
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.he_minutes).toBe(540); // 9h todas como HE
+    expect(r.premium_minutes).toBe(540);
+  });
+
+  it('domingo COM troca = dia útil normal (jornada esperada, sem HE)', () => {
+    const punches = new Map<string, string[]>([['2026-05-03', full]]); // 9h = jornada padrão
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, swapWorkedSet: new Set(['2026-05-03']), punchesByDate: punches,
+    });
+    expect(r.workdays).toBe(1);         // domingo virou dia útil
+    expect(r.he_minutes).toBe(0);       // trabalhou a jornada esperada → nada de HE
+    expect(r.premium_minutes).toBe(0);  // não é fim de semana pra fins de 1,5×
+    expect(r.falta_days).toBe(0);
+  });
+
+  it('excedente da jornada no dia trocado ainda vira HE (só o que passa do esperado)', () => {
+    const punches = new Map<string, string[]>([['2026-05-03', ['08:00', '12:00', '13:00', '19:00']]]); // 10h
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, swapWorkedSet: new Set(['2026-05-03']), punchesByDate: punches,
+    });
+    expect(r.he_minutes).toBe(60); // 10h − 9h esperado = 1h de HE
+  });
+
+  it('feriado trabalhado COM troca vira dia normal (deixa de ser HE)', () => {
+    // 2026-05-01 (sexta) é feriado. Com troca, lê normal.
+    const punches = new Map<string, string[]>([['2026-05-01', full]]);
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-01', to: '2026-05-01', schedule: SCHED,
+      holidaysSet: new Set(['2026-05-01']), swapWorkedSet: new Set(['2026-05-01']), punchesByDate: punches,
+    });
+    expect(r.workdays).toBe(1);
+    expect(r.he_minutes).toBe(0);
+    expect(r.falta_days).toBe(0);
+  });
+
+  it('folga compensatória (off_date) num dia útil não gera falta', () => {
+    // 2026-05-04 (segunda) sem batida, mas marcado como folga compensatória.
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED,
+      holidaysSet: NO_HOL, swapOffSet: new Set(['2026-05-04']), punchesByDate: new Map(),
+    });
+    expect(r.falta_days).toBe(0);   // folga, não falta
+    expect(r.workdays).toBe(0);     // dia sem jornada esperada
+  });
+
+  it('dia de troca (work_date) SEM batida = neutro, NÃO vira falta', () => {
+    // Ponte registrada pra todos, mas o funcionário não trabalhou (nem bateu ponto).
+    // Regra flex: sem batida = neutro — não penaliza quem não trabalhou a ponte.
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, swapWorkedSet: new Set(['2026-05-03']), punchesByDate: new Map(),
+    });
+    expect(r.falta_days).toBe(0);   // não é falta
+    expect(r.workdays).toBe(0);     // neutro, fora do esperado
+    expect(r.he_minutes).toBe(0);
+  });
+
+  it('folga compensatória (off_date) TRABALHADA lê como dia normal (não 1,5×)', () => {
+    // Funcionário trabalha na folga: conta como dia útil normal, não hora extra.
+    const punches = new Map<string, string[]>([['2026-05-04', full]]); // 9h numa segunda-folga
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED,
+      holidaysSet: NO_HOL, swapOffSet: new Set(['2026-05-04']), punchesByDate: punches,
+    });
+    expect(r.workdays).toBe(1);
+    expect(r.he_minutes).toBe(0);       // jornada normal → sem HE
+    expect(r.premium_minutes).toBe(0);  // sem 1,5×
+    expect(r.falta_days).toBe(0);
+  });
+
+  it('colisão work_date×off_date na mesma data: tratamento idêntico (dia flex)', () => {
+    // 2026-05-03 (domingo) é work_date de uma troca E off_date de outra. Como ambos
+    // são dia flex, o resultado é o mesmo independente da precedência.
+    const punches = new Map<string, string[]>([['2026-05-03', full]]);
+    const both = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED, holidaysSet: NO_HOL,
+      swapWorkedSet: new Set(['2026-05-03']), swapOffSet: new Set(['2026-05-03']), punchesByDate: punches,
+    });
+    expect(both.he_minutes).toBe(0);
+    expect(both.premium_minutes).toBe(0);
+    expect(both.workdays).toBe(1);
   });
 });
 

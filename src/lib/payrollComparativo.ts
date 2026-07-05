@@ -35,10 +35,10 @@ export function computeSituacao(r: SalaryPayrollResult, matchedDays: number, max
 export function buildEmployeePrintData(
   emp: any,
   sch: any,
-  days: { date: string; dow: number; punches: string[]; isHoliday: boolean }[],
+  days: { date: string; dow: number; punches: string[]; isHoliday: boolean; swap?: 'worked' | 'off' }[],
 ): EmployeeTimesheetData {
   const summaries: DaySummary[] = days.map(d => {
-    const s = calculateDaySummary(d.punches, d.dow, sch, d.isHoliday);
+    const s = calculateDaySummary(d.punches, d.dow, sch, d.isHoliday, d.swap);
     return { ...s, date: d.date, punches: d.punches } as DaySummary;
   });
   return {
@@ -76,6 +76,9 @@ export interface ComparativoArgs {
   schedules: any[];
   defaultSchedule: any;
   holidaysSet: Set<string>;
+  /** Trocas de dia: datas trabalhadas (lidas como normal) e folgas compensatórias. */
+  swapWorkedSet?: Set<string>;
+  swapOffSet?: Set<string>;
   timeRecords: { employee_external_id?: string | null; employee_name?: string | null; record_date: string; punches: string[] }[];
   advancesList: { employee_id: string; amount: number; advance_date: string }[];
   range: { from: string; to: string };
@@ -92,6 +95,10 @@ export interface ComparativoResult {
 /** Constrói os comparativos (Mês × 1ª × 2ª) de TODOS os funcionários ativos. */
 export function computeComparativoRows(args: ComparativoArgs): ComparativoResult {
   const { employees, schedules, defaultSchedule, holidaysSet, timeRecords, advancesList, range, period, maxCovered = null } = args;
+  const swapWorkedSet = args.swapWorkedSet ?? new Set<string>();
+  const swapOffSet = args.swapOffSet ?? new Set<string>();
+  const swapModeFor = (d: string): 'worked' | 'off' | undefined =>
+    swapWorkedSet.has(d) ? 'worked' : swapOffSet.has(d) ? 'off' : undefined;
 
   const [py, pm] = period.split('-').map(Number);
   const monthDays = py && pm ? new Date(py, pm, 0).getDate() : 30;
@@ -136,7 +143,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
 
       const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
         salary: Number(emp.salary) || 0, from, to,
-        schedule: sch, holidaysSet, punchesByDate: empPunches,
+        schedule: sch, holidaysSet, swapWorkedSet, swapOffSet, punchesByDate: empPunches,
         periodDays, monthDays, maxCoveredDate: maxCovered,
         payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
         dailyRate: Number(emp.daily_rate) || 0,
@@ -148,7 +155,9 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
       const q2 = folha(`${period}-16`, monthTo, q2Days);
       const matchedDays = Array.from(empPunches.keys()).filter(d => d >= range.from && d <= range.to).length;
       const advMes = empAdvances.reduce((s, a) => s + a.amount, 0);
-      const printDays = coveredDays.map(d => ({ date: d.date, dow: d.dow, punches: empPunches.get(d.date) || [], isHoliday: holidaysSet.has(d.date) }));
+      // isHoliday cru; a precedência da troca (feriado ignorado em dia de troca) é
+      // resolvida dentro de calculateDaySummary via o param `swap` — não duplicar aqui.
+      const printDays = coveredDays.map(d => ({ date: d.date, dow: d.dow, punches: empPunches.get(d.date) || [], isHoliday: holidaysSet.has(d.date), swap: swapModeFor(d.date) }));
 
       return {
         id: emp.id, ext: extKey || undefined, name: emp.name,

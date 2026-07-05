@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  useWorkSchedules, useHolidays, useTimeRecords, useImportBatches,
+  useWorkSchedules, useHolidays, useSwapSets, useTimeRecords, useImportBatches,
   calculateDaySummary, WorkSchedule,
 } from '@/hooks/useTimesheet';
 import {
@@ -68,6 +68,7 @@ export default function ExceptionsTab() {
   );
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
+  const { swapModeFor } = useSwapSets();
   const { data: exceptions = [], isLoading } = useTimeExceptions(selectedBatch || undefined);
   const updateException = useUpdateTimeException();
   const bulkCreate = useBulkCreateExceptions();
@@ -96,12 +97,13 @@ export default function ExceptionsTab() {
       const punches = rec.punches as string[];
       const date = new Date(rec.record_date + 'T12:00:00');
       const dayOfWeek = date.getDay();
-      const isHol = holidays.some(h => {
+      const swapMode = swapModeFor(rec.record_date);
+      const isHol = !swapMode && holidays.some(h => {
         if (h.recurring) return h.holiday_date.slice(5) === rec.record_date.slice(5);
         return h.holiday_date === rec.record_date;
       });
 
-      const summary = calculateDaySummary(punches, dayOfWeek, defaultSchedule, isHol);
+      const summary = calculateDaySummary(punches, dayOfWeek, defaultSchedule, isHol, swapMode);
 
       // Incomplete (odd punches)
       if (punches.length % 2 !== 0) {

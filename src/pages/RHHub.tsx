@@ -43,7 +43,7 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
   ponto:         { section: 'RH · PONTO',         title: 'Controle de Ponto', description: 'Importação e lançamento de batidas' },
   reconciliacao: { section: 'RH · PONTO',         title: 'Reconciliação de prestadores', description: 'Vincular cada ID do relógio ao prestador certo' },
   folha:         { section: 'RH · FOLHA',         title: 'Folha salarial',   description: 'Quanto cada funcionário tem a receber, com base no ponto importado' },
-  relatorios:    { section: 'RH · FOLHA',         title: 'Relatórios',       description: 'Folha, calendário, holerite, consolidado por setor e o espelho do relógio de ponto (registro bruto)' },
+  relatorios:    { section: 'RH · FOLHA',         title: 'Relatórios',       description: 'Documentos da folha (calendário, holerite, espelho) + calendário de faltas e de atrasos por funcionário' },
   pagamentos:    { section: 'RH · FOLHA',         title: 'Pagamentos',       description: 'Registro de pagamentos da folha e recibos assinados — puxe qualquer pagamento depois' },
 };
 

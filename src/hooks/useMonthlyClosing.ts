@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  useWorkSchedules, useHolidays, useTimeRecords,
+  useWorkSchedules, useHolidays, useSwapSets, useTimeRecords,
   calculateDaySummary, WorkSchedule,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -134,6 +134,7 @@ export function useMonthlyClosing(from: string, to: string) {
   const { data: employees = [], isLoading: empLoading } = useEmployees();
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
+  const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
   const { data: records = [], isLoading: recLoading } = useTimeRecords(undefined, from, to);
   const { data: benefits } = useBenefitsConfig();
   const { data: movements = [] } = useBankHoursMovements(undefined, { from, to });
@@ -210,8 +211,9 @@ export function useMonthlyClosing(from: string, to: string) {
         let fullD = 0, halfD = 0;
         for (const r of empRecords) {
           const d = new Date(r.record_date + 'T12:00:00');
-          const isHol = isHolidayOn(holidays, r.record_date);
-          const s = calculateDaySummary((r.punches as string[]) || [], d.getDay(), sched, isHol);
+          const swapMode = swapModeFor(r.record_date);
+          const isHol = !swapMode && isHolidayOn(holidays, r.record_date);
+          const s = calculateDaySummary((r.punches as string[]) || [], d.getDay(), sched, isHol, swapMode);
           if (s.workedMinutes >= 360) fullD++;
           else if (s.workedMinutes >= 120) halfD++;
         }
@@ -235,9 +237,10 @@ export function useMonthlyClosing(from: string, to: string) {
       const days: WeeklyCalcDay[] = empRecords.map(r => {
         const d = new Date(r.record_date + 'T12:00:00');
         const dow = d.getDay();
-        const isHol = isHolidayOn(holidays, r.record_date);
+        const swapMode = swapModeFor(r.record_date);
+        const isHol = !swapMode && isHolidayOn(holidays, r.record_date);
         const punches = (r.punches as string[]) || [];
-        const s = calculateDaySummary(punches, dow, sched, isHol);
+        const s = calculateDaySummary(punches, dow, sched, isHol, swapMode);
         return {
           date: r.record_date,
           dayOfWeek: dow,
@@ -268,9 +271,12 @@ export function useMonthlyClosing(from: string, to: string) {
         if (absenceSet.has(cur)) continue;          // ausência justificada = neutro
         const d = new Date(cur + 'T12:00:00');
         const dow = d.getDay();
-        const isHol = isHolidayOn(holidays, cur);
-        const s = calculateDaySummary([], dow, sched, isHol);
-        if (s.expectedMinutes <= 0) continue;       // fim de semana/feriado/home office
+        const swapMode = swapModeFor(cur);
+        const isHol = !swapMode && isHolidayOn(holidays, cur);
+        // Dia de troca sem ponto → calculateDaySummary devolve expected=0 (neutro) →
+        // não vira falta/déficit pra quem não trabalhou a ponte.
+        const s = calculateDaySummary([], dow, sched, isHol, swapMode);
+        if (s.expectedMinutes <= 0) continue;       // fim de semana/feriado/troca/home office
         if (!coveredDays.has(cur)) {                 // dia sem importação alguma
           noImportDays++;
           continue;                                  // lacuna de cobertura: neutro
@@ -365,7 +371,7 @@ export function useMonthlyClosing(from: string, to: string) {
     };
 
     return { rows: out, totals };
-  }, [employees, schedules, holidays, records, movements, absences, monthlyHours, defaultSchedule]);
+  }, [employees, schedules, holidays, swapWorkedSet, swapOffSet, swapModeFor, records, movements, absences, monthlyHours, defaultSchedule]);
 
   return { rows, totals, isLoading: empLoading || recLoading };
 }

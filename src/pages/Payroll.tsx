@@ -12,7 +12,7 @@ import {
 import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
@@ -28,6 +28,8 @@ import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
+import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
 
 const fmt = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 /** Minutos → "7h00". */
@@ -115,6 +117,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const [setorFilter, setSetorFilter] = useState<string>('all');
   // Multi-seleção de relatórios — imprime os marcados NUM ARQUIVO só.
   const [reportSel, setReportSel] = useState({ folha: false, calendario: true, holerite: true, setor: false, espelho: false });
+  // Sub-visão da aba Relatórios (reportsOnly): documentos (folha/calendário/holerite/
+  // espelho) · faltas (calendário só com dias faltados) · atrasos (idem, atrasos).
+  const [reportView, setReportView] = useState<'docs' | 'faltas' | 'atrasos'>('docs');
   const [docScope, setDocScope] = useState<string>('all'); // 'all' ou employee_id
   const [previewIdx, setPreviewIdx] = useState(0); // paginador da prévia em "Todos" (calendário/holerite)
 
@@ -150,6 +155,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       .map(h => h.holiday_date)),
     [holidaysList],
   );
+
+  // Trocas de dia (compensação): dia flex — normal quando trabalhado, neutro quando não.
+  const { swapWorkedSet, swapOffSet } = useSwapSets();
 
   // Cobertura: até onde o ponto foi importado neste período (debounced, igual às queries).
   const { data: coverage } = useTimesheetCoverage(appliedFrom, appliedTo);
@@ -233,11 +241,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     },
   });
   const comparativo = useMemo(() => computeComparativoRows({
-    employees, schedules, defaultSchedule, holidaysSet,
+    employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
     timeRecords: compRecords, advancesList: compAdvances,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
-  }), [employees, schedules, defaultSchedule, holidaysSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
+  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
 
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
@@ -516,6 +524,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           from: cFrom, to: cTo,
           schedule: sch,
           holidaysSet,
+          swapWorkedSet,
+          swapOffSet,
           punchesByDate: empPunches,
           absenceDates: absencesByEmp.get(emp.id),
           advancesTotal: advancesByEmp.get(emp.id) || 0,
@@ -703,23 +713,49 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // ABA "Relatórios" (RH → Relatórios): o antigo botão "Relatórios" da Folha virou
   // uma aba própria. Mesmo seletor de período + o painel de geração, agora inline.
   if (reportsOnly) {
+    const reportViewBtn = (v: typeof reportView, label: string) => (
+      <Button
+        type="button"
+        variant={reportView === v ? 'default' : 'outline'}
+        size="sm"
+        className="h-9"
+        onClick={() => setReportView(v)}
+      >
+        {label}
+      </Button>
+    );
     return (
       <div className="space-y-4 page-enter">
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div className="text-xs text-muted-foreground max-w-md">
-            Gere e imprima os relatórios da folha do período. O <b className="text-foreground">Espelho relógio de ponto</b> mostra o registro bruto importado — sem cálculo — só pra conferir as batidas.
-          </div>
-          {filtersBar}
+        {/* Sub-visão: Documentos · Faltas · Atrasos */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {reportViewBtn('docs', 'Documentos')}
+          {reportViewBtn('faltas', 'Faltas')}
+          {reportViewBtn('atrasos', 'Atrasos')}
         </div>
-        {coverage && coverage.count === 0 && (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>Nenhuma batida importada para {periodTitle}. Importe o arquivo do relógio (aba Ponto) — o Espelho lista o que foi importado.</span>
-          </div>
+
+        {reportView === 'faltas' ? (
+          <RelatorioFaltas />
+        ) : reportView === 'atrasos' ? (
+          <RelatorioAtrasos />
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div className="text-xs text-muted-foreground max-w-md">
+                Gere e imprima os relatórios da folha do período. O <b className="text-foreground">Espelho relógio de ponto</b> mostra o registro bruto importado — sem cálculo — só pra conferir as batidas.
+              </div>
+              {filtersBar}
+            </div>
+            {coverage && coverage.count === 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>Nenhuma batida importada para {periodTitle}. Importe o arquivo do relógio (aba Ponto) — o Espelho lista o que foi importado.</span>
+              </div>
+            )}
+            <div className="rounded-lg border bg-card p-4">
+              {reportPanelContent}
+            </div>
+          </>
         )}
-        <div className="rounded-lg border bg-card p-4">
-          {reportPanelContent}
-        </div>
       </div>
     );
   }
