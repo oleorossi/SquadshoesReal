@@ -90,12 +90,12 @@ export interface SalaryDayInput {
   /** Ausência JUSTIFICADA cobrindo o dia (férias/atestado/licença). Dia útil sem
    *  batida E excused=true → abonado (não conta falta nem desconta). */
   excused?: boolean;
-  /** Troca de dia / compensação: o funcionário trabalha este dia em TROCA de outro
-   *  (tabela workday_swaps). O dia é lido como dia útil NORMAL (esperado da escala,
-   *  sem 1,5× de fim de semana/feriado) — só o excedente do esperado vira hora extra,
-   *  como num dia comum. Já vem refletido em isWorkday/expectedMinutes; este flag
-   *  serve pro split normal×premium não jogar tudo pra 1,5× em sáb/dom/feriado. */
-  swapWorked?: boolean;
+  /** Troca de dia / compensação (tabela workday_swaps): este dia é um DIA FLEX.
+   *  Quando TRABALHADO, lê como dia útil NORMAL (esperado da escala, sem 1,5× de
+   *  fim de semana/feriado — só o excedente vira HE). Quando NÃO trabalhado (sem
+   *  batida), é NEUTRO: não gera falta nem entra no esperado (o funcionário pode
+   *  ter tirado a folga da troca). Vale tanto pra work_date quanto pra off_date. */
+  swapFlex?: boolean;
 }
 
 export interface SalaryPayrollResult {
@@ -208,8 +208,16 @@ export function calculateSalaryPayroll(
   for (const d of days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
     const sp = punches.length >= 2
-      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapWorked)
+      ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapFlex)
       : { normal: 0, premium: 0, incomplete: punches.length === 1 };
+
+    // Dia de TROCA (flex) SEM batida válida → NEUTRO: não é falta, não entra no
+    // esperado/workdays (o funcionário pode ter tirado a folga da troca). Só passa a
+    // contar como dia útil normal quando efetivamente TRABALHADO (ramo abaixo).
+    // Batida ímpar (incomplete) NÃO é neutralizada aqui — continua pendente.
+    if (d.swapFlex && !sp.incomplete && (sp.normal + sp.premium) === 0) {
+      continue;
+    }
 
     // ESPERADO é da ESCALA, não da batida: todo dia útil tem jornada esperada,
     // INDEPENDENTE de a batida estar completa. Pendente (ímpar) e falta TAMBÉM
@@ -332,12 +340,13 @@ export interface PeriodFolhaInput {
   to: string;
   schedule: any;                          // work_schedule (entry/exit/lunch/works_*)
   holidaysSet: Set<string>;               // feriados obrigatórios (dia inteiro 1,5×)
-  /** Troca de dia (workday_swaps) — datas TRABALHADAS que devem contar como dia
-   *  útil NORMAL mesmo em sáb/dom/feriado (não vira hora extra). Prevalece sobre
-   *  holidaysSet: se a data está aqui, o feriado é ignorado nesse dia. */
+  /** Troca de dia (workday_swaps) — DIAS FLEX (work_date): lê como dia útil NORMAL
+   *  quando trabalhado (não vira HE de fim de semana/feriado); neutro quando não
+   *  trabalhado (sem falta). Prevalece sobre holidaysSet nesse dia. */
   swapWorkedSet?: Set<string>;
-  /** Troca de dia (workday_swaps) — datas de FOLGA compensatória: dia sem jornada
-   *  esperada (não gera falta/desconto), como se fosse feriado concedido. */
+  /** Troca de dia (workday_swaps) — DIAS FLEX (off_date, folga compensatória):
+   *  mesmo tratamento do work_date — neutro quando não trabalhado (sem falta),
+   *  normal quando trabalhado. Manter os dois iguais evita divergência de colisão. */
   swapOffSet?: Set<string>;
   punchesByDate: Map<string, string[]>;   // data (YYYY-MM-DD) → batidas
   /** Datas (YYYY-MM-DD) cobertas por ausência JUSTIFICADA → dia útil sem batida vira
@@ -356,19 +365,19 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   let dates = getDaysInRange(inp.from, inp.to);
   if (inp.maxCoveredDate) dates = dates.filter(d => d.date <= inp.maxCoveredDate!);
   const days: SalaryDayInput[] = dates.map(d => {
-    // Troca de dia (workday_swaps): a data trabalhada em troca de outra vira dia útil
-    // NORMAL (prevalece sobre feriado); a folga compensatória vira dia sem jornada.
-    const isSwapWorked = inp.swapWorkedSet?.has(d.date) ?? false;
-    const isSwapOff = inp.swapOffSet?.has(d.date) ?? false;
-    const isHoliday = !isSwapWorked && inp.holidaysSet.has(d.date);
-    // Dia útil: folga compensatória nunca é; dia trocado sempre é; senão, regra da escala.
-    const isWorkday = isSwapOff ? false : (isSwapWorked || (worksOnDow(inp.schedule, d.dow) && !isHoliday));
+    // Troca de dia (workday_swaps): work_date E off_date são DIAS FLEX. Prevalecem
+    // sobre feriado. Quando trabalhados, leem como dia útil normal; quando não, o
+    // motor os neutraliza (sem falta). Tratar os dois iguais elimina a divergência
+    // de precedência quando uma data é work_date de uma troca e off_date de outra.
+    const isSwap = (inp.swapWorkedSet?.has(d.date) ?? false) || (inp.swapOffSet?.has(d.date) ?? false);
+    const isHoliday = !isSwap && inp.holidaysSet.has(d.date);
+    const isWorkday = isSwap ? true : (worksOnDow(inp.schedule, d.dow) && !isHoliday);
     return {
       date: d.date, dayOfWeek: d.dow, isHoliday, isWorkday,
       expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule) : 0,
       punches: inp.punchesByDate.get(d.date) || [],
       excused: inp.absenceDates?.has(d.date) ?? false,
-      swapWorked: isSwapWorked,
+      swapFlex: isSwap,
     };
   });
   // Tolerância REMOVIDA (pedido do dono 2026-06-30): todo minuto conta — atraso

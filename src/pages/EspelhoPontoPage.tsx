@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Printer, ArrowLeft, CircleNotch as Loader2, FileText, Download } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useWorkSchedules, useHolidays, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
+import { useWorkSchedules, useHolidays, useSwapSets, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { generateAEJ, downloadAEJ } from '@/lib/aejExporter';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
@@ -108,6 +108,9 @@ export default function EspelhoPontoPage() {
   }, [records, employee]);
 
   const holidaySet = useMemo(() => new Set(holidays.map(h => h.holiday_date)), [holidays]);
+  // Troca de dia: espelho lê o dia trocado como normal (não feriado/domingo) e a
+  // folga da troca como neutra — alinhado à folha e ao banco de horas.
+  const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
 
   // Banco de horas: movimentações + saldo via RPC
   const { data: bankPayload } = useQuery({
@@ -169,10 +172,13 @@ export default function EspelhoPontoPage() {
       safety++;
       const dateStr = format(cursor, 'yyyy-MM-dd');
       const dow = cursor.getDay();
-      const isHoliday = holidaySet.has(dateStr);
+      const swapMode = swapModeFor(dateStr);
+      const isSwap = swapMode !== undefined;
+      // Dia de troca prevalece sobre feriado (é lido como dia útil normal / neutro).
+      const isHoliday = !isSwap && holidaySet.has(dateStr);
       const punchesRaw = recordMap.get(dateStr) || [];
       const punchesTreated = punchesRaw.map(cleanPunch);
-      const summary = calculateDaySummary(punchesRaw, dow, schedule as WorkSchedule, isHoliday);
+      const summary = calculateDaySummary(punchesRaw, dow, schedule as WorkSchedule, isHoliday, swapMode);
       out.push({
         date: dateStr,
         dow,
@@ -183,7 +189,10 @@ export default function EspelhoPontoPage() {
         workedMin: summary.workedMinutes,
         expectedMin: summary.expectedMinutes,
         diffMin: summary.workedMinutes - summary.expectedMinutes,
-        status: isHoliday ? 'Feriado'
+        // Dia de troca trabalhado = 'Troca' (lê normal); sem batida = neutro ('—').
+        status: isSwap ? (summary.workedMinutes > 0 ? 'Troca'
+                : punchesTreated.length % 2 !== 0 ? 'Pendência' : '—')
+              : isHoliday ? 'Feriado'
               : dow === 0 ? 'Domingo'
               : punchesTreated.length === 0 && summary.expectedMinutes > 0 ? 'Falta'
               : punchesTreated.length === 0 ? '—'
@@ -193,7 +202,7 @@ export default function EspelhoPontoPage() {
       cursor.setDate(cursor.getDate() + 1);
     }
     return out;
-  }, [employeeRecords, holidaySet, schedule, periodStart, periodEnd]);
+  }, [employeeRecords, holidaySet, swapWorkedSet, swapOffSet, swapModeFor, schedule, periodStart, periodEnd]);
 
   const totals = useMemo(() => {
     return days.reduce((acc, d) => ({

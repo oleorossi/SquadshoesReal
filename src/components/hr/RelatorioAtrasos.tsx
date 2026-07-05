@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useWorkdaySwaps, buildSwapSets, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useSwapSets, useWorkSchedules } from '@/hooks/useTimesheet';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { Panel } from '@/components/ui/panel';
@@ -201,8 +201,13 @@ export default function RelatorioAtrasos() {
     () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[]).filter(h => h.optional !== true).map(h => h.holiday_date)),
     [holidaysList],
   );
-  const { data: workdaySwaps = [] } = useWorkdaySwaps();
-  const { swapWorkedSet, swapOffSet } = useMemo(() => buildSwapSets(workdaySwaps), [workdaySwaps]);
+  const { swapWorkedSet, swapOffSet } = useSwapSets();
+  // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
+  // mesma contagem precisa invalidar o cache do relatório.
+  const swapKey = useMemo(
+    () => [...swapWorkedSet].sort().join(',') + '|' + [...swapOffSet].sort().join(','),
+    [swapWorkedSet, swapOffSet],
+  );
 
   const [mode, setMode] = useState<Mode>('mes');
   const [cFrom, setCFrom] = useState(todayISO());
@@ -211,7 +216,7 @@ export default function RelatorioAtrasos() {
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ['relatorio-atrasos', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapWorkedSet.size, swapOffSet.size],
+    queryKey: ['relatorio-atrasos', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapKey],
     enabled: !!from && !!to && from <= to && (employees as any[]).length > 0,
     staleTime: 60_000,
     queryFn: async (): Promise<AtrasoRow[]> => {

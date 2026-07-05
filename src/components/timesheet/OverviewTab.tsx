@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import {
-  useWorkSchedules, useHolidays, useTimeRecords, useImportBatches,
+  useWorkSchedules, useHolidays, useSwapSets, useTimeRecords, useImportBatches,
   calculateDaySummary, WorkSchedule, DaySummary,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -86,7 +86,10 @@ export default function OverviewTab() {
   // Pre-compute holiday sets for O(1) lookups
   const holidayDates = useMemo(() => new Set(holidays.filter(h => !h.recurring).map(h => h.holiday_date)), [holidays]);
   const recurringHolidayMMDD = useMemo(() => new Set(holidays.filter(h => h.recurring).map(h => h.holiday_date.slice(5))), [holidays]);
-  const isHolidayDate = (dateStr: string) => holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5));
+  // Troca de dia: prevalece sobre feriado (dia flex — normal/neutro).
+  const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
+  const isHolidayDate = (dateStr: string) =>
+    !swapWorkedSet.has(dateStr) && !swapOffSet.has(dateStr) && (holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5)));
 
   const overviewData = useMemo<EmployeeOverview[]>(() => {
     if (records.length === 0) return [];
@@ -129,7 +132,7 @@ export default function OverviewTab() {
           const dayOfWeek = cursor.getDay();
           const isHol = isHolidayDate(dateStr);
           const punches = recordMap.get(dateStr) || [];
-          const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol);
+          const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol, swapModeFor(dateStr));
           allDays.push({ ...summary, date: dateStr, punches } as DaySummary);
           cursor.setDate(cursor.getDate() + 1);
         }
@@ -138,7 +141,7 @@ export default function OverviewTab() {
           const date = new Date(rec.record_date + 'T12:00:00');
           const dayOfWeek = date.getDay();
           const isHol = isHolidayDate(rec.record_date);
-          const summary = calculateDaySummary(rec.punches as string[], dayOfWeek, empSchedule, isHol);
+          const summary = calculateDaySummary(rec.punches as string[], dayOfWeek, empSchedule, isHol, swapModeFor(rec.record_date));
           allDays.push({ ...summary, date: rec.record_date, punches: rec.punches as string[] } as DaySummary);
         });
       }
@@ -179,7 +182,7 @@ export default function OverviewTab() {
     });
 
     return results.sort((a, b) => a.name.localeCompare(b.name));
-  }, [records, batchDateRange, isHolidayDate, defaultSchedule, schedules, employees]);
+  }, [records, batchDateRange, isHolidayDate, swapWorkedSet, swapOffSet, swapModeFor, defaultSchedule, schedules, employees]);
 
   // Separate filtering from heavy computation so typing/filter changes don't recalculate everything
   const filteredOverviewData = useMemo(() => {

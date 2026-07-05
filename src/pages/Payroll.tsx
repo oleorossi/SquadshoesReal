@@ -12,7 +12,7 @@ import {
 import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useWorkdaySwaps, buildSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
@@ -151,9 +151,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     [holidaysList],
   );
 
-  // Trocas de dia (compensação): dia trabalhado lido como NORMAL, folga sem falta.
-  const { data: workdaySwaps = [] } = useWorkdaySwaps();
-  const { swapWorkedSet, swapOffSet } = useMemo(() => buildSwapSets(workdaySwaps), [workdaySwaps]);
+  // Trocas de dia (compensação): dia flex — normal quando trabalhado, neutro quando não.
+  const { swapWorkedSet, swapOffSet } = useSwapSets();
 
   // Cobertura: até onde o ponto foi importado neste período (debounced, igual às queries).
   const { data: coverage } = useTimesheetCoverage(appliedFrom, appliedTo);

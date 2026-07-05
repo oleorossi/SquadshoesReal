@@ -5,12 +5,13 @@
 -- funcionários TROCAM um dia pelo outro: trabalham numa data (ex.: um domingo,
 -- ou a "ponte" que emenda um feriado) em TROCA da folga em outra data.
 --
--- Regra de leitura no ponto/folha:
---   • work_date → lido como dia útil NORMAL, mesmo caindo em sábado/domingo/
+-- Regra de leitura no ponto/folha (DIA FLEX — work_date e off_date iguais):
+--   • TRABALHADO → lido como dia útil NORMAL, mesmo caindo em sábado/domingo/
 --     feriado. As horas NÃO viram hora extra 100% — só o excedente da jornada
 --     esperada conta como HE, igual a um dia comum.
---   • off_date  → folga compensatória: dia sem jornada esperada, NÃO gera falta
---     nem desconto (como um feriado concedido).
+--   • NÃO trabalhado → NEUTRO: sem jornada esperada, NÃO gera falta nem déficit
+--     (o funcionário pode ter tirado a folga da troca). work_date e off_date têm
+--     o MESMO tratamento — o rótulo (trabalhado vs folga) é só pro cadastro/UI.
 --
 -- Vale para TODOS os funcionários (igual aos feriados nacionais). O lado
 -- TypeScript (computePeriodFolha/splitDayMinutes) aplica a mesma regra no
@@ -126,9 +127,13 @@ BEGIN
   v_min_overtime      := COALESCE(v_sched.minimum_overtime_minutes, 10);
   -- Jornada padrão do dia = saída − entrada − almoço (mesma conta de expectedDayMinutes
   -- no TS). Usada quando um dia de troca cai em dia não-escalado (dom/sáb).
+  -- ⚠ almoço em COALESCE(..., 0): escala com entrada/saída mas SEM almoço cadastrado
+  -- (lunch_* NULL) NÃO pode envenenar a subtração inteira pra NULL (senão cai no
+  -- fallback weekly/5, divergindo do TS que trata almoço ausente como 0). Só quando
+  -- entrada/saída em si são NULL (sem escala) é que o COALESCE externo usa weekly/5.
   v_std_day_min := GREATEST(0, COALESCE(
-    EXTRACT(EPOCH FROM (v_sched.exit_time - v_sched.entry_time
-      - (v_sched.lunch_end - v_sched.lunch_start)))::int / 60,
+    (EXTRACT(EPOCH FROM (v_sched.exit_time - v_sched.entry_time))::int / 60)
+      - COALESCE(EXTRACT(EPOCH FROM (v_sched.lunch_end - v_sched.lunch_start))::int / 60, 0),
     ROUND(v_weekly_target_min::numeric / 5)::int
   ));
 
@@ -246,28 +251,43 @@ BEGIN
       v_week_worked := 0; v_week_expected := 0;
     END IF;
 
-    -- Folga compensatória (off_date da troca): dia abonado, sem falta nem esperado.
-    IF v_is_swap_off THEN
-      v_days_excused := v_days_excused + 1;
-      v_prev_week_key := v_week_key; CONTINUE;
-    END IF;
-
+    -- Ausência JUSTIFICADA (férias/atestado/licença) excusa QUALQUER dia, inclusive
+    -- de troca — checa antes do bloco de troca.
     v_is_absent := public.is_employee_absent_on(p_employee_id, v_record.record_date);
     IF v_is_absent THEN
       v_days_excused := v_days_excused + 1;
       v_prev_week_key := v_week_key; CONTINUE;
     END IF;
 
-    v_expected_for_day := COALESCE(public.get_employee_expected_minutes(p_employee_id, v_record.record_date), 0);
-
-    -- Dia trocado (work_date): força dia útil NORMAL — ignora feriado e usa a jornada
-    -- padrão da escala, mesmo caindo em dom/sáb. Só o excedente vira HE (semanal 50%).
-    IF v_is_swap_worked THEN
-      v_is_holiday := false;
-      IF v_expected_for_day = 0 THEN v_expected_for_day := v_std_day_min; END IF;
+    -- Troca de dia (workday_swaps): work_date E off_date são DIAS FLEX. TRABALHADO →
+    -- dia útil NORMAL (jornada da escala; só o excedente vira HE 50%, nunca 100% de
+    -- fim de semana/feriado). NÃO trabalhado → NEUTRO: sem falta nem déficit (o
+    -- funcionário pode ter tirado a folga da troca). Tratar work_date e off_date igual
+    -- elimina a divergência quando uma data é work_date de uma troca e off_date de
+    -- outra, e alinha com a folha (computePeriodFolha) e o espelho.
+    IF v_is_swap_worked OR v_is_swap_off THEN
+      IF v_record.has_record THEN
+        -- Esperado individual do dia; se 0 (dom/sáb não-escalado), usa a jornada padrão.
+        v_expected_for_day := COALESCE(
+          NULLIF(public.get_employee_expected_minutes(p_employee_id, v_record.record_date), 0),
+          v_std_day_min);
+        v_sum := public.calculate_day_summary(v_record.punches, v_expected_for_day, v_tolerance_min, v_min_overtime, false, true);
+        IF (v_sum->>'status') IN ('partial','inconsistent','irregular') THEN
+          v_days_partial := v_days_partial + 1;
+        ELSIF (v_sum->>'worked_min')::int > 0 THEN
+          v_days_worked := v_days_worked + 1;
+          v_week_worked   := v_week_worked   + (v_sum->>'worked_min')::int;
+          v_week_expected := v_week_expected + (v_sum->>'expected_min')::int;
+        END IF;
+        -- worked_min = 0 (batida vazia) → neutro, sem falta.
+      END IF;
+      -- sem registro → neutro (sem déficit pra quem não trabalhou a ponte).
+      v_prev_week_key := v_week_key; CONTINUE;
     END IF;
 
-    IF (v_is_holiday OR v_record.dow = 7) AND NOT v_is_swap_worked THEN
+    v_expected_for_day := COALESCE(public.get_employee_expected_minutes(p_employee_id, v_record.record_date), 0);
+
+    IF v_is_holiday OR v_record.dow = 7 THEN
       IF v_record.has_record THEN
         v_sum := public.calculate_day_summary(v_record.punches, 0, v_tolerance_min, v_min_overtime, true);
         IF (v_sum->>'worked_min')::int > 0 THEN
@@ -301,8 +321,7 @@ BEGIN
       v_prev_week_key := v_week_key; CONTINUE;
     END IF;
 
-    -- Dia trocado é sempre dia útil (BETWEEN check inclui domingo via v_is_swap_worked).
-    v_sum := public.calculate_day_summary(v_record.punches, v_expected_for_day, v_tolerance_min, v_min_overtime, false, (v_is_swap_worked OR v_record.dow BETWEEN 1 AND 5));
+    v_sum := public.calculate_day_summary(v_record.punches, v_expected_for_day, v_tolerance_min, v_min_overtime, false, (v_record.dow BETWEEN 1 AND 5));
 
     IF (v_sum->>'status') IN ('partial','inconsistent','irregular') THEN
       v_days_partial := v_days_partial + 1;

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  useWorkSchedules, useHolidays, useTimeRecords, useImportBatches,
+  useWorkSchedules, useHolidays, useSwapSets, useTimeRecords, useImportBatches,
   calculateDaySummary, WorkSchedule,
 } from '@/hooks/useTimesheet';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -25,6 +25,7 @@ interface TimeAnalyticsResult {
 export function useTimeAnalytics(params: TimeAnalyticsParams) {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
+  const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
   const { data: records = [], isLoading: recordsLoading } = useTimeRecords(
     undefined,
     params.date_from,
@@ -85,12 +86,13 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       empRecords.forEach(rec => {
         const date = new Date(rec.record_date + 'T12:00:00');
         const dayOfWeek = date.getDay();
-        const isHol = holidays.some(h => {
+        const swapMode = swapModeFor(rec.record_date);
+        const isHol = !swapMode && holidays.some(h => {
           if (h.recurring) return h.holiday_date.slice(5) === rec.record_date.slice(5);
           return h.holiday_date === rec.record_date;
         });
         const punches = rec.punches as string[];
-        const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol);
+        const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol, swapMode);
 
         if (summary.expectedMinutes > 0) {
           totalDaysExpected++;
@@ -133,7 +135,7 @@ export function useTimeAnalytics(params: TimeAnalyticsParams) {
       total_exceptions: exceptions.filter(e => e.status === 'pending').length,
       data_quality_score: Math.round(dataQualityScore * 10) / 10,
     };
-  }, [records, employees, holidays, defaultSchedule, schedules, exceptions]);
+  }, [records, employees, holidays, swapWorkedSet, swapOffSet, swapModeFor, defaultSchedule, schedules, exceptions]);
 
   return { data: analytics, isLoading: recordsLoading };
 }

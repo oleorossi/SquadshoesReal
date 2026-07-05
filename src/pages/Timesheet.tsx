@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import {
   useWorkSchedules, useAddWorkSchedule, useUpdateWorkSchedule, useDeleteWorkSchedule,
   useHolidays, useAddHoliday, useDeleteHoliday,
-  useWorkdaySwaps, useAddWorkdaySwap, useDeleteWorkdaySwap, buildSwapSets,
+  useWorkdaySwaps, useAddWorkdaySwap, useDeleteWorkdaySwap, useSwapSets,
   useTimeRecords, useImportBatches, useImportTimeRecords, useDeleteBatch,
   useAllImportsDateRange,
   parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary,
@@ -492,7 +492,7 @@ function TimesheetRecordsTab() {
   );
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
-  const { data: workdaySwaps = [] } = useWorkdaySwaps();
+  const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
   const { data: employees = [] } = useEmployees();
   const importRecords = useImportTimeRecords();
   const updateEmployee = useUpdateEmployee();
@@ -711,12 +711,10 @@ function TimesheetRecordsTab() {
   // Pre-compute holiday sets for O(1) lookups
   const holidayDates = useMemo(() => new Set(holidays.filter(h => !h.recurring).map(h => h.holiday_date)), [holidays]);
   const recurringHolidayMMDD = useMemo(() => new Set(holidays.filter(h => h.recurring).map(h => h.holiday_date.slice(5))), [holidays]);
-  // Troca de dia: dia trabalhado prevalece sobre feriado (é lido como dia normal).
-  const { swapWorkedSet, swapOffSet } = useMemo(() => buildSwapSets(workdaySwaps), [workdaySwaps]);
+  // Troca de dia: qualquer data de troca (work/off) prevalece sobre feriado — o dia
+  // é lido pela regra flex (normal quando trabalhado, neutro quando não).
   const isHolidayDate = (dateStr: string) =>
-    !swapWorkedSet.has(dateStr) && (holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5)));
-  const swapModeFor = (dateStr: string): 'worked' | 'off' | undefined =>
-    swapWorkedSet.has(dateStr) ? 'worked' : swapOffSet.has(dateStr) ? 'off' : undefined;
+    !swapWorkedSet.has(dateStr) && !swapOffSet.has(dateStr) && (holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5)));
 
   const calcSummariesForEmployee = (empName: string) => {
     const empRecords = employeeGroups.get(empName) || [];
@@ -784,7 +782,7 @@ function TimesheetRecordsTab() {
   const summaries = useMemo(() => {
     if (selectedEmployee === '__all__' || !selectedEmployee) return [];
     return calcSummariesForEmployee(selectedEmployee);
-  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, workdaySwaps, batchDateRange, employees]);
+  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, swapWorkedSet, swapOffSet, batchDateRange, employees]);
 
   // Folha líquida do período de UM funcionário (a MESMA conta da aba Folha): monta os dias
   // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
@@ -817,7 +815,7 @@ function TimesheetRecordsTab() {
       };
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, holidayDates, workdaySwaps, schedules, batchDateRange, employees]);
+  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, holidayDates, swapWorkedSet, swapOffSet, schedules, batchDateRange, employees]);
 
   // Individual employee period (weekly-based) — usado só pro Espelho/banco (regime legal).
   const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
@@ -829,7 +827,7 @@ function TimesheetRecordsTab() {
     if (!selectedEmployee || selectedEmployee === '__all__' || summaries.length === 0) return null;
     return folhaForEmployee(selectedEmployee, summaries);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmployee, summaries, holidayDates, workdaySwaps, schedules, employees, defaultSchedule]);
+  }, [selectedEmployee, summaries, holidayDates, swapWorkedSet, swapOffSet, schedules, employees, defaultSchedule]);
 
   const totalWorked = folhaInd?.worked_minutes ?? 0;
   const totalExpected = folhaInd?.expected_minutes ?? 0;

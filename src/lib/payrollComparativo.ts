@@ -155,7 +155,9 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
       const q2 = folha(`${period}-16`, monthTo, q2Days);
       const matchedDays = Array.from(empPunches.keys()).filter(d => d >= range.from && d <= range.to).length;
       const advMes = empAdvances.reduce((s, a) => s + a.amount, 0);
-      const printDays = coveredDays.map(d => ({ date: d.date, dow: d.dow, punches: empPunches.get(d.date) || [], isHoliday: !swapWorkedSet.has(d.date) && holidaysSet.has(d.date), swap: swapModeFor(d.date) }));
+      // isHoliday cru; a precedência da troca (feriado ignorado em dia de troca) é
+      // resolvida dentro de calculateDaySummary via o param `swap` — não duplicar aqui.
+      const printDays = coveredDays.map(d => ({ date: d.date, dow: d.dow, punches: empPunches.get(d.date) || [], isHoliday: holidaysSet.has(d.date), swap: swapModeFor(d.date) }));
 
       return {
         id: emp.id, ext: extKey || undefined, name: emp.name,

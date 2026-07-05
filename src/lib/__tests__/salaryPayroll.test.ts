@@ -295,6 +295,44 @@ describe('computePeriodFolha — troca de dia / compensação (workday_swaps)', 
     expect(r.falta_days).toBe(0);   // folga, não falta
     expect(r.workdays).toBe(0);     // dia sem jornada esperada
   });
+
+  it('dia de troca (work_date) SEM batida = neutro, NÃO vira falta', () => {
+    // Ponte registrada pra todos, mas o funcionário não trabalhou (nem bateu ponto).
+    // Regra flex: sem batida = neutro — não penaliza quem não trabalhou a ponte.
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, swapWorkedSet: new Set(['2026-05-03']), punchesByDate: new Map(),
+    });
+    expect(r.falta_days).toBe(0);   // não é falta
+    expect(r.workdays).toBe(0);     // neutro, fora do esperado
+    expect(r.he_minutes).toBe(0);
+  });
+
+  it('folga compensatória (off_date) TRABALHADA lê como dia normal (não 1,5×)', () => {
+    // Funcionário trabalha na folga: conta como dia útil normal, não hora extra.
+    const punches = new Map<string, string[]>([['2026-05-04', full]]); // 9h numa segunda-folga
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED,
+      holidaysSet: NO_HOL, swapOffSet: new Set(['2026-05-04']), punchesByDate: punches,
+    });
+    expect(r.workdays).toBe(1);
+    expect(r.he_minutes).toBe(0);       // jornada normal → sem HE
+    expect(r.premium_minutes).toBe(0);  // sem 1,5×
+    expect(r.falta_days).toBe(0);
+  });
+
+  it('colisão work_date×off_date na mesma data: tratamento idêntico (dia flex)', () => {
+    // 2026-05-03 (domingo) é work_date de uma troca E off_date de outra. Como ambos
+    // são dia flex, o resultado é o mesmo independente da precedência.
+    const punches = new Map<string, string[]>([['2026-05-03', full]]);
+    const both = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED, holidaysSet: NO_HOL,
+      swapWorkedSet: new Set(['2026-05-03']), swapOffSet: new Set(['2026-05-03']), punchesByDate: punches,
+    });
+    expect(both.he_minutes).toBe(0);
+    expect(both.premium_minutes).toBe(0);
+    expect(both.workdays).toBe(1);
+  });
 });
 
 describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => {

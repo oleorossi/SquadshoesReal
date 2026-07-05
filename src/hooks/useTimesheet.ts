@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -601,6 +602,10 @@ export interface DaySummary {
   isHoliday: boolean;
   isAbsent: boolean;
   status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete' | 'irregular' | 'inconsistent';
+  /** Dia de troca (workday_swaps) trabalhado → deve ser lido como dia útil NORMAL
+   *  no split de horas (sem 1,5× de fim de semana/feriado). Propagado pra folha
+   *  impressa (printTimesheet) e demais consumidores que re-derivam o split. */
+  swapWorked?: boolean;
 }
 
 export function calculateDaySummary(
@@ -625,13 +630,12 @@ export function calculateDaySummary(
   // meio-dia (regra splitDayMinutes); sem dedupe de 5min (a folha não dedupa).
   // A função SQL calculate_day_summary é atualizada em LOCKSTEP (mesma regra) e o
   // histórico fica CONGELADO (folhas/saldos fechados não são recalculados).
-  // Troca de dia: 'worked' força dia útil normal (ignora feriado/fim de semana);
-  // 'off' força folga (dia sem jornada). Prevalece sobre a regra da escala.
-  const swapWorked = swap === 'worked';
-  const swapOff = swap === 'off';
-  const effHoliday = swapWorked ? false : isHoliday;
-  const isWorkday = swapOff ? false : (swapWorked || (worksOnDow(schedule, dayOfWeek) && !isHoliday));
-  const expectedMinutes = isWorkday ? expectedDayMinutes(schedule) : 0;
+  // Troca de dia (workday_swaps): 'worked'/'off' são DIAS FLEX — lê como dia útil
+  // NORMAL quando trabalhado (ignora feriado/fim de semana no split), e NEUTRO
+  // (folga, não falta) quando não trabalhado. Trata work_date e off_date igual —
+  // o rótulo fica no chamador; o MOTOR é o mesmo. Prevalece sobre a regra da escala.
+  const isSwap = swap === 'worked' || swap === 'off';
+  const effHoliday = isSwap ? false : isHoliday;
   // schedule pode chegar NULL (ex.: escala ainda não carregada / funcionário sem
   // escala e sem padrão). worksOnDow/expectedDayMinutes já tratam null; este acesso
   // direto NÃO tratava e quebrava ("null is not an object (t.tolerance_minutes)").
@@ -640,8 +644,15 @@ export function calculateDaySummary(
   const tolerance = 0;
 
   const sp = punches.length >= 2
-    ? splitDayMinutes(punches, dayOfWeek, effHoliday, swapWorked)
+    ? splitDayMinutes(punches, dayOfWeek, effHoliday, isSwap)
     : { normal: 0, premium: 0, incomplete: punches.length === 1 };
+
+  const workedMinutes = sp.incomplete ? 0 : sp.normal + sp.premium;
+  // Dia FLEX de troca: é dia útil só quando efetivamente trabalhado; sem batida é
+  // NEUTRO (não vira falta). Fora de troca, dia útil = regra da escala.
+  const isWorkday = isSwap ? workedMinutes > 0 : (worksOnDow(schedule, dayOfWeek) && !isHoliday);
+  // Esperado: dia útil (ou pendente de troca) usa a jornada da escala; neutro = 0.
+  const expectedMinutes = (isWorkday || (isSwap && sp.incomplete)) ? expectedDayMinutes(schedule) : 0;
 
   // Batida ímpar / 1 batida → INCONSISTENTE → PENDENTE (resolve na aba Pendências).
   if (sp.incomplete) {
@@ -655,17 +666,17 @@ export function calculateDaySummary(
       isHoliday: effHoliday,
       isAbsent: false,
       status: 'irregular',
+      swapWorked: isSwap,
     };
   }
 
-  const workedMinutes = sp.normal + sp.premium;
   // HE NÃO é por-dia (é semanal/período) — calculada fora (calculateWeeklyPeriod / folha).
   const overtimeMinutes = 0;
 
   let status: DaySummary['status'];
   if (workedMinutes === 0) {
-    // Folga compensatória (swapOff) sem batida cai em isWorkday=false → 'weekend'
-    // (folga, não falta). Dia útil sem batida = falta.
+    // Dia de troca sem batida cai em isWorkday=false → 'weekend' (neutro, não falta).
+    // Dia útil de escala sem batida = falta.
     status = effHoliday ? 'holiday' : isWorkday ? 'absent' : 'weekend';
   } else if (effHoliday) {
     status = 'holiday';
@@ -689,6 +700,7 @@ export function calculateDaySummary(
     isHoliday: effHoliday,
     isAbsent: workedMinutes === 0 && isWorkday,
     status,
+    swapWorked: isSwap && workedMinutes > 0,
   };
 }
 
@@ -839,6 +851,25 @@ export function buildSwapSets(swaps: WorkdaySwap[] | undefined): {
     if (s.off_date) swapOffSet.add(s.off_date);
   }
   return { swapWorkedSet, swapOffSet };
+}
+
+/** Hook compartilhado das trocas de dia: os dois sets + o resolvedor de modo por
+ *  data (`swapModeFor`). FONTE ÚNICA pra todos os consumidores (folha, ponto,
+ *  espelho, fechamento, KPIs) — evita cada tela refazer o query+memo e garante a
+ *  MESMA regra em todo lugar. `swapModeFor` retorna 'worked'/'off'/undefined; a
+ *  distinção é só rótulo (o cálculo trata os dois como DIA FLEX igual). */
+export function useSwapSets(): {
+  swapWorkedSet: Set<string>;
+  swapOffSet: Set<string>;
+  swapModeFor: (date: string) => 'worked' | 'off' | undefined;
+} {
+  const { data: swaps = [] } = useWorkdaySwaps();
+  return useMemo(() => {
+    const { swapWorkedSet, swapOffSet } = buildSwapSets(swaps);
+    const swapModeFor = (date: string): 'worked' | 'off' | undefined =>
+      swapWorkedSet.has(date) ? 'worked' : swapOffSet.has(date) ? 'off' : undefined;
+    return { swapWorkedSet, swapOffSet, swapModeFor };
+  }, [swaps]);
 }
 
 export function useTimeRecords(batch?: string, startDate?: string, endDate?: string) {
