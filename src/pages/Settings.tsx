@@ -26,7 +26,7 @@ import { getMenuItemsGrouped } from '@/data/navigation';
 import { isActionAllowed } from '@/hooks/useAccessControl';
 import { buildPermissionTemplates } from '@/data/permissionTemplates';
 import type { PermissionGrant } from '@/hooks/useUserManagement';
-import { Plus } from '@phosphor-icons/react';
+import { Plus, Checks } from '@phosphor-icons/react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import RepresentativesPanel from '@/components/settings/RepresentativesPanel';
@@ -245,6 +245,7 @@ function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tela ou rota..." className="pl-8 h-9 text-xs" />
         </div>
         <div className="hidden sm:flex items-center gap-1 pr-0.5">
+          <span className="inline-flex w-8 items-center justify-center text-[10px] uppercase tracking-wide text-muted-foreground/50" title="Marcar Ver+Criar+Editar+Excluir na linha">Tudo</span>
           {ACTION_META.map(a => (
             <span key={a.key} className="inline-flex w-8 items-center justify-center text-[10px] uppercase tracking-wide text-muted-foreground/70" title={a.label}>
               {a.label}
@@ -285,13 +286,31 @@ function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles
                 <div className="divide-y">
                   {items.map(it => {
                     const a = grants[it.path] ?? EMPTY_ACTIONS;
+                    const allOn = a.view && a.create && a.edit && a.delete;
                     return (
-                      <div key={it.path} className={cn('flex items-center gap-3 px-3 py-1.5 transition-colors', a.view ? 'bg-primary/[0.04]' : 'hover:bg-muted/20')}>
+                      <div key={it.path} className={cn('flex items-center gap-3 border-l-2 px-3 py-1.5 transition-colors', a.view ? 'border-l-primary bg-primary/[0.04]' : 'border-l-transparent hover:bg-muted/20')}>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate leading-tight">{it.label}</p>
                           <code className="text-[10px] text-muted-foreground">{it.path}</code>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
+                          {/* Marcar tudo na linha: liga Ver+Criar+Editar+Excluir de uma vez
+                              (atalho por linha, ao lado do olho). Se já está tudo ligado, limpa. */}
+                          <button
+                            type="button"
+                            onClick={() => setScreen(it.path, allOn ? null : { ...FULL_ACTIONS })}
+                            title={allOn ? 'Limpar esta linha' : 'Marcar Ver, Criar, Editar e Excluir'}
+                            aria-label="Marcar tudo nesta linha"
+                            aria-pressed={allOn}
+                            className={cn(
+                              'flex h-8 w-8 items-center justify-center rounded-md border transition-colors',
+                              allOn
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-dashed border-border bg-card text-muted-foreground/50 hover:bg-muted/50 hover:text-foreground',
+                            )}
+                          >
+                            <Checks className="h-4 w-4" weight={allOn ? 'bold' : 'regular'} />
+                          </button>
                           {ACTION_META.map(m => (
                             <ActionToggle key={m.key} active={a[m.key]} tone={m.tone} icon={m.icon} label={m.label} onClick={() => toggleAction(it.path, m.key)} />
                           ))}
