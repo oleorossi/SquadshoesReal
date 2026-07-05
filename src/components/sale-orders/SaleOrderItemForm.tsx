@@ -542,8 +542,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return out;
   }, [item.color, sheetSpecs, productGroups, allProducts]);
 
+  // MUTEX tiras × cabedal (TechnicalSheets: habilitar tiras limpa o cabedal): um
+  // modelo é OU de tiras OU de cabedal, nunca os dois. Ficha COM cabedal NÃO é
+  // modelo de tiras — strap_colors presente aí é órfão (ex.: DS21, cabedal "TIRA",
+  // has_straps=false) e é ignorado no PV. Modelos de tira reais têm cabedal vazio,
+  // então não são afetados.
+  const modelHasCabedal = !!String(sheetSpecs?.upper_material || '').trim();
+
   // Tiras com cor escolhida mas SEM produto no grupo (group_id + color).
   const strapMissing = useMemo<{ idx: number; color: string; group_name: string; group_id: string }[]>(() => {
+    if (modelHasCabedal) return [];
     const straps = (item.strap_colors as any[]) || [];
     return straps.map((s: any, idx: number) => {
       if (!s?.color || !s?.group_id) return null;
@@ -554,7 +562,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         p.group_id === s.group_id && (p.color || '').trim().toLowerCase() === target && p.active !== false);
       return hasProduct ? null : { idx, color: s.color, group_name: s.group_name || '', group_id: s.group_id };
     }).filter(Boolean) as any;
-  }, [item.strap_colors, allProducts, productGroups]);
+  }, [item.strap_colors, allProducts, productGroups, modelHasCabedal]);
 
   const hasColorIssue = coverColorIssues.length > 0 || strapMissing.length > 0;
   const colorIssueKey = hasColorIssue
@@ -700,10 +708,23 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // pré-preenchemos quando a cor está vazia e mantemos editável pra não quebrar
   // o débito da forração por cor.
   const hasStrapsEffective = useMemo(() => {
+    if (modelHasCabedal) return false; // cabedal presente → não é modelo de tiras (MUTEX)
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
     return itemStraps.length > 0 || !!selectedRef?.has_straps || refStrapDefs.length > 0;
-  }, [item.strap_colors, selectedRef?.has_straps, selectedRef?.strap_colors]);
+  }, [item.strap_colors, selectedRef?.has_straps, selectedRef?.strap_colors, modelHasCabedal]);
+
+  // Limpa strap_colors órfão quando o modelo é de CABEDAL (MUTEX tiras×cabedal).
+  // Cobre a corrida do sheetSpecs (query async separada do selectedRef) e PVs já
+  // salvos com tira órfã: com item.strap_colors vazio, a seção "Cores das Tiras"
+  // não renderiza (gate por strap_colors.length), o guard de save não bloqueia e
+  // o item não grava tira fantasma no débito.
+  useEffect(() => {
+    if (modelHasCabedal && Array.isArray(item.strap_colors) && item.strap_colors.length > 0) {
+      const { index: idx, onUpdate: update } = latestRef.current;
+      update(idx, 'strap_colors', []);
+    }
+  }, [modelHasCabedal, item.strap_colors]);
 
   // Controle da resolução de preço da tabela (com price-break por quantidade):
   // lastPricedColor evita reaplicar à toa; lastAppliedTablePrice guarda o último
@@ -739,7 +760,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // FIX: derivar — se a ficha tem strap_colors.length>0, considera que
     // tem tiras (independente do flag has_straps).
     const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
-    const refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0;
+    const refHasStrapsEffective = (!!selectedRef?.has_straps || refStrapDefs.length > 0) && !modelHasCabedal;
     if (strapSyncedForRef.current !== refIdForStraps) {
       strapSyncedForRef.current = refIdForStraps;
 
