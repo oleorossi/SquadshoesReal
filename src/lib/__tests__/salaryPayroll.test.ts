@@ -233,6 +233,15 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
     expect(r.he_minutes).toBe(240); // 4h no feriado
   });
 
+  it('falta_dates lista as datas de falta (dia útil coberto sem batida)', () => {
+    // seg/ter com batida; qua/qui/sex sem batida → 3 faltas (period sem clamp).
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05']) punches.set(d, full);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.falta_days).toBe(3);
+    expect(r.falta_dates).toEqual(['2026-05-06', '2026-05-07', '2026-05-08']);
+  });
+
   it('maxCoveredDate (clamp) ignora dias não importados — não viram falta', () => {
     const punches = new Map<string, string[]>();
     for (const d of ['2026-05-04', '2026-05-05', '2026-05-06']) punches.set(d, full);

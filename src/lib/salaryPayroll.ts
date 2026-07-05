@@ -111,6 +111,9 @@ export interface SalaryPayrollResult {
   workdays: number;        // dias úteis esperados no período coberto
   worked_days: number;     // dias úteis com alguma hora trabalhada
   falta_days: number;
+  /** Datas (YYYY-MM-DD) dos dias úteis sem batida = FALTAS. Base do Relatório de
+   *  Faltas (calendário). Vazio em remoto/diarista (não há falta). */
+  falta_dates?: string[];
   falta_desconto: number;  // R$ (faltas × valor-dia)
   /** Dias úteis sem batida cobertos por ausência justificada (abonados, sem desconto). */
   excused_days?: number;
@@ -204,6 +207,7 @@ export function calculateSalaryPayroll(
   let atrasoMin = 0;
   const lateDays: { date: string; minutes: number }[] = [];  // atraso/saída-cedo por dia (relatório)
   const heDays: { date: string; minutes: number; weekend?: boolean }[] = [];  // hora extra por dia (relatório)
+  const faltaDates: string[] = [];  // datas de falta (dia útil sem batida) — relatório de faltas
 
   for (const d of days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -245,6 +249,7 @@ export function calculateSalaryPayroll(
         // abonada: não conta falta nem desconta. Senão, falta (desconta 1 valor-dia).
         if (d.excused) { excusedDays++; continue; }
         faltaDays++;
+        faltaDates.push(d.date);
         continue;
       }
       workedDays++;
@@ -292,6 +297,7 @@ export function calculateSalaryPayroll(
     workdays,
     worked_days: workedDays,
     falta_days: faltaDays,
+    falta_dates: faltaDates,
     falta_desconto: round2(faltaDesconto),
     excused_days: excusedDays,
     atraso_minutes: atrasoMin,
