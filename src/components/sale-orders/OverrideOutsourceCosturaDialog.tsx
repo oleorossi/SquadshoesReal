@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { useUpdateSaleOrderStatus } from '@/hooks/useSaleOrders';
 import { toast } from 'sonner';
 import { Warning as AlertTriangle, Truck, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 
@@ -44,6 +45,7 @@ export function OverrideOutsourceCosturaDialog({ open, saleOrderId, onClose }: P
   const [contractorId, setContractorId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const updateStatus = useUpdateSaleOrderStatus();
 
   useEffect(() => {
     if (!open || !saleOrderId) return;
@@ -84,14 +86,32 @@ export function OverrideOutsourceCosturaDialog({ open, saleOrderId, onClose }: P
       toast.error('Selecione o contractor que vai receber a costura.');
       return;
     }
-    if (ops.length === 0) {
-      toast.warning('Nenhuma OP encontrada pra terceirizar.');
-      onClose();
-      return;
-    }
     setCommitting(true);
     try {
-      const assignments = ops.map(op => ({
+      let effectiveOps = ops;
+      // PV recém-criado ainda não tem OPs — elas nascem na APROVAÇÃO (trigger
+      // ops-auto-create-on-approval). "Aprovar e terceirizar já": aprova o PV pela
+      // mutação canônica do app (cria as OPs + estágios/reservas), busca as OPs
+      // recém-criadas e segue pra terceirização. O usuário optou por isso.
+      if (effectiveOps.length === 0 && saleOrderId) {
+        await updateStatus.mutateAsync({ id: saleOrderId, status: 'Aprovado' });
+        const { data: created } = await supabase.from('orders')
+          .select('id, order_number')
+          .eq('sale_order_id', saleOrderId);
+        effectiveOps = (created || []) as Array<{ id: string; order_number: string }>;
+        setOps(effectiveOps);
+        if (effectiveOps.length === 0) {
+          toast.warning('PV aprovado, mas nenhuma OP foi criada — confira ficha/estoque e terceirize pela aba Terceirizados.');
+          onClose();
+          return;
+        }
+      }
+      if (effectiveOps.length === 0) {
+        toast.warning('Nenhuma OP encontrada pra terceirizar.');
+        onClose();
+        return;
+      }
+      const assignments = effectiveOps.map(op => ({
         order_id: op.id,
         sector: 'Costura',
         contractor_id: contractorId,
@@ -126,9 +146,14 @@ export function OverrideOutsourceCosturaDialog({ open, saleOrderId, onClose }: P
           <DialogDescription className="space-y-2 pt-1">
             <span className="block">
               Esse PV foi salvo com data <strong>anterior à mínima viável</strong>. Pra liberar
-              capacidade da fábrica, a Costura das {ops.length} OP{ops.length === 1 ? '' : 's'} pode
+              capacidade da fábrica, a Costura {ops.length === 0 ? 'das OPs deste PV' : `das ${ops.length} OP${ops.length === 1 ? '' : 's'}`} pode
               sair pra um contractor externo.
             </span>
+            {ops.length === 0 && (
+              <span className="block text-amber-700 dark:text-amber-400">
+                Este PV ainda não tem OPs (elas nascem na aprovação). Ao confirmar, o PV é <strong>aprovado</strong> — as OPs são criadas e a Costura já sai terceirizada pro prestador escolhido.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -183,11 +208,11 @@ export function OverrideOutsourceCosturaDialog({ open, saleOrderId, onClose }: P
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={committing || !contractorId || ops.length === 0}
+            disabled={committing || !contractorId}
             className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
           >
             {committing ? <Truck className="h-4 w-4 animate-pulse" /> : <CheckCircle2 className="h-4 w-4" />}
-            Terceirizar costura
+            {committing ? 'Processando...' : ops.length === 0 ? 'Aprovar e terceirizar' : 'Terceirizar costura'}
           </Button>
         </DialogFooter>
       </DialogContent>
