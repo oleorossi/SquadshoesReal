@@ -1,65 +1,62 @@
-import { useMemo, useState } from 'react';
-import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, FolderOpen, CaretDown as ChevronDown, CaretUp as ChevronUp, Warning as AlertTriangle, Package, Stack as Layers } from '@phosphor-icons/react';
-import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
+import { useRef, useState } from 'react';
+import { CircleNotch as Loader2, Plus, Warning as AlertTriangle, FolderOpen, Sparkle, ArrowsLeftRight, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
-import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { useGroups, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
-import SupplierPanel from '@/components/groups/SupplierPanel';
+import { useGroupStockRollups } from '@/hooks/useGroupOrganization';
 import GroupDialog from '@/components/groups/GroupDialog';
+import GroupCreateDialog from '@/components/groups/GroupCreateDialog';
 import GroupItemsManager from '@/components/groups/GroupItemsManager';
+import GroupStockTree, { type ProductLite } from '@/components/groups/GroupStockTree';
+import MoveGroupsDialog from '@/components/groups/MoveGroupsDialog';
+import FamilySuggestionsDialog from '@/components/groups/FamilySuggestionsDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { flattenGroupTree } from '@/lib/groupHierarchy';
 import { sectorLabel } from '@/lib/categoryFromGroup';
 import { useCan } from '@/hooks/useAccessControl';
+
+type CreateCtx = { key: number; sector?: string; parentId?: string | null; lock?: boolean; title?: string };
 
 export default function Groups() {
   const { data: groups = [], isLoading, isError } = useGroups();
   const { data: products = [] } = useProducts();
+  const { data: rollups = new Map() } = useGroupStockRollups();
   const deleteGroup = useDeleteGroup();
   const perm = useCan('/grupos');
 
-  const sel = useMarqueeSelection(groups, (g) => g.id);
-  const handleBulkDeleteGroups = async () => {
-    const ids = Array.from(sel.selectedIds);
-    const sampleLines = groups
-      .filter(g => sel.selectedIds.has(g.id))
-      .slice(0, 5)
-      .map(g => `• ${g.name}`);
+  const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
+  const [itemsGroup, setItemsGroup] = useState<ProductGroup | null>(null);
+  const [createCtx, setCreateCtx] = useState<CreateCtx | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [selectedLeafIds, setSelectedLeafIds] = useState<Set<string>>(new Set());
+  const keyRef = useRef(0);
+
+  const toggleLeaf = (id: string) => setSelectedLeafIds(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  const clearSelection = () => setSelectedLeafIds(new Set());
+
+  const openCreate = (ctx: Omit<CreateCtx, 'key'>) => setCreateCtx({ key: ++keyRef.current, ...ctx });
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedLeafIds);
+    const sampleLines = groups.filter(g => selectedLeafIds.has(g.id)).slice(0, 5).map(g => `• ${g.name}`);
     await confirmAndBulkDelete({
       ids,
       entityLabel: 'grupo',
       sampleLines,
       deleteOne: (id) => deleteGroup.mutateAsync(id),
-      onAfter: () => sel.clear(),
+      onAfter: clearSelection,
     });
   };
-
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
-  const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
-  const [itemsGroup, setItemsGroup] = useState<ProductGroup | null>(null);
-
-  const openAdd = () => setDialogOpen(true);
-  const openEdit = (g: ProductGroup) => { setEditGroup(g); };
-
-  const countProducts = (groupId: string) => products.filter(p => p.group_id === groupId).length;
-
-  // Ordem hierárquica (pai → filhos indentados), em vez de alfabética plana.
-  const treeGroups = useMemo(() => flattenGroupTree(groups), [groups]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-
   if (isError) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
@@ -75,15 +72,23 @@ export default function Groups() {
       <div className="space-y-5 page-enter">
         <EditorialPageHeader
           sectionLabel="ESTOQUE · GRUPOS"
-          title="Grupos de Produtos"
-          description="Organize produtos em grupos com fornecedores, materiais e informações técnicas"
+          title="Grupos de Estoque"
+          description="Organize o estoque em Setor → Família → Grupo, com saldo, valor e reservas por nível"
           actions={
-            perm.canCreate && (
-              <Button onClick={openAdd} className="gap-2">
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Novo Grupo</span>
-              </Button>
-            )
+            <div className="flex flex-wrap items-center gap-2">
+              {perm.canCreate && (
+                <Button variant="outline" onClick={() => setSuggestOpen(true)} className="gap-2">
+                  <Sparkle className="h-4 w-4" />
+                  <span className="hidden sm:inline">Sugestões de família</span>
+                </Button>
+              )}
+              {perm.canCreate && (
+                <Button onClick={() => openCreate({ title: 'Novo Grupo de Material' })} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Novo Grupo</span>
+                </Button>
+              )}
+            </div>
           }
         />
 
@@ -92,105 +97,46 @@ export default function Groups() {
             <EmptyState
               icon={FolderOpen}
               title="Nenhum grupo cadastrado"
-              description="Crie o primeiro grupo de produtos para organizar fornecedores e materiais."
-              action={perm.canCreate ? <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button> : undefined}
+              description="Crie o primeiro grupo de produtos para organizar o estoque por setor e família."
+              action={perm.canCreate ? <Button onClick={() => openCreate({ title: 'Novo Grupo de Material' })} className="gap-2"><Plus className="h-4 w-4" />Novo Grupo</Button> : undefined}
             />
           </Panel>
         ) : (
-        <Panel
-          eyebrow="ESTOQUE · GRUPOS"
-          title="Grupos de Produtos"
-          subtitle={`${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'}`}
-          flush
-        >
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
-                <TableHead className="w-8">
-                  <Checkbox
-                    checked={groups.length > 0 && groups.every(g => sel.isSelected(g.id))}
-                    onCheckedChange={(v) => groups.forEach(g => { if (!!v !== sel.isSelected(g.id)) sel.toggle(g.id); })}
-                    aria-label="Selecionar todos"
-                  />
-                </TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>Setor</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead className="text-center">Produtos</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {treeGroups.map(g => {
-                  const isExpanded = expandedGroup === g.id;
-                  return (
-                    <Collapsible key={g.id} asChild open={isExpanded} onOpenChange={() => setExpandedGroup(isExpanded ? null : g.id)}>
-                      <>
-                        <TableRow className={sel.isSelected(g.id) ? "bg-primary/5 group" : "group"}>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={sel.isSelected(g.id)}
-                              onCheckedChange={() => sel.toggle(g.id)}
-                              aria-label={`Selecionar ${g.name}`}
-                            />
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            <span className="flex items-center gap-1.5" style={{ paddingLeft: g.depth * 20 }}>
-                              {g.depth > 0 && <span className="text-muted-foreground">└</span>}
-                              {g.name}
-                              {g.childCount > 0 && (
-                                <Badge variant="secondary" className="h-4 text-[10px] gap-1 font-mono">
-                                  <Layers className="h-2.5 w-2.5" />{g.childCount}
-                                </Badge>
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-xs">{sectorLabel(g.sector)}</TableCell>
-                          <TableCell className="text-muted-foreground">{g.description || '—'}</TableCell>
-                          <TableCell className="text-center">
-                            <button type="button" onClick={() => setItemsGroup(g)} title="Gerir itens do grupo">
-                              <Badge variant="outline" className="cursor-pointer hover:bg-muted">{countProducts(g.id)}</Badge>
-                            </button>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Gerir itens" onClick={() => setItemsGroup(g)}>
-                                <Package className="h-4 w-4" />
-                              </Button>
-                              {perm.canEdit && (
-                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar grupo" onClick={() => openEdit(g)}>
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              )}
-                              {perm.canDelete && (
-                                <DeleteConfirmButton onConfirm={() => deleteGroup.mutate(g.id)} title="Excluir grupo?" size="h-8 w-8" iconSize="h-4 w-4" />
-                              )}
-                              <CollapsibleTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                </Button>
-                              </CollapsibleTrigger>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                        <CollapsibleContent asChild>
-                          <tr>
-                            <td colSpan={6} className="p-0">
-                              <SupplierPanel groupId={g.id} />
-                            </td>
-                          </tr>
-                        </CollapsibleContent>
-                      </>
-                    </Collapsible>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </Panel>
+          <Panel
+            eyebrow="ESTOQUE · GRUPOS"
+            title="Árvore de Estoque"
+            subtitle={`${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'}`}
+            flush
+          >
+            <GroupStockTree
+              groups={groups}
+              products={products as unknown as ProductLite[]}
+              rollups={rollups}
+              perm={perm}
+              selectedLeafIds={selectedLeafIds}
+              onToggleLeaf={toggleLeaf}
+              onEdit={setEditGroup}
+              onManageItems={setItemsGroup}
+              onDelete={(g) => deleteGroup.mutate(g.id)}
+              onNewFamily={(sector) => openCreate({ sector, parentId: null, lock: true, title: `Nova família em ${sectorLabel(sector)}` })}
+              onNewSubgroup={(family) => openCreate({ sector: family.sector ?? undefined, parentId: family.id, lock: true, title: `Novo subgrupo em ${family.name}` })}
+            />
+          </Panel>
         )}
       </div>
 
-      <GroupDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      {/* Criar grupo / família / subgrupo (mount fresco por contexto) */}
+      {createCtx && (
+        <GroupCreateDialog
+          key={createCtx.key}
+          open
+          onOpenChange={(o) => { if (!o) setCreateCtx(null); }}
+          initialSector={createCtx.sector}
+          initialParentId={createCtx.parentId}
+          lockHierarchy={createCtx.lock}
+          titleText={createCtx.title}
+        />
+      )}
 
       {editGroup && (
         <GroupDialog
@@ -207,18 +153,35 @@ export default function Groups() {
         onOpenChange={(open) => { if (!open) setItemsGroup(null); }}
       />
 
-      {perm.canDelete && (
+      <MoveGroupsDialog
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        groups={groups}
+        rollups={rollups}
+        selectedIds={selectedLeafIds}
+        onDone={clearSelection}
+      />
+
+      <FamilySuggestionsDialog open={suggestOpen} onOpenChange={setSuggestOpen} />
+
+      {selectedLeafIds.size > 0 && (
         <BulkActionsBar
-          selectedIds={sel.selectedIds}
-          onClear={sel.clear}
-          itemLabel={sel.selectedIds.size === 1 ? 'grupo' : 'grupos'}
+          selectedIds={selectedLeafIds}
+          onClear={clearSelection}
+          itemLabel={selectedLeafIds.size === 1 ? 'grupo' : 'grupos'}
           actions={[
             {
-              label: 'Excluir',
-              variant: 'destructive',
-              icon: <Trash2 className="h-3.5 w-3.5" />,
-              onClick: handleBulkDeleteGroups,
+              label: 'Mover para família',
+              variant: 'default',
+              icon: <ArrowsLeftRight className="h-3.5 w-3.5" />,
+              onClick: () => setMoveOpen(true),
             },
+            ...(perm.canDelete ? [{
+              label: 'Excluir',
+              variant: 'destructive' as const,
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: handleBulkDelete,
+            }] : []),
           ]}
         />
       )}

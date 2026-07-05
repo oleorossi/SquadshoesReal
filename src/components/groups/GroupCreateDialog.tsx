@@ -20,6 +20,14 @@ import { cn } from "@/lib/utils";
 interface GroupCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Pré-seleciona o setor (ex.: "Nova família" a partir de um setor da árvore). */
+  initialSector?: string;
+  /** Pré-vincula a uma família (ex.: "Novo subgrupo" dentro de uma família). */
+  initialParentId?: string | null;
+  /** Trava setor + pai (fluxo de subgrupo: o setor segue a família e não deve mudar). */
+  lockHierarchy?: boolean;
+  /** Título do diálogo (default "Novo Grupo de Material"). */
+  titleText?: string;
 }
 
 const parseIntOrNull = (v: string): number | null => {
@@ -28,13 +36,13 @@ const parseIntOrNull = (v: string): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps) {
+export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText }: GroupCreateDialogProps) {
   const [form, setForm] = useState({
     name: "",
     description: "",
-    sector: "" as string,
+    sector: (initialSector ?? "") as string,
     auto_component_sheet: false,
-    parent_group_id: "" as string,
+    parent_group_id: (initialParentId ?? "") as string,
     pairs_per_box_individual: null as number | null,
     pairs_per_box_master: null as number | null,
     pairs_per_box_colmeia: null as number | null,
@@ -45,7 +53,8 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     box_type_fitilho_id: "" as string,
   });
   // Setor segue a sugestão automática pelo nome até o usuário escolher manualmente.
-  const [sectorTouched, setSectorTouched] = useState(false);
+  // Se veio pré-preenchido (família/subgrupo), considera "tocado" pra não sobrescrever.
+  const [sectorTouched, setSectorTouched] = useState(!!initialSector);
 
    const [duplicateMatch, setDuplicateMatch] = useState<any>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
@@ -86,9 +95,9 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     setForm({
       name: "",
       description: "",
-      sector: "",
+      sector: initialSector ?? "",
       auto_component_sheet: false,
-      parent_group_id: "",
+      parent_group_id: initialParentId ?? "",
       pairs_per_box_individual: null,
       pairs_per_box_master: null,
       pairs_per_box_colmeia: null,
@@ -98,7 +107,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
       box_type_colmeia_id: "",
       box_type_fitilho_id: "",
     });
-    setSectorTouched(false);
+    setSectorTouched(!!initialSector);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,7 +122,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
 
     try {
       await addGroup.mutateAsync({
-        name: form.name,
+        name: form.name.trim().toUpperCase(),
         description: form.description,
         sector: form.sector,
         auto_component_sheet: form.auto_component_sheet,
@@ -144,7 +153,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
     >
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo Grupo de Material</DialogTitle>
+          <DialogTitle>{titleText ?? 'Novo Grupo de Material'}</DialogTitle>
         <DialogDescription>O setor define a aba do Estoque onde o grupo aparece.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
@@ -208,6 +217,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
               <Label htmlFor="group-sector">Setor *</Label>
               <Select
                 value={form.sector || undefined}
+                disabled={lockHierarchy}
                 onValueChange={(v) => { setSectorTouched(true); setForm((f) => ({ ...f, sector: v })); }}
               >
                 <SelectTrigger id="group-sector" className="mt-1">
@@ -240,6 +250,7 @@ export default function GroupCreateDialog({ open, onOpenChange }: GroupCreateDia
               </Label>
               <Select
                 value={form.parent_group_id || "__root__"}
+                disabled={lockHierarchy}
                 onValueChange={(v) => setForm((f) => ({ ...f, parent_group_id: v === "__root__" ? "" : v }))}
               >
                 <SelectTrigger id="group-parent" className="mt-1">

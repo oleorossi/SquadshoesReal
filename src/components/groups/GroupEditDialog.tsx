@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Cube as BoxIcon, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
@@ -414,6 +414,14 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
     [childrenByParent, group.id],
   );
 
+  // Modelo Setor → Família → Grupo (specs/grupos-estoque.md):
+  // tem filhos ⇒ família/container (não recebe item direto); sem filhos ⇒ grupo-folha.
+  const isContainer = childrenGroups.length > 0;
+  const parentGroup = useMemo(
+    () => (group.parent_group_id ? allGroups.find(g => g.id === group.parent_group_id) ?? null : null),
+    [group.parent_group_id, allGroups],
+  );
+
   // Grupos que podem virar FILHO: nem o próprio, nem um ancestral, nem já-filho.
   const availableToLinkAsChild = useMemo(
     () => groupsWithDepth.filter(g => g.id !== group.id && !ancestorIds.has(g.id) && g.parent_group_id !== group.id),
@@ -712,12 +720,18 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <div className="min-w-0">
                   <DialogTitle className="truncate text-lg font-bold leading-tight">{group.name}</DialogTitle>
                   <DialogDescription className="sr-only">Edite setor, hierarquia, especificações e itens do grupo.</DialogDescription>
+                  {/* Breadcrumb Setor › Família › Grupo (specs/grupos-estoque.md R15) */}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <span>{sectorLabel(savedSector)}</span>
+                    {parentGroup && (<><span className="opacity-50">›</span><span>{parentGroup.name}</span></>)}
+                    <span className="opacity-50">›</span>
+                    <span className="text-primary">{group.name}</span>
+                  </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    <span className="font-mono uppercase tracking-wider text-[10px]">Editar grupo</span>
-                    <span>·</span>
-                    <Badge variant="outline" className="h-5 gap-1 px-2 font-medium">{sectorLabel(savedSector)}</Badge>
-                    <span>·</span>
-                    <span>{products.length} {products.length === 1 ? 'item' : 'itens'}</span>
+                    <Badge variant="outline" className="h-5 gap-1 px-2 font-medium">
+                      {isContainer ? `família · ${childrenGroups.length} subgrupo(s)` : 'grupo-folha'}
+                    </Badge>
+                    {!isContainer && (<><span>·</span><span>{products.length} {products.length === 1 ? 'item' : 'itens'}</span></>)}
                   </div>
                 </div>
               </div>
@@ -734,6 +748,13 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
               )}
             </div>
           </DialogHeader>
+
+          {isContainer && (
+            <div className="mt-2 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>Esta é uma <strong className="text-foreground">família (container)</strong> — ela <strong className="text-foreground">não recebe itens diretamente</strong>. Os itens vivem nos grupos-folha dela (aba Hierarquia).</span>
+            </div>
+          )}
 
           <Tabs defaultValue={showYieldTab ? "specs" : "general"} className="mt-2">
             <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${3 + (showYieldTab ? 1 : 0) + (show.packaging ? 1 : 0)}, 1fr)` }}>
