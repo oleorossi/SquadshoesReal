@@ -5,7 +5,7 @@ import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet } from '@phosphor-icons/react';
+import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import {
   useWorkSchedules, useAddWorkSchedule, useUpdateWorkSchedule, useDeleteWorkSchedule,
   useHolidays, useAddHoliday, useDeleteHoliday,
+  useWorkdaySwaps, useAddWorkdaySwap, useDeleteWorkdaySwap, buildSwapSets,
   useTimeRecords, useImportBatches, useImportTimeRecords, useDeleteBatch,
   useAllImportsDateRange,
   parseTimesheetXlsx, parseTimesheetTxt, calculateDaySummary,
@@ -365,6 +366,106 @@ function HolidaysTab() {
   );
 }
 
+// ── Trocas de Dia / Compensação Tab ─────────────────────
+// Cadastro de dias trabalhados em TROCA de outro (ponte/compensação). O dia
+// trabalhado é lido como dia útil NORMAL (não vira hora extra), e a folga
+// compensatória não gera falta. Vale pra todos os funcionários (igual feriados).
+function WorkdaySwapsTab() {
+  const { data: swaps = [], isLoading } = useWorkdaySwaps();
+  const addSwap = useAddWorkdaySwap();
+  const deleteSwap = useDeleteWorkdaySwap();
+  const [form, setForm] = useState({ name: '', work_date: '', off_date: '' });
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = () => {
+    if (!form.name || !form.work_date) { toast.error('Preencha descrição e o dia trabalhado'); return; }
+    if (form.off_date && form.off_date === form.work_date) { toast.error('A folga não pode ser o mesmo dia trabalhado'); return; }
+    addSwap.mutate({ name: form.name, work_date: form.work_date, off_date: form.off_date || null });
+    setForm({ name: '', work_date: '', off_date: '' });
+    setAdding(false);
+  };
+
+  const fmtDate = (d?: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+
+  if (isLoading) return <Loader2 className="h-6 w-6 animate-spin mx-auto my-8" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Trocas de Dia</h3>
+          <p className="text-xs text-muted-foreground">
+            Dias trabalhados em troca de outro (ponte/compensação). O dia trabalhado
+            é contado como <span className="font-medium text-foreground">normal</span>, não como hora extra.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setAdding(!adding)} className="gap-1.5">
+          <Plus className="h-4 w-4" /> Nova troca
+        </Button>
+      </div>
+
+      {adding && (
+        <Card>
+          <CardContent className="p-4 flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[150px]">
+              <Label className="text-xs">Descrição</Label>
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="mt-1" placeholder="Ex: Ponte Corpus Christi" />
+            </div>
+            <div className="w-40">
+              <Label className="text-xs">Dia trabalhado</Label>
+              <Input type="date" value={form.work_date} onChange={e => setForm(f => ({ ...f, work_date: e.target.value }))} className="mt-1" />
+            </div>
+            <div className="w-40">
+              <Label className="text-xs">Folga compensatória <span className="text-muted-foreground">(opcional)</span></Label>
+              <Input type="date" value={form.off_date} onChange={e => setForm(f => ({ ...f, off_date: e.target.value }))} className="mt-1" />
+            </div>
+            <Button size="sm" onClick={handleAdd}>Adicionar</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {swaps.length === 0 ? (
+        <Panel flush>
+          <EmptyState
+            icon={ArrowsLeftRight}
+            title="Nenhuma troca cadastrada"
+            description="Cadastre os dias trabalhados em troca de outro para serem lidos como dia normal."
+          />
+        </Panel>
+      ) : (
+        <Panel flush>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Dia trabalhado</TableHead>
+                  <TableHead>Folga compensatória</TableHead>
+                  <TableHead className="w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {swaps.map(s => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium text-sm">{s.name || '—'}</TableCell>
+                    <TableCell className="font-mono text-sm">{fmtDate(s.work_date)}</TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground">{fmtDate(s.off_date)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteSwap.mutate(s.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 // ── Import & Records Tab ──────────────────────────────
 function TimesheetRecordsTab() {
   const { data: batches = [] } = useImportBatches();
@@ -391,6 +492,7 @@ function TimesheetRecordsTab() {
   );
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidays = [] } = useHolidays();
+  const { data: workdaySwaps = [] } = useWorkdaySwaps();
   const { data: employees = [] } = useEmployees();
   const importRecords = useImportTimeRecords();
   const updateEmployee = useUpdateEmployee();
@@ -609,7 +711,12 @@ function TimesheetRecordsTab() {
   // Pre-compute holiday sets for O(1) lookups
   const holidayDates = useMemo(() => new Set(holidays.filter(h => !h.recurring).map(h => h.holiday_date)), [holidays]);
   const recurringHolidayMMDD = useMemo(() => new Set(holidays.filter(h => h.recurring).map(h => h.holiday_date.slice(5))), [holidays]);
-  const isHolidayDate = (dateStr: string) => holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5));
+  // Troca de dia: dia trabalhado prevalece sobre feriado (é lido como dia normal).
+  const { swapWorkedSet, swapOffSet } = useMemo(() => buildSwapSets(workdaySwaps), [workdaySwaps]);
+  const isHolidayDate = (dateStr: string) =>
+    !swapWorkedSet.has(dateStr) && (holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5)));
+  const swapModeFor = (dateStr: string): 'worked' | 'off' | undefined =>
+    swapWorkedSet.has(dateStr) ? 'worked' : swapOffSet.has(dateStr) ? 'off' : undefined;
 
   const calcSummariesForEmployee = (empName: string) => {
     const empRecords = employeeGroups.get(empName) || [];
@@ -637,7 +744,7 @@ function TimesheetRecordsTab() {
         const date = new Date(rec.record_date + 'T12:00:00');
         const dayOfWeek = date.getDay();
         const isHol = isHolidayDate(rec.record_date);
-        const summary = calculateDaySummary(rec.punches as string[], dayOfWeek, empSchedule, isHol);
+        const summary = calculateDaySummary(rec.punches as string[], dayOfWeek, empSchedule, isHol, swapModeFor(rec.record_date));
         return { ...summary, date: rec.record_date, punches: rec.punches as string[] } as DaySummary;
       });
     }
@@ -665,7 +772,7 @@ function TimesheetRecordsTab() {
       const dayOfWeek = cursor.getDay();
       const isHol = isHolidayDate(dateStr);
       const punches = recordMap.get(dateStr) || [];
-      const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol);
+      const summary = calculateDaySummary(punches, dayOfWeek, empSchedule, isHol, swapModeFor(dateStr));
       allDays.push({ ...summary, date: dateStr, punches } as DaySummary);
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -677,7 +784,7 @@ function TimesheetRecordsTab() {
   const summaries = useMemo(() => {
     if (selectedEmployee === '__all__' || !selectedEmployee) return [];
     return calcSummariesForEmployee(selectedEmployee);
-  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, batchDateRange, employees]);
+  }, [selectedEmployee, employeeGroups, defaultSchedule, holidays, workdaySwaps, batchDateRange, employees]);
 
   // Folha líquida do período de UM funcionário (a MESMA conta da aba Folha): monta os dias
   // da escala (esperado/feriado) + batidas e calcula HE líquida / atraso / falta.
@@ -689,7 +796,7 @@ function TimesheetRecordsTab() {
     const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
     return computePeriodFolha({
       salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
-      schedule: sch, holidaysSet: holidayDates, punchesByDate,
+      schedule: sch, holidaysSet: holidayDates, swapWorkedSet, swapOffSet, punchesByDate,
     });
   };
 
@@ -710,7 +817,7 @@ function TimesheetRecordsTab() {
       };
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, holidayDates, schedules, batchDateRange, employees]);
+  }, [selectedEmployee, employeeNames, employeeGroups, defaultSchedule, holidays, holidayDates, workdaySwaps, schedules, batchDateRange, employees]);
 
   // Individual employee period (weekly-based) — usado só pro Espelho/banco (regime legal).
   const periodSummary = useMemo(() => calculateWeeklyPeriod(summaries, defaultSchedule), [summaries, defaultSchedule]);
@@ -722,7 +829,7 @@ function TimesheetRecordsTab() {
     if (!selectedEmployee || selectedEmployee === '__all__' || summaries.length === 0) return null;
     return folhaForEmployee(selectedEmployee, summaries);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmployee, summaries, holidayDates, schedules, employees, defaultSchedule]);
+  }, [selectedEmployee, summaries, holidayDates, workdaySwaps, schedules, employees, defaultSchedule]);
 
   const totalWorked = folhaInd?.worked_minutes ?? 0;
   const totalExpected = folhaInd?.expected_minutes ?? 0;
@@ -1314,6 +1421,8 @@ export default function Timesheet() {
         <TabsContent value="calendario"><CoverageCalendar /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />
+          <Separator />
+          <WorkdaySwapsTab />
           <Separator />
           <ImportHistoryPanel />
         </TabsContent>

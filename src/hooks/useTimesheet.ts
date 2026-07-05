@@ -44,6 +44,23 @@ export interface Holiday {
   created_at: string;
 }
 
+/**
+ * Troca de dia / compensação (workday_swaps): o funcionário trabalha `work_date`
+ * em TROCA da folga em `off_date`. No cálculo de ponto/folha, `work_date` é lido
+ * como dia útil NORMAL (não vira hora extra, mesmo caindo em sáb/dom/feriado) e
+ * `off_date` vira folga sem desconto de falta. Vale para todos os funcionários
+ * (igual aos feriados). Ex.: trabalhar no domingo de hoje em troca da folga na
+ * sexta que emenda o feriado ("ponte").
+ */
+export interface WorkdaySwap {
+  id: string;
+  work_date: string;        // dia trabalhado que conta como NORMAL (YYYY-MM-DD)
+  off_date: string | null;  // folga compensatória (sem falta); NULL se não houver
+  name: string;             // descrição (ex.: "Ponte Corpus Christi")
+  notes: string | null;
+  created_at: string;
+}
+
 export interface TimeRecord {
   id: string;
   employee_name: string;
@@ -590,7 +607,11 @@ export function calculateDaySummary(
   punches: string[],
   dayOfWeek: number,
   schedule: WorkSchedule,
-  isHoliday: boolean
+  isHoliday: boolean,
+  /** Troca de dia (workday_swaps): 'worked' = dia trabalhado em troca de outro,
+   *  lido como dia útil NORMAL (não vira HE, mesmo em sáb/dom/feriado); 'off' =
+   *  folga compensatória (dia sem jornada, não gera falta). */
+  swap?: 'worked' | 'off'
 ): Omit<DaySummary, 'date' | 'punches'> {
   // ── MOTOR ÚNICO (2026-06-17) ──────────────────────────────────────────────
   // Delegamos a BASE por-dia ao motor único (pontoEngine), que usa EXATAMENTE os
@@ -604,7 +625,12 @@ export function calculateDaySummary(
   // meio-dia (regra splitDayMinutes); sem dedupe de 5min (a folha não dedupa).
   // A função SQL calculate_day_summary é atualizada em LOCKSTEP (mesma regra) e o
   // histórico fica CONGELADO (folhas/saldos fechados não são recalculados).
-  const isWorkday = worksOnDow(schedule, dayOfWeek) && !isHoliday;
+  // Troca de dia: 'worked' força dia útil normal (ignora feriado/fim de semana);
+  // 'off' força folga (dia sem jornada). Prevalece sobre a regra da escala.
+  const swapWorked = swap === 'worked';
+  const swapOff = swap === 'off';
+  const effHoliday = swapWorked ? false : isHoliday;
+  const isWorkday = swapOff ? false : (swapWorked || (worksOnDow(schedule, dayOfWeek) && !isHoliday));
   const expectedMinutes = isWorkday ? expectedDayMinutes(schedule) : 0;
   // schedule pode chegar NULL (ex.: escala ainda não carregada / funcionário sem
   // escala e sem padrão). worksOnDow/expectedDayMinutes já tratam null; este acesso
@@ -614,7 +640,7 @@ export function calculateDaySummary(
   const tolerance = 0;
 
   const sp = punches.length >= 2
-    ? splitDayMinutes(punches, dayOfWeek, isHoliday)
+    ? splitDayMinutes(punches, dayOfWeek, effHoliday, swapWorked)
     : { normal: 0, premium: 0, incomplete: punches.length === 1 };
 
   // Batida ímpar / 1 batida → INCONSISTENTE → PENDENTE (resolve na aba Pendências).
@@ -626,7 +652,7 @@ export function calculateDaySummary(
       expectedMinutes,
       overtimeMinutes: 0,
       overtimeFormatted: '00:00',
-      isHoliday,
+      isHoliday: effHoliday,
       isAbsent: false,
       status: 'irregular',
     };
@@ -638,8 +664,10 @@ export function calculateDaySummary(
 
   let status: DaySummary['status'];
   if (workedMinutes === 0) {
-    status = isHoliday ? 'holiday' : isWorkday ? 'absent' : 'weekend';
-  } else if (isHoliday) {
+    // Folga compensatória (swapOff) sem batida cai em isWorkday=false → 'weekend'
+    // (folga, não falta). Dia útil sem batida = falta.
+    status = effHoliday ? 'holiday' : isWorkday ? 'absent' : 'weekend';
+  } else if (effHoliday) {
     status = 'holiday';
   } else if (!isWorkday) {
     status = 'weekend'; // fim de semana / folga trabalhada
@@ -658,7 +686,7 @@ export function calculateDaySummary(
     expectedMinutes,
     overtimeMinutes,
     overtimeFormatted: minutesToHHMM(overtimeMinutes),
-    isHoliday,
+    isHoliday: effHoliday,
     isAbsent: workedMinutes === 0 && isWorkday,
     status,
   };
@@ -750,6 +778,67 @@ export function useDeleteHoliday() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); toast.success('Feriado removido!'); },
     onError: (e: Error) => toast.error(e.message),
   });
+}
+
+// ── Trocas de dia / compensação (workday_swaps) ─────────────────────────────
+// A tabela ainda não está nos tipos gerados do Supabase → cast em `as any` nas
+// chamadas `.from('workday_swaps')` (mesmo padrão de outras tabelas novas).
+export function useWorkdaySwaps() {
+  return useQuery({
+    queryKey: ['workday_swaps'],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('workday_swaps' as any) as any)
+        .select('*').order('work_date');
+      if (error) throw error;
+      return (data || []) as WorkdaySwap[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useAddWorkdaySwap() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (form: { work_date: string; off_date?: string | null; name: string; notes?: string }) => {
+      const payload = {
+        work_date: form.work_date,
+        off_date: form.off_date || null,
+        name: form.name,
+        notes: form.notes || null,
+      };
+      const { error } = await (supabase.from('workday_swaps' as any) as any).insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workday_swaps'] }); toast.success('Troca de dia cadastrada!'); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useDeleteWorkdaySwap() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase.from('workday_swaps' as any) as any).delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workday_swaps'] }); toast.success('Troca de dia removida!'); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/** Monta os sets de datas (trabalhada/folga) a partir das trocas cadastradas.
+ *  Passar em computePeriodFolha ({swapWorkedSet, swapOffSet}). */
+export function buildSwapSets(swaps: WorkdaySwap[] | undefined): {
+  swapWorkedSet: Set<string>;
+  swapOffSet: Set<string>;
+} {
+  const swapWorkedSet = new Set<string>();
+  const swapOffSet = new Set<string>();
+  for (const s of swaps || []) {
+    if (s.work_date) swapWorkedSet.add(s.work_date);
+    if (s.off_date) swapOffSet.add(s.off_date);
+  }
+  return { swapWorkedSet, swapOffSet };
 }
 
 export function useTimeRecords(batch?: string, startDate?: string, endDate?: string) {

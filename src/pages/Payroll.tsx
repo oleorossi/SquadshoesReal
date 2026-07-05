@@ -12,7 +12,7 @@ import {
 import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useWorkdaySwaps, buildSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
@@ -151,6 +151,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     [holidaysList],
   );
 
+  // Trocas de dia (compensação): dia trabalhado lido como NORMAL, folga sem falta.
+  const { data: workdaySwaps = [] } = useWorkdaySwaps();
+  const { swapWorkedSet, swapOffSet } = useMemo(() => buildSwapSets(workdaySwaps), [workdaySwaps]);
+
   // Cobertura: até onde o ponto foi importado neste período (debounced, igual às queries).
   const { data: coverage } = useTimesheetCoverage(appliedFrom, appliedTo);
 
@@ -233,11 +237,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     },
   });
   const comparativo = useMemo(() => computeComparativoRows({
-    employees, schedules, defaultSchedule, holidaysSet,
+    employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
     timeRecords: compRecords, advancesList: compAdvances,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
-  }), [employees, schedules, defaultSchedule, holidaysSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
+  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
 
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
@@ -516,6 +520,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           from: cFrom, to: cTo,
           schedule: sch,
           holidaysSet,
+          swapWorkedSet,
+          swapOffSet,
           punchesByDate: empPunches,
           absenceDates: absencesByEmp.get(emp.id),
           advancesTotal: advancesByEmp.get(emp.id) || 0,

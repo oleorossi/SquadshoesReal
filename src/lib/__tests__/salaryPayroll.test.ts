@@ -244,6 +244,59 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
   });
 });
 
+describe('computePeriodFolha — troca de dia / compensação (workday_swaps)', () => {
+  // 2026-05-03 é um DOMINGO. Sem troca, trabalhar nele = tudo hora extra.
+  it('domingo SEM troca = tudo hora extra', () => {
+    const punches = new Map<string, string[]>([['2026-05-03', full]]); // 9h no domingo
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.he_minutes).toBe(540); // 9h todas como HE
+    expect(r.premium_minutes).toBe(540);
+  });
+
+  it('domingo COM troca = dia útil normal (jornada esperada, sem HE)', () => {
+    const punches = new Map<string, string[]>([['2026-05-03', full]]); // 9h = jornada padrão
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, swapWorkedSet: new Set(['2026-05-03']), punchesByDate: punches,
+    });
+    expect(r.workdays).toBe(1);         // domingo virou dia útil
+    expect(r.he_minutes).toBe(0);       // trabalhou a jornada esperada → nada de HE
+    expect(r.premium_minutes).toBe(0);  // não é fim de semana pra fins de 1,5×
+    expect(r.falta_days).toBe(0);
+  });
+
+  it('excedente da jornada no dia trocado ainda vira HE (só o que passa do esperado)', () => {
+    const punches = new Map<string, string[]>([['2026-05-03', ['08:00', '12:00', '13:00', '19:00']]]); // 10h
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, swapWorkedSet: new Set(['2026-05-03']), punchesByDate: punches,
+    });
+    expect(r.he_minutes).toBe(60); // 10h − 9h esperado = 1h de HE
+  });
+
+  it('feriado trabalhado COM troca vira dia normal (deixa de ser HE)', () => {
+    // 2026-05-01 (sexta) é feriado. Com troca, lê normal.
+    const punches = new Map<string, string[]>([['2026-05-01', full]]);
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-01', to: '2026-05-01', schedule: SCHED,
+      holidaysSet: new Set(['2026-05-01']), swapWorkedSet: new Set(['2026-05-01']), punchesByDate: punches,
+    });
+    expect(r.workdays).toBe(1);
+    expect(r.he_minutes).toBe(0);
+    expect(r.falta_days).toBe(0);
+  });
+
+  it('folga compensatória (off_date) num dia útil não gera falta', () => {
+    // 2026-05-04 (segunda) sem batida, mas marcado como folga compensatória.
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED,
+      holidaysSet: NO_HOL, swapOffSet: new Set(['2026-05-04']), punchesByDate: new Map(),
+    });
+    expect(r.falta_days).toBe(0);   // folga, não falta
+    expect(r.workdays).toBe(0);     // dia sem jornada esperada
+  });
+});
+
 describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => {
   it('REMOTO: salário cheio, ignora ponto (sem falta/atraso/HE) mesmo sem bater nada', () => {
     const r = computePeriodFolha({ salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: new Map(), payRegime: 'remoto' });
