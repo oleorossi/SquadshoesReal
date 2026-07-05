@@ -62,10 +62,17 @@ export function useAllNoteTasks() {
   return useQuery({
     queryKey: ['all_note_tasks'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      // Isolamento por criador (interino, sem RLS — o seguro é política no banco):
+      // só as tarefas do usuário logado. created_by nulo (tarefas antigas) fica de
+      // fora até o backfill via MCP.
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id;
+      let query = (supabase as any)
         .from('note_tasks')
         .select('*, notes(title)')
         .order('created_at', { ascending: true });
+      if (uid) query = query.eq('created_by', uid);
+      const { data, error } = await query;
       if (error) throw error;
       return sortTasks((data || []) as NoteTaskWithNote[]);
     },
@@ -107,6 +114,8 @@ export function useCreateNoteTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: CreateNoteTaskInput) => {
+      // Atribui a tarefa ao criador — usado pelo filtro de "minhas tarefas".
+      const { data: auth } = await supabase.auth.getUser();
       const { data, error } = await (supabase as any)
         .from('note_tasks')
         .insert({
@@ -117,6 +126,7 @@ export function useCreateNoteTask() {
           tags: normalizeTags(input.tags),
           parent_task_id: input.parent_task_id ?? null,
           description: input.description ?? '',
+          created_by: auth?.user?.id ?? null,
         })
         .select()
         .single();
