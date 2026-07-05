@@ -9,7 +9,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useSwapSets, useWorkSchedules } from '@/hooks/useTimesheet';
+import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { computePeriodFolha, SALARY_DAY_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { Panel } from '@/components/ui/panel';
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CircleNotch as Loader2, UserMinus, CalendarX, Users, CheckCircle, CalendarBlank, CaretRight } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, UserMinus, CalendarX, Users, CheckCircle, CalendarBlank, CaretRight, Warning as AlertTriangle } from '@phosphor-icons/react';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -202,13 +202,28 @@ export default function RelatorioFaltas() {
   const [selected, setSelected] = useState<FaltaRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
 
+  // Cobertura do relógio: até que dia o ponto foi de fato importado. FALTA só conta
+  // em dia COBERTO (relógio lido). Dias após a última importação NÃO viram falta —
+  // senão puxar um relatório além do arquivo importado marcaria falta de graça.
+  const { data: coverage } = useTimesheetCoverage(from, to);
+  const partial = !!(coverage?.maxCovered && coverage.maxCovered < to);
+
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ['relatorio-faltas', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapKey],
+    queryKey: ['relatorio-faltas', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapKey, coverage?.maxCovered ?? null, coverage?.count ?? 0],
     enabled: !!from && !!to && from <= to && (employees as any[]).length > 0,
     staleTime: 60_000,
     queryFn: async (): Promise<FaltaRow[]> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do calendário).
       const recs = await fetchTimeRecordsInRange(from, to);
+
+      // Dias COBERTOS = datas em que o relógio foi lido (há batida real de ALGUÉM).
+      // Uma falta só vale em dia coberto: se o arquivo do relógio vai só até o dia
+      // 18 e o relatório é puxado até o 20, os dias 19–20 NÃO são falta (não foram
+      // importados) — senão marcaria falta como se o funcionário não tivesse ido.
+      const coveredDates = new Set<string>();
+      for (const r of recs) {
+        if (Array.isArray(r.punches) && r.punches.length > 0) coveredDates.add(r.record_date);
+      }
 
       const byExternalId = new Map<string, Map<string, string[]>>();
       const byExtIdName = new Map<string, Map<string, string[]>>();
@@ -249,7 +264,11 @@ export default function RelatorioFaltas() {
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
         });
-        const faltas = (res.falta_dates || []).slice().sort((a, b) => a.localeCompare(b));
+        // Só conta falta em dia COBERTO pelo relógio (importado). Dias fora da
+        // cobertura (após a última importação, ou lacunas) não viram falta.
+        const faltas = (res.falta_dates || [])
+          .filter((d) => coveredDates.has(d))
+          .sort((a, b) => a.localeCompare(b));
         if (faltas.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: faltas,
@@ -285,6 +304,17 @@ export default function RelatorioFaltas() {
         </div>
         {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
+
+      {/* Aviso de cobertura parcial: ponto importado só até X — dias após não contam. */}
+      {partial && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            Ponto importado só até <b>{fmtDia(coverage!.maxCovered!)}</b>. Os dias após essa data não entram no relatório
+            (não foram lidos do relógio) — importe o arquivo até {fmtDia(to)} para o período completo.
+          </span>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-2.5">
