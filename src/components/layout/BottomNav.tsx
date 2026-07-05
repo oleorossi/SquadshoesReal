@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { House as Home, Kanban, Package, ShoppingCart, DotsThree as MoreHorizontal, X } from '@phosphor-icons/react';
+import { House as Home, Kanban, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { menuGroups } from '@/data/navigation';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
@@ -26,6 +27,18 @@ export function BottomNav() {
       .filter(g => g.items.length > 0),
     [canAccessRoute],
   );
+
+  // Favoritos do usuário (mesmos da sidebar, via useMenuFavorites) — aparecem
+  // no topo do "Mais" pra ficarem acessíveis também no celular.
+  const { favorites } = useMenuFavorites();
+  const favItems = useMemo(() => favorites.filter(f => canAccessRoute(f.path)), [favorites, canAccessRoute]);
+  const iconForPath = (path: string) => {
+    for (const group of menuGroups) {
+      const found = group.items.find(i => i.path === path);
+      if (found) return found.icon;
+    }
+    return Star;
+  };
 
   useEffect(() => { setMoreOpen(false); }, [location.pathname]);
 
@@ -75,6 +88,35 @@ export function BottomNav() {
             </button>
           </div>
           <div className="px-4 pb-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {favItems.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary mb-1.5">
+                  <Star className="h-3 w-3 fill-current" />
+                  Favoritos
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {favItems.map((item) => {
+                    const Icon = iconForPath(item.path);
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                        className={cn(
+                          "flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all",
+                          active
+                            ? "bg-primary/15 text-primary"
+                            : "bg-primary/[0.06] text-foreground hover:bg-primary/10"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{item.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {visibleGroups.map((group) => (
               <div key={group.label}>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
