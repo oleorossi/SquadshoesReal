@@ -62,16 +62,17 @@ export function useAllNoteTasks() {
   return useQuery({
     queryKey: ['all_note_tasks'],
     queryFn: async () => {
-      // Isolamento por criador (interino, sem RLS — o seguro é política no banco):
-      // só as tarefas do usuário logado. created_by nulo (tarefas antigas) fica de
-      // fora até o backfill via MCP.
+      // Isolamento por criador (interino, sem RLS — o seguro é política no banco).
+      // Meio-termo até o backfill: "minhas + sem dono" — mostra as tarefas do
+      // usuário logado E as antigas com created_by nulo, pra a lista não sumir.
+      // Tarefas novas nascem com created_by, então ficam isoladas por usuário.
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth?.user?.id;
       let query = (supabase as any)
         .from('note_tasks')
         .select('*, notes(title)')
         .order('created_at', { ascending: true });
-      if (uid) query = query.eq('created_by', uid);
+      if (uid) query = query.or(`created_by.eq.${uid},created_by.is.null`);
       const { data, error } = await query;
       if (error) throw error;
       return sortTasks((data || []) as NoteTaskWithNote[]);
