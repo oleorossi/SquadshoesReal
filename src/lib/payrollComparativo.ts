@@ -144,6 +144,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
       const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
         salary: Number(emp.salary) || 0, from, to,
         schedule: sch, holidaysSet, swapWorkedSet, swapOffSet, punchesByDate: empPunches,
+        activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
         periodDays, monthDays, maxCoveredDate: maxCovered,
         payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
         dailyRate: Number(emp.daily_rate) || 0,

@@ -362,6 +362,12 @@ export interface PeriodFolhaInput {
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
   monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
   maxCoveredDate?: string | null;         // clamp: ignora dias após a última data importada
+  /** Data de admissão (YYYY-MM-DD): dias ANTES dela são ignorados (o funcionário
+   *  ainda não trabalhava aqui → não geram falta/esperado). Sem isso, um funcionário
+   *  admitido no meio (ou depois) do período aparecia com falta em todo dia útil. */
+  activeFrom?: string | null;
+  /** Data de demissão (YYYY-MM-DD): dias DEPOIS dela são ignorados. */
+  activeTo?: string | null;
   payRegime?: 'mensalista' | 'remoto' | 'diarista';  // regime de pagamento (default mensalista)
   dailyRate?: number;                     // R$/dia (só diarista)
 }
@@ -370,6 +376,10 @@ export interface PeriodFolhaInput {
 export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   let dates = getDaysInRange(inp.from, inp.to);
   if (inp.maxCoveredDate) dates = dates.filter(d => d.date <= inp.maxCoveredDate!);
+  // Recorte por vínculo: ignora dias antes da admissão / depois da demissão — senão
+  // um funcionário admitido no meio (ou depois) do período vira falta em todo dia útil.
+  if (inp.activeFrom) dates = dates.filter(d => d.date >= inp.activeFrom!);
+  if (inp.activeTo) dates = dates.filter(d => d.date <= inp.activeTo!);
   const days: SalaryDayInput[] = dates.map(d => {
     // Troca de dia (workday_swaps): work_date E off_date são DIAS FLEX. Prevalecem
     // sobre feriado. Quando trabalhados, leem como dia útil normal; quando não, o
@@ -403,7 +413,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     return {
       ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
       worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
-      worked_days: 0, falta_days: 0, falta_desconto: 0, excused_days: 0,
+      worked_days: 0, falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0,
       atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0, he_value: 0, pending_days: 0,
       total_proventos: base.period_base, total_descontos: adv,
       gross_value: base.period_base, net_value: round2(base.period_base - adv),
@@ -418,7 +428,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     const grossD = round2(dr * paidDays);
     return {
       ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
-      falta_days: 0, falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
+      falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
       he_minutes: 0, he_value: 0,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),

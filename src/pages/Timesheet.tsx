@@ -255,23 +255,26 @@ function HolidaysTab() {
     setAdding(false);
   };
 
+  // ⚠ SÓ feriados de DATA FIXA. Feriados MÓVEIS (Carnaval, Sexta-feira Santa,
+  // Corpus Christi) NÃO entram aqui: a data muda todo ano, então cadastrá-los como
+  // MM-DD recorrente planta feriado-fantasma em dia errado (ex.: seed em 2026 punha
+  // Sexta-Santa em 18/04 = a data de 2025, num sábado). Os móveis já vêm com as
+  // datas certas 2024-2030 no seed do banco (migration 20260527220000); adicione
+  // anos futuros manualmente pela data real, sem "recorrente".
   const defaultHolidays = [
-    // Nacionais
+    // Nacionais (data fixa)
     { name: 'Confraternização Universal', date: '01-01', cat: 'Nacional' },
-    { name: 'Carnaval', date: '03-04', cat: 'Nacional' },
-    { name: 'Sexta-feira Santa', date: '04-18', cat: 'Nacional' },
     { name: 'Tiradentes', date: '04-21', cat: 'Nacional' },
     { name: 'Dia do Trabalho', date: '05-01', cat: 'Nacional' },
-    { name: 'Corpus Christi', date: '06-19', cat: 'Nacional' },
     { name: 'Independência do Brasil', date: '09-07', cat: 'Nacional' },
     { name: 'Nossa Sra. Aparecida', date: '10-12', cat: 'Nacional' },
     { name: 'Finados', date: '11-02', cat: 'Nacional' },
     { name: 'Proclamação da República', date: '11-15', cat: 'Nacional' },
     { name: 'Natal', date: '12-25', cat: 'Nacional' },
-    // Estaduais RJ
+    // Estaduais RJ (data fixa)
     { name: 'Dia de São Jorge (RJ)', date: '04-23', cat: 'Estadual RJ' },
     { name: 'Dia da Consciência Negra (RJ)', date: '11-20', cat: 'Estadual RJ' },
-    // Municipais Belford Roxo
+    // Municipais Belford Roxo (data fixa)
     { name: 'Aniversário de Belford Roxo', date: '04-01', cat: 'Belford Roxo' },
     { name: 'Dia de São Cristóvão (Belford Roxo)', date: '07-25', cat: 'Belford Roxo' },
   ];

@@ -261,6 +261,9 @@ export default function RelatorioFaltas() {
         const res = computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to, schedule: sch, holidaysSet, swapWorkedSet, swapOffSet,
           punchesByDate: empPunches,
+          // Recorta por vínculo: quem foi admitido depois (ou demitido antes) não
+          // pode gerar falta nos dias fora do contrato.
+          activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
         });
