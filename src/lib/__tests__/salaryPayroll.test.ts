@@ -274,6 +274,19 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
     expect(rem.falta_dates).toEqual([]);
   });
 
+  it('coveredDates: dia útil sem batida NÃO coberto = neutro (não vira falta)', () => {
+    // seg (04) com batida; cobertura só tem 04 e 05 (ter, importado de outro func).
+    // Logo ter(05) sem batida = falta; qua–sex (06,07,08) sem importação = neutro.
+    const punches = new Map<string, string[]>([['2026-05-04', full]]);
+    const covered = new Set(['2026-05-04', '2026-05-05']);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, coveredDates: covered });
+    expect(r.falta_dates).toEqual(['2026-05-05']);
+    expect(r.falta_days).toBe(1);
+    // sem coveredDates (legado): qua–sex também viram falta → 4 faltas
+    const legacy = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(legacy.falta_days).toBe(4);
+  });
+
   it('maxCoveredDate (clamp) ignora dias não importados — não viram falta', () => {
     const punches = new Map<string, string[]>();
     for (const d of ['2026-05-04', '2026-05-05', '2026-05-06']) punches.set(d, full);

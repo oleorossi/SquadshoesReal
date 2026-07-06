@@ -264,14 +264,13 @@ export default function RelatorioFaltas() {
           // Recorta por vínculo: quem foi admitido depois (ou demitido antes) não
           // pode gerar falta nos dias fora do contrato.
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
+          // Cobertura por-dia: falta só em dia lido pelo relógio (o motor já exclui
+          // dias sem importação — lacuna ou além do arquivo).
+          coveredDates,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
         });
-        // Só conta falta em dia COBERTO pelo relógio (importado). Dias fora da
-        // cobertura (após a última importação, ou lacunas) não viram falta.
-        const faltas = (res.falta_dates || [])
-          .filter((d) => coveredDates.has(d))
-          .sort((a, b) => a.localeCompare(b));
+        const faltas = (res.falta_dates || []).slice().sort((a, b) => a.localeCompare(b));
         if (faltas.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: faltas,

@@ -96,6 +96,11 @@ export interface SalaryDayInput {
    *  batida), é NEUTRO: não gera falta nem entra no esperado (o funcionário pode
    *  ter tirado a folga da troca). Vale tanto pra work_date quanto pra off_date. */
   swapFlex?: boolean;
+  /** Cobertura da importação: true = o relógio foi lido nesse dia (há batida de
+   *  algum funcionário) → dia útil sem batida = FALTA. false = dia sem importação
+   *  (lacuna/além do arquivo) → NEUTRO, não vira falta. undefined = legado (sempre
+   *  conta como falta, comportamento anterior sem set de cobertura). */
+  covered?: boolean;
 }
 
 export interface SalaryPayrollResult {
@@ -215,11 +220,14 @@ export function calculateSalaryPayroll(
       ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapFlex)
       : { normal: 0, premium: 0, incomplete: punches.length === 1 };
 
-    // Dia de TROCA (flex) SEM batida válida → NEUTRO: não é falta, não entra no
-    // esperado/workdays (o funcionário pode ter tirado a folga da troca). Só passa a
-    // contar como dia útil normal quando efetivamente TRABALHADO (ramo abaixo).
+    // NEUTRO (não é falta, não entra no esperado/workdays) quando o dia útil não tem
+    // batida válida E:
+    //  • é dia de TROCA (flex) — o funcionário pode ter tirado a folga da troca; OU
+    //  • NÃO foi COBERTO pela importação (covered===false) — o relógio não foi lido
+    //    nesse dia (lacuna de cobertura / dia além do arquivo importado). Sem isso, um
+    //    dia sem importação virava falta como se o funcionário não tivesse ido.
     // Batida ímpar (incomplete) NÃO é neutralizada aqui — continua pendente.
-    if (d.swapFlex && !sp.incomplete && (sp.normal + sp.premium) === 0) {
+    if (!sp.incomplete && (sp.normal + sp.premium) === 0 && (d.swapFlex || d.covered === false)) {
       continue;
     }
 
@@ -362,6 +370,11 @@ export interface PeriodFolhaInput {
   periodDays?: number;                    // base proporcional (quinzena); undefined = mês cheio
   monthDays?: number;                     // dias do mês (28–31) → prorateia 1ª+2ª = salário exato
   maxCoveredDate?: string | null;         // clamp: ignora dias após a última data importada
+  /** Datas COBERTAS pela importação (relógio lido = há batida de algum funcionário).
+   *  Dia útil sem batida só vira FALTA se estiver aqui; fora dela (lacuna no meio ou
+   *  além do arquivo) é NEUTRO. Omitido = legado (todo dia útil sem batida = falta).
+   *  Fonte única da regra de falta por cobertura (espelha useMonthlyClosing). */
+  coveredDates?: Set<string>;
   /** Data de admissão (YYYY-MM-DD): dias ANTES dela são ignorados (o funcionário
    *  ainda não trabalhava aqui → não geram falta/esperado). Sem isso, um funcionário
    *  admitido no meio (ou depois) do período aparecia com falta em todo dia útil. */
@@ -394,6 +407,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       punches: inp.punchesByDate.get(d.date) || [],
       excused: inp.absenceDates?.has(d.date) ?? false,
       swapFlex: isSwap,
+      covered: inp.coveredDates ? inp.coveredDates.has(d.date) : undefined,
     };
   });
   // Tolerância REMOVIDA (pedido do dono 2026-06-30): todo minuto conta — atraso

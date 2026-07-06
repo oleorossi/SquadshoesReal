@@ -531,6 +531,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           advancesTotal: advancesByEmp.get(emp.id) || 0,
           activeFrom: (emp as any).admission_date || null,   // não descontar dias antes da admissão
           activeTo: (emp as any).termination_date || null,   // nem depois da demissão
+          coveredDates: coverage?.coveredDates,              // falta só em dia lido pelo relógio (lacuna no meio ≠ falta)
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
           monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)
           maxCoveredDate: maxCov,
