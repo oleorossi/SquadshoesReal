@@ -60,6 +60,81 @@ supabase db push → DB live
    e vira **ReferenceError em produção**. O typecheck de verdade é só com `-p tsconfig.app.json`.
 5. **Após edits visuais** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
 
+## Padrões de Código (CANÔNICO — seguir em toda sessão)
+
+> Convenções **observadas no código real** (não são aspiracionais). Ao criar/editar
+> arquivos, siga o padrão do módulo vizinho — este é o resumo pra não ter que
+> reengenhar toda vez. Quando um arquivo existente contradisser esta seção, o padrão
+> local do módulo vence; abra a divergência em vez de "corrigir" em massa.
+
+### Stack e ferramentas
+- **Package manager: Bun.** `bun.lock` é a fonte de verdade (existe um `package-lock.json`
+  obsoleto — ignorar). Use `bun run <script>` / `bunx`.
+- **Typecheck canônico:** `bunx tsc -p tsconfig.app.json --noEmit` (ver Regra 4 acima —
+  a raiz não checa nada).
+- **Lint:** `bun run lint` (`eslint .`, flat config em `eslint.config.js`). **Sem Prettier** —
+  não introduzir; siga o estilo do arquivo vizinho. `@typescript-eslint/no-unused-vars` está
+  **off**, então limpe imports/vars mortos você mesmo.
+- **TS é LOOSE de propósito** (`tsconfig.app.json`: `strict:false`, `noImplicitAny:false`).
+  Não ligar `strict` global. Como o compilador é permissivo, um símbolo indefinido só
+  estoura em runtime — por isso o typecheck com `-p tsconfig.app.json` é obrigatório.
+- **Import alias `@/` → `src/`** (declarado em `tsconfig.app.json` e espelhado em
+  `vite.config.ts`). Sempre `import { x } from '@/lib/...'`, nunca caminho relativo longo
+  (`../../../`).
+
+### Estrutura de pastas (onde cada coisa mora)
+| Pasta | Papel |
+|---|---|
+| `src/pages/` | 1 arquivo por rota/tela, flat, PascalCase, `export default function`. Rotas em `src/App.tsx`. |
+| `src/components/<domínio>/` | Componentes por feature (~43 subpastas: `clients/`, `production/`, `finance/`…). |
+| `src/components/ui/` | Primitives shadcn + próprias. **Named export** + `React.forwardRef` + `cva`. Arquivos **kebab-case**. |
+| `src/hooks/` | ~200 `use*` — **camada primária de acesso a dados** (React Query sobre Supabase), 1 por entidade. |
+| `src/lib/` | Lógica de domínio pura / helpers de print/export. Testes colocados (`*.test.ts`). |
+| `src/services/` | Orquestração pesada / chamadas a RPC Supabase (`costingService`, `consumptionService`…). |
+| `src/integrations/supabase/` | `client.ts` (singleton) + `types.ts` (**gerado — não editar à mão**). |
+| `src/types/` | Tipos de domínio compartilhados por área. |
+| `src/data/` | Dados estáticos/seed/config (`navigation.ts`, `permissionTemplates.ts`). |
+
+### Componentes
+- **Página/feature:** `export default function Nome()` (declaração nomeada, não arrow const).
+  Arquivo **PascalCase**.
+- **Primitive em `ui/`:** named export com `forwardRef` + `cva` (ver `button.tsx`); expõe também
+  `nomeVariants` e a interface de props.
+- **Props: `interface`** (padrão dominante — `interface Props { … }` local). `type` só quando
+  precisar de união/interseção.
+- **shadcn:** importar de `@/components/ui/*`. **Ícones: `@phosphor-icons/react`**, aliasando
+  pros nomes estilo-lucide quando ajudar a legibilidade (`import { CircleNotch as Loader2 } from '@phosphor-icons/react'`).
+  Não importar de `lucide-react` (não é a lib do projeto — vira ReferenceError).
+
+### Acesso a dados (padrão React Query)
+- Supabase singleton: `import { supabase } from '@/integrations/supabase/client'`.
+- **Query:** hook `use<Entidade>` com `useQuery({ queryKey: ['entidade'], queryFn, staleTime, gcTime })`;
+  sempre `if (error) throw error;` antes de retornar.
+- **Mutation:** `useMutation` + `useQueryClient`; `onSuccess` invalida a(s) query key(s) e dispara
+  `toast.success(...)`; `onError` → `toast.error(...)`.
+- **Notificações: `sonner`** (`import { toast } from 'sonner'`) — é a convenção viva (o radix
+  toast/`use-toast` existe mas não é o padrão).
+- Cast de payload Supabase com `as X` / `as unknown as X` é aceito aqui (consequência do TS loose +
+  types gerados) — não é smell a "consertar".
+
+### Formulários
+- **Padrão dominante: `useState` controlado** + submit via mutation hook (objeto `form`/`setForm`
+  passado por props).
+- `react-hook-form` + `zod` (`zodResolver`, wrapper `ui/form.tsx`) **existe mas é exceção** (poucos
+  arquivos). Use-o só se o formulário for genuinamente complexo; não migrar forms simples pra RHF.
+
+### Nomenclatura / idioma (regra load-bearing)
+- **Domínio em português, framework em inglês.** Entidades, colunas de banco, nomes de página,
+  strings de UI e comentários → **pt-BR** (`razao_social`, `nfe_emitidas`, `'Cliente cadastrado!'`).
+  Nomes de hook/util e **React Query keys** → inglês (`useCreateClient`, `queryKey: ['clients']`).
+  Entidades fiscais/fabris permanecem em português mesmo no código.
+- Locale pt-BR: `Intl.NumberFormat('pt-BR', …)`, moeda `BRL` (usar helpers de `src/lib/utils.ts`).
+
+### Testes
+- **Vitest** (`vitest/globals`). Colocar em `__tests__/` ao lado do módulo, ou `*.test.ts` direto
+  ao lado do fonte. Sufixos usados: `.units.test.ts`, `.integration.test.ts`, `.edge-cases.test.ts`.
+- Rodar: `bun run test` (exclui suítes pesadas) / `bun run test:units`.
+
 ## Regra de cálculo de consumo de materiais (CANÔNICA)
 
 > Fonte de referência do cálculo exibido no modal **"Consumo de Materiais"** do PV
