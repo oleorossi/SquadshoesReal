@@ -15,6 +15,21 @@ import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
  import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
+// Categorias de material para filtro inline (chips).
+// 'Solado' REMOVIDO em 18/05/2026 — gestão de solados vive em /solados (SolesHub).
+// User pediu deduplicação: "hoje vejo status do Solado em estoque e em gestão
+// de solados, quero apenas em gestão de solados".
+const MATERIAL_CATEGORIES = [
+  { value: 'all',       label: 'Todos' },
+  { value: 'Cabedal',   label: 'Cabedal' },
+  { value: 'Forração',     label: 'Forração' },
+  { value: 'Palmilha',  label: 'Palmilha' },
+  { value: 'Químico',   label: 'Químicos' },
+  { value: 'Componente',label: 'Componentes' },
+  // 'Embalagem' REMOVIDO em 04/07/2026 — embalagem tem módulo próprio em
+  // /embalagens (box_types). O silo products/Embalagem estava vazio (0 itens).
+];
+
 // Tabs principais
 const MAIN_TABS = ['materials', 'overview', 'alerts', 'conversion'] as const;
 type MainTab = typeof MAIN_TABS[number];
@@ -60,9 +75,17 @@ export default function Index() {
 
    const [activeTab, setActiveTab] = useState<any>(() => resolveTab(requestedTab));
 
+  // Filtro de categoria de material (chip inline)
+  const [materialCategory, setMaterialCategory] = useState<string>(() => {
+    if (requestedTab === 'componentes') return 'Componente';
+    return 'all';
+  });
+
   useEffect(() => {
     if (requestedTab && ALL_TABS.has(requestedTab)) {
-      setActiveTab(resolveTab(requestedTab));
+      const resolved = resolveTab(requestedTab);
+      setActiveTab(resolved);
+      if (requestedTab === 'componentes') setMaterialCategory('Componente');
     }
   }, [requestedTab]);
 
@@ -142,9 +165,47 @@ export default function Index() {
             <ReportTab />
           </TabsContent>
 
-          {/* ── Materiais — árvore Setor → Família → Grupo (GroupOrganizationPanel) ── */}
+          {/* ── Materiais — com chips de categoria ── */}
           <TabsContent value="materials">
-            <MaterialsTab />
+            <div className="space-y-4">
+              {/* Chips de filtro por categoria */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {MATERIAL_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.value}
+                    onClick={() => setMaterialCategory(cat.value)}
+                    className={
+                      materialCategory === cat.value
+                        ? 'px-3 py-1.5 rounded-full text-xs font-semibold bg-foreground text-background transition-colors'
+                        : 'px-3 py-1.5 rounded-full text-xs font-medium border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors'
+                    }
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+
+                <Separator orientation="vertical" className="h-5 mx-1" />
+
+                {/* Link para Fichas de Componentes — página própria */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => navigate('/fichas-tecnicas')}
+                >
+                  Fichas de Componentes ↗
+                </Button>
+              </div>
+
+              {/* Conteúdo filtrado — Solado removido em 18/05/2026, vive em /solados */}
+              {materialCategory !== 'all' ? (
+                <MaterialsTab defaultGroupName={materialCategory} title={
+                  MATERIAL_CATEGORIES.find(c => c.value === materialCategory)?.label ?? materialCategory
+                } />
+              ) : (
+                <MaterialsTab />
+              )}
+            </div>
           </TabsContent>
 
           {/* ── Alertas ── */}
