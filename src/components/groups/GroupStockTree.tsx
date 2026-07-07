@@ -30,34 +30,46 @@ interface Props {
   onDelete: (g: ProductGroup) => void;
   onNewFamily: (sector: string) => void;
   onNewSubgroup: (family: ProductGroup) => void;
-  /** Opcional — clicar num item do detalhe (ex.: abrir editor do material). */
   onEditItem?: (item: ProductLite) => void;
-  /** Opcional — adicionar um item a um grupo-folha. */
   onAddItem?: (group: ProductGroup) => void;
-  /** Filtro textual (nome do grupo / item / SKU). Vazio = mostra tudo. */
   filter?: string;
 }
 
-const GRID = 'grid grid-cols-[28px_1fr_64px_116px_180px_104px] items-center gap-2';
+/** Grade das linhas de grupo/família (setor tem layout próprio de card). */
+const ROW = 'grid grid-cols-[22px_minmax(150px,1fr)_52px_104px_168px_92px] items-center gap-3';
+
+/** Donut de % (conic-gradient) — vermelho (reservado) vs verde (livre), por valor. */
+function Donut({ pct }: { pct: number }) {
+  return (
+    <div
+      className="relative flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-full"
+      style={{ background: `conic-gradient(hsl(var(--primary)) ${pct * 3.6}deg, rgb(34 197 94) 0deg)` }}
+      role="img"
+      aria-label={`${pct}% do valor reservado`}
+    >
+      <div className="absolute inset-[10px] rounded-full bg-card" />
+      <span className="relative text-center leading-none">
+        <span className="block font-display text-base text-foreground">{pct}%</span>
+        <span className="block text-[7px] uppercase tracking-[0.12em] text-muted-foreground">reserv.</span>
+      </span>
+    </div>
+  );
+}
 
 function ReservedBar({ m }: { m: NodeMetrics }) {
   if (m.mixedUnits || !m.unit) {
-    return (
-      <span className="text-xs text-muted-foreground" title="Unidades mistas neste grupo — soma não faz sentido">
-        —
-      </span>
-    );
+    return <span className="text-xs text-muted-foreground" title="Unidades mistas neste grupo — soma não faz sentido">—</span>;
   }
   const total = m.reserved + Math.max(0, m.available);
   const rp = total > 0 ? Math.round((m.reserved / total) * 100) : 0;
   return (
     <div className="flex w-full flex-col gap-1">
-      <div className="flex h-2.5 w-full overflow-hidden rounded bg-muted" title={`Reservado ${formatNumber(m.reserved, 0)} · Livre ${formatNumber(Math.max(0, m.available), 0)} ${m.unit}`}>
+      <div className="flex h-3.5 w-full overflow-hidden rounded-md bg-muted" title={`Reservado ${formatNumber(m.reserved, 0)} · Livre ${formatNumber(Math.max(0, m.available), 0)} ${m.unit}`}>
         <div className="bg-primary" style={{ width: `${rp}%` }} />
         <div className="bg-green-500" style={{ width: `${100 - rp}%` }} />
       </div>
-      <div className="flex justify-between text-[10px] tabular-nums text-muted-foreground">
-        <span>res {formatNumber(m.reserved, 0)}</span>
+      <div className="flex justify-between text-[9px] tabular-nums text-muted-foreground">
+        <span className="font-semibold text-foreground">{rp}% reserv.</span>
         <span>livre {formatNumber(Math.max(0, m.available), 0)} {m.unit}</span>
       </div>
     </div>
@@ -71,6 +83,15 @@ function BelowMinBadge({ count }: { count: number }) {
       <Warning className="h-3 w-3" weight="fill" />
       {count} abaixo mín
     </span>
+  );
+}
+
+function KpiTile({ value, label, tone }: { value: string; label: string; tone?: 'money' | 'warn' }) {
+  return (
+    <div className="rounded-lg bg-muted px-3 py-1.5 text-right sm:text-left">
+      <span className={`block text-[15px] font-bold leading-tight tabular-nums ${tone === 'money' ? 'text-green-600' : tone === 'warn' ? 'text-destructive' : 'text-foreground'}`}>{value}</span>
+      <span className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</span>
+    </div>
   );
 }
 
@@ -119,12 +140,8 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
                     )}
                   </td>
                   <td className="text-right tabular-nums">{formatNumber(qty, 0)} {p.unit}</td>
-                  <td className="text-right tabular-nums">
-                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{formatNumber(res, 0)}</span>
-                  </td>
-                  <td className="text-right tabular-nums">
-                    <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-green-600">{formatNumber(disp, 0)}</span>
-                  </td>
+                  <td className="text-right tabular-nums"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{formatNumber(res, 0)}</span></td>
+                  <td className="text-right tabular-nums"><span className="rounded bg-green-500/10 px-1.5 py-0.5 text-green-600">{formatNumber(disp, 0)}</span></td>
                   <td className="text-right tabular-nums">{formatCurrency(price)}</td>
                   <td className="text-right tabular-nums font-medium">{formatCurrency(qty * price)}</td>
                 </tr>
@@ -161,6 +178,27 @@ export default function GroupStockTree(props: Props) {
     return m;
   }, [products]);
 
+  // % reservado POR VALOR por setor (Σ reservado×preço / Σ qtd×preço) — somável entre unidades.
+  const sectorReservedPct = useMemo(() => {
+    const secOf = new Map(groups.map(g => [g.id, g.sector || '—'] as const));
+    const acc = new Map<string, { res: number; tot: number }>();
+    for (const p of products) {
+      if (!p.group_id) continue;
+      const sec = secOf.get(p.group_id);
+      if (!sec) continue;
+      const price = Number(p.unit_price) || 0;
+      const qty = Number(p.quantity) || 0;
+      const res = Number(p.reserved_stock) || 0;
+      const a = acc.get(sec) ?? { res: 0, tot: 0 };
+      a.res += res * price;
+      a.tot += qty * price;
+      acc.set(sec, a);
+    }
+    const out = new Map<string, number>();
+    for (const [sec, { res, tot }] of acc) out.set(sec, tot > 0 ? Math.round((res / tot) * 100) : 0);
+    return out;
+  }, [groups, products]);
+
   const f = (filter ?? '').trim().toLowerCase();
   const leafMatches = (g: ProductGroup): boolean => {
     if (!f) return true;
@@ -184,7 +222,7 @@ export default function GroupStockTree(props: Props) {
     const isOpen = openDetail === g.id;
     return (
       <div key={g.id} className="border-t border-border/60">
-        <div className={`${GRID} px-3 py-2 hover:bg-muted/40 ${selectedLeafIds.has(g.id) ? 'bg-primary/5' : ''}`}>
+        <div className={`${ROW} px-3 py-2 hover:bg-muted/30 ${selectedLeafIds.has(g.id) ? 'bg-primary/5' : ''}`}>
           <div onClick={e => e.stopPropagation()} className="flex justify-center">
             {perm.canEdit && (
               <Checkbox checked={selectedLeafIds.has(g.id)} onCheckedChange={() => onToggleLeaf(g.id)} aria-label={`Selecionar ${g.name}`} />
@@ -196,7 +234,7 @@ export default function GroupStockTree(props: Props) {
             <BelowMinBadge count={m.belowMin} />
           </button>
           <div className="text-right text-sm tabular-nums text-muted-foreground">{m.itemCount}</div>
-          <div className="text-right text-sm font-medium tabular-nums">{formatCurrency(m.value)}</div>
+          <div className="text-right text-sm font-semibold tabular-nums">{formatCurrency(m.value)}</div>
           <div><ReservedBar m={m} /></div>
           <div className="flex justify-end gap-0.5" onClick={e => e.stopPropagation()}>
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerir itens" onClick={() => onManageItems(g)}>
@@ -228,19 +266,19 @@ export default function GroupStockTree(props: Props) {
     const collapsed = f ? false : collapsedFamilies.has(family.id);
     return (
       <div key={family.id}>
-        <div className={`${GRID} border-t border-border/60 bg-muted/30 px-3 py-2`}>
+        <div className={`${ROW} border-t border-border/60 bg-muted/40 px-3 py-2`}>
           <div />
-          <button type="button" onClick={() => toggleSet(setCollapsedFamilies, family.id)} className="flex items-center gap-2 text-left" style={{ paddingLeft: 4 }}>
+          <button type="button" onClick={() => toggleSet(setCollapsedFamilies, family.id)} className="flex items-center gap-2 text-left">
             {collapsed ? <CaretRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <CaretDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
             {collapsed ? <Folder className="h-4 w-4 shrink-0 text-muted-foreground" /> : <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />}
-            <span className="truncate text-xs font-bold uppercase tracking-wide text-foreground">{family.name}</span>
-            <span className="inline-flex h-4 items-center gap-1 rounded bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
+            <span className="truncate text-[11px] font-bold uppercase tracking-wide text-foreground">{family.name}</span>
+            <span className="inline-flex h-4 items-center gap-1 rounded bg-background px-1.5 font-mono text-[10px] text-muted-foreground">
               <Layers className="h-2.5 w-2.5" />{children.length}
             </span>
             <BelowMinBadge count={m.belowMin} />
           </button>
           <div className="text-right text-xs tabular-nums text-muted-foreground">{m.itemCount}</div>
-          <div className="text-right text-xs font-medium tabular-nums">{formatCurrency(m.value)}</div>
+          <div className="text-right text-xs font-semibold tabular-nums">{formatCurrency(m.value)}</div>
           <div />
           <div className="flex justify-end gap-0.5" onClick={e => e.stopPropagation()}>
             {perm.canCreate && (
@@ -264,59 +302,56 @@ export default function GroupStockTree(props: Props) {
   };
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[720px]">
-        {/* Cabeçalho de colunas */}
-        <div className={`${GRID} bg-muted/50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
-          <div />
-          <div>Setor · Família · Grupo</div>
-          <div className="text-right">Itens</div>
-          <div className="text-right">Valor</div>
-          <div>Reservado · Livre</div>
-          <div className="text-right">Ações</div>
-        </div>
-
-        {sectorTree.map(node => {
-          const sm = bySector.get(node.sector) ?? { itemCount: 0, value: 0, belowMin: 0 };
-          const visibleLoose = f ? node.looseLeaves.filter(leafMatches) : node.looseLeaves;
-          const visibleFamilies = f
-            ? node.families.filter(fam => fam.children.some(leafMatches))
-            : node.families;
-          if (f && visibleLoose.length === 0 && visibleFamilies.length === 0) return null;
-          const collapsed = f ? false : collapsedSectors.has(node.sector);
-          return (
-            <div key={node.sector}>
-              <div className={`${GRID} border-t-2 border-primary/40 bg-accent px-3 py-2.5 text-accent-foreground`}>
-                <div />
-                <button type="button" onClick={() => toggleSet(setCollapsedSectors, node.sector)} className="flex items-center gap-2 text-left">
-                  {collapsed ? <CaretRight className="h-4 w-4 shrink-0" /> : <CaretDown className="h-4 w-4 shrink-0" />}
-                  <span className="font-display text-lg uppercase tracking-wide">{sectorLabel(node.sector)}</span>
-                  <BelowMinBadge count={sm.belowMin} />
-                </button>
-                <div className="text-right text-sm font-semibold tabular-nums">{sm.itemCount}</div>
-                <div className="text-right text-sm font-semibold tabular-nums">{formatCurrency(sm.value)}</div>
-                <div />
-                <div className="flex justify-end" onClick={e => e.stopPropagation()}>
-                  {perm.canCreate && (
-                    <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-accent-foreground hover:bg-accent-foreground/10" title={`Nova família em ${sectorLabel(node.sector)}`} onClick={() => onNewFamily(node.sector)}>
-                      <Plus className="h-3 w-3" /> Família
-                    </Button>
-                  )}
-                </div>
+    <div className="flex flex-col gap-4">
+      {sectorTree.map(node => {
+        const sm = bySector.get(node.sector) ?? { itemCount: 0, value: 0, belowMin: 0 };
+        const visibleLoose = f ? node.looseLeaves.filter(leafMatches) : node.looseLeaves;
+        const visibleFamilies = f ? node.families.filter(fam => fam.children.some(leafMatches)) : node.families;
+        if (f && visibleLoose.length === 0 && visibleFamilies.length === 0) return null;
+        const collapsed = f ? false : collapsedSectors.has(node.sector);
+        const resPct = sectorReservedPct.get(node.sector) ?? 0;
+        return (
+          <div key={node.sector} className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            {/* Cabeçalho do setor — card com donut + mini-KPIs */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-border bg-gradient-to-r from-primary/[0.04] to-transparent px-4 py-3">
+              <Donut pct={resPct} />
+              <button type="button" onClick={() => toggleSet(setCollapsedSectors, node.sector)} className="flex items-center gap-2.5 text-left">
+                {collapsed ? <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground" /> : <CaretDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-display text-sm text-primary-foreground">
+                  {sectorLabel(node.sector).slice(0, 2).toUpperCase()}
+                </span>
+                <span className="font-display text-2xl text-foreground">{sectorLabel(node.sector)}</span>
+              </button>
+              <div className="flex flex-wrap gap-2">
+                <KpiTile value={String(sm.itemCount)} label="itens" />
+                <KpiTile value={formatCurrency(sm.value)} label="em estoque" tone="money" />
+                <KpiTile value={String(sm.belowMin)} label="abaixo mín" tone={sm.belowMin > 0 ? 'warn' : undefined} />
+                <KpiTile value={String(node.families.length)} label="famílias" />
               </div>
-              {!collapsed && (
-                <>
+              <div className="ml-auto">
+                {perm.canCreate && (
+                  <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5 text-xs" title={`Nova família em ${sectorLabel(node.sector)}`} onClick={() => onNewFamily(node.sector)}>
+                    <Plus className="h-3.5 w-3.5" /> Família
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Corpo — famílias e grupos (rola horizontalmente em telas estreitas) */}
+            {!collapsed && (
+              <div className="overflow-x-auto">
+                <div className="min-w-[620px]">
                   {visibleFamilies.map(fam => familyBlock(fam.family, fam.children))}
                   {visibleLoose.map(l => leafRow(l, 0))}
                   {node.families.length === 0 && node.looseLeaves.length === 0 && (
-                    <div className="border-t border-border/60 px-3 py-3 text-xs text-muted-foreground">Setor sem grupos.</div>
+                    <div className="px-3 py-4 text-xs text-muted-foreground">Setor sem grupos.</div>
                   )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
