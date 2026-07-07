@@ -148,6 +148,56 @@ describe('orderConsumption — motor canônico', () => {
     expect(cola.totalQuantity).toBeCloseTo(0.24, 6);
   });
 
+  it('palmilha (placa+forração) vem da spec do SOLADO por número quando preenchida — não do escalar da ficha', () => {
+    const ctx = buildContext();
+    // Solado resolvido por P3 (primary_sole_id da ficha) → produto p-solado.
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    // Specs do solado por numeração (dm²/par) — MESMA fonte que produção/ondas usam.
+    ctx.insoleSpecBySole = new Map([['p-solado', { '34': 3, '35': 4, '36': 5, '37': 6, '38': 7, '39': 8 }]]);
+    ctx.insoleLiningSpecBySole = new Map([['p-solado', { '34': 1, '35': 1.5, '36': 2, '37': 2.5, '38': 3, '39': 3.5 }]]);
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const find = (ct: string, mn: string) => rows.find(r => r.componentType === ct && r.materialName === mn);
+
+    // Placa: Σ(valor_número × 4 pares) = 4×(3+4+5+6+7+8)=132 dm² ÷ 50 dm²/placa = 2.64.
+    // (O escalar 5,0 daria 120/50 = 2.40 — prova que veio do solado, por número.)
+    const placa = find('Palmilha', 'Palmilha')!;
+    expect(placa.totalQuantity).toBeCloseTo(2.64, 6);
+
+    // Forração palmilha: Σ(valor × 4)=4×13.5=54 dm² ÷ 50 (largura 0,5 m) = 1.08 m.
+    // (O escalar 3,0 daria 72/50 = 1.44.)
+    const palmForr = find('Forração Palmilha', 'Forração Palmilha')!;
+    expect(palmForr.totalQuantity).toBeCloseTo(1.08, 6);
+  });
+
+  it('forração de palmilha do SOLADO é emitida mesmo com insole_lining_consumption escalar = 0', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    ctx.insoleLiningSpecBySole = new Map([['p-solado', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 }]]);
+    const item = buildItem({ technical_sheets: buildSheet({ insole_lining_consumption: 0 }) });
+    const rows = computeConsumptionForItems([item], ctx);
+    const palmForr = rows.find(r => r.componentType === 'Forração Palmilha');
+    expect(palmForr).toBeDefined();
+    // Σ(2 × 4 pares)=48 dm² ÷ 50 = 0.96 m.
+    expect(palmForr!.totalQuantity).toBeCloseTo(0.96, 6);
+  });
+
+  it('sem spec de palmilha no solado, mantém o escalar da ficha (comportamento antigo)', () => {
+    const rows = computeConsumptionForItems([buildItem()], buildContext());
+    const placa = rows.find(r => r.componentType === 'Palmilha' && r.materialName === 'Palmilha')!;
+    expect(placa.totalQuantity).toBeCloseTo(2.4, 6);
+    const palmForr = rows.find(r => r.componentType === 'Forração Palmilha')!;
+    expect(palmForr.totalQuantity).toBeCloseTo(1.44, 6);
+  });
+
   it('PARIDADE: as bulk rows da ficha preservam required == totalQuantity do modal (1:1)', () => {
     const modalRows = computeConsumptionForItems([buildItem()], buildContext());
     const bulk = modalRows.map(toBulkConsumptionRow);
