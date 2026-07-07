@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Printer, ArrowLeft, CircleNotch as Loader2, FileText, Download } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useWorkSchedules, useHolidays, useSwapSets, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
+import { useWorkSchedules, useHolidays, useSwapSets, useTimesheetCoverage, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { generateAEJ, downloadAEJ } from '@/lib/aejExporter';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
@@ -111,6 +111,11 @@ export default function EspelhoPontoPage() {
   // Troca de dia: espelho lê o dia trocado como normal (não feriado/domingo) e a
   // folga da troca como neutra — alinhado à folha e ao banco de horas.
   const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();
+  // Cobertura da importação: dia útil sem batida só é FALTA se o relógio foi lido
+  // nesse dia. Dias após o arquivo importado (ou lacunas) não viram falta — alinhado
+  // à Folha e ao Relatório de Faltas.
+  const { data: espCoverage } = useTimesheetCoverage(periodStart, periodEnd);
+  const coveredDates = espCoverage?.coveredDates;
 
   // Banco de horas: movimentações + saldo via RPC
   const { data: bankPayload } = useQuery({
@@ -190,11 +195,13 @@ export default function EspelhoPontoPage() {
         expectedMin: summary.expectedMinutes,
         diffMin: summary.workedMinutes - summary.expectedMinutes,
         // Dia de troca trabalhado = 'Troca' (lê normal); sem batida = neutro ('—').
+        // Falta só em dia útil COBERTO pelo relógio (se houver set de cobertura); dia
+        // sem importação (lacuna/além do arquivo) = '—', não falta.
         status: isSwap ? (summary.workedMinutes > 0 ? 'Troca'
                 : punchesTreated.length % 2 !== 0 ? 'Pendência' : '—')
               : isHoliday ? 'Feriado'
               : dow === 0 ? 'Domingo'
-              : punchesTreated.length === 0 && summary.expectedMinutes > 0 ? 'Falta'
+              : punchesTreated.length === 0 && summary.expectedMinutes > 0 && (!coveredDates || coveredDates.has(dateStr)) ? 'Falta'
               : punchesTreated.length === 0 ? '—'
               : punchesTreated.length % 2 !== 0 ? 'Pendência'
               : 'Normal',
@@ -202,7 +209,7 @@ export default function EspelhoPontoPage() {
       cursor.setDate(cursor.getDate() + 1);
     }
     return out;
-  }, [employeeRecords, holidaySet, swapWorkedSet, swapOffSet, swapModeFor, schedule, periodStart, periodEnd]);
+  }, [employeeRecords, holidaySet, swapWorkedSet, swapOffSet, swapModeFor, coveredDates, schedule, periodStart, periodEnd]);
 
   const totals = useMemo(() => {
     return days.reduce((acc, d) => ({

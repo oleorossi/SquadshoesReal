@@ -242,6 +242,51 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
     expect(r.falta_dates).toEqual(['2026-05-06', '2026-05-07', '2026-05-08']);
   });
 
+  it('activeFrom (admissão) ignora dias antes do vínculo — não viram falta', () => {
+    // Admitido 07/05 (qui): seg–qua (04–06) são antes da admissão → não contam.
+    const punches = new Map<string, string[]>([['2026-05-07', full], ['2026-05-08', full]]);
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED,
+      holidaysSet: NO_HOL, punchesByDate: punches, activeFrom: '2026-05-07',
+    });
+    expect(r.falta_days).toBe(0);        // 04,05,06 não geram falta (pré-admissão)
+    expect(r.falta_dates).toEqual([]);
+    expect(r.workdays).toBe(2);          // só qui e sex contam
+  });
+
+  it('activeTo (demissão) ignora dias após o desligamento', () => {
+    // Demitido 05/05 (ter): qua–sex (06–08) são após → não geram falta.
+    const punches = new Map<string, string[]>([['2026-05-04', full], ['2026-05-05', full]]);
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED,
+      holidaysSet: NO_HOL, punchesByDate: punches, activeTo: '2026-05-05',
+    });
+    expect(r.falta_days).toBe(0);
+    expect(r.workdays).toBe(2);
+  });
+
+  it('diarista/remoto NÃO vazam falta_dates (regressão)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', full]]); // seg trabalhado; ter–sex sem batida
+    const dia = computePeriodFolha({ salary: 0, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, payRegime: 'diarista', dailyRate: 150 });
+    expect(dia.falta_days).toBe(0);
+    expect(dia.falta_dates).toEqual([]);   // diarista não tem falta
+    const rem = computePeriodFolha({ salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: new Map(), payRegime: 'remoto' });
+    expect(rem.falta_dates).toEqual([]);
+  });
+
+  it('coveredDates: dia útil sem batida NÃO coberto = neutro (não vira falta)', () => {
+    // seg (04) com batida; cobertura só tem 04 e 05 (ter, importado de outro func).
+    // Logo ter(05) sem batida = falta; qua–sex (06,07,08) sem importação = neutro.
+    const punches = new Map<string, string[]>([['2026-05-04', full]]);
+    const covered = new Set(['2026-05-04', '2026-05-05']);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, coveredDates: covered });
+    expect(r.falta_dates).toEqual(['2026-05-05']);
+    expect(r.falta_days).toBe(1);
+    // sem coveredDates (legado): qua–sex também viram falta → 4 faltas
+    const legacy = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(legacy.falta_days).toBe(4);
+  });
+
   it('maxCoveredDate (clamp) ignora dias não importados — não viram falta', () => {
     const punches = new Map<string, string[]>();
     for (const d of ['2026-05-04', '2026-05-05', '2026-05-06']) punches.set(d, full);
