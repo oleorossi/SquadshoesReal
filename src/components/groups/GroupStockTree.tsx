@@ -30,6 +30,12 @@ interface Props {
   onDelete: (g: ProductGroup) => void;
   onNewFamily: (sector: string) => void;
   onNewSubgroup: (family: ProductGroup) => void;
+  /** Opcional — clicar num item do detalhe (ex.: abrir editor do material). */
+  onEditItem?: (item: ProductLite) => void;
+  /** Opcional — adicionar um item a um grupo-folha. */
+  onAddItem?: (group: ProductGroup) => void;
+  /** Filtro textual (nome do grupo / item / SKU). Vazio = mostra tudo. */
+  filter?: string;
 }
 
 const GRID = 'grid grid-cols-[28px_1fr_64px_116px_180px_104px] items-center gap-2';
@@ -68,59 +74,80 @@ function BelowMinBadge({ count }: { count: number }) {
   );
 }
 
-function DetailPanel({ items }: { items: ProductLite[] }) {
-  if (items.length === 0) {
-    return <div className="px-4 py-3 text-xs text-muted-foreground">Nenhum item neste grupo.</div>;
-  }
+function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
+  group: ProductGroup;
+  items: ProductLite[];
+  onEditItem?: (item: ProductLite) => void;
+  onAddItem?: (group: ProductGroup) => void;
+  canCreate: boolean;
+}) {
   return (
     <div className="overflow-x-auto px-4 py-2">
-      <table className="w-full min-w-[540px] text-xs">
-        <thead>
-          <tr className="text-[10px] uppercase tracking-wide text-muted-foreground [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-semibold">
-            <th className="text-left">Item / Cor</th>
-            <th className="text-right">Saldo</th>
-            <th className="text-right">Reserv.</th>
-            <th className="text-right">Dispon.</th>
-            <th className="text-right">Custo</th>
-            <th className="text-right">Valor</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(p => {
-            const qty = Number(p.quantity) || 0;
-            const res = Number(p.reserved_stock) || 0;
-            const disp = qty - res;
-            const min = Number(p.min_stock) || 0;
-            const low = min > 0 && disp < min;
-            const price = Number(p.unit_price) || 0;
-            return (
-              <tr key={p.id} className="border-t border-border/60 [&>td]:px-2 [&>td]:py-1.5">
-                <td className="text-left">
-                  <span className="font-medium text-foreground">{p.name}</span>
-                  {low && (
-                    <span className="ml-2 inline-flex items-center gap-1 rounded bg-destructive/10 px-1 text-[10px] font-semibold text-destructive">↓ mín</span>
-                  )}
-                </td>
-                <td className="text-right tabular-nums">{formatNumber(qty, 0)} {p.unit}</td>
-                <td className="text-right tabular-nums">
-                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{formatNumber(res, 0)}</span>
-                </td>
-                <td className="text-right tabular-nums">
-                  <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-green-600">{formatNumber(disp, 0)}</span>
-                </td>
-                <td className="text-right tabular-nums">{formatCurrency(price)}</td>
-                <td className="text-right tabular-nums font-medium">{formatCurrency(qty * price)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {items.length === 0 ? (
+        <div className="py-2 text-xs text-muted-foreground">Nenhum item neste grupo.</div>
+      ) : (
+        <table className="w-full min-w-[540px] text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-muted-foreground [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-semibold">
+              <th className="text-left">Item / Cor</th>
+              <th className="text-right">Saldo</th>
+              <th className="text-right">Reserv.</th>
+              <th className="text-right">Dispon.</th>
+              <th className="text-right">Custo</th>
+              <th className="text-right">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(p => {
+              const qty = Number(p.quantity) || 0;
+              const res = Number(p.reserved_stock) || 0;
+              const disp = qty - res;
+              const min = Number(p.min_stock) || 0;
+              const low = min > 0 && disp < min;
+              const price = Number(p.unit_price) || 0;
+              const clickable = !!onEditItem;
+              return (
+                <tr
+                  key={p.id}
+                  className={`border-t border-border/60 [&>td]:px-2 [&>td]:py-1.5 ${clickable ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                  onClick={clickable ? () => onEditItem!(p) : undefined}
+                >
+                  <td className="text-left">
+                    <span className="font-medium text-foreground">{p.name}</span>
+                    {low && (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded bg-destructive/10 px-1 text-[10px] font-semibold text-destructive">↓ mín</span>
+                    )}
+                  </td>
+                  <td className="text-right tabular-nums">{formatNumber(qty, 0)} {p.unit}</td>
+                  <td className="text-right tabular-nums">
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{formatNumber(res, 0)}</span>
+                  </td>
+                  <td className="text-right tabular-nums">
+                    <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-green-600">{formatNumber(disp, 0)}</span>
+                  </td>
+                  <td className="text-right tabular-nums">{formatCurrency(price)}</td>
+                  <td className="text-right tabular-nums font-medium">{formatCurrency(qty * price)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {onAddItem && canCreate && (
+        <button
+          type="button"
+          onClick={() => onAddItem(group)}
+          className="mt-2 inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs font-medium text-primary hover:bg-primary/5"
+        >
+          <Plus className="h-3 w-3" /> Adicionar item a {group.name}
+        </button>
+      )}
     </div>
   );
 }
 
 export default function GroupStockTree(props: Props) {
-  const { groups, products, rollups, perm, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup } = props;
+  const { groups, products, rollups, perm, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter } = props;
 
   const { byGroup, bySector } = useMemo(() => buildGroupMetrics(groups, rollups), [groups, rollups]);
   const sectorTree = useMemo(() => buildSectorTree(groups), [groups]);
@@ -133,6 +160,14 @@ export default function GroupStockTree(props: Props) {
     }
     return m;
   }, [products]);
+
+  const f = (filter ?? '').trim().toLowerCase();
+  const leafMatches = (g: ProductGroup): boolean => {
+    if (!f) return true;
+    if (g.name.toLowerCase().includes(f)) return true;
+    const items = itemsByGroup.get(g.id) ?? [];
+    return items.some(p => (p.name ?? '').toLowerCase().includes(f) || (p.sku ?? '').toLowerCase().includes(f));
+  };
 
   const [collapsedSectors, setCollapsedSectors] = useState<Set<string>>(new Set());
   const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
@@ -177,14 +212,20 @@ export default function GroupStockTree(props: Props) {
             )}
           </div>
         </div>
-        {isOpen && <div className="bg-muted/20"><DetailPanel items={itemsByGroup.get(g.id) ?? []} /></div>}
+        {isOpen && (
+          <div className="bg-muted/20">
+            <DetailPanel group={g} items={itemsByGroup.get(g.id) ?? []} onEditItem={onEditItem} onAddItem={onAddItem} canCreate={perm.canCreate} />
+          </div>
+        )}
       </div>
     );
   };
 
   const familyBlock = (family: ProductGroup, children: ProductGroup[]) => {
     const m = metricsOf(family.id);
-    const collapsed = collapsedFamilies.has(family.id);
+    const visibleChildren = f ? children.filter(leafMatches) : children;
+    if (f && visibleChildren.length === 0) return null;
+    const collapsed = f ? false : collapsedFamilies.has(family.id);
     return (
       <div key={family.id}>
         <div className={`${GRID} border-t border-border/60 bg-muted/30 px-3 py-2`}>
@@ -217,7 +258,7 @@ export default function GroupStockTree(props: Props) {
             )}
           </div>
         </div>
-        {!collapsed && children.map(c => leafRow(c, 1))}
+        {!collapsed && visibleChildren.map(c => leafRow(c, 1))}
       </div>
     );
   };
@@ -237,7 +278,12 @@ export default function GroupStockTree(props: Props) {
 
         {sectorTree.map(node => {
           const sm = bySector.get(node.sector) ?? { itemCount: 0, value: 0, belowMin: 0 };
-          const collapsed = collapsedSectors.has(node.sector);
+          const visibleLoose = f ? node.looseLeaves.filter(leafMatches) : node.looseLeaves;
+          const visibleFamilies = f
+            ? node.families.filter(fam => fam.children.some(leafMatches))
+            : node.families;
+          if (f && visibleLoose.length === 0 && visibleFamilies.length === 0) return null;
+          const collapsed = f ? false : collapsedSectors.has(node.sector);
           return (
             <div key={node.sector}>
               <div className={`${GRID} border-t-2 border-primary/40 bg-accent px-3 py-2.5 text-accent-foreground`}>
@@ -260,8 +306,8 @@ export default function GroupStockTree(props: Props) {
               </div>
               {!collapsed && (
                 <>
-                  {node.families.map(f => familyBlock(f.family, f.children))}
-                  {node.looseLeaves.map(l => leafRow(l, 0))}
+                  {visibleFamilies.map(fam => familyBlock(fam.family, fam.children))}
+                  {visibleLoose.map(l => leafRow(l, 0))}
                   {node.families.length === 0 && node.looseLeaves.length === 0 && (
                     <div className="border-t border-border/60 px-3 py-3 text-xs text-muted-foreground">Setor sem grupos.</div>
                   )}
