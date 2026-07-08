@@ -4,6 +4,7 @@ import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
+import { createGroupColorProduct } from '@/lib/groupColorProducts';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
 import { useContractors } from '@/hooks/useContractors';
@@ -510,6 +511,32 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
 
   const queryClient = useQueryClient();
   const forceDeleteFlow = useForceDeleteProductFlow();
+
+  // Criar uma nova COR (produto) no grupo — cor = products.color (fonte única).
+  // Reusa o helper do cadastro em lote; idempotente por cor.
+  const [newColor, setNewColor] = useState('');
+  const [addingColor, setAddingColor] = useState(false);
+  const handleAddColor = async () => {
+    const c = newColor.trim();
+    if (!c) return;
+    setAddingColor(true);
+    try {
+      const res = await createGroupColorProduct({ groupId: group.id, groupName: group.name, color: c });
+      if (res.status === 'created') {
+        toast.success(`Cor "${c}" cadastrada no grupo.`);
+        setNewColor('');
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['products_for_colors'] });
+        queryClient.invalidateQueries({ queryKey: ['product_groups_colors'] });
+      } else if (res.status === 'skipped') {
+        toast.info(`"${c}" já existe neste grupo.`);
+      } else {
+        toast.error(`Erro ao criar cor: ${res.error}`);
+      }
+    } finally {
+      setAddingColor(false);
+    }
+  };
 
   const { data: recipes = [] } = useArtisanalRecipes();
   const { data: contractors = [] } = useContractors();
@@ -1297,6 +1324,23 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setAddDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   Adicionar
+                </Button>
+              </div>
+              {/* Criar cor nova direto no grupo (produto material×cor). */}
+              <div className="flex items-end gap-2 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
+                <div className="flex-1">
+                  <Label className="text-[11px] text-muted-foreground">Criar nova cor neste grupo</Label>
+                  <Input
+                    value={newColor}
+                    onChange={e => setNewColor(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddColor(); } }}
+                    placeholder="Ex.: COGUMELO"
+                    className="mt-0.5 h-8 text-xs uppercase"
+                  />
+                </div>
+                <Button type="button" size="sm" className="h-8 gap-1" disabled={addingColor || !newColor.trim()} onClick={handleAddColor}>
+                  <Plus className="h-3.5 w-3.5" />
+                  {addingColor ? 'Criando...' : 'Criar cor'}
                 </Button>
               </div>
               {products.length === 0 ? (
