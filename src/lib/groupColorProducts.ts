@@ -72,7 +72,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     color,
     unit: isStrapLike ? 'm' : (last?.unit || 'un'),
     unit_price: last?.unit_price || 0,
-    location: last?.location || null,
+    location: last?.location || '', // products.location é NOT NULL — nunca null (igual ao dialog)
     min_stock: last?.min_stock || 0,
     max_stock: last?.max_stock || 0,
     quantity: 0,
