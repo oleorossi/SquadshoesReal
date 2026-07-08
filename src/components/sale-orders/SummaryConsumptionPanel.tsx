@@ -195,6 +195,23 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         }
       }
 
+      // PALMILHA PLACA por número (dm²/par) do SOLADO — MESMA fonte da produção/ondas
+      // e do modal (orderConsumption). Antes usava insole_consumption_per_size da ficha (vazio).
+      const insoleSpecBySole = new Map<string, Record<string, number>>();
+      {
+        const { data: insoleSpecs } = await (supabase as any)
+          .from('sole_technical_specs')
+          .select('sole_id, size, insole_consumption_dm2')
+          .gt('insole_consumption_dm2', 0);
+        for (const r of (insoleSpecs || []) as any[]) {
+          const v = Number(r.insole_consumption_dm2) || 0;
+          if (v <= 0 || r.size == null) continue;
+          const m = insoleSpecBySole.get(r.sole_id) || {};
+          m[String(r.size)] = v;
+          insoleSpecBySole.set(r.sole_id, m);
+        }
+      }
+
       // Build map of reference_id -> sheet strap_colors
       const sheetStrapsMap = new Map<string, any[]>();
       for (const s of (sheetStrapData || [])) {
@@ -412,14 +429,13 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const insoleGroupName = sheet?.insole_material || '';
         const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
         const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
-        const insoleDm2 = calculateGradeBasedDm2(
-          gradeItem, 
-          Number(sheet?.insole_consumption) || 0, 
-          insoleSheet, 
-          sheet?.insole_consumption_per_size,
-          soleProductIdForInsole,
-          sheet?.sole_drives_consumption
-        );
+        // Palmilha placa vem do SOLADO por número quando preenchido (espelha forro/produção);
+        // a ficha de componente fica só p/ conversão dm²→placa. Sem valores → caminho antigo.
+        const insoleSolePerSize = insoleSpecBySole.get(soleProductIdForInsole || '') || {};
+        const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
+        const insoleDm2 = insoleSoleVals.length > 0
+          ? calculateGradeBasedDm2(gradeItem, insoleSoleVals.reduce((a, b) => a + b, 0) / insoleSoleVals.length, null, insoleSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption)
+          : calculateGradeBasedDm2(gradeItem, Number(sheet?.insole_consumption) || 0, insoleSheet, sheet?.insole_consumption_per_size, soleProductIdForInsole, sheet?.sole_drives_consumption);
         // Use group plate area (same source as YieldFromPlate in tech sheets)
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
         const insolePlates = groupPlateArea > 0

@@ -9,7 +9,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf } from '@phosphor-icons/react';
+import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
@@ -373,6 +374,79 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       return m;
     },
   });
+
+  // Gerar PDF da FOLHA — tabela única de TODOS os funcionários com VALORES e HORAS
+  // (salário, HE, faltas, atrasos, líquido + horas trabalhadas/extra), do mesmo motor
+  // (computePeriodFolha via comparativo.rows). Respeita o filtro de setor da tela.
+  const handlePrintFolhaPdf = () => {
+    const fmtHm = (min: number) => {
+      const m = Math.round(Number(min) || 0);
+      if (m <= 0) return '—';
+      const h = Math.floor(m / 60), mm = m % 60;
+      return mm === 0 ? `${h}h` : h === 0 ? `${mm}min` : `${h}h${String(mm).padStart(2, '0')}`;
+    };
+    const dfmt = (iso: string) => (iso || '').split('-').reverse().join('/');
+    const now = new Date();
+    const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+    const src = comparativo.rows.filter(r => setorFilter === 'all' || setorOf(r.id) === setorFilter);
+    if (src.length === 0) { toast.error('Nenhum funcionário na folha do período.'); return; }
+
+    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tLiq = 0, tWork = 0, tHeMin = 0;
+    const bodyRows = src.map((r): RhCell[] => {
+      const res: any = r.result;
+      const sal = Number(res.base_salary) || 0, he = Number(res.he_value) || 0;
+      const falta = Number(res.falta_desconto) || 0, atraso = Number(res.atraso_desconto) || 0;
+      tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso;
+      tLiq += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;
+      return [
+        { v: r.name },
+        { v: setorOf(r.id) || '—' },
+        { v: String(res.paid_days ?? 0), align: 'r' },
+        { v: fmtHm(res.worked_minutes), align: 'r' },
+        { v: fmtHm(res.he_minutes), align: 'r' },
+        { v: fmt(sal), align: 'r' },
+        { v: he > 0 ? fmt(he) : '—', align: 'r' },
+        { v: falta > 0 ? `− ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
+        { v: atraso > 0 ? `− ${fmt(atraso)}` : '—', align: 'r', neg: atraso > 0 },
+        { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
+      ];
+    });
+
+    printRhReport({
+      title: 'Folha — Relatório por Funcionário',
+      subtitle: setorFilter !== 'all' ? `Setor: ${setorFilter}` : 'Todos os setores',
+      periodo: `${dfmt(appliedFrom)} – ${dfmt(appliedTo)}`,
+      generatedAt,
+      kpis: [
+        { label: 'Funcionários', value: String(bodyRows.length) },
+        { label: 'Horas trab.', value: fmtHm(tWork) },
+        { label: 'Horas extras', value: fmtHm(tHeMin) },
+        { label: 'Proventos', value: fmt(tSal + tHe) },
+        { label: 'Descontos', value: fmt(tFalta + tAtraso) },
+        { label: 'Líquido', value: fmt(tLiq) },
+      ],
+      headers: [
+        { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias', align: 'r' },
+        { label: 'H. trab.', align: 'r' }, { label: 'H. extra', align: 'r' },
+        { label: 'Salário', align: 'r' }, { label: 'H.E. (R$)', align: 'r' },
+        { label: 'Faltas', align: 'r' }, { label: 'Atrasos', align: 'r' }, { label: 'Líquido', align: 'r' },
+      ],
+      rows: bodyRows,
+      totals: [
+        { v: `Total · ${bodyRows.length} func.`, strong: true },
+        { v: '' }, { v: '', align: 'r' },
+        { v: fmtHm(tWork), align: 'r', strong: true },
+        { v: fmtHm(tHeMin), align: 'r', strong: true },
+        { v: fmt(tSal), align: 'r', strong: true },
+        { v: fmt(tHe), align: 'r', strong: true },
+        { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
+        { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
+        { v: fmt(tLiq), align: 'r', strong: true },
+      ],
+      footNote: 'Faltas = dias × salário/30 · Atrasos = min × salário/220 · H.E. = min × salário/220 × 1,5.',
+    });
+  };
 
   // Espelho de ponto legal (Portaria MTP 671) — documento individual assinável com
   // batidas dia a dia, totais e saldo de banco. Usa o ponto do período selecionado
@@ -834,17 +908,29 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           ))}
         </div>
         {view === 'folha' && runs.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Setor</span>
-            <select
-              value={setorFilter}
-              onChange={e => setSetorFilter(e.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
-              aria-label="Filtrar por setor"
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Setor</span>
+              <select
+                value={setorFilter}
+                onChange={e => setSetorFilter(e.target.value)}
+                className="h-8 rounded-md border bg-background px-2 text-xs"
+                aria-label="Filtrar por setor"
+              >
+                <option value="all">Todos os setores ({setoresDisponiveis.length})</option>
+                {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={handlePrintFolhaPdf}
+              title="Gerar PDF de todos os funcionários com valores e horas"
             >
-              <option value="all">Todos os setores ({setoresDisponiveis.length})</option>
-              {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+              <FilePdf className="h-4 w-4" /> Gerar PDF
+            </Button>
           </div>
         )}
       </div>
