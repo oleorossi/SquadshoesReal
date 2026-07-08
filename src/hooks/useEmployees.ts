@@ -13,7 +13,10 @@ export interface Employee {
   pix_type: string;
   salary: number;
   hourly_rate: number | null;
+  /** Valor negociado da HE em DIA ÚTIL (50%), R$/h. NULL = automático (salário/220 × 1,5). */
   overtime_hourly_rate: number | null;
+  /** Valor negociado da HE em DOMINGO/FERIADO (100%), R$/h. NULL = automático. */
+  overtime_holiday_hourly_rate: number | null;
   overtime_multiplier: number;
   /** Regime de pagamento: mensalista (salário, desconta ponto), remoto (salário cheio,
    *  não bate ponto) ou diarista (paga por dia trabalhado, valor da diária). */
@@ -55,7 +58,7 @@ export interface EmployeeAdvance {
  *  (Employees.tsx) não os envia e o insert cai nos defaults do banco;
  *  no update, omitidos = não tocados. */
 type EmployeePayKeys =
-  | 'hourly_rate' | 'overtime_hourly_rate' | 'overtime_multiplier'
+  | 'hourly_rate' | 'overtime_hourly_rate' | 'overtime_holiday_hourly_rate' | 'overtime_multiplier'
   | 'payment_type' | 'daily_rate' | 'work_schedule_id'
   | 'overtime_50_pct' | 'overtime_100_pct' | 'night_bonus_pct';
 type EmployeeForm =

@@ -63,7 +63,9 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     for (const d of e.dayRows) {
       const deficitMin = d.kind === 'falta' ? d.expected : (d.kind === 'curto' ? Math.max(0, d.expected - d.worked) : 0);
       const descontoDia = d.kind === 'falta' ? e.valorDia : (d.kind === 'curto' ? (deficitMin / 60) * e.vh : 0);
-      const excedenteDia = d.saldo > 0 ? (d.saldo / 60) * e.vh * e.premiumMultiplier : 0;
+      // Taxa por balde: fds/feriado trabalhado = 100% (holidayRate); excedente de dia útil = 50% (utilRate).
+      // Ambas honram o valor negociado do funcionário (senão valor-hora × multiplicador).
+      const excedenteDia = d.saldo > 0 ? (d.saldo / 60) * (d.kind === 'fds' ? e.holidayRate : e.utilRate) : 0;
       detalhe.push({
         'Matrícula': r.ext || '',
         'Funcionário': r.name,

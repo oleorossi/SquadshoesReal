@@ -108,6 +108,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // Período pago por INTERVALO de datas (paga quinzenal). Default = mês corrente inteiro.
   const [range, setRange] = useState(() => ({ from: `${defaultPeriod}-01`, to: lastDayOfMonth(defaultPeriod) }));
   const [calcRunning, setCalcRunning] = useState(false);
+  // Confirmação de recálculo que sobrescreve folhas já fechadas (aprovadas/pagas).
+  const [confirmRecalc, setConfirmRecalc] = useState<{ count: number } | null>(null);
   const [detailRun, setDetailRun] = useState<string | null>(null);
   const [approveRun, setApproveRun] = useState<string | null>(null);
   const [payRun, setPayRun] = useState<string | null>(null);
@@ -479,7 +481,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     });
   };
 
-  async function calculateAll() {
+  async function calculateAll(force = false) {
     // Usa o intervalo IMEDIATO (o que está nos inputs agora), não o debounced.
     const cFrom = range.from, cTo = range.to;
     if (!cFrom || !cTo || cFrom > cTo) {
@@ -487,6 +489,21 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       return;
     }
     const cPeriod = rangeToPeriod(cFrom, cTo);
+
+    // Folhas já aprovadas/pagas do período: recalcular sobrescreve valores (mexe em
+    // histórico financeiro). Não fazer isso em silêncio — pedir confirmação explícita.
+    // Ao confirmar, chamamos calculateAll(true), que preserva status + carimbos.
+    if (!force) {
+      const { data: closedRuns } = await (supabase as any)
+        .from('payroll_runs')
+        .select('id, status')
+        .eq('period', cPeriod)
+        .neq('status', 'rascunho');
+      if (closedRuns && closedRuns.length > 0) {
+        setConfirmRecalc({ count: closedRuns.length });
+        return;
+      }
+    }
     // Mês cheio paga salário (30 avos); período parcial (quinzena) = proporcional aos dias.
     let cBaseDays = /^\d{4}-\d{2}$/.test(cPeriod) ? undefined : daysBetween(cFrom, cTo);
     // Dias do mês p/ a base proporcional da quinzena: 1ª(15) + 2ª(mês−15) = salário EXATO
@@ -611,10 +628,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           maxCoveredDate: maxCov,
           payRegime: (String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number((emp as any).daily_rate) || 0,
+          overtimeUtilRate: (emp as any).overtime_hourly_rate ?? null,          // HE negociada dia útil (50%)
+          overtimeHolidayRate: (emp as any).overtime_holiday_hourly_rate ?? null, // HE negociada domingo/feriado (100%)
         });
         if (result.pending_days > 0) withIncomplete++;
 
         await upsertRun.mutateAsync({
+          force,   // recálculo forçado preserva status/carimbos de folha fechada
           employee_id: emp.id,
           period: cPeriod,
           base_salary: Number(emp.salary) || 0,
@@ -645,7 +665,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         calculated++;
       }
       toast.success(
-        `Folha calculada: ${calculated} funcionário(s).` +
+        `Folha ${force ? 'recalculada' : 'calculada'}: ${calculated} funcionário(s).` +
+        (force ? ' Folhas fechadas foram atualizadas (status preservado).' : '') +
         (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
         (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : '') +
         (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
@@ -680,7 +701,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         <Input type="date" value={range.to} min={range.from || undefined} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="w-36 h-9" aria-label="Data final" />
         <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{periodDays} dia(s)</span>
       </div>
-      <Button size="sm" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
+      <Button size="sm" onClick={() => calculateAll()} disabled={calcRunning || !range.from || !range.to}>
         {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
         Calcular folha
       </Button>
@@ -856,7 +877,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             <Input type="date" value={range.to} min={range.from || undefined} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="w-36 h-9" aria-label="Data final" />
             <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{periodDays} dia(s)</span>
           </div>
-          <Button size="sm" onClick={calculateAll} disabled={calcRunning || !range.from || !range.to}>
+          <Button size="sm" onClick={() => calculateAll()} disabled={calcRunning || !range.from || !range.to}>
             {calcRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
             Calcular folha
           </Button>
@@ -1139,6 +1160,37 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       })()}
 
       {/* Confirmação de aprovação quando há adiantamento */}
+      {/* Confirmação de recálculo que sobrescreve folhas já fechadas (aprovadas/pagas) */}
+      <AlertDialog open={!!confirmRecalc} onOpenChange={(o) => !o && setConfirmRecalc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="h-5 w-5" />
+              Recalcular folhas já fechadas?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-2 text-sm">
+                <p>
+                  <strong className="text-amber-700">{confirmRecalc?.count}</strong>{' '}
+                  {confirmRecalc?.count === 1 ? 'folha deste período já está aprovada/paga' : 'folhas deste período já estão aprovadas/pagas'}.
+                  Recalcular vai <strong>sobrescrever os valores</strong> (ex.: hora extra negociada que mudou).
+                </p>
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+                  O <strong>status</strong> (aprovada/paga) e as datas de aprovação/pagamento são <strong>preservados</strong> —
+                  apenas os números são atualizados. Confira o líquido antes de repassar qualquer diferença.
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmRecalc(null); calculateAll(true); }}>
+              Recalcular mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={!!approveRun} onOpenChange={(o) => !o && setApproveRun(null)}>
         <AlertDialogContent>
           {(() => {

@@ -34,8 +34,10 @@ export interface EmployeeTimesheetData {
     minimum_overtime_minutes?: number;
   };
   hourlySalary?: number;
-  /** Per-employee overtime hourly rate (R$/hr). Overrides hourlySalary * multiplier when set. */
+  /** Valor negociado da HE em DIA ÚTIL (50%), R$/h. NULL/ausente = salário/220 × multiplicador. */
   overtimeHourlyRate?: number | null;
+  /** Valor negociado da HE em DOMINGO/FERIADO (100%), R$/h. NULL/ausente = salário/220 × multiplicador. */
+  overtimeHolidayRate?: number | null;
   /** Regime: mensalista (padrão), remoto (salário cheio, ignora ponto) ou diarista
    *  (diária × dias). Quando ausente = mensalista. */
   paymentType?: 'mensalista' | 'remoto' | 'diarista';
@@ -678,7 +680,9 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
   // folha (2026-06-19). Falta entra à parte (valor-dia); fds/feriado trabalhado = tudo HE.
   const dayRows: { date: string; dayOfWeek: number; punches: string[]; expected: number; worked: number; saldo: number; kind: EvalDayKind }[] = [];
   let faltaCount = 0, expectedPresentMin = 0, workedTotalMin = 0, pendingDays = 0;
-  let heMin = 0, atrasoMin = 0;
+  // heMin split em 50% (excedente de dia útil) e 100% (fds/feriado trabalhado), pra
+  // aplicar a taxa negociada por balde (igual computePeriodFolha). heMin = soma dos dois.
+  let he50Min = 0, he100Min = 0, atrasoMin = 0;
 
   for (const d of emp.days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -697,10 +701,10 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
       // BRUTO por-dia: excedente do dia → HE, déficit do dia → atraso (sem compensar entre dias).
       // Atraso capado por-dia (atrasoCapMinutes) pra o holerite bater com a folha.
       const dayBal = worked - expected;
-      if (dayBal > 0) heMin += dayBal; else if (dayBal < 0) atrasoMin += Math.min(-dayBal, atrasoCapMinutes());
+      if (dayBal > 0) he50Min += dayBal; else if (dayBal < 0) atrasoMin += Math.min(-dayBal, atrasoCapMinutes());
       dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked, saldo: worked - expected, kind: worked >= expected ? 'ok' : 'curto' });
     } else if (worked > 0) {
-      workedTotalMin += worked; heMin += worked;                    // fds/feriado = tudo hora extra
+      workedTotalMin += worked; he100Min += worked;                 // fds/feriado = tudo hora extra (100%)
       dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected: 0, worked, saldo: worked, kind: 'fds' });
     }
   }
@@ -713,8 +717,8 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     const paidDays = dayRows.filter(r => (r.punches?.length || 0) >= 1).length;
     const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : monthlySalary;
     return {
-      vh, valorDia, premiumMultiplier, dayRows, pendingDays,
-      faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, heValue: 0,
+      vh, valorDia, premiumMultiplier, utilRate: vh * premiumMultiplier, holidayRate: vh * premiumMultiplier, dayRows, pendingDays,
+      faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, he50Min: 0, he100Min: 0, heValue: 0,
       totalDesconto: 0, liquido: 0, hasSalary: paidBase > 0,
       workedTotalMin, expectedPresentMin,
       paymentType: regime, paidDays, dailyRate: emp.dailyRate || 0, paidBase,
@@ -723,12 +727,17 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
 
   const faltaDesconto = faltaCount * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * vh;
-  const heValue = (heMin / 60) * vh * premiumMultiplier;
+  // Taxa efetiva por balde: valor negociado (>0) vence; senão valor-hora × multiplicador (auto).
+  const autoHeRate = vh * premiumMultiplier;
+  const utilRate = (emp.overtimeHourlyRate != null && emp.overtimeHourlyRate > 0) ? emp.overtimeHourlyRate : autoHeRate;
+  const holidayRate = (emp.overtimeHolidayRate != null && emp.overtimeHolidayRate > 0) ? emp.overtimeHolidayRate : autoHeRate;
+  const heValue = (he50Min / 60) * utilRate + (he100Min / 60) * holidayRate;
+  const heMin = he50Min + he100Min;
   const totalDesconto = faltaDesconto + atrasoDesconto;
 
   return {
-    vh, valorDia, premiumMultiplier, dayRows, pendingDays,
-    faltaCount, faltaDesconto, atrasoMin, atrasoDesconto, heMin, heValue,
+    vh, valorDia, premiumMultiplier, utilRate, holidayRate, dayRows, pendingDays,
+    faltaCount, faltaDesconto, atrasoMin, atrasoDesconto, heMin, he50Min, he100Min, heValue,
     totalDesconto, liquido: heValue - totalDesconto, hasSalary: vh > 0,
     workedTotalMin, expectedPresentMin,
     paymentType: 'mensalista' as const, paidDays: dayRows.filter(r => r.kind === 'ok' || r.kind === 'curto' || r.kind === 'fds').length,

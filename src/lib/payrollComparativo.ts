@@ -51,6 +51,7 @@ export function buildEmployeePrintData(
     },
     hourlySalary: (Number(emp?.salary) || 0) / MONTHLY_HOURS_DIVISOR,
     overtimeHourlyRate: emp?.overtime_hourly_rate ?? null,
+    overtimeHolidayRate: emp?.overtime_holiday_hourly_rate ?? null,
     expectedDayMin: expectedDayMinutes(sch),
     paymentType: (emp?.payment_type as 'mensalista' | 'remoto' | 'diarista') || 'mensalista',
     dailyRate: Number(emp?.daily_rate) || 0,
@@ -166,6 +167,8 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
         periodDays, monthDays, maxCoveredDate: maxCovered,
         payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
         dailyRate: Number(emp.daily_rate) || 0,
+        overtimeUtilRate: (emp as any).overtime_hourly_rate ?? null,
+        overtimeHolidayRate: (emp as any).overtime_holiday_hourly_rate ?? null,
         advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
       });
 
