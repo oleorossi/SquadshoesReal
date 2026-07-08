@@ -20,7 +20,12 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('service_orders')
-        .select('id, order_number, target_sector, quantity, total_value, status, order_id, orders(order_number), contractors(name, trade_name)')
+        // Desambigua o embed: service_orders tem mais de uma FK pra `orders`
+        // (order_id + relação reversa/legado), então PostgREST exige o hint da
+        // coluna FK — `orders!order_id(...)` — senão dá "more than one relationship
+        // was found for 'service_orders' and 'orders'". A chave do resultado
+        // continua `orders`, então r.orders?.order_number segue igual.
+        .select('id, order_number, target_sector, quantity, total_value, status, order_id, orders!order_id(order_number), contractors(name, trade_name)')
         .or(`source_sale_order_id.eq.${saleOrderId},sale_order_id.eq.${saleOrderId}`)
         .is('archived_at', null)
         .order('created_at', { ascending: false });
