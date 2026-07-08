@@ -190,6 +190,26 @@ describe('orderConsumption — motor canônico', () => {
     expect(palmForr!.totalQuantity).toBeCloseTo(0.96, 6);
   });
 
+  it('solado FACHETADO sem specs de fachete emite linha de AVISO (qtd 0), espelhando o SQL', () => {
+    // Antes o motor de UI OMITIA silenciosamente o fachete quando o solado
+    // fachetado não tinha consumo cadastrado → forração extra do salto sumia.
+    // Agora emite uma linha neutra com `warning` (o modal a mostra em âmbar; a
+    // ficha do operador a filtra). Espelha o consumption_warning do SQL by_grade.
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-sole-fach']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-sole-fach', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, is_fachetado: true },
+    ];
+    ctx.productGroups = [...ctx.productGroups, { id: 'g-solado', name: 'SOLADO TR 01', dimensions_length: null, dimensions_width: null, dimensions_unit: null }];
+    // facheteSpecBySole permanece VAZIO → solado fachetado SEM consumo cadastrado.
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const fachete = rows.find(r => r.componentType === 'Fachete');
+    expect(fachete).toBeDefined();
+    expect(fachete!.totalQuantity).toBe(0);
+    expect(fachete!.warning).toBeTruthy();
+  });
+
   it('sem spec de palmilha no solado, mantém o escalar da ficha (comportamento antigo)', () => {
     const rows = computeConsumptionForItems([buildItem()], buildContext());
     const placa = rows.find(r => r.componentType === 'Palmilha' && r.materialName === 'Palmilha')!;
