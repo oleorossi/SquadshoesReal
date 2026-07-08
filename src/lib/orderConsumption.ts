@@ -53,6 +53,11 @@ export type MaterialConsumptionRow = {
   color: string;
   totalQuantity: number;
   widthMissing?: boolean;
+  /** Aviso não-bloqueante exibido pelo modal (ex.: solado fachetado sem specs
+   *  de fachete). A linha entra mesmo com `totalQuantity` 0 só pra alertar que
+   *  há consumo NÃO calculado por falta de cadastro. Espelha o
+   *  `consumption_warning` do SQL `calculate_order_consumption_by_grade`. */
+  warning?: string;
   /** Breakdown agregado por numeração (somado entre items que casam em
    *  grupo+cor+unidade). Usado pelo Solado pra mostrar totais reais por Nº. */
   sizeBreakdown?: Record<string, number>;
@@ -202,7 +207,10 @@ const isAreaStockUnit = (unit?: string | null): boolean =>
 const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: MaterialConsumptionRow) => {
   const totalQuantity = Number(row.totalQuantity) || 0;
   const groupName = row.groupName?.trim();
-  if (!groupName || totalQuantity <= 0) return;
+  if (!groupName) return;
+  // Linhas SÓ de aviso (ex.: fachete sem specs) entram com qtd 0 pra alertar;
+  // as demais linhas de qtd zero continuam descartadas como antes.
+  if (totalQuantity <= 0 && !row.warning) return;
 
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
@@ -213,6 +221,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   if (existing) {
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
+    if (row.warning && !existing.warning) existing.warning = row.warning;
     // Soma breakdown por numeração quando ambos têm (Solado).
     if (row.sizeBreakdown) {
       existing.sizeBreakdown = existing.sizeBreakdown || {};
@@ -233,6 +242,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     color,
     totalQuantity,
     widthMissing: row.widthMissing,
+    warning: row.warning,
     sizeBreakdown: row.sizeBreakdown,
     soleProductId: row.soleProductId,
   });
@@ -999,6 +1009,23 @@ export function computeConsumptionForItems(
           color: mappedLiningColor,
           totalQuantity: facheteTotal,
           widthMissing,
+        });
+      } else {
+        // Solado fachetado SEM consumo de fachete cadastrado. Espelha o
+        // `consumption_warning` do SQL (calculate_order_consumption_by_grade):
+        // antes a UI simplesmente OMITIA a linha → a forração EXTRA do salto
+        // sumia silenciosamente e o operador subcortava o forro. Agora emite uma
+        // linha de alerta (qtd 0, neutra) pra tornar o gap visível até alguém
+        // cadastrar `sole_technical_specs.fachete_lining_consumption_dm2`.
+        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Fachete',
+          groupName: facheteMaterialName || 'Fachete',
+          materialName: 'Fachete',
+          productUnit: 'dm2',
+          color: mappedLiningColor,
+          totalQuantity: 0,
+          warning: 'Solado fachetado sem consumo de fachete cadastrado — a forração extra do salto NÃO entrou no cálculo. Cadastre o consumo por numeração em Materiais → Solado (fachete_lining_consumption_dm2).',
         });
       }
     }

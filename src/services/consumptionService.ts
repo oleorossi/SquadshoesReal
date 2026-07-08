@@ -29,6 +29,17 @@ export const CONSUMPTION_SOURCES = [
   'sole_standard_per_size',
   'direct_components',
   'component_color',
+  // Fontes emitidas pelo motor único `calculate_order_consumption_by_grade`
+  // (o escalar delega a ele) confirmadas no banco vivo em 2026-07-08. Faltavam
+  // aqui → o Zod REJEITARIA o payload inteiro (ConsumptionSchemaError) na
+  // primeira ficha com variante de material, forração alternativa, fachete de
+  // solado ou acessório de componente.
+  'variant',
+  'variant_sole',
+  'lining_alt',
+  'insole_lining',
+  'sole_fachete',
+  'component_accessory',
   // valores legados/auxiliares que o SQL pode emitir em casos antigos
   'fallback_default',
   'sole_driven_default',

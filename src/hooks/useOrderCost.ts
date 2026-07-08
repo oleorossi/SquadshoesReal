@@ -12,7 +12,14 @@ export function useOrderCost(
 ) {
   return useQuery<OrderCostResult>({
     queryKey: ["order-cost", saleOrderId, saleOrderItemId],
-    queryFn: () => calculateOrderCost(saleOrderId!, saleOrderItemId, true),
+    // persist=false: apenas EXIBE o custo (recalculado com preços vivos), sem
+    // regravar `order_costs`. Antes era `true`, então só ABRIR o card de margem
+    // reescrevia o snapshot congelado com os preços atuais — uma edição de preço
+    // na ficha alterava o histórico de custo silenciosamente na próxima
+    // visualização. A persistência do snapshot agora só acontece nos caminhos
+    // EXPLÍCITOS: salvar o PV (SaleOrderForm) e o botão "Calcular Custos"
+    // (useRecalcOrderCost).
+    queryFn: () => calculateOrderCost(saleOrderId!, saleOrderItemId, false),
     enabled: !!saleOrderId && enabled,
     staleTime: 30_000,
   });

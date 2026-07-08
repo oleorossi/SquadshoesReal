@@ -92,7 +92,11 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           packagingMode: (o as any).sale_order_id ? (pkgByOrder.get((o as any).sale_order_id) ?? null) : null,
         }));
 
-      const computed = computeConsumptionForItems(items, ctx) as ConsumptionRow[];
+      // Linhas SÓ de aviso (ex.: fachete sem specs, qtd 0) são exibidas no modal
+      // de Consumo do PV (planejamento); aqui, na visão por OP, ficam de fora pra
+      // não imprimir "0,00" sem quantidade real.
+      const computed = (computeConsumptionForItems(items, ctx) as ConsumptionRow[])
+        .filter(r => !(r as any).warning);
 
       const sortedRows = [...computed].sort((a, b) => {
         const typeDiff = COMPONENT_ORDER.indexOf(a.componentType as any) - COMPONENT_ORDER.indexOf(b.componentType as any);
