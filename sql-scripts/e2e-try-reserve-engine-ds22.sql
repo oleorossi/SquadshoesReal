@@ -17,7 +17,7 @@ DECLARE
   c_jwt_sub constant text := '49371f4d-641f-466d-be26-686ef57743ec'; -- usuário aprovado
   v_perola uuid; v_turq uuid; v_marrom uuid; v_napa_ow uuid; v_napa_cap uuid;
   v_size text; v_grade jsonb; v_op1 uuid; v_op2 uuid;
-  v_res jsonb; v_sole uuid;
+  v_res jsonb; v_sole uuid; v_so uuid;
   v_n numeric; v_c int;
   rep text := ''; fails int := 0;
 BEGIN
@@ -64,14 +64,25 @@ BEGIN
   v_grade := jsonb_build_object(v_size, 12);
   rep := rep || format(E'grade de teste: %s\n', v_grade::text);
 
+  -- PV hospedeiro: orders.sale_order_id é NOT NULL. Usamos um PV real SEM
+  -- itens da DS22 (só packaging_mode é lido; lookup de item/variante fica
+  -- nulo). As OPs de teste somem no rollback — o PV não é alterado.
+  SELECT so.id INTO v_so FROM sale_orders so
+   WHERE NOT EXISTS (SELECT 1 FROM sale_order_items soi
+                      WHERE soi.sale_order_id = so.id AND soi.reference_id = c_sheet)
+   ORDER BY so.created_at DESC LIMIT 1;
+  IF v_so IS NULL THEN
+    RAISE EXCEPTION 'E2E ABORTADO: nenhum PV hospedeiro disponível';
+  END IF;
+
   -- Top-up temporário (SKUs têm reserved_stock >> quantity em produção;
   -- sem isso a reserva sai 0 e a prova positiva é impossível). Rollback desfaz.
   UPDATE products SET quantity = 99999
    WHERE id IN (v_perola, v_turq, v_marrom, v_napa_ow, v_napa_cap);
 
   -- ═══ CASO 1: cor CONFIGURADA (OFF WHITE → lista por cor) ═══
-  INSERT INTO orders (reference_id, quantity, color, grade, status, notes)
-  VALUES (c_sheet, 12, 'OFF WHITE', v_grade, 'Reservado', 'TESTE E2E try_reserve — rollback automático')
+  INSERT INTO orders (reference_id, quantity, color, grade, status, notes, sale_order_id)
+  VALUES (c_sheet, 12, 'OFF WHITE', v_grade, 'Reservado', 'TESTE E2E try_reserve — rollback automático', v_so)
   RETURNING id INTO v_op1;
 
   v_res := public.try_reserve_materials(v_op1, c_sheet, 12, 'OFF WHITE');
@@ -125,8 +136,8 @@ BEGIN
   ELSE fails := fails+1; rep := rep || format(E'FAIL 1f reservas de solado após debit_sole: %s (esperado 1)\n', v_c); END IF;
 
   -- ═══ CASO 2: cor SEM configuração (CAPUCCINO → fallback pro padrão) ═══
-  INSERT INTO orders (reference_id, quantity, color, grade, status, notes)
-  VALUES (c_sheet, 12, 'CAPUCCINO', v_grade, 'Reservado', 'TESTE E2E try_reserve — rollback automático')
+  INSERT INTO orders (reference_id, quantity, color, grade, status, notes, sale_order_id)
+  VALUES (c_sheet, 12, 'CAPUCCINO', v_grade, 'Reservado', 'TESTE E2E try_reserve — rollback automático', v_so)
   RETURNING id INTO v_op2;
 
   v_res := public.try_reserve_materials(v_op2, c_sheet, 12, 'CAPUCCINO');
