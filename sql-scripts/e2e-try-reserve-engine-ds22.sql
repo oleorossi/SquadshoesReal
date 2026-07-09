@@ -35,7 +35,9 @@ BEGIN
       v_perola, v_turq, v_marrom, v_napa_ow, v_napa_cap;
   END IF;
 
-  -- Grade de 12 pares num tamanho que EXISTE no per-size da ficha
+  -- Grade de 12 pares num tamanho com consumo per-size de forração: primeiro
+  -- na ficha; senão nas specs do SOLADO (sole_drives_consumption — na DS22 o
+  -- per-size da forração mora em sole_technical_specs, não na ficha)
   SELECT kv.key INTO v_size
     FROM technical_sheets ts,
          jsonb_each_text(COALESCE(ts.lining_consumption_per_size, '{}'::jsonb)) kv
@@ -43,7 +45,14 @@ BEGIN
      AND kv.value ~ '^[0-9]+(\.[0-9]+)?$' AND kv.value::numeric > 0
    ORDER BY kv.key LIMIT 1;
   IF v_size IS NULL THEN
-    RAISE EXCEPTION 'E2E ABORTADO: DS22 sem lining_consumption_per_size > 0 (pré-condição)';
+    SELECT sts.size::text INTO v_size
+      FROM resolve_sole_color(c_sheet, 'OFF WHITE') rsc
+      JOIN sole_technical_specs sts ON sts.sole_id = rsc.sole_product_id
+     WHERE COALESCE(sts.lining_consumption_dm2, 0) > 0
+     ORDER BY sts.size LIMIT 1;
+  END IF;
+  IF v_size IS NULL THEN
+    RAISE EXCEPTION 'E2E ABORTADO: DS22 sem consumo per-size de forração na ficha NEM nas specs do solado (pré-condição)';
   END IF;
   v_grade := jsonb_build_object(v_size, 12);
   rep := rep || format(E'grade de teste: %s\n', v_grade::text);
