@@ -1243,7 +1243,7 @@ Deno.serve(async (req) => {
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
       tipo_nf: 1,
-      // envio_automatico=1 (ClickNotas/ClickNotas): o próprio cadastro JÁ
+      // envio_automatico=1 (ClickNotas): o próprio cadastro JÁ
       // dispara a transmissão pra SEFAZ, pelo MÉTODO de cadastro — que este
       // token TEM permissão de chamar. Antes dependíamos do método separado
       // POST /notas_fiscais_produtos/emitir/{id}, que retorna 403 "este
