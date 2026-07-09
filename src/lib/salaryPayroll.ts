@@ -72,9 +72,15 @@ export function worksOnDow(sch: any, dow: number): boolean {
   return !!(sch && sch[WORKS_DOW[dow]]);
 }
 
-/** Jornada esperada do dia (min): saída − entrada − almoço. Ex.: 08–18 c/ 12–13 = 540 (9h). */
-export function expectedDayMinutes(sch: any): number {
+/** Jornada esperada do dia (min): saída − entrada − almoço. Ex.: 08–18 c/ 12–13 = 540 (9h).
+ *  SÁBADO (dow=6): se a escala tem saturday_entry/saturday_exit, usa a jornada de sábado
+ *  (normalmente mais curta, sem almoço) — senão um sábado de meio-período viraria falso
+ *  atraso comparado à jornada de dia útil. Sem os campos de sábado, cai na jornada padrão. */
+export function expectedDayMinutes(sch: any, dow?: number): number {
   if (!sch) return 0;
+  if (dow === 6 && sch.saturday_entry && sch.saturday_exit) {
+    return Math.max(0, timeToMin(sch.saturday_exit) - timeToMin(sch.saturday_entry));
+  }
   return Math.max(0, timeToMin(sch.exit_time) - timeToMin(sch.entry_time) - (timeToMin(sch.lunch_end) - timeToMin(sch.lunch_start)));
 }
 
@@ -538,7 +544,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     const isWorkday = isSwap ? true : (worksOnDow(inp.schedule, d.dow) && !isHoliday);
     return {
       date: d.date, dayOfWeek: d.dow, isHoliday, isWorkday,
-      expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule) : 0,
+      expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule, d.dow) : 0,
       punches: inp.punchesByDate.get(d.date) || [],
       excused: inp.absenceDates?.has(d.date) ?? false,
       swapFlex: isSwap,
@@ -595,25 +601,22 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   }
 
   // ── DIARISTA: paga diária × dias trabalhados, com MEIA-DIÁRIA (spec req.3):
-  // ≥6h no dia → 1 diária; 2–6h → 0,5; <2h → 0. Batida ímpar/incompleta (não dá pra
-  // medir horas) conta como presença = 1 diária. Sem salário mensal, sem falta/atraso.
+  // ≥6h no dia → 1 diária; 2–6h → 0,5; <2h → 0. Dia com batida ÍMPAR/ÚNICA (não dá pra
+  // medir horas) NÃO paga automático — vira PENDÊNCIA (resolver no Ponto antes de fechar),
+  // pra não pagar diária cheia por uma aparição de 10min. Sem salário mensal, sem falta/atraso.
   if (regime === 'diarista') {
     const dr = Number(inp.dailyRate) || 0;
-    let paidUnits = 0;   // soma de diárias (pode ser fracionária: 0,5)
-    let presentDays = 0; // dias com alguma diária (unit > 0)
+    let paidUnits = 0;    // soma de diárias (pode ser fracionária: 0,5)
+    let presentDays = 0;  // dias com alguma diária (unit > 0)
+    let pendingD = 0;     // dias com batida ímpar/única — não pagos até resolver
     for (const d of days) {
       const punches = Array.isArray(d.punches) ? d.punches : [];
       if (punches.length < 1) continue;
-      const sp = punches.length >= 2
-        ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapFlex)
-        : { normal: 0, premium: 0, incomplete: true };
-      let unit: number;
-      if (sp.incomplete || punches.length < 2) {
-        unit = 1; // presença sem horas mensuráveis → diária cheia
-      } else {
-        const workedH = (sp.normal + sp.premium) / 60;
-        unit = workedH >= 6 ? 1 : workedH >= 2 ? 0.5 : 0;
-      }
+      if (punches.length < 2) { pendingD++; continue; }  // batida única = pendência
+      const sp = splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapFlex);
+      if (sp.incomplete) { pendingD++; continue; }        // ímpar (3, 5…) = pendência
+      const workedH = (sp.normal + sp.premium) / 60;
+      const unit = workedH >= 6 ? 1 : workedH >= 2 ? 0.5 : 0;
       if (unit > 0) presentDays++;
       paidUnits += unit;
     }
@@ -622,6 +625,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       ...base, payment_type: 'diarista', daily_rate: dr, paid_days: presentDays,
       falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
       he_minutes: 0, he_normal_minutes: 0, he_holiday_minutes: 0, he_rate_missing: false, he_value: 0,
+      pending_days: pendingD,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),
     };

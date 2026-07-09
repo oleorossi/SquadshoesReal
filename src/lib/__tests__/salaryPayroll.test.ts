@@ -417,11 +417,12 @@ describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => 
     expect(r.net_value).toBeCloseTo(450, 2);
   });
 
-  it('DIARISTA: dia de batida ímpar conta como presença (1 diária)', () => {
+  it('DIARISTA: dia de batida ÚNICA vira PENDÊNCIA — não paga diária cheia até resolver', () => {
     const punches = new Map<string, string[]>([['2026-05-04', full], ['2026-05-05', ['08:00']]]);
     const r = computePeriodFolha({ salary: 0, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches, payRegime: 'diarista', dailyRate: 100 });
-    expect(r.paid_days).toBe(2);
-    expect(r.gross_value).toBeCloseTo(200, 2);
+    expect(r.paid_days).toBe(1);                 // só o dia com par completo (04)
+    expect(r.pending_days).toBe(1);              // 05 (batida única) fica pendente
+    expect(r.gross_value).toBeCloseTo(100, 2);   // não paga a diária do dia incompleto
   });
 });
 
@@ -540,6 +541,15 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     const com = computePeriodFolha({ salary: 2100, from: '2026-05-04', to: '2026-05-04', ...base, punchesByDate: punches, absenceDates: new Set(['2026-05-04']) });
     expect(com.atraso_minutes).toBe(0);       // abonado pelo RH
     expect(com.atraso_desconto).toBeCloseTo(0, 2);
+  });
+
+  it('E5: sábado de meio-período usa a jornada de SÁBADO (sem falso atraso)', () => {
+    // Escala que trabalha sábado 08:00–12:00 (4h). Sábado 02/05/2026 trabalhado 4h.
+    const schSat = { ...SCHED, works_saturday: true, saturday_entry: '08:00:00', saturday_exit: '12:00:00' };
+    const punches = new Map<string, string[]>([['2026-05-02', ['08:00', '12:00']]]);
+    const r = computePeriodFolha({ salary: 2100, from: '2026-05-02', to: '2026-05-02', schedule: schSat, holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.atraso_minutes).toBe(0);   // 4h trabalhadas == 4h esperadas de sábado (não 9h)
+    expect(r.he_minutes).toBe(0);
   });
 
   it('E1: período que CRUZA meses — falta de fev usa dias úteis de FEVEREIRO (não de jan)', () => {

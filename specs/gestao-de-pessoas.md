@@ -207,7 +207,10 @@ descontinuação de banco de horas.
   em `calculate_employee_bank_balance`).
 
 ## Open questions
-- **Dias úteis inclui sábado?** (assumido: sim, se a escala tem sábado) — confirmar.
+- **Dias úteis inclui sábado?** (assumido: sim, se a escala tem sábado) — confirmar. Sábado
+  de meio-período usa `saturday_entry/exit` como jornada esperada (resolvido 2026-07-09).
+- **Diarista com batida única/ímpar** (não mensurável) → vira **pendência**, não paga diária
+  cheia até o RH corrigir a batida (resolvido 2026-07-09).
 
 _(Resolvidas 2026-07-09: banco de horas → **excluir de vez** (tabelas + UI); HE noturna → usa
 a **HE normal** individual, sem taxa noturna nem janela noturna separada.)_
