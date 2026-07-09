@@ -36,8 +36,10 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       });
       const failures = rows.filter((r) => !r.ok);
       expect(failures, JSON.stringify(failures, null, 2)).toHaveLength(0);
-      // 2 de existência + 8 de contrato.
-      expect(rows.length).toBeGreaterThanOrEqual(10);
+      // 2 de existência + 7 de contrato (versão VIVA no banco, pós-unificação
+      // escalar→by_grade: escalar_delega_ao_bygrade + escalar_nao_duplica_conversao
+      // substituíram os cases escalar_* da migration 20260722120000).
+      expect(rows.length).toBeGreaterThanOrEqual(9);
     });
   },
 );

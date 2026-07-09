@@ -7,8 +7,9 @@ name: Weekly Unit Conversion Tests
 # Inclui o guard de paridade SQL (consumptionService.parity.test.ts), que por
 # padrão fica em describe.skip sem RUN_DB_INTEGRATION=1 — sem isso ele nunca
 # rodava em lugar nenhum do CI (achado na revisão de bugs de 2026-07-01).
-# Requer os mesmos secrets já cadastrados pro supabase-migrate.yml:
-#   SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD
+# Requer secrets: SUPABASE_PROJECT_ID + SUPABASE_CI_DB_PASSWORD (senha do role
+# ci_parity — role dedicado de CI que só tem EXECUTE em
+# run_consumption_parity_tests(); NÃO é a senha do postgres).
 on:
   schedule:
     - cron: "0 6 * * 1"
@@ -23,7 +24,7 @@ jobs:
     # "failure 0s" a cada push em qualquer branch.
     env:
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_CI_DB_PASSWORD: ${{ secrets.SUPABASE_CI_DB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +44,7 @@ jobs:
         run: bunx tsc -p tsconfig.app.json --noEmit
 
       - name: SQL parity guard (calculate_order_consumption ↔ ..._by_grade)
-        if: env.SUPABASE_PROJECT_ID != '' && env.SUPABASE_DB_PASSWORD != ''
+        if: env.SUPABASE_PROJECT_ID != '' && env.SUPABASE_CI_DB_PASSWORD != ''
         env:
           RUN_DB_INTEGRATION: '1'
           # Via pooler (Supavisor, session mode): o host direto
@@ -51,8 +52,8 @@ jobs:
           # não têm IPv6 de saída → "Network is unreachable".
           PGHOST: aws-1-us-west-2.pooler.supabase.com
           PGPORT: '5432'
-          PGUSER: postgres.${{ secrets.SUPABASE_PROJECT_ID }}
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGUSER: ci_parity.${{ secrets.SUPABASE_PROJECT_ID }}
+          PGPASSWORD: ${{ secrets.SUPABASE_CI_DB_PASSWORD }}
           PGDATABASE: postgres
           PGSSLMODE: require
         run: bunx vitest run src/services/__tests__/consumptionService.parity.test.ts
