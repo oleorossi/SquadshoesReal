@@ -89,10 +89,10 @@ export default function PreFolha() {
   }, [runs]);
 
   // Agregações pra header e totalizadores.
-  // HE = overtime_amount (valor da HE 1,5× que a Payroll grava). As colunas legadas
-  // overtime_50_value/overtime_100_*/night_*/dsr_value NÃO são mais escritas pela
-  // Payroll (modelo atual = HE única 1,5×), então somá-las dava HE = R$0 no relatório
-  // do contador. Alinhado com KPIsRH (fix auditoria 2026-06-17). Ver AUDITORIA_RH_*.
+  // HE = overtime_amount (valor da HE que a Payroll grava — desde 2026-07-09 é R$/h
+  // ABSOLUTO por funcionário, normal/domingo-feriado). As colunas legadas overtime_50_
+  // value/overtime_100_*/night_*/dsr_value NÃO são escritas pela Payroll, então somá-las
+  // dava HE = R$0 no relatório do contador. Ver AUDITORIA_RH_* / specs/gestao-de-pessoas.md.
   const totals = useMemo(() => {
     return runs.reduce((acc, r) => ({
       heMin: acc.heMin + (r.overtime_50_minutes || 0),
@@ -115,7 +115,7 @@ export default function PreFolha() {
   const exportCsv = () => {
     const headers = [
       'Funcionário', 'Setor', 'Status',
-      'Salário base', 'HE 1,5× (h)', 'HE 1,5× (R$)',
+      'Salário base', 'HE (h)', 'HE (R$)',
       'Faltas (dias)', 'Desc. faltas (R$)',
       'VR (R$)', 'VA (R$)', 'VT (R$)', 'VT desc. func. (R$)',
       'Plano saúde (R$)', 'INSS (R$)', 'IRRF (R$)', 'Adiantamentos (R$)',
