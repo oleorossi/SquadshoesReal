@@ -66,12 +66,14 @@ Numerados, testáveis, cada um um "must".
 **Hora extra**
 4. HE é **paga na folha do mês** (não vai pra banco de horas).
 5. Os valores de HE são **por funcionário** (negociação individual), definidos como **valor
-   absoluto em R$/hora** (não multiplicador, não derivado do salário). Três campos separados
-   no cadastro: **HE normal**, **HE domingo/feriado**, **HE noturna** — todos R$/h.
+   absoluto em R$/hora** (não multiplicador, não derivado do salário). Dois campos no
+   cadastro: **HE normal** e **HE domingo/feriado** — ambos R$/h. **Não há taxa noturna
+   separada**: hora extra noturna usa a **HE normal** do funcionário (decisão do dono
+   2026-07-09).
 6. Só vira hora extra o tempo que **passar de 10 minutos** além da jornada (mínimo global de
    10 min; abaixo disso, descartado). `minimum_overtime_minutes = 10`.
-7. Domingo/feriado usa a taxa **HE domingo/feriado** do funcionário; trabalho em janela
-   noturna usa a taxa **HE noturna**; demais horas extras usam a **HE normal**.
+7. Domingo/feriado usa a taxa **HE domingo/feriado** do funcionário; **todas as demais** horas
+   extras (dia útil, sábado, noturna) usam a **HE normal**.
 
 **Atraso**
 8. **Zero tolerância de atraso** para todos: qualquer minuto batido depois do horário de
@@ -96,8 +98,10 @@ Numerados, testáveis, cada um um "must".
     4. **Folha** — fechar o mês → calcula tudo → gera pagamento + histórico de pagamentos.
 13. As abas/rotas "aposentadas" e os dois "fechamentos" duplicados são **removidos** (não só
     remapeados): `painel`, `fechamento`/`fechamento-semanal`/`FechamentoMensal`, KPIs órfãos.
-14. **Banco de Horas removido**: rotas `/rh/banco-de-horas` + aliases, abas de banco, e as
-    telas/hooks associados saem da navegação. (Tabela `bank_hours_movements` — ver Open Q.)
+14. **Banco de Horas excluído de vez** (decisão do dono 2026-07-09): rotas
+    `/rh/banco-de-horas` + aliases, abas de banco, telas/hooks associados **e** as tabelas/
+    views no banco (`bank_hours_movements`, `bank_hours_balance`, `v_bank_hours_summary`,
+    `v_bank_hours_per_sector`, funções de saldo) são **removidas** via migration.
 
 **Qualidade / consistência**
 15. Todos os pontos onde HE/atraso/falta são calculados passam a chamar o **motor único** —
@@ -107,9 +111,8 @@ Numerados, testáveis, cada um um "must".
 ## Data model / Domain
 
 **`employees`** (novas colunas):
-- `he_normal_rate numeric` — R$/hora extra normal.
+- `he_normal_rate numeric` — R$/hora extra normal (usada também pra HE noturna).
 - `he_sunday_holiday_rate numeric` — R$/hora extra domingo/feriado.
-- `he_night_rate numeric` — R$/hora extra noturna.
 - (já existem) `salary`, `payment_type` (`mensalista|diarista`), `daily_rate`,
   `work_schedule_id`, `active`, `admission_date`, `termination_date`.
 
@@ -204,13 +207,10 @@ descontinuação de banco de horas.
   em `calculate_employee_bank_balance`).
 
 ## Open questions
-- **Janela noturna exata** (assumido 22:00–05:00) — confirmar.
 - **Dias úteis inclui sábado?** (assumido: sim, se a escala tem sábado) — confirmar.
-- **Banco de horas — drop ou deprecate?** Existe histórico em `bank_hours_movements`. Preferência:
-  **remover das telas já**; no banco, manter a tabela como arquivo morto (deprecated) por
-  segurança, ou dropar de vez? (default: esconder na UI, manter tabela.)
-- **HE noturna** — ela é HE (adicional) ou só marca que aquelas horas usam a taxa noturna mesmo
-  dentro da jornada? (assumido: é HE, só acima da jornada, com taxa noturna.)
+
+_(Resolvidas 2026-07-09: banco de horas → **excluir de vez** (tabelas + UI); HE noturna → usa
+a **HE normal** individual, sem taxa noturna nem janela noturna separada.)_
 
 ## Definition of Done
 Checklist verificável item a item:
@@ -224,8 +224,9 @@ Checklist verificável item a item:
 - [ ] **Req 3** — Cadastro tem toggle diarista; Cátia calcula por dia com meia-diária.
       *(Verificar: marcar diarista, rodar um mês com um dia de 4h → 0,5 diária.)*
 - [ ] **Req 4/5/6/7** — Um mensalista com HE conhecida: espelho e folha mostram
-      `minutos_HE(>10) × R$/h` na taxa certa (normal/dom-fer/noturna). *(Verificar com um caso
-      montado à mão vs cálculo manual.)*
+      `minutos_HE(>10) × R$/h` na taxa certa (HE normal em dia útil/sábado/noturno; HE
+      domingo-feriado nos domingos/feriados). *(Verificar com um caso montado à mão vs cálculo
+      manual.)*
 - [ ] **Req 8/9** — Atraso de X min desconta `X × ((salário÷dias_úteis)÷jornada)`, sem
       tolerância. *(Verificar: bater 20 min atrasado → desconto proporcional; nenhum "|| 10".)*
 - [ ] **Req 10** — Marcar uma falta/atraso como justificado na tela zera o desconto daquele dia.
