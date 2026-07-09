@@ -618,6 +618,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           maxCoveredDate: maxCov,
           payRegime: (String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number((emp as any).daily_rate) || 0,
+          // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
+          // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
+          heNormalRate: Number((emp as any).he_normal_rate) || 0,
+          heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
         });
         if (result.pending_days > 0) withIncomplete++;
 

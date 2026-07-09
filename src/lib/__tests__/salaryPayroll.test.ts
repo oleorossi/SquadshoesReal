@@ -433,7 +433,10 @@ describe('computePeriodFolha — SEM tolerância (todo minuto conta, 2026-06-30)
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
     expect(r.atraso_minutes).toBe(8);
     expect(r.he_minutes).toBe(0);
-    expect(r.gross_value).toBeCloseTo(2200 - (8 / 60) * (2200 / 220), 2); // 2200 − 8min×valor-hora
+    // Política canônica (2026-07-09): atraso = min × ((salário ÷ dias_úteis) ÷ jornada).
+    // mai/2026 tem 21 dias úteis (seg–sex); jornada 9h. valor-hora = (2200/21)/9.
+    const BD = 21;
+    expect(r.gross_value).toBeCloseTo(2200 - (8 / 60) * ((2200 / BD) / 9), 2);
   });
 
   it('atraso de 20min → conta o atraso CHEIO (20min)', () => {
@@ -442,10 +445,16 @@ describe('computePeriodFolha — SEM tolerância (todo minuto conta, 2026-06-30)
     expect(r.atraso_minutes).toBe(20);
   });
 
-  it('HE de 5min → conta 5min de hora extra (sem tolerância)', () => {
-    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '18:05']]]); // +5min
+  it('HE de 5min → DESCARTADA (mínimo de 10min, spec 2026-07-09)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '18:05']]]); // +5min ≤ 10 → 0
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
-    expect(r.he_minutes).toBe(5);
+    expect(r.he_minutes).toBe(0);
+  });
+
+  it('HE de 15min → conta os 15min (passou do mínimo de 10min)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '18:15']]]); // +15min > 10
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: sched(10), holidaysSet: NO_HOL, punchesByDate: punches });
+    expect(r.he_minutes).toBe(15);
   });
 
   it('atraso de 7min conta mesmo sem tolerance_minutes na escala (sem tolerância)', () => {
@@ -460,5 +469,78 @@ describe('computePeriodFolha — SEM tolerância (todo minuto conta, 2026-06-30)
     expect(r.worked_minutes).toBe(540); // 9h (almoço deduzido), não 660
     expect(r.atraso_minutes).toBe(0);
     expect(r.he_minutes).toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// POLÍTICA CANÔNICA (spec: specs/gestao-de-pessoas.md, dono 2026-07-09)
+//   • HE = R$/hora ABSOLUTO por funcionário (não multiplicador): dia útil/sábado/
+//     noturno → heNormalRate; domingo/feriado → heSundayHolidayRate (fallback normal).
+//   • falta  = salário ÷ dias_úteis_do_mês.
+//   • atraso = min × ((salário ÷ dias_úteis) ÷ jornada_diária).
+//   • HE só acima de 10min.
+// mai/2026: 21 dias úteis (seg–sex, SCHED sem sábado); jornada 9h (540min).
+// ════════════════════════════════════════════════════════════════════════════
+describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07-09)', () => {
+  const BD = 21;               // dias úteis mai/2026 (seg–sex)
+  const base = { schedule: SCHED, holidaysSet: NO_HOL };
+
+  it('HE dia útil = min × R$/h NORMAL (não multiplicador ×1,5)', () => {
+    // Seg 08:00–20:00: excedente 120min (2h) sobre 9h. HE normal R$15/h → 2×15 = 30.
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '20:00']]]);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-04', to: '2026-05-04', ...base, punchesByDate: punches, heNormalRate: 15 });
+    expect(r.he_minutes).toBe(120);
+    expect(r.he_normal_minutes).toBe(120);
+    expect(r.he_holiday_minutes).toBe(0);
+    expect(r.he_value).toBeCloseTo(30, 2);           // 2h × 15 (NÃO 2h × valor-hora × 1,5)
+    expect(r.gross_value).toBeCloseTo(2200 + 30, 2);
+  });
+
+  it('HE domingo = taxa domingo/feriado; sábado = taxa NORMAL', () => {
+    // Domingo 03/05 4h @ R$25 = 100. Sábado 02/05 4h @ R$20 (normal) = 80.
+    const dom = new Map<string, string[]>([['2026-05-03', ['08:00', '12:00']]]);
+    const rd = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-03', ...base, punchesByDate: dom, heNormalRate: 20, heSundayHolidayRate: 25 });
+    expect(rd.he_holiday_minutes).toBe(240);
+    expect(rd.he_normal_minutes).toBe(0);
+    expect(rd.he_value).toBeCloseTo(100, 2);         // 4h × 25
+
+    const sab = new Map<string, string[]>([['2026-05-02', ['08:00', '12:00']]]);
+    const rs = computePeriodFolha({ salary: 2200, from: '2026-05-02', to: '2026-05-02', ...base, punchesByDate: sab, heNormalRate: 20, heSundayHolidayRate: 25 });
+    expect(rs.he_normal_minutes).toBe(240);          // sábado usa a NORMAL
+    expect(rs.he_holiday_minutes).toBe(0);
+    expect(rs.he_value).toBeCloseTo(80, 2);          // 4h × 20
+  });
+
+  it('HE domingo sem taxa própria cai na HE normal (fallback)', () => {
+    const dom = new Map<string, string[]>([['2026-05-03', ['08:00', '12:00']]]);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-03', ...base, punchesByDate: dom, heNormalRate: 18 });
+    expect(r.he_value).toBeCloseTo(72, 2);           // 4h × 18 (fallback pra HE normal)
+  });
+
+  it('FALTA = salário ÷ dias úteis do mês (não ÷30)', () => {
+    // Qua 06/05 sem batida → 1 falta. 2100 ÷ 21 = 100.
+    const r = computePeriodFolha({ salary: 2100, from: '2026-05-06', to: '2026-05-06', ...base, punchesByDate: new Map() });
+    expect(r.falta_days).toBe(1);
+    expect(r.falta_desconto).toBeCloseTo(2100 / BD, 2);   // 100
+    expect(r.gross_value).toBeCloseTo(2100 - 2100 / BD, 2);
+  });
+
+  it('ATRASO = min × ((salário ÷ dias úteis) ÷ jornada)', () => {
+    // Seg 08:20 → atraso 20min. (2100/21)/9 = 11,111/h. 20min → 3,70.
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:20', '12:00', '13:00', '18:00']]]);
+    const r = computePeriodFolha({ salary: 2100, from: '2026-05-04', to: '2026-05-04', ...base, punchesByDate: punches });
+    expect(r.atraso_minutes).toBe(20);
+    expect(r.atraso_desconto).toBeCloseTo((20 / 60) * ((2100 / BD) / 9), 2);
+  });
+
+  it('DIARISTA com meia-diária: ≥6h→1, 2–6h→0,5, <2h→0', () => {
+    const punches = new Map<string, string[]>([
+      ['2026-05-04', ['08:00', '12:00', '13:00', '18:00']], // 9h → 1
+      ['2026-05-05', ['08:00', '12:00']],                   // 4h → 0,5
+      ['2026-05-06', ['08:00', '09:30']],                   // 1,5h → 0
+    ]);
+    const r = computePeriodFolha({ salary: 0, from: '2026-05-04', to: '2026-05-06', ...base, punchesByDate: punches, payRegime: 'diarista', dailyRate: 120 });
+    expect(r.paid_days).toBe(2);                     // 2 dias com diária (1 + 0,5)
+    expect(r.gross_value).toBeCloseTo(120 * 1.5, 2); // 1,5 diárias × 120 = 180
   });
 });

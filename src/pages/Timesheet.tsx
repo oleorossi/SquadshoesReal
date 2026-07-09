@@ -798,6 +798,11 @@ function TimesheetRecordsTab() {
     return computePeriodFolha({
       salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
       schedule: sch, holidaysSet: holidayDates, swapWorkedSet, swapOffSet, punchesByDate,
+      // HE em R$/h por funcionário + regime — pra o Espelho/Ponto bater com a Folha (spec req.15).
+      payRegime: (String((emp as any)?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
+      dailyRate: Number((emp as any)?.daily_rate) || 0,
+      heNormalRate: Number((emp as any)?.he_normal_rate) || 0,
+      heSundayHolidayRate: Number((emp as any)?.he_sunday_holiday_rate) || 0,
     });
   };
 

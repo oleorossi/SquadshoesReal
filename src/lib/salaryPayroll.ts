@@ -78,6 +78,30 @@ export function expectedDayMinutes(sch: any): number {
   return Math.max(0, timeToMin(sch.exit_time) - timeToMin(sch.entry_time) - (timeToMin(sch.lunch_end) - timeToMin(sch.lunch_start)));
 }
 
+/**
+ * Política CANÔNICA de folha do dono (spec: specs/gestao-de-pessoas.md, 2026-07-09).
+ * Aplicada SÓ por computePeriodFolha (fonte única). Quando presente, muda vs. o
+ * legado ÷30/÷220/×1,5:
+ *   • falta   = salário ÷ dias_úteis_do_mês        (businessDaysDivisor)
+ *   • atraso  = min × ((salário ÷ dias_úteis) ÷ jornada_diária)
+ *   • HE      = min × R$/hora ABSOLUTO por funcionário (não multiplicador):
+ *               dia útil / sábado / noturno → heNormalRate
+ *               domingo / feriado           → heSundayHolidayRate (fallback normal)
+ *   • HE só conta se o excedente do dia passar de minOvertimeMin (10min).
+ */
+export interface SalaryPolicy {
+  /** Dias úteis do mês (escala seg–sáb − feriados). valorDia = salário ÷ este número. */
+  businessDaysDivisor: number;
+  /** Jornada diária esperada (min) da escala. valorHora de desconto = valorDia ÷ (jornada/60). */
+  journeyMinutes: number;
+  /** R$/hora extra normal (dia útil, sábado, noturno). */
+  heNormalRate: number;
+  /** R$/hora extra domingo/feriado. undefined ⇒ usa heNormalRate. */
+  heSundayHolidayRate?: number;
+  /** Mínimo de HE: excedente do dia ≤ este valor ⇒ 0 HE. Default 10. */
+  minOvertimeMin?: number;
+}
+
 export interface SalaryDayInput {
   date: string;          // YYYY-MM-DD
   dayOfWeek: number;     // 0=domingo … 6=sábado
@@ -126,6 +150,10 @@ export interface SalaryPayrollResult {
   atraso_desconto: number; // R$ (atraso_minutes × valor-hora)
   he_minutes: number;
   he_value: number;        // R$ (he_minutes × valor-hora × 1,5)
+  /** HE em minutos por taxa (política canônica): normal = dia útil/sábado/noturno;
+   *  holiday = domingo/feriado. Somados = he_minutes. Zerados no modo legado. */
+  he_normal_minutes?: number;
+  he_holiday_minutes?: number;
   pending_days: number;    // dias com batida ímpar (inconsistente) — não entram no cálculo
   /** Atraso/saída-cedo POR DIA (dias em que trabalhou menos que o esperado). Base
    *  do relatório de atrasos. Vazio em remoto/diarista (não há desconto de atraso). */
@@ -181,12 +209,32 @@ export function calculateSalaryPayroll(
    * da escala é computePeriodFolha — antes era a constante PREMIUM_MULTIPLIER hardcoded.
    */
   premiumMultiplier: number = PREMIUM_MULTIPLIER,
+  /**
+   * Política CANÔNICA do dono (ver SalaryPolicy). Presente ⇒ falta ÷ dias úteis,
+   * atraso via valorDia/jornada, HE em R$/h por funcionário e mínimo de 10min.
+   * Ausente ⇒ comportamento LEGADO (÷30/÷220/×1,5) — usado só por callers diretos/testes
+   * de baixo nível; a folha real (computePeriodFolha) SEMPRE passa a policy.
+   */
+  policy?: SalaryPolicy,
 ): SalaryPayrollResult {
   const sal = Number(salary) || 0;
-  const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
-  const valorHora = hourDivisor > 0 ? sal / hourDivisor : 0;
-  const valorMin = valorHora / 60;
-  const atrasoCap = atrasoCapMinutes(dayDivisor, hourDivisor); // teto de atraso/dia (min)
+  const usePolicy = !!policy;
+  const bizDivisor = policy?.businessDaysDivisor;
+  const valorDia = usePolicy && bizDivisor && bizDivisor > 0
+    ? sal / bizDivisor
+    : (dayDivisor > 0 ? sal / dayDivisor : 0);
+  // valor-hora de desconto (atraso/saída-cedo). Policy: valorDia ÷ jornada. Legado: sal ÷ 220.
+  const journeyMin = usePolicy ? (Number(policy!.journeyMinutes) > 0 ? Number(policy!.journeyMinutes) : 0) : 0;
+  const valorHora = usePolicy
+    ? (journeyMin > 0 ? valorDia / (journeyMin / 60) : 0)
+    : (hourDivisor > 0 ? sal / hourDivisor : 0);
+  const minOt = usePolicy ? (policy!.minOvertimeMin ?? 10) : 0;
+  const heNormalRate = usePolicy ? (Number(policy!.heNormalRate) || 0) : 0;
+  const heHolidayRate = usePolicy
+    ? (policy!.heSundayHolidayRate != null && Number(policy!.heSundayHolidayRate) > 0
+        ? Number(policy!.heSundayHolidayRate) : heNormalRate)
+    : 0;
+  const atrasoCap = atrasoCapMinutes(dayDivisor, hourDivisor); // teto de atraso/dia (min) — modo legado
   // Base de proventos do período: proporcional aos dias quando periodDays vier (paga-se
   // por quinzena). Com monthDays, prorateia por periodDays/monthDays (as 2 quinzenas
   // somam o salário EXATO, sem dia a mais); sem ele, legado valor-dia×periodDays.
@@ -209,6 +257,8 @@ export function calculateSalaryPayroll(
   // BRUTO por-dia (decisão do usuário 2026-06-19): HE e atraso acumulam POR DIA
   // (excedente/déficit de cada dia), SEM compensação entre dias. Ver loop abaixo.
   let heMin = 0;
+  let heNormalMin = 0;   // HE a taxa normal (policy): dia útil/sábado/noturno
+  let heHolidayMin = 0;  // HE a taxa domingo/feriado (policy)
   let atrasoMin = 0;
   const lateDays: { date: string; minutes: number }[] = [];  // atraso/saída-cedo por dia (relatório)
   const heDays: { date: string; minutes: number; weekend?: boolean }[] = [];  // hora extra por dia (relatório)
@@ -272,23 +322,44 @@ export function calculateSalaryPayroll(
       // 0 HE), igual à classificação da tela (useTimesheet:644). Fora dela, saldo cheio.
       const rawBal = worked - d.expectedMinutes;
       const dayBal = Math.abs(rawBal) <= toleranceMin ? 0 : rawBal;
-      if (dayBal > 0) { heMin += dayBal; heDays.push({ date: d.date, minutes: dayBal }); }
-      // Atraso capado por-dia (ver atrasoCapMinutes): um dia quase-vazio não pode
-      // descontar mais que 1 valor-dia, senão sai mais caro que uma falta limpa.
-      else if (dayBal < 0) { const late = Math.min(-dayBal, atrasoCap); atrasoMin += late; lateDays.push({ date: d.date, minutes: late }); }
+      if (dayBal > 0) {
+        // Mínimo de HE (policy): só vira hora extra se o excedente do dia PASSAR de
+        // minOt (10min). Abaixo/igual, descartado. Dia útil/sábado ⇒ taxa normal.
+        if (!usePolicy || dayBal > minOt) {
+          heMin += dayBal; heNormalMin += dayBal;
+          heDays.push({ date: d.date, minutes: dayBal });
+        }
+      }
+      // Atraso capado por-dia: policy = jornada esperada do dia (um dia inteiro atrasado
+      // = 1 valor-dia = 1 falta); legado = teto 220/30. Um dia quase-vazio nunca custa
+      // mais que uma falta limpa.
+      else if (dayBal < 0) {
+        const cap = usePolicy ? d.expectedMinutes : atrasoCap;
+        const late = Math.min(-dayBal, cap);
+        atrasoMin += late; lateDays.push({ date: d.date, minutes: late });
+      }
     } else if (worked > 0) {
       // Dia NÃO útil (fim de semana/feriado) trabalhado: esperado = 0 → TUDO é hora extra.
-      workedMin += worked;
-      normalMin += sp.normal;
-      premiumMin += sp.premium;
-      heMin += worked;
-      heDays.push({ date: d.date, minutes: worked, weekend: true });
+      // Policy: domingo/feriado ⇒ taxa domingo/feriado; sábado ⇒ taxa normal. Mínimo de 10min.
+      if (!usePolicy || worked > minOt) {
+        workedMin += worked;
+        normalMin += sp.normal;
+        premiumMin += sp.premium;
+        heMin += worked;
+        const holidayLike = d.isHoliday || d.dayOfWeek === 0; // domingo ou feriado
+        if (holidayLike) heHolidayMin += worked; else heNormalMin += worked;
+        heDays.push({ date: d.date, minutes: worked, weekend: true });
+      }
     }
   }
 
   const faltaDesconto = faltaDays * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * valorHora;
-  const heValue = (heMin / 60) * valorHora * premiumMultiplier;
+  // HE: policy = valor ABSOLUTO R$/h por funcionário (normal vs domingo/feriado, sem
+  // multiplicador); legado = valor-hora × multiplicador (1,5×).
+  const heValue = usePolicy
+    ? (heNormalMin / 60) * heNormalRate + (heHolidayMin / 60) * heHolidayRate
+    : (heMin / 60) * valorHora * premiumMultiplier;
   const adv = Number(advancesTotal) || 0;
   const gross = periodBase - faltaDesconto - atrasoDesconto + heValue;
 
@@ -313,6 +384,8 @@ export function calculateSalaryPayroll(
     late_days: lateDays,
     he_days: heDays,
     he_minutes: heMin,
+    he_normal_minutes: heNormalMin,
+    he_holiday_minutes: heHolidayMin,
     he_value: round2(heValue),
     pending_days: pendingDays,
     advances_total: round2(adv),
@@ -346,6 +419,24 @@ export function getDaysInRange(from: string, to: string): { date: string; dow: n
     out.push({ date: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, dow: dt.getUTCDay() });
   }
   return out;
+}
+
+/**
+ * Dias ÚTEIS do mês que contém `anyDateInMonth` = dias escalados (works_*) da escala
+ * menos os feriados. Base do desconto de falta/atraso (spec: salário ÷ dias úteis).
+ * Sábado conta se a escala trabalha sábado; domingos e feriados nunca contam.
+ */
+export function businessDaysInMonth(anyDateInMonth: string, schedule: any, holidaysSet: Set<string>): number {
+  const [y, m] = String(anyDateInMonth || '').split('-').map(Number);
+  if (!y || !m) return 0;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  let n = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (worksOnDow(schedule, dt.getUTCDay()) && !holidaysSet.has(ds)) n++;
+  }
+  return n;
 }
 
 export interface PeriodFolhaInput {
@@ -383,6 +474,12 @@ export interface PeriodFolhaInput {
   activeTo?: string | null;
   payRegime?: 'mensalista' | 'remoto' | 'diarista';  // regime de pagamento (default mensalista)
   dailyRate?: number;                     // R$/dia (só diarista)
+  /** HE em R$/hora ABSOLUTO (spec 2026-07-09): dia útil/sábado/noturno. Default 0. */
+  heNormalRate?: number;
+  /** HE em R$/hora ABSOLUTO domingo/feriado. undefined/0 ⇒ usa heNormalRate. */
+  heSundayHolidayRate?: number;
+  /** Mínimo de HE em minutos (excedente do dia ≤ isto ⇒ 0 HE). Default 10. */
+  minOvertimeMin?: number;
 }
 
 /** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha. */
@@ -418,7 +515,19 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   // Multiplicador de HE da escala (default 1,5×) — antes era PREMIUM_MULTIPLIER fixo.
   // A partir daqui, editar "Multiplicador HE" na escala (Ponto→Escalas) altera a folha.
   const premiumMult = Number(inp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);
-  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance, premiumMult);
+  // Política CANÔNICA da folha (spec: specs/gestao-de-pessoas.md). Fonte ÚNICA — só
+  // computePeriodFolha aplica. Falta = salário ÷ dias úteis do mês; atraso = min ×
+  // (valorDia ÷ jornada); HE = R$/h absoluto por funcionário (normal vs domingo/feriado);
+  // HE só acima de 10min. businessDays usa a escala + feriados do mês do início do período.
+  const policy: SalaryPolicy = {
+    businessDaysDivisor: businessDaysInMonth(inp.from, inp.schedule, inp.holidaysSet),
+    journeyMinutes: expectedDayMinutes(inp.schedule),
+    heNormalRate: Number(inp.heNormalRate) || 0,
+    heSundayHolidayRate: inp.heSundayHolidayRate != null && Number(inp.heSundayHolidayRate) > 0
+      ? Number(inp.heSundayHolidayRate) : undefined,
+    minOvertimeMin: inp.minOvertimeMin ?? 10,
+  };
+  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance, premiumMult, policy);
   const regime = inp.payRegime || 'mensalista';
   const adv = base.advances_total;
 
@@ -434,14 +543,32 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     };
   }
 
-  // ── DIARISTA: paga diária × dias trabalhados (dias com batida). Sem salário
-  // mensal, sem desconto de falta, sem atraso. (batida ímpar conta como presença.)
+  // ── DIARISTA: paga diária × dias trabalhados, com MEIA-DIÁRIA (spec req.3):
+  // ≥6h no dia → 1 diária; 2–6h → 0,5; <2h → 0. Batida ímpar/incompleta (não dá pra
+  // medir horas) conta como presença = 1 diária. Sem salário mensal, sem falta/atraso.
   if (regime === 'diarista') {
     const dr = Number(inp.dailyRate) || 0;
-    const paidDays = days.filter(d => (d.punches?.length || 0) >= 1).length;
-    const grossD = round2(dr * paidDays);
+    let paidUnits = 0;   // soma de diárias (pode ser fracionária: 0,5)
+    let presentDays = 0; // dias com alguma diária (unit > 0)
+    for (const d of days) {
+      const punches = Array.isArray(d.punches) ? d.punches : [];
+      if (punches.length < 1) continue;
+      const sp = punches.length >= 2
+        ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapFlex)
+        : { normal: 0, premium: 0, incomplete: true };
+      let unit: number;
+      if (sp.incomplete || punches.length < 2) {
+        unit = 1; // presença sem horas mensuráveis → diária cheia
+      } else {
+        const workedH = (sp.normal + sp.premium) / 60;
+        unit = workedH >= 6 ? 1 : workedH >= 2 ? 0.5 : 0;
+      }
+      if (unit > 0) presentDays++;
+      paidUnits += unit;
+    }
+    const grossD = round2(dr * paidUnits);
     return {
-      ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
+      ...base, payment_type: 'diarista', daily_rate: dr, paid_days: presentDays,
       falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
       he_minutes: 0, he_value: 0,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
