@@ -27,7 +27,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch } from '@/lib/searchUtils';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import AdvancesPanel from '@/components/hr/AdvancesPanel';
 
@@ -329,94 +329,153 @@ export default function Employees() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing ? 'Editar Funcionário' : 'Novo Funcionário'}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <div className="col-span-2"><Label>Nome</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
-            <div>
-              <Label>CPF</Label>
-              <Input
-                value={(() => {
-                  // Máscara visual XXX.XXX.XXX-XX (PR 2026-05-28 LGPD).
-                  // Storage continua só dígitos; display formatado pra evitar
-                  // PII em screenshots/print de tela.
-                  const d = (form.cpf || '').replace(/\D/g, '');
-                  if (d.length <= 3) return d;
-                  if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
-                  if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
-                  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9,11)}`;
-                })()}
-                onChange={e => setForm(f => ({ ...f, cpf: e.target.value.replace(/\D/g, '').slice(0, 11) }))}
-                placeholder="000.000.000-00"
-                className="font-mono"
-                maxLength={14}
-              />
-              <p className="text-xs text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
-            </div>
-            <div>
-              <Label>ID no Relógio (External ID)</Label>
-              <div className="relative">
-                <Input value={form.external_id || ''} onChange={e => setForm(f => ({ ...f, external_id: e.target.value }))} placeholder="Ex: 101" className={form.external_id ? 'pr-10 border-emerald-500 focus-visible:ring-emerald-500' : ''} />
-                {form.external_id && (
-                  <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-500" />
-                )}
+          <Tabs defaultValue="dados" className="mt-2">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="dados">Dados</TabsTrigger>
+              <TabsTrigger value="remuneracao">Remuneração</TabsTrigger>
+              <TabsTrigger value="hora-extra">Hora Extra</TabsTrigger>
+            </TabsList>
+
+            {/* ── DADOS ── */}
+            <TabsContent value="dados" className="grid grid-cols-2 gap-4 mt-4">
+              <div className="col-span-2"><Label>Nome</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+              <div>
+                <Label>CPF</Label>
+                <Input
+                  value={(() => {
+                    // Máscara visual XXX.XXX.XXX-XX (PR 2026-05-28 LGPD).
+                    const d = (form.cpf || '').replace(/\D/g, '');
+                    if (d.length <= 3) return d;
+                    if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
+                    if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+                    return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9,11)}`;
+                  })()}
+                  onChange={e => setForm(f => ({ ...f, cpf: e.target.value.replace(/\D/g, '').slice(0, 11) }))}
+                  placeholder="000.000.000-00"
+                  className="font-mono"
+                  maxLength={14}
+                />
+                <p className="text-xs text-muted-foreground mt-0.5">Obrigatório no Espelho de Ponto (Portaria 671)</p>
               </div>
-              {form.external_id && <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado ao relógio de ponto</p>}
-            </div>
-            <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
-            <div><Label>Departamento</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} /></div>
-            <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
-            <div>
-              <Label>Demissão</Label>
-              <Input
-                type="date"
-                value={(form as any).termination_date ?? ''}
-                onChange={e => setForm(f => ({ ...f, termination_date: e.target.value || null } as any))}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Último dia trabalhado. Deixe vazio se ainda ativo. Sistema para
-                de calcular horas esperadas após essa data no registro de ponto.
-              </p>
-            </div>
-
-            <div className="col-span-2">
-              <Label>Regime de pagamento</Label>
-              <Select value={(form as any).payment_type || 'mensalista'} onValueChange={v => setForm(f => ({ ...f, payment_type: v } as any))}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mensalista">Mensalista — salário, desconta ponto</SelectItem>
-                  <SelectItem value="remoto">Remoto — salário cheio, não bate ponto</SelectItem>
-                  <SelectItem value="diarista">Diarista — paga por dia trabalhado</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                {(form as any).payment_type === 'remoto'
-                  ? 'Recebe o salário cheio do período — o ponto não desconta falta/atraso nem paga hora extra.'
-                  : (form as any).payment_type === 'diarista'
-                  ? 'Paga a diária × dias com batida no período. Sem salário mensal nem desconto de falta.'
-                  : 'Salário do mês − faltas/atrasos + hora extra, contados por dia (sem compensar entre dias).'}
-              </p>
-            </div>
-
-            <div className="col-span-2">
-              <Label>{(form as any).payment_type === 'diarista' ? 'Salário (referência — não usado no diarista)' : 'Salário (R$)'}</Label>
-              <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
-              <p className="text-xs text-muted-foreground mt-1">
-                Valor-hora = salário ÷ 220 = <strong className="text-foreground">{fmt(form.salary > 0 ? form.salary / 220 : 0)}/h</strong>;
-                valor-dia = salário ÷ 30. Base do atraso/HE/falta do mensalista (e do salário cheio do remoto).
-              </p>
-            </div>
-
-            {(form as any).payment_type === 'diarista' && (
-              <div className="col-span-2">
-                <Label>Valor da diária (R$/dia)</Label>
-                <CurrencyInput value={(form as any).daily_rate || 0} onChange={v => setForm(f => ({ ...f, daily_rate: v } as any))} />
-                <p className="text-xs text-muted-foreground mt-1">Pagamento = diária × nº de dias com batida no período.</p>
+              <div>
+                <Label>ID no Relógio (External ID)</Label>
+                <div className="relative">
+                  <Input value={form.external_id || ''} onChange={e => setForm(f => ({ ...f, external_id: e.target.value }))} placeholder="Ex: 101" className={form.external_id ? 'pr-10 border-emerald-500 focus-visible:ring-emerald-500' : ''} />
+                  {form.external_id && (
+                    <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-500" />
+                  )}
+                </div>
+                {form.external_id && <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado ao relógio de ponto</p>}
               </div>
-            )}
-            <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
-            <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
-            <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>
-            <div className="col-span-2 flex items-center gap-2"><Switch checked={form.active} onCheckedChange={v => setForm(f => ({ ...f, active: v }))} /><Label>Funcionário Ativo</Label></div>
-          </div>
+              <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
+              <div><Label>Departamento</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} /></div>
+              <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
+              <div>
+                <Label>Demissão</Label>
+                <Input
+                  type="date"
+                  value={(form as any).termination_date ?? ''}
+                  onChange={e => setForm(f => ({ ...f, termination_date: e.target.value || null } as any))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Último dia trabalhado. Deixe vazio se ainda ativo. Sistema para
+                  de calcular horas esperadas após essa data no registro de ponto.
+                </p>
+              </div>
+              <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
+              <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
+              <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>
+              <div className="col-span-2 flex items-center gap-2"><Switch checked={form.active} onCheckedChange={v => setForm(f => ({ ...f, active: v }))} /><Label>Funcionário Ativo</Label></div>
+            </TabsContent>
+
+            {/* ── REMUNERAÇÃO ── */}
+            <TabsContent value="remuneracao" className="space-y-4 mt-4">
+              <div>
+                <Label>Regime de pagamento</Label>
+                <Select value={(form as any).payment_type || 'mensalista'} onValueChange={v => setForm(f => ({ ...f, payment_type: v } as any))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mensalista">Mensalista — salário, desconta ponto</SelectItem>
+                    <SelectItem value="remoto">Remoto — salário cheio, não bate ponto</SelectItem>
+                    <SelectItem value="diarista">Diarista — paga por dia trabalhado</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {(form as any).payment_type === 'remoto'
+                    ? 'Recebe o salário cheio do período — o ponto não desconta falta/atraso nem paga hora extra.'
+                    : (form as any).payment_type === 'diarista'
+                    ? 'Paga a diária × dias com batida no período. Sem salário mensal nem desconto de falta.'
+                    : 'Salário do mês − faltas/atrasos + hora extra, contados por dia (sem compensar entre dias).'}
+                </p>
+              </div>
+              <div>
+                <Label>{(form as any).payment_type === 'diarista' ? 'Salário (referência — não usado no diarista)' : 'Salário (R$)'}</Label>
+                <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Valor-hora = salário ÷ 220 = <strong className="text-foreground">{fmt(form.salary > 0 ? form.salary / 220 : 0)}/h</strong>;
+                  valor-dia = salário ÷ 30. Base do atraso/HE/falta do mensalista (e do salário cheio do remoto).
+                </p>
+              </div>
+              {(form as any).payment_type === 'diarista' && (
+                <div>
+                  <Label>Valor da diária (R$/dia)</Label>
+                  <CurrencyInput value={(form as any).daily_rate || 0} onChange={v => setForm(f => ({ ...f, daily_rate: v } as any))} />
+                  <p className="text-xs text-muted-foreground mt-1">Pagamento = diária × nº de dias com batida no período.</p>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── HORA EXTRA (valor negociado) ── */}
+            <TabsContent value="hora-extra" className="space-y-4 mt-4">
+              {(() => {
+                const vHora = form.salary > 0 ? form.salary / 220 : 0;
+                const autoHe = vHora * 1.5; // folha usa 1,5× plano p/ toda HE
+                const otUtil = Number((form as any).overtime_hourly_rate) || 0;
+                const otHoliday = Number((form as any).overtime_holiday_hourly_rate) || 0;
+                const hasNeg = otUtil > 0 || otHoliday > 0;
+                const effUtil = otUtil > 0 ? otUtil : autoHe;
+                const effHoliday = otHoliday > 0 ? otHoliday : autoHe;
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-border bg-card p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Automático</p>
+                        <p className="text-xl font-bold tabular-nums mt-0.5">{fmt(autoHe)}<span className="text-xs font-normal text-muted-foreground">/h</span></p>
+                        <p className="text-xs text-muted-foreground mt-0.5">salário ÷ 220 × 1,5 · vale útil e feriado</p>
+                      </div>
+                      <div className={`rounded-lg border p-3 ${hasNeg ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border bg-card'}`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-wider ${hasNeg ? 'text-primary' : 'text-muted-foreground'}`}>Negociado</p>
+                        <p className={`text-xl font-bold tabular-nums mt-0.5 ${hasNeg ? 'text-primary' : ''}`}>
+                          {fmt(effUtil)}<span className="text-xs font-normal text-muted-foreground">/h</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{hasNeg ? `em uso · feriado ${fmt(effHoliday)}` : 'preencha abaixo para usar'}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>HE dia útil (R$/h)</Label>
+                        <CurrencyInput
+                          value={otUtil}
+                          onChange={v => setForm(f => ({ ...f, overtime_hourly_rate: v > 0 ? v : null } as any))}
+                        />
+                      </div>
+                      <div>
+                        <Label>HE domingo/feriado (R$/h)</Label>
+                        <CurrencyInput
+                          value={otHoliday}
+                          onChange={v => setForm(f => ({ ...f, overtime_holiday_hourly_rate: v > 0 ? v : null } as any))}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Deixe em branco para usar o automático sobre o salário. O valor negociado é o R$/hora final
+                      (já é a hora extra pronta) e vale para a folha, o holerite e a exportação Excel.
+                    </p>
+                  </>
+                );
+              })()}
+            </TabsContent>
+          </Tabs>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave}>Salvar</Button>

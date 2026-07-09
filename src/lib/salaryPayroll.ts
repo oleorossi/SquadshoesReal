@@ -125,7 +125,13 @@ export interface SalaryPayrollResult {
   atraso_minutes: number;  // minutos faltantes (atraso + saída cedo) em dias parciais
   atraso_desconto: number; // R$ (atraso_minutes × valor-hora)
   he_minutes: number;
-  he_value: number;        // R$ (he_minutes × valor-hora × 1,5)
+  he_value: number;        // R$ (soma dos dois baldes 50%+100%)
+  /** HE de DIA ÚTIL (excedente da jornada) — minutos e R$. Base do valor negociado 50%. */
+  he_50_minutes: number;
+  he_50_value: number;
+  /** HE de DOMINGO/FERIADO (dia não-útil trabalhado) — minutos e R$. Base do valor negociado 100%. */
+  he_100_minutes: number;
+  he_100_value: number;
   pending_days: number;    // dias com batida ímpar (inconsistente) — não entram no cálculo
   /** Atraso/saída-cedo POR DIA (dias em que trabalhou menos que o esperado). Base
    *  do relatório de atrasos. Vazio em remoto/diarista (não há desconto de atraso). */
@@ -181,6 +187,15 @@ export function calculateSalaryPayroll(
    * da escala é computePeriodFolha — antes era a constante PREMIUM_MULTIPLIER hardcoded.
    */
   premiumMultiplier: number = PREMIUM_MULTIPLIER,
+  /**
+   * Valor NEGOCIADO da hora extra (R$/h), por balde. Quando setado (>0), a HE daquele
+   * balde é `min/60 × taxa` (o valor JÁ é o final, não multiplica de novo). Quando
+   * null/0, cai no automático `valor-hora × premiumMultiplier` (comportamento atual).
+   *  - overtimeUtilRate: HE de dia útil (excedente da jornada, 50%).
+   *  - overtimeHolidayRate: HE de domingo/feriado (dia não-útil trabalhado, 100%).
+   */
+  overtimeUtilRate: number | null = null,
+  overtimeHolidayRate: number | null = null,
 ): SalaryPayrollResult {
   const sal = Number(salary) || 0;
   const valorDia = dayDivisor > 0 ? sal / dayDivisor : 0;
@@ -288,7 +303,20 @@ export function calculateSalaryPayroll(
 
   const faltaDesconto = faltaDays * valorDia;
   const atrasoDesconto = (atrasoMin / 60) * valorHora;
-  const heValue = (heMin / 60) * valorHora * premiumMultiplier;
+  // HE em DOIS baldes (a flag `weekend` de heDays separa dia útil de dom/feriado):
+  //   50%  = excedente de dia útil (heDays sem weekend)
+  //   100% = dia não-útil/feriado trabalhado (heDays com weekend)
+  // Cada balde usa a taxa NEGOCIADA quando setada (>0), senão o automático
+  // (valor-hora × premiumMultiplier). Com ambas vazias, a soma é IDÊNTICA ao
+  // legado (heMin × valor-hora × premiumMultiplier) — invariante dos testes.
+  const he50Min = heDays.reduce((s, d) => s + (d.weekend ? 0 : d.minutes), 0);
+  const he100Min = heDays.reduce((s, d) => s + (d.weekend ? d.minutes : 0), 0);
+  const autoHeRate = valorHora * premiumMultiplier;
+  const util = (overtimeUtilRate != null && overtimeUtilRate > 0) ? overtimeUtilRate : autoHeRate;
+  const holiday = (overtimeHolidayRate != null && overtimeHolidayRate > 0) ? overtimeHolidayRate : autoHeRate;
+  const he50Value = (he50Min / 60) * util;
+  const he100Value = (he100Min / 60) * holiday;
+  const heValue = he50Value + he100Value;
   const adv = Number(advancesTotal) || 0;
   const gross = periodBase - faltaDesconto - atrasoDesconto + heValue;
 
@@ -314,6 +342,10 @@ export function calculateSalaryPayroll(
     he_days: heDays,
     he_minutes: heMin,
     he_value: round2(heValue),
+    he_50_minutes: he50Min,
+    he_50_value: round2(he50Value),
+    he_100_minutes: he100Min,
+    he_100_value: round2(he100Value),
     pending_days: pendingDays,
     advances_total: round2(adv),
     total_descontos: round2(faltaDesconto + atrasoDesconto + adv),
@@ -383,6 +415,13 @@ export interface PeriodFolhaInput {
   activeTo?: string | null;
   payRegime?: 'mensalista' | 'remoto' | 'diarista';  // regime de pagamento (default mensalista)
   dailyRate?: number;                     // R$/dia (só diarista)
+  /** Valor NEGOCIADO da hora extra por hora (R$/h), por funcionário. Quando setado
+   *  (>0), substitui o automático (salário/220 × multiplicador) no balde:
+   *   - overtimeUtilRate: HE de dia útil (50%) — coluna employees.overtime_hourly_rate.
+   *   - overtimeHolidayRate: HE de domingo/feriado (100%) — overtime_holiday_hourly_rate.
+   *  Vazio/null = automático (comportamento atual). */
+  overtimeUtilRate?: number | null;
+  overtimeHolidayRate?: number | null;
 }
 
 /** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha. */
@@ -418,7 +457,10 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   // Multiplicador de HE da escala (default 1,5×) — antes era PREMIUM_MULTIPLIER fixo.
   // A partir daqui, editar "Multiplicador HE" na escala (Ponto→Escalas) altera a folha.
   const premiumMult = Number(inp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);
-  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance, premiumMult);
+  const base = calculateSalaryPayroll(
+    inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance, premiumMult,
+    inp.overtimeUtilRate ?? null, inp.overtimeHolidayRate ?? null,
+  );
   const regime = inp.payRegime || 'mensalista';
   const adv = base.advances_total;
 
@@ -428,7 +470,8 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
       worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
       worked_days: 0, falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0,
-      atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0, he_value: 0, pending_days: 0,
+      atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0, he_value: 0,
+      he_50_minutes: 0, he_50_value: 0, he_100_minutes: 0, he_100_value: 0, pending_days: 0,
       total_proventos: base.period_base, total_descontos: adv,
       gross_value: base.period_base, net_value: round2(base.period_base - adv),
     };
@@ -443,7 +486,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     return {
       ...base, payment_type: 'diarista', daily_rate: dr, paid_days: paidDays,
       falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
-      he_minutes: 0, he_value: 0,
+      he_minutes: 0, he_value: 0, he_50_minutes: 0, he_50_value: 0, he_100_minutes: 0, he_100_value: 0,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),
     };

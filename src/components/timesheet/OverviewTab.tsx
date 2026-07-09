@@ -158,12 +158,16 @@ export default function OverviewTab() {
         .reduce((s, d) => s + d.workedMinutes, 0);
       const holidayOTMins = Math.min(compensatedOT, holidayWorkedMins);
       const normalOTMins = Math.max(0, compensatedOT - holidayOTMins);
-      // Use per-employee overtime rate when set; use empSchedule multipliers as fallback
+      // Taxa negociada por balde quando setada; senão valor-hora × multiplicador da escala.
+      // HE dia útil (50%) = overtime_hourly_rate; HE domingo/feriado (100%) = overtime_holiday_hourly_rate.
       const hasCustomRate = emp?.overtime_hourly_rate != null && emp.overtime_hourly_rate > 0;
+      const hasCustomHolidayRate = emp?.overtime_holiday_hourly_rate != null && emp.overtime_holiday_hourly_rate > 0;
       const effectiveOTRate = hasCustomRate ? emp!.overtime_hourly_rate! : hourlySalary * empSchedule.overtime_multiplier;
-      const effectiveHolidayRate = hasCustomRate
-        ? emp!.overtime_hourly_rate! * (empSchedule.holiday_multiplier / empSchedule.overtime_multiplier)
-        : hourlySalary * empSchedule.holiday_multiplier;
+      const effectiveHolidayRate = hasCustomHolidayRate
+        ? emp!.overtime_holiday_hourly_rate!
+        : hasCustomRate
+          ? emp!.overtime_hourly_rate! * (empSchedule.holiday_multiplier / empSchedule.overtime_multiplier)
+          : hourlySalary * empSchedule.holiday_multiplier;
       const overtimeCost = (normalOTMins / 60) * effectiveOTRate
         + (holidayOTMins / 60) * effectiveHolidayRate;
 

@@ -80,3 +80,47 @@ describe('evaluationDetail — BRUTO por-dia (mesma conta da folha)', () => {
     expect(e.dayRows[0].kind).toBe('ok');
   });
 });
+
+describe('evaluationDetail — valor NEGOCIADO de hora extra (holerite, balde 50/100)', () => {
+  it('taxa útil negociada aplica no excedente de dia útil (não no auto 1,5×)', () => {
+    // 08–19 = saldo +60 (excedente útil, 50%). Taxa negociada útil = R$ 20/h.
+    const base = emp([{ dayOfWeek: 1, punches: ['08:00', '19:00'], expectedMinutes: 540 }]);
+    const e = evaluationDetail({ ...base, overtimeHourlyRate: 20 });
+    expect(e.he50Min).toBe(60);
+    expect(e.he100Min).toBe(0);
+    expect(e.utilRate).toBe(20);
+    expect(e.heValue).toBeCloseTo((60 / 60) * 20, 5); // 20, não 15 (auto)
+  });
+
+  it('taxa feriado negociada aplica no domingo trabalhado (não afeta útil)', () => {
+    // Domingo 4h = 240min (100%). Taxa negociada feriado = R$ 25/h.
+    const base = emp([{ dayOfWeek: 0, punches: ['08:00', '12:00'], expectedMinutes: 0 }]);
+    const e = evaluationDetail({ ...base, overtimeHolidayRate: 25 });
+    expect(e.he100Min).toBe(240);
+    expect(e.he50Min).toBe(0);
+    expect(e.holidayRate).toBe(25);
+    expect(e.heValue).toBeCloseTo((240 / 60) * 25, 5); // 100, não 60 (auto)
+  });
+
+  it('sem taxas negociadas = comportamento auto inalterado (1,5×)', () => {
+    const base = emp([
+      { dayOfWeek: 1, punches: ['08:00', '19:00'], expectedMinutes: 540 }, // +60 útil
+      { dayOfWeek: 0, punches: ['14:00', '16:00'], expectedMinutes: 0 },   // 120 feriado
+    ]);
+    const e = evaluationDetail(base);
+    expect(e.heMin).toBe(180);
+    expect(e.heValue).toBeCloseTo((180 / 60) * VH * 1.5, 5); // 45
+  });
+
+  it('taxas negociadas por balde: útil e feriado independentes', () => {
+    const base = emp([
+      { dayOfWeek: 1, punches: ['08:00', '19:00'], expectedMinutes: 540 }, // +60 útil (50%)
+      { dayOfWeek: 0, punches: ['14:00', '16:00'], expectedMinutes: 0 },   // 120 feriado (100%)
+    ]);
+    const e = evaluationDetail({ ...base, overtimeHourlyRate: 18, overtimeHolidayRate: 30 });
+    expect(e.he50Min).toBe(60);
+    expect(e.he100Min).toBe(120);
+    // 1h × 18 + 2h × 30 = 18 + 60 = 78
+    expect(e.heValue).toBeCloseTo((60 / 60) * 18 + (120 / 60) * 30, 5);
+  });
+});

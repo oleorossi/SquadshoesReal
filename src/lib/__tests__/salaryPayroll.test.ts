@@ -208,6 +208,47 @@ const SCHED = {
 const NO_HOL = new Set<string>();
 const full = ['08:00', '12:00', '13:00', '18:00'];
 
+describe('computePeriodFolha — valor NEGOCIADO de hora extra (por balde 50/100)', () => {
+  // salário 2200 → valor-hora = 10. Automático = 10 × 1,5 = 15/h.
+  it('HE dia útil com taxa negociada usa min/60 × taxa (não o salário)', () => {
+    // seg 04/05: 08–12,13–19 = 10h; esperado 9h → 60min de HE (dia útil, 50%).
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:00', '12:00', '13:00', '19:00']]]);
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-04', to: '2026-05-04', schedule: SCHED,
+      holidaysSet: NO_HOL, punchesByDate: punches, overtimeUtilRate: 20,
+    });
+    expect(r.he_50_minutes).toBe(60);
+    expect(r.he_100_minutes).toBe(0);
+    expect(r.he_50_value).toBeCloseTo(20, 2);   // 1h × R$20
+    expect(r.he_value).toBeCloseTo(20, 2);
+  });
+
+  it('HE domingo/feriado usa a taxa de feriado; dia útil fica no automático', () => {
+    // dom 03/05 (não-útil): 9h trabalhadas = tudo HE 100%.
+    const punches = new Map<string, string[]>([['2026-05-03', full]]);
+    const r = computePeriodFolha({
+      salary: 2200, from: '2026-05-03', to: '2026-05-03', schedule: SCHED,
+      holidaysSet: NO_HOL, punchesByDate: punches, overtimeHolidayRate: 25,
+    });
+    expect(r.he_100_minutes).toBe(540);
+    expect(r.he_50_minutes).toBe(0);
+    expect(r.he_100_value).toBeCloseTo(225, 2); // 9h × R$25
+    expect(r.he_value).toBeCloseTo(225, 2);
+  });
+
+  it('sem taxas negociadas = idêntico ao automático (invariante)', () => {
+    const punches = new Map<string, string[]>([
+      ['2026-05-04', ['08:00', '12:00', '13:00', '19:00']], // 60min HE útil
+      ['2026-05-03', full],                                  // 540min HE domingo
+    ]);
+    const r = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-04', schedule: SCHED, holidaysSet: NO_HOL, punchesByDate: punches });
+    // automático: (60 + 540)/60 × 10 × 1,5 = 150
+    expect(r.he_value).toBeCloseTo(150, 2);
+    expect(r.he_50_value).toBeCloseTo(15, 2);   // 1h × 15
+    expect(r.he_100_value).toBeCloseTo(135, 2); // 9h × 15
+  });
+});
+
 describe('computePeriodFolha — helper de período (escala + feriados + batidas)', () => {
   it('getDaysInRange conta os dias corridos', () => {
     expect(getDaysInRange('2026-05-04', '2026-05-08')).toHaveLength(5);

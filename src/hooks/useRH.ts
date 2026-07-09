@@ -385,33 +385,35 @@ export function usePayrollRuns(period?: string) {
 export function useUpsertPayrollRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (p: Partial<PayrollRun> & { employee_id: string; period: string }) => {
-      const { id, created_at, updated_at, ...rest } = p as any;
+    mutationFn: async (p: Partial<PayrollRun> & { employee_id: string; period: string; force?: boolean }) => {
+      const { id, created_at, updated_at, force, ...rest } = p as any;
       // Guard: refuse to overwrite an already-approved or paid payroll run.
       // The upsert ON CONFLICT would reset status→'rascunho' and zero paid_at,
       // destroying the audit trail of an already-issued payment.
       const { data: existing, error: existingErr } = await (supabase as any)
         .from('payroll_runs')
-        .select('status')
+        .select('status, approved_at, paid_at')
         .eq('employee_id', p.employee_id)
         .eq('period', p.period)
         .maybeSingle();
       if (existingErr) throw new Error(`Falha ao verificar folha existente: ${existingErr.message}`);
-      if (existing && !['rascunho'].includes(existing.status)) {
+      const isClosed = existing && !['rascunho'].includes(existing.status);
+      if (isClosed && !force) {
         throw new Error(`Folha já ${existing.status === 'pago' ? 'paga' : 'aprovada'} — desbloqueie antes de recalcular.`);
       }
+      // Recálculo FORÇADO de folha fechada (ex.: mudou o valor negociado de HE):
+      // PRESERVA status + carimbos de auditoria (não rebaixa pra rascunho nem zera
+      // approved_at/paid_at) — só reescreve os VALORES recalculados. Assim o histórico
+      // financeiro (quem/quando aprovou/pagou) fica intacto, mas os números atualizam.
+      const payload = isClosed && force
+        ? { ...rest, status: existing.status, approved_at: existing.approved_at, paid_at: existing.paid_at }
+        : rest;
       // upsert por (employee_id, period) — chave única no schema.
-      // Atomic guard: if a race between two tabs both passed the SELECT check,
-      // the conflicting update only proceeds when status IS 'rascunho'; the
-      // second writer gets 0 rows and throws, preventing silent overwrite.
-      const { data: upsertRows, error } = await (supabase as any)
+      const { error } = await (supabase as any)
         .from('payroll_runs')
-        .upsert(rest, { onConflict: 'employee_id,period' })
+        .upsert(payload, { onConflict: 'employee_id,period' })
         .select('id');
       if (error) throw error;
-      if (existing && (!upsertRows || upsertRows.length === 0)) {
-        throw new Error('Folha já aprovada ou paga por outro usuário — recarregue a página.');
-      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payroll_runs'] });
