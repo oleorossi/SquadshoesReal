@@ -98,9 +98,13 @@ export default function RHHub() {
     if (mapped && mapped !== activeTab) setActiveTab(mapped);
   }, [searchParams, activeTab, setActiveTab]);
 
-  // Estado persistido pode apontar pra uma aba removida → cai na folha.
+  // Estado persistido pode apontar pra uma aba removida (ex.: 'reconciliacao' de um
+  // usuário que voltou): remapeia pela LEGACY_TAB_MAP antes de cair na folha, pra
+  // levar ao destino certo ('reconciliacao'→ponto, 'relatorios'→espelho, etc.).
   useEffect(() => {
-    if (!(TABS as readonly string[]).includes(activeTab)) setActiveTab('folha');
+    if (!(TABS as readonly string[]).includes(activeTab)) {
+      setActiveTab(LEGACY_TAB_MAP[activeTab as string] ?? 'folha');
+    }
   }, [activeTab, setActiveTab]);
 
   const handleNavigateTab = (tab: string) => {

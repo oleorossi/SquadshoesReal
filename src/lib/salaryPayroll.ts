@@ -90,8 +90,11 @@ export function expectedDayMinutes(sch: any): number {
  *   • HE só conta se o excedente do dia passar de minOvertimeMin (10min).
  */
 export interface SalaryPolicy {
-  /** Dias úteis do mês (escala seg–sáb − feriados). valorDia = salário ÷ este número. */
+  /** Dias úteis do mês do INÍCIO do período (fallback/exibição). valorDia = salário ÷ isto. */
   businessDaysDivisor: number;
+  /** Dias úteis POR mês (YYYY-MM → nº). Falta/atraso de cada dia usa o divisor do mês em
+   *  que o dia cai — corrige períodos que cruzam meses. Ausente ⇒ usa businessDaysDivisor. */
+  businessDaysByMonth?: Record<string, number>;
   /** Jornada diária esperada (min) da escala. valorHora de desconto = valorDia ÷ (jornada/60). */
   journeyMinutes: number;
   /** R$/hora extra normal (dia útil, sábado, noturno). */
@@ -154,6 +157,9 @@ export interface SalaryPayrollResult {
    *  holiday = domingo/feriado. Somados = he_minutes. Zerados no modo legado. */
   he_normal_minutes?: number;
   he_holiday_minutes?: number;
+  /** true quando há minutos de HE mas a taxa R$/h do funcionário está 0/não cadastrada
+   *  → he_value sai R$0 apesar de he_minutes>0. A UI deve alertar (spec req.5/15). */
+  he_rate_missing?: boolean;
   pending_days: number;    // dias com batida ímpar (inconsistente) — não entram no cálculo
   /** Atraso/saída-cedo POR DIA (dias em que trabalhou menos que o esperado). Base
    *  do relatório de atrasos. Vazio em remoto/diarista (não há desconto de atraso). */
@@ -235,6 +241,19 @@ export function calculateSalaryPayroll(
         ? Number(policy!.heSundayHolidayRate) : heNormalRate)
     : 0;
   const atrasoCap = atrasoCapMinutes(dayDivisor, hourDivisor); // teto de atraso/dia (min) — modo legado
+  // valorDia/valorHora POR DIA: em policy, falta/atraso de cada dia usam o divisor do MÊS
+  // do dia (businessDaysByMonth) — corrige períodos que cruzam meses. Sem mapa (ou legado),
+  // caem no valorDia/valorHora únicos → resultado idêntico ao de antes (mês único).
+  const bdByMonth = usePolicy ? (policy!.businessDaysByMonth || {}) : {};
+  const valorDiaFor = (date: string): number => {
+    if (usePolicy) {
+      const bd = bdByMonth[String(date || '').slice(0, 7)];
+      if (bd && bd > 0) return sal / bd;
+    }
+    return valorDia;
+  };
+  const valorHoraFor = (date: string): number =>
+    usePolicy ? (journeyMin > 0 ? valorDiaFor(date) / (journeyMin / 60) : 0) : valorHora;
   // Base de proventos do período: proporcional aos dias quando periodDays vier (paga-se
   // por quinzena). Com monthDays, prorateia por periodDays/monthDays (as 2 quinzenas
   // somam o salário EXATO, sem dia a mais); sem ele, legado valor-dia×periodDays.
@@ -260,6 +279,8 @@ export function calculateSalaryPayroll(
   let heNormalMin = 0;   // HE a taxa normal (policy): dia útil/sábado/noturno
   let heHolidayMin = 0;  // HE a taxa domingo/feriado (policy)
   let atrasoMin = 0;
+  let faltaDescontoAcc = 0;   // R$ de falta acumulado por-dia (divisor do mês de cada falta)
+  let atrasoDescontoAcc = 0;  // R$ de atraso acumulado por-dia (divisor do mês de cada atraso)
   const lateDays: { date: string; minutes: number }[] = [];  // atraso/saída-cedo por dia (relatório)
   const heDays: { date: string; minutes: number; weekend?: boolean }[] = [];  // hora extra por dia (relatório)
   const faltaDates: string[] = [];  // datas de falta (dia útil sem batida) — relatório de faltas
@@ -308,6 +329,7 @@ export function calculateSalaryPayroll(
         if (d.excused) { excusedDays++; continue; }
         faltaDays++;
         faltaDates.push(d.date);
+        faltaDescontoAcc += valorDiaFor(d.date);  // divisor do MÊS da falta
         continue;
       }
       workedDays++;
@@ -338,6 +360,7 @@ export function calculateSalaryPayroll(
         const cap = usePolicy ? d.expectedMinutes : atrasoCap;
         const late = Math.min(-dayBal, cap);
         atrasoMin += late; lateDays.push({ date: d.date, minutes: late });
+        atrasoDescontoAcc += (late / 60) * valorHoraFor(d.date);  // valor-hora do MÊS do atraso
       }
     } else if (worked > 0) {
       // Dia NÃO útil (fim de semana/feriado) trabalhado: esperado = 0 → TUDO é hora extra.
@@ -354,13 +377,19 @@ export function calculateSalaryPayroll(
     }
   }
 
-  const faltaDesconto = faltaDays * valorDia;
-  const atrasoDesconto = (atrasoMin / 60) * valorHora;
+  // Falta/atraso acumulados POR DIA (cada um com o divisor do seu mês). Em mês único ou
+  // legado, é idêntico a faltaDays×valorDia e atrasoMin/60×valorHora.
+  const faltaDesconto = faltaDescontoAcc;
+  const atrasoDesconto = atrasoDescontoAcc;
   // HE: policy = valor ABSOLUTO R$/h por funcionário (normal vs domingo/feriado, sem
   // multiplicador); legado = valor-hora × multiplicador (1,5×).
   const heValue = usePolicy
     ? (heNormalMin / 60) * heNormalRate + (heHolidayMin / 60) * heHolidayRate
     : (heMin / 60) * valorHora * premiumMultiplier;
+  // Aviso: HE em minutos mas taxa 0/não cadastrada → he_value sai R$0 (spec req.5/15).
+  const heRateMissing = usePolicy && (
+    (heNormalMin > 0 && !(heNormalRate > 0)) || (heHolidayMin > 0 && !(heHolidayRate > 0))
+  );
   const adv = Number(advancesTotal) || 0;
   const gross = periodBase - faltaDesconto - atrasoDesconto + heValue;
 
@@ -387,6 +416,7 @@ export function calculateSalaryPayroll(
     he_minutes: heMin,
     he_normal_minutes: heNormalMin,
     he_holiday_minutes: heHolidayMin,
+    he_rate_missing: heRateMissing,
     he_value: round2(heValue),
     pending_days: pendingDays,
     advances_total: round2(adv),
@@ -438,6 +468,13 @@ export function businessDaysInMonth(anyDateInMonth: string, schedule: any, holid
     if (worksOnDow(schedule, dt.getUTCDay()) && !holidaysSet.has(ds)) n++;
   }
   return n;
+}
+
+/** Dias CORRIDOS do mês (28–31) que contém `anyDateInMonth`. */
+export function daysInCalendarMonth(anyDateInMonth: string): number {
+  const [y, m] = String(anyDateInMonth || '').split('-').map(Number);
+  if (!y || !m) return 30;
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
 export interface PeriodFolhaInput {
@@ -520,15 +557,27 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   // computePeriodFolha aplica. Falta = salário ÷ dias úteis do mês; atraso = min ×
   // (valorDia ÷ jornada); HE = R$/h absoluto por funcionário (normal vs domingo/feriado);
   // HE só acima de 10min. businessDays usa a escala + feriados do mês do início do período.
+  // Dias úteis POR MÊS abrangido pelo período — falta/atraso de cada dia usam o divisor
+  // do MÊS em que caem (períodos que cruzam meses ficam corretos; dentro do mês, idêntico).
+  const bdByMonth: Record<string, number> = {};
+  for (const d of dates) {
+    const ym = d.date.slice(0, 7);
+    if (!(ym in bdByMonth)) bdByMonth[ym] = businessDaysInMonth(d.date, inp.schedule, inp.holidaysSet);
+  }
   const policy: SalaryPolicy = {
-    businessDaysDivisor: businessDaysInMonth(inp.from, inp.schedule, inp.holidaysSet),
+    businessDaysDivisor: bdByMonth[inp.from.slice(0, 7)] ?? businessDaysInMonth(inp.from, inp.schedule, inp.holidaysSet),
+    businessDaysByMonth: bdByMonth,
     journeyMinutes: expectedDayMinutes(inp.schedule),
     heNormalRate: Number(inp.heNormalRate) || 0,
     heSundayHolidayRate: inp.heSundayHolidayRate != null && Number(inp.heSundayHolidayRate) > 0
       ? Number(inp.heSundayHolidayRate) : undefined,
     minOvertimeMin: inp.minOvertimeMin ?? 10,
   };
-  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, inp.monthDays, tolerance, premiumMult, policy);
+  // Base prorateada (quinzena): se periodDays veio mas monthDays não, usa os dias corridos
+  // do mês do início — senão o fallback valorDia×periodDays (com valorDia=÷dias úteis)
+  // inflaria a base. Todos os callers vivos já passam monthDays; isto blinda futuros.
+  const monthDaysEff = inp.monthDays ?? (inp.periodDays != null && inp.periodDays > 0 ? daysInCalendarMonth(inp.from) : undefined);
+  const base = calculateSalaryPayroll(inp.salary, days, inp.advancesTotal || 0, undefined, undefined, inp.periodDays, monthDaysEff, tolerance, premiumMult, policy);
   const regime = inp.payRegime || 'mensalista';
   const adv = base.advances_total;
 
@@ -538,7 +587,8 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       ...base, payment_type: 'remoto', daily_rate: 0, paid_days: 0,
       worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
       worked_days: 0, falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0,
-      atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0, he_value: 0, pending_days: 0,
+      atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0,
+      he_normal_minutes: 0, he_holiday_minutes: 0, he_rate_missing: false, he_value: 0, pending_days: 0,
       total_proventos: base.period_base, total_descontos: adv,
       gross_value: base.period_base, net_value: round2(base.period_base - adv),
     };
@@ -571,7 +621,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     return {
       ...base, payment_type: 'diarista', daily_rate: dr, paid_days: presentDays,
       falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0, atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [],
-      he_minutes: 0, he_value: 0,
+      he_minutes: 0, he_normal_minutes: 0, he_holiday_minutes: 0, he_rate_missing: false, he_value: 0,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),
     };

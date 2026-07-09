@@ -53,7 +53,7 @@ const KIND_STYLE: Record<string, string> = {
   outro:               'bg-muted text-muted-foreground border-border',
 };
 
-export default function EmployeeAbsencesPage() {
+export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: absences = [], isLoading } = useEmployeeAbsences();
   const { data: employees = [] } = useEmployees();
   const createAbsence = useCreateAbsence();
@@ -117,7 +117,7 @@ export default function EmployeeAbsencesPage() {
   };
 
   const handleDelete = (id: string, label: string) => {
-    if (!confirm(`Remover ausência "${label}"?\n\nOs dias voltam a contar no banco de horas.`)) return;
+    if (!confirm(`Remover ausência "${label}"?\n\nOs dias voltam a contar no desconto de falta/atraso da folha.`)) return;
     deleteAbsence.mutate(id);
   };
 
@@ -135,10 +135,13 @@ export default function EmployeeAbsencesPage() {
 
   return (
     <div className="space-y-5 page-enter">
+      {/* Quando embutida na aba Ponto do RHHub (embedded), esconde o próprio header
+          pra não duplicar com o header do hub. Standalone (/rh/ausencias) mostra. */}
+      {!embedded && (
       <EditorialPageHeader
         sectionLabel="RH · PONTO · AUSÊNCIAS"
         title="Ausências Justificadas"
-        description="Férias, atestados, licenças e folgas. Dias cadastrados aqui ficam ISENTOS do cálculo do banco de horas — não viram débito automático."
+        description="Férias, atestados, licenças e folgas. Dias cadastrados aqui ficam ISENTOS do desconto de falta/atraso da folha — não descontam."
         actions={
           <Button size="sm" className="h-9 gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
@@ -146,6 +149,18 @@ export default function EmployeeAbsencesPage() {
           </Button>
         }
       />
+      )}
+      {embedded && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground">
+            Férias, atestados, licenças e folgas cadastrados aqui ficam <strong className="text-foreground">isentos</strong> do desconto de falta/atraso da folha.
+          </p>
+          <Button size="sm" className="h-9 gap-1.5" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Nova ausência
+          </Button>
+        </div>
+      )}
 
       <StatGrid>
         <StatCard
@@ -230,7 +245,7 @@ export default function EmployeeAbsencesPage() {
             title={hasFilters ? 'Nenhuma ausência com esses filtros' : 'Nenhuma ausência cadastrada'}
             description={hasFilters
               ? 'Limpe os filtros pra ver todas.'
-              : 'Cadastre férias, atestados ou folgas pra que esses dias não virem débito no banco de horas.'}
+              : 'Cadastre férias, atestados ou folgas pra que esses dias não sejam descontados na folha.'}
             action={!hasFilters ? (
               <Button size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova ausência
@@ -317,7 +332,7 @@ export default function EmployeeAbsencesPage() {
               Nova ausência
             </DialogTitle>
             <DialogDescription>
-              Os dias selecionados ficam isentos do cálculo do banco de horas — não viram débito automático nem entram no expected da semana.
+              Os dias selecionados ficam isentos do desconto de falta/atraso da folha.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -369,7 +384,7 @@ export default function EmployeeAbsencesPage() {
               <div className="text-xs text-muted-foreground flex items-center gap-1.5 px-1">
                 <Info className="h-3 w-3" />
                 <strong className="text-foreground">{previewDays}</strong>{' '}
-                {previewDays === 1 ? 'dia' : 'dias'} ficarão isentos do banco de horas.
+                {previewDays === 1 ? 'dia' : 'dias'} ficarão isentos do desconto da folha.
               </div>
             )}
             <div>

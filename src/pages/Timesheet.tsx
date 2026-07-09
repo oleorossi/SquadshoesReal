@@ -1429,7 +1429,7 @@ export default function Timesheet() {
         {/* Faltas/atrasos justificados (spec req.10): registra a ausência em
             employee_absences → o motor da folha ABONA (não desconta falta nem atraso
             do dia). Mesma tela reaproveitada de /rh/ausencias. */}
-        <TabsContent value="ausencias"><EmployeeAbsences /></TabsContent>
+        <TabsContent value="ausencias"><EmployeeAbsences embedded /></TabsContent>
         <TabsContent value="calendario"><CoverageCalendar /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateSalaryPayroll, computePeriodFolha, getDaysInRange, type SalaryDayInput } from '../salaryPayroll';
+import { calculateSalaryPayroll, computePeriodFolha, getDaysInRange, businessDaysInMonth, type SalaryDayInput } from '../salaryPayroll';
 
 // Folha SALÁRIO CHEIO − DESCONTOS (decisão 2026-06-03). Trava a regra:
 //   valor-dia = salário/30 ; valor-hora = salário/220
@@ -540,6 +540,17 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     const com = computePeriodFolha({ salary: 2100, from: '2026-05-04', to: '2026-05-04', ...base, punchesByDate: punches, absenceDates: new Set(['2026-05-04']) });
     expect(com.atraso_minutes).toBe(0);       // abonado pelo RH
     expect(com.atraso_desconto).toBeCloseTo(0, 2);
+  });
+
+  it('E1: período que CRUZA meses — falta de fev usa dias úteis de FEVEREIRO (não de jan)', () => {
+    // 2026-01-29 (qui) → 2026-02-03 (ter). Dias úteis: 29,30,fev02,fev03 (31 sáb, fev01 dom).
+    // Bate ponto em 29/30/fev02; fev03 sem batida = falta em FEVEREIRO.
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-01-29', '2026-01-30', '2026-02-02']) punches.set(d, ['08:00', '12:00', '13:00', '18:00']);
+    const r = computePeriodFolha({ salary: 2100, from: '2026-01-29', to: '2026-02-03', ...base, punchesByDate: punches });
+    const bdFev = businessDaysInMonth('2026-02-01', SCHED, NO_HOL);
+    expect(r.falta_dates).toEqual(['2026-02-03']);
+    expect(r.falta_desconto).toBeCloseTo(2100 / bdFev, 2);   // divisor de FEV, não do mês de início (jan)
   });
 
   it('DIARISTA com meia-diária: ≥6h→1, 2–6h→0,5, <2h→0', () => {

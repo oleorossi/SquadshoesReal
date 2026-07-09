@@ -11,10 +11,27 @@
 --
 -- MANTIDO de propósito: get_bank_hours_cutoff() — apesar do nome, é só uma data
 -- de corte usada por telas de Pendências/Fechamento que não são banco de horas.
--- overtime_resolutions / v_overtime_reconciliation ficam (log de resolução de HE,
--- fora do escopo desta remoção).
+-- A TABELA overtime_resolutions (log de resolução de HE) fica; mas a VIEW
+-- v_overtime_reconciliation depende de bank_hours_balance, então cai junto (nenhum
+-- frontend a lê — verificado). Datada DEPOIS da última migration existente (20260909…)
+-- pra que os CREATE OR REPLACE de 20260831/20260908 (que recriam v_overtime_
+-- reconciliation e calculate_employee_bank_balance) rodem ANTES deste drop num apply
+-- ordenado (fresh DB / CI) — senão referenciariam objeto já dropado e o push abortaria.
 
--- Views (dependem da tabela/função) primeiro.
+-- Cron órfão que chamaria snapshot_employee_week (dropada abaixo) — desagenda antes.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+     AND EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'snapshot_weekly_close') THEN
+    PERFORM cron.unschedule('snapshot_weekly_close');
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;  -- pg_cron ausente/sem permissão: ignora
+END $$;
+
+-- View de reconciliação de HE (depende de bank_hours_balance) — removida explícita.
+DROP VIEW IF EXISTS public.v_overtime_reconciliation CASCADE;
+
+-- Views de banco de horas (dependem da tabela/função) primeiro.
 DROP VIEW IF EXISTS public.v_bank_hours_summary CASCADE;
 DROP VIEW IF EXISTS public.v_bank_hours_per_sector CASCADE;
 DROP VIEW IF EXISTS public.bank_hours_balance CASCADE;

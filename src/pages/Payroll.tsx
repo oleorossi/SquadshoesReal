@@ -557,6 +557,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       let calculated = 0;
       let withIncomplete = 0;
       let sharedMatricula = 0;
+      let withMissingHeRate = 0;  // HE em minutos mas taxa R$/h não cadastrada → HE R$0
       // Todos os regimes passam pelo MESMO motor (computePeriodFolha honra
       // payment_type): mensalista (salário − descontos por dia), remoto (salário
       // cheio, ignora ponto) e diarista (diária × dias trabalhados). (2026-06-19)
@@ -603,6 +604,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
         });
         if (result.pending_days > 0) withIncomplete++;
+        if ((result as any).he_rate_missing) withMissingHeRate++;
 
         await upsertRun.mutateAsync({
           employee_id: emp.id,
@@ -638,6 +640,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         `Folha calculada: ${calculated} funcionário(s).` +
         (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
         (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : '') +
+        (withMissingHeRate > 0 ? ` ⚠ ${withMissingHeRate} com hora extra mas SEM valor de HE cadastrado (HE saiu R$0) — preencha "Hora extra (R$/h)" no cadastro do funcionário.` : '') +
         (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
       );
     } catch (err: any) {
