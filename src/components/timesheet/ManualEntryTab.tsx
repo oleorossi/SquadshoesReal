@@ -44,16 +44,64 @@ function formatDateBR(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
+// Slots nomeados do dia — o usuário vê exatamente qual horário faltou e completa
+// só ele. Squad normalmente bate 2×/dia (Entrada + Saída, almoço não batido); os
+// slots de almoço ficam vazios e o usuário preenche se houve.
+const SLOT_DEFS = [
+  { key: 'entrada', label: 'Entrada' },
+  { key: 'saidaAlmoco', label: 'Saída Almoço' },
+  { key: 'voltaAlmoco', label: 'Volta Almoço' },
+  { key: 'saida', label: 'Saída' },
+] as const;
+type SlotKey = typeof SLOT_DEFS[number]['key'];
+type Slots = Record<SlotKey, string>;
+type SlotManual = Record<SlotKey, boolean>;
+
 interface CellDialogState {
   employeeName: string;
   dateStr: string;
   existingRecord: TimeRecord | null;
-  punches: string[];
+  slots: Slots;
+  slotManual: SlotManual;
+  extras: string[]; // batidas além das 4 (raro) — preservam o flag '*'
 }
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
+}
+
+const emptySlots = (): Slots => ({ entrada: '', saidaAlmoco: '', voltaAlmoco: '', saida: '' });
+const emptyManual = (): SlotManual => ({ entrada: false, saidaAlmoco: false, voltaAlmoco: false, saida: false });
+
+// Distribui as batidas (lista plana ordenada) nos slots nomeados. 2 batidas =
+// padrão sem almoço (Entrada + Saída). 3+ = posicional (Entrada, Saída Almoço,
+// Volta Almoço, Saída); o excedente vai pra `extras`.
+function punchesToSlots(punches: string[]): { slots: Slots; slotManual: SlotManual; extras: string[] } {
+  const sorted = [...(punches || [])].sort((a, b) => timeToMinutes(cleanPunch(a)) - timeToMinutes(cleanPunch(b)));
+  const slots = emptySlots();
+  const slotManual = emptyManual();
+  const extras: string[] = [];
+  const set = (k: SlotKey, p: string) => { slots[k] = cleanPunch(p); slotManual[k] = isManualPunch(p); };
+  if (sorted.length === 2) {
+    set('entrada', sorted[0]); set('saida', sorted[1]);
+  } else {
+    const keys: SlotKey[] = ['entrada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
+    sorted.forEach((p, i) => { if (i < 4) set(keys[i], p); else extras.push(p); });
+  }
+  return { slots, slotManual, extras };
+}
+
+// Reconstrói a lista plana de batidas a partir dos slots preenchidos + extras,
+// ordenada por horário. Slot alterado/preenchido no diálogo vira manual ('*').
+function slotsToPunches(slots: Slots, slotManual: SlotManual, extras: string[]): string[] {
+  const out: string[] = [];
+  for (const { key } of SLOT_DEFS) {
+    const v = (slots[key] || '').trim();
+    if (v) out.push(v + (slotManual[key] ? '*' : ''));
+  }
+  out.push(...extras);
+  return out.sort((a, b) => timeToMinutes(cleanPunch(a)) - timeToMinutes(cleanPunch(b)));
 }
 
 export default function ManualEntryTab() {
@@ -107,33 +155,26 @@ export default function ManualEntryTab() {
 
   const openCell = useCallback((employeeName: string, dateStr: string) => {
     const existing = recordMap.get(`${employeeName}|${dateStr}`) || null;
-    setCellDialog({
-      employeeName,
-      dateStr,
-      existingRecord: existing,
-      punches: existing ? [...(existing.punches as string[])] : [],
-    });
+    const { slots, slotManual, extras } = punchesToSlots(existing ? (existing.punches as string[]) : []);
+    setCellDialog({ employeeName, dateStr, existingRecord: existing, slots, slotManual, extras });
     setNewPunch('');
   }, [recordMap]);
 
-  const addPunchToDialog = () => {
+  // Editar um slot marca-o como manual (verde) — é uma correção do usuário.
+  const setSlot = (key: SlotKey, value: string) => {
+    setCellDialog(d => d ? { ...d, slots: { ...d.slots, [key]: value }, slotManual: { ...d.slotManual, [key]: true } } : d);
+  };
+
+  const addExtra = () => {
     if (!newPunch || !cellDialog) return;
     const clean = newPunch.trim();
-    if (!/^\d{2}:\d{2}$/.test(clean)) {
-      toast.error('Formato inválido. Use HH:MM');
-      return;
-    }
-    const marked = clean + '*';
-    const updated = [...cellDialog.punches, marked]
-      .sort((a, b) => timeToMinutes(cleanPunch(a)) - timeToMinutes(cleanPunch(b)));
-    setCellDialog(d => d ? { ...d, punches: updated } : d);
+    if (!/^\d{2}:\d{2}$/.test(clean)) { toast.error('Formato inválido. Use HH:MM'); return; }
+    setCellDialog(d => d ? { ...d, extras: [...d.extras, clean + '*'] } : d);
     setNewPunch('');
   };
 
-  const removePunch = (idx: number) => {
-    if (!cellDialog) return;
-    const updated = cellDialog.punches.filter((_, i) => i !== idx);
-    setCellDialog(d => d ? { ...d, punches: updated } : d);
+  const removeExtra = (idx: number) => {
+    setCellDialog(d => d ? { ...d, extras: d.extras.filter((_, i) => i !== idx) } : d);
   };
 
   // Preenche entrada+saída padrão (padrão Squad: 2 batidas/dia, almoço inferido)
@@ -147,14 +188,20 @@ export default function ManualEntryTab() {
     }
     const entry = (dow === 6 ? defaultSchedule.saturday_entry : defaultSchedule.entry_time) || '08:00';
     const exit = (dow === 6 ? defaultSchedule.saturday_exit : defaultSchedule.exit_time) || '17:48';
-    setCellDialog(d => d ? { ...d, punches: [`${entry}*`, `${exit}*`] } : d);
+    setCellDialog(d => d ? {
+      ...d,
+      slots: { entrada: entry, saidaAlmoco: '', voltaAlmoco: '', saida: exit },
+      slotManual: { entrada: true, saidaAlmoco: false, voltaAlmoco: false, saida: true },
+      extras: [],
+    } : d);
   };
 
   const saveCell = async () => {
     if (!cellDialog) return;
     setSaving(true);
     try {
-      const { employeeName, dateStr, existingRecord, punches } = cellDialog;
+      const { employeeName, dateStr, existingRecord, slots, slotManual, extras } = cellDialog;
+      const punches = slotsToPunches(slots, slotManual, extras);
       if (existingRecord) {
         const { error } = await supabase
           .from('time_records')
@@ -373,59 +420,67 @@ export default function ManualEntryTab() {
                 </div>
               </div>
 
-              {/* Punches list */}
+              {/* Slots nomeados: mostra o que o funcionário bateu em cada horário
+                  e deixa completar SÓ o que faltou. Campo vazio (borda âmbar) =
+                  batida faltante; verde = manual (correção sua). */}
               <div className="space-y-2">
-                <Label className="text-xs font-semibold">Batidas registradas</Label>
-                {cellDialog.punches.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">Nenhuma batida registrada</p>
-                ) : (
-                  <div className="space-y-1">
-                    {cellDialog.punches.map((p, idx) => {
-                      const clean = cleanPunch(p);
-                      const manual = isManualPunch(p);
-                      const label = idx % 2 === 0 ? 'Entrada' : 'Saída';
-                      return (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground w-12 text-right">{label}</span>
-                          <Badge
-                            variant="outline"
-                            className={`font-mono text-xs flex-1 justify-center ${manual
-                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                              : ''}`}
-                          >
-                            <Clock className="h-3 w-3 mr-1" />{clean}
-                            {manual && <span className="ml-1 text-xs opacity-70">manual</span>}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                            aria-label={`Remover batida ${clean}`}
-                            onClick={() => removePunch(idx)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
+                <Label className="text-xs font-semibold">Horários do dia</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {SLOT_DEFS.map(({ key, label }) => {
+                    const val = cellDialog.slots[key];
+                    const manual = cellDialog.slotManual[key];
+                    return (
+                      <div key={key} className="space-y-1">
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          {label}{val && manual && <span className="text-emerald-600">· manual</span>}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="time"
+                            value={val}
+                            onChange={e => setSlot(key, e.target.value)}
+                            className={`font-mono tabular-nums h-9 ${val ? (manual ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : '') : 'border-amber-500/40'}`}
+                          />
+                          {val && (
+                            <Button variant="ghost" size="sm" className="h-9 w-8 p-0 shrink-0 text-muted-foreground hover:text-destructive"
+                              aria-label={`Limpar ${label}`} onClick={() => setSlot(key, '')}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
-                      );
-                    })}
-                    {cellDialog.punches.length % 2 !== 0 && (
-                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                        ⚠ Número ímpar de batidas — adicione a batida faltante
-                      </p>
-                    )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {cellDialog.extras.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[11px] text-muted-foreground">Batidas extras</span>
+                    <div className="flex flex-wrap gap-1">
+                      {cellDialog.extras.map((p, idx) => (
+                        <Badge key={idx} variant="outline" className="font-mono text-xs gap-1">
+                          {cleanPunch(p)}
+                          <button aria-label={`Remover ${cleanPunch(p)}`} onClick={() => removeExtra(idx)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 )}
+                {(() => {
+                  const filled = SLOT_DEFS.filter(({ key }) => cellDialog.slots[key].trim()).length + cellDialog.extras.length;
+                  return filled % 2 !== 0 ? (
+                    <p className="text-xs text-amber-600 flex items-center gap-1">⚠ Número ímpar de horários — falta uma batida (entrada ou saída)</p>
+                  ) : null;
+                })()}
               </div>
 
-              {/* Quick-fill: entrada/saída padrão num clique (acelera o lançamento
-                  de muitos dias; o usuário revisa e ajusta antes de salvar). */}
+              {/* Quick-fill: entrada/saída padrão da escala num clique. */}
               <Button variant="outline" size="sm" onClick={fillStandardDay} className="w-full gap-1.5">
                 <Clock className="h-3.5 w-3.5" /> Preencher entrada/saída padrão
               </Button>
 
-              {/* Add punch */}
+              {/* Batida extra (raro: mais de 4 no dia). */}
               <div className="space-y-1.5">
-                <Label className="text-xs">Adicionar batida manual</Label>
+                <Label className="text-xs">Adicionar batida extra</Label>
                 <div className="flex gap-2">
                   <Input
                     type="time"
@@ -433,13 +488,12 @@ export default function ManualEntryTab() {
                     onChange={e => setNewPunch(e.target.value)}
                     className="font-mono tabular-nums h-9"
                     placeholder="HH:MM"
-                    onKeyDown={e => e.key === 'Enter' && addPunchToDialog()}
+                    onKeyDown={e => e.key === 'Enter' && addExtra()}
                   />
-                  <Button size="sm" variant="outline" onClick={addPunchToDialog} className="gap-1 h-9">
+                  <Button size="sm" variant="outline" onClick={addExtra} className="gap-1 h-9">
                     <Plus className="h-3.5 w-3.5" /> Adicionar
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">Batidas manuais são marcadas em verde</p>
               </div>
 
               <div className="flex gap-2 justify-between">
