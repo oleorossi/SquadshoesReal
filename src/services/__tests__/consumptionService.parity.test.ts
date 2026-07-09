@@ -38,9 +38,11 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       expect(failures, JSON.stringify(failures, null, 2)).toHaveLength(0);
       // 2 de existência + 7 de contrato (versão VIVA no banco, pós-unificação
       // escalar→by_grade: escalar_delega_ao_bygrade + escalar_nao_duplica_conversao
-      // substituíram os cases escalar_* da migration 20260722120000) + 4 de
-      // componentes-por-cor (migration 20260910140000: gate no by_grade E na
-      // try_reserve_materials + normalização unaccent + shape quantity/product_id).
+      // substituíram os cases escalar_* da migration 20260722120000) + 2 de
+      // componentes-por-cor no by_grade (migration 20260910140000) + 4 da
+      // reserva (migration 20260910150000: try_reserve_materials deriva a
+      // demanda do motor unificado — delegação ao by_grade, sem explosão
+      // própria de BOM/specs, e pula color_mismatch). Total vivo: 15.
       expect(rows.length).toBeGreaterThanOrEqual(13);
     });
   },
