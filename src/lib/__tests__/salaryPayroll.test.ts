@@ -533,6 +533,15 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     expect(r.atraso_desconto).toBeCloseTo((20 / 60) * ((2100 / BD) / 9), 2);
   });
 
+  it('ATRASO JUSTIFICADO: dia marcado como ausência não desconta o atraso (req.10)', () => {
+    const punches = new Map<string, string[]>([['2026-05-04', ['08:40', '12:00', '13:00', '18:00']]]); // atraso 40min
+    const sem = computePeriodFolha({ salary: 2100, from: '2026-05-04', to: '2026-05-04', ...base, punchesByDate: punches });
+    expect(sem.atraso_minutes).toBe(40);
+    const com = computePeriodFolha({ salary: 2100, from: '2026-05-04', to: '2026-05-04', ...base, punchesByDate: punches, absenceDates: new Set(['2026-05-04']) });
+    expect(com.atraso_minutes).toBe(0);       // abonado pelo RH
+    expect(com.atraso_desconto).toBeCloseTo(0, 2);
+  });
+
   it('DIARISTA com meia-diária: ≥6h→1, 2–6h→0,5, <2h→0', () => {
     const punches = new Map<string, string[]>([
       ['2026-05-04', ['08:00', '12:00', '13:00', '18:00']], // 9h → 1

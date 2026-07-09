@@ -332,8 +332,9 @@ export function calculateSalaryPayroll(
       }
       // Atraso capado por-dia: policy = jornada esperada do dia (um dia inteiro atrasado
       // = 1 valor-dia = 1 falta); legado = teto 220/30. Um dia quase-vazio nunca custa
-      // mais que uma falta limpa.
-      else if (dayBal < 0) {
+      // mais que uma falta limpa. ATRASO JUSTIFICADO (spec req.10): dia marcado como
+      // ausência justificada (excused) NÃO desconta o atraso — o RH abonou.
+      else if (dayBal < 0 && !d.excused) {
         const cap = usePolicy ? d.expectedMinutes : atrasoCap;
         const late = Math.min(-dayBal, cap);
         atrasoMin += late; lateDays.push({ date: d.date, minutes: late });
