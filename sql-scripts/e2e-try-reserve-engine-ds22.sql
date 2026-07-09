@@ -35,12 +35,17 @@ BEGIN
       v_perola, v_turq, v_marrom, v_napa_ow, v_napa_cap;
   END IF;
 
-  -- Grade de 12 pares num tamanho com consumo per-size de forração: primeiro
-  -- na ficha; senão nas specs do SOLADO (sole_drives_consumption — na DS22 o
-  -- per-size da forração mora em sole_technical_specs, não na ficha)
+  -- Grade de 12 pares num tamanho com QUALQUER consumo per-size: mapas da
+  -- ficha (cabedal/forração/palmilha/forração-palmilha) → specs do solado →
+  -- reference_size (fallback final; o motor ainda usa escalares/specs).
   SELECT kv.key INTO v_size
     FROM technical_sheets ts,
-         jsonb_each_text(COALESCE(ts.lining_consumption_per_size, '{}'::jsonb)) kv
+         LATERAL (
+           SELECT key, value FROM jsonb_each_text(COALESCE(ts.upper_consumption_per_size, '{}'::jsonb))
+           UNION ALL SELECT key, value FROM jsonb_each_text(COALESCE(ts.lining_consumption_per_size, '{}'::jsonb))
+           UNION ALL SELECT key, value FROM jsonb_each_text(COALESCE(ts.insole_consumption_per_size, '{}'::jsonb))
+           UNION ALL SELECT key, value FROM jsonb_each_text(COALESCE(ts.insole_lining_consumption_per_size, '{}'::jsonb))
+         ) kv
    WHERE ts.id = c_sheet
      AND kv.value ~ '^[0-9]+(\.[0-9]+)?$' AND kv.value::numeric > 0
    ORDER BY kv.key LIMIT 1;
@@ -49,10 +54,12 @@ BEGIN
       FROM resolve_sole_color(c_sheet, 'OFF WHITE') rsc
       JOIN sole_technical_specs sts ON sts.sole_id = rsc.sole_product_id
      WHERE COALESCE(sts.lining_consumption_dm2, 0) > 0
+        OR COALESCE(sts.insole_consumption_dm2, 0) > 0
+        OR COALESCE(sts.insole_lining_consumption_dm2, 0) > 0
      ORDER BY sts.size LIMIT 1;
   END IF;
   IF v_size IS NULL THEN
-    RAISE EXCEPTION 'E2E ABORTADO: DS22 sem consumo per-size de forração na ficha NEM nas specs do solado (pré-condição)';
+    SELECT COALESCE(ts.reference_size, 35)::text INTO v_size FROM technical_sheets ts WHERE ts.id = c_sheet;
   END IF;
   v_grade := jsonb_build_object(v_size, 12);
   rep := rep || format(E'grade de teste: %s\n', v_grade::text);
@@ -70,6 +77,10 @@ BEGIN
   v_res := public.try_reserve_materials(v_op1, c_sheet, 12, 'OFF WHITE');
   rep := rep || format(E'\n[OFF WHITE] status=%s reservas=%s ocs=%s\n',
     v_res->>'status', jsonb_array_length(v_res->'reservations'), jsonb_array_length(v_res->'purchase_orders'));
+
+  rep := rep || format(E'reservas: %s\n',
+    (SELECT COALESCE(jsonb_agg(jsonb_build_object('p', r->>'product_name', 'q', r->>'qty_reserved', 'cat', r->>'category')), '[]'::jsonb)
+       FROM jsonb_array_elements(v_res->'reservations') r)::text);
 
   -- 1a. componente da COR (REDONDO PEROLA) = 96 un
   SELECT COALESCE(SUM(quantity_reserved),0) INTO v_n FROM material_reservations WHERE order_id = v_op1 AND product_id = v_perola;
@@ -121,6 +132,10 @@ BEGIN
   v_res := public.try_reserve_materials(v_op2, c_sheet, 12, 'CAPUCCINO');
   rep := rep || format(E'\n[CAPUCCINO] status=%s reservas=%s ocs=%s\n',
     v_res->>'status', jsonb_array_length(v_res->'reservations'), jsonb_array_length(v_res->'purchase_orders'));
+
+  rep := rep || format(E'reservas: %s\n',
+    (SELECT COALESCE(jsonb_agg(jsonb_build_object('p', r->>'product_name', 'q', r->>'qty_reserved', 'cat', r->>'category')), '[]'::jsonb)
+       FROM jsonb_array_elements(v_res->'reservations') r)::text);
 
   -- 2a. padrão: ABS TURQUEZA 96 + ABS MARROM 96
   SELECT COALESCE(SUM(quantity_reserved),0) INTO v_n FROM material_reservations WHERE order_id = v_op2 AND product_id = v_turq;
