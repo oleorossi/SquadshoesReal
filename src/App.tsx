@@ -93,7 +93,6 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
-const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
 const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
 // SectorAggregatedView: rota standalone /producao/visao-agregada virou redirect
 // pro hub (/pcp?tab=quadro&modo=lote) em 2026-07-01 — PCPHub importa como modo.
@@ -756,14 +755,14 @@ const router = createBrowserRouter([
         element: <TimePendingsPage />,
       },
       {
-        // Fechamento semanal — trava o cálculo do banco de horas por semana
-        // pra impedir edição retroativa silenciosa. Cron auto toda segunda.
+        // Fechamento semanal removido (reforma 2026-07-09): era travamento do banco
+        // de horas por semana — banco de horas foi descontinuado. Cai no hub /rh.
         path: "rh/fechamento-semanal",
-        element: <WeeklyClosePage />,
+        element: <Navigate to="/rh" replace />,
       },
       {
-        // Ausências justificadas (férias/atestado/licença/folga). Dias
-        // cadastrados aqui ficam isentos do cálculo do banco de horas.
+        // Ausências justificadas (férias/atestado/licença/folga). Dias cadastrados
+        // aqui ficam isentos do cálculo de falta/atraso da folha.
         path: "rh/ausencias",
         element: <EmployeeAbsencesPage />,
       },

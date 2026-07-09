@@ -63,15 +63,6 @@ function nextPeriods(count = 6): { value: string; label: string }[] {
   return out;
 }
 
-interface BankMovement {
-  id: string;
-  movement_date: string;
-  movement_type: string;
-  minutes: number;
-  description: string | null;
-  overtime_pct: number | null;
-}
-
 export default function EspelhoPontoPage() {
   const { employeeId } = useParams<{ employeeId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -117,39 +108,9 @@ export default function EspelhoPontoPage() {
   const { data: espCoverage } = useTimesheetCoverage(periodStart, periodEnd);
   const coveredDates = espCoverage?.coveredDates;
 
-  // Banco de horas: movimentações + saldo via RPC
-  const { data: bankPayload } = useQuery({
-    queryKey: ['espelho_bank', employeeId, periodStart, periodEnd],
-    enabled: !!employeeId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('calculate_employee_bank_balance', {
-        p_employee_id: employeeId,
-        p_from: periodStart,
-        p_to: periodEnd,
-        // Sem registro = não conta como falta. Dia útil que ainda não teve
-        // ponto importado é apenas pulado (days_missing fica como info na UI).
-        p_skip_missing: true,
-      });
-      if (error) throw error;
-      return data as { balance_min?: number; timesheet_min?: number; movements_min?: number };
-    },
-  });
-
-  const { data: movements = [] } = useQuery<BankMovement[]>({
-    queryKey: ['espelho_movs', employeeId, periodStart, periodEnd],
-    enabled: !!employeeId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bank_hours_movements')
-        .select('id, movement_date, movement_type, minutes, description, overtime_pct')
-        .eq('employee_id', employeeId!)
-        .gte('movement_date', periodStart)
-        .lte('movement_date', periodEnd)
-        .order('movement_date');
-      if (error) throw error;
-      return (data ?? []) as BankMovement[];
-    },
-  });
+  // Banco de horas REMOVIDO (reforma 2026-07-09): o espelho passa a mostrar só o
+  // realizado vs. esperado do período (tabela dia-a-dia + totais no rodapé). Não há
+  // mais saldo de banco nem movimentações — o modelo paga HE na folha.
 
   // Tabela dia-a-dia do período
   const days = useMemo(() => {
@@ -416,50 +377,17 @@ export default function EspelhoPontoPage() {
           </table>
         </div>
 
-        {/* Banco de horas */}
-        <div className="mb-3">
-          <p className="font-bold uppercase text-[8pt] mb-1">Banco de Horas — Movimentações no Período</p>
-          {movements.length === 0 ? (
-            <p className="text-[8pt] text-black/60 italic">Sem movimentações manuais no período.</p>
-          ) : (
-            <table className="w-full border-collapse text-[8pt]">
-              <thead>
-                <tr className="bg-black/10">
-                  <th className="border border-black px-1 py-1 w-16">Data</th>
-                  <th className="border border-black px-1 py-1 w-20">Tipo</th>
-                  <th className="border border-black px-1 py-1 w-14">% HE</th>
-                  <th className="border border-black px-1 py-1 w-16">Minutos</th>
-                  <th className="border border-black px-1 py-1">Motivo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movements.map(m => (
-                  <tr key={m.id}>
-                    <td className="border border-black px-1 py-0.5 text-center font-mono">{format(parseISO(m.movement_date), 'dd/MM/yyyy')}</td>
-                    <td className="border border-black px-1 py-0.5 text-[7pt] uppercase">{m.movement_type}</td>
-                    <td className="border border-black px-1 py-0.5 text-center">{m.overtime_pct ? `${m.overtime_pct}%` : '—'}</td>
-                    <td className={`border border-black px-1 py-0.5 text-right font-mono ${m.minutes > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {m.minutes > 0 ? '+' : ''}{fmtMin(m.minutes)}
-                    </td>
-                    <td className="border border-black px-1 py-0.5 text-[8pt]">{m.description || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Resumo banco */}
+        {/* Saldo do período = realizado − esperado (sem banco de horas). */}
         <table className="w-full border-collapse mb-3 text-[9pt]">
           <tbody>
             <tr>
-              <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[25%]">Saldo derivado batidas</td>
-              <td className="border border-black px-2 py-1 font-mono">{fmtMin(bankPayload?.timesheet_min || 0)}</td>
-              <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[20%]">Saldo lançamentos</td>
-              <td className="border border-black px-2 py-1 font-mono">{fmtMin(bankPayload?.movements_min || 0)}</td>
-              <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[20%]">SALDO FINAL</td>
-              <td className={`border border-black px-2 py-1 font-mono font-bold ${(bankPayload?.balance_min || 0) > 0 ? 'text-emerald-700' : (bankPayload?.balance_min || 0) < 0 ? 'text-rose-700' : ''}`}>
-                {fmtMin(bankPayload?.balance_min || 0)}
+              <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[30%]">Total esperado</td>
+              <td className="border border-black px-2 py-1 font-mono">{fmtMin(totals.expected)}</td>
+              <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[25%]">Total trabalhado</td>
+              <td className="border border-black px-2 py-1 font-mono">{fmtMin(totals.worked)}</td>
+              <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[20%]">SALDO DO PERÍODO</td>
+              <td className={`border border-black px-2 py-1 font-mono font-bold ${totals.worked - totals.expected > 0 ? 'text-emerald-700' : totals.worked - totals.expected < 0 ? 'text-rose-700' : ''}`}>
+                {totals.worked - totals.expected > 0 ? '+' : ''}{fmtMin(totals.worked - totals.expected)}
               </td>
             </tr>
           </tbody>

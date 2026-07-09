@@ -359,28 +359,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     printPayrollBundle({ periodTitle, docs: reportSel, employees: scopeEmps as any, espelhoEmployees: scopedEspelho as any, groupBy: 'employee' });
   };
 
-  // Saldo de banco de horas do período por funcionário — pré-carregado pra o
-  // Espelho (Portaria 671) abrir SÍNCRONO no clique (sem await antes do window.open,
-  // senão o popup é bloqueado). O footer mostra '—' quando falha.
-  const espelhoIds = useMemo(() => comparativo.rows.map(r => r.id).join(','), [comparativo.rows]);
-  const { data: bankBalances } = useQuery({
-    queryKey: ['payroll-espelho-bank', appliedFrom, appliedTo, espelhoIds],
-    enabled: !!(appliedFrom && appliedTo) && comparativo.rows.length > 0,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const m = new Map<string, number>();
-      await Promise.all(comparativo.rows.map(async (r) => {
-        try {
-          const { data } = await (supabase as any).rpc('calculate_employee_bank_balance', {
-            p_employee_id: r.id, p_from: appliedFrom, p_to: appliedTo, p_skip_missing: true,
-          });
-          const bal = (data as any)?.balance_min;
-          if (typeof bal === 'number') m.set(r.id, bal);
-        } catch { /* cai em '—' no rodapé */ }
-      }));
-      return m;
-    },
-  });
+  // Banco de horas REMOVIDO (reforma 2026-07-09): o Espelho não mostra mais saldo
+  // de banco — passa a exibir realizado × esperado do período.
 
   // Gerar PDF da FOLHA — tabela única de TODOS os funcionários com VALORES e HORAS
   // (salário, HE, faltas, atrasos, líquido + horas trabalhadas/extra), do mesmo motor
@@ -481,7 +461,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       company: { name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa' },
       period: compPeriod,
       days,
-      bankHoursBalance: bankBalances?.get(empId),
       monthlySalary: Number((emp as any).salary) || 0,
     });
   };

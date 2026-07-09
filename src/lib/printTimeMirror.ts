@@ -266,7 +266,6 @@ ${calendarSections}
   <div class="cell"><div class="label">Valor HE (1,5×)</div><div class="value" style="color:#15803d;font-size:14px;">${monthlySalary ? formatMoney(heValue) : '—'}</div></div>
   <div class="cell"><div class="label">Atraso</div><div class="value" style="color:#b45309;">${totalAtraso > 0 ? '−' + fmtMin(totalAtraso) : '—'}</div></div>
   <div class="cell"><div class="label">Faltas</div><div class="value" style="color:#c00;">${totalAbsent}</div></div>
-  <div class="cell"><div class="label">Banco (período)</div><div class="value">${bankHoursBalance !== undefined ? fmtMin(bankHoursBalance) : '—'}</div></div>
 </div>
 
 ${observations ? `<div class="obs"><strong>Observações:</strong> ${escapeHtml(observations)}</div>` : ''}
