@@ -503,6 +503,20 @@ describe('orderConsumption — motor canônico', () => {
       expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(true);
       expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(false);
     });
+
+    it('match de cor insensível a acento/caixa/espaços de ponta (≡ SQL unaccent+btrim)', () => {
+      // Auditoria 2026-07-09: SQL casa via lower(btrim(extensions.unaccent(...)));
+      // o TS deve casar as MESMAS grafias via normalizeColorKey (' Óff Whíte ' →
+      // 'off white'). Espaço INTERNO duplicado não casa em nenhum dos dois — é
+      // achado de cadastro (cpc_cor_orfa_grupo_predominante), não divergência.
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: ' Óff Whíte ', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      expect(compTotal(rows)).toBe((8 + 8) * 24); // lista da cor, não o fallback
+      expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(true);
+      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(false);
+    });
   });
 
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {

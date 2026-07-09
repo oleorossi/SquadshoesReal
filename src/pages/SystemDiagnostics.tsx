@@ -71,20 +71,25 @@ export default function SystemDiagnostics() {
   const [consChecks, setConsChecks] = useState<ConsistencyRow[] | null>(null);
   const [parityChecks, setParityChecks] = useState<ParityRow[] | null>(null);
   const [freshChecks, setFreshChecks] = useState<ConsistencyRow[] | null>(null);
+  const [cpcChecks, setCpcChecks] = useState<ConsistencyRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
     try {
-      const [consRes, parRes, freshRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
         (supabase as any).rpc('pcp_freshness_report'),
+        // component_colors_consistency_report — auditoria componentes-por-cor
+        // (migration 20260910140000, ainda não nos tipos gerados) → cast.
+        (supabase as any).rpc('component_colors_consistency_report'),
       ]);
       if (consRes.error) throw consRes.error;
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
       setFreshChecks((freshRes?.error ? [] : (freshRes?.data ?? [])) as ConsistencyRow[]);
+      setCpcChecks((cpcRes?.error ? [] : (cpcRes?.data ?? [])) as ConsistencyRow[]);
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
         setParityChecks([]);
@@ -471,6 +476,23 @@ export default function SystemDiagnostics() {
               <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhuma inconsistência de cadastro encontrada.</div>
             )}
             {(consChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
+              <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · CONSUMO"
+            title="Componentes por Cor — consistência do mapeamento"
+            subtitle="Cadastro quebrado no mapeamento por cor predominante (produto inexistente/inativo, quantidade zerada, duplicata, cor órfã do grupo, flag sem mapeamento). Fonte: component_colors_consistency_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {cpcChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir a consistência dos componentes por cor.</p>
+            )}
+            {cpcChecks !== null && cpcChecks.every((c) => c.item_count === 0) && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhuma inconsistência no mapeamento por cor.</div>
+            )}
+            {(cpcChecks ?? []).filter((c) => c.item_count > 0).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
               <CheckRow key={i} row={c} />
             ))}
           </Panel>
