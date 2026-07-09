@@ -46,9 +46,12 @@ jobs:
         if: env.SUPABASE_PROJECT_ID != '' && env.SUPABASE_DB_PASSWORD != ''
         env:
           RUN_DB_INTEGRATION: '1'
-          PGHOST: db.${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          # Via pooler (Supavisor, session mode): o host direto
+          # db.<ref>.supabase.co só resolve IPv6 e os runners do GitHub
+          # não têm IPv6 de saída → "Network is unreachable".
+          PGHOST: aws-1-us-west-2.pooler.supabase.com
           PGPORT: '5432'
-          PGUSER: postgres
+          PGUSER: postgres.${{ secrets.SUPABASE_PROJECT_ID }}
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           PGDATABASE: postgres
           PGSSLMODE: require
