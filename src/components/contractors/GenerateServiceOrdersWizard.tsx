@@ -23,11 +23,15 @@ import {
 } from '@/hooks/useGenerateOpServiceOrders';
 
 /**
- * Assistente "Gerar OS por Pedido" — 3 passos:
+ * Assistente "Gerar OS por Pedido" — 2 passos:
  *   1. Pedido (PV)
  *   2. Serviços e OPs — por setor terceirizável, escolhe contratada + R$/par e
- *      marca as OPs que vão pra rua
- *   3. Revisão — gera UMA OS por (OP × setor) atrelada à OP (order_id)
+ *      marca as OPs que vão pra rua. Terceirizar é OPCIONAL por setor.
+ *
+ * O botão final é adaptativo:
+ *   - nenhuma linha pronta  → "Prosseguir" (fecha, ZERO OS, tudo segue interno)
+ *   - ≥1 linha pronta       → "Gerar OS" (gera só as prontas; resto segue interno)
+ * Cada OS gerada nasce atrelada à OP (order_id), UMA por (OP × setor).
  *
  * Substitui o fluxo antigo de terceirização por item (checkbox no PV). Ver
  * `src/hooks/useGenerateOpServiceOrders.ts` + migration 20260703120000.
@@ -42,7 +46,7 @@ export interface GenerateServiceOrdersWizardProps {
 }
 
 const keyOf = (l: { order_id: string; sector: string }) => `${l.order_id}::${l.sector}`;
-const STEPS = ['Pedido', 'Serviços e OPs', 'Revisão'] as const;
+const STEPS = ['Pedido', 'Serviços e OPs'] as const;
 
 export function GenerateServiceOrdersWizard({
   open, onOpenChange, initialSaleOrderId, onGenerated,
@@ -197,11 +201,6 @@ export function GenerateServiceOrdersWizard({
   const totalPairs = ready.reduce((s, c) => s + c.qty, 0);
   const totalValue = ready.reduce((s, c) => s + c.qty * c.rate, 0);
 
-  const contractorLabel = (id: string) => {
-    const c = contractors.find((x) => x.id === id);
-    return c ? (c.trade_name || c.name) : '—';
-  };
-
   const doGenerate = () => {
     const payload = ready.map((c) => ({
       order_id: c.line.order_id,
@@ -225,7 +224,16 @@ export function GenerateServiceOrdersWizard({
     });
   };
 
-  const canNext = step === 0 ? !!saleOrderId : step === 1 ? chosen.length > 0 : false;
+  // "Prosseguir": conclui sem terceirizar nada — nenhuma OS criada, tudo segue
+  // interno. Não dispara onGenerated (nada mudou para reprocessar no pai).
+  const doProsseguir = () => {
+    toast.success('Nenhuma OS gerada — produção segue interna.');
+    onOpenChange(false);
+  };
+
+  // Só o passo "Pedido" tem gate ("Continuar" exige um PV). O passo final
+  // ("Serviços e OPs") sempre pode concluir — via "Prosseguir" ou "Gerar OS".
+  const canNext = step === 0 && !!saleOrderId;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -428,59 +436,17 @@ export function GenerateServiceOrdersWizard({
               })}
             </div>
           )}
-
-          {/* ── Passo 3: Revisão ────────────────────────────────────── */}
-          {step === 2 && (
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                Cada OS nasce atrelada à OP e ao pedido, entra em <span className="text-foreground">"Na Rua"</span> e segue o fluxo de envio/retorno/pagamento.
-              </p>
-              {blockedCount > 0 && (
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                  <Warning className="h-3 w-3" /> {blockedCount} {blockedCount === 1 ? 'linha ficará de fora' : 'linhas ficarão de fora'} (sem contratada ou sem preço).
-                </p>
-              )}
-              <div className="rounded-lg border border-border overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/40 text-muted-foreground">
-                    <tr className="text-left text-[11px] uppercase tracking-wide">
-                      <th className="px-3 py-2 font-semibold">Serviço · Contratada</th>
-                      <th className="px-3 py-2 font-semibold">OP · Ref · Cor</th>
-                      <th className="px-3 py-2 font-semibold text-right">Pares</th>
-                      <th className="px-3 py-2 font-semibold text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {ready.map((c) => (
-                      <tr key={keyOf(c.line)}>
-                        <td className="px-3 py-2">
-                          <div className="text-xs text-foreground">{c.line.sector_label}</div>
-                          <div className="text-[10px] text-muted-foreground">{contractorLabel(c.contractorId)} · {formatCurrency(c.rate)}/par</div>
-                        </td>
-                        <td className="px-3 py-2 text-xs whitespace-nowrap">
-                          <span className="font-mono">{c.line.op_number}</span>
-                          <span className="text-muted-foreground"> · {c.line.ref_code || '—'}{c.line.color ? ` · ${c.line.color}` : ''}</span>
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono tabular-nums text-xs">{c.qty.toLocaleString('pt-BR')}</td>
-                        <td className="px-3 py-2 text-right font-mono tabular-nums text-xs">{formatCurrency(c.qty * c.rate)}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-primary/5">
-                      <td className="px-3 py-2 text-xs font-semibold" colSpan={2}>{ready.length} {ready.length === 1 ? 'OS' : 'OS'} · {ready.length} {ready.length === 1 ? 'OP atrelada' : 'OPs atreladas'}</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums text-xs font-semibold">{totalPairs.toLocaleString('pt-BR')}</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums text-xs font-semibold text-primary">{formatCurrency(totalValue)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
 
         <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
           <div className="text-[11px] text-muted-foreground mr-auto">
-            {chosen.length > 0 && (
-              <>{ready.length} {ready.length === 1 ? 'OP' : 'OPs'} · {totalPairs.toLocaleString('pt-BR')} pares · <span className="text-foreground font-mono">{formatCurrency(totalValue)}</span></>
+            {step === STEPS.length - 1 && groups.length > 0 && (
+              <>
+                <span className="text-foreground font-mono">{ready.length}</span> {ready.length === 1 ? 'OS' : 'OS'} · {totalPairs.toLocaleString('pt-BR')} pares · <span className="text-foreground font-mono">{formatCurrency(totalValue)}</span>
+                {blockedCount > 0 && (
+                  <span className="text-amber-700 dark:text-amber-400"> · {blockedCount} de fora</span>
+                )}
+              </>
             )}
           </div>
           {step > 0 && (
@@ -488,15 +454,19 @@ export function GenerateServiceOrdersWizard({
               Voltar
             </Button>
           )}
-          {step < 2 ? (
+          {step < STEPS.length - 1 ? (
             <Button onClick={() => setStep((s) => s + 1)} disabled={!canNext}>
               Continuar
             </Button>
-          ) : (
-            <Button onClick={doGenerate} disabled={ready.length === 0 || generate.isPending}>
+          ) : ready.length > 0 ? (
+            <Button onClick={doGenerate} disabled={loadingLines || generate.isPending}>
               {generate.isPending ? 'Gerando...' : (
                 <><PaperPlaneTilt className="h-3.5 w-3.5 mr-1" /> Gerar {ready.length} {ready.length === 1 ? 'OS' : 'OS'}</>
               )}
+            </Button>
+          ) : (
+            <Button onClick={doProsseguir} disabled={loadingLines || generate.isPending}>
+              Prosseguir
             </Button>
           )}
         </DialogFooter>
