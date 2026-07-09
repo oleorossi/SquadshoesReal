@@ -85,6 +85,14 @@ export const planejamentoService = {
     const quantidadeNecessariaConverted = needInStock / stockToPurchaseDivisor;
     const estoqueConverted = dados.estoqueAtual / stockToPurchaseDivisor;
     const deficitEstoque = Math.max(0, quantidadeNecessariaConverted - estoqueConverted);
+    // ⚠ DIVERGÊNCIA CONHECIDA (avaliação dos motores 2026-07-08): esta é uma
+    // calculadora de planejamento MANUAL, independente do MRP canônico. Usa
+    // buffer fixo de 10% (× 1.1) + `ceil`, sobre o `estoqueAtual` passado por
+    // quem chama (BRUTO — não desconta `reserved_stock` como o `v_mrp_needs`),
+    // e NÃO aplica `purchase_multiple`/MOQ. Portanto a quantidade sugerida aqui
+    // pode diferir da OC gerada pelo MRP/per-PV para o mesmo material. É de
+    // propósito (tela de estimativa rápida); não é a fonte de compra oficial.
+    // Se for unificar com o MRP, ler de `v_mrp_needs` em vez deste cálculo.
     const quantidadeAComprar = Math.ceil(deficitEstoque * 1.1);
     const custoTotal = quantidadeAComprar * dados.precoCustoUnitario;
     // tempoReposicao é em dias úteis por convenção do projeto (alinhado com

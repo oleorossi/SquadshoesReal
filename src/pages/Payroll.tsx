@@ -277,7 +277,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // matrícula (employee_external_id). Independe da folha calculada — usa direto o
   // compRecords (time_records do período), pra conferência do arquivo do relógio.
   const espelhoEmps = useMemo(() => {
-    const byExt = new Map<string, { id: string; name: string; role?: string; department?: string; rawDays: { date: string; punches: string[] }[] }>();
+    const byExt = new Map<string, { id: string; name: string; role?: string; department?: string; matchId?: string; rawDays: { date: string; punches: string[] }[] }>();
     for (const rec of (compRecords as any[])) {
       const ext = String(rec.employee_external_id ?? rec.employee_name ?? '—');
       const g = byExt.get(ext) || { id: ext, name: rec.employee_name || '—', rawDays: [] };
@@ -286,7 +286,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     }
     for (const g of byExt.values()) {
       const emp = (employees as any[]).find(e => String((e as any).external_id ?? '') === g.id);
-      if (emp) { g.role = (emp as any).role; g.department = (emp as any).department; }
+      // matchId = id INTERNO do funcionário (mesmo de bundleEmps) — casa o Espelho
+      // com o pacote da folha no modo por-funcionário do buildPayrollHtml.
+      if (emp) { g.role = (emp as any).role; g.department = (emp as any).department; g.matchId = (emp as any).id; }
       g.rawDays.sort((a, b) => a.date.localeCompare(b.date));
     }
     return Array.from(byExt.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -324,12 +326,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   }, [anySel, scopeEmps, previewPaged, previewIdx]);
 
   const previewHtml = useMemo(() => {
-    // Paginando (Calendário/Holerite de vários) mostra só o funcionário da vez —
-    // o Espelho (lista própria) fica de fora da prévia paginada.
-    const espList = reportSel.espelho && !previewPaged ? scopedEspelho : [];
+    // Paginando (vários funcionários): mostra o funcionário da vez COM o Espelho
+    // DELE (casa por matchId) — a prévia reflete o pacote por-funcionário do
+    // print. Sem paginar: o escopo inteiro.
+    const espList = !reportSel.espelho
+      ? []
+      : previewPaged
+        ? scopedEspelho.filter((x: any) => x.matchId === previewEmps[0]?.id)
+        : scopedEspelho;
     if (previewEmps.length === 0 && espList.length === 0) return '';
     const docs = previewPaged
-      ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite, espelho: false }
+      ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite, espelho: reportSel.espelho }
       : reportSel;
     return buildPayrollHtml({ periodTitle, docs, employees: previewEmps as any, espelhoEmployees: espList as any, autoPrint: false, groupBy: 'employee' });
     // eslint-disable-next-line react-hooks/exhaustive-deps

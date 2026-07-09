@@ -1,52 +1,8 @@
-import { resolveConversionFactors, isDiscretePurchaseUnit } from '@/lib/unitConversion';
-
-interface PurchaseProduct {
-  conversion_rate: number;
-  min_order_quantity: number;
-  purchase_order_unit: string;
-  unit_price: number;
-  unit?: string;
-}
-
-interface PurchaseResult {
-  quantidade: number;
-  unidade: string;
-  totalEstimado: number;
-}
-
-export function calcularOrdemCompra(
-  necessidadeFisica: number,
-  product: PurchaseProduct,
-  consumptionUnit?: string,
-): PurchaseResult {
-  const { stockToPurchaseDivisor } = resolveConversionFactors(
-    consumptionUnit || product.unit || product.purchase_order_unit,
-    product.unit || product.purchase_order_unit,
-    product.purchase_order_unit,
-    product.conversion_rate,
-  );
-  // necessidadeFisica is already in stock unit; convert to purchase_order_unit
-  let quantidadeParaComprar = necessidadeFisica / stockToPurchaseDivisor;
-
-  // Apply minimum order quantity
-  if (quantidadeParaComprar < (product.min_order_quantity || 1)) {
-    quantidadeParaComprar = product.min_order_quantity || 1;
-  }
-
-  // Round up for discrete units (lista canônica — antes faltava 'placa').
-  if (isDiscretePurchaseUnit(product.purchase_order_unit)) {
-    quantidadeParaComprar = Math.ceil(quantidadeParaComprar);
-  }
-
-  // unit_price is per stock unit; multiply by stockToPurchaseDivisor to get price per purchase_order_unit
-  const pricePerPurchaseUnit = (product.unit_price || 0) * stockToPurchaseDivisor;
-
-  return {
-    quantidade: quantidadeParaComprar,
-    unidade: product.purchase_order_unit || 'un',
-    totalEstimado: quantidadeParaComprar * pricePerPurchaseUnit,
-  };
-}
+// `calcularOrdemCompra` foi REMOVIDO em 2026-07-08 (avaliação dos motores): era
+// código morto (nenhum call site) e, se reativado, NÃO aplicava
+// `purchase_multiple` — subarredondaria embalagens. Os caminhos VIVOS de cálculo
+// de compra são `v_mrp_needs` (MRP), `materialAutoPO.ts`, `buildPerPvPurchaseOrders`
+// (per-PV) e o helper `roundUpToPurchaseMultiple`.
 
 interface SupplierShipping {
   min_free_shipping?: number | null;

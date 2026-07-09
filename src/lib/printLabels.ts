@@ -444,8 +444,14 @@ ${LABEL_PRINT_HARDENING}
   body{padding:0;background:#fff;}
   /* padding:9mm — recuo seguro (antes vinha do @page margin:9mm, agora zerado
      pra remover o cabeçalho/rodapé do navegador). Mantém o rótulo na MESMA
-     posição de antes (192mm de largura dentro dos 210mm com 9mm de cada lado). */
-  .page{box-shadow:none;padding:9mm;width:210mm;min-height:297mm;gap:6mm;}
+     posição de antes (192mm de largura dentro dos 210mm com 9mm de cada lado).
+     min-height:0 (era 297mm) — CRÍTICO com @page margin:0: um .page de 297mm
+     (border-box, já inclui o padding) fica EXATAMENTE do tamanho da folha A4 e o
+     Chrome transborda por arredondamento, gerando uma página EM BRANCO depois de
+     cada rótulo (184 = 92×2). Cada rótulo já quebra a folha sozinho (.page-break →
+     break-after), então o .page não precisa preencher a folha inteira: fica do
+     tamanho do conteúdo (~288mm com 2 rótulos), que cabe folgado em 1 folha. */
+  .page{box-shadow:none;padding:9mm;width:210mm;min-height:0;gap:6mm;}
   /* Fix 2026-05-23: era 198mm — estourava 6mm em A4 com @page margin 9mm
      (área útil = 192mm). Borda direita saía cortada. Manter 192mm em
      print pra caber dentro da margem segura. */
