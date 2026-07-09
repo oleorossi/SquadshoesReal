@@ -66,7 +66,6 @@ const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 // importa como modos. ProducaoDashboard.tsx foi DELETADO (2026-07-02): era
 // duplicata do PCPDashboard (aba dashboard do hub) com fórmulas divergentes;
 // /producao redireciona pra /pcp?tab=dashboard.
-const BankHours = lazy(() => import("./pages/BankHours"));
 const EspelhoPontoPage = lazy(() => import("./pages/EspelhoPontoPage"));
 // FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -94,7 +93,6 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
-const WeeklyClosePage = lazy(() => import("./pages/WeeklyClose"));
 const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
 // SectorAggregatedView: rota standalone /producao/visao-agregada virou redirect
 // pro hub (/pcp?tab=quadro&modo=lote) em 2026-07-01 — PCPHub importa como modo.
@@ -757,14 +755,14 @@ const router = createBrowserRouter([
         element: <TimePendingsPage />,
       },
       {
-        // Fechamento semanal — trava o cálculo do banco de horas por semana
-        // pra impedir edição retroativa silenciosa. Cron auto toda segunda.
+        // Fechamento semanal removido (reforma 2026-07-09): era travamento do banco
+        // de horas por semana — banco de horas foi descontinuado. Cai no hub /rh.
         path: "rh/fechamento-semanal",
-        element: <WeeklyClosePage />,
+        element: <Navigate to="/rh" replace />,
       },
       {
-        // Ausências justificadas (férias/atestado/licença/folga). Dias
-        // cadastrados aqui ficam isentos do cálculo do banco de horas.
+        // Ausências justificadas (férias/atestado/licença/folga). Dias cadastrados
+        // aqui ficam isentos do cálculo de falta/atraso da folha.
         path: "rh/ausencias",
         element: <EmployeeAbsencesPage />,
       },
@@ -932,19 +930,19 @@ const router = createBrowserRouter([
         element: <RHHub />,
       },
       {
-        // Banco de Horas — visão completa (KPIs + funcionário + setor + drill-down)
-        path: "rh/banco-de-horas",
-        element: <BankHours />,
-      },
-      {
         // Espelho de Ponto Eletrônico — Portaria MTE 671/2021 art. 84
         path: "rh/espelho-ponto/:employeeId",
         element: <EspelhoPontoPage />,
       },
       {
-        // Alias legado
+        // Banco de Horas removido (reforma Gestão de Pessoas 2026-07-09): o modelo
+        // paga HE na folha, não acumula banco. Rotas antigas caem no hub /rh.
+        path: "rh/banco-de-horas",
+        element: <Navigate to="/rh" replace />,
+      },
+      {
         path: "rh/bank-hours",
-        element: <Navigate to="/rh/banco-de-horas" replace />,
+        element: <Navigate to="/rh" replace />,
       },
       {
         // Atalho direto: Folha de Pagamento (tab dentro de /rh)

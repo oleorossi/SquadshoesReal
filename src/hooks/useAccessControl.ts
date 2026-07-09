@@ -53,7 +53,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/employees': 'rh',
   '/timesheet': 'rh',
   '/time-control': 'rh',
-  '/rh/bank-hours': 'rh',
   '/rh/payroll': 'rh_folha',
   '/payroll': 'rh_folha',
   '/purchase-orders': 'financeiro',
@@ -86,7 +85,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/financeiro': 'financeiro',
   '/financeiro?tab=accounts': 'financeiro', // item "Contas (AR/AP)" deep-linka a aba; mesmo módulo
   '/rh': 'rh',
-  '/rh/banco-de-horas': 'rh',
   '/transporte': 'expedicao',
   '/embalagens': 'expedicao',
   '/optimized-production': 'producao',

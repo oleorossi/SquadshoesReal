@@ -412,6 +412,23 @@ export default function Employees() {
                 <p className="text-xs text-muted-foreground mt-1">Pagamento = diária × nº de dias com batida no período.</p>
               </div>
             )}
+
+            {/* HE por funcionário — valor ABSOLUTO em R$/h (negociação individual, não-CLT).
+                Só mensalista faz hora extra descontada/paga; remoto e diarista não usam. */}
+            {(form as any).payment_type !== 'diarista' && (form as any).payment_type !== 'remoto' && (
+              <>
+                <div>
+                  <Label>Hora extra (R$/h)</Label>
+                  <CurrencyInput value={(form as any).he_normal_rate || 0} onChange={v => setForm(f => ({ ...f, he_normal_rate: v } as any))} />
+                  <p className="text-xs text-muted-foreground mt-1">Dia útil, sábado e noturno. Valor negociado — não sai do salário.</p>
+                </div>
+                <div>
+                  <Label>Hora extra domingo/feriado (R$/h)</Label>
+                  <CurrencyInput value={(form as any).he_sunday_holiday_rate || 0} onChange={v => setForm(f => ({ ...f, he_sunday_holiday_rate: v } as any))} />
+                  <p className="text-xs text-muted-foreground mt-1">Vazio = usa o mesmo valor da HE normal.</p>
+                </div>
+              </>
+            )}
             <div><Label>Telefone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
             <div><Label>WhatsApp</Label><Input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
             <div className="col-span-2"><Label>Chave PIX</Label><Input value={form.pix_key} onChange={e => setForm(f => ({ ...f, pix_key: e.target.value }))} /></div>

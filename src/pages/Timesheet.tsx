@@ -3,9 +3,10 @@ import CoverageCalendar from '@/components/timesheet/CoverageCalendar';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
+import EmployeeAbsences from './EmployeeAbsences';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight } from '@phosphor-icons/react';
+import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, FirstAid } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -798,6 +799,11 @@ function TimesheetRecordsTab() {
     return computePeriodFolha({
       salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
       schedule: sch, holidaysSet: holidayDates, swapWorkedSet, swapOffSet, punchesByDate,
+      // HE em R$/h por funcionário + regime — pra o Espelho/Ponto bater com a Folha (spec req.15).
+      payRegime: (String((emp as any)?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
+      dailyRate: Number((emp as any)?.daily_rate) || 0,
+      heNormalRate: Number((emp as any)?.he_normal_rate) || 0,
+      heSundayHolidayRate: Number((emp as any)?.he_sunday_holiday_rate) || 0,
     });
   };
 
@@ -1402,6 +1408,7 @@ export default function Timesheet() {
         <HubTabsList tabs={[
           { value: 'records',     label: 'Ponto',        icon: FileSpreadsheet },
           { value: 'manual',      label: 'Lançamento & Pendências', icon: ClipboardEdit },
+          { value: 'ausencias',   label: 'Faltas/Atrasos Justificados', icon: FirstAid },
           { value: 'calendario',  label: 'Cobertura',    icon: Calendar },
           { value: 'config',      label: 'Configuração', icon: Clock },
         ]} />
@@ -1419,6 +1426,10 @@ export default function Timesheet() {
           <Separator />
           <ExceptionsTab />
         </TabsContent>
+        {/* Faltas/atrasos justificados (spec req.10): registra a ausência em
+            employee_absences → o motor da folha ABONA (não desconta falta nem atraso
+            do dia). Mesma tela reaproveitada de /rh/ausencias. */}
+        <TabsContent value="ausencias"><EmployeeAbsences embedded /></TabsContent>
         <TabsContent value="calendario"><CoverageCalendar /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />

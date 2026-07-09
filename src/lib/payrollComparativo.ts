@@ -166,6 +166,9 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
         periodDays, monthDays, maxCoveredDate: maxCovered,
         payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
         dailyRate: Number(emp.daily_rate) || 0,
+        // HE em R$/h por funcionário — comparativo/holerite bate com a Folha (spec req.15).
+        heNormalRate: Number((emp as any).he_normal_rate) || 0,
+        heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
         advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
       });
 

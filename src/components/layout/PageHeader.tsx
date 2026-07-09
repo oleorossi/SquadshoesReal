@@ -28,7 +28,6 @@ const routeLabels: Record<string, string> = {
   'timesheet': 'Controle de Ponto',
   'contractors': 'Terceirizados',
   'rh': 'RH',
-  'banco-de-horas': 'Banco de Horas',
   'transporte': 'Transporte',
   'transporters': 'Transportadoras',
   'embalagens': 'Embalagens',

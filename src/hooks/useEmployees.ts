@@ -21,10 +21,17 @@ export interface Employee {
   /** Valor da diária (R$/dia) quando diarista. */
   daily_rate: number | null;
   work_schedule_id: string | null;
-  /** Adicionais de HE por funcionário (regime contrato). 0 = hora simples. */
+  /** Adicionais de HE por funcionário (regime contrato). 0 = hora simples.
+   *  LEGADO (percentual) — substituídos por he_normal_rate/he_sunday_holiday_rate
+   *  (R$/h absoluto) na reforma 2026-07-09; removidos na limpeza final. */
   overtime_50_pct: number;
   overtime_100_pct: number;
   night_bonus_pct: number;
+  /** Valor da hora extra em R$/h (absoluto, negociado por funcionário — não-CLT).
+   *  he_normal_rate cobre dia útil/sábado/noturno; he_sunday_holiday_rate cobre
+   *  domingo/feriado (fallback pra he_normal_rate quando nulo). */
+  he_normal_rate: number | null;
+  he_sunday_holiday_rate: number | null;
   role: string;
   department: string;
   admission_date: string;
@@ -57,7 +64,8 @@ export interface EmployeeAdvance {
 type EmployeePayKeys =
   | 'hourly_rate' | 'overtime_hourly_rate' | 'overtime_multiplier'
   | 'payment_type' | 'daily_rate' | 'work_schedule_id'
-  | 'overtime_50_pct' | 'overtime_100_pct' | 'night_bonus_pct';
+  | 'overtime_50_pct' | 'overtime_100_pct' | 'night_bonus_pct'
+  | 'he_normal_rate' | 'he_sunday_holiday_rate';
 type EmployeeForm =
   Omit<Employee, 'id' | 'created_at' | 'updated_at' | EmployeePayKeys> &
   Partial<Pick<Employee, EmployeePayKeys>>;

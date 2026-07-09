@@ -359,28 +359,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     printPayrollBundle({ periodTitle, docs: reportSel, employees: scopeEmps as any, espelhoEmployees: scopedEspelho as any, groupBy: 'employee' });
   };
 
-  // Saldo de banco de horas do período por funcionário — pré-carregado pra o
-  // Espelho (Portaria 671) abrir SÍNCRONO no clique (sem await antes do window.open,
-  // senão o popup é bloqueado). O footer mostra '—' quando falha.
-  const espelhoIds = useMemo(() => comparativo.rows.map(r => r.id).join(','), [comparativo.rows]);
-  const { data: bankBalances } = useQuery({
-    queryKey: ['payroll-espelho-bank', appliedFrom, appliedTo, espelhoIds],
-    enabled: !!(appliedFrom && appliedTo) && comparativo.rows.length > 0,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const m = new Map<string, number>();
-      await Promise.all(comparativo.rows.map(async (r) => {
-        try {
-          const { data } = await (supabase as any).rpc('calculate_employee_bank_balance', {
-            p_employee_id: r.id, p_from: appliedFrom, p_to: appliedTo, p_skip_missing: true,
-          });
-          const bal = (data as any)?.balance_min;
-          if (typeof bal === 'number') m.set(r.id, bal);
-        } catch { /* cai em '—' no rodapé */ }
-      }));
-      return m;
-    },
-  });
+  // Banco de horas REMOVIDO (reforma 2026-07-09): o Espelho não mostra mais saldo
+  // de banco — passa a exibir realizado × esperado do período.
 
   // Gerar PDF da FOLHA — tabela única de TODOS os funcionários com VALORES e HORAS
   // (salário, HE, faltas, atrasos, líquido + horas trabalhadas/extra), do mesmo motor
@@ -481,7 +461,6 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       company: { name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa' },
       period: compPeriod,
       days,
-      bankHoursBalance: bankBalances?.get(empId),
       monthlySalary: Number((emp as any).salary) || 0,
     });
   };
@@ -578,6 +557,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       let calculated = 0;
       let withIncomplete = 0;
       let sharedMatricula = 0;
+      let withMissingHeRate = 0;  // HE em minutos mas taxa R$/h não cadastrada → HE R$0
       // Todos os regimes passam pelo MESMO motor (computePeriodFolha honra
       // payment_type): mensalista (salário − descontos por dia), remoto (salário
       // cheio, ignora ponto) e diarista (diária × dias trabalhados). (2026-06-19)
@@ -618,8 +598,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           maxCoveredDate: maxCov,
           payRegime: (String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number((emp as any).daily_rate) || 0,
+          // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
+          // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
+          heNormalRate: Number((emp as any).he_normal_rate) || 0,
+          heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
         });
         if (result.pending_days > 0) withIncomplete++;
+        if ((result as any).he_rate_missing) withMissingHeRate++;
 
         await upsertRun.mutateAsync({
           employee_id: emp.id,
@@ -655,6 +640,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         `Folha calculada: ${calculated} funcionário(s).` +
         (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
         (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : '') +
+        (withMissingHeRate > 0 ? ` ⚠ ${withMissingHeRate} com hora extra mas SEM valor de HE cadastrado (HE saiu R$0) — preencha "Hora extra (R$/h)" no cadastro do funcionário.` : '') +
         (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
       );
     } catch (err: any) {
