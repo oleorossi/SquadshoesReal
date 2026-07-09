@@ -18,6 +18,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAllGroupColors } from '@/hooks/useGroupColors';
 import CreateStrapProductDialog from './CreateStrapProductDialog';
+import { createGroupColorProducts } from '@/lib/groupColorProducts';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
@@ -87,6 +88,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const setFichas = (v: number) => onUpdate(index, 'fichas', v);
 
   const [createStrapDialog, setCreateStrapDialog] = useState(false);
+  const [batchCreatingStraps, setBatchCreatingStraps] = useState(false);
   // editColorsDialog removido — variante de cor não é mais editada no PV.
   const [pendingStrapGroupId, setPendingStrapGroupId] = useState('');
   const [pendingStrapGroupName, setPendingStrapGroupName] = useState('');
@@ -1454,6 +1456,31 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           const missing = strapMissing;
           const hasMissing = missing.length > 0;
 
+          const handleCreateAll = async () => {
+            setBatchCreatingStraps(true);
+            try {
+              const specs = missing.map(m => {
+                const s = straps[m.idx];
+                return { groupId: s?.group_id, groupName: s?.group_name || '', color: s?.color };
+              }).filter((x: any) => x.groupId && x.color);
+              const results = await createGroupColorProducts(specs);
+              const created = results.filter(r => r.status === 'created').length;
+              const skipped = results.filter(r => r.status === 'skipped').length;
+              const failed = results.filter(r => r.status === 'error');
+              qc.invalidateQueries({ queryKey: ['products_for_colors'] });
+              qc.invalidateQueries({ queryKey: ['group_supplier_materials_for_colors'] });
+              qc.invalidateQueries({ queryKey: ['product_groups_colors'] });
+              qc.invalidateQueries({ queryKey: ['products'] });
+              if (failed.length) toast.error(`${failed.length} cor(es) falharam ao cadastrar.`);
+              if (created) toast.success(`${created} cor(es) cadastrada(s)${skipped ? `, ${skipped} já existiam` : ''}.`);
+              else if (!failed.length) toast.info('Essas cores já estavam cadastradas.');
+            } catch (e: any) {
+              toast.error(`Erro no cadastro em lote: ${e?.message || e}`);
+            } finally {
+              setBatchCreatingStraps(false);
+            }
+          };
+
           return (
             <div className={`rounded-lg border overflow-hidden ${hasMissing ? 'border-amber-500/50' : 'border-border/60'}`}>
               <div className={`px-3 py-1.5 border-b flex items-center justify-between ${hasMissing ? 'bg-amber-500/10' : 'bg-muted/30'}`}>
@@ -1475,6 +1502,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     {' '}O débito vai falhar quando a OP entrar em produção. Cadastre agora pra continuar:
                   </p>
                   <div className="flex flex-wrap gap-1.5">
+                    {missing.length > 1 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-700 text-white"
+                        disabled={batchCreatingStraps}
+                        onClick={handleCreateAll}
+                        title="Cadastrar todas as cores faltantes de uma vez"
+                      >
+                        <Plus className="h-3 w-3" />
+                        {batchCreatingStraps ? 'Cadastrando...' : `Cadastrar todas (${missing.length})`}
+                      </Button>
+                    )}
                     {missing.map(m => {
                       const strap = straps[m.idx];
                       return (

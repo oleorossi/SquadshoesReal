@@ -23,6 +23,9 @@ export type BundleEmployee = {
   /** Batidas BRUTAS importadas do relógio, por dia — usado só pelo Espelho
    *  (registro cru, sem cálculo). Ausente nos demais relatórios. */
   rawDays?: { date: string; punches: string[] }[];
+  /** Só no Espelho: id INTERNO do funcionário da folha (ponte via external_id),
+   *  pra casar o Espelho com o pacote do MESMO funcionário no modo 'employee'. */
+  matchId?: string;
 };
 
 const fmt = (v: number) =>
@@ -253,8 +256,8 @@ export function buildPayrollHtml(params: {
   espelhoEmployees?: BundleEmployee[];
   autoPrint?: boolean;
   /** 'employee' (padrão): relatórios gerais (Folha/Setor) 1× no topo, depois o
-   *  pacote de cada funcionário (Calendário + Holerite) JUNTO — impressão
-   *  funcionário-a-funcionário. 'type': todos do tipo A, depois do tipo B. */
+   *  pacote de cada funcionário (Calendário + Holerite + Espelho) JUNTO —
+   *  impressão funcionário-a-funcionário. 'type': todos do tipo A, depois do B. */
   groupBy?: 'employee' | 'type';
 }): string {
   const { periodTitle, docs, employees } = params;
@@ -267,24 +270,35 @@ export function buildPayrollHtml(params: {
   // Relatórios gerais (agregados do período) saem 1× no topo nos dois modos.
   if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
   if (docs.folha) sections.push(folhaSection(employees, periodTitle));
+  // Casa o Espelho (lista própria, por matrícula) com o funcionário da folha:
+  // por matchId (id interno estampado no builder) e, em fallback, por nome
+  // normalizado. Usado pra juntar o Espelho ao pacote do MESMO funcionário.
+  const normName = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
   if (groupBy === 'employee') {
-    // Pacote por pessoa: Calendário + Holerite do MESMO funcionário fluem
-    // JUNTOS numa página só (wrapper .emp); a quebra acontece só ENTRE
-    // funcionários — sem desperdiçar uma folha por documento.
+    // Pacote por pessoa: Calendário + Holerite + ESPELHO do MESMO funcionário
+    // fluem JUNTOS (wrapper .emp); a quebra acontece só ENTRE funcionários.
+    const usedEspelho = new Set<BundleEmployee>();
     employees.forEach(e => {
       const empDocs: string[] = [];
       if (docs.calendario) empDocs.push(calendarSection(e, periodTitle));
       if (docs.holerite) empDocs.push(holeriteSection(e, periodTitle));
+      if (docs.espelho) {
+        const esp = espelhoEmps.find(x =>
+          (x.matchId && x.matchId === e.id) || normName(x.name) === normName(e.name));
+        if (esp) { empDocs.push(espelhoSection(esp, periodTitle)); usedEspelho.add(esp); }
+      }
       if (empDocs.length) sections.push(`<section class="emp">${empDocs.join('')}</section>`);
     });
+    // Espelho de quem NÃO tem folha calculada no escopo (só batidas importadas):
+    // um por funcionário, depois dos pacotes acima.
+    if (docs.espelho) espelhoEmps.filter(e => !usedEspelho.has(e)).forEach(e =>
+      sections.push(`<section class="emp">${espelhoSection(e, periodTitle)}</section>`));
   } else {
     if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
     if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
+    // 'type': todos os Espelhos juntos, no fim (bloco por tipo).
+    if (docs.espelho) espelhoEmps.forEach(e => sections.push(`<section class="emp">${espelhoSection(e, periodTitle)}</section>`));
   }
-  // Espelho: registro bruto, uma página por funcionário, DEPOIS dos demais docs.
-  // Vem da própria lista `espelhoEmployees` (não da folha) — funciona mesmo sem
-  // a folha calculada, já que é só conferência das batidas importadas.
-  if (docs.espelho) espelhoEmps.forEach(e => sections.push(`<section class="emp">${espelhoSection(e, periodTitle)}</section>`));
   if (sections.length === 0) return '';
 
   const printScript = params.autoPrint === false

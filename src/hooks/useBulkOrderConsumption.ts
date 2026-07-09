@@ -150,7 +150,11 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
             technical_sheets: sheetMap.get(input.reference_id) ?? null,
           };
           const rows = computeConsumptionForItems([item], ctx);
-          byKey.set(key, rows.map(toBulkConsumptionRow));
+          // Linhas SÓ de aviso (ex.: fachete sem specs, qtd 0) existem pro modal
+          // do PV alertar o cadastro — não vão pra ficha do operador, senão
+          // imprimiriam "0,00" sem quantidade real. Toda linha com consumo real
+          // (inclusive widthMissing, que tem qtd > 0) continua passando.
+          byKey.set(key, rows.filter(r => !r.warning).map(toBulkConsumptionRow));
         } catch (e) {
           console.warn(`[useBulkOrderConsumption] erro ao calcular ${key}:`, e);
           byKey.set(key, []);

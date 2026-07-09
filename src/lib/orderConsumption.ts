@@ -53,6 +53,11 @@ export type MaterialConsumptionRow = {
   color: string;
   totalQuantity: number;
   widthMissing?: boolean;
+  /** Aviso não-bloqueante exibido pelo modal (ex.: solado fachetado sem specs
+   *  de fachete). A linha entra mesmo com `totalQuantity` 0 só pra alertar que
+   *  há consumo NÃO calculado por falta de cadastro. Espelha o
+   *  `consumption_warning` do SQL `calculate_order_consumption_by_grade`. */
+  warning?: string;
   /** Breakdown agregado por numeração (somado entre items que casam em
    *  grupo+cor+unidade). Usado pelo Solado pra mostrar totais reais por Nº. */
   sizeBreakdown?: Record<string, number>;
@@ -119,6 +124,15 @@ export type ConsumptionContext = {
    *  solado. Espelha o fallback `v_spec.lining_consumption_dm2` do SQL by_grade.
    *  Opcional (testes antigos constroem o contexto sem ele). */
   liningSpecBySole?: Map<string, Record<string, number>>;
+  /** sole_product_id → PALMILHA PLACA por numeração (dm²/par), de
+   *  `sole_technical_specs.insole_consumption_dm2`. Espelha o forro: a fonte da
+   *  palmilha (placa) é o SOLADO por número, igual ao SQL by_grade (fallback
+   *  `v_spec.insole_consumption_dm2`). Opcional. */
+  insoleSpecBySole?: Map<string, Record<string, number>>;
+  /** sole_product_id → PALMILHA FORRAÇÃO por numeração (dm²/par), de
+   *  `sole_technical_specs.insole_lining_consumption_dm2`. Espelha o SQL
+   *  (`v_spec.insole_lining_consumption_dm2`). Opcional. */
+  insoleLiningSpecBySole?: Map<string, Record<string, number>>;
   /** (sheet_id::corPredominanteNormalizada) → lista de componentes por cor
    *  (opt-in via technical_sheets.component_colors_enabled). Espelha o gate SQL:
    *  quando a flag está ligada e há entrada pra a cor do pedido, esta lista
@@ -193,7 +207,10 @@ const isAreaStockUnit = (unit?: string | null): boolean =>
 const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: MaterialConsumptionRow) => {
   const totalQuantity = Number(row.totalQuantity) || 0;
   const groupName = row.groupName?.trim();
-  if (!groupName || totalQuantity <= 0) return;
+  if (!groupName) return;
+  // Linhas SÓ de aviso (ex.: fachete sem specs) entram com qtd 0 pra alertar;
+  // as demais linhas de qtd zero continuam descartadas como antes.
+  if (totalQuantity <= 0 && !row.warning) return;
 
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
@@ -204,6 +221,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   if (existing) {
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
+    if (row.warning && !existing.warning) existing.warning = row.warning;
     // Soma breakdown por numeração quando ambos têm (Solado).
     if (row.sizeBreakdown) {
       existing.sizeBreakdown = existing.sizeBreakdown || {};
@@ -224,6 +242,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     color,
     totalQuantity,
     widthMissing: row.widthMissing,
+    warning: row.warning,
     sizeBreakdown: row.sizeBreakdown,
     soleProductId: row.soleProductId,
   });
@@ -406,6 +425,35 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     }
   }
 
+  // PALMILHA (placa + forração) por numeração vinda do SOLADO
+  // (`sole_technical_specs.insole_consumption_dm2` / `insole_lining_consumption_dm2`).
+  // MESMA fonte da produção/ondas (SQL by_grade) — antes o modal usava o yield da
+  // ficha de componente e divergia. Query SEPARADA da do forro: um solado pode ter
+  // forro=0 e palmilha>0 (o `.gt(lining)` da query do forro excluiria essas linhas).
+  const insoleSpecBySole = new Map<string, Record<string, number>>();
+  const insoleLiningSpecBySole = new Map<string, Record<string, number>>();
+  {
+    const { data: insoleSpecs } = await (supabase as any)
+      .from('sole_technical_specs')
+      .select('sole_id, size, insole_consumption_dm2, insole_lining_consumption_dm2')
+      .or('insole_consumption_dm2.gt.0,insole_lining_consumption_dm2.gt.0');
+    for (const r of (insoleSpecs || []) as any[]) {
+      if (r.size == null) continue;
+      const iv = Number(r.insole_consumption_dm2) || 0;
+      if (iv > 0) {
+        const m = insoleSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = iv;
+        insoleSpecBySole.set(r.sole_id, m);
+      }
+      const lv = Number(r.insole_lining_consumption_dm2) || 0;
+      if (lv > 0) {
+        const m = insoleLiningSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = lv;
+        insoleLiningSpecBySole.set(r.sole_id, m);
+      }
+    }
+  }
+
   return {
     materials: materials || [],
     allProducts: allProducts || [],
@@ -423,6 +471,8 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     sheetPrimarySoleMap,
     facheteSpecBySole,
     liningSpecBySole,
+    insoleSpecBySole,
+    insoleLiningSpecBySole,
     componentColorMap,
   };
 }
@@ -458,6 +508,8 @@ export function computeConsumptionForItems(
   const soleColorGroupMap = ctx.soleColorGroupMap ?? new Map<string, string>();
   const sheetPrimarySoleMap = ctx.sheetPrimarySoleMap ?? new Map<string, string>();
   const liningSpecBySole = ctx.liningSpecBySole ?? new Map<string, Record<string, number>>();
+  const insoleSpecBySole = ctx.insoleSpecBySole ?? new Map<string, Record<string, number>>();
+  const insoleLiningSpecBySole = ctx.insoleLiningSpecBySole ?? new Map<string, Record<string, number>>();
   const componentColorMap = ctx.componentColorMap ?? new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
@@ -750,6 +802,15 @@ export function computeConsumptionForItems(
         ? (allProducts || []).find((p: any) => p.id === palmProductId)
         : null;
       const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
+      // PALMILHA PLACA por numeração vinda do SOLADO (sole_technical_specs.insole_consumption_dm2),
+      // espelhando o Forro e a produção/ondas: quando o solado tem valores, o consumo (dm²) vem
+      // deles por número (escalar como fallback) e a ficha de componente é usada SÓ pra conversão
+      // dm²→placa. Sem valores no solado → caminho antigo (yield da ficha de componente).
+      const insoleSolePerSize = insoleSpecBySole.get(soleProductIdForInsole || '') || {};
+      const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
+      const computeInsoleDm2 = () => insoleSoleVals.length > 0
+        ? calculateGradeBasedDm2(item, insoleSoleVals.reduce((a, b) => a + b, 0) / insoleSoleVals.length, null, insoleSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption)
+        : calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
       const insoleGroupProducts = insoleGroup
         ? (allProducts || []).filter((p: any) => p.group_id === insoleGroup.id)
         : [];
@@ -769,7 +830,7 @@ export function computeConsumptionForItems(
         // débito baixa do estoque. A perda de corte (waste_pct) só entra quando
         // há CONVERSÃO dm²→física (regra canônica do CLAUDE.md), como no ramo
         // de placas abaixo.
-        const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+        const insoleDm2 = computeInsoleDm2();
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
           groupName: insoleGroupName,
@@ -789,7 +850,7 @@ export function computeConsumptionForItems(
           totalQuantity: itemQuantity,
         });
       } else {
-        const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+        const insoleDm2 = computeInsoleDm2();
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
         // Aplica waste_pct também no caminho que usa dimensões do grupo, p/ paridade
         // com convertDm2ToPlates() (fallback) e com bomConsumption.ts (Lista de
@@ -815,10 +876,27 @@ export function computeConsumptionForItems(
       // forro (insole_has_lining) e área de forração da palmilha > 0.
       const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
       const liningGroupForPalm = sheet?.lining_material || '';
-      if (insoleLiningCons > 0 && liningGroupForPalm && sheet?.insole_has_lining !== false) {
+      // FORRAÇÃO da palmilha por numeração vinda do SOLADO
+      // (sole_technical_specs.insole_lining_consumption_dm2), espelhando o Forro e a
+      // produção/ondas (SQL by_grade).
+      const insoleLiningSolePerSize = insoleLiningSpecBySole.get(soleProductIdForInsole || '') || {};
+      const insoleLiningSoleVals = Object.values(insoleLiningSolePerSize).filter((v) => Number(v) > 0) as number[];
+      // Emite quando há consumo escalar OU o solado tem valores por número — senão a
+      // forração-de-palmilha dirigida pelo solado nunca sairia se o escalar fosse 0.
+      if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
         const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
         const forrSheet = getPreferredGroupSheet(liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
-        const { total: forrTotal } = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+        const forrWidthMissing = isLinearWidthMissing(forrSheet, 'm');
+        // Solado com valores: dm² por número dele (escalar como fallback), e a ficha do
+        // material só converte dm²→metro (igual ao Forro do cabedal). Sem valores → antigo.
+        let forrTotal: number;
+        if (insoleLiningSoleVals.length > 0) {
+          const avgInsoleLiningSole = insoleLiningSoleVals.reduce((a, b) => a + b, 0) / insoleLiningSoleVals.length;
+          const forrDm2 = calculateGradeBasedDm2(item, avgInsoleLiningSole, null, insoleLiningSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption);
+          forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
+        } else {
+          forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole, sheet?.sole_drives_consumption).total;
+        }
         // componentType DISTINTO 'Forração Palmilha' (não 'Palmilha'): é FORRO
         // cortado no setor Corte Forração, não placa do Corte Palmilha. O
         // roteamento por setor (filterConsumptionForSector) depende disso.
@@ -829,7 +907,7 @@ export function computeConsumptionForItems(
           productUnit: 'metro',
           color: mappedLiningColor,
           totalQuantity: forrTotal,
-          widthMissing: isLinearWidthMissing(forrSheet, 'm'),
+          widthMissing: forrWidthMissing,
         });
       }
     }
@@ -931,6 +1009,23 @@ export function computeConsumptionForItems(
           color: mappedLiningColor,
           totalQuantity: facheteTotal,
           widthMissing,
+        });
+      } else {
+        // Solado fachetado SEM consumo de fachete cadastrado. Espelha o
+        // `consumption_warning` do SQL (calculate_order_consumption_by_grade):
+        // antes a UI simplesmente OMITIA a linha → a forração EXTRA do salto
+        // sumia silenciosamente e o operador subcortava o forro. Agora emite uma
+        // linha de alerta (qtd 0, neutra) pra tornar o gap visível até alguém
+        // cadastrar `sole_technical_specs.fachete_lining_consumption_dm2`.
+        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Fachete',
+          groupName: facheteMaterialName || 'Fachete',
+          materialName: 'Fachete',
+          productUnit: 'dm2',
+          color: mappedLiningColor,
+          totalQuantity: 0,
+          warning: 'Solado fachetado sem consumo de fachete cadastrado — a forração extra do salto NÃO entrou no cálculo. Cadastre o consumo por numeração em Materiais → Solado (fachete_lining_consumption_dm2).',
         });
       }
     }

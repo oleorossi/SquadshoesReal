@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CircleNotch as Loader2, UserMinus, CalendarX, Users, CheckCircle, CalendarBlank, CaretRight, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, UserMinus, CalendarX, Users, CheckCircle, CalendarBlank, CaretRight, Warning as AlertTriangle, FilePdf } from '@phosphor-icons/react';
+import { printRhReport, type RhCell } from '@/lib/printRhReport';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -261,14 +262,16 @@ export default function RelatorioFaltas() {
         const res = computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to, schedule: sch, holidaysSet, swapWorkedSet, swapOffSet,
           punchesByDate: empPunches,
+          // Recorta por vínculo: quem foi admitido depois (ou demitido antes) não
+          // pode gerar falta nos dias fora do contrato.
+          activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
+          // Cobertura por-dia: falta só em dia lido pelo relógio (o motor já exclui
+          // dias sem importação — lacuna ou além do arquivo).
+          coveredDates,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
         });
-        // Só conta falta em dia COBERTO pelo relógio (importado). Dias fora da
-        // cobertura (após a última importação, ou lacunas) não viram falta.
-        const faltas = (res.falta_dates || [])
-          .filter((d) => coveredDates.has(d))
-          .sort((a, b) => a.localeCompare(b));
+        const faltas = (res.falta_dates || []).slice().sort((a, b) => a.localeCompare(b));
         if (faltas.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: faltas,
@@ -290,6 +293,43 @@ export default function RelatorioFaltas() {
     <Button type="button" variant={mode === m ? 'default' : 'outline'} size="sm" className="h-9" onClick={() => setMode(m)}>{label}</Button>
   );
 
+  // Gera o PDF de TODOS os funcionários com falta no período (mesma infra de
+  // impressão dos outros relatórios). Espelha exatamente o que a tela mostra.
+  const handlePrintPdf = () => {
+    printRhReport({
+      title: 'Faltas — Relatório por Funcionário',
+      periodo: `${fmtDia(from)} – ${fmtDia(to)}`,
+      generatedAt: fmtDia(todayISO()),
+      kpis: [
+        { label: 'Funcionários c/ falta', value: String(totals.funcionarios) },
+        { label: 'Total de faltas', value: String(totals.dias) },
+        { label: 'Desconto estimado', value: fmtBRL(totals.desconto) },
+      ],
+      headers: [
+        { label: 'Funcionário' },
+        { label: 'Faltas', align: 'r' },
+        { label: 'Datas' },
+        { label: 'Desconto', align: 'r' },
+      ],
+      rows: rows.map((r): RhCell[] => {
+        const desc = r.days.length * ((Number(r.salary) || 0) / SALARY_DAY_DIVISOR);
+        return [
+          { v: r.name },
+          { v: String(r.days.length), align: 'r', strong: true },
+          { v: r.days.map(d => `${fmtDia(d)} ${dowShort(d)}`).join(', ') },
+          { v: `− ${fmtBRL(desc)}`, align: 'r', neg: true },
+        ];
+      }),
+      totals: [
+        { v: `Total · ${totals.funcionarios} func.`, strong: true },
+        { v: String(totals.dias), align: 'r', strong: true },
+        { v: '' },
+        { v: `− ${fmtBRL(totals.desconto)}`, align: 'r', neg: true, strong: true },
+      ],
+      footNote: `Falta = dia útil coberto pelo relógio, sem batida e sem ausência justificada. Desconto = nº faltas × salário/${SALARY_DAY_DIVISOR}.`,
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* período */}
@@ -303,6 +343,17 @@ export default function RelatorioFaltas() {
           <Input type="date" value={mode === 'custom' ? cTo : to} onChange={(e) => { setMode('custom'); setCTo(e.target.value); }} className="h-9 w-40" />
         </div>
         {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5 ml-auto"
+          onClick={handlePrintPdf}
+          disabled={rows.length === 0}
+          title="Gerar PDF de todos os funcionários com falta no período"
+        >
+          <FilePdf className="h-4 w-4" /> Gerar PDF
+        </Button>
       </div>
 
       {/* Aviso de cobertura parcial: ponto importado só até X — dias após não contam. */}

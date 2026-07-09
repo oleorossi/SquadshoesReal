@@ -9,7 +9,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf } from '@phosphor-icons/react';
+import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
@@ -274,7 +275,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // matrícula (employee_external_id). Independe da folha calculada — usa direto o
   // compRecords (time_records do período), pra conferência do arquivo do relógio.
   const espelhoEmps = useMemo(() => {
-    const byExt = new Map<string, { id: string; name: string; role?: string; department?: string; rawDays: { date: string; punches: string[] }[] }>();
+    const byExt = new Map<string, { id: string; name: string; role?: string; department?: string; matchId?: string; rawDays: { date: string; punches: string[] }[] }>();
     for (const rec of (compRecords as any[])) {
       const ext = String(rec.employee_external_id ?? rec.employee_name ?? '—');
       const g = byExt.get(ext) || { id: ext, name: rec.employee_name || '—', rawDays: [] };
@@ -283,7 +284,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     }
     for (const g of byExt.values()) {
       const emp = (employees as any[]).find(e => String((e as any).external_id ?? '') === g.id);
-      if (emp) { g.role = (emp as any).role; g.department = (emp as any).department; }
+      // matchId = id INTERNO do funcionário (mesmo de bundleEmps) — casa o Espelho
+      // com o pacote da folha no modo por-funcionário do buildPayrollHtml.
+      if (emp) { g.role = (emp as any).role; g.department = (emp as any).department; g.matchId = (emp as any).id; }
       g.rawDays.sort((a, b) => a.date.localeCompare(b.date));
     }
     return Array.from(byExt.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -321,12 +324,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   }, [anySel, scopeEmps, previewPaged, previewIdx]);
 
   const previewHtml = useMemo(() => {
-    // Paginando (Calendário/Holerite de vários) mostra só o funcionário da vez —
-    // o Espelho (lista própria) fica de fora da prévia paginada.
-    const espList = reportSel.espelho && !previewPaged ? scopedEspelho : [];
+    // Paginando (vários funcionários): mostra o funcionário da vez COM o Espelho
+    // DELE (casa por matchId) — a prévia reflete o pacote por-funcionário do
+    // print. Sem paginar: o escopo inteiro.
+    const espList = !reportSel.espelho
+      ? []
+      : previewPaged
+        ? scopedEspelho.filter((x: any) => x.matchId === previewEmps[0]?.id)
+        : scopedEspelho;
     if (previewEmps.length === 0 && espList.length === 0) return '';
     const docs = previewPaged
-      ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite, espelho: false }
+      ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite, espelho: reportSel.espelho }
       : reportSel;
     return buildPayrollHtml({ periodTitle, docs, employees: previewEmps as any, espelhoEmployees: espList as any, autoPrint: false, groupBy: 'employee' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -373,6 +381,79 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       return m;
     },
   });
+
+  // Gerar PDF da FOLHA — tabela única de TODOS os funcionários com VALORES e HORAS
+  // (salário, HE, faltas, atrasos, líquido + horas trabalhadas/extra), do mesmo motor
+  // (computePeriodFolha via comparativo.rows). Respeita o filtro de setor da tela.
+  const handlePrintFolhaPdf = () => {
+    const fmtHm = (min: number) => {
+      const m = Math.round(Number(min) || 0);
+      if (m <= 0) return '—';
+      const h = Math.floor(m / 60), mm = m % 60;
+      return mm === 0 ? `${h}h` : h === 0 ? `${mm}min` : `${h}h${String(mm).padStart(2, '0')}`;
+    };
+    const dfmt = (iso: string) => (iso || '').split('-').reverse().join('/');
+    const now = new Date();
+    const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+    const src = comparativo.rows.filter(r => setorFilter === 'all' || setorOf(r.id) === setorFilter);
+    if (src.length === 0) { toast.error('Nenhum funcionário na folha do período.'); return; }
+
+    let tSal = 0, tHe = 0, tFalta = 0, tAtraso = 0, tLiq = 0, tWork = 0, tHeMin = 0;
+    const bodyRows = src.map((r): RhCell[] => {
+      const res: any = r.result;
+      const sal = Number(res.base_salary) || 0, he = Number(res.he_value) || 0;
+      const falta = Number(res.falta_desconto) || 0, atraso = Number(res.atraso_desconto) || 0;
+      tSal += sal; tHe += he; tFalta += falta; tAtraso += atraso;
+      tLiq += Number(res.net_value) || 0; tWork += Number(res.worked_minutes) || 0; tHeMin += Number(res.he_minutes) || 0;
+      return [
+        { v: r.name },
+        { v: setorOf(r.id) || '—' },
+        { v: String(res.paid_days ?? 0), align: 'r' },
+        { v: fmtHm(res.worked_minutes), align: 'r' },
+        { v: fmtHm(res.he_minutes), align: 'r' },
+        { v: fmt(sal), align: 'r' },
+        { v: he > 0 ? fmt(he) : '—', align: 'r' },
+        { v: falta > 0 ? `− ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
+        { v: atraso > 0 ? `− ${fmt(atraso)}` : '—', align: 'r', neg: atraso > 0 },
+        { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
+      ];
+    });
+
+    printRhReport({
+      title: 'Folha — Relatório por Funcionário',
+      subtitle: setorFilter !== 'all' ? `Setor: ${setorFilter}` : 'Todos os setores',
+      periodo: `${dfmt(appliedFrom)} – ${dfmt(appliedTo)}`,
+      generatedAt,
+      kpis: [
+        { label: 'Funcionários', value: String(bodyRows.length) },
+        { label: 'Horas trab.', value: fmtHm(tWork) },
+        { label: 'Horas extras', value: fmtHm(tHeMin) },
+        { label: 'Proventos', value: fmt(tSal + tHe) },
+        { label: 'Descontos', value: fmt(tFalta + tAtraso) },
+        { label: 'Líquido', value: fmt(tLiq) },
+      ],
+      headers: [
+        { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Dias', align: 'r' },
+        { label: 'H. trab.', align: 'r' }, { label: 'H. extra', align: 'r' },
+        { label: 'Salário', align: 'r' }, { label: 'H.E. (R$)', align: 'r' },
+        { label: 'Faltas', align: 'r' }, { label: 'Atrasos', align: 'r' }, { label: 'Líquido', align: 'r' },
+      ],
+      rows: bodyRows,
+      totals: [
+        { v: `Total · ${bodyRows.length} func.`, strong: true },
+        { v: '' }, { v: '', align: 'r' },
+        { v: fmtHm(tWork), align: 'r', strong: true },
+        { v: fmtHm(tHeMin), align: 'r', strong: true },
+        { v: fmt(tSal), align: 'r', strong: true },
+        { v: fmt(tHe), align: 'r', strong: true },
+        { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
+        { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
+        { v: fmt(tLiq), align: 'r', strong: true },
+      ],
+      footNote: 'Faltas = dias × salário/30 · Atrasos = min × salário/220 · H.E. = min × salário/220 × 1,5.',
+    });
+  };
 
   // Espelho de ponto legal (Portaria MTP 671) — documento individual assinável com
   // batidas dia a dia, totais e saldo de banco. Usa o ponto do período selecionado
@@ -529,6 +610,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           punchesByDate: empPunches,
           absenceDates: absencesByEmp.get(emp.id),
           advancesTotal: advancesByEmp.get(emp.id) || 0,
+          activeFrom: (emp as any).admission_date || null,   // não descontar dias antes da admissão
+          activeTo: (emp as any).termination_date || null,   // nem depois da demissão
+          coveredDates: coverage?.coveredDates,              // falta só em dia lido pelo relógio (lacuna no meio ≠ falta)
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
           monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)
           maxCoveredDate: maxCov,
@@ -831,17 +915,29 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           ))}
         </div>
         {view === 'folha' && runs.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Setor</span>
-            <select
-              value={setorFilter}
-              onChange={e => setSetorFilter(e.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
-              aria-label="Filtrar por setor"
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Setor</span>
+              <select
+                value={setorFilter}
+                onChange={e => setSetorFilter(e.target.value)}
+                className="h-8 rounded-md border bg-background px-2 text-xs"
+                aria-label="Filtrar por setor"
+              >
+                <option value="all">Todos os setores ({setoresDisponiveis.length})</option>
+                {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={handlePrintFolhaPdf}
+              title="Gerar PDF de todos os funcionários com valores e horas"
             >
-              <option value="all">Todos os setores ({setoresDisponiveis.length})</option>
-              {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+              <FilePdf className="h-4 w-4" /> Gerar PDF
+            </Button>
           </div>
         )}
       </div>

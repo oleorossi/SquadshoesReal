@@ -105,17 +105,29 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
   const monthTo = `${period}-${String(monthDays).padStart(2, '0')}`;
   const q2Days = Math.max(0, monthDays - 15);
 
-  // Batida → dia, por matrícula e por nome (mesmo casamento da folha).
+  // Batida → dia, por matrícula, por matrícula+nome e por nome (MESMO casamento do
+  // Relatório de Atrasos/Faltas): quando um mesmo device_id (matrícula) é compartilhado
+  // por mais de um funcionário, o casamento só por matrícula pegaria batida do colega.
   const byExternalId = new Map<string, Map<string, string[]>>();
+  const byExtIdName = new Map<string, Map<string, string[]>>();
   const byName = new Map<string, Map<string, string[]>>();
+  const extIdNames = new Map<string, Set<string>>();
+  // Datas COBERTAS (relógio lido = batida real de alguém) — falta só em dia coberto.
+  const coveredDates = new Set<string>();
   for (const r of timeRecords) {
     const punches: string[] = Array.isArray(r.punches) ? r.punches : [];
+    if (punches.length > 0) coveredDates.add(r.record_date);
+    const nk = (r.employee_name || '').toLowerCase().trim();
     if (r.employee_external_id) {
       const k = String(r.employee_external_id);
       if (!byExternalId.has(k)) byExternalId.set(k, new Map());
       byExternalId.get(k)!.set(r.record_date, punches);
+      if (!extIdNames.has(k)) extIdNames.set(k, new Set());
+      if (nk) extIdNames.get(k)!.add(nk);
+      const kn = `${k}|${nk}`;
+      if (!byExtIdName.has(kn)) byExtIdName.set(kn, new Map());
+      byExtIdName.get(kn)!.set(r.record_date, punches);
     }
-    const nk = (r.employee_name || '').toLowerCase().trim();
     if (nk) {
       if (!byName.has(nk)) byName.set(nk, new Map());
       byName.get(nk)!.set(r.record_date, punches);
@@ -135,8 +147,13 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
     .filter(e => e.active)
     .map(emp => {
       const extKey = emp.external_id ? String(emp.external_id) : '';
-      const empPunches = (extKey && byExternalId.get(extKey))
-        || byName.get(String(emp.name || '').toLowerCase().trim())
+      const nameKey = String(emp.name || '').toLowerCase().trim();
+      // Matrícula compartilhada (mais de um nome no mesmo device) → casa por
+      // matrícula+nome; senão por matrícula; senão por nome.
+      const extShared = !!extKey && (extIdNames.get(extKey)?.size || 0) > 1;
+      const empPunches = (extKey ? byExtIdName.get(`${extKey}|${nameKey}`) : null)
+        || (!extShared && extKey ? byExternalId.get(extKey) : null)
+        || byName.get(nameKey)
         || new Map<string, string[]>();
       const sch = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
       const empAdvances = advByEmp.get(emp.id) || [];
@@ -144,6 +161,8 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
       const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
         salary: Number(emp.salary) || 0, from, to,
         schedule: sch, holidaysSet, swapWorkedSet, swapOffSet, punchesByDate: empPunches,
+        activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
+        coveredDates,
         periodDays, monthDays, maxCoveredDate: maxCovered,
         payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
         dailyRate: Number(emp.daily_rate) || 0,

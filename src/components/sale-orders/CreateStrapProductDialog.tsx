@@ -8,7 +8,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { CircleNotch as Loader2, Package, Warning as AlertTriangle, Check, PencilSimple as Pencil } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
-import { sanitizeUuidFields } from '@/lib/utils';
+import { sanitizeUuidFields, cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { UNITS, LOCATIONS } from '@/types/inventory';
@@ -132,6 +132,11 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
+  // Cor como CAMPO explícito (products.color = fonte única de cor). Inicializa do
+  // clique no PV mas é editável; ao mudar, re-deriva Nome e SKU.
+  const [colorInput, setColorInput] = useState('');
+  const [groupColors, setGroupColors] = useState<string[]>([]);
+  const [skuBase, setSkuBase] = useState('');
   const [category, setCategory] = useState('');
   // Default 'm' pra grupos de tira/elástico (são sempre vendidos por metro).
   // Antes default 'un' deixava o débito por metros divergente do estoque.
@@ -154,6 +159,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
     setPrefilling(true);
     setSimilarProducts([]);
     setShowForm(false);
+    setColorInput(color);
 
     (async () => {
       const { data: lastProduct } = await supabase
@@ -181,9 +187,11 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
         setDimThickness(lastProduct.dimensions_thickness || 0);
         setDimUnit(lastProduct.dimensions_unit || 'mm');
 
+        setSkuBase(lastProduct.sku || '');
         const derivedSku = deriveSkuFromBase(lastProduct.sku || '', color);
         setSku(derivedSku || buildFallbackSku(groupName, color));
       } else {
+        setSkuBase('');
         setSku(buildFallbackSku(groupName, color));
       }
       setInitialStock(0);
@@ -207,6 +215,8 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
         .eq('active', true)
         .eq('group_id', groupId);
 
+      setGroupColors(Array.from(new Set((allMatches || []).map((p: any) => (p.color || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+
       const similar = (allMatches || []).filter((p: any) => {
         const pName = p.name?.trim().toLowerCase() || '';
         const pColor = p.color?.trim().toLowerCase() || '';
@@ -229,6 +239,13 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
     })();
   }, [open, groupId, groupName, color]);
 
+  // Aplica uma cor (chip do grupo ou digitada) e re-deriva Nome + SKU.
+  const applyColor = (c: string) => {
+    setColorInput(c);
+    const t = c.trim();
+    setName(`${groupName}: ${t}`);
+    setSku(skuBase ? deriveSkuFromBase(skuBase, t) : `${normalizeSkuPart(groupName, 'TIRA', 6)}-${normalizeSkuPart(t, 'COR', 4)}`);
+  };
 
   const handleUseExisting = async (product: SimilarProduct, openEdit = false) => {
     if (product.group_id !== groupId) {
@@ -280,8 +297,12 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
-    const trimmedColor = color.trim();
+    const trimmedColor = colorInput.trim();
 
+    if (!trimmedColor) {
+      toast.error('Cor é obrigatória');
+      return;
+    }
     if (!trimmedName) {
       toast.error('Nome é obrigatório');
       return;
@@ -391,7 +412,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Badge variant="secondary">{groupName}</Badge>
                   <span>•</span>
-                  <Badge variant="outline">{color}</Badge>
+                  <Badge variant="outline">{colorInput}</Badge>
                 </div>
 
                 <div className="max-h-48 space-y-2 overflow-y-auto">
@@ -496,10 +517,43 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Badge variant="secondary">{groupName}</Badge>
                   <span>•</span>
-                  <Badge variant="outline">{color}</Badge>
+                  <Badge variant="outline">{colorInput}</Badge>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <Label className="text-xs">Cor *</Label>
+                    <Input
+                      value={colorInput}
+                      onChange={e => applyColor(e.target.value)}
+                      placeholder="Ex.: COGUMELO"
+                      className="h-9 text-sm uppercase"
+                    />
+                    {groupColors.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        <span className="text-[11px] text-muted-foreground mr-0.5">Cores do grupo:</span>
+                        {groupColors.map(c => (
+                          <button
+                            type="button"
+                            key={c}
+                            onClick={() => applyColor(c)}
+                            className={cn(
+                              'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                              colorInput.trim().toLowerCase() === c.trim().toLowerCase()
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
+                            )}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Escolha uma cor do grupo ou digite uma nova — vira a cor do produto no estoque e atualiza Nome e SKU.
+                    </p>
+                  </div>
+
                   <div className="col-span-2">
                     <Label className="text-xs">Nome</Label>
                     <Input value={name} onChange={e => setName(e.target.value)} className="h-9 text-sm" />

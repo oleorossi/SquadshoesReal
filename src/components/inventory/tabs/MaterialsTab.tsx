@@ -429,6 +429,19 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Ponte para a árvore de grupos (Setor → Família → Grupo) em /grupos. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5 shrink-0 whitespace-nowrap"
+              onClick={() => navigate('/grupos')}
+              title="Abrir a árvore de grupos (Setor → Família → Grupo)"
+            >
+              <Layers className="h-4 w-4" />
+              <span className="hidden sm:inline">Organizar grupos</span>
+              <span aria-hidden>↗</span>
+            </Button>
+
             {perm.canCreate && (
             <Button className="h-9 gap-2 shadow-sm shrink-0 whitespace-nowrap" onClick={openAdd}>
               <Plus className="h-4 w-4" />

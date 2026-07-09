@@ -414,9 +414,13 @@ html,body{background:#e8e6e1;font-family:'Inter Tight',sans-serif;color:#000;-we
 body{padding:24px;}
 ${LABEL_PRINT_HARDENING}
 
-/* A4 portrait — 210×297mm, margem 9mm. Cada .page acomoda 2 .label-cx-ext
-   empilhadas com 6mm de gap (margem de corte). */
-@page{size:A4 portrait;margin:9mm;}
+/* A4 portrait — 210×297mm. Cada .page acomoda 2 .label-cx-ext empilhadas com
+   6mm de gap (margem de corte).
+   @page margin:0 — CRÍTICO: com margem > 0 o navegador desenha o cabeçalho/rodapé
+   automático (data/hora, "about:blank" e "N/N" das páginas) NA margem, sujando o
+   rótulo. Com margin:0 o Chrome NÃO desenha esse chrome. O recuo seguro de 9mm
+   passa a vir do padding do .page (abaixo), então a posição do rótulo não muda. */
+@page{size:A4 portrait;margin:0;}
 
 .page{
   width:210mm;min-height:297mm;margin:0 auto;background:#fff;
@@ -438,7 +442,16 @@ ${LABEL_PRINT_HARDENING}
 
 @media print{
   body{padding:0;background:#fff;}
-  .page{box-shadow:none;padding:0;width:210mm;min-height:297mm;gap:6mm;}
+  /* padding:9mm — recuo seguro (antes vinha do @page margin:9mm, agora zerado
+     pra remover o cabeçalho/rodapé do navegador). Mantém o rótulo na MESMA
+     posição de antes (192mm de largura dentro dos 210mm com 9mm de cada lado).
+     min-height:0 (era 297mm) — CRÍTICO com @page margin:0: um .page de 297mm
+     (border-box, já inclui o padding) fica EXATAMENTE do tamanho da folha A4 e o
+     Chrome transborda por arredondamento, gerando uma página EM BRANCO depois de
+     cada rótulo (184 = 92×2). Cada rótulo já quebra a folha sozinho (.page-break →
+     break-after), então o .page não precisa preencher a folha inteira: fica do
+     tamanho do conteúdo (~288mm com 2 rótulos), que cabe folgado em 1 folha. */
+  .page{box-shadow:none;padding:9mm;width:210mm;min-height:0;gap:6mm;}
   /* Fix 2026-05-23: era 198mm — estourava 6mm em A4 com @page margin 9mm
      (área útil = 192mm). Borda direita saía cortada. Manter 192mm em
      print pra caber dentro da margem segura. */
