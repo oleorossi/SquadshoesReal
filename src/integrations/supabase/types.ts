@@ -550,91 +550,6 @@ export type Database = {
         }
         Relationships: []
       }
-      bank_hours_movements: {
-        Row: {
-          created_at: string | null
-          created_by: string | null
-          description: string | null
-          employee_id: string
-          id: string
-          minutes: number
-          movement_date: string
-          movement_type: string
-          overtime_pct: number
-          reference_id: string | null
-          reference_type: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          created_by?: string | null
-          description?: string | null
-          employee_id: string
-          id?: string
-          minutes: number
-          movement_date: string
-          movement_type?: string
-          overtime_pct?: number
-          reference_id?: string | null
-          reference_type?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          created_by?: string | null
-          description?: string | null
-          employee_id?: string
-          id?: string
-          minutes?: number
-          movement_date?: string
-          movement_type?: string
-          overtime_pct?: number
-          reference_id?: string | null
-          reference_type?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "bank_hours_movements_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "bank_hours_movements_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bank_hours_movements_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "v_employee_pending_summary"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "bank_hours_movements_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "v_employee_punch_pattern"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "bank_hours_movements_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "v_pending_time_records"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "bank_hours_movements_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "v_time_pendings"
-            referencedColumns: ["employee_id"]
-          },
-        ]
-      }
       bank_reconciliation_items: {
         Row: {
           amount: number
@@ -2219,13 +2134,6 @@ export type Database = {
             foreignKeyName: "component_sheets_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: true
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "component_sheets_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: true
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -3043,13 +2951,6 @@ export type Database = {
             foreignKeyName: "cycle_count_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "cycle_count_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -3207,13 +3108,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "cyclic_inventory_counts_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "cyclic_inventory_counts_product_id_fkey"
@@ -4148,13 +4042,6 @@ export type Database = {
             foreignKeyName: "employee_absences_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "employee_absences_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -4233,13 +4120,6 @@ export type Database = {
             foreignKeyName: "employee_advances_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "employee_advances_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -4280,39 +4160,6 @@ export type Database = {
           },
         ]
       }
-      employee_bank_hours: {
-        Row: {
-          balance_after: number
-          created_at: string
-          date: string
-          employee_id: string
-          hours_added: number
-          hours_removed: number
-          id: string
-          reason: string | null
-        }
-        Insert: {
-          balance_after: number
-          created_at?: string
-          date: string
-          employee_id: string
-          hours_added: number
-          hours_removed: number
-          id?: string
-          reason?: string | null
-        }
-        Update: {
-          balance_after?: number
-          created_at?: string
-          date?: string
-          employee_id?: string
-          hours_added?: number
-          hours_removed?: number
-          id?: string
-          reason?: string | null
-        }
-        Relationships: []
-      }
       employee_skills: {
         Row: {
           created_at: string | null
@@ -4336,13 +4183,6 @@ export type Database = {
           skill_name?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "employee_skills_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
           {
             foreignKeyName: "employee_skills_employee_id_fkey"
             columns: ["employee_id"]
@@ -4391,6 +4231,8 @@ export type Database = {
           daily_rate: number | null
           department: string | null
           external_id: string | null
+          he_normal_rate: number | null
+          he_sunday_holiday_rate: number | null
           health_plan_value: number
           hourly_rate: number | null
           id: string
@@ -4399,6 +4241,7 @@ export type Database = {
           notes: string | null
           overtime_100_pct: number
           overtime_50_pct: number
+          overtime_holiday_hourly_rate: number | null
           overtime_hourly_rate: number | null
           overtime_multiplier: number
           payment_type: string
@@ -4425,6 +4268,8 @@ export type Database = {
           daily_rate?: number | null
           department?: string | null
           external_id?: string | null
+          he_normal_rate?: number | null
+          he_sunday_holiday_rate?: number | null
           health_plan_value?: number
           hourly_rate?: number | null
           id?: string
@@ -4433,6 +4278,7 @@ export type Database = {
           notes?: string | null
           overtime_100_pct?: number
           overtime_50_pct?: number
+          overtime_holiday_hourly_rate?: number | null
           overtime_hourly_rate?: number | null
           overtime_multiplier?: number
           payment_type?: string
@@ -4459,6 +4305,8 @@ export type Database = {
           daily_rate?: number | null
           department?: string | null
           external_id?: string | null
+          he_normal_rate?: number | null
+          he_sunday_holiday_rate?: number | null
           health_plan_value?: number
           hourly_rate?: number | null
           id?: string
@@ -4467,6 +4315,7 @@ export type Database = {
           notes?: string | null
           overtime_100_pct?: number
           overtime_50_pct?: number
+          overtime_holiday_hourly_rate?: number | null
           overtime_hourly_rate?: number | null
           overtime_multiplier?: number
           payment_type?: string
@@ -4675,6 +4524,8 @@ export type Database = {
           solado_id: string | null
           total: number
           valor_par: number
+          valor_par_dificil: number | null
+          valor_par_medio: number | null
         }
         Insert: {
           atualizado_em?: string
@@ -4699,6 +4550,8 @@ export type Database = {
           solado_id?: string | null
           total?: number
           valor_par?: number
+          valor_par_dificil?: number | null
+          valor_par_medio?: number | null
         }
         Update: {
           atualizado_em?: string
@@ -4723,15 +4576,10 @@ export type Database = {
           solado_id?: string | null
           total?: number
           valor_par?: number
+          valor_par_dificil?: number | null
+          valor_par_medio?: number | null
         }
         Relationships: [
-          {
-            foreignKeyName: "ficha_montadores_montador_id_fkey"
-            columns: ["montador_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
           {
             foreignKeyName: "ficha_montadores_montador_id_fkey"
             columns: ["montador_id"]
@@ -4836,13 +4684,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "ficha_montadores_solado_id_fkey"
-            columns: ["solado_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "ficha_montadores_solado_id_fkey"
@@ -5578,13 +5419,6 @@ export type Database = {
             foreignKeyName: "goods_issue_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "goods_issue_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -5846,13 +5680,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "goods_receipt_inspections_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "goods_receipt_inspections_product_id_fkey"
@@ -6260,13 +6087,6 @@ export type Database = {
             foreignKeyName: "inventory_count_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "inventory_count_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -6423,13 +6243,6 @@ export type Database = {
             foreignKeyName: "inventory_transactions_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "inventory_transactions_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -6568,13 +6381,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "invoice_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "invoice_items_product_id_fkey"
@@ -7014,13 +6820,6 @@ export type Database = {
             foreignKeyName: "leather_hides_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "leather_hides_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -7156,13 +6955,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crm_inactive_clients"
             referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "lgpd_consents_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "lgpd_consents_employee_id_fkey"
@@ -7453,13 +7245,6 @@ export type Database = {
             foreignKeyName: "lot_tracking_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "lot_tracking_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -7684,13 +7469,6 @@ export type Database = {
             foreignKeyName: "material_audit_log_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "material_audit_log_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -7893,13 +7671,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "material_reservations_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "material_reservations_product_id_fkey"
@@ -8199,13 +7970,6 @@ export type Database = {
             foreignKeyName: "mrp_suggestions_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "mrp_suggestions_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -8351,13 +8115,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "ncm_change_log_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "ncm_change_log_product_id_fkey"
@@ -9318,13 +9075,6 @@ export type Database = {
             foreignKeyName: "order_stages_operator_employee_id_fkey"
             columns: ["operator_employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "order_stages_operator_employee_id_fkey"
-            columns: ["operator_employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -9609,13 +9359,6 @@ export type Database = {
             foreignKeyName: "orders_packaging_product_id_fkey"
             columns: ["packaging_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "orders_packaging_product_id_fkey"
-            columns: ["packaging_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -9875,20 +9618,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "overtime_resolutions_bank_movement_id_fkey"
-            columns: ["bank_movement_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_movements"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "overtime_resolutions_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
             foreignKeyName: "overtime_resolutions_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
@@ -10123,13 +9852,6 @@ export type Database = {
             foreignKeyName: "packaging_configs_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "packaging_configs_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -10350,13 +10072,6 @@ export type Database = {
             foreignKeyName: "payroll_payments_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "payroll_payments_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -10538,13 +10253,6 @@ export type Database = {
             foreignKeyName: "payroll_runs_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "payroll_runs_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -10674,13 +10382,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "picking_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "picking_items_product_id_fkey"
@@ -11523,13 +11224,6 @@ export type Database = {
             foreignKeyName: "product_price_log_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "product_price_log_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -11754,13 +11448,6 @@ export type Database = {
             foreignKeyName: "product_technical_sheets_material_id_fkey"
             columns: ["material_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "product_technical_sheets_material_id_fkey"
-            columns: ["material_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -11838,13 +11525,6 @@ export type Database = {
             foreignKeyName: "product_technical_sheets_parent_product_id_fkey"
             columns: ["parent_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "product_technical_sheets_parent_product_id_fkey"
-            columns: ["parent_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -11917,13 +11597,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "product_technical_sheets_reference_product_id_fkey"
-            columns: ["reference_product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "product_technical_sheets_reference_product_id_fkey"
@@ -12205,13 +11878,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "production_consumptions_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "production_consumptions_product_id_fkey"
@@ -12699,13 +12365,6 @@ export type Database = {
           stage_name?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "production_pointings_operator_employee_id_fkey"
-            columns: ["operator_employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
           {
             foreignKeyName: "production_pointings_operator_employee_id_fkey"
             columns: ["operator_employee_id"]
@@ -13333,13 +12992,6 @@ export type Database = {
             foreignKeyName: "production_wave_items_sole_product_id_fkey"
             columns: ["sole_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "production_wave_items_sole_product_id_fkey"
-            columns: ["sole_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -13959,13 +13611,6 @@ export type Database = {
             foreignKeyName: "products_linked_last_id_fkey"
             columns: ["linked_last_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "products_linked_last_id_fkey"
-            columns: ["linked_last_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -14159,13 +13804,6 @@ export type Database = {
             foreignKeyName: "punch_device_map_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "punch_device_map_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -14298,6 +13936,7 @@ export type Database = {
       }
       purchase_order_items: {
         Row: {
+          box_type_id: string | null
           color: string | null
           created_at: string
           current_stock: number
@@ -14315,6 +13954,7 @@ export type Database = {
           unit_price: number
         }
         Insert: {
+          box_type_id?: string | null
           color?: string | null
           created_at?: string
           current_stock?: number
@@ -14332,6 +13972,7 @@ export type Database = {
           unit_price?: number
         }
         Update: {
+          box_type_id?: string | null
           color?: string | null
           created_at?: string
           current_stock?: number
@@ -14349,6 +13990,13 @@ export type Database = {
           unit_price?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_box_type_id_fkey"
+            columns: ["box_type_id"]
+            isOneToOne: false
+            referencedRelation: "box_types"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_order_items_product_id_fkey"
             columns: ["product_id"]
@@ -14369,13 +14017,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "purchase_order_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "purchase_order_items_product_id_fkey"
@@ -14607,13 +14248,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "purchase_quotation_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "purchase_quotation_items_product_id_fkey"
@@ -15040,13 +14674,6 @@ export type Database = {
             foreignKeyName: "quality_inspection_plans_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "quality_inspection_plans_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -15468,13 +15095,6 @@ export type Database = {
             foreignKeyName: "quarantine_stock_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "quarantine_stock_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -15810,13 +15430,6 @@ export type Database = {
             foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
             columns: ["insole_material_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
-            columns: ["insole_material_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -15894,13 +15507,6 @@ export type Database = {
             foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
             columns: ["lining_material_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
-            columns: ["lining_material_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -15973,13 +15579,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
-            columns: ["sole_material_product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "reference_material_variants_sole_material_product_id_fkey"
@@ -16100,13 +15699,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "reference_materials_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "reference_materials_product_id_fkey"
@@ -16253,6 +15845,7 @@ export type Database = {
           description: string
           id: string
           reference_id: string
+          sector: string | null
           updated_at: string
           value_per_pair: number
         }
@@ -16263,6 +15856,7 @@ export type Database = {
           description: string
           id?: string
           reference_id: string
+          sector?: string | null
           updated_at?: string
           value_per_pair: number
         }
@@ -16273,6 +15867,7 @@ export type Database = {
           description?: string
           id?: string
           reference_id?: string
+          sector?: string | null
           updated_at?: string
           value_per_pair?: number
         }
@@ -16873,13 +16468,6 @@ export type Database = {
             foreignKeyName: "sale_order_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "sale_order_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -17347,13 +16935,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "sale_orders_packaging_product_id_fkey"
-            columns: ["packaging_product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "sale_orders_packaging_product_id_fkey"
@@ -18533,13 +18114,6 @@ export type Database = {
             foreignKeyName: "sheet_materials_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "sheet_materials_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -19116,13 +18690,6 @@ export type Database = {
             foreignKeyName: "sole_silk_registrations_sole_product_id_fkey"
             columns: ["sole_product_id"]
             isOneToOne: true
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "sole_silk_registrations_sole_product_id_fkey"
-            columns: ["sole_product_id"]
-            isOneToOne: true
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -19335,13 +18902,6 @@ export type Database = {
             foreignKeyName: "sole_standard_items_consumption_sole_product_id_fkey"
             columns: ["sole_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "sole_standard_items_consumption_sole_product_id_fkey"
-            columns: ["sole_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -19414,13 +18974,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "sole_standard_items_consumption_standard_item_id_fkey"
-            columns: ["standard_item_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "sole_standard_items_consumption_standard_item_id_fkey"
@@ -19538,13 +19091,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "sole_standard_materials_material_product_id_fkey"
-            columns: ["material_product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "sole_standard_materials_material_product_id_fkey"
@@ -19675,13 +19221,6 @@ export type Database = {
             foreignKeyName: "sole_structures_default_material_id_fkey"
             columns: ["default_material_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "sole_structures_default_material_id_fkey"
-            columns: ["default_material_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -19754,13 +19293,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "sole_structures_sole_id_fkey"
-            columns: ["sole_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "sole_structures_sole_id_fkey"
@@ -19889,13 +19421,6 @@ export type Database = {
             foreignKeyName: "sole_technical_specs_reference_sole_id_fkey"
             columns: ["reference_sole_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "sole_technical_specs_reference_sole_id_fkey"
-            columns: ["reference_sole_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -19968,13 +19493,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "sole_technical_specs_sole_id_fkey"
-            columns: ["sole_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "sole_technical_specs_sole_id_fkey"
@@ -20308,13 +19826,6 @@ export type Database = {
             foreignKeyName: "stock_quarantines_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "stock_quarantines_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -20552,6 +20063,36 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_ar_runs: {
+        Row: {
+          error: string | null
+          failed: number
+          id: number
+          ran_at: string
+          scanned: number
+          synced: number
+          trigger: string
+        }
+        Insert: {
+          error?: string | null
+          failed?: number
+          id?: never
+          ran_at?: string
+          scanned?: number
+          synced?: number
+          trigger?: string
+        }
+        Update: {
+          error?: string | null
+          failed?: number
+          id?: never
+          ran_at?: string
+          scanned?: number
+          synced?: number
+          trigger?: string
+        }
+        Relationships: []
+      }
       system_settings: {
         Row: {
           description: string | null
@@ -20652,13 +20193,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "technical_reference_materials_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "technical_reference_materials_product_id_fkey"
@@ -20927,6 +20461,160 @@ export type Database = {
           },
           {
             foreignKeyName: "technical_sheet_box_types_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_technical_sheets_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      technical_sheet_component_colors: {
+        Row: {
+          cabedal_color: string
+          created_at: string
+          id: string
+          product_id: string
+          quantity_per_unit: number
+          sheet_id: string
+        }
+        Insert: {
+          cabedal_color: string
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity_per_unit?: number
+          sheet_id: string
+        }
+        Update: {
+          cabedal_color?: string
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity_per_unit?: number
+          sheet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_stock_with_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["material_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_product_abc"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_abc_class"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_below_rop"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_missing_supplier_active_demand"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_with_location"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_audit"
+            referencedColumns: ["sole_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_soles_with_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "technical_sheets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_ficha_sole_range_mismatch"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast_summary"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "technical_sheet_component_colors_sheet_id_fkey"
             columns: ["sheet_id"]
             isOneToOne: false
             referencedRelation: "v_technical_sheets_audit"
@@ -21523,13 +21211,6 @@ export type Database = {
             foreignKeyName: "technical_sheet_sole_colors_sole_product_id_fkey"
             columns: ["sole_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "technical_sheet_sole_colors_sole_product_id_fkey"
-            columns: ["sole_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -21691,6 +21372,7 @@ export type Database = {
           color_images: Json | null
           colored_lining_mode: string
           colors: string | null
+          component_colors_enabled: boolean
           components_accessories: Json | null
           construction_type: string
           consumption_loss_pct: number | null
@@ -21818,6 +21500,7 @@ export type Database = {
           color_images?: Json | null
           colored_lining_mode?: string
           colors?: string | null
+          component_colors_enabled?: boolean
           components_accessories?: Json | null
           construction_type?: string
           consumption_loss_pct?: number | null
@@ -21945,6 +21628,7 @@ export type Database = {
           color_images?: Json | null
           colored_lining_mode?: string
           colors?: string | null
+          component_colors_enabled?: boolean
           components_accessories?: Json | null
           construction_type?: string
           consumption_loss_pct?: number | null
@@ -22119,13 +21803,6 @@ export type Database = {
             foreignKeyName: "technical_sheets_lining_material_product_id_fkey"
             columns: ["lining_material_product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "technical_sheets_lining_material_product_id_fkey"
-            columns: ["lining_material_product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -22212,13 +21889,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "technical_sheets_upper_material_product_id_fkey"
-            columns: ["upper_material_product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "technical_sheets_upper_material_product_id_fkey"
@@ -22493,13 +22163,6 @@ export type Database = {
           record_date?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "time_records_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
           {
             foreignKeyName: "time_records_employee_id_fkey"
             columns: ["employee_id"]
@@ -22947,6 +22610,8 @@ export type Database = {
       }
       user_permissions: {
         Row: {
+          can_create: boolean
+          can_delete: boolean
           can_edit: boolean
           can_view: boolean
           id: string
@@ -22954,6 +22619,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          can_create?: boolean
+          can_delete?: boolean
           can_edit?: boolean
           can_view?: boolean
           id?: string
@@ -22961,6 +22628,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          can_create?: boolean
+          can_delete?: boolean
           can_edit?: boolean
           can_view?: boolean
           id?: string
@@ -23208,13 +22877,6 @@ export type Database = {
             foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
-          {
-            foreignKeyName: "weekly_balance_audit_log_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
@@ -23314,13 +22976,6 @@ export type Database = {
           worked_min?: number
         }
         Relationships: [
-          {
-            foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
           {
             foreignKeyName: "weekly_balance_snapshot_employee_id_fkey"
             columns: ["employee_id"]
@@ -23589,25 +23244,35 @@ export type Database = {
         }
         Relationships: []
       }
-    }
-    Views: {
-      bank_hours_balance: {
+      workday_swaps: {
         Row: {
-          balance_100_min: number | null
-          balance_50_min: number | null
-          balance_min: number | null
-          department: string | null
-          employee_id: string | null
-          employee_name: string | null
-          initial_min: number | null
-          last_movement_date: string | null
-          movement_count: number | null
-          movements_min: number | null
-          role: string | null
-          timesheet_min: number | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          off_date: string | null
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          off_date?: string | null
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          off_date?: string | null
+          work_date?: string
         }
         Relationships: []
       }
+    }
+    Views: {
       product_stock_with_reservations: {
         Row: {
           active: boolean | null
@@ -23706,13 +23371,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "products_linked_last_id_fkey"
-            columns: ["linked_last_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "products_linked_last_id_fkey"
@@ -23988,31 +23646,6 @@ export type Database = {
         Update: {
           min_billing_date?: never
           sale_order_id?: string | null
-        }
-        Relationships: []
-      }
-      v_bank_hours_per_sector: {
-        Row: {
-          department: string | null
-          employee_count: number | null
-          employees_in_credit: number | null
-          employees_in_debit: number | null
-          total_balance_min: number | null
-          total_credit_min: number | null
-          total_debit_min: number | null
-        }
-        Relationships: []
-      }
-      v_bank_hours_summary: {
-        Row: {
-          employees_balanced: number | null
-          employees_with_credit: number | null
-          employees_with_debit: number | null
-          sector_count: number | null
-          total_balance_min: number | null
-          total_credit_min: number | null
-          total_debit_min: number | null
-          total_employees: number | null
         }
         Relationships: []
       }
@@ -24981,13 +24614,6 @@ export type Database = {
             foreignKeyName: "lot_tracking_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "lot_tracking_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -25075,6 +24701,7 @@ export type Database = {
           conversion_rate: number | null
           conversion_warning: string | null
           earliest_deadline: string | null
+          is_packaging: boolean | null
           lead_time_days: number | null
           min_order_quantity: number | null
           min_stock: number | null
@@ -25094,22 +24721,7 @@ export type Database = {
           unit: string | null
           unit_price: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "products_preferred_supplier_id_fkey"
-            columns: ["preferred_supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "products_preferred_supplier_id_fkey"
-            columns: ["preferred_supplier_id"]
-            isOneToOne: false
-            referencedRelation: "vw_supplier_quality_rating"
-            referencedColumns: ["supplier_id"]
-          },
-        ]
+        Relationships: []
       }
       v_ncm_coverage: {
         Row: {
@@ -25250,13 +24862,6 @@ export type Database = {
           stages_with_defects: number | null
         }
         Relationships: [
-          {
-            foreignKeyName: "order_stages_operator_employee_id_fkey"
-            columns: ["operator_employee_id"]
-            isOneToOne: false
-            referencedRelation: "bank_hours_balance"
-            referencedColumns: ["employee_id"]
-          },
           {
             foreignKeyName: "order_stages_operator_employee_id_fkey"
             columns: ["operator_employee_id"]
@@ -25664,13 +25269,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "purchase_projection_timeline"
             referencedColumns: ["material_id"]
-          },
-          {
-            foreignKeyName: "invoice_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "invoice_items_product_id_fkey"
@@ -26459,13 +26057,6 @@ export type Database = {
             foreignKeyName: "invoice_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "v_mrp_needs"
-            referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "invoice_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "v_product_abc"
             referencedColumns: ["product_id"]
           },
@@ -27126,15 +26717,6 @@ export type Database = {
         }
         Returns: Json
       }
-      calculate_employee_bank_balance: {
-        Args: {
-          p_employee_id: string
-          p_from?: string
-          p_skip_missing?: boolean
-          p_to?: string
-        }
-        Returns: Json
-      }
       calculate_order_consumption: {
         Args: {
           p_color: string
@@ -27573,6 +27155,15 @@ export type Database = {
           total_required: number
         }[]
       }
+      fn_projected_packaging_demand: {
+        Args: never
+        Returns: {
+          box_type_id: string
+          boxes_required: number
+          earliest_deadline: string
+          orders_count: number
+        }[]
+      }
       force_delete_product: { Args: { p_product_id: string }; Returns: Json }
       force_sale_order_production: {
         Args: { p_sale_order_id: string }
@@ -27603,6 +27194,10 @@ export type Database = {
           pendentes: number
           preservadas: number
         }[]
+      }
+      generate_op_service_orders: {
+        Args: { p_lines: Json; p_sale_order_id: string }
+        Returns: Json
       }
       generate_purchase_orders_from_mrp: {
         Args: { p_product_ids?: string[] }
@@ -27681,6 +27276,19 @@ export type Database = {
       get_employee_expected_minutes: {
         Args: { p_employee_id: string; p_ref_date: string }
         Returns: number
+      }
+      get_group_stock_rollups: {
+        Args: never
+        Returns: {
+          available: number
+          below_min_count: number
+          group_id: string
+          item_count: number
+          reserved: number
+          stock_unit: string
+          stock_value: number
+          unit_count: number
+        }[]
       }
       get_in_production_stock: {
         Args: never
@@ -27799,6 +27407,26 @@ export type Database = {
           total_reorder_value: number
         }[]
       }
+      get_pv_outsourceable_lines: {
+        Args: { p_sale_order_id: string }
+        Returns: {
+          already_has_os: boolean
+          color: string
+          default_contractor_id: string
+          default_contractor_name: string
+          default_rate: number
+          existing_os_status: string
+          op_number: string
+          order_id: string
+          quantity: number
+          ref_code: string
+          ref_name: string
+          reference_id: string
+          sector: string
+          sector_label: string
+          sector_status: string
+        }[]
+      }
       get_pv_terceirizacao_lines: {
         Args: { p_sale_order_id: string }
         Returns: {
@@ -27866,6 +27494,10 @@ export type Database = {
           total_items: number
           total_pairs: number
         }[]
+      }
+      group_covers_color: {
+        Args: { p_color: string; p_group_name: string }
+        Returns: boolean
       }
       has_role: {
         Args: {
@@ -28019,21 +27651,6 @@ export type Database = {
         Returns: string
       }
       parse_iso_billing_week: { Args: { p_text: string }; Returns: string }
-      pay_bank_hours: {
-        Args: {
-          p_bank_account_id?: string
-          p_employee_id: string
-          p_hourly_rate: number
-          p_hours: number
-          p_notes?: string
-          p_payment_date?: string
-        }
-        Returns: Json
-      }
-      pay_bank_hours_balance: {
-        Args: { p_employee_id: string; p_notes?: string; p_pay_minutes: number }
-        Returns: Json
-      }
       pcp_freshness_report: {
         Args: never
         Returns: {
@@ -28256,18 +27873,6 @@ export type Database = {
           product_name: string
         }[]
       }
-      resolve_monthly_overtime: {
-        Args: {
-          p_bank_minutes: number
-          p_decision: string
-          p_employee_id: string
-          p_month: string
-          p_notes?: string
-          p_pay_minutes: number
-          p_total_minutes: number
-        }
-        Returns: string
-      }
       resolve_palmilha_color: {
         Args: { p_cabedal_color: string; p_sheet_id: string }
         Returns: string
@@ -28331,18 +27936,6 @@ export type Database = {
               product_name: string
             }[]
           }
-      resolve_weekly_overtime: {
-        Args: {
-          p_bank_minutes: number
-          p_decision: string
-          p_employee_id: string
-          p_notes?: string
-          p_pay_minutes: number
-          p_total_minutes: number
-          p_week_start: string
-        }
-        Returns: string
-      }
       restore_product_stocks_for_order: {
         Args: { p_order_id: string }
         Returns: undefined
@@ -28407,39 +28000,6 @@ export type Database = {
           status: string
         }[]
       }
-      snapshot_employee_week: {
-        Args: {
-          p_employee_id: string
-          p_lock?: boolean
-          p_reason?: string
-          p_week_start: string
-        }
-        Returns: {
-          apuracao_label: string | null
-          computed_at: string
-          days_absent: number
-          days_partial: number
-          days_worked: number
-          diff_min: number
-          employee_id: string
-          expected_min: number
-          he_100_min: number
-          he_50_min: number
-          id: string
-          locked_at: string | null
-          locked_by: string | null
-          locked_reason: string | null
-          week_end: string
-          week_start: string
-          worked_min: number
-        }
-        SetofOptions: {
-          from: "*"
-          to: "weekly_balance_snapshot"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
       soft_delete_sale_order: { Args: { p_id: string }; Returns: Json }
       split_order_into_lots: { Args: { p_order_id: string }; Returns: Json }
       split_wave_to_finishing: { Args: { p_wave_id: string }; Returns: number }
@@ -28458,6 +28018,15 @@ export type Database = {
         Returns: Json
       }
       start_wave: { Args: { p_wave_id: string }; Returns: undefined }
+      suggest_group_families: {
+        Args: never
+        Returns: {
+          member_group_ids: string[]
+          member_names: string[]
+          sector: string
+          suggested_family: string
+        }[]
+      }
       suggest_ncm_for_sheet: {
         Args: {
           p_exclude_id?: string
