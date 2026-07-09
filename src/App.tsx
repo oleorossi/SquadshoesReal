@@ -66,7 +66,6 @@ const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
 // importa como modos. ProducaoDashboard.tsx foi DELETADO (2026-07-02): era
 // duplicata do PCPDashboard (aba dashboard do hub) com fórmulas divergentes;
 // /producao redireciona pra /pcp?tab=dashboard.
-const BankHours = lazy(() => import("./pages/BankHours"));
 const EspelhoPontoPage = lazy(() => import("./pages/EspelhoPontoPage"));
 // FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -932,19 +931,19 @@ const router = createBrowserRouter([
         element: <RHHub />,
       },
       {
-        // Banco de Horas — visão completa (KPIs + funcionário + setor + drill-down)
-        path: "rh/banco-de-horas",
-        element: <BankHours />,
-      },
-      {
         // Espelho de Ponto Eletrônico — Portaria MTE 671/2021 art. 84
         path: "rh/espelho-ponto/:employeeId",
         element: <EspelhoPontoPage />,
       },
       {
-        // Alias legado
+        // Banco de Horas removido (reforma Gestão de Pessoas 2026-07-09): o modelo
+        // paga HE na folha, não acumula banco. Rotas antigas caem no hub /rh.
+        path: "rh/banco-de-horas",
+        element: <Navigate to="/rh" replace />,
+      },
+      {
         path: "rh/bank-hours",
-        element: <Navigate to="/rh/banco-de-horas" replace />,
+        element: <Navigate to="/rh" replace />,
       },
       {
         // Atalho direto: Folha de Pagamento (tab dentro de /rh)
