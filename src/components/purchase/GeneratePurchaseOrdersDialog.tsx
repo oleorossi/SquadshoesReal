@@ -13,6 +13,7 @@ import {
   Package,
   ShoppingCart,
   FileText,
+  Files,
 } from '@phosphor-icons/react';
 import { formatCurrency } from '@/lib/utils';
 import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePerPvPurchasing';
@@ -23,6 +24,7 @@ import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 import { normalizeUnit } from '@/lib/unitConversion';
 import { buildPerPvPurchaseOrders, summarizePerPvDrafts, NO_SUPPLIER_LABEL } from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
+import { printPerPvOcPdf } from '@/lib/printPerPvOcPdf';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -133,6 +135,18 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
   };
 
+  // Imprimir OC: baixa 1 PDF por fornecedor (7 fornecedores → 7 arquivos), pra
+  // enviar a ordem individual a cada um. Inclui o grupo "Sem Fornecedor".
+  const handlePrintOcs = () => {
+    const n = printPerPvOcPdf({ drafts, pvNumbers: pvNumbers || [] });
+    if (n > 0) {
+      toast.success(`Baixando ${n} PDF${n === 1 ? '' : 's'} de OC — 1 por fornecedor.`);
+      toast.info('Se o navegador pedir, permita "baixar vários arquivos".', { duration: 6000 });
+    } else {
+      toast.error('Nada pra imprimir.');
+    }
+  };
+
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -174,6 +188,28 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
 
         {!isLoading && !isError && drafts.length > 0 && (
           <div className="space-y-4">
+            {/* Resumo (KPIs) — total, OCs, itens e o que precisa de atenção */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-lg border border-border bg-border overflow-hidden">
+              <div className="bg-card p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total estimado</p>
+                <p className="text-xl font-bold tabular-nums leading-tight text-primary">{formatCurrency(summary.total)}</p>
+              </div>
+              <div className="bg-card p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ordens de compra</p>
+                <p className="text-xl font-bold tabular-nums leading-tight">{summary.orderCount}</p>
+              </div>
+              <div className="bg-card p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Itens</p>
+                <p className="text-xl font-bold tabular-nums leading-tight">{summary.itemCount}</p>
+              </div>
+              <div className="bg-card p-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Precisam atenção</p>
+                <p className={`text-xl font-bold tabular-nums leading-tight ${(summary.noSupplierItemCount + summary.colorMismatchCount) > 0 ? 'text-amber-600 dark:text-amber-500' : ''}`}>
+                  {summary.noSupplierItemCount + summary.colorMismatchCount}
+                </p>
+              </div>
+            </div>
+
             {/* Opção de netar estoque */}
             <div className="flex items-center gap-2">
               <Checkbox id="net-of-stock" checked={netOfStock} onCheckedChange={(v) => setNetOfStock(!!v)} />
@@ -348,6 +384,12 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generate.isPending}>
               Cancelar
             </Button>
+            {drafts.length > 0 && (
+              <Button variant="outline" onClick={handlePrintOcs} disabled={generate.isPending} className="gap-2"
+                title="Baixa 1 PDF por fornecedor pra enviar a ordem individual a cada um">
+                <Files className="h-4 w-4" /> Imprimir OC
+              </Button>
+            )}
             <Button
               onClick={handleGenerate}
               disabled={generate.isPending || drafts.length === 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch)}
