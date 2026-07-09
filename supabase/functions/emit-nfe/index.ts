@@ -7,7 +7,7 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
+const CLICKNOTAS_BASE = "https://api.clicknotas.com";
 
 // Marca default — usada quando o PV não tem brand cadastrada explícita.
 // Era hardcoded até 15/05/2026; agora é override-able via sale_orders.brand.
@@ -30,7 +30,7 @@ function gcHeaders() {
 }
 
 async function gcFetch(path: string, init: RequestInit = {}) {
-  const res = await fetch(`${GESTAOCLICK_BASE}${path}`, {
+  const res = await fetch(`${CLICKNOTAS_BASE}${path}`, {
     ...init,
     headers: { ...gcHeaders(), ...(init.headers || {}) },
     signal: AbortSignal.timeout(30_000),
@@ -41,7 +41,7 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
-// Busca o MAIOR número de NF-e já emitido no GestaoClick (por série) pra a
+// Busca o MAIOR número de NF-e já emitido no ClickNotas (por série) pra a
 // próxima sair como (maior + 1). Pedido do dono 2026-06-20: a NF deve seguir a
 // sequência REAL do GC — inclui notas emitidas manualmente no portal que o nosso
 // banco pode não ter (o sync-nfe-from-provider está com 401) — e não um "próximo
@@ -103,7 +103,7 @@ function splitAddress(addr: string | null | undefined, manualComplemento?: strin
   return { logradouro, complemento };
 }
 
-// Cache do id da loja no GestaoClick. A doc da API marca `loja_id` como
+// Cache do id da loja no ClickNotas. A doc da API marca `loja_id` como
 // obrigatório no POST /notas_fiscais_produtos. Quando ausente, o GC usa
 // "matriz ou loja que o usuário tem permissão" — funciona, mas explícito
 // é mais seguro (e cumpre o contrato da doc). Cache em memória do isolate
@@ -134,7 +134,7 @@ async function resolveGcLojaId(preferredLojaId?: string | null): Promise<string 
   }
 }
 
-// Cache do id da transportadora "própria" (Squad Shoes) no GestaoClick.
+// Cache do id da transportadora "própria" (Squad Shoes) no ClickNotas.
 // modFrete=3 (transporte próprio do remetente) exige que a NF aponte pra uma
 // transportadora cadastrada — mas o painel GC não puxa automaticamente do
 // emitente. A doc da API de /notas_fiscais_produtos não documenta bloco
@@ -210,7 +210,7 @@ async function resolveGcTransportadoraEmitenteId(fiscal: any): Promise<string | 
   }
 }
 
-// Mapeia situacao_nf do GestaoClick → status canônico interno. Mesma lógica
+// Mapeia situacao_nf do ClickNotas → status canônico interno. Mesma lógica
 // de nfe-status / sync-nfe-from-provider (evita drift entre os caminhos).
 // Cobre múltiplas situações que a SEFAZ pode retornar.
 function mapSituacao(situacao: string): string {
@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "sale_order_id é obrigatório" }), { status: 400, headers: corsHeaders });
     }
     // dry_run=true: roda TODAS as validações + computa peso/volumes/pagamento +
-    // monta payload, mas NÃO faz POST/PUT no GestaoClick e NÃO insere em
+    // monta payload, mas NÃO faz POST/PUT no ClickNotas e NÃO insere em
     // nfe_emitidas. Retorna { dry_run:true, payload, preview, warnings }
     // pra EmitDialog renderizar a tela de conferência (passo 2 do wizard).
     // Side-effects pulados: POST /clientes, PUT /clientes/:id, POST /produtos,
@@ -370,7 +370,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         error: `Limite de retentativas atingido: ${totalNfes} NF-es já criadas pra este pedido. ` +
                `Provável problema persistente no cadastro do cliente. ` +
-               `Verifique o histórico de NF-es, cancele as antigas no painel GestaoClick e corrija o erro antes de re-emitir.`,
+               `Verifique o histórico de NF-es, cancele as antigas no painel ClickNotas e corrija o erro antes de re-emitir.`,
         nfe_count: totalNfes,
       }), { status: 429, headers: corsHeaders });
     }
@@ -445,7 +445,7 @@ Deno.serve(async (req) => {
     //    senão o sistema não tem como saber e a NF pode sair com indicador
     //    errado (Rejeição 696).
     // Campo vazio é AMBÍGUO — bloqueamos aqui, antes de qualquer chamada ao
-    // GestaoClick/SEFAZ, pra forçar o cadastro correto do cliente.
+    // ClickNotas/SEFAZ, pra forçar o cadastro correto do cliente.
     const ieDestRaw = (client.inscricao_estadual || "").trim().toUpperCase();
     const ieDestDigits = ieDestRaw.replace(/\D/g, "");
     // Auditoria 16/05/2026: novo campo `clients.icms_contribuinte` (boolean
@@ -532,7 +532,7 @@ Deno.serve(async (req) => {
     const valorFrete = Number(order.valor_frete) || 0;
     const nfTotal = sumItems;
 
-    // CFOP por código (GestaoClick aceita `codigo_cfop` diretamente).
+    // CFOP por código (ClickNotas aceita `codigo_cfop` diretamente).
     // Auditoria A14: valida formato do CFOP configurado. Se preenchido mas
     // não tem 4 dígitos começando em 5 ou 6, bloqueia emissão — sem isso
     // SEFAZ rejeita com mensagem confusa.
@@ -562,11 +562,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Configuração fiscal incompleta: CNPJ, Inscrição Estadual e CEP do emitente são obrigatórios." }), { status: 400, headers: corsHeaders });
     }
 
-    // ---------- Sync lazy: cliente no GestaoClick ----------
-    // O GestaoClick NÃO aceita cidade por nome — exige `cidade_id` (id interno
+    // ---------- Sync lazy: cliente no ClickNotas ----------
+    // O ClickNotas NÃO aceita cidade por nome — exige `cidade_id` (id interno
     // da tabela de cidades deles). E o endereço vai aninhado: enderecos[].endereco.
     // Histórico do bug "É necessário informar a cidade do destinatário":
-    //  v17-v19: mandavam `cidade_nome` num endereço flat → GestaoClick ignorava
+    //  v17-v19: mandavam `cidade_nome` num endereço flat → ClickNotas ignorava
     //           o campo e gravava cidade_id="" → NF-e rejeitada.
     //  v20: resolve o cidade_id via GET /cidades?codigo=<IBGE> usando o
     //       codigo_municipio do cliente, e manda o endereço no formato
@@ -579,7 +579,7 @@ Deno.serve(async (req) => {
       const isPj = cnpjDestRaw.length === 14;
       const ibge = (client.codigo_municipio || "").replace(/\D/g, "");
 
-      // Resolve o id interno da cidade no GestaoClick (por código IBGE, fallback nome)
+      // Resolve o id interno da cidade no ClickNotas (por código IBGE, fallback nome)
       let gcCidadeId = "";
       try {
         let cidResp = ibge ? await gcFetch(`/cidades?codigo=${ibge}`) : { ok: false, json: null };
@@ -597,7 +597,7 @@ Deno.serve(async (req) => {
       }
       if (!gcCidadeId) {
         return new Response(JSON.stringify({
-          error: `Não foi possível resolver a cidade "${client.cidade}" (cód. IBGE ${ibge || "—"}) no GestaoClick. ` +
+          error: `Não foi possível resolver a cidade "${client.cidade}" (cód. IBGE ${ibge || "—"}) no ClickNotas. ` +
                  `Verifique o cadastro do cliente: cidade e Cód. Município (IBGE) precisam estar corretos.`,
         }), { status: 400, headers: corsHeaders });
       }
@@ -605,7 +605,7 @@ Deno.serve(async (req) => {
       const buildPayload = () => ({
         tipo_pessoa: isPj ? "PJ" : "PF",
         nome: order.client_name || client?.razao_social || client?.nome,
-        // tipo_contribuinte do GestaoClick: 1=contribuinte de ICMS,
+        // tipo_contribuinte do ClickNotas: 1=contribuinte de ICMS,
         // 2=isento de IE. O caso "sem IE e sem ISENTO" já foi bloqueado na
         // pré-validação acima, então aqui só chega contribuinte ou isento.
         tipo_contribuinte: isContribuinte ? "1" : "2",
@@ -614,7 +614,7 @@ Deno.serve(async (req) => {
           : { cpf: cnpjDestRaw }),
         ...(client.telefone ? { telefone: client.telefone } : {}),
         ...(client.email ? { email: client.email } : {}),
-        // Formato GestaoClick: array de objetos { endereco: {...} }, cidade por id.
+        // Formato ClickNotas: array de objetos { endereco: {...} }, cidade por id.
         // splitAddress separa "Rua X, PARTE GALPAO" em logradouro+complemento
         // pra não aparecer concatenado no DANFE (fix 19/05/2026 PV-00116).
         enderecos: (() => {
@@ -633,7 +633,7 @@ Deno.serve(async (req) => {
         })(),
       });
 
-      // cidade_id preenchido no endereço retornado pelo GestaoClick?
+      // cidade_id preenchido no endereço retornado pelo ClickNotas?
       const hasCidade = (gcData: any): boolean => {
         const wrap = Array.isArray(gcData?.enderecos) ? gcData.enderecos[0] : null;
         const e = wrap?.endereco || wrap;
@@ -643,7 +643,7 @@ Deno.serve(async (req) => {
       const createFresh = async (): Promise<string> => {
         const r = await gcFetch("/clientes", { method: "POST", body: JSON.stringify(buildPayload()) });
         if (!r.ok || r.json?.status === "error") {
-          throw new Error(`Falha ao criar cliente no GestaoClick: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`);
+          throw new Error(`Falha ao criar cliente no ClickNotas: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`);
         }
         return String(r.json?.data?.id);
       };
@@ -659,7 +659,7 @@ Deno.serve(async (req) => {
             if (client?.id) await adminClient.from("clients").update({ gestaoclick_id: gcClientId }).eq("id", client.id);
           } else {
             // PUT atualiza o cliente (e endereço) in-place. Retry 1x antes de
-            // recriar — falha transitória do GestaoClick não deve duplicar
+            // recriar — falha transitória do ClickNotas não deve duplicar
             // cadastro de cliente. Só recriamos se a verificação seguinte
             // realmente acusar cidade_id vazia.
             let putOk = false;
@@ -684,13 +684,13 @@ Deno.serve(async (req) => {
           }
         } catch (e) {
           return new Response(JSON.stringify({
-            error: e instanceof Error ? e.message : `Falha ao sincronizar cliente com GestaoClick: ${String(e)}`,
+            error: e instanceof Error ? e.message : `Falha ao sincronizar cliente com ClickNotas: ${String(e)}`,
           }), { status: 502, headers: corsHeaders });
         }
       }
     }
 
-    // ---------- Sync lazy: produtos no GestaoClick + payload itens ----------
+    // ---------- Sync lazy: produtos no ClickNotas + payload itens ----------
     // Marca: vem do PV (sale_orders.brand). Default 'SquadShoes' (mesma default
     // do DB). Vai pro xMarca do XML SEFAZ — pedido pode override quando emite
     // pra cliente OEM/private label.
@@ -745,7 +745,7 @@ Deno.serve(async (req) => {
       const desc = (variant?.description_override || (it.color ? `${baseName} - ${it.color}` : baseName)).trim();
       // Código do produto na NF (cProd no XML / "CÓDIGO PRODUTO" no DANFE) = o
       // SKU/Código da ficha (technical_sheets.code). Pedido do dono 2026-06-20:
-      // a NF deve mostrar o NOSSO código, não o codigo_interno auto do GestaoClick
+      // a NF deve mostrar o NOSSO código, não o codigo_interno auto do ClickNotas
       // (ex.: 903927). Variante pode sobrescrever (variant.sku); NF avulsa usa o
       // products.sku/code. Mandamos tanto na linha quanto no cadastro do produto.
       const codigoNf = (variant?.sku || ts?.code || (prod as any)?.sku || (prod as any)?.code || "").toString().trim();
@@ -758,10 +758,10 @@ Deno.serve(async (req) => {
       // Marca deste item: silk do solado (cascata) ou 'Squad Shoes'.
       const itemBrand = await resolveItemBrand(it.reference_id, it.color);
 
-      // Resolução do produto no GestaoClick — POR NOME.
+      // Resolução do produto no ClickNotas — POR NOME.
       // BUG CRÍTICO da cor (e do duplicado) corrigido aqui:
       //  - O `codigo` que mandamos no POST /produtos é IGNORADO pelo
-      //    GestaoClick (ele gera um codigo_interno próprio) → busca por
+      //    ClickNotas (ele gera um codigo_interno próprio) → busca por
       //    código nunca acha nada.
       //  - POST /produtos com nome JÁ EXISTENTE → erro 404 "URL do produto
       //    já está sendo utilizada".
@@ -787,7 +787,7 @@ Deno.serve(async (req) => {
           gcStatus = 'pending_create';
         } else {
           // Cadastro enriquecido (20/05/2026 — pedido user): leva todos os
-          // dados úteis da ficha técnica + variante pro GestaoClick. Antes
+          // dados úteis da ficha técnica + variante pro ClickNotas. Antes
           // só ia nome+preco+unidade+ncm+marca → produto novo nascia
           // "pelado" e a contabilidade tinha que editar depois.
           //
@@ -832,7 +832,7 @@ Deno.serve(async (req) => {
           });
           if (!r.ok || r.json?.status === "error") {
             return new Response(JSON.stringify({
-              error: `Falha ao sincronizar produto "${nomeProduto}" com GestaoClick: ${r.json?.data?.mensagem || r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
+              error: `Falha ao sincronizar produto "${nomeProduto}" com ClickNotas: ${r.json?.data?.mensagem || r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
             }), { status: 502, headers: corsHeaders });
           }
           gcProductId = String(r.json?.data?.id);
@@ -847,11 +847,11 @@ Deno.serve(async (req) => {
       produtosGC.push({
         produto_id: gcProductId,
         // Código do produto na linha da NF = nosso SKU/Código (ficha.code). Alguns
-        // endpoints do GestaoClick herdam o código do produto cadastrado; mandar na
+        // endpoints do ClickNotas herdam o código do produto cadastrado; mandar na
         // linha tb cobre o caso de a NF aceitar override por item.
         ...(codigoNf ? { codigo: codigoNf } : {}),
         quantidade: qty.toFixed(2),
-        // valor_venda é o preço UNITÁRIO — o GestaoClick multiplica por
+        // valor_venda é o preço UNITÁRIO — o ClickNotas multiplica por
         // quantidade internamente. Antes mandávamos (qtd × preço) e o
         // total saía qtd² × preço (ex: R$ 8.3M em vez de R$ 25k).
         valor_venda: price.toFixed(2),
@@ -1080,7 +1080,7 @@ Deno.serve(async (req) => {
     // `payment_condition` do PV: ela pode ser "60", "30/60/90", "à vista"…
     // — extraímos os prazos em dias; cada um vira uma parcela com
     // vencimento = data de emissão + prazo. forma_pagamento_id 6519268 =
-    // "Boleto Bancário" (tipo BB) no GestaoClick — padrão da Squad Shoes.
+    // "Boleto Bancário" (tipo BB) no ClickNotas — padrão da Squad Shoes.
     const FORMA_PAGAMENTO_BOLETO = "6519268";
     const buildPagamento = (): any[] => {
       const cond = String(order.payment_condition || "").trim();
@@ -1113,23 +1113,23 @@ Deno.serve(async (req) => {
     };
     const pagamentoArr = buildPagamento();
 
-    // ---------- Cria a NF-e no GestaoClick (rascunho) ----------
+    // ---------- Cria a NF-e no ClickNotas (rascunho) ----------
     // Natureza de operação: usa fiscal.natureza_operacao (cadastro de
     // companies) — antes era hardcode "Operação não presencial, outros"
     // mas a NF modelo #248 (revisada pela contabilidade em 19/05/2026)
     // saiu com "Venda de Produção do Estabelecimento". Empresa atualizou
     // o cadastro pra refletir isso (companies.natureza_operacao). Sem
     // fallback, usa o nome do XML padrão SEFAZ.
-    // O painel GestaoClick é a fonte da verdade pra consumidor_final /
+    // O painel ClickNotas é a fonte da verdade pra consumidor_final /
     // indicador_destinatario / CFOP e para a tributação (IPI/PIS/COFINS/CSOSN)
     // — campos do payload da API são ignorados. Os CSTs (IPI 99/enq.999,
     // PIS 49, COFINS 49) e o CSOSN saem do cadastro da natureza no painel
-    // GestaoClick (a API não tem endpoint de tributação).
+    // ClickNotas (a API não tem endpoint de tributação).
     const naturezaEsperada = (fiscal.natureza_operacao || "").trim()
       || "Venda de Produção do Estabelecimento";
 
     // ---------- Bloco `transporte` (peso bruto / líquido / volumes) ----------
-    // GestaoClick ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
+    // ClickNotas ignora `peso_bruto` / `peso_liquido` / `quantidade_volumes`
     // se mandados no top-level — a doc deles exige dentro de
     // `transporte.volumes[]`. Mandávamos no topo até NF #244 e o XML saía com
     // <pesoB>/<pesoL> vazios. especie: "Volumes" — XML SEFAZ alvo confirmado
@@ -1165,12 +1165,12 @@ Deno.serve(async (req) => {
     if (fiscal.cidade) transportadorBlock.cidade = fiscal.cidade;
     if (fiscal.uf) transportadorBlock.estado = fiscal.uf;
 
-    // Resolve loja_id do GestaoClick — obrigatório segundo a doc da API.
+    // Resolve loja_id do ClickNotas — obrigatório segundo a doc da API.
     // Usa a loja mapeada na empresa (companies.gestaoclick_loja_id) quando houver
     // — essencial pra NF sair sob o 2º CNPJ; senão cai na matriz.
     const gcLojaId = await resolveGcLojaId(fiscal?.gestaoclick_loja_id);
 
-    // Resolve (cria se preciso) transportadora "Squad Shoes" no GestaoClick.
+    // Resolve (cria se preciso) transportadora "Squad Shoes" no ClickNotas.
     const gcTransportadoraId = await resolveGcTransportadoraEmitenteId(fiscal);
 
     // Estrutura reformulada 20/05/2026 — NF #248 saiu com modFrete=0 e volumes
@@ -1221,7 +1221,7 @@ Deno.serve(async (req) => {
 
     // ---------- Próximo número da NF = (maior número da série no GC) + 1 -------
     // Em vez de deixar o GC auto-atribuir (que pode estar desconfigurado e gerar
-    // número errado/duplicado), buscamos o ÚLTIMO número emitido no GestaoClick e
+    // número errado/duplicado), buscamos o ÚLTIMO número emitido no ClickNotas e
     // mandamos o próximo. Best-effort: se a busca falhar, não mandamos `numero` e
     // o GC auto-atribui (comportamento atual). O número real volta no detalhe.
     const serieAtual = String(fiscal.serie_nfe || "1");
@@ -1231,9 +1231,9 @@ Deno.serve(async (req) => {
       const maxGc = await gcMaxNfNumber(serieAtual);
       if (maxGc && maxGc > 0) {
         numeroProximo = String(maxGc + 1);
-        numeroWarning = `NF será emitida como nº ${numeroProximo} (próximo após o último nº ${maxGc} da série ${serieAtual} no GestaoClick).`;
+        numeroWarning = `NF será emitida como nº ${numeroProximo} (próximo após o último nº ${maxGc} da série ${serieAtual} no ClickNotas).`;
       } else {
-        numeroWarning = `Não foi possível ler o último número no GestaoClick — o número será atribuído automaticamente pelo provedor.`;
+        numeroWarning = `Não foi possível ler o último número no ClickNotas — o número será atribuído automaticamente pelo provedor.`;
       }
       console.log(`[emit-nfe] número: maxGc(série ${serieAtual})=${maxGc ?? '∅'} → numero=${numeroProximo ?? 'auto (GC)'}`);
     } catch (e) {
@@ -1243,7 +1243,7 @@ Deno.serve(async (req) => {
     const nfePayload = {
       // tipo_nf como INT (doc especifica int; antes mandávamos string "1").
       tipo_nf: 1,
-      // envio_automatico=1 (ClickNotas/GestaoClick): o próprio cadastro JÁ
+      // envio_automatico=1 (ClickNotas/ClickNotas): o próprio cadastro JÁ
       // dispara a transmissão pra SEFAZ, pelo MÉTODO de cadastro — que este
       // token TEM permissão de chamar. Antes dependíamos do método separado
       // POST /notas_fiscais_produtos/emitir/{id}, que retorna 403 "este
@@ -1263,11 +1263,11 @@ Deno.serve(async (req) => {
       ...(numeroProximo ? { numero: numeroProximo } : {}),
       finalidade_nf: "1",
       // tipo_emissao=1 ("Normal") — pedido em 16/05/2026. Antes não era
-      // enviado; GestaoClick assumia default mas explícito blinda contra
+      // enviado; ClickNotas assumia default mas explícito blinda contra
       // mudança de default deles.
       tipo_emissao: "1",
       // tipo_atendimento=9 ("Operação não presencial, outros") — pedido em
-      // 16/05/2026 pela Squad Shoes. Nome correto do campo no GestaoClick
+      // 16/05/2026 pela Squad Shoes. Nome correto do campo no ClickNotas
       // é `tipo_atendimento` (confirmado em emit-nfe-devolucao que funciona).
       // V1 desta mudança usou `indicador_presenca` (nome do XML SEFAZ) e o
       // GC ignorou silenciosamente — XML saía com indPres=0 (não aplicável).
@@ -1316,13 +1316,13 @@ Deno.serve(async (req) => {
       if (packagingModeWarning) previewWarnings.push(packagingModeWarning);
       if (!gcClientId) {
         previewWarnings.push(
-          `Cliente ainda não está cadastrado no GestaoClick — será criado automaticamente na emissão.`,
+          `Cliente ainda não está cadastrado no ClickNotas — será criado automaticamente na emissão.`,
         );
       }
       const pendingProducts = produtosPreview.filter((p) => p.gc_status === 'pending_create');
       if (pendingProducts.length > 0) {
         previewWarnings.push(
-          `${pendingProducts.length} produto(s) serão cadastrados no GestaoClick na emissão: ${pendingProducts.map((p) => p.descricao).join('; ')}`,
+          `${pendingProducts.length} produto(s) serão cadastrados no ClickNotas na emissão: ${pendingProducts.map((p) => p.descricao).join('; ')}`,
         );
       }
       return new Response(JSON.stringify({
@@ -1477,7 +1477,7 @@ Deno.serve(async (req) => {
         status: "rejeitada",
         valor_total: nfTotal,
         motivo_rejeicao: isTimeout
-          ? `Timeout no GestaoClick (>30s). NF pode ter sido criada lá — confira no painel pelo número de PV antes de re-emitir (evita NF duplicada). Detalhe: ${errMsg}`
+          ? `Timeout no ClickNotas (>30s). NF pode ter sido criada lá — confira no painel pelo número de PV antes de re-emitir (evita NF duplicada). Detalhe: ${errMsg}`
           : `Erro de rede: ${errMsg}`,
         cnpj_emitente: fiscal.cnpj.replace(/\D/g, ""),
         nome_destinatario: order.client_name || client?.razao_social || client?.nome || null,
@@ -1488,7 +1488,7 @@ Deno.serve(async (req) => {
       await adminClient.from("nfe_emitidas").update(nfeRecord).eq("id", claimId);
       return new Response(JSON.stringify({
         error: isTimeout
-          ? "Timeout ao falar com GestaoClick. ATENÇÃO: A NF pode ter sido criada no painel deles. Confira antes de re-emitir pra evitar duplicata fiscal. Em caso de duplicata, cancele a antiga no painel ou use Sincronizar com GestaoClick."
+          ? "Timeout ao falar com ClickNotas. ATENÇÃO: A NF pode ter sido criada no painel deles. Confira antes de re-emitir pra evitar duplicata fiscal. Em caso de duplicata, cancele a antiga no painel ou use Sincronizar com ClickNotas."
           : `Falha de rede ao emitir: ${errMsg}`,
         reconciliation_needed: isTimeout,
       }), { status: 502, headers: corsHeaders });
@@ -1510,7 +1510,7 @@ Deno.serve(async (req) => {
       if (resolvedCompanyId) nfeRecord.company_id = resolvedCompanyId;
       // UPDATE do claim (não insert) — a linha 'processando' já existe.
       await adminClient.from("nfe_emitidas").update(nfeRecord).eq("id", claimId);
-      return new Response(JSON.stringify({ error: `Falha ao cadastrar NF-e no GestaoClick: ${msg}` }), { status: 422, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: `Falha ao cadastrar NF-e no ClickNotas: ${msg}` }), { status: 422, headers: corsHeaders });
     }
     const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
 
@@ -1668,7 +1668,7 @@ Deno.serve(async (req) => {
       const code = (nfeErr as any)?.code;
       if (code === "23505") {
         return new Response(JSON.stringify({
-          error: `Outra NF-e foi criada simultaneamente para este pedido. Verifique o painel GestaoClick (NF id ${gcNfeId}) e cancele a duplicata se necessário.`,
+          error: `Outra NF-e foi criada simultaneamente para este pedido. Verifique o painel ClickNotas (NF id ${gcNfeId}) e cancele a duplicata se necessário.`,
           provider_nfe_id: gcNfeId,
           conflict: true,
         }), { status: 409, headers: corsHeaders });

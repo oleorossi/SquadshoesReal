@@ -54,7 +54,7 @@ export default function FiscalConfigPanel() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            O certificado digital A1 é configurado no painel GestaoClick (ClickNotas) —
+            O certificado digital A1 é configurado no painel ClickNotas —
             não é gerenciado por aqui.
           </p>
         </CardContent>

@@ -63,13 +63,13 @@ export default function NfeDiagnosticPanel() {
             : 'Homologação — NF-es são apenas teste, sem valor fiscal',
         });
 
-        // 3. Certificado A1 — gerenciado no painel GestaoClick (ClickNotas).
+        // 3. Certificado A1 — gerenciado no painel ClickNotas.
         // Não validamos aqui: o provedor responde se o cert estiver
         // ausente/expirado no momento da emissão.
         items.push({
           key: 'cert', label: 'Certificado digital A1',
           severity: 'ok',
-          description: 'Gerenciado no painel GestaoClick (ClickNotas)',
+          description: 'Gerenciado no painel ClickNotas',
           detail: 'Configure em Configurações → Certificado Digital no painel do provedor.',
         });
 
@@ -119,12 +119,12 @@ export default function NfeDiagnosticPanel() {
           : `${nfeCount} NF-e(s) já processadas`,
       });
 
-      // 7. Provider de emissão — GestaoClick (ClickNotas)
+      // 7. Provider de emissão — ClickNotas
       items.push({
         key: 'provider',
-        label: 'Provider de emissão (GestaoClick)',
+        label: 'Provider de emissão (ClickNotas)',
         severity: 'ok',
-        description: 'Emissão via API GestaoClick (ClickNotas)',
+        description: 'Emissão via API ClickNotas',
         detail: 'Tokens CLICKNOTAS_ACCESS_TOKEN / CLICKNOTAS_SECRET_TOKEN configurados nas secrets do Supabase.',
       });
 
@@ -252,7 +252,7 @@ export default function NfeDiagnosticPanel() {
           <div className="text-xs">
             <p className="font-medium text-foreground">Provedor de NF-e</p>
             <p className="text-muted-foreground mt-0.5">
-              Emissão integrada ao GestaoClick (ClickNotas). Certificado A1 e ambiente
+              Emissão integrada ao ClickNotas. Certificado A1 e ambiente
               (homologação/produção) são configurados no painel do provedor.
             </p>
           </div>

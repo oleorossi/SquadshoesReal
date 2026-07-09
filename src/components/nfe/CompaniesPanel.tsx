@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Star, Buildings as Building2 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
-// Certificado A1: desde a migração pra GestaoClick (mai/2026) é gerenciado
+// Certificado A1: desde a migração pra ClickNotas (mai/2026) é gerenciado
 // 100% no painel deles. O Squad Shoes só consome a API — sem upload de .pfx
 // nem status de certificado aqui (removido todo o legado Focus NFe).
 
@@ -73,18 +73,18 @@ function CompanyForm({ company, onClose }: { company?: Company; onClose: () => v
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              O certificado digital A1 é configurado no painel GestaoClick (ClickNotas) —
+              O certificado digital A1 é configurado no painel ClickNotas —
               não é gerenciado por aqui.
             </p>
             <div>
-              <Label>ID da Loja no GestaoClick (ClickNotas)</Label>
+              <Label>ID da Loja no ClickNotas</Label>
               <Input
                 value={form.gestaoclick_loja_id || ''}
                 onChange={e => set('gestaoclick_loja_id', e.target.value)}
                 placeholder="Vazio = loja matriz (padrão)"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Necessário quando este CNPJ é uma <strong>loja separada</strong> no GestaoClick —
+                Necessário quando este CNPJ é uma <strong>loja separada</strong> no ClickNotas —
                 garante que a NF-e seja emitida sob este CNPJ. Pegue o ID no painel do ClickNotas.
               </p>
             </div>

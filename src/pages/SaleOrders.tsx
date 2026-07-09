@@ -189,7 +189,7 @@ export default function SaleOrders() {
   const [viewNfeTarget, setViewNfeTarget] = useState<NfeEmitida | null>(null);
   // Preview de NF-e (dry_run) — atalho ao lado do botão "Emitir NF-e" no resumo do PV.
   // Abre dialog com payload completo (destinatário, itens, totais, peso, parcelas) antes
-  // de qualquer chamada destrutiva ao GestaoClick. Usuário confere e confirma emissão.
+  // de qualquer chamada destrutiva ao ClickNotas. Usuário confere e confirma emissão.
   const [previewNfeOrder, setPreviewNfeOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();

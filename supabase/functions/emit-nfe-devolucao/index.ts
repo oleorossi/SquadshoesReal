@@ -21,7 +21,7 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
+const CLICKNOTAS_BASE = "https://api.clicknotas.com";
 
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
@@ -37,7 +37,7 @@ function gcHeaders() {
 }
 
 async function gcFetch(path: string, init: RequestInit = {}) {
-  const res = await fetch(`${GESTAOCLICK_BASE}${path}`, {
+  const res = await fetch(`${CLICKNOTAS_BASE}${path}`, {
     ...init,
     headers: { ...gcHeaders(), ...(init.headers || {}) },
     signal: AbortSignal.timeout(30_000),
@@ -48,7 +48,7 @@ async function gcFetch(path: string, init: RequestInit = {}) {
   return { ok: res.ok, status: res.status, json };
 }
 
-// loja_id obrigatório segundo doc GestaoClick. Cache em memória do isolate.
+// loja_id obrigatório segundo doc ClickNotas. Cache em memória do isolate.
 let _gcLojaIdCache: string | null = null;
 async function resolveGcLojaId(): Promise<string | null> {
   if (_gcLojaIdCache) return _gcLojaIdCache;
@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Cliente do pedido não encontrado" }), { status: 404, headers: corsHeaders });
     }
     if (!client.gestaoclick_id) {
-      return new Response(JSON.stringify({ error: "Cliente sem id no GestaoClick — emita a NF original primeiro pra sincronizar." }), { status: 400, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Cliente sem id no ClickNotas — emita a NF original primeiro pra sincronizar." }), { status: 400, headers: corsHeaders });
     }
 
     const itemIds = itens.map(i => i.sale_order_item_id);
@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: corsHeaders });
     }
 
-    // 6) Sync produtos no GestaoClick (caso falte)
+    // 6) Sync produtos no ClickNotas (caso falte)
     for (const it of itensFinal) {
       if (it.ts_gc_id) continue;
       const desc = (it.variant_desc || (it.color ? `${it.ts_name} - ${it.color}` : it.ts_name)).trim();
@@ -287,14 +287,14 @@ Deno.serve(async (req) => {
       });
       if (!r.ok || r.json?.status === "error") {
         return new Response(JSON.stringify({
-          error: `Falha ao sincronizar produto ${it.ts_code} com GestaoClick: ${r.json?.message || JSON.stringify(r.json)}`,
+          error: `Falha ao sincronizar produto ${it.ts_code} com ClickNotas: ${r.json?.message || JSON.stringify(r.json)}`,
         }), { status: 502, headers: corsHeaders });
       }
       it.ts_gc_id = String(r.json?.data?.id);
       if (it.ts_id) await adminClient.from("technical_sheets").update({ gestaoclick_id: it.ts_gc_id }).eq("id", it.ts_id);
     }
 
-    // 7) Payload GestaoClick — NF de entrada por devolução
+    // 7) Payload ClickNotas — NF de entrada por devolução
     const cfopOriginal = String(fiscal.cfop || "5102");
     const cfopEntrada = cfopDevolucao(cfopOriginal);
     const valorTotal = Number(itensFinal.reduce((s, it) => s + it.valor_total, 0).toFixed(2));
@@ -364,7 +364,7 @@ Deno.serve(async (req) => {
     //   - Consumidor final: "0" = não
     //   - Tipo de atendimento (indicador_presenca): "9" = operação não presencial, outros
     // Sem isso o GC defaultava algumas pra valores diferentes do exigido pela contabilidade.
-    // loja_id (obrigatório na doc GestaoClick). Quando null, GC usa matriz.
+    // loja_id (obrigatório na doc ClickNotas). Quando null, GC usa matriz.
     const gcLojaId = await resolveGcLojaId();
 
     const nfePayload: any = {
@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
       produtos: itensFinal.map(it => ({
         produto_id: it.ts_gc_id,
         quantidade: it.qty.toFixed(2),
-        // valor_venda é o preço UNITÁRIO — o GestaoClick multiplica por
+        // valor_venda é o preço UNITÁRIO — o ClickNotas multiplica por
         // quantidade internamente. Mandar o total da linha aqui fazia o
         // valor sair qtd² × preço (mesmo bug já corrigido no emit-nfe).
         valor_venda: it.valor_unit.toFixed(2),

@@ -18,7 +18,7 @@ export interface NfeEmitida {
   chave_acesso: string | null;
   xml_url: string | null;
   danfe_url: string | null;
-  /** ID interno da NF no GestaoClick — usado pra montar URL do painel
+  /** ID interno da NF no ClickNotas — usado pra montar URL do painel
    *  quando precisamos abrir o DANFE/XML lá (a API REST do GC não devolve
    *  esses arquivos, só metadados). */
   provider_nfe_id: string | null;
@@ -32,7 +32,7 @@ export interface NfeEmitida {
   cnpj_destinatario: string | null;
   justificativa_cancelamento: string | null;
   data_cancelamento: string | null;
-  /** Resposta completa do detalhe GestaoClick (/notas_fiscais_produtos/{id}).
+  /** Resposta completa do detalhe ClickNotas (/notas_fiscais_produtos/{id}).
    *  Fonte de dados pro DANFE renderizado no app (produtos, impostos, endereços).
    *  Não vem na listagem por padrão — carregado sob demanda via useNfeDetail. */
   gc_detail_response?: any;
@@ -61,7 +61,7 @@ export interface Company {
   cfop: string;
   is_primary: boolean;
   active: boolean;
-  /** ID da loja correspondente no GestaoClick/ClickNotas. Garante que a NF-e
+  /** ID da loja correspondente no ClickNotas. Garante que a NF-e
    *  seja emitida sob o CNPJ desta empresa (sem isso a emit-nfe usa a matriz). */
   gestaoclick_loja_id?: string | null;
   created_at: string;
@@ -488,7 +488,7 @@ export interface NfePreviewResponse {
 /**
  * Roda emit-nfe com dry_run=true: valida tudo, computa peso/volumes/pagamento
  * e devolve o payload + preview formatado pro EmitDialog renderizar a tela
- * de conferência. Não emite nada no GestaoClick. Toast NÃO é disparado em
+ * de conferência. Não emite nada no ClickNotas. Toast NÃO é disparado em
  * sucesso (UI renderiza inline); erros caem em toast.error normalmente.
  */
 export function usePreviewNfe() {
@@ -564,7 +564,7 @@ export function useEmitNfe() {
       const numero = data?.nfe?.numero ? `NF #${data.nfe.numero}` : 'NF-e';
       if (data?.reconciliation_needed) {
         toast.warning(
-          `NF-e aceita pelo GestaoClick${data.provider_nfe_id ? ` (id ${data.provider_nfe_id})` : ''} mas falhou ao salvar no banco. Reconcilie manualmente no painel GestaoClick.`,
+          `NF-e aceita pelo ClickNotas${data.provider_nfe_id ? ` (id ${data.provider_nfe_id})` : ''} mas falhou ao salvar no banco. Reconcilie manualmente no painel ClickNotas.`,
           { duration: 12000 }
         );
       } else if (data?.ambiente_warning) {
@@ -629,7 +629,7 @@ export function useEmitNfe() {
 /**
  * URL do visualizador público de DANFE/XML — meudanfe.com.br aceita a
  * chave de acesso e exibe DANFE renderizado + botão de download de XML/PDF.
- * A API do GestaoClick não expõe esses arquivos, então abrimos o viewer público
+ * A API do ClickNotas não expõe esses arquivos, então abrimos o viewer público
  * em nova aba e o usuário baixa pelos botões de lá.
  */
 export function buildMeudanfeUrl(chaveAcesso: string): string {
@@ -639,7 +639,7 @@ export function buildMeudanfeUrl(chaveAcesso: string): string {
 
 /**
  * "Baixa" DANFE / XML — na prática abre meudanfe.com.br em nova aba pra que
- * o usuário clique em Baixar lá. A API do GestaoClick não fornece esses
+ * o usuário clique em Baixar lá. A API do ClickNotas não fornece esses
  * arquivos via endpoint próprio (probamos exaustivamente: 404 em todas as
  * variantes de path), então usamos o viewer público que opera direto sobre a
  * chave de acesso autorizada na SEFAZ.
@@ -704,7 +704,7 @@ export function useCheckNfeStatus() {
   });
 }
 
-// Importa NF-es emitidas direto no painel da GestaoClick pro nosso DB. Necessário
+// Importa NF-es emitidas direto no painel do ClickNotas pro nosso DB. Necessário
 // quando a NF foi gerada fora do nosso sistema (painel web do provedor) — sem
 // isso, ela não aparece na aba "NF-es Emitidas" e bloqueia CC-e por aqui.
 export function useSyncNfeFromProvider() {
@@ -846,7 +846,7 @@ export function useCancelNfe() {
         throw new Error('Justificativa deve ter no mínimo 15 caracteres.');
       }
       // Fetch direto (não .invoke): o cancel-nfe responde 422 quando a SEFAZ/
-      // GestaoClick RECUSA o cancelamento, com o motivo REAL em provider_response.
+      // ClickNotas RECUSA o cancelamento, com o motivo REAL em provider_response.
       // O .invoke() esconde isso atrás de "Edge Function returned a non-2xx
       // status code" (o corpo fica em error.context, que ele não lê). Aqui lemos
       // o corpo e mostramos a causa real. (Mesmo padrão de useEmitNfe.)

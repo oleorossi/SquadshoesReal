@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // X-Cron-Secret (validado no handler contra get_nfe_sync_cron_secret); chamadas de
 // usuário caem no fallback de JWT. Com verify_jwt=true (default) o GATEWAY derrubava
 // o cron com 401 ANTES da função rodar — o sync de NF ficou parado e o banco local
-// atrasado vs o GestaoClick. Não reabilitar verify_jwt sem mover a auth do cron.
+// atrasado vs o ClickNotas. Não reabilitar verify_jwt sem mover a auth do cron.
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
   "Vary": "Origin",
@@ -13,7 +13,7 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
+const CLICKNOTAS_BASE = "https://api.clicknotas.com";
 const MAX_PAGES = 20;
 
 function gcHeaders() {
@@ -29,12 +29,12 @@ function gcHeaders() {
 }
 
 async function gcFetch(path: string) {
-  const res = await fetch(`${GESTAOCLICK_BASE}${path}`, {
+  const res = await fetch(`${CLICKNOTAS_BASE}${path}`, {
     headers: gcHeaders(),
     signal: AbortSignal.timeout(30_000),
   });
   const text = await res.text();
-  if (text.length > 2_097_152) throw new Error("Resposta do GestaoClick excede o tamanho máximo.");
+  if (text.length > 2_097_152) throw new Error("Resposta do ClickNotas excede o tamanho máximo.");
   let json: any;
   try { json = JSON.parse(text); } catch { json = { mensagem: text }; }
   return { ok: res.ok, status: res.status, json };
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
       const r = await gcFetch(`/notas_fiscais_produtos?page=${page}`);
       if (!r.ok || r.json?.status === "error") {
         return new Response(JSON.stringify({
-          error: `GestaoClick retornou ${r.status}: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
+          error: `ClickNotas retornou ${r.status}: ${r.json?.message || r.json?.mensagem || JSON.stringify(r.json)}`,
         }), { status: 502, headers: corsHeaders });
       }
       const list: any[] = Array.isArray(r.json?.data)
@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
       const protocolo = d?.protocolo || "";
       const numero = d?.numero_nf ? String(d.numero_nf) : (d?.numero ? String(d.numero) : "");
       const serie = d?.serie ? String(d.serie) : "";
-      // GestaoClick devolve `valor_total_nf` no detalhe (string com 2 casas).
+      // ClickNotas devolve `valor_total_nf` no detalhe (string com 2 casas).
       // Fallback p/ valor_produtos / valor_total / valor caso o schema mude.
       const valor = Number(
         d?.valor_total_nf ?? d?.valor_produtos ?? d?.valor_total ?? d?.valor ?? 0,
@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
       const pvNum = extractPvNumber(info);
 
       // Destinatário: gravado direto na NF pra identificar quando não há PV vinculado.
-      // GestaoClick usa prefixo `destinatario_*` no detalhe da nota (verificado
+      // ClickNotas usa prefixo `destinatario_*` no detalhe da nota (verificado
       // via gc-diag em mai/2026): destinatario_nome, destinatario_cnpj,
       // destinatario_cpf, destinatario_fornecedor_nome (quando é fornecedor).
       // Fallback p/ `cliente.*` caso o shape mude em versões futuras da API.
@@ -242,7 +242,7 @@ Deno.serve(async (req) => {
       // A11 (auditoria): pular notas de ENTRADA/DEVOLUÇÃO ao gravar em nfe_emitidas
       // (que representa SAÍDA/faturamento). Sem isso, devolução/entrada entra como
       // +receita na apuração de impostos e duplica com nfe_devolucoes. Checa campos
-      // NF-e padrão (tpNF/finalidade/natureza) + candidatos do GestaoClick; em dúvida,
+      // NF-e padrão (tpNF/finalidade/natureza) + candidatos do ClickNotas; em dúvida,
       // mantém o comportamento atual (importa como saída).
       const _tipoNf = String(d?.tipo_nf ?? d?.tipo ?? d?.tipo_operacao ?? d?.tpNF ?? "").toLowerCase().trim();
       const _finalidade = String(d?.finalidade ?? d?.finalidade_nfe ?? d?.finNFe ?? "").toLowerCase().trim();
@@ -290,7 +290,7 @@ Deno.serve(async (req) => {
         company_id: companyId,
         nome_destinatario: nomeDest,
         cnpj_destinatario: cnpjDest,
-        // Mantém motivo de rejeição sincronizado com o GestaoClick — antes ficava
+        // Mantém motivo de rejeição sincronizado com o ClickNotas — antes ficava
         // dessincronizado quando situacao_nf vinha vazia (motivo só era setado
         // em emit-nfe local). Em status final (autorizada/cancelada) limpa.
         motivo_rejeicao: status === "rejeitada" ? (motivoRejGc || "Rejeitada pela SEFAZ") : "",

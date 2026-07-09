@@ -139,7 +139,7 @@ export function useAuthorizedNfes(enabled = true) {
     enabled,
     staleTime: 0,
     queryFn: async () => {
-      // Embed sale_orders removido — NF sincronizada do GestaoClick não tem
+      // Embed sale_orders removido — NF sincronizada do ClickNotas não tem
       // sale_order_id, e PostgREST estava falhando o embed em alguns casos.
       const { data, error } = await supabase
         .from('nfe_emitidas')

@@ -1,8 +1,8 @@
-// danfe.ts — normaliza os dados da NF-e (que o GestaoClick já devolve e nós
+// danfe.ts — normaliza os dados da NF-e (que o ClickNotas já devolve e nós
 // guardamos em nfe_emitidas.gc_detail_response) num modelo pronto pra renderizar
 // um DANFE dentro do sistema.
 //
-// Contexto: a API do GestaoClick NÃO expõe o PDF do DANFE nem o XML autorizado
+// Contexto: a API do ClickNotas NÃO expõe o PDF do DANFE nem o XML autorizado
 // via endpoint próprio (probado exaustivamente — ver supabase/functions/nfe-download).
 // O único "gancho" oficial é a chave de acesso (44 dígitos → meudanfe.com.br).
 // PORÉM o detalhe /notas_fiscais_produtos/{id} traz TODOS os campos necessários

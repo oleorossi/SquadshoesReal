@@ -80,7 +80,7 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
     setItems(initial);
     setStage('preview');
 
-    // Previews em PARALELO (dry_run não chama GestaoClick — só monta payload)
+    // Previews em PARALELO (dry_run não chama ClickNotas — só monta payload)
     Promise.all(saleOrders.map(async (so) => {
       const r = await callEmitNfe(so.id, true);
       return { id: so.id, r };
@@ -113,7 +113,7 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
     setItems(prev => prev.map(it => it.id === id ? { ...it, expanded: !it.expanded } : it));
   };
 
-  /** Emite em SEQUÊNCIA (não paralelo) pra não estourar rate-limit do GestaoClick. */
+  /** Emite em SEQUÊNCIA (não paralelo) pra não estourar rate-limit do ClickNotas. */
   const handleEmitAll = async () => {
     if (emitableIds.length === 0) return;
 
@@ -218,7 +218,7 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
                     <p className="text-xs text-red-600 mt-0.5">{it.errorMsg}</p>
                   )}
                   {it.status === 'emitted' && (
-                    <p className="text-xs text-emerald-600 mt-0.5">NF-e enviada ao GestaoClick com sucesso.</p>
+                    <p className="text-xs text-emerald-600 mt-0.5">NF-e enviada ao ClickNotas com sucesso.</p>
                   )}
                 </div>
 
@@ -267,7 +267,7 @@ export function BulkNfeDialog({ open, onOpenChange, saleOrders, mode }: Props) {
                 Emitir {emitableIds.length} NF-e{emitableIds.length === 1 ? '' : 's'} agora?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Cada NF será enviada pro GestaoClick em sequência (~3-5s cada). Não dá pra
+                Cada NF será enviada pro ClickNotas em sequência (~3-5s cada). Não dá pra
                 cancelar no meio — PVs com erro de preview são pulados.
               </AlertDialogDescription>
             </AlertDialogHeader>

@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
+const CLICKNOTAS_BASE = "https://api.clicknotas.com";
 
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
@@ -80,22 +80,22 @@ Deno.serve(async (req) => {
     }
     if (!nfe.provider_nfe_id) {
       return new Response(JSON.stringify({
-        error: "NF-e sem ID do provedor — sincronização indisponível. Verifique a NF no painel GestaoClick.",
+        error: "NF-e sem ID do provedor — sincronização indisponível. Verifique a NF no painel ClickNotas.",
       }), { status: 400, headers: corsHeaders });
     }
 
     const detailResp = await fetch(
-      `${GESTAOCLICK_BASE}/notas_fiscais_produtos/${nfe.provider_nfe_id}`,
+      `${CLICKNOTAS_BASE}/notas_fiscais_produtos/${nfe.provider_nfe_id}`,
       { headers: gcHeaders(), signal: AbortSignal.timeout(20_000) },
     );
     const detailText = await detailResp.text();
-    if (detailText.length > 524_288) throw new Error("Resposta do GestaoClick excede o tamanho máximo permitido.");
+    if (detailText.length > 524_288) throw new Error("Resposta do ClickNotas excede o tamanho máximo permitido.");
     let detailData: any;
     try { detailData = JSON.parse(detailText); } catch { detailData = { mensagem: detailText }; }
 
     if (!detailResp.ok || detailData?.status === "error") {
       return new Response(JSON.stringify({
-        error: `GestaoClick retornou ${detailResp.status}: ${detailData?.message || detailData?.mensagem || detailText}`,
+        error: `ClickNotas retornou ${detailResp.status}: ${detailData?.message || detailData?.mensagem || detailText}`,
       }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
     if (d.serie) updateData.serie = String(d.serie);
     if (d.protocolo) updateData.protocolo = d.protocolo;
 
-    // GestaoClick retorna URLs do DANFE/XML em campos variáveis — tenta os
+    // ClickNotas retorna URLs do DANFE/XML em campos variáveis — tenta os
     // nomes mais comuns. Antes ficavam vazios no DB e o user não tinha como
     // baixar PDF/XML pelo menu da NF (botões não apareciam).
     const danfeUrl = d.url_danfe || d.danfe_url || d.url_pdf || d.link_pdf || d.url_pdf_danfe || d.link_danfe || '';

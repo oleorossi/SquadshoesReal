@@ -54,7 +54,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
               <p className="text-xs text-muted-foreground">{[destinatario.telefone, destinatario.email].filter(Boolean).join(' · ')}</p>
             )}
             {!destinatario.gc_id && (
-              <p className="text-xs text-amber-600 mt-1">Cliente novo — será cadastrado no GestaoClick na emissão</p>
+              <p className="text-xs text-amber-600 mt-1">Cliente novo — será cadastrado no ClickNotas na emissão</p>
             )}
           </CardContent>
         </Card>
@@ -104,7 +104,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
                     <td className="px-2 py-1.5">
                       {p.descricao}
                       {p.gc_status === 'pending_create' && (
-                        <span className="ml-1 text-amber-600 text-xs" title="Será cadastrado no GestaoClick na emissão">(novo)</span>
+                        <span className="ml-1 text-amber-600 text-xs" title="Será cadastrado no ClickNotas na emissão">(novo)</span>
                       )}
                     </td>
                     <td className="px-2 py-1.5">{p.marca || '—'}</td>
@@ -186,7 +186,7 @@ export function NfePreviewPanel({ preview }: { preview: NfePreviewResponse['prev
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pagamento — {pagamento.length} {pagamento.length === 1 ? 'parcela' : 'parcelas'}</p>
             <div className="text-xs space-y-0.5">
               {pagamento.length === 0 ? (
-                <p className="text-muted-foreground">Sem parcelas configuradas — à vista no GestaoClick.</p>
+                <p className="text-muted-foreground">Sem parcelas configuradas — à vista no ClickNotas.</p>
               ) : (
                 pagamento.map((p, i) => (
                   <div key={i} className="flex justify-between gap-2">

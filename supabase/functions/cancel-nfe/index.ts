@@ -7,7 +7,7 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const GESTAOCLICK_BASE = "https://api.gestaoclick.com";
+const CLICKNOTAS_BASE = "https://api.clicknotas.com";
 
 function gcHeaders() {
   const access = Deno.env.get("CLICKNOTAS_ACCESS_TOKEN");
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     }
     if (!nfe.provider_nfe_id) {
       return new Response(JSON.stringify({
-        error: "NF-e sem ID do provedor — impossível cancelar via API. Use o painel do GestaoClick.",
+        error: "NF-e sem ID do provedor — impossível cancelar via API. Use o painel do ClickNotas.",
       }), { status: 400, headers: corsHeaders });
     }
 
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
 
     _providerCalled = true;
     const providerResp = await fetch(
-      `${GESTAOCLICK_BASE}/notas_fiscais_produtos/cancelar/${nfe.provider_nfe_id}`,
+      `${CLICKNOTAS_BASE}/notas_fiscais_produtos/cancelar/${nfe.provider_nfe_id}`,
       {
         method: "POST",
         headers: gcHeaders(),
@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
       },
     );
     const providerText = await providerResp.text();
-    if (providerText.length > 524_288) throw new Error("Resposta do GestaoClick excede o tamanho máximo permitido.");
+    if (providerText.length > 524_288) throw new Error("Resposta do ClickNotas excede o tamanho máximo permitido.");
     let providerData: any;
     try { providerData = JSON.parse(providerText); } catch { providerData = { mensagem: providerText }; }
 
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
     let cancellationProtocol: string | null = null;
     if (success) {
       try {
-        const detailResp = await fetch(`${GESTAOCLICK_BASE}/notas_fiscais_produtos/${nfe.provider_nfe_id}`, {
+        const detailResp = await fetch(`${CLICKNOTAS_BASE}/notas_fiscais_produtos/${nfe.provider_nfe_id}`, {
           headers: gcHeaders(),
           signal: AbortSignal.timeout(15_000),
         });

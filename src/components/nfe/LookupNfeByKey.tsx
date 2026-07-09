@@ -8,7 +8,7 @@ import { buildMeudanfeUrl } from '@/hooks/useNfe';
 import { toast } from 'sonner';
 
 /**
- * Lookup de NF-e pela chave de acesso (44 dígitos). Como a API do GestaoClick
+ * Lookup de NF-e pela chave de acesso (44 dígitos). Como a API do ClickNotas
  * não expõe DANFE/XML pra download direto (confirmado em /docs deles), o fluxo
  * é abrir o visualizador público meudanfe.com.br que aceita a chave e oferece
  * download oficial dos arquivos (XML SEFAZ + DANFE PDF).

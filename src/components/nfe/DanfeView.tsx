@@ -3,7 +3,7 @@ import { BarcodeSVG } from '@/components/ui/barcode-svg';
 import { type DanfeModel, brl, qtyFmt } from '@/lib/danfe';
 
 // DanfeView — representação visual do DANFE renderizada DENTRO do sistema, a
-// partir dos dados que o GestaoClick devolve (gc_detail_response). NÃO é o PDF
+// partir dos dados que o ClickNotas devolve (gc_detail_response). NÃO é o PDF
 // oficial da SEFAZ (esse só sai pela chave no meudanfe.com.br / painel GC), mas
 // é uma reprodução fiel pra conferência, visualização e impressão/PDF local.
 //

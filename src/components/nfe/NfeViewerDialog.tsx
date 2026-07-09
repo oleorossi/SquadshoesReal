@@ -48,7 +48,7 @@ function formatCnpj(cnpj: string | null) {
 /**
  * Visualizador de NF-e: mostra metadados (destinatário, chave, valor, status)
  * e oferece botões pra abrir DANFE + XML no viewer público meudanfe.com.br
- * usando a chave de acesso. A API do GestaoClick não expõe arquivos via
+ * usando a chave de acesso. A API do ClickNotas não expõe arquivos via
  * endpoint próprio, então o usuário baixa pelos botões da página aberta.
  */
 export function NfeViewerDialog({ nfe, open, onOpenChange, clientLabel, orderNumber }: Props) {

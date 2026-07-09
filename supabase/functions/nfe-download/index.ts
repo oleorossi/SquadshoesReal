@@ -1,6 +1,6 @@
 // nfe-download — DEPRECATED.
 //
-// A API do GestaoClick (CakePHP) NÃO expõe DANFE/XML pra download via endpoint
+// A API do ClickNotas (CakePHP) NÃO expõe DANFE/XML pra download via endpoint
 // próprio. Probamos exaustivamente: todas as variantes (/danfe, /xml, /pdf,
 // /imprimir, /download_arquivo_*, /visualizar/{id}/{fmt}, ?formato=) retornam
 // 404 "Action not found" ou 400 "ID inválido". A resposta de detalhe também
@@ -24,7 +24,7 @@ Deno.serve((req) => {
       error: "Endpoint descontinuado",
       detail:
         "Para baixar DANFE/XML use o viewer público https://www.meudanfe.com.br/consulta/<chave_acesso>. " +
-        "A API do GestaoClick não expõe esses arquivos.",
+        "A API do ClickNotas não expõe esses arquivos.",
     }),
     {
       status: 410,

@@ -307,7 +307,7 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
   const checkStatus = useCheckNfeStatus();
   const order = (nfe as any).sale_orders;
 
-  // Quando o PV não está vinculado (ex: NF antiga sincronizada do GestaoClick),
+  // Quando o PV não está vinculado (ex: NF antiga sincronizada do ClickNotas),
   // cai pro destinatário gravado direto na NF — sem isso a linha mostrava "—/—"
   // e o operador não tinha como identificar a quem a NF foi emitida.
   const orderLabel = order?.order_number || (nfe.numero ? `NF ${nfe.numero}` : 'NF sem vínculo');
@@ -367,7 +367,7 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
           </Button>
         )}
         {/* DANFE/XML abrem viewer público (meudanfe.com.br) pela chave de
-            acesso. A API do GestaoClick não expõe os arquivos via endpoint
+            acesso. A API do ClickNotas não expõe os arquivos via endpoint
             próprio (testado exaustivamente: 404 em todas as variantes). */}
         {nfe.status === 'autorizada' && (
           <>
@@ -485,12 +485,12 @@ export default function NfePage() {
               onClick={() => syncFromProvider.mutate()}
               disabled={syncFromProvider.isPending}
               className="gap-2"
-              title="Importa NF-es emitidas direto no painel da GestaoClick"
+              title="Importa NF-es emitidas direto no painel do ClickNotas"
             >
               {syncFromProvider.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <RefreshCw className="h-4 w-4" />}
-              Sincronizar com GestaoClick
+              Sincronizar com ClickNotas
             </Button>
             {perm.canCreate && (
               <Button onClick={() => setEmitOpen(true)} className="gap-2">
