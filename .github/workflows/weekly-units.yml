@@ -18,6 +18,12 @@ jobs:
   units:
     name: Unit Conversion Suite
     runs-on: ubuntu-latest
+    # Secrets mapeados em env porque o contexto `secrets` NÃO é aceito em
+    # `if:` de step — usá-lo lá invalida o arquivo inteiro e gera um run
+    # "failure 0s" a cada push em qualquer branch.
+    env:
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +43,7 @@ jobs:
         run: bunx tsc -p tsconfig.app.json --noEmit
 
       - name: SQL parity guard (calculate_order_consumption ↔ ..._by_grade)
-        if: ${{ secrets.SUPABASE_PROJECT_ID != '' && secrets.SUPABASE_DB_PASSWORD != '' }}
+        if: env.SUPABASE_PROJECT_ID != '' && env.SUPABASE_DB_PASSWORD != ''
         env:
           RUN_DB_INTEGRATION: '1'
           PGHOST: db.${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
