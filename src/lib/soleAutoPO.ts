@@ -44,99 +44,51 @@ export async function autoCreateSolePO(params: {
 }): Promise<SoleAutoPOResult | null> {
   const { referenceId, color, grade, orderRef, orderId } = params;
 
-  // ── Step 1: Resolve the sole product ──────────────────────────────────────
-  let soleProductId: string | null = null;
-  let soleProductName = 'Solado';
-  let soleProductColor = '';
-  let soleProductGroupId: string | null = null;
-  let currentStock = 0;
-  let minStock = 0;
-  let unitPrice = 0;
-  let unit = 'par';
-
-  let stockGrade: Record<string, number> = {};
-  const setFromProduct = (p: any) => {
-    soleProductId = p.id;
-    soleProductName = p.name;
-    soleProductColor = p.color || '';
-    soleProductGroupId = p.group_id;
-    // For grade-managed soles, use the sum of stock_grade per-size buckets as
-    // the authoritative stock figure — debit_sole_stock_by_grade consumes from
-    // those buckets, not from products.quantity, so using quantity here would
-    // produce wrong shortage calculations.
-    const sg = (p.stock_grade || {}) as Record<string, any>;
-    stockGrade = Object.fromEntries(
-      Object.entries(sg)
-        .filter(([k]) => !k.startsWith('_'))
-        .map(([k, v]) => [k, Number(v) || 0])
-    );
-    const gradeSum = Object.values(stockGrade).reduce((s, v) => s + v, 0);
-    currentStock = gradeSum > 0 ? gradeSum : (Number(p.quantity) || 0);
-    minStock = Number(p.min_stock) || 0;
-    unitPrice = Number(p.unit_price) || 0;
-    unit = p.unit || 'par';
-  };
-
-  // Priority 1: technical_sheet_sole_colors mapping
-  const colorTrimmed = color.trim();
-  const { data: colorMap } = colorTrimmed
-    ? await (supabase as any)
-        .from('technical_sheet_sole_colors')
-        .select('sole_product_id, sole_group_id')
-        .eq('sheet_id', referenceId)
-        .ilike('product_color', colorTrimmed)
-        .maybeSingle()
-    : { data: null };
-
-  if (colorMap?.sole_product_id) {
-    const { data: p } = await supabase
-      .from('products')
-      .select('id, name, color, quantity, stock_grade, min_stock, unit_price, unit, group_id')
-      .eq('id', colorMap.sole_product_id)
-      .eq('active', true)
-      .maybeSingle();
-    if (p) setFromProduct(p);
+  // ── Step 1: Resolve the sole product (resolução CANÔNICA do servidor) ────
+  // resolve_sole_color é a MESMA cascata que o débito usa (unificada na
+  // migration 20260902140000): P0 conjugação de cor do grupo → P1/P2
+  // technical_sheet_sole_colors → P3 primary_sole_id — e SEM fallback de
+  // "qualquer produto do grupo". A cascata legada que vivia aqui tinha esse
+  // fallback (por updated_at DESC) e em 05/07/2026 pôs solado INFANTIL de
+  // cor/grade erradas na OC-00094 (3 OPs do PV-00146, cada chamada resolveu
+  // um produto diferente do grupo). Se o canônico não resolver, retornamos
+  // null SEM criar OC — nunca pedir produto de cor/modelo errado.
+  const { data: resolved, error: resolveErr } = await supabase.rpc('resolve_sole_color', {
+    p_sheet_id: referenceId,
+    p_product_color: color,
+  });
+  if (resolveErr) {
+    console.error('autoCreateSolePO: resolve_sole_color falhou:', resolveErr.message);
+    return null;
   }
-
-  // Priority 2: sole_group_id from technical_sheets
-  if (!soleProductId) {
-    const { data: sheet } = await (supabase as any)
-      .from('technical_sheets')
-      .select('sole_group_id')
-      .eq('id', referenceId)
-      .maybeSingle();
-
-    const groupId = sheet?.sole_group_id || colorMap?.sole_group_id;
-
-    if (groupId) {
-      let found = false;
-
-      if (color.trim()) {
-        const { data: cp } = await supabase
-          .from('products')
-          .select('id, name, color, quantity, stock_grade, min_stock, unit_price, unit, group_id')
-          .eq('active', true)
-          .eq('group_id', groupId)
-          .ilike('color', color.trim())
-          .maybeSingle();
-        if (cp) { setFromProduct(cp); found = true; }
-      }
-
-      if (!found) {
-        const { data: ap } = await supabase
-          .from('products')
-          .select('id, name, color, quantity, stock_grade, min_stock, unit_price, unit, group_id')
-          .eq('active', true)
-          .eq('group_id', groupId)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (ap) setFromProduct(ap);
-      }
-    }
-  }
-
+  const soleProductId = (Array.isArray(resolved) ? resolved[0] : resolved)?.sole_product_id ?? null;
   if (!soleProductId) return null;
+
+  const { data: p } = await supabase
+    .from('products')
+    .select('id, name, color, quantity, stock_grade, min_stock, unit_price, unit, group_id')
+    .eq('id', soleProductId)
+    .eq('active', true)
+    .maybeSingle();
+  if (!p) return null;
+
+  const soleProductColor = p.color || '';
+  const soleProductGroupId = p.group_id;
+  // For grade-managed soles, use the sum of stock_grade per-size buckets as
+  // the authoritative stock figure — debit_sole_stock_by_grade consumes from
+  // those buckets, not from products.quantity, so using quantity here would
+  // produce wrong shortage calculations.
+  const sg = ((p as any).stock_grade || {}) as Record<string, any>;
+  const stockGrade: Record<string, number> = Object.fromEntries(
+    Object.entries(sg)
+      .filter(([k]) => !k.startsWith('_'))
+      .map(([k, v]) => [k, Number(v) || 0])
+  );
+  const gradeSum = Object.values(stockGrade).reduce((s, v) => s + v, 0);
+  const currentStock = gradeSum > 0 ? gradeSum : (Number(p.quantity) || 0);
+  const minStock = Number(p.min_stock) || 0;
+  const unitPrice = Number(p.unit_price) || 0;
+  const unit = p.unit || 'par';
 
   // ── Step 2: Calculate shortage per-size ──────────────────────────────────
   const totalRequired = Object.values(grade).reduce((s, v) => s + Number(v), 0);
