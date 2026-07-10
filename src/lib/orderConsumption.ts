@@ -726,7 +726,20 @@ export function computeConsumptionForItems(
       sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0,
       liningAlts, orderColor,
     );
-    if (liningMatch) {
+    // Anti-duplicidade FORRAÇÃO (cabedal × palmilha) — espelha
+    // calculate_order_consumption_by_grade (migration 20260911120000): quando o
+    // solado DIRIGE o forro de PALMILHA (insole_lining_consumption_dm2) e NÃO tem
+    // forro de cabedal (lining_consumption_dm2 nulo), o lining_material/
+    // lining_consumption da ficha É o forro da palmilha — não existe forro de
+    // cabedal. Suprime a "Forração" (cabedal) pra não contar a mesma napa 2×; a
+    // "Forração Palmilha" (abaixo) segue intacta. Só dispara com
+    // sole_drives_consumption=true (idem SQL) — fichas de calçado fechado (forro
+    // real, sem forro-de-palmilha no solado) não são afetadas.
+    const soleForLiningId = resolveSoleProductId(item.reference_id, orderColor);
+    const suppressCabedalForracao = sheet?.sole_drives_consumption === true
+      && Object.values(insoleLiningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0)
+      && !Object.values(liningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0);
+    if (liningMatch && !suppressCabedalForracao) {
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
       const soleProductId = resolveSoleProductId(item.reference_id, orderColor);

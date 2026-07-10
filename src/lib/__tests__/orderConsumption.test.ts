@@ -218,6 +218,40 @@ describe('orderConsumption — motor canônico', () => {
     expect(palmForr.totalQuantity).toBeCloseTo(1.44, 6);
   });
 
+  // Anti-duplicidade FORRAÇÃO (cabedal × palmilha) — espelha o SQL by_grade
+  // (migration 20260911120000). Ver auditoria PV-00146 (2026-07-10).
+  it('SUPRIME a Forração (cabedal) fantasma quando o solado dirige o forro de PALMILHA e não tem forro de cabedal', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    // Solado tem forro de PALMILHA (insole_lining) mas NÃO de cabedal (lining).
+    ctx.insoleLiningSpecBySole = new Map([['p-solado', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 }]]);
+    // liningSpecBySole (forro de cabedal do solado) permanece VAZIO.
+    const item = buildItem({ technical_sheets: buildSheet({ sole_drives_consumption: true, lining_consumption: 5.7 }) });
+    const rows = computeConsumptionForItems([item], ctx);
+    // A Forração (cabedal) do escalar da ficha seria a MESMA napa do forro da
+    // palmilha, contada 2× → suprimida.
+    expect(rows.find(r => r.componentType === 'Forração')).toBeUndefined();
+    // A Forração Palmilha (forro real) permanece.
+    expect(rows.find(r => r.componentType === 'Forração Palmilha')).toBeDefined();
+  });
+
+  it('MANTÉM a Forração (cabedal) quando o solado NÃO tem forro de palmilha (calçado fechado, forro real)', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    // Solado SEM forro de palmilha (insoleLiningSpecBySole vazio) → gate não dispara.
+    const item = buildItem({ technical_sheets: buildSheet({ sole_drives_consumption: true, lining_consumption: 5.7, insole_lining_consumption: 0 }) });
+    const rows = computeConsumptionForItems([item], ctx);
+    expect(rows.find(r => r.componentType === 'Forração')).toBeDefined();
+  });
+
   it('PARIDADE: as bulk rows da ficha preservam required == totalQuantity do modal (1:1)', () => {
     const modalRows = computeConsumptionForItems([buildItem()], buildContext());
     const bulk = modalRows.map(toBulkConsumptionRow);
