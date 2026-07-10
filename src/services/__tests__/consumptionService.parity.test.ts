@@ -42,7 +42,11 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       // componentes-por-cor no by_grade (migration 20260910140000) + 4 da
       // reserva (migration 20260910150000: try_reserve_materials deriva a
       // demanda do motor unificado — delegação ao by_grade, sem explosão
-      // própria de BOM/specs, e pula color_mismatch). Total vivo: 15.
+      // própria de BOM/specs, e pula color_mismatch) + 3 de blindagem 22P02
+      // (migration 20260910170000: enum_sem_coercao_texto varre funções vivas
+      // atrás de COALESCE/= '' sobre coluna enum, e 2 smokes que EXECUTAM o
+      // motor de consumo e a resolução de solado — quebra de RUNTIME que os
+      // cases estruturais não pegam). Total vivo: 18.
       expect(rows.length).toBeGreaterThanOrEqual(13);
     });
   },
