@@ -1461,9 +1461,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         updateField(consumptionField, lastConsumption);
         toast.info(`Consumo preenchido automaticamente: ${safeToFixed(lastConsumption, 4)} dm²/par (baseado em "${candidates[0].name}")`);
 
-        if (materialField === 'lining_material' && Array.isArray(candidates[0].lining_accessories) && (candidates[0].lining_accessories as any[]).length > 0) {
-          updateField('lining_accessories' as any, candidates[0].lining_accessories);
-        }
+        // lining_accessories NÃO é mais copiado de fichas antigas (2026-07-11):
+        // é mecanismo legado de forração alternativa (pick-one) mantido só nas
+        // fichas que já o têm — propagá-lo pra fichas novas criava alternativas
+        // invisíveis (a UI de edição foi removida). Vários materiais = variações.
         if (materialField === 'upper_material' && Array.isArray(candidates[0].components_accessories) && (candidates[0].components_accessories as any[]).length > 0) {
           updateField('components_accessories', candidates[0].components_accessories);
         }
@@ -3196,123 +3197,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         </p>
                       )}
 
-                      {/* ── Forração multi-grupo (Fase 2): Material 1 = lining_material
-                          (acima); grupos extras em lining_materials[]. Espelha o bloco
-                          "Materiais do Cabedal". No PV o usuário escolhe a cor de cada
-                          grupo → reserva/débito por grupo+cor. */}
-                      <div className="mt-3 pt-3 border-t border-dashed border-emerald-300 dark:border-emerald-800">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <Plus className="h-3.5 w-3.5 text-emerald-600" />
-                            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Materiais de Forração</span>
-                            <span className="text-xs text-muted-foreground">· o forro pode ter vários grupos; no PV escolhe-se a cor de cada um</span>
-                          </div>
-                          <Button
-                            variant="outline" size="sm" className="h-8 gap-1.5 text-xs"
-                            onClick={() => {
-                              const arr = [...(form.lining_materials || [])];
-                              arr.push({ material: '', consumption: 0, consumption_per_size: {} });
-                              updateField('lining_materials' as any, arr);
-                            }}
-                          >
-                            <Plus className="h-3 w-3" /> Adicionar Forração
-                          </Button>
-                        </div>
-                        {(() => {
-                          const items = (form.lining_materials || []).map((extra: any, rawIdx: number) => ({ extra, rawIdx }));
-                          if (items.length === 0) {
-                            return (
-                              <div className="flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/20 px-3 py-2.5">
-                                <Layers className="h-4 w-4 shrink-0 text-muted-foreground/60 mt-0.5" />
-                                <p className="text-xs text-muted-foreground">
-                                  Só a <strong>Forração 1</strong> (acima). Adicione Forração 2, 3… quando o produto usar mais de um grupo de forro — cada um com seu consumo e cor própria no pedido.
-                                </p>
-                              </div>
-                            );
-                          }
-                          return items.map(({ extra, rawIdx }, displayIdx) => {
-                            const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
-                            const grp = (groups || []).find((x: any) => (x.name || '').trim() === (extra.material || '').trim());
-                            const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id && p.active) : [];
-                            return (
-                              <div key={rawIdx} className="space-y-2 border-l-2 border-emerald-400/60 pl-3 mb-4">
-                                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-                                  <GroupMaterialSelect
-                                    label={`Forração ${displayIdx + 2}`}
-                                    value={extra.material || ''}
-                                    onChange={v => {
-                                      const arr = [...(form.lining_materials || [])];
-                                      const g = (groups || []).find((x: any) => (x.name || '').trim() === v.trim());
-                                      const resolvedProd = g
-                                        ? ((products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
-                                           || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim()))
-                                        : null;
-                                      const material_unit =
-                                        ((g as any)?.consumption_unit || '').toString().trim()
-                                        || ((g as any)?.dimensions_unit || '').toString().trim()
-                                        || (resolvedProd?.unit || '').trim() || undefined;
-                                      const clearPin = (arr[rawIdx]?.material || '').trim() !== v.trim();
-                                      arr[rawIdx] = {
-                                        ...arr[rawIdx], material: v, label: v,
-                                        ...(material_unit ? { material_unit } : {}),
-                                        ...(clearPin ? { product_id: null, product_name: null } : {}),
-                                      };
-                                      updateField('lining_materials' as any, arr);
-                                    }}
-                                  />
-                                  <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
-                                    const arr = [...(form.lining_materials || [])];
-                                    arr.splice(rawIdx, 1);
-                                    updateField('lining_materials' as any, arr);
-                                  }}>
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                                {renderWidthWarn(extra.material)}
-                                {extra.material && (
-                                  <div>
-                                    <Label className="text-xs text-muted-foreground">Item específico <span className="text-muted-foreground/60">(opcional — débito exato)</span></Label>
-                                    <Select
-                                      value={extra.product_id || '__none__'}
-                                      onValueChange={(v) => {
-                                        const arr = [...(form.lining_materials || [])];
-                                        if (v === '__none__') arr[rawIdx] = { ...arr[rawIdx], product_id: null, product_name: null };
-                                        else { const prod = itemsOfGroup.find((p: any) => p.id === v); arr[rawIdx] = { ...arr[rawIdx], product_id: v, product_name: prod?.name || '' }; }
-                                        updateField('lining_materials' as any, arr);
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-8 text-xs mt-1"><SelectValue placeholder="Resolver pela cor (padrão)" /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
-                                        {itemsOfGroup.map((p: any) => (
-                                          <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}{p.color ? ` (${p.color})` : ''} [{p.unit || 'un'}]</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                )}
-                                {extra.material && (
-                                  <div>
-                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Consumo da Forração {displayIdx + 2} por Numeração ({unit}/par)</Label>
-                                    {renderSizeGrid(
-                                      extra.consumption_per_size || {},
-                                      unit,
-                                      (next) => {
-                                        const arr = [...(form.lining_materials || [])];
-                                        const vals = Object.values(next).filter((v: any) => Number(v) > 0).map(Number);
-                                        const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-                                        arr[rawIdx] = { ...arr[rawIdx], consumption_per_size: next, consumption: Number(avg.toFixed(4)) };
-                                        updateField('lining_materials' as any, arr);
-                                      },
-                                      'emerald',
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
+                      {/* Forração multi-grupo REMOVIDA (2026-07-11): 1 ficha = 1 grupo
+                          de forração (regra de negócio). Vários materiais = variações
+                          de material (aba Variantes). A coluna lining_materials nunca
+                          foi lida por nenhum motor de consumo/débito. */}
                     </div>
                   </>
                 );
