@@ -11,6 +11,7 @@ import { CheckCircle as CheckCircle2, XCircle, ArrowsClockwise as RefreshCw, Dat
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';
+import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
 
 type SchemaObject = {
   name: string;
@@ -457,6 +458,9 @@ export default function SystemDiagnostics() {
 
         {/* CONSUMO — guards de consistência + paridade do motor de consumo */}
         <TabsContent value="consumo" className="space-y-4">
+          {/* Normalização assistida pé×par do cabedal (spec consumo-cabedal-padrao-par). */}
+          <CabedalParPeAuditPanel />
+
           <Panel
             eyebrow="PCP · CONSUMO"
             title="Consistência de consumo"

@@ -420,8 +420,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           </tr>
 
           {/* Tiras por faixa (Aviamento — layout unificado): cada tira numa linha,
-              medida em cm/par por faixa (P/M/G) nas MESMAS colunas dos pares.
-              Vermelho + negrito pra destacar a medida. (pedido do dono 2026-06-23) */}
+              medida em cm/PÉ (÷2 do valor por par armazenado) por faixa (P/M/G) nas
+              MESMAS colunas dos pares. Vermelho + negrito pra destacar a medida.
+              (÷2 pedido do dono 2026-07-11 — spec consumo-cabedal-padrao-par; o
+              operário do Aviamento trabalha peça a peça. Display-only: o storage
+              em strap_colors continua POR PAR e os motores não mudam.) */}
           {sector === 'Aviamento' && (() => {
             const hasData = (c: { cmBySize?: Record<string, number>; cmBands?: Array<{ band: string; cm: number }>; cm?: number }) =>
               (!!c.cmBySize && Object.keys(c.cmBySize).length > 0) || (!!c.cmBands && c.cmBands.length > 0) || (c.cm != null && c.cm > 0);
@@ -435,7 +438,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 {activeSizes.map(s => {
                   // Preenche a coluna pela numeração crua (grade individual); cai pra
                   // faixa P/M/G; por último a média (curva constante / só média cadastrada).
-                  const v = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
+                  // O valor armazenado é POR PAR → exibe POR PÉ (÷2, 1 casa decimal).
+                  const vPar = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
+                  const v = vPar != null ? Math.round((vPar / 2) * 10) / 10 : null;
                   return (
                     <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
                       {v != null ? `${v}cm` : '—'}
@@ -482,7 +487,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       )}
       {sector === 'Aviamento' && (cg.components || []).some(c => /^TIRA(\s|$)/i.test(c.name || '') && ((c.cmBySize && Object.keys(c.cmBySize).length > 0) || (c.cmBands?.length ?? 0) > 0 || (c.cm != null && c.cm > 0))) && (
         <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
-          Linhas TIRA = medida em cm "do par" por numeração (ou faixa P/M/G, quando cadastrada).
+          Linhas TIRA = medida em cm "do pé" por numeração (ou faixa P/M/G, quando cadastrada).
         </p>
       )}
       </>

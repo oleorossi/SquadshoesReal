@@ -2624,11 +2624,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   : cabedalSizesNumeric;
 
                 // Renderiza grade de consumo por numeração (em metros/par)
+                // showPerFoot: readout "= X/pé" junto da média — guard anti-deriva
+                // pé×par do CABEDAL (spec consumo-cabedal-padrao-par). O canônico é
+                // POR PAR; o readout é só referência visual pra quem mede 1 peça.
                 const renderSizeGrid = (
                   perSize: Record<string, number>,
                   unit: string,
                   onChangeGrid: (newPerSize: Record<string, number>) => void,
                   highlightColor: 'amber' | 'primary' | 'emerald' = 'primary',
+                  showPerFoot = false,
                 ) => {
                   const colorClass = highlightColor === 'emerald'
                     ? 'border-success/30'
@@ -2649,6 +2653,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         {!form.has_straps && (
                           <span className="text-xs text-muted-foreground">
                             Média <strong className="tabular-nums text-foreground">{avg.toFixed(4)}</strong> {unit}/par
+                            {showPerFoot && avg > 0 && (
+                              <span className="ml-1.5 text-muted-foreground/70 tabular-nums">= {(avg / 2).toFixed(4)} {unit}/pé</span>
+                            )}
                           </span>
                         )}
                       </div>
@@ -2807,10 +2814,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         return (
                           <div>
                             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Consumo de Cabedal por Numeração ({upperUnit}/par)
+                              Consumo de Cabedal por Numeração — POR PAR ({upperUnit}/par, não por pé)
                             </Label>
                             <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-                              Preencha o consumo de cabedal número a número.
+                              Preencha o consumo do <strong className="text-foreground">PAR (2 pés)</strong> número a número.
                               A média alimenta o custo do PV automaticamente.
                             </p>
                             {renderSizeGrid(
@@ -2825,6 +2832,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                 }
                               },
                               'amber',
+                              true, // showPerFoot — readout "= X/pé" anti-deriva pé×par
                             )}
                           </div>
                         );
