@@ -48,13 +48,6 @@ export function useColorVariants(referenceId?: string) {
         });
       });
 
-      // Get reference to find group and match products for stock/price
-      const { data: sheet } = await supabase
-        .from('technical_sheets')
-        .select('upper_material')
-        .eq('id', referenceId!)
-        .single();
-
       // Get supplier materials for supplier_code lookup
       const { data: supplierMats } = await supabase
         .from('group_supplier_materials')

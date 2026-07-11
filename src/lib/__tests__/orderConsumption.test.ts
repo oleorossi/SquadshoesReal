@@ -711,4 +711,146 @@ describe('orderConsumption — motor canônico', () => {
     expect(soles[0].totalQuantity).toBe(24);
     expect(soles[0].soleProductId).toBe('p-sole-01');
   });
+
+  describe('variante de material do item (material_variant_id) — paridade com resolvers SQL', () => {
+    // Contexto com um SEGUNDO grupo de napa (GLOW METALIC, largura 1,4 m —
+    // diferente do 1,0 m da NAPA SOFT) pra provar que a conversão dm²→m usa a
+    // ficha de componente do grupo DA VARIANTE, não o da ficha técnica.
+    const buildVariantContext = (): ConsumptionContext => {
+      const ctx = buildContext();
+      ctx.productGroups.push({ id: 'g-glow', name: 'GLOW METALIC', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.allProducts.push({ id: 'p-glow-preto', name: 'GLOW METALIC PRETO', color: 'PRETO', group_id: 'g-glow', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      ctx.componentSheets.push({ product_id: 'cs-glow', dimensions_width: 1.4, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: {}, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-glow', name: 'GLOW METALIC PRETO', color: 'PRETO', unit: 'm' } } as any);
+      ctx.materialVariantsById = new Map([
+        ['var-glow', {
+          id: 'var-glow', reference_id: 'sheet-1',
+          upper_material_product_id: null, upper_material_group_id: 'g-glow', upper_consumption_override: null,
+          lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
+          insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
+          sole_material_product_id: null, sole_consumption_override: null,
+        }],
+      ]);
+      return ctx;
+    };
+
+    it('grupo da variante troca o cabedal e a conversão dm²→m usa a LARGURA do grupo da variante', () => {
+      const item = buildItem({ material_variant_id: 'var-glow' });
+      const rows = computeConsumptionForItems([item], buildVariantContext());
+      const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+      // 6 dm²/par × 24 = 144 dm² ÷ (1400 mm/10) = 1,028571 m (não 1,44 m da NAPA SOFT)
+      expect(cabedal.groupName).toBe('GLOW METALIC');
+      expect(cabedal.productUnit).toBe('metro');
+      expect(cabedal.totalQuantity).toBeCloseTo(144 / 140, 6);
+      // Forro NÃO foi trocado pela variante → segue o da ficha.
+      const forr = rows.find(r => r.componentType === 'Forração')!;
+      expect(forr.groupName).toBe('NAPA FORRO');
+      expect(forr.totalQuantity).toBeCloseTo(1.92, 6);
+    });
+
+    it('item SEM variante no mesmo cálculo mantém o material da ficha (não contamina)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem(), buildItem({ material_variant_id: 'var-glow' })],
+        buildVariantContext(),
+      );
+      const cabedais = rows.filter(r => r.componentType === 'Cabedal');
+      const daFicha = cabedais.find(r => r.groupName === 'NAPA SOFT')!;
+      const daVariante = cabedais.find(r => r.groupName === 'GLOW METALIC')!;
+      expect(daFicha.totalQuantity).toBeCloseTo(1.44, 6);
+      expect(daVariante.totalQuantity).toBeCloseTo(144 / 140, 6);
+    });
+
+    it('produto LEGADO pinado na variante prevalece sobre o grupo e nomeia a linha', () => {
+      const ctx = buildVariantContext();
+      const v = ctx.materialVariantsById!.get('var-glow')!;
+      v.upper_material_product_id = 'p-glow-preto';
+      const item = buildItem({ material_variant_id: 'var-glow' });
+      const rows = computeConsumptionForItems([item], ctx);
+      const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+      expect(cabedal.materialName).toBe('GLOW METALIC PRETO');
+      expect(cabedal.groupName).toBe('GLOW METALIC');
+    });
+
+    it('override LEGADO de consumo da variante substitui o escalar da ficha', () => {
+      const ctx = buildVariantContext();
+      const v = ctx.materialVariantsById!.get('var-glow')!;
+      v.upper_consumption_override = 3.5; // dm²/par (era 6.0 na ficha)
+      const item = buildItem({ material_variant_id: 'var-glow' });
+      const rows = computeConsumptionForItems([item], ctx);
+      const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+      // 3,5 dm²/par × 24 = 84 dm² ÷ 140 = 0,6 m
+      expect(cabedal.totalQuantity).toBeCloseTo(84 / 140, 6);
+    });
+
+    it('variante troca o FORRO: Forração E Forração Palmilha saem do grupo da variante', () => {
+      const ctx = buildVariantContext();
+      ctx.productGroups.push({ id: 'g-forro2', name: 'FORRO PREMIUM', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.allProducts.push({ id: 'p-forro2', name: 'FORRO PREMIUM PRETO', color: 'PRETO', group_id: 'g-forro2', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      ctx.componentSheets.push({ product_id: 'cs-forro2', dimensions_width: 0.8, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: {}, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-forro2', name: 'FORRO PREMIUM PRETO', color: 'PRETO', unit: 'm' } } as any);
+      const v = ctx.materialVariantsById!.get('var-glow')!;
+      v.lining_material_group_id = 'g-forro2';
+      const item = buildItem({ material_variant_id: 'var-glow' });
+      const rows = computeConsumptionForItems([item], ctx);
+      const forr = rows.find(r => r.componentType === 'Forração')!;
+      // 4 dm²/par × 24 = 96 dm² ÷ (800 mm/10) = 1,2 m (não 1,92 m do forro da ficha)
+      expect(forr.groupName).toBe('FORRO PREMIUM');
+      expect(forr.totalQuantity).toBeCloseTo(96 / 80, 6);
+      const palmForr = rows.find(r => r.componentType === 'Forração Palmilha')!;
+      // 3 dm²/par × 24 = 72 dm² ÷ 80 = 0,9 m
+      expect(palmForr.groupName).toBe('FORRO PREMIUM');
+      expect(palmForr.totalQuantity).toBeCloseTo(72 / 80, 6);
+    });
+
+    it('solado pinado na variante prevalece sobre a cascata de cor (resolve_sole_for_variant)', () => {
+      const ctx = buildVariantContext();
+      ctx.productGroups.push({ id: 'g-sole-99', name: 'SOLADO 99', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.allProducts.push({ id: 'p-sole-99', name: '99 - PRETO', unit: 'par', color: 'PRETO', group_id: 'g-sole-99', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      // Mapping de cor apontaria pra outro solado — o pin da variante deve vencer.
+      ctx.allProducts.push({ id: 'p-sole-01', name: '01 - PRETO', unit: 'par', color: 'PRETO', group_id: null, quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      ctx.soleColorMap.set('sheet-1::PRETO', 'p-sole-01');
+      const v = ctx.materialVariantsById!.get('var-glow')!;
+      v.sole_material_product_id = 'p-sole-99';
+      const item = buildItem({ material_variant_id: 'var-glow' });
+      const rows = computeConsumptionForItems([item], ctx);
+      const solado = rows.find(r => r.componentType === 'Solado')!;
+      expect(solado.soleProductId).toBe('p-sole-99');
+      expect(solado.groupName).toBe('SOLADO 99');
+    });
+
+    it('BOM por variante: linha específica SUBSTITUI a compartilhada do mesmo produto; linha de OUTRA variante fica fora', () => {
+      const ctx = buildVariantContext();
+      // Linha compartilhada (COLA 0.01/par) já existe no buildContext. Override
+      // da var-glow no MESMO produto com qty maior + linha extra exclusiva.
+      ctx.materials.push({
+        sheet_id: 'sheet-1', product_id: 'p-cola', group_id: 'g-cola', quantity_per_unit: 0.02, color: null,
+        material_variant_id: 'var-glow',
+        products: { name: 'COLA SUPER', unit: 'kg', category: 'Quimicos' },
+        product_groups: { name: 'COLA' },
+      } as any);
+      ctx.materials.push({
+        sheet_id: 'sheet-1', product_id: 'p-glitter', group_id: 'g-cola', quantity_per_unit: 0.5, color: null,
+        material_variant_id: 'var-glow',
+        products: { name: 'GLITTER PÓ', unit: 'g', category: 'Quimicos' },
+        product_groups: { name: 'COLA' },
+      } as any);
+      ctx.materials.push({
+        sheet_id: 'sheet-1', product_id: 'p-outra', group_id: 'g-cola', quantity_per_unit: 9, color: null,
+        material_variant_id: 'var-OUTRA',
+        products: { name: 'MATERIAL DE OUTRA VARIANTE', unit: 'un', category: 'Quimicos' },
+        product_groups: { name: 'COLA' },
+      } as any);
+
+      // COM variante: override (0.02) + exclusiva (0.5), sem a da outra variante.
+      const rows = computeConsumptionForItems([buildItem({ material_variant_id: 'var-glow' })], ctx);
+      const cola = rows.find(r => r.materialName === 'COLA SUPER')!;
+      expect(cola.totalQuantity).toBeCloseTo(0.48, 6); // 0.02 × 24 (não 0.24)
+      expect(rows.find(r => r.materialName === 'GLITTER PÓ')!.totalQuantity).toBeCloseTo(12, 6);
+      expect(rows.find(r => r.materialName === 'MATERIAL DE OUTRA VARIANTE')).toBeUndefined();
+
+      // SEM variante: só a compartilhada (0.01), nenhuma linha de variante.
+      const rowsBase = computeConsumptionForItems([buildItem()], ctx);
+      expect(rowsBase.find(r => r.materialName === 'COLA SUPER')!.totalQuantity).toBeCloseTo(0.24, 6);
+      expect(rowsBase.find(r => r.materialName === 'GLITTER PÓ')).toBeUndefined();
+      expect(rowsBase.find(r => r.materialName === 'MATERIAL DE OUTRA VARIANTE')).toBeUndefined();
+    });
+  });
 });

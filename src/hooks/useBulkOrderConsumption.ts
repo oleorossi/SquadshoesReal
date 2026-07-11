@@ -50,6 +50,9 @@ export interface BulkOrderConsumptionInput {
   fichas?: number | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   strap_colors?: any[] | null;
+  /** Variante de material do item do PV (via orders.sale_order_item_id).
+   *  Troca a origem dos materiais no motor — ver ConsumptionItem. */
+  material_variant_id?: string | null;
 }
 
 /** Mapa componentType (canônico) → component (taxonomia da ficha do operador). */
@@ -111,7 +114,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
       inputs
         .filter(i => i.reference_id && i.quantity > 0)
         .map(i => [
-          bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any),
+          bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any, i.material_variant_id),
           i,
         ]),
     ).values(),
@@ -121,7 +124,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
     queryKey: [
       'bulk-order-consumption',
       uniqueInputs
-        .map(i => bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any))
+        .map(i => bulkConsumptionKey(i.reference_id, i.color, i.quantity, i.grade, i.strap_colors as any, i.material_variant_id))
         .sort()
         .join('|'),
     ],
@@ -138,7 +141,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
       ]);
 
       for (const input of uniqueInputs) {
-        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity, input.grade, input.strap_colors as any);
+        const key = bulkConsumptionKey(input.reference_id, input.color, input.quantity, input.grade, input.strap_colors as any, input.material_variant_id);
         try {
           const item: ConsumptionItem = {
             reference_id: input.reference_id,
@@ -147,6 +150,7 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
             grade: input.grade ?? null,
             fichas: input.fichas ?? null,
             strap_colors: input.strap_colors ?? null,
+            material_variant_id: input.material_variant_id ?? null,
             technical_sheets: sheetMap.get(input.reference_id) ?? null,
           };
           const rows = computeConsumptionForItems([item], ctx);
@@ -192,7 +196,8 @@ export const bulkConsumptionKey = (
   quantity: number,
   grade?: Record<string, number> | null,
   straps?: Array<{ label?: string; color?: string }> | null,
-): string => `${reference_id}::${(color || '').toUpperCase()}::${quantity}::${consumptionVariantSig(grade, straps)}`;
+  materialVariantId?: string | null,
+): string => `${reference_id}::${(color || '').toUpperCase()}::${quantity}::${consumptionVariantSig(grade, straps)}::${materialVariantId || ''}`;
 
 /**
  * Filtra componentes relevantes a um setor. Padrão de mercado: cada

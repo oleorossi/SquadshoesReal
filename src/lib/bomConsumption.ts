@@ -115,7 +115,9 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       .in('id', refIds),
     supabase
       .from('sheet_materials')
-      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category), product_groups(name)')
+      // material_variant_id: NULL = linha compartilhada; preenchido = específica
+      // de uma variante (semântica get_effective_bom) — escopo aplicado no loop.
+      .select('sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, products(name, unit, category), product_groups(name)')
       .in('sheet_id', refIds),
     supabase.from('products').select('id, name, color, group_id, sole_classification').eq('active', true),
     supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
@@ -123,7 +125,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       .from('component_sheets')
       .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, waste_pct, products!inner(group_id, name, color, unit)'),
     saleOrderItemIds.length > 0
-      ? supabase.from('sale_order_items').select('id, strap_colors, fichas').in('id', saleOrderItemIds)
+      ? supabase.from('sale_order_items').select('id, strap_colors, fichas, material_variant_id').in('id', saleOrderItemIds)
       : Promise.resolve({ data: [] }),
     (supabase as any)
       .from('technical_sheet_sole_colors')
@@ -141,6 +143,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
   const sheetsMap = new Map((sheetsData || []).map(s => [s.id, s]));
   const saleItemsMap = new Map((saleOrderItems || []).map((si: any) => [si.id, si]));
+
+  // Variantes de material das fichas envolvidas (troca de grupo por componente
+  // + pin de solado). Mesma precedência do motor canônico/resolvers SQL.
+  const variantsById = new Map<string, any>();
+  {
+    const variantIds = [...new Set((saleOrderItems || []).map((si: any) => si.material_variant_id).filter(Boolean))];
+    if (variantIds.length > 0) {
+      const { data: variantRows } = await (supabase as any)
+        .from('reference_material_variants')
+        .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, sole_material_product_id')
+        .in('id', variantIds);
+      for (const v of (variantRows || []) as any[]) variantsById.set(v.id, v);
+    }
+  }
   const packagingModeBySaleOrder = new Map<string, string | null>(
     (saleOrdersPkg || []).map((so: any) => [so.id, so.packaging_mode ?? null]),
   );
@@ -254,16 +270,36 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const itemQuantity = Number(item.quantity) || 0;
     const orderColor = item.color || '—';
 
+    // Variante de material do item do PV: troca a ORIGEM (grupo/produto) por
+    // componente, com a área da ficha — espelha o motor canônico
+    // (orderConsumption.ts) e os resolvers SQL (mig 20260907120500).
+    const variant = saleItem?.material_variant_id ? variantsById.get(saleItem.material_variant_id) : undefined;
+    const groupNameById = (gid: string | null | undefined): string =>
+      gid ? (((productGroups || []).find((g: any) => g.id === gid) as any)?.name || '') : '';
+    const variantGroupName = (pid: string | null | undefined, gid: string | null | undefined): string => {
+      const pin = pid ? (allProducts || []).find((p: any) => p.id === pid) || null : null;
+      return pin ? groupNameById((pin as any).group_id) : groupNameById(gid);
+    };
+    const upperVariantGroup = variant ? variantGroupName(variant.upper_material_product_id, variant.upper_material_group_id) : '';
+    const liningVariantGroup = variant ? variantGroupName(variant.lining_material_product_id, variant.lining_material_group_id) : '';
+    const insoleVariantGroup = variant ? variantGroupName(variant.insole_material_product_id, variant.insole_material_group_id) : '';
+    const variantSolePid: string | null = variant?.sole_material_product_id
+      && (allProducts || []).some((p: any) => p.id === variant.sole_material_product_id)
+      ? variant.sole_material_product_id
+      : null;
+
     // Cabedal
     const allCabedalAccessories = Array.isArray(sheet?.components_accessories)
       ? (sheet.components_accessories as any[]).filter((e: any) => e.material && !e.id)
       : [];
     const upperAlts = allCabedalAccessories.filter((e: any) => !e.mandatory);
     const mandatoryCabedalMaterials = allCabedalAccessories.filter((e: any) => e.mandatory === true);
-    const upperMatch = resolveOption(sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0, upperAlts, orderColor);
+    const upperMatch = upperVariantGroup
+      ? { group: upperVariantGroup, consumption: Number(sheet?.upper_consumption) || 0 }
+      : resolveOption(sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0, upperAlts, orderColor);
     if (upperMatch) {
       const upperSheet = getPreferredGroupSheet(upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-      const isPrincipal = upperMatch.group === (sheet?.upper_material || '');
+      const isPrincipal = !!upperVariantGroup || upperMatch.group === (sheet?.upper_material || '');
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       const overridePerSize = isPrincipal
         ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
@@ -289,11 +325,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
     // Forro
     const liningAlts = Array.isArray(sheet?.lining_accessories) ? sheet.lining_accessories as any[] : [];
-    const liningMatch = resolveOption(sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0, liningAlts, orderColor);
+    const liningMatch = liningVariantGroup
+      ? { group: liningVariantGroup, consumption: Number(sheet?.lining_consumption) || 0 }
+      : resolveOption(sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0, liningAlts, orderColor);
     if (liningMatch) {
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-      const soleProductId = soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
-      const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
+      const soleProductId = variantSolePid || soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
+      const isPrincipalLining = !!liningVariantGroup || liningMatch.group === (sheet?.lining_material || '');
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
       // Alternativa: consumo por número da própria ficha. Principal: do SOLADO.
       const liningOverride = isPrincipalLining
@@ -322,14 +360,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // de fábrica): a grade não cobra placa. Mesma regra do orderConsumption.ts
     // (motor canônico). Antes o BOM contava placa mesmo na palmilha pronta,
     // inflando consumo/compra (MRP)/custo.
-    const soleProductIdForInsole = soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
+    const soleProductIdForInsole = variantSolePid || soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
     const insoleSoleProd = soleProductIdForInsole
       ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole)
       : null;
     const isPalmilhaPronta = (sheet?.insole_ready_made === true)
       || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
     if (!isPalmilhaPronta) {
-      const insoleGroupName = sheet?.insole_material || '';
+      const insoleGroupName = insoleVariantGroup || sheet?.insole_material || '';
       const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
       const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
       const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
@@ -372,9 +410,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // do débito) em vez de chutar Preto/Caramelo por heurística de string (auditoria
     // 2026-06-14, Área 2). Fallback pra cor do pedido; só por último um rótulo neutro.
     const soleColor = ((insoleSoleProd as any)?.color || orderColor || '—').trim() || '—';
-    const solePerPair = sheet?.sole_material ? 1 : 0;
+    // Solado pinado na variante: agrupa pelo grupo do produto pinado (a ficha
+    // pode nem ter sole_material) — espelha resolve_sole_for_variant.
+    const variantSoleGroupName = variantSolePid
+      ? (groupNameById((insoleSoleProd as any)?.group_id) || (insoleSoleProd as any)?.name || '')
+      : '';
+    const solePerPair = (variantSolePid || sheet?.sole_material) ? 1 : 0;
     addConsumptionRow(consumptionMap, {
-      componentType: 'Solado', groupName: sheet?.sole_material || '', materialName: 'Solado',
+      componentType: 'Solado', groupName: variantSoleGroupName || sheet?.sole_material || '', materialName: 'Solado',
       productUnit: 'par', color: soleColor, totalQuantity: solePerPair * itemQuantity,
     });
 
@@ -400,10 +443,22 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const specGroupsWithConsumption = new Map<string, number>();
     if (upperMatch?.group) specGroupsWithConsumption.set(upperMatch.group.toLowerCase(), upperMatch.consumption);
     if (liningMatch?.group) specGroupsWithConsumption.set(liningMatch.group.toLowerCase(), liningMatch.consumption);
-    if (sheet?.insole_material && (Number(sheet?.insole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.insole_material).toLowerCase(), Number(sheet.insole_consumption));
+    if ((insoleVariantGroup || sheet?.insole_material) && (Number(sheet?.insole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(insoleVariantGroup || sheet.insole_material).toLowerCase(), Number(sheet.insole_consumption));
     if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
 
-    const itemMaterials = (materials || []).filter((m) => m.sheet_id === order.reference_id);
+    // BOM efetivo (semântica get_effective_bom): compartilhadas (variant NULL)
+    // + linhas da variante DESTE item (que sobrepõem a compartilhada de mesmo
+    // product_id); linhas de OUTRA variante ficam fora.
+    const sheetBomLines = (materials || []).filter((m) => m.sheet_id === order.reference_id);
+    const bomVariantId = saleItem?.material_variant_id || null;
+    const variantBomLines = bomVariantId
+      ? sheetBomLines.filter((m: any) => m.material_variant_id === bomVariantId)
+      : [];
+    const variantBomProductIds = new Set(variantBomLines.map((m: any) => m.product_id));
+    const itemMaterials = [
+      ...sheetBomLines.filter((m: any) => !m.material_variant_id && !variantBomProductIds.has(m.product_id)),
+      ...variantBomLines,
+    ];
 
     // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
     // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
@@ -444,7 +499,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (specHasGroup) {
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
         const isLiningGroup = liningMatch?.group?.toLowerCase() === groupKey;
-        const isInsoleGroup = sheet?.insole_material?.toLowerCase() === groupKey;
+        const isInsoleGroup = (insoleVariantGroup || sheet?.insole_material || '').toLowerCase() === groupKey;
         const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
         const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
                            (isLiningGroup && bomType === 'Forração') ||

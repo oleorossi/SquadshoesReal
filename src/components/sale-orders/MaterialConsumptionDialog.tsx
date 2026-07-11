@@ -339,6 +339,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           grade,
           fichas,
           strap_colors,
+          material_variant_id,
           technical_sheets(
             code,
             name,

@@ -32,10 +32,11 @@ interface OrderRow {
   sale_order_item_id?: string | null;
   sale_orders?: { order_number: string; client_name: string; delivery_deadline: string | null; status: string } | null;
   technical_sheets?: { name: string; code: string | null } | null;
-  /** Sequência de tiras do item de PV (ordem TIRA 1, TIRA 2, ...).
-   *  Trazido via join sale_order_items pra que as fichas de operador
-   *  mostrem cada tira com sua cor na ordem definida na ficha técnica. */
-  sale_order_items?: { strap_colors: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }> | null } | null;
+  /** Sequência de tiras do item de PV (ordem TIRA 1, TIRA 2, ...) + variante
+   *  de material. Trazidos via join sale_order_items pra que as fichas de
+   *  operador mostrem cada tira com sua cor e calculem o consumo com os
+   *  materiais DA VARIANTE escolhida no PV. */
+  sale_order_items?: { strap_colors: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }> | null; material_variant_id?: string | null } | null;
 }
 
 // Status REAIS de `orders` (OPs) no backend, conforme auditoria 2026-05:
@@ -112,7 +113,7 @@ export default function PrintWorkSheets() {
         .from('orders')
         // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
         // (sale_order_id e cross_dock_sale_order_id). PostgREST não escolhe sozinho.
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline, status), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors)')
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline, status), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors, material_variant_id)')
         .order('order_number', { ascending: false })
         .limit(500);
       if (statusFilter === 'em_fluxo') {
@@ -242,6 +243,9 @@ export default function PrintWorkSheets() {
         strap_colors: Array.isArray(r.sale_order_items?.strap_colors)
           ? r.sale_order_items!.strap_colors
           : [],
+        // Variante de material do item do PV — o consumo das fichas de operador
+        // resolve os materiais (cabedal/forro/palmilha/solado/BOM) pela variante.
+        material_variant_id: r.sale_order_items?.material_variant_id ?? null,
       }));
   }, [filtered, selectedIds]);
 

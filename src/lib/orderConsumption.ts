@@ -80,6 +80,14 @@ export type ConsumptionItem = {
   grade?: Record<string, number> | null;
   fichas?: number | null;
   strap_colors?: any[] | null;
+  /**
+   * Variante de material do item do PV (`sale_order_items.material_variant_id`).
+   * Quando presente, troca a ORIGEM do material por componente (cabedal/forro/
+   * palmilha/solado + BOM), espelhando os resolvers SQL
+   * `resolve_*_material_for_variant` (migration 20260907120500). A área (dm²/par)
+   * permanece a da ficha — a variante só muda de QUAL grupo/produto o material sai.
+   */
+  material_variant_id?: string | null;
   /** Linha da ficha técnica (join `technical_sheets(...)`). */
   technical_sheets: any;
   /**
@@ -90,6 +98,25 @@ export type ConsumptionItem = {
    * de operador por OP) passam undefined e o filtro não age.
    */
   packagingMode?: string | null;
+};
+
+/** Campos de resolução de uma variante de material (`reference_material_variants`).
+ *  Precedência POR COMPONENTE (espelho dos resolvers SQL, mig 20260907120500):
+ *  produto legado pinado > grupo da variante (+cor do PV) > pin da ficha > grupo da ficha. */
+export type MaterialVariantResolution = {
+  id: string;
+  reference_id: string;
+  upper_material_product_id: string | null;
+  upper_material_group_id: string | null;
+  upper_consumption_override: number | null;
+  lining_material_product_id: string | null;
+  lining_material_group_id: string | null;
+  lining_consumption_override: number | null;
+  insole_material_product_id: string | null;
+  insole_material_group_id: string | null;
+  insole_consumption_override: number | null;
+  sole_material_product_id: string | null;
+  sole_consumption_override: number | null;
 };
 
 /** Contexto compartilhado: as consultas e mapas que o cálculo precisa. */
@@ -138,6 +165,9 @@ export type ConsumptionContext = {
    *  quando a flag está ligada e há entrada pra a cor do pedido, esta lista
    *  SUBSTITUI direct_components. Opcional (testes antigos não constroem). */
   componentColorMap?: Map<string, Array<{ productId: string; quantityPerUnit: number }>>;
+  /** variant_id → campos de resolução da variante de material do item do PV.
+   *  Opcional (testes antigos e callers sem variante não constroem). */
+  materialVariantsById?: Map<string, MaterialVariantResolution>;
 };
 
 /**
@@ -276,10 +306,14 @@ export async function fetchTechnicalSheetsForConsumption(
 export async function fetchConsumptionContext(refIds: string[]): Promise<ConsumptionContext> {
   const unique = [...new Set(refIds.filter(Boolean))];
 
-  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }, { data: componentColorMappings }] = await Promise.all([
+  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }, { data: componentColorMappings }, { data: materialVariants }] = await Promise.all([
     supabase
       .from('sheet_materials')
-      .select('sheet_id, product_id, group_id, quantity_per_unit, color, products(name, unit, category, color), product_groups!sheet_materials_group_id_fkey(name)')
+      // `material_variant_id`: NULL = linha compartilhada (todas as variantes);
+      // preenchido = linha específica/override daquela variante (semântica de
+      // get_effective_bom, migration 20260525140000). O escopo é aplicado no
+      // motor, por item.
+      .select('sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, products(name, unit, category, color), product_groups!sheet_materials_group_id_fkey(name)')
       .in('sheet_id', unique),
     supabase
       .from('products')
@@ -302,6 +336,12 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     (supabase as any).from('technical_sheet_lining_colors').select('sheet_id, cabedal_color, lining_color').in('sheet_id', unique),
     supabase.from('technical_sheets').select('id, sole_group_id, primary_sole_id').in('id', unique),
     (supabase as any).from('technical_sheet_component_colors').select('sheet_id, cabedal_color, product_id, quantity_per_unit').in('sheet_id', unique),
+    // Variantes de material das fichas envolvidas — o motor resolve por item
+    // (item.material_variant_id) com a MESMA precedência dos resolvers SQL.
+    (supabase as any)
+      .from('reference_material_variants')
+      .select('id, reference_id, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override')
+      .in('reference_id', unique),
   ]);
 
   if (materialsError) throw materialsError;
@@ -345,6 +385,12 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     const arr = componentColorMap.get(key) || [];
     arr.push({ productId: m.product_id, quantityPerUnit: Number(m.quantity_per_unit) || 0 });
     componentColorMap.set(key, arr);
+  }
+
+  // variant_id → campos de resolução da variante de material
+  const materialVariantsById = new Map<string, MaterialVariantResolution>();
+  for (const v of (materialVariants || []) as MaterialVariantResolution[]) {
+    if (v?.id) materialVariantsById.set(v.id, v);
   }
 
   // reference_id → strap_colors da ficha
@@ -474,6 +520,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     insoleSpecBySole,
     insoleLiningSpecBySole,
     componentColorMap,
+    materialVariantsById,
   };
 }
 
@@ -511,6 +558,7 @@ export function computeConsumptionForItems(
   const insoleSpecBySole = ctx.insoleSpecBySole ?? new Map<string, Record<string, number>>();
   const insoleLiningSpecBySole = ctx.insoleLiningSpecBySole ?? new Map<string, Record<string, number>>();
   const componentColorMap = ctx.componentColorMap ?? new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
+  const materialVariantsById = ctx.materialVariantsById ?? new Map<string, MaterialVariantResolution>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
   const normColor = (s: string | null | undefined): string =>
@@ -660,30 +708,90 @@ export function computeConsumptionForItems(
     const itemQuantity = Number(item.quantity) || 0;
     const sheet = item.technical_sheets as any;
 
+    // ── Variante de material do item (sale_order_items.material_variant_id) ──
+    // Espelha os resolvers SQL (mig 20260907120500): por componente, o produto
+    // legado pinado vem ANTES do grupo da variante; ambos vêm antes da resolução
+    // da ficha. A ÁREA (dm²/par, per-size) permanece a da ficha — a variante só
+    // troca a ORIGEM do material (grupo/produto), e portanto a largura usada na
+    // conversão dm²→m passa a ser a da ficha de componente do grupo DA VARIANTE.
+    const variant = item.material_variant_id
+      ? materialVariantsById.get(item.material_variant_id)
+      : undefined;
+    const groupNameById = (gid: string | null | undefined): string =>
+      gid ? ((productGroups || []).find((g: any) => g.id === gid)?.name || '') : '';
+    /** Pin de produto da variante (se ativo em allProducts) + nome do grupo efetivo. */
+    const variantComponent = (
+      pid: string | null | undefined,
+      gid: string | null | undefined,
+    ): { pin: any | null; groupName: string } => {
+      const pin = pid ? (allProducts || []).find((p: any) => p.id === pid) || null : null;
+      const groupName = pin ? groupNameById(pin.group_id) : groupNameById(gid);
+      return { pin, groupName };
+    };
+    const upperVariant = variant
+      ? variantComponent(variant.upper_material_product_id, variant.upper_material_group_id)
+      : { pin: null, groupName: '' };
+    const liningVariant = variant
+      ? variantComponent(variant.lining_material_product_id, variant.lining_material_group_id)
+      : { pin: null, groupName: '' };
+    const insoleVariant = variant
+      ? variantComponent(variant.insole_material_product_id, variant.insole_material_group_id)
+      : { pin: null, groupName: '' };
+    const upperVariantDriven = !!(upperVariant.pin || upperVariant.groupName);
+    const liningVariantDriven = !!(liningVariant.pin || liningVariant.groupName);
+    const insoleVariantDriven = !!(insoleVariant.pin || insoleVariant.groupName);
+    // Solado da variante: pin direto (resolve_sole_for_variant no SQL).
+    const variantSolePid = variant?.sole_material_product_id
+      && (allProducts || []).some((p: any) => p.id === variant.sole_material_product_id)
+      ? variant.sole_material_product_id
+      : null;
+    /** Resolução de solado DESTE item: pin da variante > cascata canônica. */
+    const resolveSoleForItem = (): string | null =>
+      variantSolePid ?? resolveSoleProductId(item.reference_id, orderColor);
+
     // Cabedal: resolve which option matches the order color
     const allCabedalAccessories = Array.isArray(sheet?.components_accessories)
       ? (sheet.components_accessories as any[]).filter((e: any) => e.material && !e.id)
       : [];
     const upperAlts = allCabedalAccessories.filter((e: any) => !e.mandatory);
     const mandatoryCabedalMaterials = allCabedalAccessories.filter((e: any) => e.mandatory === true);
-    const upperMatch = resolveOption(
-      sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0,
-      upperAlts, orderColor,
-    );
+    // Variante dirige o cabedal: o grupo vem DELA (pin legado > grupo) e a
+    // resolução por alternativas de cor da ficha NÃO se aplica (espelha o SQL,
+    // onde 'variant'/'variant_group' retornam antes de qualquer fallback). O
+    // consumo segue o da ficha, exceto override LEGADO explícito da variante.
+    const upperMatch = upperVariantDriven
+      ? {
+          group: upperVariant.groupName || (sheet?.upper_material || ''),
+          consumption: variant?.upper_consumption_override != null
+            ? Number(variant.upper_consumption_override) || 0
+            : (Number(sheet?.upper_consumption) || 0),
+        }
+      : resolveOption(
+          sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0,
+          upperAlts, orderColor,
+        );
     if (upperMatch) {
       const upperSheet = getPreferredGroupSheet(upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-      const isPrincipal = upperMatch.group === (sheet?.upper_material || '');
+      const isPrincipal = upperVariantDriven || upperMatch.group === (sheet?.upper_material || '');
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
-      const overridePerSize = isPrincipal
-        ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
-        : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
+      // Override LEGADO da variante substitui o escalar E suprime o per-size da
+      // ficha (é um consumo explícito). Sem override, o per-size da ficha segue
+      // valendo mesmo com variante (a variante troca material, não geometria).
+      const hasLegacyUpperOverride = upperVariantDriven && variant?.upper_consumption_override != null;
+      const overridePerSize = hasLegacyUpperOverride
+        ? null
+        : isPrincipal
+          ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
+          : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
-      // Pin de SKU da ficha (Material 1): quando fixado + ativo, o débito SQL baixa
-      // ESSE produto (resolve_upper_material_for_variant → 'sheet_pin'). Aqui só
+      // Pin de SKU: o da VARIANTE (produto legado) prevalece; senão o da ficha
+      // (Material 1). Quando fixado + ativo, o débito SQL baixa ESSE produto
+      // (resolve_upper_material_for_variant → 'variant'/'sheet_pin'). Aqui só
       // refletimos o NOME no custeio/modal; a quantidade não muda. (2026-06-28)
-      const upperPin = isPrincipal && (sheet as any)?.upper_material_product_id
-        ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
-        : null;
+      const upperPin = upperVariant.pin
+        || (isPrincipal && (sheet as any)?.upper_material_product_id
+          ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
+          : null);
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: upperMatch.group,
@@ -722,10 +830,19 @@ export function computeConsumptionForItems(
 
     // Forro: resolve which option matches the order color
     const liningAlts = Array.isArray(sheet?.lining_accessories) ? sheet.lining_accessories as any[] : [];
-    const liningMatch = resolveOption(
-      sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0,
-      liningAlts, orderColor,
-    );
+    // Variante dirige o forro: mesmo racional do cabedal (pin legado > grupo da
+    // variante; consumo da ficha, salvo override legado explícito).
+    const liningMatch = liningVariantDriven
+      ? {
+          group: liningVariant.groupName || (sheet?.lining_material || ''),
+          consumption: variant?.lining_consumption_override != null
+            ? Number(variant.lining_consumption_override) || 0
+            : (Number(sheet?.lining_consumption) || 0),
+        }
+      : resolveOption(
+          sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0,
+          liningAlts, orderColor,
+        );
     // Anti-duplicidade FORRAÇÃO (cabedal × palmilha) — espelha
     // calculate_order_consumption_by_grade (migration 20260911120000): quando o
     // solado DIRIGE o forro de PALMILHA (insole_lining_consumption_dm2) e NÃO tem
@@ -735,15 +852,15 @@ export function computeConsumptionForItems(
     // "Forração Palmilha" (abaixo) segue intacta. Só dispara com
     // sole_drives_consumption=true (idem SQL) — fichas de calçado fechado (forro
     // real, sem forro-de-palmilha no solado) não são afetadas.
-    const soleForLiningId = resolveSoleProductId(item.reference_id, orderColor);
+    const soleForLiningId = resolveSoleForItem();
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
       && Object.values(insoleLiningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0)
       && !Object.values(liningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0);
     if (liningMatch && !suppressCabedalForracao) {
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
-      const soleProductId = resolveSoleProductId(item.reference_id, orderColor);
-      const isPrincipalLining = liningMatch.group === (sheet?.lining_material || '');
+      const soleProductId = resolveSoleForItem();
+      const isPrincipalLining = liningVariantDriven || liningMatch.group === (sheet?.lining_material || '');
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
       // FORRAÇÃO ALTERNATIVA (lining_accessories): consumo por número da própria
       // ficha (é escolha do modelo). A PRINCIPAL não usa mais per_size da ficha.
@@ -756,7 +873,10 @@ export function computeConsumptionForItems(
       // e o fallback `v_spec.lining_consumption_dm2` do SQL by_grade. Prioridade
       // idêntica ao SQL: solado → escalar `lining_consumption` (per_size da ficha
       // saiu — o grid foi removido; 0 fichas tinham valor). (2026-07-01)
-      const liningSolePerSize = isPrincipalLining ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
+      // Override LEGADO da variante é consumo explícito → ignora o per-size do
+      // solado e usa o escalar já embutido em liningMatch.consumption.
+      const hasLegacyLiningOverride = liningVariantDriven && variant?.lining_consumption_override != null;
+      const liningSolePerSize = (isPrincipalLining && !hasLegacyLiningOverride) ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
       const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
       const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
       let liningTotal: number;
@@ -769,9 +889,10 @@ export function computeConsumptionForItems(
       } else {
         liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption).total;
       }
-      const liningPin = isPrincipalLining && (sheet as any)?.lining_material_product_id
-        ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
-        : null;
+      const liningPin = liningVariant.pin
+        || (isPrincipalLining && (sheet as any)?.lining_material_product_id
+          ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
+          : null);
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração',
         groupName: liningMatch.group,
@@ -786,17 +907,23 @@ export function computeConsumptionForItems(
     // Palmilha = PLACA (base) + FORRAÇÃO (napa do forro). Pulada INTEIRA quando
     // a palmilha é pronta (insole_ready_made ou solado classificado
     // palmilha_pronta) — espelha o ramo SQL: pronta = não debita nada.
-    const soleProductIdForInsole = resolveSoleProductId(item.reference_id, orderColor);
+    const soleProductIdForInsole = resolveSoleForItem();
     const insoleSoleProd = soleProductIdForInsole ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole) : null;
     const isPalmilhaPronta = (sheet?.insole_ready_made === true)
       || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
 
     if (!isPalmilhaPronta) {
       const palmMapping = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
-      const insoleGroupName = sheet?.insole_material || '';
+      // Variante dirige a palmilha: grupo da variante substitui o da ficha; pin
+      // de produto da variante prevalece sobre o pin do mapping de cor (espelha
+      // resolve_insole_material_for_variant: variant.product_id > variant.group_id
+      // > resolução da ficha).
+      const insoleGroupName = insoleVariantDriven
+        ? (insoleVariant.groupName || sheet?.insole_material || '')
+        : (sheet?.insole_material || '');
       const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
       const palmColor = palmMapping?.color || '—';
-      const palmProductId = palmMapping?.productId;
+      const palmProductId = insoleVariant.pin?.id || palmMapping?.productId;
 
       // PLACA (base): produto específico (unidade) ou material convertido a placas.
       //
@@ -819,11 +946,17 @@ export function computeConsumptionForItems(
       // espelhando o Forro e a produção/ondas: quando o solado tem valores, o consumo (dm²) vem
       // deles por número (escalar como fallback) e a ficha de componente é usada SÓ pra conversão
       // dm²→placa. Sem valores no solado → caminho antigo (yield da ficha de componente).
-      const insoleSolePerSize = insoleSpecBySole.get(soleProductIdForInsole || '') || {};
+      // Override LEGADO da variante (consumo explícito) suprime o per-size do
+      // solado e substitui o escalar da ficha.
+      const hasLegacyInsoleOverride = insoleVariantDriven && variant?.insole_consumption_override != null;
+      const insoleScalarConsumption = hasLegacyInsoleOverride
+        ? (Number(variant?.insole_consumption_override) || 0)
+        : (Number(sheet?.insole_consumption) || 0);
+      const insoleSolePerSize = hasLegacyInsoleOverride ? {} : (insoleSpecBySole.get(soleProductIdForInsole || '') || {});
       const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
       const computeInsoleDm2 = () => insoleSoleVals.length > 0
         ? calculateGradeBasedDm2(item, insoleSoleVals.reduce((a, b) => a + b, 0) / insoleSoleVals.length, null, insoleSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption)
-        : calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+        : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
       const insoleGroupProducts = insoleGroup
         ? (allProducts || []).filter((p: any) => p.group_id === insoleGroup.id)
         : [];
@@ -888,7 +1021,12 @@ export function computeConsumptionForItems(
       // Linha linear ADICIONAL (mesma napa do Forro do cabedal). Só quando há
       // forro (insole_has_lining) e área de forração da palmilha > 0.
       const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
-      const liningGroupForPalm = sheet?.lining_material || '';
+      // Forração da palmilha usa a MESMA napa do forro — se a variante troca o
+      // grupo do forro, a forração da palmilha sai do grupo da variante (o SQL
+      // resolve as duas pelo mesmo resolve_lining_material_for_variant).
+      const liningGroupForPalm = liningVariantDriven
+        ? (liningVariant.groupName || sheet?.lining_material || '')
+        : (sheet?.lining_material || '');
       // FORRAÇÃO da palmilha por numeração vinda do SOLADO
       // (sole_technical_specs.insole_lining_consumption_dm2), espelhando o Forro e a
       // produção/ondas (SQL by_grade).
@@ -925,12 +1063,12 @@ export function computeConsumptionForItems(
       }
     }
 
-    // Solado: resolução canônica (P0 conjugação → P1 mapping explícito →
-    // P2 mapping legado por grupo/maior estoque → P3 primary_sole_id), com
-    // match de cor case/acento-insensitive. Toda a ordem vive em
-    // resolveSoleProductId — espelho do resolve_sole_color do backend.
-    const soleProductIdResolved: string | null =
-      resolveSoleProductId(item.reference_id, orderColor);
+    // Solado: pin da VARIANTE primeiro (resolve_sole_for_variant no SQL); senão
+    // resolução canônica (P0 conjugação → P1 mapping explícito → P2 mapping
+    // legado por grupo/maior estoque → P3 primary_sole_id), com match de cor
+    // case/acento-insensitive. Toda a ordem vive em resolveSoleForItem/
+    // resolveSoleProductId — espelho do backend.
+    const soleProductIdResolved: string | null = resolveSoleForItem();
     const soleProduct = soleProductIdResolved
       ? (allProducts || []).find((p: any) => p.id === soleProductIdResolved)
       : null;
@@ -984,7 +1122,11 @@ export function computeConsumptionForItems(
       // 2). 1 par/par é o CANÔNICO; o multiplicador > 1 é preservado porque a
       // ficha STX usa 2 (⚠ o débito SQL não aplica o multiplicador — a linha
       // do modal fica conservadora, nunca menor que o débito real).
-      totalQuantity: (Number(sheet?.sole_consumption) || 1) * itemQuantity,
+      // Override da variante (unidades de solado/par, raro ≠ 1) prevalece
+      // sobre o sole_consumption da ficha.
+      totalQuantity: ((variant?.sole_consumption_override != null
+        ? Number(variant.sole_consumption_override)
+        : Number(sheet?.sole_consumption)) || 1) * itemQuantity,
       sizeBreakdown: Object.keys(scaledBreakdown).length > 0 ? scaledBreakdown : undefined,
       soleProductId: soleProductIdResolved,
     });
@@ -1103,12 +1245,31 @@ export function computeConsumptionForItems(
     }
 
     const specGroupsWithConsumption = new Map<string, number>();
+    // Grupo EFETIVO de palmilha (variante > ficha) — o dedup do BOM abaixo tem
+    // que casar com o grupo que a linha de Palmilha realmente usou.
+    const effectiveInsoleGroupName = insoleVariantDriven
+      ? (insoleVariant.groupName || sheet?.insole_material || '')
+      : (sheet?.insole_material || '');
     if (upperMatch?.group) specGroupsWithConsumption.set(upperMatch.group.toLowerCase(), upperMatch.consumption);
     if (liningMatch?.group) specGroupsWithConsumption.set(liningMatch.group.toLowerCase(), liningMatch.consumption);
-    if (sheet?.insole_material && (Number(sheet?.insole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.insole_material).toLowerCase(), Number(sheet.insole_consumption));
+    if (effectiveInsoleGroupName && (Number(sheet?.insole_consumption) || 0) > 0) specGroupsWithConsumption.set(effectiveInsoleGroupName.toLowerCase(), Number(sheet.insole_consumption));
     if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
 
-    const itemMaterials = (materials || []).filter((material: any) => material.sheet_id === item.reference_id);
+    // BOM efetivo do item (semântica get_effective_bom, mig 20260525140000):
+    // linha com material_variant_id NULL = compartilhada (vale pra todas as
+    // variantes); linha da variante DESTE item entra e, quando repete o
+    // product_id de uma compartilhada, PREVALECE (override); linha de OUTRA
+    // variante fica de fora. Sem variante no item → só as compartilhadas.
+    const sheetBomLines = (materials || []).filter((material: any) => material.sheet_id === item.reference_id);
+    const itemVariantId = item.material_variant_id || null;
+    const variantBomLines = itemVariantId
+      ? sheetBomLines.filter((m: any) => m.material_variant_id === itemVariantId)
+      : [];
+    const variantBomProductIds = new Set(variantBomLines.map((m: any) => m.product_id));
+    const itemMaterials = [
+      ...sheetBomLines.filter((m: any) => !m.material_variant_id && !variantBomProductIds.has(m.product_id)),
+      ...variantBomLines,
+    ];
 
     // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
     // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
@@ -1196,7 +1357,7 @@ export function computeConsumptionForItems(
         const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
         const isLiningGroup = liningMatch?.group?.toLowerCase() === groupKey;
-        const isInsoleGroup = sheet?.insole_material?.toLowerCase() === groupKey;
+        const isInsoleGroup = effectiveInsoleGroupName.toLowerCase() === groupKey;
         const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
         const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
                            (isLiningGroup && bomType === 'Forração') ||

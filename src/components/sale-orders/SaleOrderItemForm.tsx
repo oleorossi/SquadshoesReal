@@ -523,26 +523,53 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // Materiais de área (cabedal/forração) cuja cor principal NÃO tem produto no
   // grupo (gerido por cor) → débito PULA (vira ruptura). Carrega o group_id pra
   // cadastrar inline. Fonte única do aviso amarelo + do report ao pai.
+  //
+  // VARIANT-AWARE (2026-07): com variante de material no item, o gate valida os
+  // grupos que a variante REALMENTE resolve (grupo da variante > grupo da ficha)
+  // — antes validava sempre o grupo da ficha, deixando passar cor inexistente no
+  // grupo trocado pela variante (e vice-versa). Componente com produto PINADO na
+  // variante (legado) fica fora: o débito baixa aquele produto exato, a cor do
+  // item não participa da resolução. Palmilha NÃO entra no gate bloqueante: a
+  // cor dela pode vir de mapeamento (technical_sheet_palmilha_colors), que este
+  // form não carrega — checar a cor do item direto geraria bloqueio falso.
   const coverColorIssues = useMemo<{ name: string; groupId: string }[]>(() => {
     const color = (item.color || '').trim().toLowerCase();
     if (!color) return [];
-    const matNames = Array.from(new Set(
-      [sheetSpecs?.lining_material, sheetSpecs?.upper_material]
-        .map((n: any) => (n || '').trim()).filter(Boolean),
-    ));
+    const sel = item.material_variant_id
+      ? activeMaterialVariants.find(v => v.id === item.material_variant_id)
+      : undefined;
+    type ColorTarget = { name?: string; groupId?: string };
+    const resolveTarget = (
+      pinProductId: string | null | undefined,
+      variantGroupId: string | null | undefined,
+      sheetName: string | null | undefined,
+    ): ColorTarget | null => {
+      if (pinProductId) return null; // pin legado: produto fixo, sem resolução por cor
+      if (variantGroupId) return { groupId: variantGroupId };
+      const nm = (sheetName || '').trim();
+      return nm ? { name: nm } : null;
+    };
+    const targets = [
+      resolveTarget(sel?.upper_material_product_id, sel?.upper_material_group_id, sheetSpecs?.upper_material),
+      resolveTarget(sel?.lining_material_product_id, sel?.lining_material_group_id, sheetSpecs?.lining_material),
+    ].filter(Boolean) as ColorTarget[];
     const out: { name: string; groupId: string }[] = [];
-    for (const name of matNames) {
-      const grp = (productGroups as any[]).find((g: any) => (g.name || '').trim().toLowerCase() === String(name).toLowerCase());
-      if (!grp) continue;
+    const seen = new Set<string>();
+    for (const t of targets) {
+      const grp = t.groupId
+        ? (productGroups as any[]).find((g: any) => g.id === t.groupId)
+        : (productGroups as any[]).find((g: any) => (g.name || '').trim().toLowerCase() === String(t.name).toLowerCase());
+      if (!grp || seen.has(grp.id)) continue;
+      seen.add(grp.id);
       if (grp.is_color_agnostic) continue; // material base (EVA/cola): cor não se aplica
       const groupProds = (allProducts as any[]).filter((p: any) => p.group_id === grp.id && p.active !== false);
       const colorManaged = groupProds.some((p: any) => (p.color || '').trim() !== '');
       if (!colorManaged) continue; // grupo sem cores = genérico → débito ok
       const hasColor = groupProds.some((p: any) => (p.color || '').trim().toLowerCase() === color);
-      if (!hasColor) out.push({ name: String(name), groupId: grp.id });
+      if (!hasColor) out.push({ name: grp.name || String(t.name || ''), groupId: grp.id });
     }
     return out;
-  }, [item.color, sheetSpecs, productGroups, allProducts]);
+  }, [item.color, item.material_variant_id, activeMaterialVariants, sheetSpecs, productGroups, allProducts]);
 
   // MUTEX tiras × cabedal (TechnicalSheets: habilitar tiras limpa o cabedal): um
   // modelo é OU de tiras OU de cabedal, nunca os dois. Ficha COM cabedal NÃO é

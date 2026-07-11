@@ -792,6 +792,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // modal. `o.grid` é a grade base; o motor escala pelo total (quantity).
       grade: (o.grid ?? null) as Record<string, number> | null,
       strap_colors: Array.isArray(o.strap_colors) ? o.strap_colors : null,
+      material_variant_id: (o.material_variant_id ?? null) as string | null,
     })).filter(i => i.reference_id && i.quantity > 0),
     [orders],
   );
@@ -838,6 +839,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           qty,
           (o.grid ?? null) as Record<string, number> | null,
           Array.isArray(o.strap_colors) ? o.strap_colors : null,
+          (o.material_variant_id ?? null) as string | null,
         );
         const rows = consumptionByKey.get(key) ?? [];
         for (const r of rows) {

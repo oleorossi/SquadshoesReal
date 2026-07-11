@@ -69,7 +69,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
         fetchConsumptionContext(refIds),
         fetchTechnicalSheetsForConsumption(refIds),
         saleOrderItemIds.length > 0
-          ? supabase.from('sale_order_items').select('id, strap_colors').in('id', saleOrderItemIds)
+          ? supabase.from('sale_order_items').select('id, strap_colors, material_variant_id').in('id', saleOrderItemIds)
           : Promise.resolve({ data: [] as any[] }),
         saleOrderIds.length > 0
           ? supabase.from('sale_orders').select('id, packaging_mode').in('id', saleOrderIds)
@@ -77,6 +77,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
       ]);
 
       const strapByItem = new Map<string, any>(((strapRes as any).data || []).map((si: any) => [si.id, si.strap_colors]));
+      const variantByItem = new Map<string, string | null>(((strapRes as any).data || []).map((si: any) => [si.id, si.material_variant_id ?? null]));
       const pkgByOrder = new Map<string, string | null>(((pkgRes as any).data || []).map((s: any) => [s.id, s.packaging_mode ?? null]));
 
       const items: ConsumptionItem[] = ordersData
@@ -88,6 +89,9 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           grade: (o.grade as Record<string, number> | null) ?? null,
           fichas: 1,
           strap_colors: o.sale_order_item_id ? (strapByItem.get(o.sale_order_item_id) ?? null) : null,
+          // Variante de material do item do PV — resolve os materiais da OP
+          // (cabedal/forro/palmilha/solado/BOM) pela variante escolhida.
+          material_variant_id: o.sale_order_item_id ? (variantByItem.get(o.sale_order_item_id) ?? null) : null,
           technical_sheets: sheetMap.get(o.reference_id),
           packagingMode: (o as any).sale_order_id ? (pkgByOrder.get((o as any).sale_order_id) ?? null) : null,
         }));

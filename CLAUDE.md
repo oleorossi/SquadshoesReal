@@ -157,6 +157,21 @@ componente** (`component_sheets`).
   já está na unidade nativa (metro/contagem) → **NÃO converter**.
 - **Solado**: por par, segmentado por **numeração** (`sizeBreakdown`), nunca por área.
 
+### Variante de material do item do PV (2026-07-11)
+O item do PV pode apontar uma **variante de material** (`sale_order_items.material_variant_id`
+→ `reference_material_variants`): mesma geometria de consumo da ficha, materiais de
+ORIGEM diferente. Precedência por componente (cabedal/forro/palmilha):
+`produto legado pinado > grupo da variante (+cor do PV) > pin da ficha > grupo da ficha`
+(resolvers SQL `resolve_*_material_for_variant`, mig `20260907120500`). Solado: pin
+direto via `resolve_sole_for_variant` (também honrado no débito por grade desde a mig
+`20260911140000`). BOM: `sheet_materials.material_variant_id` NULL = linha compartilhada;
+preenchido = específica da variante (override por `product_id`, semântica
+`get_effective_bom`). O motor TS (`orderConsumption.ts` — modal + fichas de operador —
+e `bomConsumption.ts` — Lista de Separação) espelha essa resolução; a conversão dm²→m
+usa a largura da ficha de componente do grupo **da variante**. Débito/reserva/custeio
+derivam a variante server-side via `orders.sale_order_item_id` (não há coluna de
+variante em `orders`).
+
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:
 upper (cabedal), lining (forro), insole (palmilha) e **sheet_materials (BOM)** — este
