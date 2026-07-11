@@ -816,7 +816,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               {filtersBar}
             </div>
             {coverage && coverage.count === 0 && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>Nenhuma batida importada para {periodTitle}. Importe o arquivo do relógio (aba Ponto) — o Espelho lista o que foi importado.</span>
               </div>
@@ -858,13 +858,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       </div>
 
       {coverage && coverage.count === 0 && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>Nenhuma batida importada para {periodTitle}. Importe o arquivo do relógio (aba Ponto) antes de calcular.</span>
         </div>
       )}
       {coverage && coverage.maxCovered && appliedTo && coverage.maxCovered < appliedTo && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 flex items-center gap-2">
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>
             Ponto importado só até <strong>{coverage.maxCovered.split('-').reverse().join('/')}</strong> neste período —
@@ -1301,7 +1301,7 @@ function PayrollPendingAdvancesAlert({ from, to }: { from: string; to: string })
   if (!data || data.count === 0) return null;
   return (
     <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
-      <div className="flex items-center gap-2 text-xs text-amber-800">
+      <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span>
           <strong className="font-bold">{data.count} vale(s)</strong> pendente(s) neste período —

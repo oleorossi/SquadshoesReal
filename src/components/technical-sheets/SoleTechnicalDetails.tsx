@@ -655,7 +655,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             variant="outline"
             onClick={() => soleName && tryLoadReferenceSpecs(soleName)}
             disabled={saving || isReferenceLoading || !soleName}
-            className="gap-2 shrink-0 border-blue-200 hover:border-blue-400 text-blue-700 bg-blue-50/50"
+            className="gap-2 shrink-0 border-blue-500/30 hover:border-blue-500/60 text-blue-600 bg-blue-500/10"
             title="Tenta achar specs em outro solado com nome similar (mesma família)"
           >
             {isReferenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
@@ -665,7 +665,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             variant="outline"
             onClick={() => setCopyAnyOpen(true)}
             disabled={saving}
-            className="gap-2 shrink-0 border-purple-200 hover:border-purple-400 text-purple-700 bg-purple-50/50"
+            className="gap-2 shrink-0 border-purple-500/30 hover:border-purple-500/60 text-purple-600 bg-purple-500/10"
             title="Escolhe qualquer solado já cadastrado como base — você ajusta depois"
           >
             <Copy className="h-4 w-4" />

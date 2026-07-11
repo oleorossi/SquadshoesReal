@@ -134,7 +134,7 @@ export default function StandaloneNfePanel() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-amber-300/50 bg-amber-50/30 p-3 text-xs text-amber-800">
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
         <strong>NF Avulsa</strong> — emite NF-e diretamente, sem PV de produção. Use para mercadorias
         em estoque que vão sair sem passar por ondas de produção. Um PV "fantasma" é criado em
         segundo plano (marcado <code>is_standalone_nfe=true</code>) só pra suportar o fluxo fiscal.

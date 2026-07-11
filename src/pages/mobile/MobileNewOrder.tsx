@@ -485,6 +485,7 @@ export default function MobileNewOrder() {
           {totalPairs} pares · R$ {totalValue.toFixed(2)}
         </p>
         <div className="space-y-2 pt-4">
+          {/* Verde WhatsApp — cor de marca, exceção deliberada aos tokens */}
           <button
             onClick={shareWhatsApp}
             className="w-full bg-[#25D366] text-white rounded-lg py-3 font-bold uppercase tracking-wide flex items-center justify-center gap-2"
@@ -638,7 +639,7 @@ export default function MobileNewOrder() {
       </div>
 
       {!online && (
-        <div className="border border-amber-500 bg-amber-50 text-amber-900 rounded-lg p-3 text-sm">
+        <div className="border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg p-3 text-sm">
           ⚠ Você está offline. O pedido vai pra fila e será enviado quando a rede voltar.
         </div>
       )}

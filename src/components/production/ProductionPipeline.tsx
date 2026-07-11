@@ -1,17 +1,18 @@
 import { Scissors, Stack as Layers, GridFour as LayoutGrid, Pen, PaintBrush as Paintbrush, Wind, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
 
 // Ordem canônica pós PR1-PR3: prep (Palmilha‖Forração‖Aviamento) → Costura → restantes.
+// bg precisa ser classe LITERAL (Tailwind JIT não gera classe montada em runtime)
 const STEPS = [
-  { id: 'Corte Palmilha', label: 'C. Palmilha',  icon: Scissors,    color: 'text-orange-500' },
-  { id: 'Corte Forração', label: 'C. Forração',  icon: Layers,      color: 'text-teal-500' },
-  { id: 'Aviamento',      label: 'Aviamento',    icon: LayoutGrid,  color: 'text-purple-500' },
-  { id: 'Costura',        label: 'Costura',      icon: Pen,         color: 'text-rose-500' },
-  { id: 'Silk',           label: 'Silk',          icon: Paintbrush,  color: 'text-pink-500' },
-  { id: 'Colagem',        label: 'Colagem',       icon: Wind,        color: 'text-amber-500' },
-  { id: 'Montagem',       label: 'Montagem',      icon: Hammer,      color: 'text-blue-500' },
-  { id: 'Solagem',        label: 'Solagem',       icon: Footprints,  color: 'text-lime-500' },
-  { id: 'Acabamento',     label: 'Acabamento',    icon: Sparkles,    color: 'text-emerald-500' },
-  { id: 'Expedição',      label: 'Expedição',     icon: Truck,       color: 'text-indigo-500' },
+  { id: 'Corte Palmilha', label: 'C. Palmilha',  icon: Scissors,    color: 'text-orange-500',  bg: 'bg-orange-500/10' },
+  { id: 'Corte Forração', label: 'C. Forração',  icon: Layers,      color: 'text-teal-500',    bg: 'bg-teal-500/10' },
+  { id: 'Aviamento',      label: 'Aviamento',    icon: LayoutGrid,  color: 'text-purple-500',  bg: 'bg-purple-500/10' },
+  { id: 'Costura',        label: 'Costura',      icon: Pen,         color: 'text-rose-500',    bg: 'bg-rose-500/10' },
+  { id: 'Silk',           label: 'Silk',          icon: Paintbrush,  color: 'text-pink-500',    bg: 'bg-pink-500/10' },
+  { id: 'Colagem',        label: 'Colagem',       icon: Wind,        color: 'text-amber-500',   bg: 'bg-amber-500/10' },
+  { id: 'Montagem',       label: 'Montagem',      icon: Hammer,      color: 'text-blue-500',    bg: 'bg-blue-500/10' },
+  { id: 'Solagem',        label: 'Solagem',       icon: Footprints,  color: 'text-lime-500',    bg: 'bg-lime-500/10' },
+  { id: 'Acabamento',     label: 'Acabamento',    icon: Sparkles,    color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+  { id: 'Expedição',      label: 'Expedição',     icon: Truck,       color: 'text-indigo-500',  bg: 'bg-indigo-500/10' },
 ];
 
 // Map legacy (pre-rename) step ids to their canonical equivalents.
@@ -51,8 +52,8 @@ export function ProductionPipeline({ currentStep }: { orderId?: string, currentS
             <div className="flex flex-col items-center z-10">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isCompleted ? 'bg-emerald-100 text-emerald-600 border-2 border-emerald-500' :
-                  isCurrent ? `${step.color.replace('text', 'bg').replace('500', '100')} ${step.color} border-2 border-current scale-110 shadow-md` :
+                  isCompleted ? 'bg-emerald-500/10 text-emerald-600 border-2 border-emerald-500' :
+                  isCurrent ? `${step.bg} ${step.color} border-2 border-current scale-110 shadow-md` :
                   'bg-muted text-muted-foreground border-2 border-border'
                 }`}
               >

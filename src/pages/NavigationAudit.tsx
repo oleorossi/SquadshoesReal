@@ -139,7 +139,7 @@ export default function NavigationAuditPage() {
           )}
       </Panel>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex gap-3">
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 text-sm text-blue-700 dark:text-blue-400 flex gap-3">
         <Settings className="h-5 w-5 shrink-0 text-blue-500" />
         <div>
           <p className="font-semibold">Como corrigir?</p>

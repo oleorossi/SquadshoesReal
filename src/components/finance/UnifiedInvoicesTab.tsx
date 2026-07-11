@@ -41,17 +41,17 @@ export default function UnifiedInvoicesTab() {
             <p className="text-xs text-muted-foreground">12 notas processadas</p>
           </CardContent>
         </Card>
-        <Card className="bg-emerald-50 border-emerald-200">
+        <Card className="bg-emerald-500/10 border-emerald-500/20">
           <CardContent className="pt-4">
-            <p className="text-xs font-semibold text-emerald-700 uppercase">Total no Mês (Saída)</p>
-            <p className="display text-2xl tabular-nums text-emerald-700">R$ 128.450,00</p>
+            <p className="text-xs font-semibold text-emerald-600 uppercase">Total no Mês (Saída)</p>
+            <p className="display text-2xl tabular-nums text-emerald-600">R$ 128.450,00</p>
             <p className="text-xs text-muted-foreground">48 notas emitidas</p>
           </CardContent>
         </Card>
-        <Card className="bg-amber-50 border-amber-200">
+        <Card className="bg-amber-500/10 border-amber-500/20">
           <CardContent className="pt-4">
-            <p className="text-xs font-semibold text-amber-700 uppercase">Impostos Estimados</p>
-            <p className="display text-2xl tabular-nums text-amber-700">R$ 15.414,00</p>
+            <p className="text-xs font-semibold text-amber-600 uppercase">Impostos Estimados</p>
+            <p className="display text-2xl tabular-nums text-amber-600">R$ 15.414,00</p>
             <p className="text-xs text-muted-foreground">Base: 12% sobre saídas</p>
           </CardContent>
         </Card>

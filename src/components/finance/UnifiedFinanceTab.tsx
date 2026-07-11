@@ -68,10 +68,10 @@ export default function UnifiedFinanceTab({
             <p className="display text-2xl tabular-nums text-destructive">{fmt(totals.payable)}</p>
           </CardContent>
         </Card>
-        <Card className="bg-emerald-50 border-emerald-200">
+        <Card className="bg-emerald-500/10 border-emerald-500/20">
           <CardContent className="pt-4">
-            <p className="text-xs font-semibold text-emerald-700 uppercase">Total a Receber</p>
-            <p className="display text-2xl tabular-nums text-emerald-700">{fmt(totals.receivable)}</p>
+            <p className="text-xs font-semibold text-emerald-600 uppercase">Total a Receber</p>
+            <p className="display text-2xl tabular-nums text-emerald-600">{fmt(totals.receivable)}</p>
           </CardContent>
         </Card>
         <Card className={totals.balance >= 0 ? "bg-primary/5 border-primary/20" : "bg-destructive/5 border-destructive/20"}>

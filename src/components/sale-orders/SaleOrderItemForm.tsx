@@ -1521,7 +1521,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </div>
 
               {hasMissing && (
-                <div className="px-3 py-2 bg-amber-500/5 border-b border-amber-500/30 text-xs text-amber-800 space-y-2">
+                <div className="px-3 py-2 bg-amber-500/5 border-b border-amber-500/30 text-xs text-amber-700 dark:text-amber-400 space-y-2">
                   <p>
                     <strong>Atenção:</strong> {missing.length === 1
                       ? `Cor "${missing[0].color}" não tem produto no estoque do grupo "${missing[0].group_name || 'tira'}".`

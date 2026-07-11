@@ -479,7 +479,7 @@ ${styles}
                                <Badge variant="outline">{item.color}</Badge>
                                <Badge>{item.totalPairs} pares</Badge>
                                {item.silk && (
-                                 <Badge variant="secondary" className="gap-2 px-2 py-1 h-auto bg-stone-100 text-stone-800 border-stone-200">
+                                 <Badge variant="secondary" className="gap-2 px-2 py-1 h-auto">
                                    {item.silk.silk_url && (
                                      <div className="h-5 w-5 rounded-sm overflow-hidden border bg-card">
                                        <SignedImage src={item.silk.silk_url} className="h-full w-full object-contain" />

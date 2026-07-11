@@ -47,7 +47,7 @@ export function ReportTab() {
        value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats?.totalValue || 0),
        icon: DollarSign,
        color: "text-emerald-600",
-       bg: "bg-emerald-50",
+       bg: "bg-emerald-500/10",
        link: "/financeiro?tab=patrimonio"
      },
      {
@@ -55,7 +55,7 @@ export function ReportTab() {
        value: stats?.activeItems || 0,
        icon: Package,
        color: "text-blue-600",
-       bg: "bg-blue-50",
+       bg: "bg-blue-500/10",
        link: "/estoque?tab=materials"
      },
      {
@@ -63,7 +63,7 @@ export function ReportTab() {
        value: stats?.lowStockCount || 0,
        icon: AlertCircle,
        color: "text-red-600",
-       bg: "bg-red-50",
+       bg: "bg-red-500/10",
        link: "/estoque?tab=alerts"
      }
    ];

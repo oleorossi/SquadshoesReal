@@ -345,12 +345,12 @@ export function SolesComponentSheetTab() {
                         </TableCell>
                         <TableCell className="text-center">
                           {group.hasSheet ? (
-                            <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700">
+                            <Badge variant="outline" className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-600">
                               <CheckCircle2 className="h-3 w-3" />
                               Com ficha
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="gap-1 border-amber-200 bg-amber-50 text-amber-700">
+                            <Badge variant="outline" className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600">
                               <AlertCircle className="h-3 w-3" />
                               Sem ficha
                             </Badge>

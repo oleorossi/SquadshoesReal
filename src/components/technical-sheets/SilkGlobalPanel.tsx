@@ -247,7 +247,7 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
                       <TableRow key={reg.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <Footprints className="h-4 w-4 text-stone-400" />
+                            <Footprints className="h-4 w-4 text-muted-foreground" />
                             {displayName}
                           </div>
                         </TableCell>

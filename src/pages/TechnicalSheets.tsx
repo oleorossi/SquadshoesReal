@@ -211,7 +211,7 @@ const MATERIAIS_SOLADO = ['TR', 'EVA', 'Borracha', 'PVC', 'TPU'] as const;
 
 const COMPONENT_CATEGORIES = [
   // === Base do Solado (padrão, independente de cor) ===
-  { key: 'Solado', label: 'Solado', icon: Footprints, color: 'text-stone-600', aliases: ['solado'], section: 'base' },
+  { key: 'Solado', label: 'Solado', icon: Footprints, color: 'text-muted-foreground', aliases: ['solado'], section: 'base' },
   { key: 'Palmilha', label: 'Palmilha', icon: Shield, color: 'text-blue-600', aliases: ['palmilha', 'placa de palmilha'], section: 'base' },
   { key: 'Forração', label: 'Forração', icon: Scissors, color: 'text-purple-600', aliases: ['forro', 'forração', 'forração da palmilha'], section: 'base' },
   { key: 'Químico', label: 'Químicos', icon: Droplets, color: 'text-red-600', aliases: ['químico', 'quimico', 'cola', 'adesivo', 'hotmel', 'primer'], section: 'base' },

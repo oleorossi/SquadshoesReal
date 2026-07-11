@@ -23,11 +23,11 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 type PickingStatus = 'aberta' | 'em_separacao' | 'conferida' | 'divergencia' | 'concluida' | 'cancelada';
 
 const STATUS_COLOR: Record<string, string> = {
-  aberta: 'bg-blue-100 text-blue-700 border-blue-300',
-  em_separacao: 'bg-amber-100 text-amber-700 border-amber-300',
-  conferida: 'bg-indigo-100 text-indigo-700 border-indigo-300',
+  aberta: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
+  em_separacao: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+  conferida: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30',
   divergencia: 'bg-destructive/10 text-destructive border-destructive/30',
-  concluida: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  concluida: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
   cancelada: 'bg-muted text-muted-foreground border-border',
 };
 

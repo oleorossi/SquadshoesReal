@@ -15,9 +15,9 @@ import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
 const REQ_STATUS: Record<string, string> = {
-  aberta: 'bg-blue-100 text-blue-700',
-  em_analise: 'bg-amber-100 text-amber-700',
-  atendida: 'bg-emerald-100 text-emerald-700',
+  aberta: 'bg-blue-500/10 text-blue-600',
+  em_analise: 'bg-amber-500/10 text-amber-600',
+  atendida: 'bg-emerald-500/10 text-emerald-600',
   rejeitada: 'bg-destructive/10 text-destructive',
   cancelada: 'bg-muted text-muted-foreground',
 };

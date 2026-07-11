@@ -39,9 +39,9 @@ const CATEGORIES = [
 
 const STATUSES = [
   { value: 'draft', label: 'Rascunho', color: 'bg-muted text-muted-foreground' },
-  { value: 'validated', label: 'Validada', color: 'bg-blue-100 text-blue-700' },
-  { value: 'approved', label: 'Aprovada', color: 'bg-green-100 text-green-700' },
-  { value: 'production_ready', label: 'Pronta p/ Produção', color: 'bg-emerald-100 text-emerald-800' },
+  { value: 'validated', label: 'Validada', color: 'bg-blue-500/10 text-blue-600' },
+  { value: 'approved', label: 'Aprovada', color: 'bg-green-500/10 text-green-600' },
+  { value: 'production_ready', label: 'Pronta p/ Produção', color: 'bg-emerald-500/10 text-emerald-600' },
 ] as const;
 
 const DIMENSION_UNITS = ['mm', 'cm', 'm'] as const;
@@ -164,7 +164,7 @@ export function TechnicalReferencePanel({ sheetId, sheetName }: Props) {
 function ValidationBadge({ ref_ }: { ref_: TechnicalReferenceRow }) {
   if (ref_.is_valid) {
     return (
-      <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+      <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
         <CheckCircle2 className="h-4 w-4 text-green-600" />
       </div>
     );
@@ -379,7 +379,7 @@ function TechnicalReferenceDetail({ ref_ }: { ref_: TechnicalReferenceRow }) {
       )}
 
       {ref_.validation_warnings && (ref_.validation_warnings as any[]).length > 0 && (
-        <Card className="border-amber-300/50 bg-amber-50/50">
+        <Card className="border-amber-500/30 bg-amber-500/10">
           <CardContent className="py-3 px-3 space-y-1.5">
             <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />

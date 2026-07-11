@@ -311,7 +311,7 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
 
   if (sizes.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/50 p-4 text-xs text-amber-800">
+      <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-700 dark:text-amber-400">
         Este solado ainda não possui grade de numeração definida. Cadastre a grade em{' '}
         <span className="font-semibold">Estoque → Solado → Editar grade</span> antes de definir consumo de itens padrão.
       </div>

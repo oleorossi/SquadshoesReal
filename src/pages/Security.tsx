@@ -127,7 +127,7 @@ export default function Security() {
               <div key={s.id} className="p-3 flex items-center gap-3 text-sm">
                 <Badge variant="outline" className={`text-xs capitalize ${
                   s.sensitivity_level === 'alta' ? 'bg-destructive/10 text-destructive border-destructive/30' :
-                  s.sensitivity_level === 'media' ? 'bg-amber-100 text-amber-700' :
+                  s.sensitivity_level === 'media' ? 'bg-amber-500/10 text-amber-600' :
                   'bg-muted text-muted-foreground'
                 }`}>{s.sensitivity_level}</Badge>
                 <div className="flex-1 min-w-0">

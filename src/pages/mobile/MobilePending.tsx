@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ArrowsClockwise, Trash, WarningCircle } from '@phosphor-icons/react';
+import { ArrowsClockwise, CloudArrowUp, Trash, WarningCircle } from '@phosphor-icons/react';
 import { listPendingOrders, removeFromQueue, type QueuedOrder } from '@/lib/mobile/offlineQueue';
 import { triggerSync } from '@/lib/mobile/syncEngine';
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 
 export default function MobilePending() {
@@ -52,10 +53,11 @@ export default function MobilePending() {
       </div>
 
       {items.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-sm">Nenhum pedido pendente.</p>
-          <p className="text-xs mt-1">Pedidos criados offline aparecem aqui.</p>
-        </div>
+        <EmptyState
+          icon={CloudArrowUp}
+          title="Nenhum pedido pendente"
+          description="Pedidos criados offline aparecem aqui."
+        />
       ) : (
         <ul className="space-y-2">
           {items.map(q => (

@@ -235,7 +235,7 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div className="text-xs">
-                  <p className="font-semibold text-amber-800">
+                  <p className="font-semibold text-amber-700 dark:text-amber-400">
                     {failCount} {failCount === 1 ? 'item' : 'itens'} sem custo calculado — margem total é parcial.
                   </p>
                   <ul className="mt-1 text-amber-700 list-disc pl-4 space-y-0.5">

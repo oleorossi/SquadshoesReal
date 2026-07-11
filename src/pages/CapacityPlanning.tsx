@@ -495,7 +495,7 @@ function HotspotsSection({
           </div>
           <div>
             <div className="ed-eyebrow text-emerald-700">Status geral</div>
-            <div className="ed-display text-lg text-emerald-900">Nenhum gargalo ativo</div>
+            <div className="ed-display text-lg text-emerald-700 dark:text-emerald-400">Nenhum gargalo ativo</div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Todos os setores estão abaixo de 100% de ocupação semanal.
             </p>
@@ -868,10 +868,10 @@ function HeatmapCell({
   const txtCls = empty
     ? 'text-muted-foreground/40'
     : status === 'critical'
-      ? 'text-red-900 font-bold'
+      ? 'text-red-700 dark:text-red-400 font-bold'
       : status === 'warning'
-        ? 'text-amber-900 font-semibold'
-        : 'text-emerald-900';
+        ? 'text-amber-700 dark:text-amber-400 font-semibold'
+        : 'text-emerald-700 dark:text-emerald-400';
 
   return (
     <td
