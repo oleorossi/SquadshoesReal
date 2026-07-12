@@ -97,7 +97,8 @@ export default function Corte() {
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
 
-  const [searchQuery, setSearchQuery] = usePersistedState('corte-searchQuery', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [searchQuery, setSearchQuery] = useState('');
 
   const toggleOrderSelection = (orderId: string) => {
     setSelectedOrders(prev => {

@@ -366,8 +366,10 @@ export default function SaleOrders() {
     if (editDirty()) { setConfirmDiscard('edit'); return; }
     resetEditForm();
   };
-  // Filter & selection states (persisted across navigation)
-  const [searchTerm, setSearchTerm] = usePersistedState('searchTerm', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
+  // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
+  // de Orders, então o termo vazava entre PVs e OPs.
+  const [searchTerm, setSearchTerm] = useState('');
   // Debounce só pra ALIMENTAR o filtro pesado (filteredOrders re-renderiza até
   // 1000 linhas). O input segue ligado a searchTerm (digitação responsiva); o
   // recálculo da lista só roda 250ms após parar de digitar. (auditoria perf)

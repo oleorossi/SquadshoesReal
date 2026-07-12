@@ -52,7 +52,8 @@ export default function Acabamento() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
-  const [searchQuery, setSearchQuery] = usePersistedState('acabamento-searchQuery', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [searchQuery, setSearchQuery] = useState('');
 
   const toggleOrder = (id: string) => {
     setSelectedOrders(prev => {

@@ -44,7 +44,8 @@ export default function SetorCostura() {
   useRealtimeOrderStages();
   const { data: saleOrders = [] } = useSaleOrders();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('costura-filter-status', 'active');
-  const [searchQuery, setSearchQuery] = usePersistedState('costura-search', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizing, setFinalizing] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();

@@ -197,7 +197,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // Gates de ação da área Terceirizados (criar OS / excluir OS). Admin e
   // usuários sem permissão granular sempre passam.
   const osPerm = useCan('/terceirizados');
-  const [search, setSearch] = usePersistedState('contractors-search', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [search, setSearch] = useState('');
   // Aceita ?q= na URL — a busca global navega pra cá com ?q=<termo>, que
   // sobrepõe o valor persistido. REATIVO (deps no param, não só mount):
   // selecionar outra OS no ⌘K estando já em /terceirizados não remonta a

@@ -58,7 +58,8 @@ export default function Colagem() {
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedSaleOrders, setCollapsedSaleOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('colagem-searchQuery', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [searchQuery, setSearchQuery] = useState('');
 
   const toggleCollapse = (key: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setter(prev => {

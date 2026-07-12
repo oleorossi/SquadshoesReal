@@ -288,8 +288,10 @@ function getWeekOptions() {
     staleTime: 30 * 60 * 1000,
   });
 
-  // Filters state (persisted across navigation) — filters panel is always visible
-  const [searchTerm, setSearchTerm] = usePersistedState('searchTerm', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
+  // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
+  // de SaleOrders, então o termo vazava entre OPs e PVs.
+  const [searchTerm, setSearchTerm] = useState('');
   // Debounce só pra alimentar o filtro/agrupamento pesado (re-render de até
   // 1000 OPs). Input segue em searchTerm (responsivo); o recálculo roda 250ms
   // após parar de digitar. (auditoria perf)

@@ -117,7 +117,8 @@ export default function Silk() {
 
   const [filterStatus, setFilterStatus] = usePersistedState<string>('silk-filterStatus', 'active');
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('silk-searchQuery', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterPeriod, setFilterPeriod] = usePersistedState<string>('silkFilterPeriod', 'all');
   const [filterCategoria, setFilterCategoria] = usePersistedState<string>('silkFilterCategoria', 'all');
   const [showDetail, setShowDetail] = useState(false);

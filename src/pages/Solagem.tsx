@@ -115,7 +115,8 @@ export default function Solagem() {
 
   const [filterStatus, setFilterStatus] = usePersistedState<string>('solagem-filterStatus', 'active');
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = usePersistedState('solagem-searchQuery', '');
+  // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterPeriod, setFilterPeriod] = usePersistedState<string>('solagemFilterPeriod', 'all');
   const [filterCategoria, setFilterCategoria] = usePersistedState<string>('solagemFilterCategoria', 'all');
   const [showDetail, setShowDetail] = useState(false);
