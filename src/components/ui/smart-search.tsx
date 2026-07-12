@@ -66,6 +66,9 @@ function SmartSearchInner({
   const [activeIdx, setActiveIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const reqIdRef = useRef(0);
+  // Após selecionar uma sugestão, suprime a reabertura do popover pelo re-foco
+  // programático — só a próxima alteração de texto (onChange) reabre.
+  const suppressOpenRef = useRef(false);
 
   useEffect(() => {
     const term = debouncedValue.trim();
@@ -112,6 +115,11 @@ function SmartSearchInner({
     else onChange(s.value);
     setOpen(false);
     setActiveIdx(-1);
+    // Mantém o popover FECHADO após selecionar: o re-foco abaixo dispararia
+    // onFocus→setOpen(true) e reabriria a caixinha por cima dos resultados.
+    // Só volta a abrir quando o usuário alterar o texto (onChange). Ver
+    // specs/smart-search-fechar-ao-selecionar.md.
+    suppressOpenRef.current = true;
     inputRef.current?.focus();
   };
 
@@ -146,8 +154,8 @@ function SmartSearchInner({
           ref={inputRef}
           className={className}
           value={value}
-          onChange={(v) => { onChange(v); setOpen(true); setActiveIdx(-1); }}
-          onFocus={() => setOpen(true)}
+          onChange={(v) => { suppressOpenRef.current = false; onChange(v); setOpen(true); setActiveIdx(-1); }}
+          onFocus={() => { if (!suppressOpenRef.current) setOpen(true); }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
         />
