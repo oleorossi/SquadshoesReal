@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Scissors, Info, ArrowsClockwise, CheckCircle } from '@phosphor-icons/react';
+import { Scissors, Info, ArrowsClockwise, CheckCircle, MagnifyingGlass } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useSplitSuggestions, useSplitOrderMutation, type SplitSuggestion } from '@/hooks/useOrderLots';
 
 export default function LotSplitPage() {
@@ -22,13 +23,8 @@ export default function LotSplitPage() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return suggestions;
-    const q = search.toLowerCase();
     return suggestions.filter(s =>
-      s.order_number.toLowerCase().includes(q) ||
-      (s.sale_order_number || '').toLowerCase().includes(q) ||
-      s.sheet_code.toLowerCase().includes(q) ||
-      s.sheet_name.toLowerCase().includes(q) ||
-      (s.color || '').toLowerCase().includes(q)
+      searchMatchesAllTerms(search, s.order_number, s.sale_order_number, s.sheet_code, s.sheet_name, s.color)
     );
   }, [suggestions, search]);
 
@@ -60,11 +56,14 @@ export default function LotSplitPage() {
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 max-w-md">
-          <Input
-            placeholder="Buscar OP, PV, ficha, cor..."
+          <SearchInput
+            className="flex-1"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-9"
+            onChange={setSearch}
+            placeholder="Buscar por OP, PV, ficha, cor…"
+            resultCount={filtered.length}
+            totalCount={suggestions.length}
+            inputClassName="h-9"
           />
         </div>
         <div className="flex items-center gap-3">
@@ -84,12 +83,19 @@ export default function LotSplitPage() {
         <Card className="p-8 text-center text-sm text-muted-foreground">Carregando sugestões…</Card>
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={CheckCircle}
-          title={search.trim() ? 'Nenhuma sugestão para esse filtro' : 'Nenhuma OP candidata a split'}
+          icon={search.trim() ? MagnifyingGlass : CheckCircle}
+          title={search.trim() ? `Nenhum resultado para "${search}"` : 'Nenhuma OP candidata a split'}
           description={
             search.trim()
               ? 'Tente outro termo de busca.'
               : 'Todas as OPs ativas estão dentro de 2 dias do gargalo. Sem necessidade de splitar agora.'
+          }
+          action={
+            search.trim() ? (
+              <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                Limpar busca
+              </Button>
+            ) : undefined
           }
         />
       ) : (

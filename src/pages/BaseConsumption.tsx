@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { MagnifyingGlass as Search, Stack as Layers, Footprints, Info, Wrench, Image as ImageIcon, Ruler, CurrencyDollar as DollarSign, Truck, Package, Gear as Settings2, Cube as Box } from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
+import { MagnifyingGlass, Stack as Layers, Footprints, Info, Wrench, Image as ImageIcon, Ruler, CurrencyDollar as DollarSign, Truck, Package, Gear as Settings2, Cube as Box } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +21,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { productGroupingKey, normalizeProductName } from '@/lib/productNameNormalization';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 export default function BaseConsumption() {
   const { data: products = [], isLoading } = useProducts();
@@ -40,7 +40,7 @@ export default function BaseConsumption() {
     variantColors: string[];
   };
 
-  const soleModels = useMemo<SoleModel[]>(() => {
+  const allSoleModels = useMemo<SoleModel[]>(() => {
     const allSoles = (products as any[]).filter((p) => {
       const cat = (p?.category || '').toLowerCase();
       return cat.includes('solado') || cat === 'sola';
@@ -65,17 +65,15 @@ export default function BaseConsumption() {
       models.push({ key, displayName, representative: rep, variantCount: variants.length, variantColors: colors });
     });
 
-    const term = normalizeForSearch(search.trim());
-    const filtered = term
-      ? models.filter((m) =>
-          [m.displayName, ...(m.variantColors || []), m.representative?.sku]
-            .filter(Boolean)
-            .some((v: string) => normalizeForSearch(v).includes(term)),
-        )
-      : models;
+    return models.sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
+  }, [products]);
 
-    return filtered.sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
-  }, [products, search]);
+  const soleModels = useMemo<SoleModel[]>(() => {
+    if (!search.trim()) return allSoleModels;
+    return allSoleModels.filter((m) =>
+      searchMatchesAllTerms(search, m.displayName, m.representative?.sku, ...(m.variantColors || [])),
+    );
+  }, [allSoleModels, search]);
 
   const selectedModel = useMemo(
     () => soleModels.find((m) => m.key === selectedModelKey) || null,
@@ -126,13 +124,14 @@ export default function BaseConsumption() {
             <CardDescription className="text-xs">
               Selecione um modelo para configurar.
             </CardDescription>
-            <div className="relative pt-2">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 mt-1 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
+            <div className="pt-2">
+              <SearchInput
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar modelo ou SKU…"
-                className="h-8 pl-7 text-xs"
+                onChange={setSearch}
+                placeholder="Buscar por modelo, SKU ou cor…"
+                inputClassName="h-8 text-xs"
+                resultCount={soleModels.length}
+                totalCount={allSoleModels.length}
               />
             </div>
           </CardHeader>
@@ -142,9 +141,18 @@ export default function BaseConsumption() {
                 {isLoading ? (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">Carregando…</div>
                 ) : soleModels.length === 0 ? (
-                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                    {search ? 'Nenhum modelo corresponde à busca.' : 'Nenhum modelo de solado cadastrado.'}
-                  </div>
+                  search.trim() ? (
+                    <EmptyState
+                      size="sm"
+                      icon={MagnifyingGlass}
+                      title={`Nenhum resultado para "${search}"`}
+                      action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                    />
+                  ) : (
+                    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      Nenhum modelo de solado cadastrado.
+                    </div>
+                  )
                 ) : (
                   soleModels.map((model) => {
                     const active = model.key === selectedModelKey;

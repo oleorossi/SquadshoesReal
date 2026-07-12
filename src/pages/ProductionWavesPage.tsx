@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Play, Package, MagnifyingGlass as Search, Funnel as Filter, Stack as Layers, CalendarBlank as CalendarDays, Users, Warning as AlertTriangle, CaretDown as ChevronDown, CaretRight as ChevronRight, XCircle, Eye, Truck, ClipboardText as ClipboardList, Factory, CheckCircle as CheckCircle2, Clock } from '@phosphor-icons/react';
+import { Plus, Play, Package, MagnifyingGlass, Funnel as Filter, Stack as Layers, CalendarBlank as CalendarDays, Users, Warning as AlertTriangle, CaretDown as ChevronDown, CaretRight as ChevronRight, XCircle, Eye, Truck, ClipboardText as ClipboardList, Factory, CheckCircle as CheckCircle2, Clock } from '@phosphor-icons/react';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
@@ -31,7 +32,7 @@ import {
   type ProductionWave, type WaveStatus,
 } from '@/types/production-waves';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type StatusFilter = 'all' | WaveStatus;
 
@@ -355,7 +356,6 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
   }, [waves]);
 
   const filtered = useMemo(() => {
-    const term = normalizeForSearch(search.trim());
     return waves.filter((w) => {
       if (statusFilter !== 'all') {
         if (statusFilter === 'planning' && !(w.status === 'planning' || w.status === 'draft')) {
@@ -363,8 +363,7 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
         }
         if (statusFilter !== 'planning' && w.status !== statusFilter) return false;
       }
-      if (!term) return true;
-      return (w.code ?? '').toLowerCase().includes(term);
+      return searchMatchesAllTerms(search, w.code, getISOWeekFromString(w.week_start)?.code);
     });
   }, [waves, search, statusFilter]);
 
@@ -445,15 +444,14 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
 
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por código da onda…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          className="flex-1"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por código da onda ou semana…"
+          resultCount={filtered.length}
+          totalCount={waves.length}
+        />
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
           <SelectTrigger className="w-full sm:w-[200px]">
             <Filter className="w-4 h-4 mr-2" />
@@ -498,15 +496,23 @@ export default function ProductionWavesPage({ embedded = false }: { embedded?: b
                 <TableRow>
                   <TableCell colSpan={10}>
                     <EmptyState
-                      icon={AlertTriangle}
-                      title={waves.length === 0 ? 'Nenhuma onda criada ainda' : 'Nenhuma onda encontrada'}
+                      icon={waves.length > 0 && search ? MagnifyingGlass : AlertTriangle}
+                      title={waves.length === 0
+                        ? 'Nenhuma onda criada ainda'
+                        : search
+                          ? `Nenhum resultado para "${search}"`
+                          : 'Nenhuma onda encontrada'}
                       description={waves.length === 0
                         ? 'Crie a primeira onda de produção para começar.'
-                        : 'Nenhuma onda corresponde aos filtros aplicados.'}
+                        : search
+                          ? undefined
+                          : 'Nenhuma onda corresponde aos filtros aplicados.'}
                       action={waves.length === 0 ? (
                         <Button size="sm" onClick={() => setBuilderOpen(true)}>
                           <Plus className="w-4 h-4 mr-1" /> Criar primeira onda
                         </Button>
+                      ) : search ? (
+                        <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
                       ) : undefined}
                     />
                   </TableCell>

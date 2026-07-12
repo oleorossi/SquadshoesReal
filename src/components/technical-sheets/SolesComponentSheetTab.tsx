@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { Footprints, MagnifyingGlass as Search, CircleNotch as Loader2, FloppyDisk as Save, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Package, X, CaretRight as ChevronRight, CaretDown as ChevronDown, Cube as Box } from '@phosphor-icons/react';
+import { Footprints, MagnifyingGlass, CircleNotch as Loader2, FloppyDisk as Save, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Package, CaretRight as ChevronRight, CaretDown as ChevronDown, Cube as Box } from '@phosphor-icons/react';
 import { SoleStandardItemsPanel } from './SoleStandardItemsPanel';
 import { PackagingTab } from './PackagingTab';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import {
   useUpdateComponentSheet,
 } from '@/hooks/useComponentSheets';
 import { normalizeProductName } from '@/lib/productNameNormalization';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 /**
  * Aba dedicada de Solados na Ficha de Componentes.
@@ -100,14 +101,12 @@ export function SolesComponentSheetTab() {
   }, [allSolesVariants, sheetByProductId]);
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search.trim());
-    if (!q) return soleGroups;
+    if (!search.trim()) return soleGroups;
     return soleGroups.filter((g) =>
-      normalizeForSearch(g.name).includes(q) ||
-      g.variants.some((v) =>
-        normalizeForSearch(v.sku).includes(q) ||
-        normalizeForSearch(v.color).includes(q) ||
-        normalizeForSearch(v.name).includes(q)
+      searchMatchesAllTerms(
+        search,
+        g.name,
+        ...g.variants.flatMap((v) => [v.sku, v.color, v.name]),
       )
     );
   }, [soleGroups, search]);
@@ -207,24 +206,14 @@ export function SolesComponentSheetTab() {
             </p>
           </div>
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar solado por nome, SKU ou cor..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Limpar busca"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        <SearchInput
+          className="w-full sm:w-72"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar solado por nome, SKU ou cor…"
+          resultCount={filtered.length}
+          totalCount={soleGroups.length}
+        />
       </div>
 
       {/* Stats */}
@@ -275,17 +264,20 @@ export function SolesComponentSheetTab() {
       <Card className="border-border/60">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <Footprints className="h-10 w-10 opacity-30 mb-3" />
-              <p className="text-sm font-medium text-foreground">
-                {soleGroups.length === 0 ? 'Nenhum solado cadastrado no estoque' : 'Nenhum solado encontrado'}
-              </p>
-              <p className="text-xs mt-1">
-                {soleGroups.length === 0
-                  ? 'Cadastre solados em Estoque > Materiais com a categoria "Solado"'
-                  : 'Tente ajustar a busca'}
-              </p>
-            </div>
+            soleGroups.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Footprints className="h-10 w-10 opacity-30 mb-3" />
+                <p className="text-sm font-medium text-foreground">Nenhum solado cadastrado no estoque</p>
+                <p className="text-xs mt-1">Cadastre solados em Estoque &gt; Materiais com a categoria "Solado"</p>
+              </div>
+            ) : (
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${search}"`}
+                action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+              />
+            )
           ) : (
             <Table>
               <TableHeader>

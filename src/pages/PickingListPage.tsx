@@ -10,10 +10,12 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 import {
   calculateBomForOrders,
@@ -191,9 +193,10 @@ export default function PickingListPage() {
   }, [visibleOps]);
 
   const filteredPvGroups = useMemo(() => {
-    const q = pvSearch.trim().toLowerCase();
-    if (!q) return pvGroups;
-    return pvGroups.filter(g => g.pvNumber.toLowerCase().includes(q));
+    if (!pvSearch.trim()) return pvGroups;
+    // espaço/"/" = refinamento AND; cobre nº do PV e das OPs do grupo
+    return pvGroups.filter(g =>
+      searchMatchesAllTerms(pvSearch, g.pvNumber, ...g.ops.map(o => o.order_number)));
   }, [pvGroups, pvSearch]);
 
   // ── Presets de período (base = início de produção) ────────────────────────
@@ -580,15 +583,15 @@ export default function PickingListPage() {
         {/* Checklist de PVs/OPs elegíveis */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Buscar PV pelo número..."
-                value={pvSearch}
-                onChange={e => setPvSearch(e.target.value)}
-                className="h-8 pl-8 text-sm"
-              />
-            </div>
+            <SearchInput
+              className="flex-1 min-w-[180px]"
+              inputClassName="h-8 text-sm"
+              value={pvSearch}
+              onChange={setPvSearch}
+              placeholder="Buscar por número do PV ou OP…"
+              resultCount={filteredPvGroups.length}
+              totalCount={pvGroups.length}
+            />
             <Button size="sm" variant="ghost" className="h-8 text-xs"
               onClick={() => setSelectedPvIds(new Set(filteredPvGroups.map(g => g.soId)))}
               disabled={filteredPvGroups.length === 0 || allSelected}>
@@ -611,9 +614,16 @@ export default function PickingListPage() {
               </p>
             ) : filteredPvGroups.length === 0 ? (
               <p className="text-xs text-muted-foreground p-3 text-center">
-                {eligibleOps.length === 0
-                  ? 'Nenhuma OP ativa em produção (sem picking pendente).'
-                  : 'Nenhum PV corresponde à busca.'}
+                {eligibleOps.length === 0 ? (
+                  'Nenhuma OP ativa em produção (sem picking pendente).'
+                ) : (
+                  <span className="inline-flex items-center gap-2 flex-wrap justify-center">
+                    Nenhum resultado para "{pvSearch}"
+                    <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setPvSearch('')}>
+                      Limpar busca
+                    </Button>
+                  </span>
+                )}
               </p>
             ) : filteredPvGroups.map(g => {
               const checked = selectedPvIds.has(g.soId);

@@ -6,7 +6,17 @@ describe('splitSearchTerms', () => {
     expect(splitSearchTerms('stx / alcineu')).toEqual(['stx', 'alcineu']);
     expect(splitSearchTerms('stx/alcineu')).toEqual(['stx', 'alcineu']);
   });
-  it('termo único sem "/"', () => {
+  it('divide por ESPAÇO (mesma semântica do searchNormOrFilter)', () => {
+    expect(splitSearchTerms('napa tamara')).toEqual(['napa', 'tamara']);
+    expect(splitSearchTerms('stx alcineu')).toEqual(['stx', 'alcineu']);
+    expect(splitSearchTerms('SP 10')).toEqual(['SP', '10']);
+  });
+  it('divide por VÍRGULA (hábito ensinado por WaveBuilder/Imprimir Fichas)', () => {
+    expect(splitSearchTerms('OP-00123,OP-00124')).toEqual(['OP-00123', 'OP-00124']);
+    expect(splitSearchTerms('stx,alcineu')).toEqual(['stx', 'alcineu']);
+    expect(splitSearchTerms('stx, alcineu')).toEqual(['stx', 'alcineu']);
+  });
+  it('termo único sem separador', () => {
     expect(splitSearchTerms('stx')).toEqual(['stx']);
   });
   it('descarta vazios e query nula', () => {
@@ -33,21 +43,44 @@ describe('searchMatchesAllTerms', () => {
     expect(searchMatchesAllTerms('alcineu / stx', ...campos)).toBe(true); // ordem não importa
   });
 
+  it('ESPAÇO também refina: termos casam campos DIFERENTES em qualquer ordem', () => {
+    expect(searchMatchesAllTerms('stx alcineu', ...campos)).toBe(true);
+    expect(searchMatchesAllTerms('alcineu stx', ...campos)).toBe(true);
+    // cross-campo: "napa" num campo, "tâmara" em outro
+    expect(searchMatchesAllTerms('napa tamara', 'NAPA SOFT', 'TÂMARA')).toBe(true);
+    expect(searchMatchesAllTerms('napa tamara', 'NAPA SOFT TÂMARA CARAMELO')).toBe(true);
+  });
+
   it('falha se UM dos termos não casa', () => {
     expect(searchMatchesAllTerms('stx / fulano', ...campos)).toBe(false);
+    expect(searchMatchesAllTerms('stx fulano', ...campos)).toBe(false);
     expect(searchMatchesAllTerms('outraref / alcineu', ...campos)).toBe(false);
   });
 
-  it('ignora acento/espaço/case em cada termo', () => {
-    expect(searchMatchesAllTerms('s t x / ALCINÉU', ...campos)).toBe(true);
+  it('ignora acento/case em cada termo', () => {
+    expect(searchMatchesAllTerms('stx / ALCINÉU', ...campos)).toBe(true);
+    expect(searchMatchesAllTerms('tamara', 'NAPA SOFT TÂMARA')).toBe(true);
   });
 
-  it('query vazia → true (não filtra)', () => {
+  it('"sp10" e "SP 10" casam registro gravado como "SP 10" ou "SP10"', () => {
+    expect(searchMatchesAllTerms('sp10', 'SP 10')).toBe(true);
+    expect(searchMatchesAllTerms('SP 10', 'SP10')).toBe(true);
+    expect(searchMatchesAllTerms('SP 10', 'SP 10')).toBe(true);
+  });
+
+  it('query vazia ou só separadores → true (não filtra)', () => {
     expect(searchMatchesAllTerms('', ...campos)).toBe(true);
     expect(searchMatchesAllTerms('   ', ...campos)).toBe(true);
+    expect(searchMatchesAllTerms('//', ...campos)).toBe(true);
+    expect(searchMatchesAllTerms(' / ', ...campos)).toBe(true);
   });
 
-  it('paridade com searchMatchesAny quando não há "/"', () => {
+  it('termo que normaliza pra vazio é ignorado, demais aplicam', () => {
+    expect(searchMatchesAllTerms('stx / -', ...campos)).toBe(true);
+    expect(searchMatchesAllTerms('fulano / -', ...campos)).toBe(false);
+  });
+
+  it('paridade com searchMatchesAny quando há 1 termo só', () => {
     for (const q of ['stx', 'pv00123', 'sandalia', 'zzz']) {
       expect(searchMatchesAllTerms(q, ...campos)).toBe(searchMatchesAny(q, ...campos));
     }
@@ -90,6 +123,12 @@ describe('searchNormOrFilter (filtro .or do PostgREST sobre search_norm)', () =>
     expect(searchNormOrFilter('//')).toBe('');
   });
   it('tokens nunca contêm caractere especial do PostgREST', () => {
-    expect(searchNormOrFilter('a,b(c)%\\d')).toBe('search_norm.ilike.%abcd%');
+    // vírgula é SEPARADOR de termos (2026-07-12); os demais especiais são
+    // removidos pela normalização — nenhum token carrega ,%()\ pro .or()
+    expect(searchNormOrFilter('a,b(c)%\\d')).toBe('and(search_norm.ilike.%a%,search_norm.ilike.%bcd%)');
+    expect(searchNormOrFilter('b(c)%\\d')).toBe('search_norm.ilike.%bcd%');
+  });
+  it('vírgula separa termos AND (paridade com splitSearchTerms)', () => {
+    expect(searchNormOrFilter('op1,op2')).toBe('and(search_norm.ilike.%op1%,search_norm.ilike.%op2%)');
   });
 });

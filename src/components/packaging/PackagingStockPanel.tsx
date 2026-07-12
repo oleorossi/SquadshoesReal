@@ -21,6 +21,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Cube as Box, PencilSimple as Pencil, MagnifyingGlass as Search, Plus, Funnel as Filter, Copy, Trash as Trash2 } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDeleteIndividualPackaging, useDuplicateIndividualPackaging } from '@/hooks/usePackaging';
 import { useCan } from '@/hooks/useAccessControl';
@@ -125,8 +128,8 @@ export default function PackagingStockPanel() {
   const filtered = useMemo(
     () =>
       boxTypes.filter((b) => {
-        const matchesSearch = b.nome.toLowerCase().includes(search.toLowerCase());
-        const kind = b.tipo || (b.interno ? 'individual' : 'master');
+        const kind = (b.tipo || (b.interno ? 'individual' : 'master')) as BoxKind;
+        const matchesSearch = searchMatchesAllTerms(search, b.nome, KIND_LABEL[kind], b.suppliers?.name);
         const matchesType = typeFilter === 'all' || typeFilter === kind;
         return matchesSearch && matchesType;
       }),
@@ -492,15 +495,14 @@ export default function PackagingStockPanel() {
       {/* Controls */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex flex-wrap gap-3 items-center flex-1">
-          <div className="relative w-full sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar embalagem..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome, tipo ou fornecedor…"
+            resultCount={filtered.length}
+            totalCount={boxTypes.length}
+            className="w-full sm:max-w-sm"
+          />
 
           <Select value={typeFilter} onValueChange={(v: any) => setTypeFilter(v)}>
             <SelectTrigger className="w-full sm:w-44 gap-2">
@@ -546,9 +548,20 @@ export default function PackagingStockPanel() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
-                  <Box className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                  Nenhuma embalagem encontrada
+                <TableCell colSpan={11}>
+                  {search.trim() ? (
+                    <EmptyState
+                      size="sm"
+                      icon={Search}
+                      title={`Nenhum resultado para "${search}"`}
+                      action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                    />
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      <Box className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                      Nenhuma embalagem encontrada
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

@@ -3,7 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { NumberInput } from '@/components/ui/number-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,8 +16,8 @@ import { useProducts } from '@/hooks/useProducts';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
-import { MagnifyingGlass as Search, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { MagnifyingGlass, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -206,14 +207,13 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     }
   }, [open, queryClient]);
 
-  const { available, alreadyInGroup } = useMemo(() => {
-    const q = normalizeForSearch(search);
-    const matchesSearch = (p: any) =>
-      !q || normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.category).includes(q);
-    const active = allProducts.filter(p => p.active && matchesSearch(p));
+  const { available, alreadyInGroup, totalActive } = useMemo(() => {
+    const activeAll = allProducts.filter(p => p.active);
+    const active = activeAll.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color));
     return {
       available: active.filter(p => p.group_id !== groupId),
       alreadyInGroup: groupId ? active.filter(p => p.group_id === groupId) : [],
+      totalActive: activeAll.length,
     };
   }, [allProducts, groupId, search]);
 
@@ -255,17 +255,34 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input ref={searchRef} placeholder="Buscar item..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <SearchInput
+          ref={searchRef}
+          placeholder="Buscar por nome, SKU, categoria ou cor…"
+          value={search}
+          onChange={setSearch}
+          resultCount={available.length + alreadyInGroup.length}
+          totalCount={totalActive}
+        />
 
         <ScrollArea className="flex-1 min-h-0 max-h-[400px] -mx-6 px-6">
           {available.length === 0 && alreadyInGroup.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Nenhum item disponível</p>
-            </div>
+            search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Nenhum item disponível</p>
+              </div>
+            )
           ) : (
             <div className="space-y-3">
               {available.length > 0 && (

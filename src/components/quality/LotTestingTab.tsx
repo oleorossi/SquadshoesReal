@@ -1,40 +1,35 @@
 import { useState } from 'react';
-import { ClipboardText as ClipboardCheck, Plus, MagnifyingGlass as Search, Funnel as Filter, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Info, Package, Calendar, User, ArrowRight } from '@phosphor-icons/react';
+import { ClipboardText as ClipboardCheck, Plus, MagnifyingGlass, Funnel as Filter, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Info, Package, Calendar, User, ArrowRight } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useQualityInspections, useQualityChecklists } from '@/hooks/useQualityInspections';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 export default function LotTestingTab() {
   const [search, setSearch] = useState('');
   const { data: inspections = [], isLoading } = useQualityInspections();
   const { data: checklists = [] } = useQualityChecklists();
 
-  const filteredInspections = inspections.filter((i: any) => {
-    if (!search) return true;
-    const q = normalizeForSearch(search);
-    return (
-      normalizeForSearch(i.notes).includes(q) ||
-      normalizeForSearch(i.quality_checklists?.name).includes(q) ||
-      normalizeForSearch(i.orders?.order_number).includes(q)
-    );
-  });
+  const filteredInspections = inspections.filter((i: any) =>
+    searchMatchesAllTerms(search, i.orders?.order_number, i.quality_checklists?.name, i.notes, i.checklist_id)
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="relative flex-1 w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Buscar inspeções, OPs ou notas..." 
-            className="pl-9" 
+        <div className="flex-1 w-full max-w-sm">
+          <SearchInput
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={setSearch}
+            placeholder="Buscar por OP, checklist, notas…"
+            resultCount={filteredInspections.length}
+            totalCount={inspections.length}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -103,8 +98,17 @@ export default function LotTestingTab() {
               </TableRow>
             ) : filteredInspections.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground italic">
-                  Nenhuma inspeção encontrada.
+                <TableCell colSpan={6} className="p-0">
+                  {search ? (
+                    <EmptyState
+                      size="sm"
+                      icon={MagnifyingGlass}
+                      title={`Nenhum resultado para "${search}"`}
+                      action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                    />
+                  ) : (
+                    <div className="text-center py-10 text-muted-foreground italic">Nenhuma inspeção encontrada.</div>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

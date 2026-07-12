@@ -16,7 +16,8 @@ import { CommissionTiersDialog } from '@/components/settings/CommissionTiersDial
 import { Stairs } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 
 const emptyForm: RepresentativeFormData = {
   name: '', email: '', phone: '', commission_pct: 0, active: true, notes: '',
@@ -104,9 +105,7 @@ export default function RepresentativesPanel() {
 
   const filtered = useMemo(() => {
     return reps.filter(r => {
-      const matchSearch = !search || r.name.toLowerCase().includes(search.toLowerCase()) ||
-        normalizeForSearch(r.email).includes(search.toLowerCase()) ||
-        normalizeForSearch(r.cidade).includes(search.toLowerCase());
+      const matchSearch = searchMatchesAllTerms(search, r.name, r.email, r.phone, r.cidade, r.estado);
       const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? r.active : !r.active);
       return matchSearch && matchStatus;
     });
@@ -189,10 +188,14 @@ export default function RepresentativesPanel() {
 
       {/* Search + filters + add */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Buscar por nome, e-mail ou cidade..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nome, e-mail, telefone ou cidade..."
+          resultCount={filtered.length}
+          totalCount={reps.length}
+          className="flex-1 min-w-[200px]"
+        />
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
           <SelectTrigger className="w-[130px]">
             <Filter className="h-3.5 w-3.5 mr-1" />
@@ -212,11 +215,20 @@ export default function RepresentativesPanel() {
       {/* Cards */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <EmptyState
-            icon={Users2}
-            title="Nenhum representante encontrado"
-            size="sm"
-          />
+          search.trim() ? (
+            <EmptyState
+              size="sm"
+              icon={Search}
+              title={`Nenhum resultado para "${search}"`}
+              action={<Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+            />
+          ) : (
+            <EmptyState
+              icon={Users2}
+              title="Nenhum representante encontrado"
+              size="sm"
+            />
+          )
         ) : filtered.map(r => (
           <RepCard key={r.id} rep={r} onEdit={() => openEdit(r)} onDelete={() => deleteRep.mutate(r.id)} onTiers={() => setTiersRep(r)} />
         ))}

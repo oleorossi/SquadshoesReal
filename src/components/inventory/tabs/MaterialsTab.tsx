@@ -2,12 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
-import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass as Search, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -337,20 +339,19 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             onChange={(v) => { setSearch(v); setPage(1); }}
             placeholder={`Buscar ${title.toLowerCase()}, SKU ou categoria…`}
             getSuggestions={(term) => {
-              const t = term.toLowerCase();
               const list: any[] = (products as any[]) || [];
               const seen = new Set<string>();
               const out: SmartSearchSuggestion[] = [];
               for (const p of list) {
-                if (p.name && p.name.toLowerCase().includes(t) && !seen.has('n:' + p.name)) {
+                if (p.name && searchMatchesAllTerms(term, p.name) && !seen.has('n:' + p.name)) {
                   seen.add('n:' + p.name);
                   out.push({ field: 'name', value: p.name });
                 }
-                if (p.sku && p.sku.toLowerCase().includes(t) && !seen.has('s:' + p.sku)) {
+                if (p.sku && searchMatchesAllTerms(term, p.sku) && !seen.has('s:' + p.sku)) {
                   seen.add('s:' + p.sku);
                   out.push({ field: 'sku', value: p.sku, meta: p.name });
                 }
-                if (p.category && p.category.toLowerCase().includes(t) && !seen.has('c:' + p.category)) {
+                if (p.category && searchMatchesAllTerms(term, p.category) && !seen.has('c:' + p.category)) {
                   seen.add('c:' + p.category);
                   out.push({ field: 'category', value: p.category });
                 }
@@ -502,6 +503,17 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : paginatedProducts.length === 0 && debouncedSearch.trim() ? (
+        <EmptyState
+          size="sm"
+          icon={MagnifyingGlass}
+          title={`Nenhum resultado para "${debouncedSearch}"`}
+          action={
+            <Button variant="outline" size="sm" onClick={() => { setSearch(''); setPage(1); }}>
+              Limpar busca
+            </Button>
+          }
+        />
       ) : (
         <ProductTable
           products={paginatedProducts as any}

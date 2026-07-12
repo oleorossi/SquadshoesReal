@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { useGroups } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 
@@ -50,15 +49,12 @@ export function SearchBar({ search, onSearchChange, groupFilter, onGroupChange, 
 
   return (
     <div className="flex flex-col sm:flex-row gap-3">
-      <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome, nome técnico ou SKU..."
-          value={search}
-          onChange={e => onSearchChange(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        className="flex-1"
+        placeholder="Buscar por nome, nome técnico ou SKU…"
+        value={search}
+        onChange={onSearchChange}
+      />
       <Select value={groupFilter} onValueChange={onGroupChange}>
         <SelectTrigger className="w-full sm:w-[200px]">
           <SelectValue placeholder="Todos grupos" />

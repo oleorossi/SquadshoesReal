@@ -3,14 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { CircleNotch as Loader2, Scissors, Hammer, Sparkle as Sparkles, ShoppingCart, Warehouse, CalendarCheck, MagnifyingGlass as Search, Warning as AlertTriangle, PencilLine as PenLine, FileText, Hand, Clock, FileArrowDown as FileDown, Stack as Layers, FlowArrow as Workflow, CheckCircle as CheckCircle2, Calendar } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Scissors, Hammer, Sparkle as Sparkles, ShoppingCart, Warehouse, CalendarCheck, MagnifyingGlass, Warning as AlertTriangle, PencilLine as PenLine, FileText, Hand, Clock, FileArrowDown as FileDown, Stack as Layers, FlowArrow as Workflow, CheckCircle as CheckCircle2, Calendar } from '@phosphor-icons/react';
 import { format, parseISO, isBefore, isToday, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -454,7 +455,7 @@ export function ProductionScheduleTimeline() {
   const filtered = useMemo(() => {
     if (!search.trim()) return rows;
     // "/" = refinamento AND (ex.: "stx / alcineu")
-    return rows.filter(r => searchMatchesAllTerms(search, r.pedido_ref, r.referencia_nome));
+    return rows.filter(r => searchMatchesAllTerms(search, r.pedido_ref, r.referencia_nome, r.order_status));
   }, [rows, search]);
 
   // Agrupa por sale_order_id mantendo a ordem de entrega.
@@ -559,15 +560,14 @@ export function ProductionScheduleTimeline() {
                   Por OP
                 </button>
               </div>
-              <div className="relative flex-1 sm:w-72">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar OP ou referência..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por OP, referência ou status…"
+                resultCount={filtered.length}
+                totalCount={rows.length}
+                className="flex-1 sm:w-72"
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -592,10 +592,25 @@ export function ProductionScheduleTimeline() {
 
       {filtered.length === 0 && (
         <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>Nenhuma Ordem de Produção com data de entrega definida.</p>
-          </CardContent>
+          {search.trim() ? (
+            <CardContent className="py-4">
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            </CardContent>
+          ) : (
+            <CardContent className="py-10 text-center text-muted-foreground">
+              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>Nenhuma Ordem de Produção com data de entrega definida.</p>
+            </CardContent>
+          )}
         </Card>
       )}
 

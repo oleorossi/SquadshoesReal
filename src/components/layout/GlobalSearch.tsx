@@ -5,18 +5,22 @@ import { useNavigate } from 'react-router-dom';
 import {
   MagnifyingGlass as Search, ClipboardText as ClipboardList, Users, Package, FileText,
   X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock, Star,
+  Receipt, ShoppingBag, Truck, FolderOpen, UserCircle, Lightning, Plus,
 } from '@phosphor-icons/react';
 import { menuGroups, secondaryRoutes } from '@/data/navigation';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { normalizeForSearch, searchNormOrFilter } from '@/lib/searchUtils';
+import { normalizeForSearch, searchNormOrFilter, searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type QueryType = 'cnpj' | 'barcode' | 'invoice' | 'order_number' | 'group' | 'general';
-type Scope = 'all' | 'orders' | 'sales' | 'clients' | 'products' | 'references' | 'suppliers';
+type Scope =
+  | 'all' | 'orders' | 'sales' | 'clients' | 'products' | 'references' | 'suppliers'
+  | 'purchases' | 'os' | 'nfe' | 'employees' | 'groups';
 
 function detectQueryType(query: string): QueryType {
   const trimmed = query.trim();
@@ -75,6 +79,11 @@ const SCOPES: { key: Scope; label: string }[] = [
   { key: 'products', label: 'Materiais' },
   { key: 'references', label: 'Modelos' },
   { key: 'suppliers', label: 'Fornecedores' },
+  { key: 'purchases', label: 'OCs' },
+  { key: 'os', label: 'OSs' },
+  { key: 'nfe', label: 'NF-e' },
+  { key: 'employees', label: 'Pessoas' },
+  { key: 'groups', label: 'Grupos' },
 ];
 
 const RECENT_KEY = 'global-search-recent';
@@ -87,6 +96,44 @@ function pushRecent(term: string) {
   const next = [t, ...loadRecent().filter(x => x.toLowerCase() !== t.toLowerCase())].slice(0, 6);
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { /* quota */ }
 }
+
+// ── Itens acessados recentemente (spec R9b) ────────────────────────────────
+// Diferente das "buscas recentes" (termos), aqui guardamos os RESULTADOS que o
+// usuário abriu: {type,id,label,href}. Cap 10, dedup por type+id, localStorage.
+export interface RecentItem {
+  type: 'op' | 'pv' | 'client' | 'product' | 'supplier' | 'reference' | 'oc' | 'os' | 'nfe' | 'employee' | 'group' | 'page';
+  id: string;
+  label: string;
+  href: string;
+  meta?: string;
+}
+const RECENT_ITEMS_KEY = 'global-search-recent-items';
+function loadRecentItems(): RecentItem[] {
+  try {
+    const arr = JSON.parse(localStorage.getItem(RECENT_ITEMS_KEY) || '[]');
+    return Array.isArray(arr) ? arr.filter(i => i && i.href && i.label) : [];
+  } catch { return []; }
+}
+function pushRecentItem(item: RecentItem) {
+  const next = [item, ...loadRecentItems().filter(i => !(i.type === item.type && i.id === item.id))].slice(0, 10);
+  try { localStorage.setItem(RECENT_ITEMS_KEY, JSON.stringify(next)); } catch { /* quota */ }
+}
+
+const RECENT_ITEM_ICON: Record<RecentItem['type'], typeof Package> = {
+  op: ClipboardList, pv: FileText, client: Users, product: Package,
+  supplier: Buildings, reference: Package, oc: ShoppingBag, os: Truck,
+  nfe: Receipt, employee: UserCircle, group: FolderOpen, page: ArrowRight,
+};
+
+// ── Ações rápidas (spec R9d) — navegam pra rotas existentes; filtradas por
+// permissão de menu (canAccessRoute) e pelo termo digitado. ────────────────
+const QUICK_ACTIONS: { label: string; path: string; permPath: string; keywords: string }[] = [
+  { label: 'Criar PV (novo pedido de venda)', path: '/sales/new', permPath: '/sales', keywords: 'criar novo pv pedido venda' },
+  { label: 'Novo cliente', path: '/clients', permPath: '/clients', keywords: 'novo cliente cadastrar' },
+  { label: 'Ir para Diagnósticos', path: '/system-diagnostics', permPath: '/system-diagnostics', keywords: 'diagnostico diagnosticos sistema' },
+  { label: 'Ajuste de estoque', path: '/ajuste-estoque', permPath: '/ajuste-estoque', keywords: 'ajuste estoque ajustar' },
+  { label: 'Imprimir fichas de operador', path: '/imprimir-fichas', permPath: '/imprimir-fichas', keywords: 'imprimir fichas operador' },
+];
 
 /** Destaca os tokens da busca dentro de um texto de resultado. */
 function Highlight({ text, term }: { text: string | null | undefined; term: string }): ReactNode {
@@ -152,8 +199,13 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const groupTerm = isGroupSearch ? sanitizeForPostgrestOr(debouncedQuery.replace(/^\//, '')) : '';
   const searchTerm = isGroupSearch ? '' : sanitizeForPostgrestOr(debouncedQuery);
   const hasMinChars = (isGroupSearch ? groupTerm : searchTerm).length >= 2;
-  const searchEnabled = open && hasMinChars && !isGroupSearch;
-  const groupEnabled = open && hasMinChars && isGroupSearch;
+  // Termo que normaliza pra vazio (só pontuação/símbolos, ex.: "..") NÃO pode
+  // chegar nas queries: searchNormOrFilter('') = '' e .or('') vira `or=()` →
+  // 400 do PostgREST + banner de erro. Sem [a-z0-9] não há o que buscar —
+  // mostra "Nenhum resultado" sem bater no banco.
+  const normOk = searchNormOrFilter(isGroupSearch ? groupTerm : searchTerm) !== '';
+  const searchEnabled = open && hasMinChars && normOk && !isGroupSearch;
+  const groupEnabled = open && hasMinChars && normOk && isGroupSearch;
 
   // Extrai dígitos sempre que houver ≥4 consecutivos — CNPJ truncado ("00012345")
   // não casa com "00.012.345/..." armazenado com pontos sem isso.
@@ -162,7 +214,11 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
   const inScope = (s: Scope) => scope === 'all' || scope === s;
 
-  const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery, referencesQuery, suppliersQuery, groupQuery] = useQueries({
+  // Permissões de menu: seções novas só aparecem se o usuário pode acessar a
+  // tela correspondente (spec R8). canAccessRoute é a mesma régua do sidebar.
+  const { canAccessRoute } = useAccessControl();
+
+  const [ordersQuery, clientsQuery, productsQuery, saleOrdersQuery, referencesQuery, suppliersQuery, purchaseOrdersQuery, serviceOrdersQuery, nfeQuery, employeesQuery, stockGroupsQuery, groupQuery] = useQueries({
     queries: [
       {
         queryKey: ['global-search-orders', searchTerm],
@@ -170,10 +226,12 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
+          // search_norm (mig 20260911180000) cobre nº + cor + status sem
+          // acento/caixa/hífen — "op00123" acha "OP-00123".
           const { data, error } = await supabase
             .from('orders')
-            .select('id, order_number, status')
-            .or(multiWordOr(['order_number'], searchTerm))
+            .select('id, order_number, status, color')
+            .or(searchNormOrFilter(searchTerm))
             .order('created_at', { ascending: false })
             .limit(6);
           if (error) throw error;
@@ -192,7 +250,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           if (cnpjDigits.length >= 4) orParts.push(`cnpj.ilike.%${cnpjDigits}%`);
           const { data, error } = await supabase
             .from('clients')
-            .select('id, razao_social, cnpj, nome_fantasia, client_number')
+            .select('id, razao_social, cnpj, nome_fantasia, client_number, cidade')
             .or(orParts.join(','))
             .order('razao_social')
             .limit(6);
@@ -210,7 +268,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           // (ex.: "tamara" casa "NAPA SOFT TÂMARA").
           const { data, error } = await supabase
             .from('products')
-            .select('id, name, sku, color, quantity, unit')
+            .select('id, name, sku, color, quantity, unit, product_groups(name)')
             .or(searchNormOrFilter(searchTerm))
             .order('updated_at', { ascending: false })
             .limit(6);
@@ -233,7 +291,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           if (cnpjDigits.length >= 4) orParts.push(`client_cnpj.ilike.%${cnpjDigits}%`);
           const { data, error } = await supabase
             .from('sale_orders')
-            .select('id, order_number, client_name, client_cnpj, status')
+            .select('id, order_number, client_name, client_cnpj, status, total')
             .or(orParts.join(','))
             .order('created_at', { ascending: false })
             .limit(6);
@@ -279,6 +337,100 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
             .from('suppliers')
             .select('id, name, trade_name, cnpj, active')
             .or(orParts.join(','))
+            .order('name')
+            .limit(6);
+          if (error) throw error;
+          return data ?? [];
+        },
+      },
+      {
+        // OCs — nº, fornecedor, status, notas via search_norm (spec R8).
+        queryKey: ['global-search-purchase-orders', searchTerm],
+        enabled: searchEnabled && inScope('purchases') && canAccessRoute('/purchase-orders'),
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+          const { data, error } = await (supabase as any)
+            .from('purchase_orders')
+            .select('id, order_number, supplier_name, status, total_value')
+            .or(searchNormOrFilter(searchTerm))
+            .order('created_at', { ascending: false })
+            .limit(6);
+          if (error) throw error;
+          return data ?? [];
+        },
+      },
+      {
+        // OSs — nº/descrição/material/setor via search_norm + nome do PRESTADOR
+        // resolvido em 2 passos (contractors.search_norm → contractor_id IN).
+        queryKey: ['global-search-service-orders', searchTerm],
+        enabled: searchEnabled && inScope('os') && canAccessRoute('/terceirizados'),
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+          const orParts = [searchNormOrFilter(searchTerm)].filter(Boolean);
+          const { data: byContractor } = await (supabase as any)
+            .from('contractors')
+            .select('id')
+            .or(searchNormOrFilter(searchTerm))
+            .limit(20);
+          const contractorIds = (byContractor ?? []).map((c: any) => c.id);
+          if (contractorIds.length > 0) orParts.push(`contractor_id.in.(${contractorIds.join(',')})`);
+          const { data, error } = await (supabase as any)
+            .from('service_orders')
+            .select('id, order_number, sector, status, total_value, contractors(name)')
+            .or(orParts.join(','))
+            .order('created_at', { ascending: false })
+            .limit(6);
+          if (error) throw error;
+          return data ?? [];
+        },
+      },
+      {
+        // NF-e — nº, série, chave de acesso, destinatário (nome/CNPJ) via search_norm.
+        queryKey: ['global-search-nfe', searchTerm],
+        enabled: searchEnabled && inScope('nfe') && canAccessRoute('/nfe'),
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+          const { data, error } = await (supabase as any)
+            .from('nfe_emitidas')
+            .select('id, numero, serie, status, nome_destinatario, valor_total, chave_acesso')
+            .or(searchNormOrFilter(searchTerm))
+            .order('created_at', { ascending: false })
+            .limit(6);
+          if (error) throw error;
+          return data ?? [];
+        },
+      },
+      {
+        // Funcionários — nome/cargo/setor/CPF/telefone via search_norm.
+        queryKey: ['global-search-employees', searchTerm],
+        enabled: searchEnabled && inScope('employees') && canAccessRoute('/rh'),
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+          const { data, error } = await (supabase as any)
+            .from('employees')
+            .select('id, name, role, department, active')
+            .or(searchNormOrFilter(searchTerm))
+            .order('name')
+            .limit(6);
+          if (error) throw error;
+          return data ?? [];
+        },
+      },
+      {
+        // Grupos de estoque — nome/descrição/cores/setor via search_norm.
+        queryKey: ['global-search-stock-groups', searchTerm],
+        enabled: searchEnabled && inScope('groups') && canAccessRoute('/grupos'),
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+          const { data, error } = await (supabase as any)
+            .from('product_groups')
+            .select('id, name, sector, colors')
+            .or(searchNormOrFilter(searchTerm))
             .order('name')
             .limit(6);
           if (error) throw error;
@@ -343,6 +495,11 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const saleOrders = searchEnabled ? (saleOrdersQuery.data ?? []) : [];
   const references = searchEnabled ? (referencesQuery.data ?? []) : [];
   const suppliers = searchEnabled ? (suppliersQuery.data ?? []) : [];
+  const purchaseOrders = searchEnabled ? (purchaseOrdersQuery.data ?? []) : [];
+  const serviceOrders = searchEnabled ? (serviceOrdersQuery.data ?? []) : [];
+  const nfes = searchEnabled ? (nfeQuery.data ?? []) : [];
+  const employees = searchEnabled ? (employeesQuery.data ?? []) : [];
+  const stockGroups = searchEnabled ? (stockGroupsQuery.data ?? []) : [];
   const groupResult = groupEnabled ? (groupQuery.data ?? null) : null;
 
   // Páginas (atalhos) — busca local, instantânea.
@@ -361,12 +518,26 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     return [...fromSidebar, ...fromSecondary];
   }, [q, isGroupSearch]);
 
-  const goTo = useCallback((path: string, persistTerm?: string) => {
+  const goTo = useCallback((path: string, persistTerm?: string, recentItem?: RecentItem) => {
     if (persistTerm) pushRecent(persistTerm);
+    if (recentItem) pushRecentItem(recentItem);
     setOpen(false);
     setQuery('');
     navigate(path);
   }, [navigate]);
+
+  // Itens acessados recentemente (spec R9b) — recarrega a cada abertura.
+  const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
+  useEffect(() => { if (open) setRecentItems(loadRecentItems()); }, [open]);
+
+  // Ações rápidas: filtradas por permissão de menu + termo digitado (spec R9d).
+  const quickActions = useMemo(() => {
+    if (isGroupSearch) return [];
+    return QUICK_ACTIONS.filter(a =>
+      canAccessRoute(a.permPath) && searchMatchesAllTerms(query, a.label, a.keywords),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, isGroupSearch, canAccessRoute]);
 
   // Favoritos de menu (mesma fonte da sidebar — persistido por usuário).
   const { favorites, toggleFavorite, isFavorite } = useMenuFavorites();
@@ -395,16 +566,21 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
   const isLoading = searchEnabled && (
     ordersQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching ||
-    saleOrdersQuery.isFetching || referencesQuery.isFetching || suppliersQuery.isFetching
+    saleOrdersQuery.isFetching || referencesQuery.isFetching || suppliersQuery.isFetching ||
+    purchaseOrdersQuery.isFetching || serviceOrdersQuery.isFetching || nfeQuery.isFetching ||
+    employeesQuery.isFetching || stockGroupsQuery.isFetching
   );
   const groupLoading = groupEnabled && groupQuery.isFetching;
-  const totalResults = filteredNavItems.length + orders.length + clients.length +
-    products.length + saleOrders.length + references.length + suppliers.length;
+  const totalResults = filteredNavItems.length + quickActions.length + orders.length + clients.length +
+    products.length + saleOrders.length + references.length + suppliers.length +
+    purchaseOrders.length + serviceOrders.length + nfes.length + employees.length + stockGroups.length;
   const groupTotal = groupResult
     ? groupResult.groups.length + groupResult.saleOrders.length + groupResult.orders.length
     : 0;
   const queryError = ordersQuery.error || clientsQuery.error || productsQuery.error ||
-    saleOrdersQuery.error || referencesQuery.error || suppliersQuery.error || groupQuery.error;
+    saleOrdersQuery.error || referencesQuery.error || suppliersQuery.error ||
+    purchaseOrdersQuery.error || serviceOrdersQuery.error || nfeQuery.error ||
+    employeesQuery.error || stockGroupsQuery.error || groupQuery.error;
 
   return (
     <>
@@ -443,7 +619,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
             <div className="flex items-center border-b border-border px-3">
               <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
               <CommandInput
-                placeholder="Buscar pedidos, clientes, modelos, fornecedores…  ( / = grupo econômico )"
+                placeholder="Buscar pedidos, clientes, OCs, OSs, NF-e, pessoas…  ( / = grupo econômico )"
                 value={query}
                 onValueChange={setQuery}
                 className="border-0 focus:ring-0"
@@ -482,9 +658,24 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
             )}
 
             <CommandList className="max-h-[420px]">
-              {/* Estado vazio: recentes + atalhos */}
+              {/* Estado vazio: itens acessados + buscas recentes + atalhos */}
               {!q && (
                 <div className="overflow-y-auto max-h-[320px]">
+                  {recentItems.length > 0 && (
+                    <CommandGroup heading="Acessados recentemente">
+                      {recentItems.map(item => {
+                        const Icon = RECENT_ITEM_ICON[item.type] ?? ArrowRight;
+                        return (
+                          <CommandItem key={`${item.type}:${item.id}`} onSelect={() => goTo(item.href, undefined, item)}>
+                            <Icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs font-medium truncate">{item.label}</span>
+                            {item.meta && <span className="ml-2 text-xs text-muted-foreground truncate">{item.meta}</span>}
+                            <ArrowRight className="ml-auto h-3 w-3 text-muted-foreground shrink-0" />
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  )}
                   {recent.length > 0 && (
                     <CommandGroup heading="Buscas recentes">
                       {recent.map(term => (
@@ -639,10 +830,25 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 </CommandEmpty>
               )}
 
+              {/* Ações rápidas (spec R9d) — só com busca ativa; permissão via canAccessRoute */}
+              {!isGroupSearch && q && quickActions.length > 0 && (
+                <CommandGroup heading="Ações rápidas">
+                  {quickActions.map(a => (
+                    <CommandItem key={a.path} onSelect={() => goTo(a.path)}>
+                      {a.label.startsWith('Criar') || a.label.startsWith('Novo') || a.label.startsWith('Nova')
+                        ? <Plus className="mr-2 h-3.5 w-3.5 text-primary" />
+                        : <Lightning className="mr-2 h-3.5 w-3.5 text-primary" />}
+                      <span className="text-xs font-medium">{a.label}</span>
+                      <ArrowRight className="ml-auto h-3 w-3 text-muted-foreground shrink-0" />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+
               {filteredNavItems.length > 0 && (
                 <CommandGroup heading="Páginas">
                   {filteredNavItems.map(item => (
-                    <CommandItem key={item.path} onSelect={() => goTo(item.path)}>
+                    <CommandItem key={item.path} onSelect={() => goTo(item.path, undefined, { type: 'page', id: item.path, label: item.name, href: item.path, meta: item.groupLabel })}>
                       <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs font-medium"><Highlight text={item.name} term={q} /></span>
                       <span className="ml-2 text-xs text-muted-foreground">{item.groupLabel}</span>
@@ -657,13 +863,17 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
 
               {orders.length > 0 && (
                 <CommandGroup heading={`Ordens de Produção (${orders.length})`}>
-                  {orders.map(op => (
-                    <CommandItem key={op.id} onSelect={() => goTo(`/orders/${op.id}/edit`, query)}>
+                  {orders.map((op: any) => (
+                    <CommandItem
+                      key={op.id}
+                      onSelect={() => goTo(`/orders/${op.id}/edit`, query, { type: 'op', id: op.id, label: op.order_number, href: `/orders/${op.id}/edit`, meta: op.color || undefined })}
+                    >
                       <ClipboardList className="mr-2 h-3.5 w-3.5 text-primary" />
                       <div className="flex-1 min-w-0">
                         <span className="font-mono text-xs font-semibold">
                           <Highlight text={op.order_number} term={searchTerm} />
                         </span>
+                        {op.color && <span className="text-muted-foreground text-xs ml-2">{op.color}</span>}
                       </div>
                       <Badge variant="outline" className="text-xs shrink-0">{op.status}</Badge>
                     </CommandItem>
@@ -675,8 +885,11 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 <>
                   <CommandSeparator />
                   <CommandGroup heading={`Pedidos de Venda (${saleOrders.length})`}>
-                    {saleOrders.map(so => (
-                      <CommandItem key={so.id} onSelect={() => goTo(`/sales/edit/${so.id}`, query)}>
+                    {saleOrders.map((so: any) => (
+                      <CommandItem
+                        key={so.id}
+                        onSelect={() => goTo(`/sales/edit/${so.id}`, query, { type: 'pv', id: so.id, label: `${so.order_number} · ${so.client_name ?? ''}`.trim(), href: `/sales/edit/${so.id}` })}
+                      >
                         <FileText className="mr-2 h-3.5 w-3.5 text-success" />
                         <div className="flex-1 min-w-0">
                           <span className="font-mono text-xs font-semibold">
@@ -686,6 +899,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                             <Highlight text={so.client_name} term={searchTerm} />
                           </span>
                         </div>
+                        {so.total != null && Number(so.total) > 0 && (
+                          <span className="text-xs font-mono text-muted-foreground shrink-0 mr-2">{formatCurrency(so.total)}</span>
+                        )}
                         <Badge variant="outline" className="text-xs shrink-0">{so.status}</Badge>
                       </CommandItem>
                     ))}
@@ -697,16 +913,17 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 <>
                   <CommandSeparator />
                   <CommandGroup heading={`Clientes (${clients.length})`}>
-                    {clients.map(c => (
+                    {clients.map((c: any) => (
                       <CommandItem
                         key={c.id}
-                        onSelect={() => goTo(`/clients?q=${encodeURIComponent(c.razao_social || c.cnpj || '')}`, query)}
+                        onSelect={() => goTo(`/clients?q=${encodeURIComponent(c.razao_social || c.cnpj || '')}`, query, { type: 'client', id: c.id, label: c.razao_social || c.nome_fantasia || c.cnpj || 'Cliente', href: `/clients?q=${encodeURIComponent(c.razao_social || c.cnpj || '')}`, meta: c.cidade || undefined })}
                       >
                         <Users className="mr-2 h-3.5 w-3.5 text-warning" />
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-semibold truncate">
                             <Highlight text={c.razao_social} term={searchTerm} />
                           </span>
+                          {c.cidade && <span className="text-muted-foreground text-xs ml-2">{c.cidade}</span>}
                           {c.cnpj && (
                             <span className="text-muted-foreground text-xs ml-2 font-mono">
                               <Highlight text={c.cnpj} term={searchTerm} />
@@ -750,10 +967,10 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                 <>
                   <CommandSeparator />
                   <CommandGroup heading={`Materiais / Estoque (${products.length})`}>
-                    {products.map(p => (
+                    {products.map((p: any) => (
                       <CommandItem
                         key={p.id}
-                        onSelect={() => goTo(`/estoque?q=${encodeURIComponent(p.sku || p.name || '')}`, query)}
+                        onSelect={() => goTo(`/estoque?q=${encodeURIComponent(p.sku || p.name || '')}`, query, { type: 'product', id: p.id, label: p.name, href: `/estoque?q=${encodeURIComponent(p.sku || p.name || '')}`, meta: p.product_groups?.name || undefined })}
                       >
                         <Package className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                         <div className="flex-1 min-w-0">
@@ -761,6 +978,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                             <Highlight text={p.name} term={searchTerm} />
                           </span>
                           {p.color && <span className="text-muted-foreground text-xs ml-1">({p.color})</span>}
+                          {p.product_groups?.name && (
+                            <span className="text-muted-foreground text-xs ml-2 truncate">{p.product_groups.name}</span>
+                          )}
                           {p.sku && (
                             <span className="text-muted-foreground text-xs ml-2 font-mono">
                               <Highlight text={p.sku} term={searchTerm} />
@@ -791,6 +1011,138 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                             <Highlight text={r.name} term={searchTerm} />
                           </span>
                           {r.category && <span className="text-muted-foreground text-xs ml-2">({r.category})</span>}
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {purchaseOrders.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading={`Ordens de Compra (${purchaseOrders.length})`}>
+                    {purchaseOrders.map((po: any) => (
+                      <CommandItem
+                        key={po.id}
+                        onSelect={() => goTo(`/purchase-orders?q=${encodeURIComponent(po.order_number || '')}`, query, { type: 'oc', id: po.id, label: `${po.order_number} · ${po.supplier_name ?? 'Sem fornecedor'}`, href: `/purchase-orders?q=${encodeURIComponent(po.order_number || '')}` })}
+                      >
+                        <ShoppingBag className="mr-2 h-3.5 w-3.5 text-primary" />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-mono text-xs font-semibold">
+                            <Highlight text={po.order_number} term={searchTerm} />
+                          </span>
+                          <span className="text-muted-foreground text-xs ml-2 truncate">
+                            <Highlight text={po.supplier_name} term={searchTerm} />
+                          </span>
+                        </div>
+                        {po.total_value != null && Number(po.total_value) > 0 && (
+                          <span className="text-xs font-mono text-muted-foreground shrink-0 mr-2">{formatCurrency(po.total_value)}</span>
+                        )}
+                        <Badge variant="outline" className="text-xs shrink-0">{po.status}</Badge>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {serviceOrders.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading={`Ordens de Serviço (${serviceOrders.length})`}>
+                    {serviceOrders.map((os: any) => (
+                      <CommandItem
+                        key={os.id}
+                        onSelect={() => goTo(`/terceirizados?tab=orders&q=${encodeURIComponent(os.order_number || '')}`, query, { type: 'os', id: os.id, label: `${os.order_number} · ${os.contractors?.name ?? 'Sem prestador'}`, href: `/terceirizados?tab=orders&q=${encodeURIComponent(os.order_number || '')}`, meta: os.sector || undefined })}
+                      >
+                        <Truck className="mr-2 h-3.5 w-3.5 text-primary" />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-mono text-xs font-semibold">
+                            <Highlight text={os.order_number} term={searchTerm} />
+                          </span>
+                          {os.contractors?.name && (
+                            <span className="text-muted-foreground text-xs ml-2 truncate">
+                              <Highlight text={os.contractors.name} term={searchTerm} />
+                            </span>
+                          )}
+                          {os.sector && <span className="text-muted-foreground text-xs ml-2">({os.sector})</span>}
+                        </div>
+                        <Badge variant="outline" className="text-xs shrink-0">{os.status}</Badge>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {nfes.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading={`NF-e (${nfes.length})`}>
+                    {nfes.map((nf: any) => (
+                      <CommandItem
+                        key={nf.id}
+                        onSelect={() => goTo(`/nfe?q=${encodeURIComponent(nf.numero || nf.chave_acesso || '')}`, query, { type: 'nfe', id: nf.id, label: `NF ${nf.numero ?? 's/nº'} · ${nf.nome_destinatario ?? ''}`.trim(), href: `/nfe?q=${encodeURIComponent(nf.numero || nf.chave_acesso || '')}` })}
+                      >
+                        <Receipt className="mr-2 h-3.5 w-3.5 text-primary" />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-mono text-xs font-semibold">
+                            <Highlight text={nf.numero ? `NF ${nf.numero}` : 'NF s/nº'} term={searchTerm} />
+                          </span>
+                          {nf.nome_destinatario && (
+                            <span className="text-muted-foreground text-xs ml-2 truncate">
+                              <Highlight text={nf.nome_destinatario} term={searchTerm} />
+                            </span>
+                          )}
+                        </div>
+                        {nf.valor_total != null && Number(nf.valor_total) > 0 && (
+                          <span className="text-xs font-mono text-muted-foreground shrink-0 mr-2">{formatCurrency(nf.valor_total)}</span>
+                        )}
+                        <Badge variant="outline" className="text-xs shrink-0">{nf.status}</Badge>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {employees.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading={`Funcionários (${employees.length})`}>
+                    {employees.map((e: any) => (
+                      <CommandItem
+                        key={e.id}
+                        onSelect={() => goTo(`/rh?tab=funcionarios&q=${encodeURIComponent(e.name || '')}`, query, { type: 'employee', id: e.id, label: e.name, href: `/rh?tab=funcionarios&q=${encodeURIComponent(e.name || '')}`, meta: e.role || undefined })}
+                      >
+                        <UserCircle className="mr-2 h-3.5 w-3.5 text-warning" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold truncate">
+                            <Highlight text={e.name} term={searchTerm} />
+                          </span>
+                          {e.role && <span className="text-muted-foreground text-xs ml-2">{e.role}</span>}
+                          {e.department && <span className="text-muted-foreground text-xs ml-1">· {e.department}</span>}
+                        </div>
+                        {e.active === false && <Badge variant="outline" className="text-xs shrink-0">inativo</Badge>}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {stockGroups.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading={`Grupos de Estoque (${stockGroups.length})`}>
+                    {stockGroups.map((g: any) => (
+                      <CommandItem
+                        key={g.id}
+                        onSelect={() => goTo(`/grupos?q=${encodeURIComponent(g.name || '')}`, query, { type: 'group', id: g.id, label: g.name, href: `/grupos?q=${encodeURIComponent(g.name || '')}`, meta: g.sector || undefined })}
+                      >
+                        <FolderOpen className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold truncate">
+                            <Highlight text={g.name} term={searchTerm} />
+                          </span>
+                          {g.sector && <span className="text-muted-foreground text-xs ml-2">{g.sector}</span>}
                         </div>
                       </CommandItem>
                     ))}

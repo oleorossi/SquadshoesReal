@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { stripSearchNorm } from '@/lib/searchUtils';
 
 export type ProductGroup = {
   id: string;
@@ -79,7 +80,7 @@ export function useAddGroup() {
       box_type_colmeia_id?: string | null;
       box_type_fitilho_id?: string | null;
     }) => {
-      const { data, error } = await supabase.from('product_groups').insert(form as any).select().single();
+      const { data, error } = await supabase.from('product_groups').insert(stripSearchNorm(form) as any).select().single();
       if (error) throw error;
       return data;
     },
@@ -95,7 +96,7 @@ export function useUpdateGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<ProductGroup> }) => {
-      const { error } = await supabase.from('product_groups').update(data as any).eq('id', id);
+      const { error } = await supabase.from('product_groups').update(stripSearchNorm(data) as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['product_groups'] }); toast.success('Grupo atualizado!'); },

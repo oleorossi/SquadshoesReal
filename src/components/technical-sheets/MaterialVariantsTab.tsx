@@ -90,7 +90,7 @@ function GroupCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Buscar grupo…" className="h-9" />
+          <CommandInput placeholder="Buscar grupo por nome ou SKU…" className="h-9" />
           <CommandList>
             <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
             <CommandGroup>
@@ -103,7 +103,7 @@ function GroupCombobox({
               {groups.map(g => {
                 const sub = describe?.(g.id);
                 return (
-                  <CommandItem key={g.id} value={g.name} onSelect={() => { onChange(g.id); setOpen(false); }} className="text-sm py-2">
+                  <CommandItem key={g.id} value={g.name} keywords={sub ? [sub] : undefined} onSelect={() => { onChange(g.id); setOpen(false); }} className="text-sm py-2">
                     <Check className={cn('mr-2 h-4 w-4', value === g.id ? 'opacity-100' : 'opacity-0')} />
                     <div className="flex flex-col min-w-0">
                       <span className="font-medium truncate">{g.name}</span>

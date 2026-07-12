@@ -4,7 +4,6 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { CircleNotch as Loader2, Plus, PencilSimple as Pencil, Trash as Trash2, Truck, FileArrowUp as FileUp, CaretDown as ChevronDown, CaretUp as ChevronUp, Phone, Envelope as Mail, MapPin, Clock, CreditCard, FileText, MagnifyingGlass as Search, Lightning as Zap, Package, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -31,7 +30,8 @@ import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { useCan } from '@/hooks/useAccessControl';
 
 
@@ -438,12 +438,8 @@ export default function Suppliers() {
     }
   }, []);
 
-  const filtered = suppliers.filter(s => {
-    if (!search) return true;
-    const q = normalizeForSearch(search);
-    return normalizeForSearch(s.name).includes(q) || normalizeForSearch(s.trade_name).includes(q) ||
-      s.cnpj?.includes(q) || normalizeForSearch(s.city).includes(q);
-  });
+  const filtered = suppliers.filter(s =>
+    searchMatchesAllTerms(search, s.name, s.trade_name, s.cnpj, s.city, s.state, s.phone));
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -482,19 +478,25 @@ export default function Suppliers() {
           <StatCard label="Com CNPJ" value={suppliers.filter(s => s.cnpj).length} hint="cadastro completo" tone="primary" />
         </StatGrid>
 
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar fornecedor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <SearchInput
+          className="max-w-sm"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nome, CNPJ, cidade, telefone…"
+          resultCount={filtered.length}
+          totalCount={suppliers.length}
+        />
 
         <div className="space-y-3">
           {filtered.length === 0 ? (
             <Panel flush>
               <EmptyState
-                icon={Truck}
-                title={search ? 'Nenhum fornecedor encontrado' : 'Nenhum fornecedor cadastrado'}
+                icon={search ? Search : Truck}
+                title={search ? `Nenhum resultado para "${search}"` : 'Nenhum fornecedor cadastrado'}
                 description={search ? 'Ajuste a busca ou cadastre um novo fornecedor.' : 'Cadastre o primeiro fornecedor.'}
-                action={perm.canCreate ? <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Fornecedor</Button> : undefined}
+                action={search
+                  ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                  : perm.canCreate ? <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" />Novo Fornecedor</Button> : undefined}
               />
             </Panel>
           ) : (

@@ -24,7 +24,8 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { useCan } from '@/hooks/useAccessControl';
 
 const fmt = (v: number) =>
@@ -204,12 +205,10 @@ export default function InputCostsPage() {
   }, [products]);
 
   const rows = useMemo(() => {
-    const q = normalizeForSearch(search);
     return products.filter((p: any) => {
       if (!showInactive && !p.active) return false;
       if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
-      if (q && !normalizeForSearch(p.name).includes(q) && !normalizeForSearch(p.sku).includes(q)) return false;
-      return true;
+      return searchMatchesAllTerms(search, p.name, p.sku, p.color, p.category);
     });
   }, [products, search, categoryFilter, showInactive]);
 
@@ -245,15 +244,15 @@ export default function InputCostsPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative w-64">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nome ou SKU…"
-              className="pl-8 h-8 text-sm"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome, SKU ou cor…"
+            resultCount={rows.length}
+            totalCount={products.length}
+            className="w-72"
+            inputClassName="h-8 text-sm"
+          />
 
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="h-8 w-44 text-sm">
@@ -290,11 +289,20 @@ export default function InputCostsPage() {
           </div>
         ) : rows.length === 0 ? (
           <Panel flush>
-            <EmptyState
-              icon={PackageSearch}
-              title="Nenhum insumo encontrado"
-              description="Ajuste a busca ou os filtros de categoria."
-            />
+            {search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${search}"`}
+                action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+              />
+            ) : (
+              <EmptyState
+                icon={PackageSearch}
+                title="Nenhum insumo encontrado"
+                description="Ajuste a busca ou os filtros de categoria."
+              />
+            )}
           </Panel>
         ) : (
           <Panel flush bodyClassName="overflow-x-auto">

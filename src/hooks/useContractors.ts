@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { isOsDone } from '@/lib/osStatusMachine';
+import { stripSearchNorm } from '@/lib/searchUtils';
 
 export interface Contractor {
   id: string;
@@ -174,7 +175,7 @@ export function useCreateContractor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (contractor: Partial<Contractor>) => {
-      const { data, error } = await supabase.from('contractors').insert(contractor as any).select().single();
+      const { data, error } = await supabase.from('contractors').insert(stripSearchNorm(contractor) as any).select().single();
       if (error) throw error;
       return data;
     },
@@ -187,7 +188,7 @@ export function useUpdateContractor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Contractor> & { id: string }) => {
-      const { error } = await supabase.from('contractors').update(updates as any).eq('id', id);
+      const { error } = await supabase.from('contractors').update(stripSearchNorm(updates) as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['contractors'] }); toast.success('Terceirizado atualizado!'); },
@@ -275,7 +276,7 @@ export function useCreateServiceOrder() {
     mutationFn: async (order: Partial<ServiceOrder>) => {
       if (order.unit_price !== undefined && (!Number.isFinite(Number(order.unit_price)) || Number(order.unit_price) < 0)) throw new Error('Preço unitário deve ser um número não-negativo.');
       if (order.quantity !== undefined && (!Number.isFinite(Number(order.quantity)) || Number(order.quantity) <= 0)) throw new Error('Quantidade deve ser um número positivo.');
-      const { data, error } = await supabase.from('service_orders').insert(order as any).select().single();
+      const { data, error } = await supabase.from('service_orders').insert(stripSearchNorm(order) as any).select().single();
       if (error) throw error;
       return data;
     },
@@ -320,6 +321,7 @@ export function useUpdateServiceOrder() {
         receipt_generated_at: _rga,
         receipt_number: _rn,
         order_number: _on,
+        search_norm: _sn, // coluna GENERATED (mig 20260911180000) — write com ela = erro
         ...safe
       } = updates as any;
       if (safe.status === '') throw new Error('Status inválido.');

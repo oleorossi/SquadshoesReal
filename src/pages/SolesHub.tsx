@@ -7,7 +7,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -30,7 +30,7 @@ import { useCan } from '@/hooks/useAccessControl';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
 import type { SoleProduct } from '@/components/soles-hub/types';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 export type { SoleProduct };
 
 function isSoleProduct(category: string | null): boolean {
@@ -88,13 +88,8 @@ export default function SolesHub() {
   });
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
-    if (!q) return soles;
-    return soles.filter(p =>
-      normalizeForSearch(p.name).includes(q) ||
-      normalizeForSearch(p.sku).includes(q) ||
-      normalizeForSearch(p.color).includes(q)
-    );
+    if (!search.trim()) return soles;
+    return soles.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.color));
   }, [soles, search]);
 
   // Nome base = nome sem a cor: remove o parêntese final E o sufixo " - COR" da
@@ -207,15 +202,14 @@ export default function SolesHub() {
             bodyClassName="flex flex-col flex-1 min-h-0"
           >
             <div className="p-3 pb-2 border-b border-border">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  className="h-8 pl-7 text-sm"
-                  placeholder="Buscar solado, SKU, cor..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por solado, SKU, cor…"
+                resultCount={filtered.length}
+                totalCount={soles.length}
+                inputClassName="h-8 text-sm"
+              />
             </div>
             <div className="flex-1 min-h-0">
               {isLoading ? (
@@ -223,12 +217,25 @@ export default function SolesHub() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : grouped.length === 0 ? (
-                <EmptyState
-                  size="sm"
-                  icon={Package}
-                  title="Nenhum solado encontrado"
-                  description="Ajuste a busca para localizar um solado."
-                />
+                search.trim() ? (
+                  <EmptyState
+                    size="sm"
+                    icon={Search}
+                    title={`Nenhum resultado para "${search}"`}
+                    action={
+                      <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                        Limpar busca
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    size="sm"
+                    icon={Package}
+                    title="Nenhum solado encontrado"
+                    description="Cadastre um solado para começar."
+                  />
+                )
               ) : (
                 <ScrollArea className="h-[600px]">
                   <div className="divide-y">

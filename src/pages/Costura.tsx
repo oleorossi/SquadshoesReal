@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical, LinkSimple, Clock, ArrowsClockwise } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical, LinkSimple, Clock, ArrowsClockwise, MagnifyingGlass } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,10 +25,10 @@ import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
-import OrderSearchBar from '@/components/production/OrderSearchBar';
+import { SearchInput } from '@/components/ui/search-input';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
@@ -116,10 +116,9 @@ export default function Costura() {
     }
   };
 
-  const costuraOrders = useMemo(() => {
-    // normalizeForSearch: SP10/SP 10/sp-10 são equivalentes (pedido user 19/05/2026).
-    const q = normalizeForSearch(searchQuery);
-    const filtered = orders.filter(order => {
+  // OPs do setor (status + estágio), ANTES da busca — base do contador "N de M".
+  const sectorOrders = useMemo(() => {
+    return orders.filter(order => {
       const status = (order.status || '').toLowerCase().normalize('NFC');
       if (filterStatus === 'active' && status !== 'em produção') return false;
 
@@ -128,14 +127,17 @@ export default function Costura() {
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
-      if (q) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const ref = (references as any[]).find(t => t.id === (order as any).reference_id);
-        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
-        if (!searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code)) return false;
-      }
-
       return true;
+    });
+  }, [orders, allStages, filterStatus]);
+
+  const costuraOrders = useMemo(() => {
+    const filtered = sectorOrders.filter(order => {
+      if (!searchQuery.trim()) return true;
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      const ref = (references as any[]).find(t => t.id === (order as any).reference_id);
+      // espaço/"/" = refinamento AND (ex.: "stx alcineu" = ref STX E cliente Alcineu)
+      return searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code, order.color);
     });
     return filtered.sort((a, b) => {
       // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
@@ -152,7 +154,7 @@ export default function Costura() {
       if (!pb) return -1;
       return pa.localeCompare(pb);
     });
-  }, [orders, allStages, filterStatus, searchQuery, saleOrders]);
+  }, [sectorOrders, searchQuery, saleOrders, references]);
 
   const getDeliveryInfo = (order: any) => {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
@@ -336,7 +338,14 @@ export default function Costura() {
         </>}
       />
 
-      <OrderSearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Buscar por PV, OP, cliente..." />
+      <SearchInput
+        className="max-w-sm"
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Buscar por PV, OP, cliente, referência, cor…"
+        resultCount={costuraOrders.length}
+        totalCount={sectorOrders.length}
+      />
 
       <StatGrid>
         <StatCard
@@ -457,11 +466,24 @@ export default function Costura() {
 
       {costuraOrders.length === 0 && (
         <Panel flush>
-          <EmptyState
-            icon={Scissors}
-            title={`Nenhuma OP pendente de ${SECTOR_NAME}`}
-            description={`As OPs aparecerão aqui quando tiverem o setor de ${SECTOR_NAME} configurado na ficha técnica.`}
-          />
+          {searchQuery.trim() ? (
+            <EmptyState
+              size="sm"
+              icon={MagnifyingGlass}
+              title={`Nenhum resultado para "${searchQuery}"`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                  Limpar busca
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={Scissors}
+              title={`Nenhuma OP pendente de ${SECTOR_NAME}`}
+              description={`As OPs aparecerão aqui quando tiverem o setor de ${SECTOR_NAME} configurado na ficha técnica.`}
+            />
+          )}
         </Panel>
       )}
     </div>

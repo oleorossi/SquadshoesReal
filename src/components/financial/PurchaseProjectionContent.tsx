@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { TrendUp as TrendingUp, TrendDown as TrendingDown, WarningCircle as AlertCircle, CheckCircle as CheckCircle2, Pause, Stack as Layers, Palette, ShoppingCart, MagnifyingGlass as Search, Funnel as Filter, ChartBar as BarChart3 } from '@phosphor-icons/react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, WarningCircle as AlertCircle, CheckCircle as CheckCircle2, Pause, Stack as Layers, Palette, ShoppingCart, MagnifyingGlass, Funnel as Filter, ChartBar as BarChart3 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -17,7 +19,7 @@ import {
   RECOMMENDATION_LABEL, RECOMMENDATION_CLASS, ABC_CLASS_BG,
   type Recommendation, type AbcClass,
 } from '@/services/purchaseProjectionService';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const PERIOD_OPTIONS = [
   { value: 30,  label: '30 dias' },
@@ -67,18 +69,11 @@ export default function PurchaseProjectionContent() {
   }, [rows]);
 
   const filtered = useMemo(() => {
-    const term = normalizeForSearch(search.trim());
     return rows.filter((r) => {
       if (recFilter !== 'all' && r.recommendation !== recFilter) return false;
       if (abcFilter !== 'all' && r.abc_class !== abcFilter) return false;
       if (categoryFilter !== 'all' && r.product_category !== categoryFilter) return false;
-      if (!term) return true;
-      return (
-        normalizeForSearch(r.product_name).includes(term) ||
-        (r.color ?? '').toLowerCase().includes(term) ||
-        (r.supplier_name ?? '').toLowerCase().includes(term) ||
-        (r.product_category ?? '').toLowerCase().includes(term)
-      );
+      return searchMatchesAllTerms(search, r.product_name, r.color, r.supplier_name, r.product_category);
     });
   }, [rows, search, recFilter, abcFilter, categoryFilter]);
 
@@ -229,15 +224,14 @@ export default function PurchaseProjectionContent() {
 
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar produto, cor, fornecedor, categoria…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por produto, cor, fornecedor, categoria…"
+          resultCount={filtered.length}
+          totalCount={rows.length}
+          className="flex-1"
+        />
         <Select value={recFilter} onValueChange={(v) => setRecFilter(v as any)}>
           <SelectTrigger className="w-full sm:w-[170px]">
             <Filter className="w-4 h-4 mr-2" />
@@ -305,10 +299,25 @@ export default function PurchaseProjectionContent() {
               )}
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-12 text-sm text-muted-foreground">
-                    {rows.length === 0
-                      ? `Nenhuma compra ou consumo registrado nos últimos ${periodDays} dias.`
-                      : 'Nenhum produto corresponde aos filtros.'}
+                  <TableCell colSpan={11}>
+                    {rows.length > 0 && search.trim() ? (
+                      <EmptyState
+                        size="sm"
+                        icon={MagnifyingGlass}
+                        title={`Nenhum resultado para "${search}"`}
+                        action={
+                          <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                            Limpar busca
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      <div className="text-center py-12 text-sm text-muted-foreground">
+                        {rows.length === 0
+                          ? `Nenhuma compra ou consumo registrado nos últimos ${periodDays} dias.`
+                          : 'Nenhum produto corresponde aos filtros.'}
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               )}

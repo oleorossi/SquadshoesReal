@@ -18,11 +18,13 @@ import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
+import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
 import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight } from "@phosphor-icons/react";
 
@@ -371,10 +373,10 @@ export default function FichaMontadoresPage() {
       return { ...w, [k]: { ...cur, [diff]: { ...cur[diff], [sz]: Math.max(0, v) } } };
     });
 
-  const rosterFiltrado = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    return q ? montadores.filter((e) => `${e.name} ${e.role || ""} ${e.department || ""}`.toLowerCase().includes(q)) : montadores;
-  }, [montadores, busca]);
+  const rosterFiltrado = useMemo(
+    () => montadores.filter((e) => searchMatchesAllTerms(busca, e.name, e.role, e.department, e.external_id)),
+    [montadores, busca],
+  );
 
   const totalDiaPares = useMemo(() => montadores.reduce((s, e) => s + paresMontador(e.id), 0), [montadores, pares]);
   const totalDiaFichas = useMemo(() => montadores.reduce((s, e) => s + fichasMontador(e.id), 0), [montadores, pares]);
@@ -651,7 +653,14 @@ export default function FichaMontadoresPage() {
             )}
             <div className="min-w-[180px] flex-1">
               <label className={lbl}>Buscar</label>
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={`Filtrar ${cfgSetor.sing}…`} className="h-9" />
+              <SearchInput
+                value={busca}
+                onChange={setBusca}
+                placeholder="Buscar por nome, cargo, setor ou matrícula…"
+                resultCount={rosterFiltrado.length}
+                totalCount={montadores.length}
+                inputClassName="h-9"
+              />
             </div>
             <div className="ml-auto flex overflow-hidden rounded-md border border-border">
               {(["dia", "semana"] as ChamadaView[]).map((v) => (
@@ -726,7 +735,10 @@ export default function FichaMontadoresPage() {
                       );
                     })}
                     {rosterFiltrado.length === 0 && (
-                      <tr><td colSpan={SIZES.length * 2 + 3} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum montador encontrado para "{busca}".</td></tr>
+                      <tr><td colSpan={SIZES.length * 2 + 3} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Nenhum resultado para "{busca}".
+                        <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
+                      </td></tr>
                     )}
                   </tbody>
                   <tfoot>
@@ -816,7 +828,10 @@ export default function FichaMontadoresPage() {
                       );
                     })}
                     {rosterFiltrado.length === 0 && (
-                      <tr><td colSpan={weekDays.length + 2} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum montador encontrado para "{busca}".</td></tr>
+                      <tr><td colSpan={weekDays.length + 2} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Nenhum resultado para "{busca}".
+                        <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
+                      </td></tr>
                     )}
                   </tbody>
                   <tfoot>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { CircleNotch as Loader2, Plus, Trash as Trash2, FileText, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Plus, Trash as Trash2, FileText } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,8 +13,9 @@ import { useEmitStandaloneNfe, useCompanies, StandaloneNfeItem } from '@/hooks/u
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
+import { SearchInput } from '@/components/ui/search-input';
 import { toast } from 'sonner';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface DraftItem extends StandaloneNfeItem {
   _key: string;
@@ -49,21 +50,25 @@ export default function StandaloneNfePanel() {
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<DraftItem[]>([emptyItem()]);
 
-  const filteredClients = useMemo(() => {
-    const q = clientSearch.toLowerCase().trim();
-    return (clients || [])
-      .filter((c: any) => c.active !== false)
-      .filter((c: any) => !q || normalizeForSearch(c.razao_social).includes(q) || (c.cnpj || '').includes(q))
-      .slice(0, 50);
-  }, [clients, clientSearch]);
+  const activeClients = useMemo(
+    () => (clients || []).filter((c: any) => c.active !== false),
+    [clients],
+  );
+  const matchedClients = useMemo(
+    () => activeClients.filter((c: any) => searchMatchesAllTerms(clientSearch, c.razao_social, c.nome_fantasia, c.cnpj)),
+    [activeClients, clientSearch],
+  );
+  const filteredClients = useMemo(() => matchedClients.slice(0, 50), [matchedClients]);
 
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.toLowerCase().trim();
-    return (products || [])
-      .filter((p: any) => p.active !== false && Number(p.quantity || 0) > 0)
-      .filter((p: any) => !q || normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q))
-      .slice(0, 100);
-  }, [products, productSearch]);
+  const stockedProducts = useMemo(
+    () => (products || []).filter((p: any) => p.active !== false && Number(p.quantity || 0) > 0),
+    [products],
+  );
+  const matchedProducts = useMemo(
+    () => stockedProducts.filter((p: any) => searchMatchesAllTerms(productSearch, p.name, p.sku)),
+    [stockedProducts, productSearch],
+  );
+  const filteredProducts = useMemo(() => matchedProducts.slice(0, 100), [matchedProducts]);
 
   const total = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
   const selectedClient = clients.find((c: any) => c.id === clientId);
@@ -148,15 +153,28 @@ export default function StandaloneNfePanel() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Cliente *</Label>
-              <div className="relative mt-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar cliente por nome ou CNPJ..."
-                  value={clientSearch}
-                  onChange={e => setClientSearch(e.target.value)}
-                  className="pl-8 h-9 text-sm"
-                />
-              </div>
+              <SearchInput
+                className="mt-1"
+                inputClassName="h-9 text-sm"
+                placeholder="Buscar cliente por razão social, fantasia ou CNPJ…"
+                value={clientSearch}
+                onChange={setClientSearch}
+                resultCount={matchedClients.length}
+                totalCount={activeClients.length}
+              />
+              {clientSearch && matchedClients.length === 0 && (
+                <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="truncate">Nenhum resultado para "{clientSearch}"</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs shrink-0"
+                    onClick={() => setClientSearch('')}
+                  >
+                    Limpar busca
+                  </Button>
+                </div>
+              )}
               <Select value={clientId} onValueChange={setClientId}>
                 <SelectTrigger className="mt-2 h-9 text-sm">
                   <SelectValue placeholder="Selecionar cliente" />
@@ -227,15 +245,27 @@ export default function StandaloneNfePanel() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Buscar produto por nome ou SKU..."
-              value={productSearch}
-              onChange={e => setProductSearch(e.target.value)}
-              className="pl-8 h-8 text-xs"
-            />
-          </div>
+          <SearchInput
+            inputClassName="h-8 text-xs"
+            placeholder="Buscar produto por nome ou SKU…"
+            value={productSearch}
+            onChange={setProductSearch}
+            resultCount={matchedProducts.length}
+            totalCount={stockedProducts.length}
+          />
+          {productSearch && matchedProducts.length === 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="truncate">Nenhum resultado para "{productSearch}"</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs shrink-0"
+                onClick={() => setProductSearch('')}
+              >
+                Limpar busca
+              </Button>
+            </div>
+          )}
           {items.map((item, idx) => {
             const product = products.find((p: any) => p.id === item.product_id);
             const stockQty = Number(product?.quantity || 0);

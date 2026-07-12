@@ -20,7 +20,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
   AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { OverrideHistoryButton } from './OverrideHistoryButton';
 
 function fmtDateBR(iso: string): string {
@@ -74,12 +76,9 @@ export default function PendingTimeRecordsPanel() {
   };
 
   const filteredSummary = useMemo(() => {
-    const term = normalizeForSearch(search.trim());
     return summary.filter((s) => {
       if (s.pending_count === 0) return false;
-      if (!term) return true;
-      return (s.name ?? '').toLowerCase().includes(term)
-          || (s.department ?? '').toLowerCase().includes(term);
+      return searchMatchesAllTerms(search, s.name, s.department);
     });
   }, [summary, search]);
 
@@ -173,28 +172,40 @@ export default function PendingTimeRecordsPanel() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar funcionário ou setor…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        className="max-w-md"
+        placeholder="Buscar por funcionário ou setor…"
+        value={search}
+        onChange={setSearch}
+        resultCount={filteredSummary.length}
+        totalCount={empWithPending}
+      />
 
       {/* Lista por funcionário */}
       {loadingSummary ? (
         <Skeleton className="h-32" />
       ) : filteredSummary.length === 0 ? (
         <Card>
-          <CardContent className="p-12 text-center">
-            <CheckCircle2 className="h-10 w-10 text-green-500/40 mx-auto mb-2" />
-            <p className="text-sm font-medium">Nenhuma pendência! 🎉</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Todos os dias importados têm batidas pares.
-            </p>
-          </CardContent>
+          {search ? (
+            <EmptyState
+              size="sm"
+              icon={Search}
+              title={`Nenhum resultado para "${search}"`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Limpar busca
+                </Button>
+              }
+            />
+          ) : (
+            <CardContent className="p-12 text-center">
+              <CheckCircle2 className="h-10 w-10 text-green-500/40 mx-auto mb-2" />
+              <p className="text-sm font-medium">Nenhuma pendência! 🎉</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Todos os dias importados têm batidas pares.
+              </p>
+            </CardContent>
+          )}
         </Card>
       ) : (
         <div className="space-y-2">

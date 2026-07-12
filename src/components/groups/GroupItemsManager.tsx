@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,6 +17,7 @@ import {
   MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X, Tag,
 } from '@phosphor-icons/react';
 import { useProducts, useUpdateProduct, useSetProductsGroup, useBulkSetProductPrice } from '@/hooks/useProducts';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { Product } from '@/types/inventory';
 
@@ -27,9 +28,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-const norm = (s: unknown) => String(s ?? '').toLowerCase();
 const matches = (p: Product, q: string) =>
-  !q || norm(p.name).includes(q) || norm(p.sku).includes(q) || norm((p as any).color).includes(q);
+  searchMatchesAllTerms(q, p.name, p.sku, (p as any).color);
 const byName = (a: Product, b: Product) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'pt-BR');
 
 const ADD_LIMIT = 200;
@@ -55,17 +55,17 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
     setMoveTarget(''); setBulkPrice(0); setAddSearch(''); setAddSelected(new Set());
   }, [group?.id, open]);
 
-  const items = useMemo(() => {
-    if (!group) return [];
-    const q = norm(search);
-    return (products as Product[]).filter(p => (p as any).group_id === group.id && matches(p, q)).sort(byName);
-  }, [products, group, search]);
+  const groupItems = useMemo(() => {
+    if (!group) return [] as Product[];
+    return (products as Product[]).filter(p => (p as any).group_id === group.id).sort(byName);
+  }, [products, group]);
+
+  const items = useMemo(() => groupItems.filter(p => matches(p, search)), [groupItems, search]);
 
   const candidates = useMemo(() => {
     if (!group) return [] as Product[];
-    const q = norm(addSearch);
-    if (q.length < 2) return [];
-    return (products as Product[]).filter(p => (p as any).group_id !== group.id && matches(p, q)).sort(byName);
+    if (addSearch.trim().length < 2) return [];
+    return (products as Product[]).filter(p => (p as any).group_id !== group.id && matches(p, addSearch)).sort(byName);
   }, [products, group, addSearch]);
   const candidatesShown = candidates.slice(0, ADD_LIMIT);
 
@@ -124,10 +124,14 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
           {mode === 'list' && (
             <div className="flex flex-col gap-3 min-h-0 flex-1">
               <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome, SKU ou cor…" className="pl-8 h-9" />
-                </div>
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Buscar por nome, SKU ou cor…"
+                  resultCount={items.length}
+                  totalCount={groupItems.length}
+                  className="flex-1"
+                />
                 <Button onClick={() => setMode('add')} className="gap-1.5 h-9">
                   <Plus className="h-4 w-4" /> Adicionar itens
                 </Button>
@@ -136,8 +140,13 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
               <div className="flex-1 overflow-auto rounded-lg border border-border">
                 {items.length === 0 ? (
                   <div className="p-8">
-                    <EmptyState icon={Package} title={search ? 'Nenhum item encontrado' : 'Grupo sem itens'}
-                      description={search ? 'Ajuste a busca.' : 'Use “Adicionar itens” para trazer produtos para este grupo.'} />
+                    {search ? (
+                      <EmptyState size="sm" icon={MagnifyingGlass} title={`Nenhum resultado para "${search}"`}
+                        action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>} />
+                    ) : (
+                      <EmptyState icon={Package} title="Grupo sem itens"
+                        description="Use “Adicionar itens” para trazer produtos para este grupo." />
+                    )}
                   </div>
                 ) : (
                   <table className="w-full text-sm">
@@ -223,17 +232,24 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange }:
                 <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => { setMode('list'); setAddSelected(new Set()); }}>
                   <CaretLeft className="h-4 w-4" /> Voltar
                 </Button>
-                <div className="relative flex-1">
-                  <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input autoFocus value={addSearch} onChange={e => setAddSearch(e.target.value)} placeholder="Buscar produto por nome, SKU ou cor (mín. 2 letras)…" className="pl-8 h-9" />
-                </div>
+                <SearchInput
+                  autoFocus
+                  value={addSearch}
+                  onChange={setAddSearch}
+                  placeholder="Buscar produto por nome, SKU ou cor (mín. 2 letras)…"
+                  className="flex-1"
+                />
               </div>
 
               <div className="flex-1 overflow-auto rounded-lg border border-border">
                 {addSearch.trim().length < 2 ? (
                   <div className="p-8"><EmptyState icon={MagnifyingGlass} title="Busque para adicionar" description="Digite ao menos 2 letras para listar produtos de outros grupos (ou sem grupo)." /></div>
                 ) : candidatesShown.length === 0 ? (
-                  <div className="p-8"><EmptyState icon={Package} title="Nenhum produto encontrado" description="Nenhum produto fora deste grupo casa com a busca." /></div>
+                  <div className="p-8">
+                    <EmptyState size="sm" icon={MagnifyingGlass} title={`Nenhum resultado para "${addSearch}"`}
+                      description="Nenhum produto fora deste grupo casa com a busca."
+                      action={<Button variant="outline" size="sm" onClick={() => setAddSearch('')}>Limpar busca</Button>} />
+                  </div>
                 ) : (
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">

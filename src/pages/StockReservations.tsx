@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { CircleNotch as Loader2, Package, Lock, Factory, CheckCircle as CheckCircle2, ArrowUp, ArrowDown, ArrowsDownUp as ArrowUpDown, Eye, ArrowsClockwise as RefreshCw, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Package, Lock, Factory, CheckCircle as CheckCircle2, ArrowUp, ArrowDown, ArrowsDownUp as ArrowUpDown, Eye, ArrowsClockwise as RefreshCw, Warning as AlertTriangle, MagnifyingGlass } from '@phosphor-icons/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ProductReservationDetailsDialog from '@/components/inventory/ProductReservationDetailsDialog';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
@@ -18,7 +18,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface StockRow {
   id: string;
@@ -167,12 +167,8 @@ export default function StockReservations() {
 
   const filtered = useMemo(() => {
     const list = data || [];
-    const term = normalizeForSearch(search.trim());
     const result = list.filter((r) => {
-      if (term) {
-        const hay = `${r.name} ${r.sku ?? ''} ${r.category ?? ''} ${r.color ?? ''}`.toLowerCase();
-        if (!hay.includes(term)) return false;
-      }
+      if (!searchMatchesAllTerms(search, r.name, r.sku, r.category, r.color)) return false;
       switch (filter) {
         case 'reserved': return Number(r.reserved_quantity) > 0;
         case 'in_production': return Number(r.in_production_quantity) > 0;
@@ -313,23 +309,22 @@ export default function StockReservations() {
               className="flex-1"
               value={search}
               onChange={setSearch}
-              placeholder="Buscar por nome, SKU ou categoria…"
+              placeholder="Buscar por nome, SKU, categoria ou cor…"
               getSuggestions={(term) => {
-                const t = term.toLowerCase();
                 const list = data || [];
                 const seen = new Set<string>();
                 const out: SmartSearchSuggestion[] = [];
                 for (const r of list) {
                   const name = r.name || '';
-                  if (name.toLowerCase().includes(t) && !seen.has(`name:${name}`)) {
+                  if (searchMatchesAllTerms(term, name) && !seen.has(`name:${name}`)) {
                     seen.add(`name:${name}`);
                     out.push({ field: 'name', value: name });
                   }
-                  if (r.sku && r.sku.toLowerCase().includes(t) && !seen.has(`sku:${r.sku}`)) {
+                  if (r.sku && searchMatchesAllTerms(term, r.sku) && !seen.has(`sku:${r.sku}`)) {
                     seen.add(`sku:${r.sku}`);
                     out.push({ field: 'sku', value: r.sku, meta: name });
                   }
-                  if (r.category && r.category.toLowerCase().includes(t) && !seen.has(`cat:${r.category}`)) {
+                  if (r.category && searchMatchesAllTerms(term, r.category) && !seen.has(`cat:${r.category}`)) {
                     seen.add(`cat:${r.category}`);
                     out.push({ field: 'category', value: r.category });
                   }
@@ -375,11 +370,24 @@ export default function StockReservations() {
               Erro ao carregar dados. Verifique sua conexão e tente novamente.
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState
-              icon={Package}
-              title="Nenhum produto encontrado"
-              description="Nenhum produto corresponde aos filtros selecionados."
-            />
+            search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Package}
+                title="Nenhum produto encontrado"
+                description="Nenhum produto corresponde aos filtros selecionados."
+              />
+            )
           ) : (
             <div className="overflow-x-auto">
               <Table>

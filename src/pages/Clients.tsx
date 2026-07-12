@@ -34,7 +34,8 @@ import RepresentativeTab from '@/components/clients/RepresentativeTab';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validateCnpj } from '@/lib/validateCnpj';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { useCan } from '@/hooks/useAccessControl';
 
 const emptyClient: ClientFormData = {
@@ -115,16 +116,11 @@ export default function Clients() {
   };
 
   const filteredClients = useMemo(() => {
-    const q = normalizeForSearch(search);
-    const qDigits = q.replace(/\D/g, '');
-    return clients.filter(c =>
-      normalizeForSearch(c.razao_social).includes(q) ||
-      normalizeForSearch(c.nome_fantasia).includes(q) ||
-      (qDigits.length > 0
-        ? (c.cnpj?.replace(/\D/g, '') ?? '').includes(qDigits)
-        : normalizeForSearch(c.cnpj).includes(q)) ||
-      normalizeForSearch(c.cidade).includes(q)
-    );
+    return clients.filter(c => searchMatchesAllTerms(
+      search,
+      c.razao_social, c.nome_fantasia, c.cnpj, c.cidade, c.estado,
+      c.telefone, c.email, (c as any).client_number,
+    ));
   }, [clients, search]);
 
   // Seleção múltipla pra bulk delete. Marquee + checkbox + ctrl/cmd+click.
@@ -243,19 +239,15 @@ export default function Clients() {
   const toggleGroup = (key: string) => setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
 
   const groupClients = editingGroup ? clients.filter(c => c.economic_group_id === editingGroup.id) : [];
-  const availableClients = useMemo(() => {
-    if (!editingGroup) return [];
-    const q = normalizeForSearch(storeSearch);
-    return clients
-      .filter(c => c.economic_group_id !== editingGroup.id)
-      .filter(c => {
-        if (!q) return true;
-        const qd = q.replace(/\D/g, '');
-        return normalizeForSearch(c.razao_social).includes(q) ||
-          normalizeForSearch(c.nome_fantasia).includes(q) ||
-          (qd.length > 0 ? (c.cnpj?.replace(/\D/g, '') ?? '').includes(qd) : normalizeForSearch(c.cnpj).includes(q));
-      });
-  }, [clients, editingGroup, storeSearch]);
+  const groupCandidates = useMemo(
+    () => (editingGroup ? clients.filter(c => c.economic_group_id !== editingGroup.id) : []),
+    [clients, editingGroup],
+  );
+  const availableClients = useMemo(
+    () => groupCandidates.filter(c =>
+      searchMatchesAllTerms(storeSearch, c.razao_social, c.nome_fantasia, c.cnpj, c.cidade)),
+    [groupCandidates, storeSearch],
+  );
 
   const toggleStoreSelection = (id: string) => {
     setSelectedStoreIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -351,10 +343,14 @@ export default function Clients() {
             </StatGrid>
 
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar por razão social, CNPJ, cidade..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-              </div>
+              <SearchInput
+                className="flex-1 max-w-md"
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por razão social, nome fantasia, CNPJ, cidade, telefone…"
+                resultCount={filteredClients.length}
+                totalCount={clients.length}
+              />
               <div className="flex gap-2">
                 <Button variant="outline" onClick={handleSyncCnpj} disabled={isSyncingCnpj} className="gap-2">
                   <RefreshCw className={cn("h-4 w-4", isSyncingCnpj && "animate-spin")} />
@@ -374,10 +370,12 @@ export default function Clients() {
             {filteredClients.length === 0 ? (
               <Panel flush>
                 <EmptyState
-                  icon={Users}
-                  title={search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+                  icon={search ? Search : Users}
+                  title={search ? `Nenhum resultado para "${search}"` : 'Nenhum cliente cadastrado'}
                   description={search ? 'Ajuste a busca ou cadastre um novo cliente.' : 'Cadastre o primeiro lojista da carteira.'}
-                  action={perm.canCreate ? <Button onClick={openAddClient} className="gap-2"><Plus className="h-4 w-4" />Novo Cliente</Button> : undefined}
+                  action={search
+                    ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                    : perm.canCreate ? <Button onClick={openAddClient} className="gap-2"><Plus className="h-4 w-4" />Novo Cliente</Button> : undefined}
                 />
               </Panel>
             ) : (
@@ -706,13 +704,23 @@ export default function Clients() {
             <DialogTitle>Adicionar Lojas ao Grupo</DialogTitle>
             <DialogDescription className="sr-only">Busque e selecione os clientes a vincular ao grupo.</DialogDescription>
           </DialogHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar cliente..." value={storeSearch} onChange={e => setStoreSearch(e.target.value)} className="pl-9" />
-          </div>
+          <SearchInput
+            value={storeSearch}
+            onChange={setStoreSearch}
+            placeholder="Buscar por razão social, nome fantasia, CNPJ…"
+            resultCount={availableClients.length}
+            totalCount={groupCandidates.length}
+          />
           <div className="flex-1 overflow-y-auto rounded-md border divide-y min-h-0 max-h-[50vh]">
             {availableClients.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground py-8">Nenhum cliente disponível</p>
+              storeSearch ? (
+                <div className="flex flex-col items-center gap-2 py-8">
+                  <p className="text-center text-sm text-muted-foreground">Nenhum resultado para "{storeSearch}"</p>
+                  <Button variant="outline" size="sm" onClick={() => setStoreSearch('')}>Limpar busca</Button>
+                </div>
+              ) : (
+                <p className="text-center text-sm text-muted-foreground py-8">Nenhum cliente disponível</p>
+              )
             ) : (
               availableClients.map(c => {
                 const selected = selectedStoreIds.includes(c.id);

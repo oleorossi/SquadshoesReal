@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { escapeHtml } from '@/lib/htmlUtils';
-import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass as Search, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
+import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { printBoxLabels } from '@/lib/printLabels';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
@@ -24,7 +24,9 @@ import {
 } from '@/hooks/useReadyStock';
 import { cn } from '@/lib/utils';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
@@ -93,15 +95,9 @@ export default function ReadyStockPanel() {
   }, [selectedRef, products]);
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
     return stock.filter(s => {
       const ref = s.technical_sheets;
-      return (
-        normalizeForSearch(ref?.name).includes(q) ||
-        normalizeForSearch(ref?.code).includes(q) ||
-        normalizeForSearch(s.color).includes(q) ||
-        normalizeForSearch(s.size).includes(q)
-      );
+      return searchMatchesAllTerms(search, ref?.name, ref?.code, s.color, s.size, ref?.shoe_category, ref?.brand);
     });
   }, [stock, search]);
 
@@ -463,15 +459,14 @@ ${cardsHtml}
 
       {/* Search + Actions */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por modelo, código ou cor..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          className="flex-1 max-w-sm"
+          placeholder="Buscar por modelo, código, cor ou categoria…"
+          value={search}
+          onChange={setSearch}
+          resultCount={filtered.length}
+          totalCount={stock.length}
+        />
         <Button onClick={openAdd} className="gap-2">
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Lançar Estoque</span>
@@ -524,11 +519,24 @@ ${cardsHtml}
       {/* Industrial table */}
       {grouped.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <ShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">Nenhum produto em pronta entrega</p>
-            <p className="text-xs mt-1">Clique em "Lançar Estoque" para adicionar</p>
-          </CardContent>
+          {search.trim() ? (
+            <EmptyState
+              size="sm"
+              icon={MagnifyingGlass}
+              title={`Nenhum resultado para "${search}"`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Limpar busca
+                </Button>
+              }
+            />
+          ) : (
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <ShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Nenhum produto em pronta entrega</p>
+              <p className="text-xs mt-1">Clique em "Lançar Estoque" para adicionar</p>
+            </CardContent>
+          )}
         </Card>
       ) : (
         <Card className="overflow-hidden">

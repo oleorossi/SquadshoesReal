@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Package as PackagePlus, MagnifyingGlass as Search, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Package as PackagePlus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
@@ -147,11 +148,9 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
 
   if (!currentItem) return null;
 
-  const filteredProducts = products.filter(p => {
-    if (!productSearch) return true;
-    const q = normalizeForSearch(productSearch);
-    return normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q);
-  });
+  const filteredProducts = products.filter(p =>
+    searchMatchesAllTerms(productSearch, p.name, p.sku)
+  );
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -446,13 +445,25 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
 
           {mode === 'link' ? (
             <div className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar produto por nome ou SKU..." value={productSearch} onChange={e => setProductSearch(e.target.value)} className="pl-9" />
-              </div>
+              <SearchInput
+                value={productSearch}
+                onChange={setProductSearch}
+                placeholder="Buscar por nome ou SKU…"
+                resultCount={filteredProducts.length}
+                totalCount={products.length}
+              />
               <div className="max-h-40 overflow-y-auto rounded-md border divide-y">
                 {filteredProducts.length === 0 ? (
-                  <p className="text-xs text-muted-foreground p-3 text-center">Nenhum produto encontrado</p>
+                  <div className="p-3 text-center space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {productSearch ? `Nenhum resultado para "${productSearch}"` : 'Nenhum produto encontrado'}
+                    </p>
+                    {productSearch && (
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setProductSearch('')}>
+                        Limpar busca
+                      </Button>
+                    )}
+                  </div>
                 ) : filteredProducts.slice(0, 20).map(p => (
                   <button
                     key={p.id}

@@ -11,10 +11,12 @@ import { format, differenceInHours, isWithinInterval, startOfDay, endOfDay, subM
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { FileText as FileBarChart, MagnifyingGlass as Search, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Clock, CurrencyDollar as DollarSign, Warning as AlertTriangle, CheckCircle as CheckCircle2, Factory, Stack as Layers } from '@phosphor-icons/react';
+import { FileText as FileBarChart, MagnifyingGlass, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Clock, CurrencyDollar as DollarSign, Warning as AlertTriangle, CheckCircle as CheckCircle2, Factory, Stack as Layers } from '@phosphor-icons/react';
 import { Download, FileText } from '@phosphor-icons/react';
 import { exportCSV, exportPDF } from "@/lib/exportUtils";
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface FinishedOP {
   id: string;
@@ -169,8 +171,7 @@ export default function PostOPAnalysis() {
   const filtered = useMemo(() => {
     let result = dateFiltered;
     if (search) {
-      const q = normalizeForSearch(search);
-      result = result.filter(o => normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.color).includes(q));
+      result = result.filter(o => searchMatchesAllTerms(search, o.order_number, o.color));
     }
     // Sort
     if (sortBy === "variance") {
@@ -352,10 +353,15 @@ export default function PostOPAnalysis() {
             <Label className="text-xs">Até</Label>
             <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 w-36 text-xs" />
           </div>
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="flex-1 min-w-[200px] max-w-sm">
             <Label className="text-xs invisible">Busca</Label>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar OP ou cor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar por OP, cor…"
+              resultCount={filtered.length}
+              totalCount={dateFiltered.length}
+            />
           </div>
           <Select value={sortBy} onValueChange={v => setSortBy(v as any)}>
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -440,7 +446,20 @@ export default function PostOPAnalysis() {
                   );
                 })}
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Nenhuma OP finalizada encontrada</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={10} className="p-0">
+                      {search ? (
+                        <EmptyState
+                          size="sm"
+                          icon={MagnifyingGlass}
+                          title={`Nenhum resultado para "${search}"`}
+                          action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                        />
+                      ) : (
+                        <div className="text-center text-muted-foreground py-8">Nenhuma OP finalizada encontrada</div>
+                      )}
+                    </TableCell>
+                  </TableRow>
                 )}
               </TableBody>
             </Table>

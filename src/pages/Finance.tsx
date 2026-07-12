@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useCan } from '@/hooks/useAccessControl';
-import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass as Search, Percent, X } from '@phosphor-icons/react';
+import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format, parseISO, isAfter, isBefore, addDays, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -19,6 +19,9 @@ import { SortableTableHead, useTableSort } from '@/components/ui/sortable-table-
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -1053,14 +1056,11 @@ export default function Finance() {
             <TabsContent value="accounts">
               {(() => {
                 // ── Payable filtering ──────────────────────────────────────────
-                const qP = payableSearch.toLowerCase().trim();
-                let filteredP = payables;
-                if (qP) filteredP = filteredP.filter(p =>
-                  (p.description || '').toLowerCase().includes(qP) ||
-                  (p.suppliers?.name || '').toLowerCase().includes(qP) ||
-                  (p.category || '').toLowerCase().includes(qP) ||
-                  (p.notes || '').toLowerCase().includes(qP)
-                );
+                let filteredP = payables.filter(p => searchMatchesAllTerms(
+                  payableSearch,
+                  p.description, p.suppliers?.name, p.suppliers?.cnpj,
+                  p.category, p.notes, p.boleto_number, p.barcode, p.bank_name,
+                ));
                 if (payableStatusFilter.length > 0) filteredP = filteredP.filter(p =>
                   payableStatusFilter.includes(getEffectiveStatus(p.status, p.due_date))
                 );
@@ -1073,16 +1073,10 @@ export default function Finance() {
                 const sortedP = payableSort.sortData(filteredPWithSupplier);
 
                 // ── Receivable filtering ───────────────────────────────────────
-                const qR = receivableSearch.toLowerCase().trim();
-                const filteredR = qR
-                  ? receivables.filter(r =>
-                      (r.client_name || '').toLowerCase().includes(qR) ||
-                      (r.description || '').toLowerCase().includes(qR) ||
-                      (r.client_cnpj || '').toLowerCase().includes(qR) ||
-                      (r.category || '').toLowerCase().includes(qR) ||
-                      (r.notes || '').toLowerCase().includes(qR)
-                    )
-                  : receivables;
+                const filteredR = receivables.filter(r => searchMatchesAllTerms(
+                  receivableSearch,
+                  r.client_name, r.description, r.client_cnpj, r.category, r.notes,
+                ));
 
                 // ── Totals: saldo pendente real ────────────────────────────────
                 const pendingPayable = payables
@@ -1154,11 +1148,15 @@ export default function Finance() {
                     }
                   >
                       <div className="flex flex-wrap gap-2 mb-3">
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                          <Input value={payableSearch} onChange={e => setPayableSearch(e.target.value)} placeholder="Buscar descrição, fornecedor..." className="pl-8 pr-8 h-9 text-xs w-52" />
-                          {payableSearch && <Button variant="ghost" size="sm" className="absolute right-0.5 top-1/2 -translate-y-1/2 h-7 w-7 p-0" onClick={() => setPayableSearch('')}><X className="h-3.5 w-3.5" /></Button>}
-                        </div>
+                        <SearchInput
+                          value={payableSearch}
+                          onChange={setPayableSearch}
+                          placeholder="Buscar por descrição, fornecedor, categoria, boleto…"
+                          resultCount={filteredP.length}
+                          totalCount={payables.length}
+                          className="w-72"
+                          inputClassName="h-9 text-xs"
+                        />
                         <Input type="date" value={payableDateFrom} onChange={e => setPayableDateFrom(e.target.value)} className="w-36 h-9 text-xs" title="Vencimento de" />
                         <Input type="date" value={payableDateTo} onChange={e => setPayableDateTo(e.target.value)} className="w-36 h-9 text-xs" title="Vencimento até" />
                         {/* Audit visual #57: Radix Select.Item rejeita value=""
@@ -1205,14 +1203,27 @@ export default function Finance() {
                         </TableRow></TableHeader>
                         <TableBody>
                           {sortedP.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                                <p className="mb-2">Nenhuma conta a pagar</p>
-                                <Button size="sm" variant="outline" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}>
-                                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira conta
-                                </Button>
-                              </TableCell>
-                            </TableRow>
+                            payableSearch.trim() ? (
+                              <TableRow>
+                                <TableCell colSpan={10} className="p-0">
+                                  <EmptyState
+                                    size="sm"
+                                    icon={MagnifyingGlass}
+                                    title={`Nenhum resultado para "${payableSearch}"`}
+                                    action={<Button variant="outline" size="sm" onClick={() => setPayableSearch('')}>Limpar busca</Button>}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              <TableRow>
+                                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                                  <p className="mb-2">Nenhuma conta a pagar</p>
+                                  <Button size="sm" variant="outline" onClick={() => { setEditingPayable(null); setPayableDialog(true); }}>
+                                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira conta
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            )
                           ) : sortedP.map(p => {
                             const eff = getEffectiveStatus(p.status, p.due_date);
                             const cfg = statusConfig[eff] || statusConfig.pending;
@@ -1329,11 +1340,15 @@ export default function Finance() {
                       </>
                     }
                   >
-                      <div className="mb-3 relative w-full max-w-sm">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                        <Input value={receivableSearch} onChange={e => setReceivableSearch(e.target.value)} placeholder="Buscar cliente, grupo, cidade..." className="pl-8 pr-8 h-9 text-xs" />
-                        {receivableSearch && <Button variant="ghost" size="sm" className="absolute right-0.5 top-1/2 -translate-y-1/2 h-7 w-7 p-0" onClick={() => setReceivableSearch('')}><X className="h-3.5 w-3.5" /></Button>}
-                      </div>
+                      <SearchInput
+                        value={receivableSearch}
+                        onChange={setReceivableSearch}
+                        placeholder="Buscar por cliente, descrição, CNPJ…"
+                        resultCount={filteredR.length}
+                        totalCount={receivables.length}
+                        className="mb-3 w-full max-w-sm"
+                        inputClassName="h-9 text-xs"
+                      />
                       <Table>
                         <TableHeader><TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                           <TableHead className="w-10">
@@ -1355,7 +1370,20 @@ export default function Finance() {
                         </TableRow></TableHeader>
                         <TableBody>
                           {filteredR.length === 0 ? (
-                            <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhuma conta a receber</TableCell></TableRow>
+                            receivableSearch.trim() ? (
+                              <TableRow>
+                                <TableCell colSpan={8} className="p-0">
+                                  <EmptyState
+                                    size="sm"
+                                    icon={MagnifyingGlass}
+                                    title={`Nenhum resultado para "${receivableSearch}"`}
+                                    action={<Button variant="outline" size="sm" onClick={() => setReceivableSearch('')}>Limpar busca</Button>}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhuma conta a receber</TableCell></TableRow>
+                            )
                           ) : receivableSort.sortData(filteredR).map(r => {
                             const eff = getEffectiveStatus(r.status, r.due_date);
                             const cfg = statusConfig[eff] || statusConfig.pending;

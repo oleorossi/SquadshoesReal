@@ -63,7 +63,8 @@ import { format, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { toast } from 'sonner';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { SelectionTotalsBar } from '@/components/ui/selection-totals-bar';
 import { generateCostReportPdf } from '@/lib/costReportPdf';
 import { type CostReportRow, type DateBasis, summarizeRows, rowDateForBasis, inDateRange } from '@/lib/costReport';
@@ -197,6 +198,16 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // usuários sem permissão granular sempre passam.
   const osPerm = useCan('/terceirizados');
   const [search, setSearch] = usePersistedState('contractors-search', '');
+  // Aceita ?q= na URL — a busca global navega pra cá com ?q=<termo>, que
+  // sobrepõe o valor persistido. REATIVO (deps no param, não só mount):
+  // selecionar outra OS no ⌘K estando já em /terceirizados não remonta a
+  // página (AppLayout keia só por pathname).
+  const [urlSearchParams] = useSearchParams();
+  const urlQ = urlSearchParams.get('q') || '';
+  useEffect(() => {
+    if (urlQ) setSearch(urlQ);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlQ]);
   // Chave v2: o filtro antigo guardava status cru ('pending_quote' etc.) que não
   // existe mais nos chips; default novo = 'active' (Pendente + Em Processamento).
   const [statusFilter, setStatusFilter] = usePersistedState<string>('contractors-status-v2', 'active');
@@ -389,8 +400,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
 
   // ── Filtered data ──
   const filteredContractors = useMemo(() => {
-    const q = normalizeForSearch(search);
-    return contractors.filter(c => normalizeForSearch(c.name).includes(q) || normalizeForSearch(c.service_type).includes(q) || (c.cnpj_cpf || '').includes(q));
+    return contractors.filter(c =>
+      searchMatchesAllTerms(search, c.name, c.trade_name, c.service_type, c.cnpj_cpf, c.phone, c.city, c.state));
   }, [contractors, search]);
 
   const sel = useMarqueeSelection(filteredContractors, (c) => c.id);
@@ -410,11 +421,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   };
 
   const searchedOrders = useMemo(() => {
-    const q = normalizeForSearch(search);
     return orders.filter(o => {
       // Arquivadas (triagem P0.3) ficam fora das listas por default.
       if (!showArchivedOs && o.archived_at) return false;
-      return normalizeForSearch(o.description).includes(q) || normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.contractors?.name).includes(q);
+      return searchMatchesAllTerms(
+        search,
+        o.description, o.order_number, o.contractors?.name,
+        o.receipt_number, o.artisanal_output_name,
+      );
     });
   }, [orders, search, showArchivedOs]);
 
@@ -1522,10 +1536,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           {/* ── ORDERS TAB ── */}
           <TabsContent value="orders" className="mt-3 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar OS, prestador..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
-              </div>
+              <SearchInput
+                className="flex-1 min-w-[200px] max-w-sm"
+                inputClassName="h-9"
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por nº da OS, prestador, descrição…"
+                resultCount={filteredOrders.length}
+                totalCount={orders.length}
+              />
               {/* Chips de status — default "Ativas" (Pendente + Em Processamento).
                   Labels: 'Em Andamento'→Em Processamento, 'Concluído'→Entregue.
                   Auditoria 2026-06-28: chips de estado específico só aparecem se
@@ -1625,12 +1644,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             {filteredOrders.length === 0 ? (
               <Panel flush>
                 <EmptyState
-                  icon={ClipboardList}
-                  title="Nenhuma OS encontrada"
+                  icon={search ? Search : ClipboardList}
+                  title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma OS encontrada'}
                   description={search || hasOsReportFilters || statusFilter !== 'all'
                     ? 'Ajuste a busca, os chips de status ou os filtros de relatório.'
                     : 'Crie a primeira ordem de serviço para uma contratada.'}
-                  action={osPerm.canCreate ? <Button size="sm" className="gap-1.5" onClick={() => openNewOrder()}><Plus className="h-4 w-4" /> Nova OS</Button> : undefined}
+                  action={search
+                    ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                    : osPerm.canCreate ? <Button size="sm" className="gap-1.5" onClick={() => openNewOrder()}><Plus className="h-4 w-4" /> Nova OS</Button> : undefined}
                 />
               </Panel>
             ) : (
@@ -1949,10 +1970,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           {/* ── CONTRACTORS TAB ── */}
           <TabsContent value="contractors" className="mt-3 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar prestador..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
-              </div>
+              <SearchInput
+                className="flex-1 min-w-[200px] max-w-sm"
+                inputClassName="h-9"
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por nome, CPF/CNPJ, tipo de serviço…"
+                resultCount={filteredContractors.length}
+                totalCount={contractors.length}
+              />
               <div className="ml-auto">
                 <Button size="sm" onClick={openNewContractor} className="h-9 gap-1.5"><Plus className="h-4 w-4" /> Novo Prestador</Button>
               </div>
@@ -1982,7 +2008,16 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     </TableHeader>
                     <TableBody>
                       {filteredContractors.length === 0 ? (
-                        <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-12">Nenhum prestador cadastrado</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={9} className="p-0">
+                            <EmptyState
+                              size="sm"
+                              icon={search ? Search : Users}
+                              title={search ? `Nenhum resultado para "${search}"` : 'Nenhum prestador cadastrado'}
+                              action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
+                            />
+                          </TableCell>
+                        </TableRow>
                       ) : filteredContractors.map(c => (
                         <TableRow
                           key={c.id}
@@ -2314,13 +2349,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               Nenhum (sem vínculo)
                             </CommandItem>
                             {(() => {
-                              const q = normalizeForSearch(pvSearch);
-                              const matches = (saleOrders as any[]).filter((so) => {
-                                if (!q) return true;
-                                return normalizeForSearch(so.order_number).includes(q)
-                                  || normalizeForSearch(so.client_order_number || '').includes(q)
-                                  || normalizeForSearch(so.client_name || '').includes(q);
-                              });
+                              const matches = (saleOrders as any[]).filter((so) =>
+                                searchMatchesAllTerms(pvSearch, so.order_number, so.client_order_number, so.client_name));
                               return matches.slice(0, 80).map((so: any) => (
                                 <CommandItem key={so.id} value={so.id} onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: so.id })); setPvOpen(false); setPvSearch(''); }}>
                                   <Check className={cn("mr-2 h-3.5 w-3.5", editingOrder.sale_order_id === so.id ? "opacity-100" : "opacity-0")} />

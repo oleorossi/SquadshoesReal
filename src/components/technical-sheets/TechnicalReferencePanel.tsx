@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, ShieldCheck, Package, Ruler, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, ShieldCheck, Package, Ruler, ArrowsClockwise as RefreshCw, CaretDown as ChevronDown, CaretUp as ChevronUp } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -27,7 +27,8 @@ import {
   useValidateTechnicalReference,
   TechnicalReferenceRow,
 } from '@/hooks/useTechnicalReferences';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { useCan } from '@/hooks/useAccessControl';
 
 const CATEGORIES = [
@@ -423,12 +424,8 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
     if (categoryFilter !== 'all') filtered = filtered.filter((p: any) => p.category === categoryFilter);
     if (showOnlyAvailable) filtered = filtered.filter((p: any) => p.quantity > 0);
     if (searchQuery.trim()) {
-      const q = normalizeForSearch(searchQuery);
       filtered = filtered.filter((p: any) =>
-        normalizeForSearch(p.name).includes(q) ||
-        normalizeForSearch(p.sku).includes(q) ||
-        normalizeForSearch(p.category).includes(q) ||
-        normalizeForSearch((p.product_groups as any)?.name).includes(q)
+        searchMatchesAllTerms(searchQuery, p.name, p.sku, p.category, (p.product_groups as any)?.name)
       );
     }
     return filtered.sort((a: any, b: any) => (b.quantity || 0) - (a.quantity || 0));
@@ -525,15 +522,15 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
           </CardHeader>
           <CardContent className="px-3 pb-3 space-y-2">
             <div className="flex gap-2 flex-wrap">
-              <div className="relative flex-1 min-w-[160px]">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar material..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 text-xs pl-7"
-                />
-              </div>
+              <SearchInput
+                className="flex-1 min-w-[160px]"
+                inputClassName="h-7 text-xs"
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Buscar por nome, SKU, categoria ou grupo…"
+                resultCount={catalogProducts.length}
+                totalCount={products.length}
+              />
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="h-7 text-xs w-36">
                   <SelectValue placeholder="Categoria" />
@@ -555,7 +552,16 @@ function MaterialsSection({ refId, products }: { refId: string; products: any[] 
             </div>
 
             {catalogProducts.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">Nenhum material encontrado</p>
+              searchQuery.trim() ? (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <p className="text-xs text-muted-foreground">Nenhum resultado para "{searchQuery}"</p>
+                  <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => setSearchQuery('')}>
+                    Limpar busca
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">Nenhum material encontrado</p>
+              )
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-52 overflow-y-auto">
                 {catalogProducts.slice(0, 30).map((p: any) => (

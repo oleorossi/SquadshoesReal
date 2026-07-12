@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
+import { searchNormOrFilter } from '@/lib/searchUtils';
 
 type CreateOrderData = {
   reference_id: string;
@@ -525,19 +526,40 @@ export function useDeleteOrder() {
    } | null;
  }
  
-export function useStockMovements() {
+export function useStockMovements(opts?: { search?: string }) {
+  const search = (opts?.search ?? '').trim();
   return useQuery({
-    queryKey: ['stock_movements'],
+    queryKey: ['stock_movements', search],
     queryFn: async () => {
       // FK stock_movements.product_id → products.id NÃO existe no DB, então
       // o embed `products(...)` retorna erro "Could not find a relationship".
       // Fazemos 2 queries: 1) movements, 2) products dos product_ids únicos,
       // e fazemos o merge no client.
-      const { data, error } = await supabase
+      //
+      // Busca SERVER-SIDE (spec melhorias-busca-sistema R6): o histórico cresce
+      // sem teto e o limit(500) escondia movimentações antigas da busca local.
+      // Com termo, o banco filtra via search_norm (descrição/tipo/motivo/usuário)
+      // OU por movimentos dos produtos cujo nome/sku/cor casa o termo.
+      let q = supabase
         .from('stock_movements')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500);
+      // Termo que normaliza pra vazio (só pontuação) ⇒ sem filtro — .or('')
+      // viraria `or=()` = 400 no PostgREST (contrato do searchNormOrFilter).
+      const norm = searchNormOrFilter(search);
+      if (norm) {
+        const orParts = [norm];
+        const { data: prodMatches } = await supabase
+          .from('products')
+          .select('id')
+          .or(norm)
+          .limit(200);
+        const matchedIds = (prodMatches ?? []).map((p: any) => p.id);
+        if (matchedIds.length > 0) orParts.push(`product_id.in.(${matchedIds.join(',')})`);
+        q = q.or(orParts.join(',')) as typeof q;
+      }
+      const { data, error } = await q;
       if (error) throw error;
 
       const productIds = [...new Set((data || []).map((m: any) => m.product_id).filter(Boolean))];

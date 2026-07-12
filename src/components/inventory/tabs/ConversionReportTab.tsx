@@ -3,13 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowsLeftRight as ArrowRightLeft, Warning as AlertTriangle, CheckCircle as CheckCircle2, Info, BookOpen, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { ArrowsLeftRight as ArrowRightLeft, Warning as AlertTriangle, CheckCircle as CheckCircle2, Info, BookOpen, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type ProductRow = {
   id: string;
@@ -134,19 +136,29 @@ export function ConversionReportTab() {
   );
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
     return enriched.filter(p => {
       // Solado vive em /solados (SolesHub) — sempre excluído deste relatório.
       if ((p.category || '').toLowerCase() === 'solado') return false;
       if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
       if (statusFilter !== 'all' && p.issue.level !== statusFilter) return false;
-      if (q) {
-        const hay = `${p.name} ${p.sku || ''} ${p.category || ''} ${p.product_groups?.name || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+      return searchMatchesAllTerms(
+        search,
+        p.name,
+        p.sku,
+        p.category,
+        p.product_groups?.name,
+        p.unit,
+        p.purchase_unit,
+        p.consumption_unit || p.production_unit,
+      );
     });
   }, [enriched, search, categoryFilter, statusFilter]);
+
+  // Total exibível no relatório (solado sempre fora) — usado no contador "N de M".
+  const totalNonSole = useMemo(
+    () => enriched.filter(p => (p.category || '').toLowerCase() !== 'solado').length,
+    [enriched],
+  );
 
   const summary = useMemo(() => {
     const total = enriched.length;
@@ -253,15 +265,15 @@ export function ConversionReportTab() {
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-48 max-w-sm">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Buscar produto, SKU, grupo..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-8 h-8 text-xs"
-          />
-        </div>
+        <SearchInput
+          className="flex-1 min-w-48 max-w-sm"
+          inputClassName="h-8 text-xs"
+          placeholder="Buscar por material, SKU, grupo, categoria ou unidade…"
+          value={search}
+          onChange={setSearch}
+          resultCount={filtered.length}
+          totalCount={totalNonSole}
+        />
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -291,9 +303,22 @@ export function ConversionReportTab() {
               <Skeleton className="h-32" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p className="text-sm">Nenhum material com os filtros aplicados.</p>
-            </div>
+            search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="text-sm">Nenhum material com os filtros aplicados.</p>
+              </div>
+            )
           ) : (
             <div className="overflow-x-auto">
               <Table>

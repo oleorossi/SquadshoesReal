@@ -137,7 +137,7 @@ import { useSearchParams } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, MagnifyingGlass as Search, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
+import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -197,7 +197,8 @@ import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
@@ -342,19 +343,18 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
       result = result.filter((s: any) => s.sole_material === soleFilter);
     }
     if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
       result = result.filter((s: any) =>
-        normalizeForSearch(s.name).includes(q) ||
-        normalizeForSearch(s.code).includes(q) ||
-        normalizeForSearch(s.collection).includes(q) ||
-        normalizeForSearch(s.shoe_category).includes(q) ||
-        normalizeForSearch(s.colors).includes(q) ||
-        normalizeForSearch(s.description).includes(q) ||
-        normalizeForSearch(s.status).includes(q)
+        searchMatchesAllTerms(searchTerm, s.name, s.code, s.collection, s.shoe_category, s.colors, s.description, s.status)
       );
     }
     return result;
   }, [sheets, categoryFilter, soleFilter, searchTerm]);
+
+  // Fichas candidatas do dialog de cópia (busca própria do dialog)
+  const cloneFilteredSheets = useMemo(
+    () => (sheets as any[]).filter((s: any) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+    [sheets, cloneSearchTerm],
+  );
 
   /** Open the bulk-sole dialog so the user can choose which sole to apply */
   const handleBulkApplySoleSettings = () => {
@@ -560,15 +560,14 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
         {/* Search & Filters */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome, código, coleção..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            className="flex-1 max-w-md"
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Buscar por nome, código, coleção, cor…"
+            resultCount={filteredSheets.length}
+            totalCount={sheets.length}
+          />
           <div className="flex items-center gap-2 flex-wrap">
             {[
               { key: 'all', label: 'Todos' },
@@ -609,7 +608,13 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             <CardContent className="p-0">
               <EmptyState
                 icon={FileText}
-                title={sheets.length === 0 ? 'Nenhuma ficha técnica cadastrada' : 'Nenhuma ficha encontrada'}
+                title={
+                  sheets.length === 0
+                    ? 'Nenhuma ficha técnica cadastrada'
+                    : searchTerm.trim()
+                      ? `Nenhum resultado para "${searchTerm}"`
+                      : 'Nenhuma ficha encontrada'
+                }
                 description={sheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
                 action={sheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
               />
@@ -851,18 +856,24 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label className="text-xs font-bold text-muted-foreground uppercase">Ficha de Origem</Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  className="pl-8 h-9"
-                  placeholder="Buscar por nome ou código..."
-                  value={cloneSearchTerm}
-                  onChange={e => setCloneSearchTerm(e.target.value)}
-                />
-              </div>
+              <SearchInput
+                inputClassName="h-9"
+                placeholder="Buscar por nome ou código…"
+                value={cloneSearchTerm}
+                onChange={setCloneSearchTerm}
+                resultCount={cloneFilteredSheets.length}
+                totalCount={sheets.length}
+              />
               <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
-                {(sheets as any[])
-                  .filter((s: any) => searchMatchesAny(cloneSearchTerm, s.name, s.code))
+                {cloneFilteredSheets.length === 0 && cloneSearchTerm.trim() && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <p className="text-xs text-muted-foreground">Nenhum resultado para "{cloneSearchTerm}"</p>
+                    <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => setCloneSearchTerm('')}>
+                      Limpar busca
+                    </Button>
+                  </div>
+                )}
+                {cloneFilteredSheets
                   .slice(0, 30)
                   .map((s: any) => (
                     <button
@@ -4692,11 +4703,8 @@ function GroupMaterialSelect({ label, value, onChange }: { label: string; value:
 
   const filtered = useMemo(() => {
     if (!search.trim()) return groups;
-    const q = normalizeForSearch(search);
     return groups.filter((g: any) =>
-      normalizeForSearch(g.name).includes(q)
-      || normalizeForSearch(g.description).includes(q)
-      || (groupIndex[g.id]?.blob || '').includes(q));
+      searchMatchesAllTerms(search, g.name, g.description, groupIndex[g.id]?.blob));
   }, [groups, search, groupIndex]);
 
   return (
@@ -4765,8 +4773,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
 
   const filtered = useMemo(() => {
     if (!search.trim()) return products;
-    const q = search.toLowerCase();
-    return products.filter((p: any) => normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.color).includes(q) || normalizeForSearch(p.groupName).includes(q));
+    return products.filter((p: any) => searchMatchesAllTerms(search, p.name, p.sku, p.color, p.groupName));
   }, [products, search]);
 
   return (
@@ -5433,9 +5440,8 @@ function StrapGroupCombobox({ value, groups, onChange }: {
   const [search, setSearch] = useState('');
   const selected = groups.find((g: any) => g.id === value);
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return groups;
-    return groups.filter((g: any) => normalizeForSearch(g.name).includes(q));
+    if (!search.trim()) return groups;
+    return groups.filter((g: any) => searchMatchesAllTerms(search, g.name));
   }, [groups, search]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -5519,8 +5525,7 @@ function SoleProductSelect({ label, value, onChange }: { label: string; value: s
 
   const filtered = useMemo(() => {
     if (!search.trim()) return soleModels;
-    const q = search.toLowerCase();
-    return soleModels.filter((m) => normalizeForSearch(m.name).includes(q) || normalizeForSearch(m.sku).includes(q) || normalizeForSearch(m.groupName).includes(q));
+    return soleModels.filter((m) => searchMatchesAllTerms(search, m.name, m.sku, m.groupName));
   }, [soleModels, search]);
 
   return (
@@ -5614,18 +5619,12 @@ function DirectComponentSelect({ label, value, onChange }: { label: string; valu
 
   const filteredGroups = useMemo(() => {
     if (!groupSearch.trim()) return groups;
-    const q = groupSearch.toLowerCase();
-    return groups.filter(g => normalizeForSearch(g.name).includes(q));
+    return groups.filter(g => searchMatchesAllTerms(groupSearch, g.name));
   }, [groups, groupSearch]);
 
   const filteredItems = useMemo(() => {
     if (!itemSearch.trim()) return itemsOfGroup;
-    const q = itemSearch.toLowerCase();
-    return itemsOfGroup.filter((p: any) =>
-      normalizeForSearch(p.name).includes(q)
-      || normalizeForSearch(p.sku).includes(q)
-      || normalizeForSearch(p.color).includes(q)
-    );
+    return itemsOfGroup.filter((p: any) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
   }, [itemsOfGroup, itemSearch]);
 
   return (

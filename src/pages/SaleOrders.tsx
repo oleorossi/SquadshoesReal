@@ -465,89 +465,95 @@ export default function SaleOrders() {
     return map;
   }, [allSaleItems, references]);
 
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      // Tab gating SEMPRE aplicado — a busca fica restrita à aba atual
-      // (pedido user 29/06/2026: "buscar apenas na aba em que estou").
-      // Antes a busca ignorava a aba e varria Ativos+Faturados juntos; agora cada
-      // aba é isolada. Para achar um PV já faturado/cancelado, abra a aba dele.
-      // Demais filtros (status/rep/grupo/segmento/mês) continuam valendo.
-      const isBilled = TERMINAL_BILLED_STATUSES.includes(order.status);
-      const isCancelled = order.status === 'Cancelado';
-      if (mainTab === 'cancelados') {
-        if (!isCancelled) return false;
-      } else if (mainTab === 'faturados') {
-        if (!isBilled || isCancelled) return false;
-      } else {
-        // Ativos: não-terminais E não-cancelados (cancelados têm aba própria).
-        if (isBilled || isCancelled) return false;
+  // Busca ATRAVESSA as abas (spec melhorias-busca-sistema R5, 2026-07-11 —
+  // substitui o comportamento "buscar apenas na aba" de 29/06/2026): o match
+  // roda sobre o conjunto todo num único passe; a aba ativa exibe os seus
+  // resultados e as outras ganham badge de contagem pra 1 clique achar o PV.
+  // Filtros explícitos (status/rep/grupo/segmento/mês) continuam valendo em
+  // todas as abas.
+  const { filteredOrders, searchTabCounts } = useMemo(() => {
+    const searching = !!debouncedSearchTerm && !!debouncedSearchTerm.trim();
+    const counts = { ativos: 0, faturados: 0, cancelados: 0 };
+
+    const tabOf = (order: (typeof orders)[number]): keyof typeof counts => {
+      if (order.status === 'Cancelado') return 'cancelados';
+      if (TERMINAL_BILLED_STATUSES.includes(order.status)) return 'faturados';
+      return 'ativos';
+    };
+
+    const matchesSearch = (order: (typeof orders)[number]): boolean => {
+      const q = debouncedSearchTerm.toLowerCase().trim();
+      if (!q) return true;
+
+      // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
+      // user 19/05/2026). Ex: "/lng" pega PVs de TODOS os clientes do grupo
+      // que tenha "lng" no nome (LNG 10, LNG 30, etc). Quando só "/" foi
+      // digitado, mostra tudo (operador ainda está formando a query).
+      if (q.startsWith('/')) {
+        const groupQuery = q.slice(1).trim();
+        if (!groupQuery) return true;
+        const cli = clientByName[(order.client_name || '').toLowerCase()];
+        const groupId = cli?.economic_group_id;
+        if (!groupId) return false;
+        const group = (economicGroups as any[]).find((g: any) => g.id === groupId);
+        return !!(group && normalizeForSearch(group.name).includes(normalizeForSearch(groupQuery)));
       }
-      if (filterStatus !== 'all' && order.status !== filterStatus) return false;
-      if (filterRep !== 'all' && order.representative !== filterRep) return false;
+
+      const client = clientByName[(order.client_name || '').toLowerCase()];
+      const cnpjDigits = (client?.cnpj || (order as any).client_cnpj || '').replace(/\D/g, '');
+      const itemTokens = itemsBySaleOrder[order.id];
+      const normCandidates = [
+        order.order_number,
+        order.client_name,
+        order.client_order_number,
+        order.representative,
+        order.payment_condition,
+        order.nfe,
+        order.remessa,
+        order.delivery_week,
+        order.delivery_month,
+        order.notes,
+        order.status,
+        (order as any).client_number,
+        client?.client_number,
+        client?.nome_fantasia,
+      ].map(normalizeForSearch);
+      const tokenArr = itemTokens ? Array.from(itemTokens).map(normalizeForSearch) : [];
+      // Espaço e "/" separam termos AND (refinamento): "stx alcineu" exige um
+      // campo com "stx" E um campo com "alcineu" (referência + cliente, em
+      // qualquer ordem). Normaliza (remove espaço/hífen/acento) por termo;
+      // tDigits cobre CNPJ.
+      const terms = splitSearchTerms(q);
+      const matchTerm = (term: string) => {
+        const tNorm = normalizeForSearch(term);
+        if (!tNorm) return true;
+        const tDigits = term.replace(/\D/g, '');
+        return normCandidates.some(v => v.includes(tNorm))
+          || (tDigits.length >= 3 && cnpjDigits.includes(tDigits))
+          || tokenArr.some(t => t.includes(tNorm));
+      };
+      return terms.every(matchTerm);
+    };
+
+    const current: typeof orders = [];
+    for (const order of orders) {
+      if (filterStatus !== 'all' && order.status !== filterStatus) continue;
+      if (filterRep !== 'all' && order.representative !== filterRep) continue;
       if (filterGroup !== 'all') {
         const grp = clientGroupMap[order.client_name];
-        if (grp !== filterGroup) return false;
+        if (grp !== filterGroup) continue;
       }
       if (filterSegment !== 'all') {
         const segs = segmentsBySaleOrder[order.id];
-        if (!segs || !segs.has(filterSegment as 'Adulto' | 'Infantil')) return false;
+        if (!segs || !segs.has(filterSegment as 'Adulto' | 'Infantil')) continue;
       }
-      if (filterMonth !== 'all' && order.delivery_month !== filterMonth) return false;
-      if (debouncedSearchTerm) {
-        const q = debouncedSearchTerm.toLowerCase().trim();
-        if (!q) return true;
-
-        // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
-        // user 19/05/2026). Ex: "/lng" pega PVs de TODOS os clientes do grupo
-        // que tenha "lng" no nome (LNG 10, LNG 30, etc). Quando só "/" foi
-        // digitado, mostra tudo (operador ainda está formando a query).
-        if (q.startsWith('/')) {
-          const groupQuery = q.slice(1).trim();
-          if (!groupQuery) return true;
-          const cli = clientByName[(order.client_name || '').toLowerCase()];
-          const groupId = cli?.economic_group_id;
-          if (!groupId) return false;
-          const group = (economicGroups as any[]).find((g: any) => g.id === groupId);
-          return !!(group && normalizeForSearch(group.name).includes(groupQuery));
-        }
-
-        const client = clientByName[(order.client_name || '').toLowerCase()];
-        const cnpjDigits = (client?.cnpj || (order as any).client_cnpj || '').replace(/\D/g, '');
-        const itemTokens = itemsBySaleOrder[order.id];
-        const normCandidates = [
-          order.order_number,
-          order.client_name,
-          order.client_order_number,
-          order.representative,
-          order.payment_condition,
-          order.nfe,
-          order.remessa,
-          order.delivery_week,
-          order.delivery_month,
-          order.notes,
-          order.status,
-          (order as any).client_number,
-          client?.client_number,
-          client?.nome_fantasia,
-        ].map(normalizeForSearch);
-        const tokenArr = itemTokens ? Array.from(itemTokens).map(normalizeForSearch) : [];
-        // "/" separa termos AND (refinamento): "stx / alcineu" exige um campo
-        // com "stx" E um campo com "alcineu" (referência + cliente, em qualquer
-        // ordem). Sem "/", é só 1 termo = comportamento de antes. Normaliza
-        // (remove espaço/hífen/acento) por termo; qDigits cobre CNPJ.
-        const terms = splitSearchTerms(q);
-        const matchTerm = (term: string) => {
-          const tNorm = normalizeForSearch(term);
-          if (!tNorm) return true;
-          const tDigits = term.replace(/\D/g, '');
-          return normCandidates.some(v => v.includes(tNorm))
-            || (tDigits.length >= 3 && cnpjDigits.includes(tDigits))
-            || tokenArr.some(t => t.includes(tNorm));
-        };
-        if (!terms.every(matchTerm)) return false;
-      }
-      return true;
-    });
+      if (filterMonth !== 'all' && order.delivery_month !== filterMonth) continue;
+      if (searching && !matchesSearch(order)) continue;
+      const tab = tabOf(order);
+      if (searching) counts[tab]++;
+      if (tab === mainTab) current.push(order);
+    }
+    return { filteredOrders: current, searchTabCounts: searching ? counts : null };
   }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, economicGroups, filterMonth]);
 
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
@@ -1776,7 +1782,13 @@ export default function SaleOrders() {
             )}
           >
             Pedidos Ativos
-            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{activeCount}</Badge>
+            <Badge
+              variant={searchTabCounts && searchTabCounts.ativos > 0 && mainTab !== 'ativos' ? 'default' : 'secondary'}
+              title={searchTabCounts ? 'Resultados da busca nesta aba' : undefined}
+              className="ml-2 h-5 px-1.5 text-xs"
+            >
+              {searchTabCounts ? searchTabCounts.ativos : activeCount}
+            </Badge>
           </button>
           <button
             type="button"
@@ -1789,7 +1801,13 @@ export default function SaleOrders() {
             )}
           >
             Faturados / Sem NF
-            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{billedCount}</Badge>
+            <Badge
+              variant={searchTabCounts && searchTabCounts.faturados > 0 && mainTab !== 'faturados' ? 'default' : 'secondary'}
+              title={searchTabCounts ? 'Resultados da busca nesta aba' : undefined}
+              className="ml-2 h-5 px-1.5 text-xs"
+            >
+              {searchTabCounts ? searchTabCounts.faturados : billedCount}
+            </Badge>
           </button>
           <button
             type="button"
@@ -1802,7 +1820,13 @@ export default function SaleOrders() {
             )}
           >
             Cancelados
-            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{cancelledCount}</Badge>
+            <Badge
+              variant={searchTabCounts && searchTabCounts.cancelados > 0 && mainTab !== 'cancelados' ? 'default' : 'secondary'}
+              title={searchTabCounts ? 'Resultados da busca nesta aba' : undefined}
+              className="ml-2 h-5 px-1.5 text-xs"
+            >
+              {searchTabCounts ? searchTabCounts.cancelados : cancelledCount}
+            </Badge>
           </button>
         </div>
 
@@ -1867,11 +1891,28 @@ export default function SaleOrders() {
             )}
           </div>
 
-          {/* Busca restrita à aba atual (29/06/2026). Indica em qual aba está
-              buscando + a contagem, deixando claro que não varre as outras. */}
-          {searchTerm.trim() && (
+          {/* Busca ATRAVESSA as abas (spec R5): mostra a contagem da aba atual
+              e, quando há match em outra aba, um link clicável pra ela — nunca
+              deixa um PV existente "invisível" pela aba selecionada. */}
+          {searchTerm.trim() && searchTabCounts && (
             <p className="text-xs text-muted-foreground -mt-1">
-              Buscando em <span className="font-medium text-foreground">{mainTab === 'faturados' ? 'Faturados / Sem NF' : mainTab === 'cancelados' ? 'Cancelados' : 'Pedidos Ativos'}</span> · {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''}
+              {filteredOrders.length} resultado{filteredOrders.length !== 1 ? 's' : ''} em{' '}
+              <span className="font-medium text-foreground">{mainTab === 'faturados' ? 'Faturados / Sem NF' : mainTab === 'cancelados' ? 'Cancelados' : 'Pedidos Ativos'}</span>
+              {(['ativos', 'faturados', 'cancelados'] as const)
+                .filter(t => t !== mainTab && searchTabCounts[t] > 0)
+                .map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setMainTab(t)}
+                    className="ml-2 underline underline-offset-2 text-primary hover:text-primary/80"
+                  >
+                    {t === 'ativos' ? 'Ativos' : t === 'faturados' ? 'Faturados / Sem NF' : 'Cancelados'} ({searchTabCounts[t]})
+                  </button>
+                ))}
+              {searchTabCounts.ativos + searchTabCounts.faturados + searchTabCounts.cancelados === 0 && (
+                <span className="ml-1">— nenhum resultado em nenhuma aba</span>
+              )}
             </p>
           )}
 
@@ -1949,9 +1990,13 @@ export default function SaleOrders() {
           <Panel flush>
             <EmptyState
               icon={ShoppingCart}
-              title={orders.length === 0 ? 'Nenhum pedido de venda' : 'Nenhum pedido encontrado'}
-              description={orders.length === 0 ? 'Crie o primeiro pedido de venda.' : 'Nenhum pedido encontrado com os filtros atuais.'}
-              action={activeFiltersCount > 0 ? <Button variant="link" size="sm" onClick={clearFilters}>Limpar filtros</Button> : undefined}
+              title={orders.length === 0 ? 'Nenhum pedido de venda' : searchTerm.trim() ? `Nenhum resultado para "${searchTerm.trim()}"` : 'Nenhum pedido encontrado'}
+              description={orders.length === 0 ? 'Crie o primeiro pedido de venda.' : searchTerm.trim() ? 'A busca varre todas as abas — confira o termo ou limpe a busca.' : 'Nenhum pedido encontrado com os filtros atuais.'}
+              action={
+                searchTerm.trim()
+                  ? <Button variant="outline" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>
+                  : activeFiltersCount > 0 ? <Button variant="link" size="sm" onClick={clearFilters}>Limpar filtros</Button> : undefined
+              }
             />
           </Panel>
         ) : (

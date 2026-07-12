@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { dueDateInfo } from '@/lib/taskDates';
 import { TaskMetaLine, DueDatePicker, type SubtaskProgress } from '@/components/tasks/TaskMeta';
 import { TaskDetailSheet } from '@/components/tasks/TaskDetailSheet';
@@ -104,13 +105,9 @@ export default function Tarefas() {
   }, [topLevel]);
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
     return topLevel.filter(t => {
       if (tagFilter !== ALL_TAGS && !(t.tags || []).includes(tagFilter)) return false;
-      if (!q) return true;
-      return normalizeForSearch(t.text).includes(q)
-        || normalizeForSearch(t.description || '').includes(q)
-        || (t.tags || []).some(tag => normalizeForSearch(tag).includes(q));
+      return searchMatchesAllTerms(search, t.text, t.description, ...(t.tags || []));
     });
   }, [topLevel, search, tagFilter]);
 
@@ -163,15 +160,15 @@ export default function Tarefas() {
               </button>
             ))}
           </div>
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Buscar tarefas..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="h-8 pl-8 text-sm"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por texto, descrição ou tag…"
+            resultCount={filtered.length}
+            totalCount={topLevel.length}
+            className="flex-1 min-w-[180px] max-w-xs"
+            inputClassName="h-8 text-sm"
+          />
           {allTags.length > 0 && (
             <Select value={tagFilter} onValueChange={setTagFilter}>
               <SelectTrigger className="h-8 w-40 text-xs gap-1.5">
@@ -252,10 +249,15 @@ export default function Tarefas() {
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={search || tagFilter !== ALL_TAGS ? Search : ListChecks}
-            title={search || tagFilter !== ALL_TAGS ? 'Nada encontrado' : 'Nenhuma tarefa criada ainda'}
+            title={search
+              ? `Nenhum resultado para "${search}"`
+              : tagFilter !== ALL_TAGS ? 'Nada encontrado' : 'Nenhuma tarefa criada ainda'}
             description={search || tagFilter !== ALL_TAGS
               ? 'Nenhuma tarefa corresponde aos filtros.'
               : 'Adicione tarefas no campo acima — uma por linha.'}
+            action={search
+              ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+              : undefined}
           />
         ) : view === 'quadro' ? (
           <TaskBoard

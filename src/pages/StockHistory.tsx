@@ -1,5 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
- import { CircleNotch as Loader2, ArrowDownRight, ArrowUpRight, Funnel as Filter, MagnifyingGlass as Search, User, ArrowsClockwise as RefreshCw, Stack as Layers, Warning as AlertTriangle } from '@phosphor-icons/react';
+ import { CircleNotch as Loader2, ArrowDownRight, ArrowUpRight, Funnel as Filter, User, ArrowsClockwise as RefreshCw, Warning as AlertTriangle } from '@phosphor-icons/react';
+ import { SearchInput } from '@/components/ui/search-input';
  import { TableCell, TableHead } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
  import { useStockMovements, StockMovementWithProduct } from '@/hooks/useOrders';
@@ -15,52 +16,44 @@ import { normalizeForSearch } from '@/lib/searchUtils';
  import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 
   export default function StockHistory({ filterProductId, hideHeader = false }: { filterProductId?: string; hideHeader?: boolean }) {
-    const { data: allMovements = [] as StockMovementWithProduct[], isLoading, isError, refetch } = useStockMovements();
    const [typeFilter, setTypeFilter] = useState<string>('all');
    const [searchQuery, setSearchQuery] = useState('');
    const [userFilter, setUserFilter] = useState('');
    const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
    const [currentPage, setCurrentPage] = useState(1);
    const itemsPerPage = 10;
- 
+
+    // Busca SERVER-SIDE (spec R6): o termo vai pro banco via search_norm +
+    // produtos que casam (nome/sku/cor) — acha movimentação além do limit local.
+    const { data: allMovements = [] as StockMovementWithProduct[], isLoading, isError, refetch } = useStockMovements({ search: searchQuery });
+
     const movements = useMemo<StockMovementWithProduct[]>(() => {
       let filtered = [...allMovements];
-      
+
       if (filterProductId) {
         filtered = filtered.filter(mov => mov.product_id === filterProductId);
       }
 
       return filtered.filter((mov) => {
         if (typeFilter !== 'all' && mov.movement_type !== typeFilter) return false;
-  
-        if (searchQuery) {
-          const q = normalizeForSearch(searchQuery);
-          const matchesSearch = 
-            (normalizeForSearch(mov.description).includes(q)) ||
-            (normalizeForSearch(mov.products?.name).includes(q)) ||
-            (normalizeForSearch(mov.products?.sku).includes(q)) ||
-            (normalizeForSearch(mov.lot_number).includes(q));
-          if (!matchesSearch) return false;
-        }
-  
+
         if (userFilter) {
-          const u = userFilter.toLowerCase();
-          const matchesUser = 
-            (normalizeForSearch(mov.user_email).includes(u)) ||
-            (normalizeForSearch(mov.responsible).includes(u));
+          const matchesUser =
+            (normalizeForSearch(mov.user_email).includes(normalizeForSearch(userFilter))) ||
+            (normalizeForSearch(mov.responsible).includes(normalizeForSearch(userFilter)));
           if (!matchesUser) return false;
         }
-  
+
         if (dateRange.from && new Date(mov.created_at) < new Date(dateRange.from)) return false;
         if (dateRange.to) {
           const toDate = new Date(dateRange.to);
           toDate.setHours(23, 59, 59, 999);
           if (new Date(mov.created_at) > toDate) return false;
         }
-  
+
         return true;
       });
-    }, [allMovements, filterProductId, typeFilter, searchQuery, userFilter, dateRange]);
+    }, [allMovements, filterProductId, typeFilter, userFilter, dateRange]);
  
    const paginatedMovements = useMemo<StockMovementWithProduct[]>(() => {
      const start = (currentPage - 1) * itemsPerPage;
@@ -113,17 +106,14 @@ import { normalizeForSearch } from '@/lib/searchUtils';
        )}
 
        <div className="flex flex-wrap gap-3 items-end">
-         <div className="flex-1 min-w-[200px]">
-           <div className="relative">
-             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-             <Input
-               placeholder="Buscar por descrição, SKU ou lote..."
-               className="pl-9 h-9"
-               value={searchQuery}
-               onChange={(e) => setSearchQuery(e.target.value)}
-             />
-           </div>
-         </div>
+         <SearchInput
+           className="flex-1 min-w-[200px]"
+           placeholder="Buscar por material, SKU, descrição ou motivo…"
+           value={searchQuery}
+           onChange={setSearchQuery}
+           debounceMs={300}
+           inputClassName="h-9"
+         />
          
          <div className="w-[150px]">
            <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -193,7 +183,7 @@ import { normalizeForSearch } from '@/lib/searchUtils';
         getId={(mov) => mov.id}
         headers={headers}
         headerClassName="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground"
-        emptyMessage="Nenhuma movimentação registrada"
+        emptyMessage={searchQuery.trim() ? `Nenhum resultado para "${searchQuery.trim()}"` : 'Nenhuma movimentação registrada'}
        renderRow={(mov: StockMovementWithProduct) => {
          const prod = mov.products;
          const isOut = mov.movement_type === 'out';

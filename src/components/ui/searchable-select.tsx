@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, CaretUpDown as ChevronsUpDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 export interface SearchableOption {
   value: string;
@@ -48,12 +48,8 @@ export function SearchableSelect({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
-    const q = normalizeForSearch(search);
-    return options.filter(o =>
-      normalizeForSearch(o.label).includes(q) ||
-      normalizeForSearch(o.description ?? '').includes(q) ||
-      normalizeForSearch(o.keywords ?? '').includes(q),
-    );
+    // Motor padrão do sistema: espaço/"/" = termos AND, OR entre campos.
+    return options.filter(o => searchMatchesAllTerms(search, o.label, o.description, o.keywords));
   }, [options, search]);
 
   // Teto de renderização: com catálogos de centenas de itens, montar tudo de

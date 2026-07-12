@@ -2,13 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { MagnifyingGlass as Search, ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, User } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { ArrowCircleDown as ArrowDownCircle, ArrowCircleUp as ArrowUpCircle, User } from '@phosphor-icons/react';
 import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useStockMovements, StockMovementWithProduct } from '@/hooks/useOrders';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { useStockMovements } from '@/hooks/useOrders';
 
 type MovementType = 'in' | 'out';
 
@@ -17,28 +16,14 @@ interface StockHistoryTabProps {
 }
 
 export function StockHistoryTab({ type }: StockHistoryTabProps) {
-  const { data: allMovements = [], isLoading } = useStockMovements();
   const [search, setSearch] = useState('');
-
-  const movements = useMemo(() => {
-    return allMovements.filter(m => m.movement_type === type);
-  }, [allMovements, type]);
+  // Busca SERVER-SIDE (spec melhorias-busca-sistema R6): o termo filtra no
+  // banco via search_norm + produtos que casam — acha além do limit local.
+  const { data: allMovements = [], isLoading } = useStockMovements({ search });
 
   const filtered = useMemo(() => {
-    if (!search) return movements;
-    const q = normalizeForSearch(search);
-    return movements.filter(m => {
-      const prod = m.products;
-      return (
-        normalizeForSearch(prod?.name).includes(q) ||
-        normalizeForSearch(prod?.sku).includes(q) ||
-        normalizeForSearch(m.description).includes(q) ||
-        normalizeForSearch(m.user_email).includes(q) ||
-        normalizeForSearch(m.responsible).includes(q) ||
-        normalizeForSearch(m.lot_number).includes(q)
-      );
-    });
-  }, [movements, search]);
+    return allMovements.filter(m => m.movement_type === type);
+  }, [allMovements, type]);
 
   const isOut = type === 'out';
 
@@ -46,10 +31,13 @@ export function StockHistoryTab({ type }: StockHistoryTabProps) {
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar por material, SKU, descrição ou usuário..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        placeholder="Buscar por material, SKU, descrição ou usuário…"
+        value={search}
+        onChange={setSearch}
+        debounceMs={300}
+      />
 
       <div className="rounded-lg border bg-card overflow-hidden">
         <Table>
@@ -69,7 +57,7 @@ export function StockHistoryTab({ type }: StockHistoryTabProps) {
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  {search ? 'Nenhum registro encontrado' : `Nenhum registro de ${isOut ? 'saída' : 'entrada'}`}
+                  {search ? `Nenhum resultado para "${search.trim()}"` : `Nenhum registro de ${isOut ? 'saída' : 'entrada'}`}
                 </TableCell>
               </TableRow>
             ) : (

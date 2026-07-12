@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
  import { ShieldCheck, Warning as AlertTriangle, XCircle, CheckCircle as CheckCircle2, Clock, MagnifyingGlass as Search, Funnel as Filter, ClipboardText as ClipboardCheck } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -16,7 +16,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const SEVERITY_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }> = {
   minor:    { label: 'Menor',    variant: 'outline',      className: 'border-amber-400/60 text-amber-600' },
@@ -36,12 +36,8 @@ export default function Quality() {
     if (statusFilter === 'unresolved' && r.resolved) return false;
     if (statusFilter === 'resolved' && !r.resolved) return false;
     if (search) {
-      const q = normalizeForSearch(search);
-      return (
-        normalizeForSearch(r.stage_name).includes(q) ||
-        normalizeForSearch(r.description).includes(q) ||
-        normalizeForSearch(r.cause).includes(q)
-      );
+      // espaço/"/" = refinamento AND (ex.: "corte descolado")
+      return searchMatchesAllTerms(search, r.stage_name, r.record_type, r.description, r.cause, r.corrective_action);
     }
     return true;
   }), [records, search, severityFilter, statusFilter]);
@@ -100,10 +96,14 @@ export default function Quality() {
  
              {/* Filters */}
              <div className="flex flex-col sm:flex-row gap-3">
-               <div className="relative flex-1">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                 <Input placeholder="Buscar por setor, descrição ou causa..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
-               </div>
+               <SearchInput
+                 className="flex-1"
+                 value={search}
+                 onChange={setSearch}
+                 placeholder="Buscar por setor, tipo, descrição, causa…"
+                 resultCount={filtered.length}
+                 totalCount={records.length}
+               />
                <Select value={severityFilter} onValueChange={setSeverityFilter}>
                  <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                  <SelectContent>
@@ -144,7 +144,20 @@ export default function Quality() {
                      <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Carregando...</TableCell></TableRow>
                    ) : filtered.length === 0 ? (
                      <TableRow><TableCell colSpan={9} className="p-0">
-                       <EmptyState icon={ShieldCheck} title="Nenhum registro encontrado" description="Ajuste os filtros ou aguarde novos registros de qualidade." size="sm" />
+                       {search.trim() ? (
+                         <EmptyState
+                           size="sm"
+                           icon={Search}
+                           title={`Nenhum resultado para "${search}"`}
+                           action={
+                             <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                               Limpar busca
+                             </Button>
+                           }
+                         />
+                       ) : (
+                         <EmptyState icon={ShieldCheck} title="Nenhum registro encontrado" description="Ajuste os filtros ou aguarde novos registros de qualidade." size="sm" />
+                       )}
                      </TableCell></TableRow>
                    ) : filtered.map((r: any) => {
                      const sev = SEVERITY_CONFIG[r.severity] || SEVERITY_CONFIG.minor;

@@ -12,13 +12,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  MagnifyingGlass as Search, CircleNotch as Loader2, Package, Receipt, CurrencyDollar, CalendarBlank as Calendar,
+  CircleNotch as Loader2, Package, Receipt, CurrencyDollar, CalendarBlank as Calendar,
 } from '@phosphor-icons/react';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
 import { useContractors } from '@/hooks/useContractors';
 import { useCreateAvulsoPurchaseOrder, useCreateAvulsoServiceOrder } from '@/hooks/useAvulso';
-import { searchMatchesAny } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { formatCurrency } from '@/lib/utils';
 
 /**
@@ -88,10 +89,11 @@ export function LancamentoAvulsoDialog({ open, onOpenChange, mode }: LancamentoA
     [products, productId],
   );
 
-  const filteredProducts = useMemo(
-    () => products.filter((p: any) => searchMatchesAny(productFilter, p.name, p.sku)).slice(0, 30),
+  const matchingProducts = useMemo(
+    () => products.filter((p: any) => searchMatchesAllTerms(productFilter, p.name, p.sku)),
     [products, productFilter],
   );
+  const filteredProducts = useMemo(() => matchingProducts.slice(0, 30), [matchingProducts]);
 
   const ocTotal = quantity * unitPrice;
   const total = isOC ? ocTotal : totalValue;
@@ -188,18 +190,23 @@ export function LancamentoAvulsoDialog({ open, onOpenChange, mode }: LancamentoA
             <>
               <div className="space-y-2">
                 <Label className="text-xs">Item do estoque *</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar produto por nome ou SKU..."
-                    value={productFilter}
-                    onChange={(e) => setProductFilter(e.target.value)}
-                    className="pl-9 h-9"
-                  />
-                </div>
+                <SearchInput
+                  value={productFilter}
+                  onChange={setProductFilter}
+                  placeholder="Buscar produto por nome ou SKU..."
+                  resultCount={matchingProducts.length}
+                  totalCount={products.length}
+                />
                 <div className="max-h-44 overflow-y-auto rounded-md border border-border divide-y divide-border/60">
                   {filteredProducts.length === 0 ? (
-                    <p className="text-xs text-muted-foreground p-3 text-center">Nenhum produto encontrado</p>
+                    productFilter.trim() ? (
+                      <div className="flex flex-col items-center gap-1.5 p-3">
+                        <p className="text-xs text-muted-foreground text-center">Nenhum resultado para "{productFilter}"</p>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setProductFilter('')}>Limpar busca</Button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground p-3 text-center">Nenhum produto encontrado</p>
+                    )
                   ) : (
                     filteredProducts.map((p: any) => (
                       <button

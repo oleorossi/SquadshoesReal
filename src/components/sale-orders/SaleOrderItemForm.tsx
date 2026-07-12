@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { NumberInput } from '@/components/ui/number-input';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, MagnifyingGlass as Search, Command, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
@@ -26,7 +25,8 @@ import type { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 interface ReferenceOption {
   id: string;
   code: string;
@@ -1701,10 +1701,9 @@ function ColorSearchSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const filtered = colors.filter(c => normalize(c).includes(normalize(search)));
+  const filtered = colors.filter(c => searchMatchesAllTerms(search, c));
   const trimmedSearch = search.trim();
-  const showAdd = !!onAddNew && trimmedSearch && !colors.some(c => normalize(c) === normalize(trimmedSearch));
+  const showAdd = !!onAddNew && trimmedSearch && !colors.some(c => normalizeForSearch(c) === normalizeForSearch(trimmedSearch));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -1716,19 +1715,25 @@ function ColorSearchSelect({
       </PopoverTrigger>
       <PopoverContent className="w-[300px] sm:w-[340px] p-0" align="start">
         <div className="p-2 space-y-2">
-          <div className="flex items-center gap-2 px-2 border rounded-md">
-            <Search className="h-4 w-4 text-muted-foreground opacity-50" />
-            <input
-              className="flex-1 h-9 text-sm outline-none bg-transparent"
-              placeholder="Buscar cor ou material..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              autoFocus
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por cor ou material..."
+            resultCount={filtered.length}
+            totalCount={colors.length}
+            inputClassName="text-sm"
+            autoFocus
+          />
           <div className="max-h-[250px] overflow-y-auto space-y-0.5">
             {filtered.length === 0 && !showAdd && (
-              <p className="text-xs text-muted-foreground text-center py-4">Nenhuma cor encontrada.</p>
+              trimmedSearch ? (
+                <div className="flex flex-col items-center gap-1.5 py-4">
+                  <p className="text-xs text-muted-foreground text-center">Nenhum resultado para "{search}"</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">Nenhuma cor encontrada.</p>
+              )
             )}
             {filtered.map(color => (
               <button
@@ -1772,29 +1777,32 @@ function ReferenceSearch({
   variantsByRef?: Map<string, VariantSummary[]>;
 }) {
   const [search, setSearch] = useState('');
-  // Normaliza pra match com espaços/acentos/case — "SP 10"/"sp10"/"Sp-10"
+  // Match com espaços/acentos/case ignorados — "SP 10"/"sp10"/"Sp-10"
   // devem todos casar com a referência cadastrada como "SP10".
-  const filtered = references.filter(r =>
-    normalizeForSearch((r.code || '') + ' ' + (r.name || '')).includes(normalizeForSearch(search))
-  );
+  const filtered = references.filter(r => searchMatchesAllTerms(search, r.code, r.name));
   return (
     <div className="p-2 space-y-2">
-      <div className="flex items-center gap-2 px-2 border rounded-md">
-        <Command className="h-4 w-4 text-muted-foreground opacity-50" />
-        <input
-          className="flex-1 h-9 text-sm outline-none bg-transparent"
-          placeholder="Buscar por código ou nome..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          autoFocus
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por código ou nome..."
+        resultCount={filtered.length}
+        totalCount={references.length}
+        inputClassName="text-sm"
+        autoFocus
+      />
       {filtered.length > 50 && (
         <p className="px-2 text-xs text-muted-foreground">
           Mostrando 50 de {filtered.length} referências — busque por código ou nome para refinar.
         </p>
       )}
       <div className="max-h-[300px] overflow-y-auto space-y-0.5">
+        {filtered.length === 0 && search.trim() && (
+          <div className="flex flex-col items-center gap-1.5 py-4">
+            <p className="text-xs text-muted-foreground text-center">Nenhum resultado para "{search}"</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+          </div>
+        )}
         {filtered.slice(0, 50).map(ref => {
           const variants = variantsByRef?.get(ref.id) ?? [];
           return (
@@ -1840,7 +1848,7 @@ function ReferenceSearch({
 function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { value: string; colors: string[]; onChange: (v: string) => void; disabled?: boolean; onAddNew?: (color: string) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const filtered = colors.filter(c => normalizeForSearch(c).includes(normalizeForSearch(search)));
+  const filtered = colors.filter(c => searchMatchesAllTerms(search, c));
   const showAdd = search.trim() && !colors.some(c => normalizeForSearch(c) === normalizeForSearch(search));
 
   return (
@@ -1852,8 +1860,23 @@ function ColorPickerDropdown({ value, colors, onChange, disabled, onAddNew }: { 
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[260px] sm:w-[280px] p-1">
-        <Input placeholder="Cor..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 mb-1 text-sm" autoFocus />
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar cor..."
+          resultCount={filtered.length}
+          totalCount={colors.length}
+          className="mb-1"
+          inputClassName="text-sm"
+          autoFocus
+        />
         <div className="max-h-48 overflow-y-auto space-y-0.5">
+          {filtered.length === 0 && !showAdd && search.trim() && (
+            <div className="flex flex-col items-center gap-1.5 py-3">
+              <p className="text-xs text-muted-foreground text-center">Nenhum resultado para "{search}"</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+            </div>
+          )}
           {filtered.map(c => (
             <button key={c} onClick={() => { onChange(c); setOpen(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-accent rounded-sm break-words">{c}</button>
           ))}

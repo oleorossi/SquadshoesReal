@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useIndividualPackaging, useCreateIndividualPackaging, useUpdateIndividualPackaging } from '@/hooks/usePackaging';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, MagnifyingGlass as Search, PencilSimple as Edit, Package } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import type { IndividualPackaging } from '@/types/packaging';
 import PackagingForm from './PackagingForm';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,9 +32,15 @@ const PackagingTable = () => {
   const updatePackaging = useUpdateIndividualPackaging();
 
   const filteredPackaging = packaging.filter((pack) =>
-    pack.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    pack.product_reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    pack.internal_code.toLowerCase().includes(searchTerm.toLowerCase())
+    searchMatchesAllTerms(
+      searchTerm,
+      pack.product_name,
+      pack.product_reference,
+      pack.internal_code,
+      pack.packaging_type,
+      pack.material,
+      pack.supplier_name,
+    )
   );
 
   const getStockStatus = (current: number, minimum: number) => {
@@ -69,15 +77,14 @@ const PackagingTable = () => {
       {/* Filtros e Ações */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar embalagem..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-8 w-64"
-            />
-          </div>
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Buscar por nome, referência ou código…"
+            resultCount={filteredPackaging.length}
+            totalCount={packaging.length}
+            className="w-64"
+          />
           <Select value={selectedType} onValueChange={setSelectedType}>
             <SelectTrigger className="w-44">
               <SelectValue placeholder="Todos os tipos" />
@@ -128,11 +135,19 @@ const PackagingTable = () => {
       <div className="grid gap-4">
         {filteredPackaging.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Package className="h-12 w-12 text-muted-foreground/40 mb-3" />
-              <p className="font-medium text-muted-foreground">Nenhuma embalagem encontrada</p>
-              {searchTerm && (
-                <p className="text-sm text-muted-foreground mt-1">Tente ajustar os filtros de busca</p>
+            <CardContent>
+              {searchTerm.trim() ? (
+                <EmptyState
+                  size="sm"
+                  icon={Search}
+                  title={`Nenhum resultado para "${searchTerm}"`}
+                  action={<Button variant="outline" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button>}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Package className="h-12 w-12 text-muted-foreground/40 mb-3" />
+                  <p className="font-medium text-muted-foreground">Nenhuma embalagem encontrada</p>
+                </div>
               )}
             </CardContent>
           </Card>

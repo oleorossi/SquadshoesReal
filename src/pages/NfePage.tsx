@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAllNfeEmitidas, useEmitNfe, useCheckNfeStatus, useCancelNfe, useCompanies, useSyncNfeFromProvider, useDownloadNfeFile, usePreviewNfe, NfeEmitida, type NfePreviewResponse } from '@/hooks/useNfe';
 import { useAccessControl, useCan } from '@/hooks/useAccessControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CircleNotch as Loader2, FileText, ArrowsClockwise as RefreshCw, XCircle, Download, MagnifyingGlass as Search, Buildings as Building2, Plus, CheckCircle, WarningCircle as AlertCircle, Clock, Calculator, Pulse as Activity, NotePencil as FileEdit, Eye, CaretLeft as ChevronLeft } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import CompaniesPanel from '@/components/nfe/CompaniesPanel';
 import TaxConfigPanel from '@/components/nfe/TaxConfigPanel';
 import NfeDiagnosticPanel from '@/components/nfe/NfeDiagnosticPanel';
@@ -410,7 +411,14 @@ function NfeRow({ nfe, onCancel, onView, canCancel }: { nfe: any; onCancel: (n: 
 export default function NfePage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
-  const [searchText, setSearchText] = useState('');
+  // ?q= da URL: a busca global (⌘K) navega pra cá com o nº/chave da NF
+  // já aplicado — cai direto na nota (spec melhorias-busca-sistema R8).
+  // REATIVO (não só no mount): quem já está em /nfe e seleciona outra NF no ⌘K
+  // não remonta a página (AppLayout keia só por pathname) — o efeito sincroniza.
+  const [searchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [searchText, setSearchText] = useState(urlQ);
+  useEffect(() => { if (urlQ) setSearchText(urlQ); }, [urlQ]);
   const [emitOpen, setEmitOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<NfeEmitida | null>(null);
   const [viewTarget, setViewTarget] = useState<NfeEmitida | null>(null);
@@ -542,15 +550,14 @@ export default function NfePage() {
         <TabsContent value="nfes" className="mt-4">
           {/* Filters */}
           <div className="flex gap-3 mb-4 flex-wrap">
-            <div className="relative flex-1 min-w-48">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                className="pl-8"
-                placeholder="Buscar por pedido, cliente, número..."
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
-              />
-            </div>
+            <SearchInput
+              className="flex-1 min-w-48"
+              placeholder="Buscar por PV, cliente, nº da NF, CNPJ ou chave de acesso…"
+              value={searchText}
+              onChange={setSearchText}
+              resultCount={filtered.length}
+              totalCount={allNfe.length}
+            />
             {companies.length > 1 && (
               <Select value={companyFilter || '__all__'} onValueChange={v => setCompanyFilter(v === '__all__' ? '' : v)}>
                 <SelectTrigger className="w-52">
@@ -611,9 +618,11 @@ export default function NfePage() {
             ) : filtered.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title="Nenhuma NF-e encontrada"
-                description="Ajuste os filtros ou emita uma nova nota fiscal."
-                action={canEmitNfe && perm.canCreate ? (
+                title={searchText.trim() ? `Nenhum resultado para "${searchText.trim()}"` : 'Nenhuma NF-e encontrada'}
+                description={searchText.trim() ? 'Confira o termo (nº da NF, PV, cliente, CNPJ ou chave) ou limpe a busca.' : 'Ajuste os filtros ou emita uma nova nota fiscal.'}
+                action={searchText.trim() ? (
+                  <Button variant="outline" size="sm" onClick={() => setSearchText('')}>Limpar busca</Button>
+                ) : canEmitNfe && perm.canCreate ? (
                   <Button variant="outline" size="sm" onClick={() => setEmitOpen(true)}>
                     Emitir primeira NF-e
                   </Button>

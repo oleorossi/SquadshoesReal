@@ -21,8 +21,9 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
+import { SearchInput } from '@/components/ui/search-input';
 import { FileText as FileEdit, Plus, Trash as Trash2, CheckCircle, WarningCircle as AlertCircle, PaperPlaneRight as Send, CircleNotch as Loader2, MagnifyingGlass as Search } from '@phosphor-icons/react';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const STATUS_META: Record<NfeCCeStatus, { label: string; className: string; icon: React.ReactNode }> = {
   rascunho:  { label: 'Rascunho',  className: 'bg-muted text-muted-foreground border-border',           icon: <FileEdit className="h-3 w-3" /> },
@@ -327,13 +328,14 @@ export default function NfeCCePanel() {
 
   const filtered = useMemo(() => {
     if (!searchText) return cces;
-    const q = normalizeForSearch(searchText);
-    return cces.filter(c =>
-      normalizeForSearch(c.nfe_number).includes(q) ||
-      normalizeForSearch(c.nfe_chave).includes(q) ||
-      normalizeForSearch(c.correction_text).includes(q) ||
-      normalizeForSearch(c.protocol).includes(q),
-    );
+    return cces.filter(c => searchMatchesAllTerms(
+      searchText,
+      c.nfe_number,
+      String(c.sequencia ?? ''),
+      c.nfe_chave,
+      c.correction_text,
+      c.protocol,
+    ));
   }, [cces, searchText]);
 
 
@@ -352,15 +354,14 @@ export default function NfeCCePanel() {
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            className="pl-8"
-            placeholder="Buscar por NF, chave, protocolo, texto..."
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-          />
-        </div>
+        <SearchInput
+          className="flex-1 min-w-48"
+          placeholder="Buscar por NF, chave de acesso, protocolo ou texto…"
+          value={searchText}
+          onChange={setSearchText}
+          resultCount={filtered.length}
+          totalCount={cces.length}
+        />
         <Select
           value={statusFilter || '__all__'}
           onValueChange={v => setStatusFilter(v === '__all__' ? '' : (v as NfeCCeStatus))}
@@ -386,16 +387,29 @@ export default function NfeCCePanel() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState
-              icon={FileEdit}
-              title="Nenhuma carta de correção"
-              description="Crie uma CCe pra corrigir erros pontuais em NF-e já autorizada."
-              action={
-                <Button onClick={() => setCreating(true)} className="gap-2">
-                  <Plus className="h-4 w-4" /> Nova CCe
-                </Button>
-              }
-            />
+            searchText ? (
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${searchText}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearchText('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={FileEdit}
+                title="Nenhuma carta de correção"
+                description="Crie uma CCe pra corrigir erros pontuais em NF-e já autorizada."
+                action={
+                  <Button onClick={() => setCreating(true)} className="gap-2">
+                    <Plus className="h-4 w-4" /> Nova CCe
+                  </Button>
+                }
+              />
+            )
           ) : (
             <div className="divide-y divide-border/50">
               {filtered.map(c => (

@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
- import { Plus, Trash as Trash2, FloppyDisk as Save, CircleNotch as Loader2, Stack as Layers, MagicWand as Wand2, Sparkle as Sparkles, MagnifyingGlass as Search, X } from '@phosphor-icons/react';
+ import { Plus, Trash as Trash2, FloppyDisk as Save, CircleNotch as Loader2, Stack as Layers, MagicWand as Wand2, Sparkle as Sparkles, MagnifyingGlass as Search } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
- import { Input } from '@/components/ui/input';
+ import { SearchInput } from '@/components/ui/search-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,7 +14,7 @@ import {
   useRemoveSoleStandardItem,
 } from '@/hooks/useSoleStandardItems';
 import { productGroupingKey } from '@/lib/productNameNormalization';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 /**
  * Categorias de itens "padrão" que podem ser definidos por solado.
@@ -218,15 +218,12 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
   const draftEntries = Object.entries(drafts);
    // Use standardCatalog as base, but allow searching all products if not found in catalog
    const availableToAdd = useMemo(() => {
-     const query = normalizeForSearch(searchTerm);
-     if (!query) return standardCatalog.filter((p) => !drafts[p.id]);
- 
+     if (!searchTerm.trim()) return standardCatalog.filter((p) => !drafts[p.id]);
+
      // Search in full products list when searching, but still group by model
      const filteredProducts = (products as any[]).filter((p) => {
-       const name = (p.name || '').toLowerCase();
-       const sku = (p.sku || '').toLowerCase();
        const cat = (p.category || '').toLowerCase();
-       return (name.includes(query) || sku.includes(query) || cat.includes(query)) && 
+       return searchMatchesAllTerms(searchTerm, p.name, p.sku, p.category) &&
               !(cat.includes('solado') || cat === 'sola');
      });
  
@@ -380,28 +377,31 @@ export function SoleStandardItemsPanel({ soleProductId }: Props) {
                </SelectTrigger>
                <SelectContent className="max-h-[300px]">
                  <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border/50">
-                   <div className="relative">
-                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                     <Input
-                       placeholder="Digitar para buscar no estoque..."
-                       value={searchTerm}
-                       onChange={(e) => setSearchTerm(e.target.value)}
-                       onKeyDown={(e) => e.stopPropagation()}
-                       className="h-7 text-xs pl-7 pr-7"
-                     />
-                     {searchTerm && (
-                       <button
-                         onClick={(e) => { e.stopPropagation(); setSearchTerm(''); }}
-                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                       >
-                         <X className="h-3 w-3" />
-                       </button>
-                     )}
-                   </div>
+                   <SearchInput
+                     value={searchTerm}
+                     onChange={setSearchTerm}
+                     placeholder="Buscar por nome, SKU ou categoria…"
+                     onKeyDown={(e) => e.stopPropagation()}
+                     inputClassName="h-7 text-xs"
+                   />
                  </div>
                  {availableToAdd.length === 0 ? (
-                   <div className="px-2 py-4 text-xs text-muted-foreground text-center italic">
-                     {searchTerm ? 'Nenhum item encontrado' : 'Todos itens já adicionados'}
+                   <div className="px-2 py-4 text-xs text-muted-foreground text-center space-y-2">
+                     {searchTerm ? (
+                       <>
+                         <p>Nenhum resultado para "{searchTerm}"</p>
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           className="h-6 text-xs"
+                           onClick={(e) => { e.stopPropagation(); setSearchTerm(''); }}
+                         >
+                           Limpar busca
+                         </Button>
+                       </>
+                     ) : (
+                       <p className="italic">Todos itens já adicionados</p>
+                     )}
                    </div>
                  ) : (
                    availableToAdd.map((entry) => (

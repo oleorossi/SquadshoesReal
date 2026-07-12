@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
-import { UserCheck, Plus, Trash as Trash2, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { UserCheck, Plus, Trash as Trash2, MagnifyingGlass } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useRepresentatives, Representative } from '@/hooks/useRepresentatives';
@@ -9,7 +8,8 @@ import {
   useClientRepresentatives, useAddClientRepresentative, useRemoveClientRepresentative,
   useEconomicGroupRepresentatives, useAddGroupRepresentative, useRemoveGroupRepresentative,
 } from '@/hooks/useClientRepresentatives';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 
 interface Props {
@@ -32,12 +32,15 @@ export default function RepresentativeTab({ entityId, type }: Props) {
   const linkedReps = type === 'client' ? clientReps : groupReps;
   const linkedRepIds = new Set(linkedReps.map((r: any) => r.representative_id));
 
-  const availableReps = useMemo(() => {
-    const q = normalizeForSearch(search);
-    return allReps
-      .filter(r => r.active && !linkedRepIds.has(r.id))
-      .filter(r => !q || normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.email).includes(q));
-  }, [allReps, linkedRepIds, search]);
+  const unlinkedReps = useMemo(
+    () => allReps.filter(r => r.active && !linkedRepIds.has(r.id)),
+    [allReps, linkedRepIds],
+  );
+
+  const availableReps = useMemo(
+    () => unlinkedReps.filter(r => searchMatchesAllTerms(search, r.name, r.email, r.phone, r.cidade)),
+    [unlinkedReps, search],
+  );
 
   const handleAdd = (rep: Representative) => {
     if (!entityId) return;
@@ -106,13 +109,25 @@ export default function RepresentativeTab({ entityId, type }: Props) {
           <DialogHeader>
             <DialogTitle>Vincular Representante</DialogTitle>
           </DialogHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar representante..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome, e-mail, telefone ou cidade..."
+            resultCount={availableReps.length}
+            totalCount={unlinkedReps.length}
+          />
           <div className="flex-1 overflow-y-auto rounded-md border divide-y min-h-0 max-h-[50vh]">
             {availableReps.length === 0 ? (
-              <EmptyState icon={UserCheck} title="Nenhum representante disponível" size="sm" />
+              search.trim() ? (
+                <EmptyState
+                  size="sm"
+                  icon={MagnifyingGlass}
+                  title={`Nenhum resultado para "${search}"`}
+                  action={<Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                />
+              ) : (
+                <EmptyState icon={UserCheck} title="Nenhum representante disponível" size="sm" />
+              )
             ) : (
               availableReps.map(rep => (
                 <button key={rep.id} type="button" onClick={() => { handleAdd(rep); setAddDialog(false); }}

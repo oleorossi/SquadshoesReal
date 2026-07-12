@@ -26,7 +26,8 @@ import { calculatePacking } from '@/lib/packingCalculator';
  import type { BoxType, TransportCompany, PackingItem, PackingSummary } from '@/types/transport';
 import { BRAZILIAN_STATES } from '@/types/transport';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 
 export default function Transport() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -605,13 +606,11 @@ function CarriersTab() {
   });
 
   const filteredCompanies = useMemo(() => {
-    const q = normalizeForSearch(search);
-    if (!q) return companies;
-    return companies.filter(c =>
-      normalizeForSearch(c.nome).includes(q) ||
-      normalizeForSearch(c.documento).includes(q) ||
-      normalizeForSearch(c.email).includes(q)
-    );
+    return companies.filter(c => searchMatchesAllTerms(
+      search,
+      c.nome, c.documento, c.email, c.telefone, c.responsavel,
+      c.endereco?.cidade, c.endereco?.estado,
+    ));
   }, [companies, search]);
 
   const openNewDialog = () => {
@@ -668,10 +667,14 @@ function CarriersTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar transportadora..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nome, CNPJ/CPF, e-mail…"
+          resultCount={filteredCompanies.length}
+          totalCount={companies.length}
+          className="flex-1 max-w-sm"
+        />
         <Button onClick={openNewDialog}>
           <Plus className="h-4 w-4 mr-2" />
           Nova Transportadora
@@ -729,9 +732,10 @@ function CarriersTab() {
               <TableRow>
                 <TableCell colSpan={5} className="p-0">
                   <EmptyState
-                    icon={Building2}
-                    title={search ? 'Nenhuma transportadora encontrada' : 'Nenhuma transportadora cadastrada'}
+                    icon={search ? Search : Building2}
+                    title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma transportadora cadastrada'}
                     description={search ? 'Ajuste a busca ou cadastre uma nova transportadora.' : 'Cadastre a primeira transportadora.'}
+                    action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
                   />
                 </TableCell>
               </TableRow>

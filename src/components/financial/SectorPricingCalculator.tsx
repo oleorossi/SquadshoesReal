@@ -43,9 +43,10 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
+import { SearchInput } from '@/components/ui/search-input';
 import { toast } from 'sonner';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
-import { normalizeForSearch, searchMatchesAny } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useSectorLaborRates, useUpsertSectorLaborRate, hourlyFromSalary } from '@/hooks/useSectorLaborRates';
 import { SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
@@ -358,7 +359,7 @@ export default function SectorPricingCalculator() {
   // ── Busca nos salvos ──
   const [search, setSearch] = useState('');
   const filtered = useMemo(
-    () => results.filter((r) => searchMatchesAny(search, r.reference, ...r.lines.map((l) => sectorLabel(l.sector_key)))),
+    () => results.filter((r) => searchMatchesAllTerms(search, r.reference, ...r.lines.map((l) => sectorLabel(l.sector_key)))),
     [results, search],
   );
 
@@ -786,15 +787,15 @@ export default function SectorPricingCalculator() {
           <CardDescription>Busque por referência ou setor e carregue de volta pra editar.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="relative max-w-sm">
-            <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar referência ou setor…"
-              className="h-9 pl-8"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por referência ou setor…"
+            resultCount={filtered.length}
+            totalCount={results.length}
+            className="max-w-sm"
+            inputClassName="h-9"
+          />
 
           {results.length === 0 ? (
             <EmptyState
@@ -807,8 +808,12 @@ export default function SectorPricingCalculator() {
             <EmptyState
               size="sm"
               icon={MagnifyingGlass}
-              title="Nenhum resultado"
-              description={`Nenhuma referência encontrada para “${search}”.`}
+              title={`Nenhum resultado para "${search}"`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Limpar busca
+                </Button>
+              }
             />
           ) : (
             <div className="space-y-2">

@@ -19,8 +19,10 @@ import {
 } from '@/hooks/useEmployees';
 import { EmployeeCombobox } from '@/components/hr/EmployeeCombobox';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { todayISO } from '@/lib/date';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 
 const DESC_PRESETS = ['Vale farmácia', 'Adiantamento mensal', 'Vale alimentação', 'Vale transporte', 'Empréstimo'];
@@ -59,17 +61,13 @@ export default function AdvancesPanel() {
     return allAdvances.filter(a => a.advance_date.startsWith(filterPeriod));
   }, [allAdvances, filterPeriod]);
 
+  const statusFiltered = useMemo(() => {
+    return periodAdvances.filter(a => filterStatus === 'all' || a.status === filterStatus);
+  }, [periodAdvances, filterStatus]);
+
   const filtered = useMemo(() => {
-    return periodAdvances.filter(a => {
-      if (filterStatus !== 'all' && a.status !== filterStatus) return false;
-      if (search) {
-        const emp = empMap.get(a.employee_id);
-        const q = normalizeForSearch(search);
-        if (!normalizeForSearch(emp?.name ?? '').includes(q) && !normalizeForSearch(a.description).includes(q)) return false;
-      }
-      return true;
-    });
-  }, [periodAdvances, filterStatus, search, empMap]);
+    return statusFiltered.filter(a => searchMatchesAllTerms(search, empMap.get(a.employee_id)?.name, a.description));
+  }, [statusFiltered, search, empMap]);
 
   // Saldo aberto por funcionário (todos os adiantamentos pendentes) — fonte única
   // reaproveitada pela tabela de saldos, pelo combobox e pelo card de contexto do modal.
@@ -335,10 +333,15 @@ export default function AdvancesPanel() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle className="text-sm">Vales registrados no período</CardTitle>
             <div className="flex gap-2 items-center">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input className="h-8 pl-7 w-40 text-sm" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
-              </div>
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por funcionário ou descrição…"
+                resultCount={filtered.length}
+                totalCount={statusFiltered.length}
+                className="w-56"
+                inputClassName="h-8 text-sm"
+              />
               <Input type="month" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)} className="h-8 w-36 text-sm" />
               <Select value={filterStatus} onValueChange={(v: any) => setFilterStatus(v)}>
                 <SelectTrigger className="h-8 w-32 text-sm"><SelectValue /></SelectTrigger>
@@ -365,7 +368,20 @@ export default function AdvancesPanel() {
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum vale no período.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="py-4">
+                    {search ? (
+                      <EmptyState
+                        size="sm"
+                        icon={Search}
+                        title={`Nenhum resultado para "${search}"`}
+                        action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                      />
+                    ) : (
+                      <p className="text-center text-muted-foreground py-4">Nenhum vale no período.</p>
+                    )}
+                  </TableCell>
+                </TableRow>
               ) : filtered.map(a => {
                 const emp = empMap.get(a.employee_id);
                 return (

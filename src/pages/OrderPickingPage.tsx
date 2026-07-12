@@ -6,7 +6,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -186,8 +186,14 @@ export default function OrderPickingPage() {
   // ── Filtered list ───────────────────────────────────────────────────────────
   const searchFiltered = useMemo(() => {
     if (!search.trim()) return orders;
-    // "/" = refinamento AND (ex.: "stx / alcineu")
-    return orders.filter(o => searchMatchesAllTerms(search, o.order_number, o.client_name));
+    // espaço/"/" = refinamento AND (ex.: "stx alcineu")
+    return orders.filter(o => searchMatchesAllTerms(
+      search,
+      o.order_number,
+      o.client_name,
+      o.packaging_mode,
+      ...o.items.flatMap(i => [i.reference_name, i.color]),
+    ));
   }, [orders, search]);
 
   // ── Agrupamento por janela de pickup (semana ISO + Ter/Sex) ────────────────
@@ -340,15 +346,14 @@ export default function OrderPickingPage() {
       )}
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por PV ou cliente..."
-          className="pl-9"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por PV, cliente, referência, cor…"
+        resultCount={searchFiltered.length}
+        totalCount={orders.length}
+      />
 
       {/* Table */}
       {isLoading ? (
@@ -357,11 +362,24 @@ export default function OrderPickingPage() {
         </div>
       ) : filtered.length === 0 ? (
         <Panel flush>
-          <EmptyState
-            icon={CheckCircle2}
-            title="Nenhum pedido aguardando expedição"
-            description="Todos os pedidos finalizados foram despachados."
-          />
+          {search.trim() ? (
+            <EmptyState
+              size="sm"
+              icon={Search}
+              title={`Nenhum resultado para "${search}"`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Limpar busca
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={CheckCircle2}
+              title="Nenhum pedido aguardando expedição"
+              description="Todos os pedidos finalizados foram despachados."
+            />
+          )}
         </Panel>
       ) : (
         <Panel

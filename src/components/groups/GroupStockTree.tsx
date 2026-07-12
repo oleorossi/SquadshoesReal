@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react';
 import {
-  CaretDown, CaretRight, Package, PencilSimple as Pencil, Plus, Warning,
+  CaretDown, CaretRight, MagnifyingGlass, Package, PencilSimple as Pencil, Plus, Warning,
   Stack as Layers, Folder, FolderOpen,
 } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { GroupStockRollup } from '@/hooks/useGroupOrganization';
 import { buildGroupMetrics, buildSectorTree, type NodeMetrics } from '@/lib/groupRollup';
 import { sectorLabel } from '@/lib/categoryFromGroup';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
 export type ProductLite = {
@@ -33,6 +35,8 @@ interface Props {
   onEditItem?: (item: ProductLite) => void;
   onAddItem?: (group: ProductGroup) => void;
   filter?: string;
+  /** Limpa a busca do host — usado no empty state de resultado zero. */
+  onClearFilter?: () => void;
 }
 
 /** Grade das linhas de grupo/família (setor tem layout próprio de card). */
@@ -164,7 +168,7 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
 }
 
 export default function GroupStockTree(props: Props) {
-  const { groups, products, rollups, perm, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter } = props;
+  const { groups, products, rollups, perm, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter, onClearFilter } = props;
 
   const { byGroup, bySector } = useMemo(() => buildGroupMetrics(groups, rollups), [groups, rollups]);
   const sectorTree = useMemo(() => buildSectorTree(groups), [groups]);
@@ -199,12 +203,11 @@ export default function GroupStockTree(props: Props) {
     return out;
   }, [groups, products]);
 
-  const f = (filter ?? '').trim().toLowerCase();
+  const f = (filter ?? '').trim();
   const leafMatches = (g: ProductGroup): boolean => {
     if (!f) return true;
-    if (g.name.toLowerCase().includes(f)) return true;
     const items = itemsByGroup.get(g.id) ?? [];
-    return items.some(p => (p.name ?? '').toLowerCase().includes(f) || (p.sku ?? '').toLowerCase().includes(f));
+    return searchMatchesAllTerms(f, g.name, ...items.flatMap(p => [p.name, p.sku, p.color]));
   };
 
   const [collapsedSectors, setCollapsedSectors] = useState<Set<string>>(new Set());
@@ -301,9 +304,8 @@ export default function GroupStockTree(props: Props) {
     );
   };
 
-  return (
-    <div className="flex flex-col gap-4">
-      {sectorTree.map(node => {
+  const sectorBlocks = sectorTree
+    .map(node => {
         const sm = bySector.get(node.sector) ?? { itemCount: 0, value: 0, belowMin: 0 };
         const visibleLoose = f ? node.looseLeaves.filter(leafMatches) : node.looseLeaves;
         const visibleFamilies = f ? node.families.filter(fam => fam.children.some(leafMatches)) : node.families;
@@ -351,7 +353,23 @@ export default function GroupStockTree(props: Props) {
             )}
           </div>
         );
-      })}
+    })
+    .filter(Boolean);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {sectorBlocks.length > 0 ? (
+        sectorBlocks
+      ) : f ? (
+        <EmptyState
+          size="sm"
+          icon={MagnifyingGlass}
+          title={`Nenhum resultado para "${f}"`}
+          action={onClearFilter ? (
+            <Button variant="outline" size="sm" onClick={onClearFilter}>Limpar busca</Button>
+          ) : undefined}
+        />
+      ) : null}
     </div>
   );
 }

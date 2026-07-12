@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Plus, Sparkle, MagnifyingGlass as Search, ArrowsLeftRight, Trash as Trash2, FolderOpen } from '@phosphor-icons/react';
+import { Plus, Sparkle, ArrowsLeftRight, Trash as Trash2, FolderOpen } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
@@ -56,7 +56,12 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const [moveOpen, setMoveOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [selectedLeafIds, setSelectedLeafIds] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
+  // ?q= REATIVO: o ⌘K navega pra /grupos?q=<nome> e a tela pode já estar aberta
+  // (AppLayout keia só por pathname — sem remontagem).
+  const [searchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [search, setSearch] = useState(urlQ);
+  useEffect(() => { if (urlQ) setSearch(urlQ); }, [urlQ]);
   const [debouncedSearch] = useDebounce(search, 300);
   const [addOpen, setAddOpen] = useState(false);
   const [addGroupId, setAddGroupId] = useState<string | undefined>(undefined);
@@ -117,15 +122,13 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
     <div className="space-y-4">
       {/* Barra: busca + ações */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar grupo, material ou SKU…"
-            className="h-9 pl-9"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar grupo, material ou SKU…"
+          className="flex-1 min-w-[200px]"
+          inputClassName="h-9"
+        />
         {extraActions}
         {perm.canCreate && (
           <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setSuggestOpen(true)}>
@@ -164,6 +167,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             rollups={rollups}
             perm={perm}
             filter={debouncedSearch}
+            onClearFilter={() => setSearch('')}
             selectedLeafIds={selectedLeafIds}
             onToggleLeaf={toggleLeaf}
             onEdit={setEditGroup}

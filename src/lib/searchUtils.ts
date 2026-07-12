@@ -40,27 +40,34 @@ export function searchMatchesAny(query: string | null | undefined, ...haystacks:
 }
 
 /**
- * Divide a query em termos separados por "/" (refinamento AND).
- * "stx / alcineu" → ["stx", "alcineu"]. Faz trim e descarta vazios.
+ * Divide a query em termos de refinamento AND — separados por "/", espaço OU
+ * vírgula. "stx / alcineu" → ["stx", "alcineu"]; "napa tamara" → ["napa",
+ * "tamara"]; "op-1,op-2" → ["op-1", "op-2"]. Faz trim e descarta vazios.
  *
- * ⚠ O "/" precisa ser dividido ANTES de normalizar — normalizeForSearch remove
- * "/" (não-alfanumérico), então normalizar primeiro juntaria os termos.
+ * Espaço virou separador em 2026-07-11 (spec melhorias-busca-sistema) pra
+ * alinhar com o comportamento server-side de searchNormOrFilter — antes
+ * "napa tamara" era colado em "napatamara" e só achava a sequência exata.
+ * Vírgula preservada porque telas antigas (WaveBuilder, Imprimir Fichas)
+ * ensinavam "separe por vírgula" — sem ela, "op1,op2" colaria num termo só.
+ *
+ * ⚠ O split precisa acontecer ANTES de normalizar — normalizeForSearch remove
+ * "/", espaço e vírgula (não-alfanuméricos), então normalizar primeiro juntaria
+ * os termos.
  * ⚠ O "/" no INÍCIO (ex.: "/lng" = atalho de grupo econômico) é tratado à parte
  * por quem chama, ANTES de usar este helper.
  */
 export function splitSearchTerms(query: string | null | undefined): string[] {
-  return (query ?? '').split('/').map(t => t.trim()).filter(Boolean);
+  return (query ?? '').split(/[/,\s]+/).map(t => t.trim()).filter(Boolean);
 }
 
 /**
- * Refinamento por "/": cada termo separado por "/" precisa casar com ALGUM dos
- * campos. AND entre termos, OR entre campos. Ex.: "stx / alcineu" exige um campo
- * contendo "stx" E um campo contendo "alcineu" (referência + cliente, em
- * qualquer ordem).
+ * Refinamento AND por espaço ou "/": cada termo precisa casar com ALGUM dos
+ * campos. AND entre termos, OR entre campos. Ex.: "stx alcineu" (ou
+ * "stx / alcineu") exige um campo contendo "stx" E um campo contendo "alcineu"
+ * (referência + cliente, em qualquer ordem).
  *
- * Sem "/", comporta-se EXATAMENTE como searchMatchesAny (1 termo só) — então
- * trocar searchMatchesAny por este helper não muda buscas existentes, só
- * habilita o "/". Query vazia → true (não filtra).
+ * Com 1 termo só, comporta-se EXATAMENTE como searchMatchesAny. Mesma semântica
+ * do lado server (searchNormOrFilter). Query vazia → true (não filtra).
  */
 export function searchMatchesAllTerms(query: string | null | undefined, ...haystacks: Array<string | null | undefined>): boolean {
   const terms = splitSearchTerms(query);
@@ -70,6 +77,23 @@ export function searchMatchesAllTerms(query: string | null | undefined, ...hayst
     const t = normalizeForSearch(term);
     return t === '' || normHaystacks.some(h => h.includes(t));
   });
+}
+
+/**
+ * Remove a coluna gerada `search_norm` de um payload de INSERT/UPDATE.
+ *
+ * `search_norm` é GENERATED ALWAYS — o Postgres rejeita qualquer write que a
+ * inclua. Payloads construídos por spread de uma row SELECTada (clone/edição)
+ * carregam a coluna sem querer. Use este strip em toda camada de mutation que
+ * recebe objeto opaco (`insert(form)`, `update(payload)`), pra qualquer tabela
+ * com search_norm (ver migrations 20260613120000 e 20260911180000).
+ */
+export function stripSearchNorm<T>(payload: T): T {
+  if (payload && typeof payload === 'object' && 'search_norm' in (payload as Record<string, unknown>)) {
+    const { search_norm: _sn, ...rest } = payload as Record<string, unknown>;
+    return rest as T;
+  }
+  return payload;
 }
 
 /**
@@ -90,7 +114,7 @@ export function searchMatchesAllTerms(query: string | null | undefined, ...hayst
  */
 export function searchNormOrFilter(query: string | null | undefined, column = 'search_norm'): string {
   const tokens = (query ?? '')
-    .split(/[/\s]+/)
+    .split(/[/,\s]+/)
     .map(normalizeForSearch)
     .filter(Boolean);
   if (tokens.length === 0) return '';

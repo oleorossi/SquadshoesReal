@@ -2,7 +2,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo, useEffect } from 'react';
 import { Gear as Settings, UserCheck, UserMinus as UserX, Shield, CircleNotch as Loader2, CaretDown as ChevronDown, CaretUp as ChevronUp, Users, Eye, PencilSimple as Pencil, Lock, LockOpen as Unlock, MagnifyingGlass as Search, Envelope as Mail, Calendar, ShieldCheck, ShieldWarning as ShieldAlert, Crown, Briefcase, Factory, Warehouse, Storefront as Store, BookOpen, Receipt, UserGear as UserCog, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -198,13 +199,14 @@ function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles
 
   const total = Object.values(grouped).reduce((s, items) => s + items.length, 0);
   const grantedCount = Object.values(grants).filter(a => a.view).length;
-  const q = search.trim().toLowerCase();
+  const q = search.trim();
   const groupsToRender = Object.entries(grouped)
     .map(([group, items]) => [
       group,
-      q ? items.filter(it => it.label.toLowerCase().includes(q) || it.path.toLowerCase().includes(q)) : items,
+      q ? items.filter(it => searchMatchesAllTerms(q, it.label, it.path)) : items,
     ] as const)
     .filter(([, items]) => items.length > 0);
+  const filteredScreenCount = groupsToRender.reduce((s, [, items]) => s + items.length, 0);
 
   return (
     <div className="space-y-5">
@@ -240,10 +242,16 @@ function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles
 
       {/* Busca + legenda das colunas */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tela ou rota..." className="pl-8 h-9 text-xs" />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por tela ou rota…"
+          resultCount={filteredScreenCount}
+          totalCount={total}
+          disableSlashFocus
+          className="w-full max-w-xs"
+          inputClassName="h-9 text-xs"
+        />
         <div className="hidden sm:flex items-center gap-1 pr-0.5">
           <span className="inline-flex w-8 items-center justify-center text-[10px] uppercase tracking-wide text-muted-foreground/50" title="Marcar Ver+Criar+Editar+Excluir na linha">Tudo</span>
           {ACTION_META.map(a => (
@@ -257,7 +265,10 @@ function UserPermissionsPanel({ userId, userRoles }: { userId: string; userRoles
       {/* Áreas */}
       <div className="space-y-3">
         {groupsToRender.length === 0 && (
-          <p className="text-xs text-muted-foreground py-6 text-center">Nenhuma tela para "{search}".</p>
+          <div className="flex flex-col items-center gap-2 py-6">
+            <p className="text-xs text-muted-foreground">Nenhum resultado para "{search}"</p>
+            <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+          </div>
         )}
         {groupsToRender.map(([group, items]) => {
           const grantedInGroup = items.filter(it => grants[it.path]?.view).length;
@@ -575,8 +586,7 @@ export default function SettingsPage() {
   const getUserRoles = (userId: string) => allRoles.filter(r => r.user_id === userId);
 
   const filteredProfiles = profiles.filter(p =>
-    p.email.toLowerCase().includes(search.toLowerCase()) ||
-    p.full_name.toLowerCase().includes(search.toLowerCase())
+    searchMatchesAllTerms(search, p.full_name, p.email)
   );
 
   const pendingCount = profiles.filter(p => !p.approved).length;
@@ -646,15 +656,14 @@ export default function SettingsPage() {
           <TabsContent value="users" className="space-y-4 mt-4">
             {/* Search + Create */}
             <div className="flex items-center gap-3">
-              <div className="relative max-w-sm flex-1">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nome ou e-mail..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por nome ou e-mail…"
+                resultCount={filteredProfiles.length}
+                totalCount={profiles.length}
+                className="max-w-sm flex-1"
+              />
               <Button onClick={() => setShowCreateUser(true)} className="gap-1.5">
                 <Users className="h-4 w-4" />
                 Criar Usuário
@@ -677,7 +686,16 @@ export default function SettingsPage() {
               ))}
               {filteredProfiles.length === 0 && (
                 <Panel flush>
-                  <EmptyState icon={Users} title="Nenhum usuário encontrado" />
+                  {search.trim() ? (
+                    <EmptyState
+                      size="sm"
+                      icon={Search}
+                      title={`Nenhum resultado para "${search}"`}
+                      action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                    />
+                  ) : (
+                    <EmptyState icon={Users} title="Nenhum usuário encontrado" />
+                  )}
                 </Panel>
               )}
             </div>

@@ -42,6 +42,8 @@ import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
 import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 
 
 const LABEL_SIZES = [
@@ -753,8 +755,12 @@ export function LabelProductionTab() {
 
   const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup);
   const filtered = groupedRefs.filter((g) =>
-    // "/" = refinamento AND (ex.: "stx / alcineu")
-    searchMatchesAllTerms(search, g.refName, g.refCode, g.clientName, g.economicGroupName, g.saleOrderNumber)
+    // espaço ou "/" = refinamento AND (ex.: "stx alcineu")
+    searchMatchesAllTerms(
+      search,
+      g.refName, g.refCode, g.clientName, g.economicGroupName, g.saleOrderNumber,
+      g.clientOrderNumber, g.colors.join(' '), g.orderNumbers.join(' '), g.strapsLabel,
+    )
   );
 
   const groupedByEconomicGroup = useMemo(() => {
@@ -1486,10 +1492,15 @@ export function LabelProductionTab() {
       <Card className="border-primary/10 shadow-sm overflow-hidden">
         <CardHeader className="bg-muted/30 py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar modelo, cor ou cliente..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
-            </div>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar por referência, cor, cliente, PV ou OP…"
+              resultCount={filtered.length}
+              totalCount={groupedRefs.length}
+              className="flex-1 max-w-sm"
+              inputClassName="h-9"
+            />
             <div className="flex items-center gap-2">
               {printMode === 'batch' && (
                 <>
@@ -1659,10 +1670,19 @@ export function LabelProductionTab() {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 && <div className="p-20 text-center text-muted-foreground border-2 border-dashed rounded-xl flex flex-col items-center gap-4">
-              <Search className="h-8 w-8 opacity-20" />
-              <p className="text-sm font-medium">Nenhuma referência encontrada para os filtros atuais.</p>
-            </div>}
+            {filtered.length === 0 && (search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${search}"`}
+                action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+              />
+            ) : (
+              <div className="p-20 text-center text-muted-foreground border-2 border-dashed rounded-xl flex flex-col items-center gap-4">
+                <Search className="h-8 w-8 opacity-20" />
+                <p className="text-sm font-medium">Nenhuma referência encontrada para os filtros atuais.</p>
+              </div>
+            ))}
           </div>
         </TabsContent>
 

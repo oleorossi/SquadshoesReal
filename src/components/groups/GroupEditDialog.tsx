@@ -30,7 +30,9 @@ import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface GroupEditDialogProps {
   open: boolean;
@@ -105,12 +107,14 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
   const [saving, setSaving] = useState(false);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
-  const available = useMemo(() => {
-    const q = normalizeForSearch(search);
-    return allProducts
-      .filter(p => p.group_id !== groupId && p.active)
-      .filter(p => !q || normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q) || normalizeForSearch(p.category).includes(q));
-  }, [allProducts, groupId, search]);
+  const availableBase = useMemo(
+    () => allProducts.filter(p => p.group_id !== groupId && p.active),
+    [allProducts, groupId],
+  );
+  const available = useMemo(
+    () => availableBase.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color)),
+    [availableBase, search],
+  );
 
   const toggle = (id: string) => {
     setSelected(prev => {
@@ -151,17 +155,30 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
         <DialogDescription>Selecione produtos para incluir no grupo.</DialogDescription>
         </DialogHeader>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input ref={searchRef} placeholder="Buscar item..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <SearchInput
+          ref={searchRef}
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nome, SKU, categoria ou cor…"
+          resultCount={available.length}
+          totalCount={availableBase.length}
+        />
 
         <ScrollArea className="flex-1 min-h-0 max-h-[400px] -mx-6 px-6">
           {available.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Nenhum item disponível</p>
-            </div>
+            search ? (
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${search}"`}
+                action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+              />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Nenhum item disponível</p>
+              </div>
+            )
           ) : (
             <div className="space-y-1">
               {available.map(p => (

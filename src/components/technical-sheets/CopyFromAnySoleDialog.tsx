@@ -1,18 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Copy, MagnifyingGlass as Search, CircleNotch as Loader2, Warning as AlertTriangle, Footprints, Calendar } from '@phosphor-icons/react';
+import { Copy, MagnifyingGlass, CircleNotch as Loader2, Warning as AlertTriangle, Footprints, Calendar } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type SoleWithSpecs = {
   id: string;
@@ -57,16 +58,12 @@ export function CopyFromAnySoleDialog({
     },
   });
 
+  const baseList = useMemo(() => soles.filter(s => s.id !== targetSoleId), [soles, targetSoleId]);
+
   const filtered = useMemo(() => {
-    const list = soles.filter(s => s.id !== targetSoleId);
-    if (!search.trim()) return list;
-    const q = normalizeForSearch(search);
-    return list.filter(s =>
-      normalizeForSearch(s.name).includes(q) ||
-      normalizeForSearch(s.color).includes(q) ||
-      normalizeForSearch(s.sku).includes(q),
-    );
-  }, [soles, search, targetSoleId]);
+    if (!search.trim()) return baseList;
+    return baseList.filter(s => searchMatchesAllTerms(search, s.name, s.color, s.sku));
+  }, [baseList, search]);
 
   const handleCopy = async () => {
     if (!selectedId) return;
@@ -131,15 +128,14 @@ export function CopyFromAnySoleDialog({
           </div>
         )}
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome, cor ou SKU…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nome, cor ou SKU…"
+          resultCount={filtered.length}
+          totalCount={baseList.length}
+          inputClassName="h-9"
+        />
 
         <div className="space-y-2 max-h-[400px] overflow-y-auto">
           {isLoading ? (
@@ -147,13 +143,26 @@ export function CopyFromAnySoleDialog({
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-2">
-              <Footprints className="h-8 w-8 opacity-30" />
-              <p className="text-sm">Nenhum solado com specs disponíveis.</p>
-              <p className="text-xs">
-                Cadastre specs em algum solado primeiro pra usá-lo como base.
-              </p>
-            </div>
+            search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-2">
+                <Footprints className="h-8 w-8 opacity-30" />
+                <p className="text-sm">Nenhum solado com specs disponíveis.</p>
+                <p className="text-xs">
+                  Cadastre specs em algum solado primeiro pra usá-lo como base.
+                </p>
+              </div>
+            )
           ) : (
             filtered.map(sole => (
               <button

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 export type AuditLogEntry = {
   id: string;
@@ -37,12 +38,9 @@ export function useAuditLog(search?: string, enabled = true) {
       let results = (data || []) as unknown as AuditLogEntry[];
 
       if (search && search.trim()) {
-        const q = search.toLowerCase();
-        results = results.filter(
-          (r) =>
-            r.product_name?.toLowerCase().includes(q) ||
-            r.product_sku?.toLowerCase().includes(q) ||
-            r.user_email?.toLowerCase().includes(q)
+        // Motor padrão do sistema: acento/caixa ignorados, espaço/"/" = AND.
+        results = results.filter((r) =>
+          searchMatchesAllTerms(search, r.product_name, r.product_sku, r.user_email),
         );
       }
 

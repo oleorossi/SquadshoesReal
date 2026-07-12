@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
-import { MagnifyingGlass as Search, X, Tag, Hash, Stack as Layers } from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
+import { MagnifyingGlass as Search, Tag, Hash, Stack as Layers } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
@@ -117,10 +117,7 @@ function SmartSearchInner({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open || flatList.length === 0) {
-      if (e.key === 'Escape' && value) {
-        e.preventDefault();
-        onChange('');
-      }
+      // Esc com popover fechado: o SearchInput limpa por conta própria.
       return;
     }
     if (e.key === 'ArrowDown') {
@@ -144,29 +141,16 @@ function SmartSearchInner({
   return (
     <Popover open={showPopover} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <div className={cn('relative', className)}>
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            ref={inputRef}
-            value={value}
-            onChange={(e) => { onChange(e.target.value); setOpen(true); setActiveIdx(-1); }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            className="pl-9 pr-9"
-            autoComplete="off"
-          />
-          {value && (
-            <button
-              type="button"
-              onClick={() => { onChange(''); inputRef.current?.focus(); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label="Limpar busca"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        {/* Shell visual padrão do sistema (lupa + × + hint) — spec melhorias-busca-sistema */}
+        <SearchInput
+          ref={inputRef}
+          className={className}
+          value={value}
+          onChange={(v) => { onChange(v); setOpen(true); setActiveIdx(-1); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+        />
       </PopoverTrigger>
       <PopoverContent
         align="start"

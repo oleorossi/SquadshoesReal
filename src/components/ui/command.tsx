@@ -4,14 +4,26 @@ import { Command as CommandPrimitive } from "cmdk";
 import { MagnifyingGlass as Search } from '@phosphor-icons/react';
 
 import { cn } from "@/lib/utils";
+import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+
+/**
+ * Filtro default de TODOS os comboboxes cmdk do sistema: mesma normalização
+ * das buscas de tela (acento/caixa/pontuação ignorados, espaço e "/" = termos
+ * AND sobre value+keywords) — spec melhorias-busca-sistema R3. O filtro nativo
+ * do cmdk é sensível a acento ("tamara" não achava "TÂMARA"). Consumidores
+ * podem sobrescrever via prop `filter` ou desligar com `shouldFilter={false}`.
+ */
+const normalizedFilter: NonNullable<React.ComponentPropsWithoutRef<typeof CommandPrimitive>['filter']> =
+  (value, search, keywords) => (searchMatchesAllTerms(search, value, ...(keywords ?? [])) ? 1 : 0);
 
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>
->(({ className, ...props }, ref) => (
+>(({ className, filter, ...props }, ref) => (
   <CommandPrimitive
     ref={ref}
+    filter={filter ?? normalizedFilter}
     className={cn(
       "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
       className,

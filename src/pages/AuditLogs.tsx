@@ -1,11 +1,11 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { ClockCounterClockwise as History, MagnifyingGlass as Search, Funnel as Filter, CheckCircle as CheckCircle2, XCircle, Info, Calendar, User, Database, ArrowRight } from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
+import { ClockCounterClockwise as History, CheckCircle as CheckCircle2, XCircle, Calendar, User, ArrowRight } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -13,7 +13,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchNormOrFilter } from '@/lib/searchUtils';
 
 // Mapas para humanizar recursos e ações vindas direto do banco.
 // O log original guarda os nomes em snake_case (ex: manual_billing_override_create);
@@ -80,47 +80,58 @@ export default function AuditLogs() {
   const [resourceFilter, setResourceFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
 
-  const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['system-audit-logs'],
+  // Busca SERVER-SIDE via search_norm (spec melhorias-busca-sistema R6):
+  // audit_logs já passa de 1000 linhas — filtrar só o que foi carregado
+  // escondia registros que existem. O banco filtra (acento/caixa/espaço-AND
+  // idênticos ao client, mig 20260911180000) e devolve a página relevante.
+  const { data: logs = [], isLoading, isFetching } = useQuery({
+    queryKey: ['system-audit-logs', search.trim(), resourceFilter, actionFilter],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       // Inclui o nome do usuário por LEFT JOIN com profiles, quando disponível,
       // para não exibir só o UUID truncado na tabela.
-      const { data, error } = await supabase
+      let q = supabase
         .from('audit_logs')
         .select('*, user:profiles(full_name, email)')
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(500);
+      if (resourceFilter !== 'all') q = q.eq('resource', resourceFilter);
+      if (actionFilter !== 'all') q = q.eq('action', actionFilter);
+      const orFilter = searchNormOrFilter(search);
+      if (orFilter) q = q.or(orFilter) as typeof q;
+      const { data, error } = await q;
       if (error) throw error;
       return data;
     },
   });
 
+  // Facetas (recursos/ações) vêm de uma consulta própria SEM busca — senão as
+  // opções dos dropdowns sumiriam enquanto o usuário digita.
+  const { data: facets = [] } = useQuery({
+    queryKey: ['system-audit-logs-facets'],
+    staleTime: 300_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('resource, action')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const uniqueResources = useMemo(() => {
-    const set = new Set(logs.map((l: any) => l.resource));
+    const set = new Set(facets.map((l: any) => l.resource));
     return Array.from(set).filter(Boolean).sort();
-  }, [logs]);
+  }, [facets]);
 
   const uniqueActions = useMemo(() => {
-    const set = new Set(logs.map((l: any) => l.action));
+    const set = new Set(facets.map((l: any) => l.action));
     return Array.from(set).filter(Boolean).sort();
-  }, [logs]);
+  }, [facets]);
 
-  const filteredLogs = useMemo(() => {
-    return logs.filter((l: any) => {
-      if (resourceFilter !== 'all' && l.resource !== resourceFilter) return false;
-      if (actionFilter !== 'all' && l.action !== actionFilter) return false;
-      if (search) {
-        const q = normalizeForSearch(search);
-        return (
-          normalizeForSearch(l.resource).includes(q) ||
-          normalizeForSearch(l.action).includes(q) ||
-          normalizeForSearch(l.user_id).includes(q) ||
-          (JSON.stringify(l.new_data || {})).toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-  }, [logs, search, resourceFilter, actionFilter]);
+  const filteredLogs = logs;
 
   return (
     <AppLayout>
@@ -131,7 +142,7 @@ export default function AuditLogs() {
           description="Rastreamento completo de todas as alterações e ações realizadas no sistema."
           actions={
             <Badge variant="outline" className="px-3 py-1">
-              {filteredLogs.length} {filteredLogs.length === 1 ? 'registro exibido' : 'registros exibidos'}
+              {isFetching ? 'Buscando…' : `${filteredLogs.length} ${filteredLogs.length === 1 ? 'registro exibido' : 'registros exibidos'}`}
             </Badge>
           }
         />
@@ -141,15 +152,13 @@ export default function AuditLogs() {
           title="Filtros de Busca"
         >
           <div className="flex flex-wrap gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por recurso, ação ou dados..."
-                className="pl-9"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
+            <SearchInput
+              className="flex-1 min-w-[200px]"
+              placeholder="Buscar por recurso, ação, usuário ou dados…"
+              value={search}
+              onChange={setSearch}
+              debounceMs={300}
+            />
             <Select value={resourceFilter} onValueChange={setResourceFilter}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Recurso" />
@@ -197,8 +206,9 @@ export default function AuditLogs() {
                   <TableCell colSpan={6} className="p-0">
                     <EmptyState
                       icon={History}
-                      title="Nenhum registro encontrado"
-                      description="Nenhum registro encontrado para os filtros selecionados."
+                      title={search.trim() ? `Nenhum resultado para "${search.trim()}"` : 'Nenhum registro encontrado'}
+                      description={search.trim() ? 'A busca varre TODOS os logs no banco — confira o termo ou limpe a busca.' : 'Nenhum registro encontrado para os filtros selecionados.'}
+                      action={search.trim() ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
                     />
                   </TableCell>
                 </TableRow>

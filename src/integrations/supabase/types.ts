@@ -368,6 +368,7 @@ export type Database = {
           old_data: Json | null
           resource: string
           resource_id: string | null
+          search_norm: string | null
           success: boolean | null
           timestamp: string | null
           user_agent: string | null
@@ -383,6 +384,7 @@ export type Database = {
           old_data?: Json | null
           resource: string
           resource_id?: string | null
+          search_norm?: string | null
           success?: boolean | null
           timestamp?: string | null
           user_agent?: string | null
@@ -398,6 +400,7 @@ export type Database = {
           old_data?: Json | null
           resource?: string
           resource_id?: string | null
+          search_norm?: string | null
           success?: boolean | null
           timestamp?: string | null
           user_agent?: string | null
@@ -2250,6 +2253,7 @@ export type Database = {
           notes: string | null
           payment_days: number
           phone: string | null
+          search_norm: string | null
           service_type: string | null
           state: string | null
           trade_name: string | null
@@ -2268,6 +2272,7 @@ export type Database = {
           notes?: string | null
           payment_days?: number
           phone?: string | null
+          search_norm?: string | null
           service_type?: string | null
           state?: string | null
           trade_name?: string | null
@@ -2286,6 +2291,7 @@ export type Database = {
           notes?: string | null
           payment_days?: number
           phone?: string | null
+          search_norm?: string | null
           service_type?: string | null
           state?: string | null
           trade_name?: string | null
@@ -4253,6 +4259,7 @@ export type Database = {
           receives_vt: boolean
           role: string | null
           salary: number
+          search_norm: string | null
           termination_date: string | null
           updated_at: string
           whatsapp: string | null
@@ -4290,6 +4297,7 @@ export type Database = {
           receives_vt?: boolean
           role?: string | null
           salary?: number
+          search_norm?: string | null
           termination_date?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -4327,6 +4335,7 @@ export type Database = {
           receives_vt?: boolean
           role?: string | null
           salary?: number
+          search_norm?: string | null
           termination_date?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -4801,6 +4810,7 @@ export type Database = {
           reconciled_at: string | null
           reference_id: string | null
           reference_type: string | null
+          search_norm: string | null
           sku: string | null
           status: string
           type: string
@@ -4827,6 +4837,7 @@ export type Database = {
           reconciled_at?: string | null
           reference_id?: string | null
           reference_type?: string | null
+          search_norm?: string | null
           sku?: string | null
           status?: string
           type?: string
@@ -4853,6 +4864,7 @@ export type Database = {
           reconciled_at?: string | null
           reference_id?: string | null
           reference_type?: string | null
+          search_norm?: string | null
           sku?: string | null
           status?: string
           type?: string
@@ -8435,6 +8447,7 @@ export type Database = {
           provider_nfe_id: string | null
           ref_nfe: string
           sale_order_id: string | null
+          search_norm: string | null
           serie: string | null
           status: string
           tp_amb_sefaz: string | null
@@ -8465,6 +8478,7 @@ export type Database = {
           provider_nfe_id?: string | null
           ref_nfe?: string
           sale_order_id?: string | null
+          search_norm?: string | null
           serie?: string | null
           status?: string
           tp_amb_sefaz?: string | null
@@ -8495,6 +8509,7 @@ export type Database = {
           provider_nfe_id?: string | null
           ref_nfe?: string
           sale_order_id?: string | null
+          search_norm?: string | null
           serie?: string | null
           status?: string
           tp_amb_sefaz?: string | null
@@ -9188,6 +9203,7 @@ export type Database = {
           responsible: string | null
           sale_order_id: string
           sale_order_item_id: string | null
+          search_norm: string | null
           standard_cost_per_pair: number | null
           status: string
           total_production_cost: number | null
@@ -9230,6 +9246,7 @@ export type Database = {
           responsible?: string | null
           sale_order_id: string
           sale_order_item_id?: string | null
+          search_norm?: string | null
           standard_cost_per_pair?: number | null
           status?: string
           total_production_cost?: number | null
@@ -9272,6 +9289,7 @@ export type Database = {
           responsible?: string | null
           sale_order_id?: string
           sale_order_item_id?: string | null
+          search_norm?: string | null
           standard_cost_per_pair?: number | null
           status?: string
           total_production_cost?: number | null
@@ -11030,6 +11048,7 @@ export type Database = {
           pairs_per_box_master: number | null
           parent_group_id: string | null
           purchase_multiple: number | null
+          search_norm: string | null
           sector: string
           shared_specs: boolean
           silk_url: string | null
@@ -11066,6 +11085,7 @@ export type Database = {
           pairs_per_box_master?: number | null
           parent_group_id?: string | null
           purchase_multiple?: number | null
+          search_norm?: string | null
           sector: string
           shared_specs?: boolean
           silk_url?: string | null
@@ -11102,6 +11122,7 @@ export type Database = {
           pairs_per_box_master?: number | null
           parent_group_id?: string | null
           purchase_multiple?: number | null
+          search_norm?: string | null
           sector?: string
           shared_specs?: boolean
           silk_url?: string | null
@@ -14119,6 +14140,7 @@ export type Database = {
           received_date: string | null
           reference_order_id: string | null
           rejection_reason: string | null
+          search_norm: string | null
           source_pv_ids: string[] | null
           source_type: string
           status: string
@@ -14148,6 +14170,7 @@ export type Database = {
           received_date?: string | null
           reference_order_id?: string | null
           rejection_reason?: string | null
+          search_norm?: string | null
           source_pv_ids?: string[] | null
           source_type?: string
           status?: string
@@ -14177,6 +14200,7 @@ export type Database = {
           received_date?: string | null
           reference_order_id?: string | null
           rejection_reason?: string | null
+          search_norm?: string | null
           source_pv_ids?: string[] | null
           source_type?: string
           status?: string
@@ -15344,8 +15368,10 @@ export type Database = {
           display_order: number
           id: string
           insole_consumption_override: number | null
+          insole_material_group_id: string | null
           insole_material_product_id: string | null
           lining_consumption_override: number | null
+          lining_material_group_id: string | null
           lining_material_product_id: string | null
           material_name: string
           ncm: string | null
@@ -15356,6 +15382,7 @@ export type Database = {
           unit_price_override: number | null
           updated_at: string
           upper_consumption_override: number | null
+          upper_material_group_id: string | null
           upper_material_product_id: string | null
         }
         Insert: {
@@ -15367,8 +15394,10 @@ export type Database = {
           display_order: number
           id?: string
           insole_consumption_override?: number | null
+          insole_material_group_id?: string | null
           insole_material_product_id?: string | null
           lining_consumption_override?: number | null
+          lining_material_group_id?: string | null
           lining_material_product_id?: string | null
           material_name: string
           ncm?: string | null
@@ -15379,6 +15408,7 @@ export type Database = {
           unit_price_override?: number | null
           updated_at?: string
           upper_consumption_override?: number | null
+          upper_material_group_id?: string | null
           upper_material_product_id?: string | null
         }
         Update: {
@@ -15390,8 +15420,10 @@ export type Database = {
           display_order?: number
           id?: string
           insole_consumption_override?: number | null
+          insole_material_group_id?: string | null
           insole_material_product_id?: string | null
           lining_consumption_override?: number | null
+          lining_material_group_id?: string | null
           lining_material_product_id?: string | null
           material_name?: string
           ncm?: string | null
@@ -15402,10 +15434,18 @@ export type Database = {
           unit_price_override?: number | null
           updated_at?: string
           upper_consumption_override?: number | null
+          upper_material_group_id?: string | null
           upper_material_product_id?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "reference_material_variants_insole_material_group_id_fkey"
+            columns: ["insole_material_group_id"]
+            isOneToOne: false
+            referencedRelation: "product_groups"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "reference_material_variants_insole_material_product_id_fkey"
             columns: ["insole_material_product_id"]
             isOneToOne: false
@@ -15483,6 +15523,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reference_material_variants_lining_material_group_id_fkey"
+            columns: ["lining_material_group_id"]
+            isOneToOne: false
+            referencedRelation: "product_groups"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "reference_material_variants_lining_material_product_id_fkey"
             columns: ["lining_material_product_id"]
             isOneToOne: false
@@ -15634,6 +15681,13 @@ export type Database = {
             columns: ["sole_material_product_id"]
             isOneToOne: false
             referencedRelation: "v_soles_with_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_material_variants_upper_material_group_id_fkey"
+            columns: ["upper_material_group_id"]
+            isOneToOne: false
+            referencedRelation: "product_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -16382,7 +16436,6 @@ export type Database = {
           grade: Json | null
           id: string
           item_size: number | null
-          lining_colors: Json | null
           material_variant_id: string | null
           observation: string | null
           product_id: string | null
@@ -16402,7 +16455,6 @@ export type Database = {
           grade?: Json | null
           id?: string
           item_size?: number | null
-          lining_colors?: Json | null
           material_variant_id?: string | null
           observation?: string | null
           product_id?: string | null
@@ -16422,7 +16474,6 @@ export type Database = {
           grade?: Json | null
           id?: string
           item_size?: number | null
-          lining_colors?: Json | null
           material_variant_id?: string | null
           observation?: string | null
           product_id?: string | null
@@ -17557,6 +17608,7 @@ export type Database = {
           receipt_number: string | null
           related_order_id: string | null
           sale_order_id: string | null
+          search_norm: string | null
           sector: string | null
           service_date: string
           service_time: string | null
@@ -17609,6 +17661,7 @@ export type Database = {
           receipt_number?: string | null
           related_order_id?: string | null
           sale_order_id?: string | null
+          search_norm?: string | null
           sector?: string | null
           service_date?: string
           service_time?: string | null
@@ -17661,6 +17714,7 @@ export type Database = {
           receipt_number?: string | null
           related_order_id?: string | null
           sale_order_id?: string | null
+          search_norm?: string | null
           sector?: string | null
           service_date?: string
           service_time?: string | null
@@ -19661,6 +19715,7 @@ export type Database = {
           previous_stock: number
           product_id: string
           quantity: number
+          search_norm: string | null
           unit_price_at_movement: number | null
           user_email: string | null
           user_id: string | null
@@ -19677,6 +19732,7 @@ export type Database = {
           previous_stock?: number
           product_id: string
           quantity?: number
+          search_norm?: string | null
           unit_price_at_movement?: number | null
           user_email?: string | null
           user_id?: string | null
@@ -19693,6 +19749,7 @@ export type Database = {
           previous_stock?: number
           product_id?: string
           quantity?: number
+          search_norm?: string | null
           unit_price_at_movement?: number | null
           user_email?: string | null
           user_id?: string | null
@@ -21438,7 +21495,6 @@ export type Database = {
           lining_consumption_per_size: Json | null
           lining_material: string | null
           lining_material_product_id: string | null
-          lining_materials: Json | null
           max_insole_colors: number
           mesa_daily_capacity: number
           model: string | null
@@ -21566,7 +21622,6 @@ export type Database = {
           lining_consumption_per_size?: Json | null
           lining_material?: string | null
           lining_material_product_id?: string | null
-          lining_materials?: Json | null
           max_insole_colors?: number
           mesa_daily_capacity?: number
           model?: string | null
@@ -21694,7 +21749,6 @@ export type Database = {
           lining_consumption_per_size?: Json | null
           lining_material?: string | null
           lining_material_product_id?: string | null
-          lining_materials?: Json | null
           max_insole_colors?: number
           mesa_daily_capacity?: number
           model?: string | null
@@ -26845,6 +26899,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      component_colors_consistency_report: {
+        Args: never
+        Returns: {
+          check_name: string
+          item_count: number
+          sample: string
+          severity: string
+        }[]
+      }
       compute_material_ready_date: { Args: { p_items: Json }; Returns: Json }
       compute_materials_per_pv: {
         Args: { p_pv_ids: string[] }
@@ -27038,28 +27101,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      debit_stock_for_order:
-        | {
-            Args: { p_order_quantity: number; p_reference_id: string }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_color?: string
-              p_order_quantity: number
-              p_reference_id: string
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_color: string
-              p_order_id: string
-              p_order_quantity: number
-              p_reference_id: string
-            }
-            Returns: undefined
-          }
       debit_strap_materials: {
         Args: {
           p_color: string
@@ -27105,6 +27146,10 @@ export type Database = {
           utilization_pct: number
           week_start: string
         }[]
+      }
+      double_upper_consumption: {
+        Args: { p_sheet_ids: string[] }
+        Returns: number
       }
       duplicate_material_variant_bom: {
         Args: {

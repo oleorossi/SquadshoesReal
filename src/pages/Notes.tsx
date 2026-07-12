@@ -38,7 +38,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import {
   useNoteFolders, useNotes, useCreateNote, useUpdateNote, useDeleteNote,
   useUpsertFolder, useDeleteFolder, buildNoteTree,
@@ -168,14 +169,12 @@ export default function Notes() {
 
   // ── Tree de notas filtrada pelo escopo (pasta + busca) ──
   const noteTree = useMemo<NoteTreeNode[]>(() => {
-    const q = normalizeForSearch(search);
+    const q = search.trim();
     const fid = activeFolderId === NO_FOLDER ? null : (activeFolderId ?? undefined);
 
     if (q) {
       // Busca: ignora hierarquia, mostra flat
-      const flat = notes.filter(n =>
-        normalizeForSearch(n.title).includes(q) || normalizeForSearch(n.content).includes(q),
-      );
+      const flat = notes.filter(n => searchMatchesAllTerms(q, n.title, n.content));
       const scoped = activeFolderId === undefined || activeFolderId === null
         ? flat
         : flat.filter(n => activeFolderId === NO_FOLDER ? !n.folder_id : n.folder_id === activeFolderId);
@@ -472,15 +471,14 @@ export default function Notes() {
         {!sidebarCollapsed && (
         <aside className="border-r border-foreground/10 flex flex-col min-w-0">
           <div className="p-3 border-b border-foreground/10 space-y-2.5">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Buscar nas notas..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-8 pl-8 text-sm"
-              />
-            </div>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar por título ou conteúdo…"
+              resultCount={noteTree.length}
+              totalCount={notes.length}
+              inputClassName="h-8 text-sm"
+            />
             <Button
               onClick={() => handleNewNote()}
               size="sm"
@@ -498,8 +496,9 @@ export default function Notes() {
               <EmptyState
                 size="sm"
                 icon={search ? Search : FileIcon}
-                title={search ? 'Nada encontrado' : 'Nenhuma página aqui'}
+                title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma página aqui'}
                 description={search ? 'Nenhuma nota corresponde à busca.' : 'Clique em "Nova página" para começar.'}
+                action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
               />
             ) : (
               <div

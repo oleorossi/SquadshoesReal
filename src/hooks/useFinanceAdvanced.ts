@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { stripSearchNorm } from '@/lib/searchUtils';
 
 // ─── Chart of Accounts ───
 export function useChartOfAccounts() {
@@ -233,7 +234,7 @@ export function useCreateFinancialEntry() {
       if (!Number.isFinite(entry?.amount) || entry.amount <= 0) throw new Error('Valor do lançamento deve ser um número positivo.');
       const VALID_TYPES = ['receita', 'despesa', 'transferencia', 'ajuste'];
       if (entry?.type && !VALID_TYPES.includes(entry.type)) throw new Error(`Tipo de lançamento inválido: ${entry.type}`);
-      const { error } = await supabase.from('financial_entries').insert(entry);
+      const { error } = await supabase.from('financial_entries').insert(stripSearchNorm(entry));
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['financial_entries'] }); toast.success('Lançamento criado!'); },

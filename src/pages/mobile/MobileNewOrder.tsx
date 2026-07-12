@@ -7,7 +7,10 @@ import { enqueueOrder, saveDraft, loadDraft, deleteDraft } from '@/lib/mobile/of
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
 import { triggerSync } from '@/lib/mobile/syncEngine';
 import { fetchClientPriceList, fetchClientHistory, resolvePrice, type PriceLookup, type ClientHistory } from '@/lib/mobile/clientContext';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 
@@ -126,7 +129,9 @@ export default function MobileNewOrder() {
         .limit(40);
       if (clientSearch.length >= 2) {
         // search_norm (banco) ignora acento/caixa/espaço — "tamara" casa "TÂMARA".
-        q = q.ilike('search_norm', `%${normalizeForSearch(clientSearch)}%`);
+        // searchNormOrFilter tokeniza por espaço/"/" com AND entre termos.
+        const orFilter = searchNormOrFilter(clientSearch);
+        if (orFilter) q = q.or(orFilter);
       }
       const { data } = await q;
       setClients(data ?? []);
@@ -158,9 +163,12 @@ export default function MobileNewOrder() {
 
   const filteredRefs = useMemo(() => {
     if (!refSearch) return refs;
-    const s = refSearch.toLowerCase();
-    return refs.filter(r => r.name?.toLowerCase().includes(s));
-  }, [refs, refSearch]);
+    return refs.filter(r => searchMatchesAllTerms(
+      refSearch,
+      r.name,
+      ...variants.filter(v => v.reference_id === r.id).map(v => v.color),
+    ));
+  }, [refs, variants, refSearch]);
 
   const totalPairs = items.reduce(
     (s, it) => s + Object.values(it.grade).reduce((a, b) => a + (b || 0), 0),
@@ -301,17 +309,14 @@ export default function MobileNewOrder() {
     return (
       <div className="p-4 space-y-3">
         <h2 className="text-xl font-bold">1 · Cliente</h2>
-        <div className="relative">
-          <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <input
-            type="search"
-            value={clientSearch}
-            onChange={e => setClientSearch(e.target.value)}
-            placeholder="Buscar cliente..."
-            className="w-full pl-10 pr-4 py-3 text-base border-[1.5px] border-foreground/15 rounded-lg bg-card focus:border-foreground focus:outline-none"
-            autoFocus
-          />
-        </div>
+        <SearchInput
+          value={clientSearch}
+          onChange={setClientSearch}
+          placeholder="Buscar por nome, fantasia ou nº do cliente…"
+          inputClassName="h-12 text-base rounded-lg"
+          hideHint
+          autoFocus
+        />
         <ul className="divide-y divide-border">
           {clients.map(c => (
             <li key={c.id}>
@@ -327,9 +332,24 @@ export default function MobileNewOrder() {
             </li>
           ))}
           {clients.length === 0 && (
-            <li className="p-6 text-center text-muted-foreground text-sm">
-              Nenhum cliente encontrado. Digite ao menos 2 letras.
-            </li>
+            clientSearch.trim().length >= 2 ? (
+              <li>
+                <EmptyState
+                  size="sm"
+                  icon={MagnifyingGlass}
+                  title={`Nenhum resultado para "${clientSearch}"`}
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => setClientSearch('')}>
+                      Limpar busca
+                    </Button>
+                  }
+                />
+              </li>
+            ) : (
+              <li className="p-6 text-center text-muted-foreground text-sm">
+                Nenhum cliente encontrado. Digite ao menos 2 letras.
+              </li>
+            )
           )}
         </ul>
       </div>
@@ -411,13 +431,24 @@ export default function MobileNewOrder() {
         {/* Adicionar novo item */}
         <details className="border-[1.5px] border-dashed border-foreground/20 rounded-lg p-3" open={items.length === 0}>
           <summary className="font-bold text-sm cursor-pointer">+ Adicionar referência</summary>
-          <input
-            type="search"
+          <SearchInput
+            className="mt-2"
+            inputClassName="h-9 text-sm"
             value={refSearch}
-            onChange={e => setRefSearch(e.target.value)}
-            placeholder="Buscar referência..."
-            className="w-full mt-2 px-3 py-2 text-sm border rounded"
+            onChange={setRefSearch}
+            placeholder="Buscar referência por nome ou cor…"
+            resultCount={filteredRefs.length}
+            totalCount={refs.length}
+            hideHint
           />
+          {refSearch && filteredRefs.length === 0 && (
+            <div className="mt-2 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span className="truncate">Nenhum resultado para "{refSearch}"</span>
+              <Button variant="outline" size="sm" className="shrink-0" onClick={() => setRefSearch('')}>
+                Limpar busca
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2 mt-2 max-h-64 overflow-y-auto">
             {filteredRefs.slice(0, 30).map(r => {
               const refVariants = variants.filter(v => v.reference_id === r.id);

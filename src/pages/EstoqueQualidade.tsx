@@ -20,7 +20,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/ui/empty-state';
-import { ShieldWarning, MagnifyingGlass as Search, ArrowRight, Trash, LockSimple, CheckCircle, Recycle, Package } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { ShieldWarning, ArrowRight, Trash, LockSimple, CheckCircle, Recycle, Package } from '@phosphor-icons/react';
 import {
   useHeldStock, useProductSearch, useQuarantineHistory, useMoveStockStatus,
   useLotsForRecall, useRecallLot, type StockBucket, type ProductSearchRow, type RecallBuyer,
@@ -63,10 +64,20 @@ function MoveForm() {
         {!selected ? (
           <div className="space-y-2">
             <Label>Produto</Label>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Buscar por nome ou SKU (≥2 letras)" className="pl-8" />
-            </div>
+            <SearchInput
+              value={term}
+              onChange={setTerm}
+              placeholder="Buscar por nome ou SKU (≥2 letras)"
+              debounceMs={300}
+            />
+            {results && results.length === 0 && term.trim().length >= 2 && (
+              <p className="text-xs text-muted-foreground flex items-center gap-2">
+                Nenhum resultado para "{term}"
+                <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setTerm('')}>
+                  Limpar busca
+                </Button>
+              </p>
+            )}
             {results && results.length > 0 && (
               <div className="rounded-md border border-border divide-y divide-border max-h-56 overflow-y-auto">
                 {results.map((p) => (

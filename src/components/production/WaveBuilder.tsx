@@ -11,7 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { todayISO } from '@/lib/date';
-import { CalendarBlank as CalendarDays, Package, Warning as AlertTriangle, Users, CaretDown as ChevronDown, CaretRight as ChevronRight, CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, CircleNotch as Loader2, Wrench, MagnifyingGlass as Search, Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
+import { CalendarBlank as CalendarDays, Package, Warning as AlertTriangle, Users, CaretDown as ChevronDown, CaretRight as ChevronRight, CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, CircleNotch as Loader2, Wrench, MagnifyingGlass, Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { snapToMonday } from '@/lib/isoWeek';
 import { useCreateWave } from '@/hooks/useProductionWaves';
 import {
@@ -266,24 +269,8 @@ export function WaveBuilder({
       .finally(() => setLoading(false));
   }, [open, weekStart]);
 
-  const searchTokens = useMemo(
-    () => search.split(/[,\s]+/).map(t => t.trim().toLowerCase()).filter(Boolean),
-    [search],
-  );
-
   function orderMatchesSearch(o: PendingOrder): boolean {
-    if (searchTokens.length === 0) return true;
-    const cnpjDigits = (o.cnpj ?? '').replace(/\D/g, '');
-    const textFields = [
-      (o.client_name ?? '').toLowerCase(),
-      (o.code ?? '').toLowerCase(),
-      ...o.op_numbers.map(n => n.toLowerCase()),
-    ];
-    return searchTokens.every(token => {
-      const tokenDigits = token.replace(/\D/g, '');
-      if (tokenDigits.length >= 3 && cnpjDigits.includes(tokenDigits)) return true;
-      return textFields.some(f => f.includes(token));
-    });
+    return searchMatchesAllTerms(search, o.client_name, o.code, o.cnpj, ...o.op_numbers);
   }
 
   const clientGroups = useMemo((): ClientGroup[] => {
@@ -312,7 +299,7 @@ export function WaveBuilder({
         return a.client.localeCompare(b.client, 'pt-BR');
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingOrders, selected, conflictIds, searchTokens]);
+  }, [pendingOrders, selected, conflictIds, search]);
 
   function toggleOrder(id: string) {
     if (conflictIds.has(id)) { toast.error('Este pedido já está em uma onda ativa.'); return; }
@@ -426,6 +413,7 @@ export function WaveBuilder({
   }
 
   const selectableCount = pendingOrders.filter(o => !conflictIds.has(o.id)).length;
+  const matchCount = clientGroups.reduce((s, g) => s + g.orders.length, 0);
   const totalPairs = pendingOrders.filter(o => selected.has(o.id)).reduce((s, o) => s + o.total_pairs, 0);
   const hasShortages = materialNeeds.some(n => n.shortage > 0 || (n.base_shortage ?? 0) > 0);
 
@@ -465,15 +453,14 @@ export function WaveBuilder({
                 </div>
               </div>
             </div>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Buscar por razão social, CNPJ, nº pedido, OP… (separe por espaço ou vírgula)"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-9 pl-8 text-sm"
-              />
-            </div>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar por razão social, CNPJ, nº do pedido, OP…"
+              resultCount={matchCount}
+              totalCount={pendingOrders.length}
+              inputClassName="h-9 text-sm"
+            />
 
             {conflictIds.size > 0 && (
               <div className="flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2">
@@ -489,6 +476,13 @@ export function WaveBuilder({
                 <div className="p-3 space-y-2"><Skeleton className="h-8" /><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
               ) : pendingOrders.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground italic">Nenhum pedido pendente para a semana selecionada.</div>
+              ) : clientGroups.length === 0 ? (
+                <EmptyState
+                  size="sm"
+                  icon={MagnifyingGlass}
+                  title={`Nenhum resultado para "${search}"`}
+                  action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                />
               ) : (
                 <div className="divide-y">
                   {clientGroups.map(group => {

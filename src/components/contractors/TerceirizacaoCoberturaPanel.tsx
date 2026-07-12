@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -10,7 +10,7 @@ import {
   MagnifyingGlass as Search, Handshake, CaretRight, Warning, CheckCircle, CircleNotch as Loader2,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
 
 /**
@@ -78,14 +78,15 @@ export function TerceirizacaoCoberturaPanel() {
   );
 
   const rows = useMemo(() => {
-    const q = normalizeForSearch(search);
     return sheets
       .map(s => ({ sheet: s, entries: byRef.get(s.id) || [] }))
       .filter(r => {
         if (onlyGaps && r.entries.length > 0) return false;
-        if (!q) return true;
-        return normalizeForSearch(r.sheet.code || '').includes(q)
-          || normalizeForSearch(r.sheet.name || '').includes(q);
+        return searchMatchesAllTerms(
+          search,
+          r.sheet.code, r.sheet.name,
+          ...r.entries.map(e => e.contractors?.trade_name || e.contractors?.name),
+        );
       });
   }, [sheets, byRef, search, onlyGaps]);
 
@@ -114,10 +115,15 @@ export function TerceirizacaoCoberturaPanel() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[200px] max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Buscar ficha (código ou nome)…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-9" />
-        </div>
+        <SearchInput
+          className="min-w-[200px] max-w-sm flex-1"
+          inputClassName="h-9"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por código, nome da ficha ou contratada…"
+          resultCount={rows.length}
+          totalCount={sheets.length}
+        />
         <Button
           variant={onlyGaps ? 'default' : 'outline'}
           size="sm"
@@ -135,9 +141,11 @@ export function TerceirizacaoCoberturaPanel() {
       ) : rows.length === 0 ? (
         <Panel flush>
           <EmptyState
-            icon={Handshake}
-            title="Nada aqui"
-            description={onlyGaps ? 'Todas as fichas do filtro já têm terceirização configurada.' : 'Nenhuma ficha encontrada para a busca.'}
+            size="sm"
+            icon={search ? Search : Handshake}
+            title={search ? `Nenhum resultado para "${search}"` : 'Nada aqui'}
+            description={onlyGaps ? 'Todas as fichas do filtro já têm terceirização configurada.' : search ? 'Ajuste os termos da busca.' : 'Nenhuma ficha encontrada.'}
+            action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
           />
         </Panel>
       ) : (

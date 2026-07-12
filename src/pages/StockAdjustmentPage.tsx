@@ -6,14 +6,15 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
- import { FloppyDisk as Save, CircleNotch as Loader2, MagnifyingGlass as Search, X, Warning as AlertTriangle, Sliders as SlidersHorizontal, CaretDown as ChevronDown, CaretRight as ChevronRight, ClockCounterClockwise as History } from '@phosphor-icons/react';
+ import { FloppyDisk as Save, CircleNotch as Loader2, X, Warning as AlertTriangle, Sliders as SlidersHorizontal, CaretDown as ChevronDown, CaretRight as ChevronRight, ClockCounterClockwise as History } from '@phosphor-icons/react';
  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
  import StockHistory from "./StockHistory";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from "@/components/ui/empty-state";
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useCan } from '@/hooks/useAccessControl';
 
 interface Product {
@@ -383,14 +384,8 @@ export default function StockAdjustmentPage() {
   }, [visibleGroupOptions, groupFilter]);
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(debouncedSearch);
     return products.filter((p) => {
-      const matchSearch =
-        !q ||
-        normalizeForSearch(p.name).includes(q) ||
-        normalizeForSearch(p.sku).includes(q) ||
-        normalizeForSearch(p.category).includes(q) ||
-        normalizeForSearch(p.color).includes(q);
+      const matchSearch = searchMatchesAllTerms(debouncedSearch, p.name, p.sku, p.category, p.color);
       const matchCategory = categoryFilter === "all" || p.category === categoryFilter;
       const matchGroup = groupFilter === "all" || p.group_id === groupFilter;
       const matchUnit = unitFilter === "all" || p.unit === unitFilter;
@@ -667,20 +662,15 @@ export default function StockAdjustmentPage() {
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-border shrink-0">
         <SlidersHorizontal className="h-4 w-4 text-primary shrink-0" />
 
-        <div className="relative w-52">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Buscar…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por produto, SKU, cor, categoria…"
+          resultCount={filtered.length}
+          totalCount={products.length}
+          className="w-64"
+          inputClassName="h-8 text-sm"
+        />
 
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="h-8 w-44 text-sm" title="Grupo Pai (categoria)">
@@ -880,7 +870,7 @@ export default function StockAdjustmentPage() {
                     {(search || categoryFilter !== 'all' || groupFilter !== 'all' || statusFilter !== 'all') ? (
                       <EmptyState
                         icon={SlidersHorizontal}
-                        title="Nenhum produto bate com os filtros"
+                        title={search ? `Nenhum resultado para "${search}"` : "Nenhum produto bate com os filtros"}
                         description="Ajuste a busca ou os filtros para ver os produtos."
                         action={
                           <Button

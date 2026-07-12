@@ -25,13 +25,14 @@ import { useAllOrderStages, type OrderStage } from '@/hooks/useOrderStages';
 import SectorStageDialog from '@/components/orders/SectorStageDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
 import { SignedImage } from '@/components/ui/signed-image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, MagnifyingGlass as Search,
+  Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, MagnifyingGlass,
   Check, CircleNotch as Loader2, Circle, Minus,
 } from '@phosphor-icons/react';
 
@@ -161,9 +162,8 @@ export default function ProductionFlow({ embedded = false }: { embedded?: boolea
   }, [activeOrders, stagesByOrder, soMap, today]);
 
   const filteredRows = useMemo(() => {
-    const q = normalizeForSearch(search);
-    if (!q) return rows;
-    return rows.filter(r => normalizeForSearch([r.op, r.ref, r.code, r.color, r.client, r.pv].filter(Boolean).join(' ')).includes(q));
+    if (!search.trim()) return rows;
+    return rows.filter(r => searchMatchesAllTerms(search, r.op, r.ref, r.code, r.color, r.client, r.pv));
   }, [rows, search]);
 
   // WIP por setor (cabeçalho de coluna): em andamento + pendente entre as OPs visíveis.
@@ -218,10 +218,15 @@ export default function ProductionFlow({ embedded = false }: { embedded?: boolea
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input className="pl-8 h-9" placeholder="Buscar OP, referência, cliente, PV…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
+        <SearchInput
+          className="flex-1 min-w-[220px] max-w-sm"
+          inputClassName="h-9"
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por OP, referência, cor, cliente, PV…"
+          resultCount={filteredRows.length}
+          totalCount={rows.length}
+        />
         <div className="text-xs text-muted-foreground">
           <span className="font-bold text-foreground tabular-nums">{filteredRows.length}</span> OPs em produção
           {lateCount > 0 && <span className="ml-2 text-destructive">· {lateCount} atrasada{lateCount === 1 ? '' : 's'}</span>}
@@ -264,9 +269,10 @@ export default function ProductionFlow({ embedded = false }: { embedded?: boolea
                 <tr>
                   <td colSpan={SECTORS.length + 2} className="p-0">
                     <EmptyState
-                      icon={Package}
-                      title={search ? 'Nenhuma OP encontrada' : 'Nenhuma OP em produção'}
-                      description={search ? 'Ajuste a busca por OP, referência, cliente ou PV.' : 'Quando houver ordens reservadas ou em produção, elas aparecerão aqui.'}
+                      icon={search ? MagnifyingGlass : Package}
+                      title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma OP em produção'}
+                      description={search ? undefined : 'Quando houver ordens reservadas ou em produção, elas aparecerão aqui.'}
+                      action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
                       size="sm"
                     />
                   </td>

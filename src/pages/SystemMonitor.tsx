@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pulse as Activity, Shield, Database, Cpu, Users, Clock, MagnifyingGlass as Search, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Eye, ArrowsClockwise as RefreshCw, ChartBar as BarChart3, Lightning as Zap, HardDrive, WifiHigh as Wifi } from '@phosphor-icons/react';
@@ -20,7 +20,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const CHART_COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -106,11 +106,8 @@ export default function SystemMonitor() {
     if (auditFilter === 'success') logs = logs.filter((l: any) => l.success !== false);
     if (auditFilter === 'failed') logs = logs.filter((l: any) => l.success === false);
     if (auditSearch.trim()) {
-      const q = auditSearch.toLowerCase();
       logs = logs.filter((l: any) =>
-        normalizeForSearch(l.resource).includes(q) ||
-        normalizeForSearch(l.action).includes(q) ||
-        normalizeForSearch(l.user_id).includes(q)
+        searchMatchesAllTerms(auditSearch, l.resource, l.action, l.user_id)
       );
     }
     return logs;
@@ -235,11 +232,15 @@ export default function SystemMonitor() {
             title="Log de Auditoria"
             actions={
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input value={auditSearch} onChange={e => setAuditSearch(e.target.value)}
-                    placeholder="Buscar..." className="pl-8 h-8 text-xs w-48" />
-                </div>
+                <SearchInput
+                  value={auditSearch}
+                  onChange={setAuditSearch}
+                  placeholder="Buscar por ação, recurso ou usuário…"
+                  resultCount={filteredAudit.length}
+                  totalCount={auditLogs.length}
+                  className="w-64"
+                  inputClassName="h-8 text-xs"
+                />
                 <Select value={auditFilter} onValueChange={setAuditFilter}>
                   <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -273,7 +274,16 @@ export default function SystemMonitor() {
                     ) : filteredAudit.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="p-0">
-                          <EmptyState icon={Shield} title="Nenhum evento encontrado" size="sm" />
+                          {auditSearch.trim() ? (
+                            <EmptyState
+                              size="sm"
+                              icon={Search}
+                              title={`Nenhum resultado para "${auditSearch}"`}
+                              action={<Button variant="outline" size="sm" onClick={() => setAuditSearch('')}>Limpar busca</Button>}
+                            />
+                          ) : (
+                            <EmptyState icon={Shield} title="Nenhum evento encontrado" size="sm" />
+                          )}
                         </TableCell>
                       </TableRow>
                     ) : (

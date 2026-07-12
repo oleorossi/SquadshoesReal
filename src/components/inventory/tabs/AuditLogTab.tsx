@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { CircleNotch as Loader2, MagnifyingGlass as Search, ArrowUUpLeft as Undo2, Plus, PencilSimple as Pencil, Trash as Trash2 } from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
+import { CircleNotch as Loader2, ArrowUUpLeft as Undo2, Plus, PencilSimple as Pencil, Trash as Trash2 } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -60,15 +60,13 @@ export default function AuditLogTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por material, SKU ou usuário..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          className="flex-1 max-w-sm"
+          placeholder="Buscar por material, SKU ou usuário…"
+          value={search}
+          onChange={setSearch}
+          debounceMs={300}
+        />
         <p className="text-xs text-muted-foreground">
           Registros dos últimos 15 dias ({logs.length} resultados)
         </p>
@@ -76,7 +74,14 @@ export default function AuditLogTab() {
 
       {logs.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          Nenhum registro encontrado
+          {search.trim() ? (
+            <>
+              <p>{`Nenhum resultado para "${search.trim()}"`}</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => setSearch('')}>Limpar busca</Button>
+            </>
+          ) : (
+            'Nenhum registro encontrado'
+          )}
         </div>
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">

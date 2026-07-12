@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, Stack as Layers, Shield, Plus, X, Copy, Info, MagnifyingGlass as Search, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown, Calculator } from '@phosphor-icons/react';
+import { Footprints, FloppyDisk as Save, CircleNotch as Loader2, ArrowsClockwise as RefreshCw, Stack as Layers, Shield, Plus, X, Copy, Info, Link as Link2, Warning as AlertTriangle, CaretDown as ChevronDown, Calculator } from '@phosphor-icons/react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { searchMatchesAny } from "@/lib/searchUtils";
+import { searchMatchesAllTerms } from "@/lib/searchUtils";
+import { SearchInput } from "@/components/ui/search-input";
 import { SoleConjugationPanel } from "@/components/inventory/SoleConjugationPanel";
 import { CopyFromAnySoleDialog } from "./CopyFromAnySoleDialog";
 import { useSoleConjugations } from "@/hooks/useSoleConjugations";
@@ -630,6 +631,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const conjugationCount = conjugations.length;
   const conjugatedSizesCount = conjugations.reduce((sum, c) => sum + c.sizes.length, 0);
 
+  // Listas filtradas dos seletores de material default (Passo 3).
+  const filteredLiningProducts = products.filter((p) => searchMatchesAllTerms(liningSearch, p.name, p.category, p.color));
+  const filteredInsoleProducts = products.filter((p) => searchMatchesAllTerms(insoleSearch, p.name, p.category, p.color));
+
   return (
     <div className="space-y-5">
       {/* ─── Header (referência + ações) ─────────────────────────── */}
@@ -824,28 +829,40 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                   </SelectTrigger>
                   <SelectContent className="max-h-[300px]">
                     <div className="p-2 sticky top-0 bg-popover z-10 border-b">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                        <Input
-                          placeholder="Buscar material..."
-                          value={liningSearch}
-                          onChange={(e) => setLiningSearch(e.target.value)}
-                          className="h-7 text-xs pl-7"
-                        />
-                      </div>
+                      <SearchInput
+                        value={liningSearch}
+                        onChange={setLiningSearch}
+                        placeholder="Buscar por nome, categoria ou cor…"
+                        resultCount={filteredLiningProducts.length}
+                        totalCount={products.length}
+                        inputClassName="h-7 text-xs"
+                      />
                     </div>
                     <SelectItem value="none">Nenhum (usar grupo)</SelectItem>
-                    {products
-                      .filter(p => searchMatchesAny(liningSearch, p.name, p.category))
-                      .slice(0, 100)
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <div className="flex flex-col">
-                            <span className="text-xs">{p.name}</span>
-                            <span className="text-xs text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                    {liningSearch.trim() && filteredLiningProducts.length === 0 ? (
+                      <div className="px-2 py-3 text-xs text-muted-foreground text-center space-y-2">
+                        <p>Nenhum resultado para "{liningSearch}"</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={(e) => { e.stopPropagation(); setLiningSearch(""); }}
+                        >
+                          Limpar busca
+                        </Button>
+                      </div>
+                    ) : (
+                      filteredLiningProducts
+                        .slice(0, 100)
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            <div className="flex flex-col">
+                              <span className="text-xs">{p.name}</span>
+                              <span className="text-xs text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
+                            </div>
+                          </SelectItem>
+                        ))
+                    )}
                   </SelectContent>
                 </Select>
 
@@ -877,28 +894,40 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                   </SelectTrigger>
                   <SelectContent className="max-h-[300px]">
                     <div className="p-2 sticky top-0 bg-popover z-10 border-b">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                        <Input
-                          placeholder="Buscar material..."
-                          value={insoleSearch}
-                          onChange={(e) => setInsoleSearch(e.target.value)}
-                          className="h-7 text-xs pl-7"
-                        />
-                      </div>
+                      <SearchInput
+                        value={insoleSearch}
+                        onChange={setInsoleSearch}
+                        placeholder="Buscar por nome, categoria ou cor…"
+                        resultCount={filteredInsoleProducts.length}
+                        totalCount={products.length}
+                        inputClassName="h-7 text-xs"
+                      />
                     </div>
                     <SelectItem value="none">Nenhum (usar grupo)</SelectItem>
-                    {products
-                      .filter(p => searchMatchesAny(insoleSearch, p.name, p.category))
-                      .slice(0, 100)
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <div className="flex flex-col">
-                            <span className="text-xs">{p.name}</span>
-                            <span className="text-xs text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                    {insoleSearch.trim() && filteredInsoleProducts.length === 0 ? (
+                      <div className="px-2 py-3 text-xs text-muted-foreground text-center space-y-2">
+                        <p>Nenhum resultado para "{insoleSearch}"</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={(e) => { e.stopPropagation(); setInsoleSearch(""); }}
+                        >
+                          Limpar busca
+                        </Button>
+                      </div>
+                    ) : (
+                      filteredInsoleProducts
+                        .slice(0, 100)
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            <div className="flex flex-col">
+                              <span className="text-xs">{p.name}</span>
+                              <span className="text-xs text-muted-foreground">{p.category} {p.color ? `· ${p.color}` : ""}</span>
+                            </div>
+                          </SelectItem>
+                        ))
+                    )}
                   </SelectContent>
                 </Select>
 

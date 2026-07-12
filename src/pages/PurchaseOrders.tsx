@@ -32,6 +32,8 @@ import { toast } from 'sonner';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
 import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
@@ -269,10 +271,7 @@ export default function PurchaseOrders() {
     if (!showPerPv && isPerPvPurchaseOrder(o)) return false;
     if (statusSet.size > 0 && !statusSet.has(o.status)) return false;
     if (supplierFilter !== 'all' && o.supplier_name !== supplierFilter) return false;
-    if (search) {
-      const q = normalizeForSearch(search);
-      if (!(normalizeForSearch(o.order_number).includes(q) || normalizeForSearch(o.supplier_name).includes(q))) return false;
-    }
+    if (!searchMatchesAllTerms(search, o.order_number, o.supplier_name)) return false;
     if (fromDate || toDate) {
       const r = toCostRow(o);
       if (!inDateRange(rowDateForBasis(r, basis), fromDate || null, toDate || null)) return false;
@@ -454,10 +453,14 @@ export default function PurchaseOrders() {
             {/* Filters */}
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Buscar por número ou fornecedor..." value={search} onChange={e => setParam('q', e.target.value || null)} className="pl-9" />
-                </div>
+                <SearchInput
+                  className="flex-1 min-w-[200px]"
+                  value={search}
+                  onChange={v => setParam('q', v || null)}
+                  placeholder="Buscar por nº da OC ou fornecedor…"
+                  resultCount={filtered.length}
+                  totalCount={orders.length}
+                />
                 {/* Status multi-select (vazio = todos) */}
                 <Popover>
                   <PopoverTrigger asChild>
@@ -656,8 +659,8 @@ export default function PurchaseOrders() {
                     <TableRow>
                       <TableCell colSpan={11} className="p-0">
                         <EmptyState
-                          icon={ShoppingCart}
-                          title="Nenhuma ordem de compra encontrada"
+                          icon={search ? Search : ShoppingCart}
+                          title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma ordem de compra encontrada'}
                           description={hasActiveFilters
                             ? 'Nenhuma OC bate com os filtros atuais. Limpe os filtros para ver todas.'
                             : 'Crie a primeira OC ou gere automaticamente pelo planejamento de compras.'}
@@ -1797,7 +1800,6 @@ type SummaryItem = {
 // PurchaseOrder agora importado no topo do arquivo (era re-importado aqui).
 // useQuery já importado no topo; re-import causava SyntaxError "Identifier
 // 'useQuery' has already been declared" — auditoria visual 24/05/2026.
-import { normalizeForSearch } from '@/lib/searchUtils';
 
 function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[]; orders: PurchaseOrder[]; onClose: () => void }) {
   const { data: allItems = [], isLoading } = useQuery({

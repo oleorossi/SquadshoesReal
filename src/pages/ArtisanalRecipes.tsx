@@ -26,7 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import CuttingOptimizerPanel from '@/components/recipes/CuttingOptimizerPanel';
 
 const emptyRecipe: Partial<ArtisanalRecipe> = {
@@ -69,15 +70,18 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
   }, [products]);
 
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
-    if (!q) return recipes;
-    return recipes.filter(
-      (r) =>
-        normalizeForSearch(r.name).includes(q) ||
-        normalizeForSearch(r.base_product_name).includes(q) ||
-        normalizeForSearch(r.artisanal_product_name).includes(q),
+    if (!search.trim()) return recipes;
+    // espaço/"/" = refinamento AND (ex.: "trançado natural")
+    return recipes.filter((r) =>
+      searchMatchesAllTerms(
+        search,
+        r.name,
+        r.base_product_name,
+        r.artisanal_product_name,
+        contractors.find((c) => c.id === r.default_contractor_id)?.name,
+      ),
     );
-  }, [recipes, search]);
+  }, [recipes, search, contractors]);
 
   const sel = useMarqueeSelection(filtered, (r) => r.id);
   const handleBulkDeleteRecipes = async () => {
@@ -197,15 +201,15 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
       </Card>
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar receita..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-9"
-        />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        inputClassName="h-9"
+        value={search}
+        onChange={setSearch}
+        placeholder="Buscar por receita, produto base, artesanal, terceirizado…"
+        resultCount={filtered.length}
+        totalCount={recipes.length}
+      />
 
       {/* Table */}
       <Panel flush>
@@ -234,10 +238,12 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
                   <TableRow>
                     <TableCell colSpan={9} className="p-0">
                       <EmptyState
-                        icon={Sparkles}
-                        title={search ? 'Nenhuma receita encontrada' : 'Nenhuma receita cadastrada'}
-                        description={search ? 'Ajuste a busca ou crie uma nova receita.' : 'Crie a primeira receita de transformação artesanal.'}
-                        action={<Button onClick={openNew} className="gap-1.5"><Plus className="h-4 w-4" />Nova Receita</Button>}
+                        icon={search ? Search : Sparkles}
+                        title={search ? `Nenhum resultado para "${search}"` : 'Nenhuma receita cadastrada'}
+                        description={search ? undefined : 'Crie a primeira receita de transformação artesanal.'}
+                        action={search
+                          ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                          : <Button onClick={openNew} className="gap-1.5"><Plus className="h-4 w-4" />Nova Receita</Button>}
                         size="sm"
                       />
                     </TableCell>

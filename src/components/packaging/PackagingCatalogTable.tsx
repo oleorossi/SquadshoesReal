@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Plus, MagnifyingGlass as Search, PencilSimple as Pencil, Trash as Trash2 } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { usePackagingCatalog, PackagingCatalogItem } from '@/hooks/usePackaging';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -28,8 +31,8 @@ export default function PackagingCatalogTable() {
     is_active: true
   });
 
-  const filtered = catalog.filter(item => 
-    item.nome.toLowerCase().includes(search.toLowerCase())
+  const filtered = catalog.filter(item =>
+    searchMatchesAllTerms(search, item.nome, item.tipo)
   );
 
   const openNew = () => {
@@ -106,15 +109,14 @@ export default function PackagingCatalogTable() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Buscar no catálogo..." 
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nome ou tipo…"
+          resultCount={filtered.length}
+          totalCount={catalog.length}
+          className="w-72"
+        />
         {perm.canCreate && (
           <Button onClick={openNew}>
             <Plus className="h-4 w-4 mr-2" />
@@ -142,7 +144,18 @@ export default function PackagingCatalogTable() {
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum item encontrado</TableCell>
+                <TableCell colSpan={6}>
+                  {search.trim() ? (
+                    <EmptyState
+                      size="sm"
+                      icon={Search}
+                      title={`Nenhum resultado para "${search}"`}
+                      action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">Nenhum item encontrado</div>
+                  )}
+                </TableCell>
               </TableRow>
             ) : filtered.map(item => (
               <TableRow key={item.id}>

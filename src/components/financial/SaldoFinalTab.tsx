@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { MagnifyingGlass as Search, Package, Warning as AlertTriangle, TrendDown as TrendingDown, Funnel as Filter } from '@phosphor-icons/react';
+import { MagnifyingGlass, Package, Warning as AlertTriangle, TrendDown as TrendingDown, Funnel as Filter } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, addWeeks } from 'date-fns';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
@@ -220,8 +221,7 @@ export default function SaldoFinalTab() {
   const filtered = useMemo(() => {
     let list = balances;
     if (search) {
-      const q = normalizeForSearch(search);
-      list = list.filter(b => normalizeForSearch(b.name).includes(q) || normalizeForSearch(b.type).includes(q));
+      list = list.filter(b => searchMatchesAllTerms(search, b.name, b.type));
     }
     // Recalculate final_balance based on visible weeks only
     return list.map(b => {
@@ -281,10 +281,14 @@ export default function SaldoFinalTab() {
 
       {/* Filters row */}
       <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar material..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por material ou tipo (cabedal, solado…)"
+          resultCount={filtered.length}
+          totalCount={balances.length}
+          className="flex-1 min-w-[200px] max-w-md"
+        />
 
         <Popover>
           <PopoverTrigger asChild>
@@ -344,8 +348,23 @@ export default function SaldoFinalTab() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3 + visibleWeeks.length} className="text-center py-8 text-muted-foreground">
-                      Nenhum material encontrado.
+                    <TableCell colSpan={3 + visibleWeeks.length}>
+                      {search.trim() ? (
+                        <EmptyState
+                          size="sm"
+                          icon={MagnifyingGlass}
+                          title={`Nenhum resultado para "${search}"`}
+                          action={
+                            <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                              Limpar busca
+                            </Button>
+                          }
+                        />
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          Nenhum material encontrado.
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, MagnifyingGlass as Search, Image as ImageIcon, User, Users as UsersIcon, FloppyDisk as Save, Upload, X, Footprints } from '@phosphor-icons/react';
+import { Plus, PencilSimple as Pencil, CircleNotch as Loader2, MagnifyingGlass, Image as ImageIcon, User, Users as UsersIcon, FloppyDisk as Save, Upload, X, Footprints } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +16,7 @@ import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProducts } from '@/hooks/useProducts';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { SignedImage } from '@/components/ui/signed-image';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useCan } from '@/hooks/useAccessControl';
 
 type SilkScope = 'all' | 'default' | 'client' | 'economic_group';
@@ -181,33 +182,36 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
     setDialogOpen(true);
   };
 
-  const filtered = registrations
-    .filter((r: any) => {
-      // Filtro por escopo (sub-aba)
-      if (scope === 'default') return !r.client_id && !r.economic_group_id;
-      if (scope === 'client') return !!r.client_id;
-      if (scope === 'economic_group') return !!r.economic_group_id;
-      return true;
-    })
-    .filter((r: any) =>
-      normalizeForSearch(r.sole_type).includes(searchTerm.toLowerCase()) ||
-      normalizeForSearch(r.silk_name).includes(searchTerm.toLowerCase()) ||
-      normalizeForSearch(r.clients?.nome_fantasia).includes(searchTerm.toLowerCase()) ||
-      normalizeForSearch(r.economic_groups?.name).includes(searchTerm.toLowerCase()),
-    );
+  const scoped = registrations.filter((r: any) => {
+    // Filtro por escopo (sub-aba)
+    if (scope === 'default') return !r.client_id && !r.economic_group_id;
+    if (scope === 'client') return !!r.client_id;
+    if (scope === 'economic_group') return !!r.economic_group_id;
+    return true;
+  });
+
+  const filtered = scoped.filter((r: any) =>
+    searchMatchesAllTerms(
+      searchTerm,
+      r.sole_type,
+      r.silk_name,
+      r.shoe_category,
+      r.clients?.nome_fantasia,
+      r.economic_groups?.name,
+    ),
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por solado, silk ou cliente..."
-            className="pl-9"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-        </div>
+        <SearchInput
+          className="flex-1 max-w-sm"
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Buscar por solado, silk, categoria, cliente ou grupo…"
+          resultCount={filtered.length}
+          totalCount={scoped.length}
+        />
         {perm.canCreate && (
           <Button onClick={() => { resetForm(); setDialogOpen(true); }} className="gap-2" size="sm">
             <Plus className="h-4 w-4" />
@@ -223,11 +227,24 @@ export function SilkGlobalPanel({ scope = 'all' }: SilkGlobalPanelProps = {}) {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState
-              icon={ImageIcon}
-              title="Nenhum registro encontrado"
-              description="Cadastre a arte/silk de um solado para começar."
-            />
+            searchTerm.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={MagnifyingGlass}
+                title={`Nenhum resultado para "${searchTerm}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearchTerm('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={ImageIcon}
+                title="Nenhum registro encontrado"
+                description="Cadastre a arte/silk de um solado para começar."
+              />
+            )
           ) : (
             <Table>
               <TableHeader className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">

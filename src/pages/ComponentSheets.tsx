@@ -1,6 +1,6 @@
 // AppLayout import removed since it was unused
 import { useState, useMemo, useEffect } from 'react';
-import { Stack as Layers, Plus, Trash as Trash2, CircleNotch as Loader2, FloppyDisk as Save, PencilSimple as Pencil, MagnifyingGlass as Search, Ruler, Percent, Package, ChartBar as BarChart3, CaretRight as ChevronRight, X, Image as ImageIcon, Folder as FolderEdit, Palette, Footprints, Check } from '@phosphor-icons/react';
+import { Stack as Layers, Plus, Trash as Trash2, CircleNotch as Loader2, FloppyDisk as Save, PencilSimple as Pencil, MagnifyingGlass, Ruler, Percent, Package, ChartBar as BarChart3, CaretRight as ChevronRight, X, Image as ImageIcon, Folder as FolderEdit, Palette, Footprints, Check } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -30,7 +30,8 @@ import { SolesComponentSheetTab } from "@/components/technical-sheets/SolesCompo
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 
 const SIZES_INFANTIL = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
 const SIZES_ADULTO = [34, 35, 36, 37, 38, 39, 40];
@@ -193,20 +194,19 @@ const formatCurrency = (v: number) =>
     return Array.from(cats).sort() as string[];
   }, [sheets]);
 
+  // Universo da tela (respeita o recorte do modo embedded) — base do contador "N de M"
+  const scopedSheets = useMemo(() => (
+    filterProductIds && filterProductIds.length > 0
+      ? (sheets as any[]).filter((s: any) => filterProductIds.includes(s.product_id))
+      : (sheets as any[])
+  ), [sheets, filterProductIds]);
+
   const filtered = useMemo(() => {
-    const q = normalizeForSearch(search);
-    let items = sheets as any[];
-    
-    if (filterProductIds && filterProductIds.length > 0) {
-      items = items.filter((s: any) => filterProductIds.includes(s.product_id));
-    }
+    let items = scopedSheets;
 
     if (search) {
       items = items.filter((s: any) =>
-        normalizeForSearch(s.products?.name).includes(q) ||
-        normalizeForSearch(s.products?.sku).includes(q) ||
-        normalizeForSearch(s.products?.category).includes(q) ||
-        normalizeForSearch(s.product_groups?.name).includes(q)
+        searchMatchesAllTerms(search, s.products?.name, s.products?.sku, s.products?.color, s.products?.category, s.product_groups?.name)
       );
     }
 
@@ -231,7 +231,7 @@ const formatCurrency = (v: number) =>
       }
     });
     return Array.from(groupMap.values());
-  }, [sheets, search, categoryFilter]);
+  }, [scopedSheets, search, categoryFilter]);
 
   // Stats
   const totalSheets = sheets.length;
@@ -306,20 +306,14 @@ const formatCurrency = (v: number) =>
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome, SKU ou categoria..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-10"
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
+          <SearchInput
+            className="flex-1"
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome, SKU, cor, categoria ou grupo…"
+            resultCount={filtered.reduce((n: number, g: any[]) => n + g.length, 0)}
+            totalCount={scopedSheets.length}
+          />
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Categoria" />
@@ -335,16 +329,25 @@ const formatCurrency = (v: number) =>
         {filtered.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="p-0">
-              <EmptyState
-                icon={Layers}
-                title="Nenhuma ficha encontrada"
-                description="Cadastre o consumo por par de cada material para cálculo automático de custos."
-                action={
-                  <Button onClick={() => setDialogOpen(true)} variant="outline" className="gap-2">
-                    <Plus className="h-4 w-4" /> Criar primeira ficha
-                  </Button>
-                }
-              />
+              {search.trim() ? (
+                <EmptyState
+                  size="sm"
+                  icon={MagnifyingGlass}
+                  title={`Nenhum resultado para "${search}"`}
+                  action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+                />
+              ) : (
+                <EmptyState
+                  icon={Layers}
+                  title="Nenhuma ficha encontrada"
+                  description="Cadastre o consumo por par de cada material para cálculo automático de custos."
+                  action={
+                    <Button onClick={() => setDialogOpen(true)} variant="outline" className="gap-2">
+                      <Plus className="h-4 w-4" /> Criar primeira ficha
+                    </Button>
+                  }
+                />
+              )}
             </CardContent>
           </Card>
         ) : (

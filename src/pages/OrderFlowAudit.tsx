@@ -2,7 +2,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -449,8 +449,15 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
   const filtered = useMemo(() => {
     let list = audits;
     if (search) {
-      // "/" = refinamento AND (ex.: "stx / alcineu")
-      list = list.filter(a => searchMatchesAllTerms(search, a.orderNumber, a.clientName));
+      // espaço/"/" = refinamento AND (ex.: "stx alcineu"). O detail do passo
+      // 'ops_created' carrega os números das OPs — cobre busca por OP.
+      list = list.filter(a => searchMatchesAllTerms(
+        search,
+        a.orderNumber,
+        a.clientName,
+        a.status,
+        a.steps.find(s => s.id === 'ops_created')?.detail,
+      ));
     }
     if (statusFilter === 'errors') list = list.filter(a => a.overallStatus === 'error');
     if (statusFilter === 'warnings') list = list.filter(a => a.overallStatus === 'warning' || a.overallStatus === 'error');
@@ -504,15 +511,14 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
 
             {/* Filters */}
             <div className="flex gap-3 flex-wrap bg-card p-4 rounded-lg border border-border">
-              <div className="relative flex-1 min-w-[280px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Pesquisar por pedido, cliente ou OP..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+              <SearchInput
+                className="flex-1 min-w-[280px]"
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por pedido, cliente, OP ou status…"
+                resultCount={filtered.length}
+                totalCount={audits.length}
+              />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[200px] font-medium">
                   <SelectValue placeholder="Status do Fluxo" />
@@ -538,7 +544,20 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
                 ))}
                 {filtered.length === 0 && (
                   <Panel flush>
-                    <EmptyState icon={History} title="Nenhum registro encontrado para a busca" />
+                    {search.trim() ? (
+                      <EmptyState
+                        size="sm"
+                        icon={Search}
+                        title={`Nenhum resultado para "${search}"`}
+                        action={
+                          <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                            Limpar busca
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      <EmptyState icon={History} title="Nenhum registro encontrado" />
+                    )}
                   </Panel>
                 )}
               </div>

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { stripSearchNorm } from '@/lib/searchUtils';
 
 export interface Employee {
   id: string;
@@ -94,7 +95,7 @@ export function useAddEmployee() {
   return useMutation({
     mutationFn: async (form: EmployeeForm) => {
       if (!Number.isFinite(form.salary) || form.salary < 0) throw new Error('Salário deve ser um número não-negativo.');
-      const { error } = await supabase.from('employees').insert(form as any);
+      const { error } = await supabase.from('employees').insert(stripSearchNorm(form) as any);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); toast.success('Funcionário cadastrado!'); },
@@ -107,7 +108,7 @@ export function useUpdateEmployee() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<EmployeeForm> }) => {
       if (data.salary !== undefined && (!Number.isFinite(data.salary) || data.salary < 0)) throw new Error('Salário deve ser um número não-negativo.');
-      const { error } = await supabase.from('employees').update(data as any).eq('id', id);
+      const { error } = await supabase.from('employees').update(stripSearchNorm(data) as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); toast.success('Funcionário atualizado!'); },

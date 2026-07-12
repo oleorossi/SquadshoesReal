@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, CaretUpDown as ChevronsUpDown, User } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import type { Employee } from '@/hooks/useEmployees';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -43,13 +43,7 @@ export function EmployeeCombobox({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return active;
-    const q = normalizeForSearch(search);
-    return active.filter(e =>
-      normalizeForSearch(e.name).includes(q) ||
-      normalizeForSearch(e.role).includes(q) ||
-      normalizeForSearch(e.department).includes(q) ||
-      normalizeForSearch(e.external_id ?? '').includes(q),
-    );
+    return active.filter(e => searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id));
   }, [active, search]);
 
   return (
@@ -74,9 +68,18 @@ export function EmployeeCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[300px] p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput placeholder="Buscar por nome, cargo ou setor..." value={search} onValueChange={setSearch} />
+          <CommandInput placeholder="Buscar por nome, cargo, setor ou matrícula..." value={search} onValueChange={setSearch} />
           <CommandList>
-            <CommandEmpty>Nenhum funcionário encontrado.</CommandEmpty>
+            <CommandEmpty>
+              {search ? (
+                <span className="flex flex-col items-center gap-2">
+                  <span>Nenhum resultado para "{search}"</span>
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                </span>
+              ) : (
+                'Nenhum funcionário encontrado.'
+              )}
+            </CommandEmpty>
             <CommandGroup heading={`Funcionários ativos (${filtered.length})`}>
               {filtered.map(e => {
                 const pending = pendingByEmployee?.get(e.id) ?? 0;

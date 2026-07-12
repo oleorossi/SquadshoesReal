@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CircleNotch as Loader2, Printer, MagnifyingGlass as Search, Tag, Download, Package, Stack as Layers, FileText, Clock, CheckCircle as CheckCircle2, Warning as AlertTriangle, Users, Funnel as Filter } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, Printer, MagnifyingGlass as Search, Tag, Download, Package, Stack as Layers, FileText, Clock, CheckCircle as CheckCircle2, Warning as AlertTriangle, Funnel as Filter } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -141,27 +143,24 @@ export function LabelGenerationTab() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[200px]">
           <Label className="text-xs">Buscar OP / Referência / Cliente</Label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Nº OP, referência ou cliente..."
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nº OP, referência ou cliente…"
+            debounceMs={300}
+            hideHint
+          />
         </div>
         <div className="min-w-[180px]">
           <Label className="text-xs">Grupo Econômico</Label>
-          <div className="relative">
-            <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={economicGroupSearch}
-              onChange={e => setEconomicGroupSearch(e.target.value)}
-              placeholder="Buscar grupo..."
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            value={economicGroupSearch}
+            onChange={setEconomicGroupSearch}
+            placeholder="Buscar grupo econômico…"
+            debounceMs={300}
+            hideHint
+            disableSlashFocus
+          />
           {economicGroups.length > 0 && economicGroupSearch.trim().length >= 2 && (
             <div className="absolute z-10 mt-1 bg-background border rounded-md shadow-md max-h-32 overflow-auto">
               {economicGroups.map((g: any) => (
@@ -339,12 +338,25 @@ export function LabelGenerationTab() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : filteredOrders.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Tag className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            Nenhuma OP encontrada
-          </CardContent>
-        </Card>
+        search.trim() ? (
+          <Card>
+            <CardContent>
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${search}"`}
+                action={<Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>}
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <Tag className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              Nenhuma OP encontrada
+            </CardContent>
+          </Card>
+        )
       ) : (
         <div className="space-y-2">
           {/* Select all header */}

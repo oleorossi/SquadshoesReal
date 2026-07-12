@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
@@ -391,24 +392,28 @@ function getWeekOptions() {
     [saleOrders],
   );
 
-  // Filter and group orders
-  const filteredOrders = useMemo(() => {
+  // Filter and group orders.
+  // Busca ATRAVESSA as pills de status (spec melhorias-busca-sistema R5): o
+  // match roda sobre TODAS as OPs; a pill ativa exibe os seus resultados e as
+  // outras ganham contagem — uma OP Finalizada nunca fica "inexistente" só
+  // porque a pill é "Abertas". Demais filtros (ref/cor/segmento/semana)
+  // continuam valendo em todas as pills.
+  const { filteredOrders, pillSearchCounts } = useMemo(() => {
     const searchLower = normalizeForSearch(debouncedSearchTerm);
 
-    return orders.filter(order => {
-      const canonicalStatus = getCanonicalOrderStatus(order.status);
+    const statusGate = (canonicalStatus: string, gate: string): boolean => {
+      if (gate === 'active') {
+        // "Abertas / em produção": tudo exceto Finalizado e Cancelada.
+        // Não depende do status do PV vinculado — um OP Em Produção NUNCA some.
+        return canonicalStatus !== 'Finalizado' && canonicalStatus !== 'Cancelada';
+      }
+      if (gate === 'all') return true;
+      return canonicalStatus === gate;
+    };
+
+    const passesNonStatusFilters = (order: (typeof orders)[number]): boolean => {
       const linkedSaleOrderId = (order as any).sale_order_id;
       const linkedSaleOrder = linkedSaleOrderId ? saleOrderMetaById.get(linkedSaleOrderId) : null;
-      
-      if (normalizedStatusFilter === 'active') {
-        // "Abertas / em produção": mostrar tudo exceto Finalizado e Cancelada.
-        // Não depende do status do PV vinculado — um OP Em Produção NUNCA some.
-        if (canonicalStatus === 'Finalizado' || canonicalStatus === 'Cancelada') return false;
-      } else if (normalizedStatusFilter === 'all') {
-        // "Todas": sem filtro de status
-      } else if (canonicalStatus !== normalizedStatusFilter) {
-        return false;
-      }
 
       // Search filter — wide multi-field matching
       if (searchLower) {
@@ -433,7 +438,7 @@ function getWeekOptions() {
           linkedSaleOrder?.deliveryWeek,
           linkedSaleOrder?.deliveryMonth,
         ];
-        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
+        // Espaço e "/" = refinamento AND (ex.: "stx alcineu" = ref STX E cliente Alcineu)
         const matchTerm = (term: string) => {
           const d = term.replace(/\D/g, '');
           return searchMatchesAny(term, ...candidates) || (d.length >= 3 && cnpjDigits.includes(d));
@@ -465,7 +470,21 @@ function getWeekOptions() {
       }
 
       return true;
-    });
+    };
+
+    const counts: Record<string, number> = { active: 0, 'Em Produção': 0, Reservado: 0, Finalizado: 0, all: 0 };
+    const current: typeof orders = [];
+    for (const order of orders) {
+      if (!passesNonStatusFilters(order)) continue;
+      const canonicalStatus = getCanonicalOrderStatus(order.status);
+      if (searchLower) {
+        for (const gate of Object.keys(counts)) {
+          if (statusGate(canonicalStatus, gate)) counts[gate]++;
+        }
+      }
+      if (statusGate(canonicalStatus, normalizedStatusFilter)) current.push(order);
+    }
+    return { filteredOrders: current, pillSearchCounts: searchLower ? counts : null };
   }, [orders, saleOrderMetaById, debouncedSearchTerm, normalizedStatusFilter, referenceFilter, colorFilter, weekFilter, segmentFilter, segmentByRefId]);
 
   // Marquee + multi-select (Cmd/Ctrl/Shift click, drag-select, Esc to clear).
@@ -1157,23 +1176,19 @@ function getWeekOptions() {
 
         {/* ── Toolbar principal ── */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Busca */}
-          <div className="relative flex-1 min-w-[200px] max-w-[380px]">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar OP, referência, cor, cliente, NF-e…"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9 pr-8 h-9"
-            />
-            {searchTerm && (
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchTerm('')}>
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+          {/* Busca — padrão do sistema (SearchInput + espaço/"/" = AND) */}
+          <SearchInput
+            className="flex-1 min-w-[200px] max-w-[380px]"
+            placeholder="Buscar OP, referência, cor, cliente, NF-e…"
+            value={searchTerm}
+            onChange={setSearchTerm}
+            resultCount={filteredOrders.length}
+            totalCount={orders.length}
+            inputClassName="h-9"
+          />
 
-          {/* Status pills */}
+          {/* Status pills — com busca ativa, TODAS mostram a contagem de
+              resultados (spec R5): a OP achada em outra pill fica a 1 clique. */}
           <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1 shrink-0 h-9">
             {[
               { value: 'active',      label: 'Abertas' },
@@ -1185,6 +1200,7 @@ function getWeekOptions() {
               <button
                 key={opt.value}
                 onClick={() => setStatusFilter(opt.value)}
+                title={pillSearchCounts ? 'Resultados da busca neste status' : undefined}
                 className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
                   normalizedStatusFilter === opt.value
                     ? 'bg-background text-foreground shadow-sm'
@@ -1192,8 +1208,14 @@ function getWeekOptions() {
                 }`}
               >
                 {opt.label}
-                {normalizedStatusFilter === opt.value && filteredOrders.length > 0 && (
-                  <span className="ml-1 opacity-60 font-mono text-xs">{filteredOrders.length}</span>
+                {pillSearchCounts ? (
+                  <span className={`ml-1 font-mono text-xs ${pillSearchCounts[opt.value] > 0 && normalizedStatusFilter !== opt.value ? 'text-primary font-bold' : 'opacity-60'}`}>
+                    {pillSearchCounts[opt.value] ?? 0}
+                  </span>
+                ) : (
+                  normalizedStatusFilter === opt.value && filteredOrders.length > 0 && (
+                    <span className="ml-1 opacity-60 font-mono text-xs">{filteredOrders.length}</span>
+                  )
                 )}
               </button>
             ))}
@@ -1449,8 +1471,9 @@ function getWeekOptions() {
           <Panel flush>
             <EmptyState
               icon={ClipboardList}
-              title="Nenhuma ordem de produção"
-              description="Crie OPs a partir de pedidos aprovados ou ajuste os filtros acima."
+              title={searchTerm.trim() ? `Nenhum resultado para "${searchTerm.trim()}"` : 'Nenhuma ordem de produção'}
+              description={searchTerm.trim() ? 'Confira as contagens nas pills de status acima ou limpe a busca.' : 'Crie OPs a partir de pedidos aprovados ou ajuste os filtros acima.'}
+              action={searchTerm.trim() ? <Button variant="outline" size="sm" onClick={() => setSearchTerm('')}>Limpar busca</Button> : undefined}
             />
           </Panel>
         ) : viewMode === 'kanban' ? (

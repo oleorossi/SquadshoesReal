@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Check, CaretUpDown as ChevronsUpDown, Plus, Circle, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface ColorLookupSelectProps {
   label: string;
@@ -70,12 +70,8 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
 
   const filtered = useMemo(() => {
     if (!search.trim()) return colors;
-    const q = normalizeForSearch(search);
     return colors.filter(c =>
-      normalizeForSearch(c.nome).includes(q) ||
-      normalizeForSearch(c.cor_id).includes(q) ||
-      normalizeForSearch(c.referencia_hex).includes(q) ||
-      normalizeForSearch(c.referencia_pantone).includes(q)
+      searchMatchesAllTerms(search, c.nome, c.cor_id, c.referencia_hex, c.referencia_pantone)
     );
   }, [colors, search]);
 
@@ -123,9 +119,14 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
           </PopoverTrigger>
           <PopoverContent className="w-[350px] p-0" align="start">
             <Command shouldFilter={false}>
-              <CommandInput placeholder="Buscar cor..." value={search} onValueChange={setSearch} />
+              <CommandInput placeholder="Buscar por nome, código, HEX ou Pantone…" value={search} onValueChange={setSearch} />
               <CommandList>
-                <CommandEmpty>Nenhuma cor encontrada</CommandEmpty>
+                <CommandEmpty>
+                  <div className="space-y-2">
+                    <p>Nenhum resultado para "{search}"</p>
+                    <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                  </div>
+                </CommandEmpty>
                 <CommandGroup heading={`Cores disponíveis (${filtered.length})`}>
                   {filtered.map(c => (
                     <CommandItem key={c.id} value={c.id} onSelect={() => { onChange(c.id); setOpen(false); setSearch(''); }}>

@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle } from '@phosphor-icons/react';
@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SALE_ORDER_STATUS } from '@/lib/saleOrderStateMachine';
 
 interface OrderRow {
@@ -155,19 +155,16 @@ export default function PrintWorkSheets() {
       result = result.filter(r => r.sale_orders?.order_number === pvFilter);
     }
     if (search.trim()) {
-      // separadores de refinamento AND: vírgula OU "/" (ex.: "stx / alcineu")
-      const tokens = search.split(/[,/]/).map(t => normalizeForSearch(t)).filter(Boolean);
-      result = result.filter(r => {
-        const hay = normalizeForSearch([
-          r.order_number,
-          r.color,
-          r.technical_sheets?.name,
-          r.technical_sheets?.code,
-          r.sale_orders?.order_number,
-          r.sale_orders?.client_name,
-        ].filter(Boolean).join(' '));
-        return tokens.every(t => hay.includes(t));
-      });
+      // espaço/"/" = refinamento AND (ex.: "stx alcineu")
+      result = result.filter(r => searchMatchesAllTerms(
+        search,
+        r.order_number,
+        r.color,
+        r.technical_sheets?.name,
+        r.technical_sheets?.code,
+        r.sale_orders?.order_number,
+        r.sale_orders?.client_name,
+      ));
     }
     return result;
   }, [rows, search, pvFilter]);
@@ -323,15 +320,15 @@ export default function PrintWorkSheets() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2 flex-wrap items-center">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                className="pl-8 h-9"
-                placeholder="Buscar por OP, PV, cliente, referência, cor…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
+            <SearchInput
+              className="flex-1 min-w-[200px]"
+              inputClassName="h-9"
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar por OP, PV, cliente, referência, cor…"
+              resultCount={filtered.length}
+              totalCount={rows.length}
+            />
             <Select
               value={statusFilter}
               onValueChange={(v) => {
@@ -395,12 +392,25 @@ export default function PrintWorkSheets() {
               }
             />
           ) : filtered.length === 0 ? (
-            <EmptyState
-              size="sm"
-              icon={FileText}
-              title="Nenhuma OP encontrada"
-              description="Ajuste os filtros de status, PV ou a busca para encontrar OPs."
-            />
+            search.trim() ? (
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                size="sm"
+                icon={FileText}
+                title="Nenhuma OP encontrada"
+                description="Ajuste os filtros de status ou PV para encontrar OPs."
+              />
+            )
           ) : (
             <div className="border rounded-md overflow-hidden">
               <table className="w-full text-xs">

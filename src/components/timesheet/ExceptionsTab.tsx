@@ -3,6 +3,9 @@ import { Warning as AlertTriangle, CheckCircle as CheckCircle2, MagnifyingGlass 
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -175,11 +178,7 @@ export default function ExceptionsTab() {
     return exceptions.filter(e => {
       if (filterStatus !== 'all' && e.status !== filterStatus) return false;
       if (filterSeverity !== 'all' && e.severity !== filterSeverity) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        if (!e.employee_name.toLowerCase().includes(s) && !e.description.toLowerCase().includes(s)) return false;
-      }
-      return true;
+      return searchMatchesAllTerms(search, e.employee_name, e.description, TYPE_MAP[e.type] || e.type);
     });
   }, [exceptions, filterStatus, filterSeverity, search]);
 
@@ -291,15 +290,14 @@ export default function ExceptionsTab() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por funcionário ou descrição..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          className="flex-1 min-w-[200px]"
+          placeholder="Buscar por funcionário, tipo ou descrição…"
+          value={search}
+          onChange={setSearch}
+          resultCount={filtered.length}
+          totalCount={exceptions.length}
+        />
         <Select value={filterStatus} onValueChange={setFilterStatus}>
           <SelectTrigger className="w-40"><Filter className="h-3.5 w-3.5 mr-1.5" /><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -325,11 +323,24 @@ export default function ExceptionsTab() {
       {/* Table */}
       {filtered.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Shield className="h-12 w-12 mb-4 opacity-40" />
-            <p className="font-medium">Nenhuma exceção encontrada</p>
-            <p className="text-xs mt-1">Selecione uma importação e clique em "Detectar Exceções"</p>
-          </CardContent>
+          {search ? (
+            <EmptyState
+              size="sm"
+              icon={Search}
+              title={`Nenhum resultado para "${search}"`}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Limpar busca
+                </Button>
+              }
+            />
+          ) : (
+            <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Shield className="h-12 w-12 mb-4 opacity-40" />
+              <p className="font-medium">Nenhuma exceção encontrada</p>
+              <p className="text-xs mt-1">Selecione uma importação e clique em "Detectar Exceções"</p>
+            </CardContent>
+          )}
         </Card>
       ) : (
         <Card>

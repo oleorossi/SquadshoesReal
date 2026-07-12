@@ -3,13 +3,14 @@ import { stripColorFromName } from '@/lib/utils';
 import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MagnifyingGlass as Search, Package, FolderOpen, PencilSimple as Pencil, Trash as Trash2, MagicWand as Wand2, CircleNotch as Loader2, DotsSixVertical as GripVertical, Palette, FileText as FileBox } from '@phosphor-icons/react';
+import { MagnifyingGlass, Package, FolderOpen, PencilSimple as Pencil, Trash as Trash2, MagicWand as Wand2, CircleNotch as Loader2, DotsSixVertical as GripVertical, Palette, FileText as FileBox } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useGroups, useAddGroup, useUpdateGroup, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { flattenGroupTree } from '@/lib/groupHierarchy';
@@ -18,7 +19,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import GroupDialog from '@/components/groups/GroupDialog';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, splitSearchTerms } from '@/lib/searchUtils';
 
 interface GroupListDialogProps {
   open: boolean;
@@ -186,7 +187,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
   };
 
   const groupsWithProducts = useMemo(() => {
-    const q = normalizeForSearch(search);
+    const hasQuery = splitSearchTerms(search).length > 0;
     // flattenGroupTree devolve em pré-ordem (raízes → filhos), com `depth`
     // que usamos pra indentar visualmente. Mantém a hierarquia parent→child
     // no rendering em vez de ordem alfabética plana.
@@ -194,21 +195,17 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
     return flat
       .map(g => {
         const items = products.filter(p => p.group_id === g.id);
-        const matchGroup = normalizeForSearch(g.name).includes(q);
-        const matchItems = items.filter(p =>
-          normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q)
-        );
-        if (!matchGroup && matchItems.length === 0 && q) return null;
-        return { ...g, items: q && !matchGroup ? matchItems : items };
+        const matchGroup = searchMatchesAllTerms(search, g.name);
+        const matchItems = items.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.color));
+        if (!matchGroup && matchItems.length === 0 && hasQuery) return null;
+        return { ...g, items: hasQuery && !matchGroup ? matchItems : items };
       })
       .filter(Boolean) as (ProductGroup & { items: typeof products; depth: number; childCount: number })[];
   }, [groups, products, search]);
 
   const ungrouped = useMemo(() => {
-    const q = normalizeForSearch(search);
     const items = products.filter(p => !p.group_id);
-    if (!q) return items;
-    return items.filter(p => normalizeForSearch(p.name).includes(q) || normalizeForSearch(p.sku).includes(q));
+    return items.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.color));
   }, [products, search]);
 
   const handleSaveEdit = () => {
@@ -234,10 +231,17 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
           </DialogHeader>
 
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar grupo ou item..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-            </div>
+            <SearchInput
+              className="flex-1"
+              placeholder="Buscar por grupo, item, SKU ou cor…"
+              value={search}
+              onChange={setSearch}
+              // A lista mostra grupos + a seção "Sem grupo" — o contador soma
+              // as duas, senão buscar item desagrupado exibiria "0 de N" com
+              // resultados visíveis na tela.
+              resultCount={groupsWithProducts.length + ungrouped.length}
+              totalCount={groups.length + products.filter(p => !p.group_id).length}
+            />
             <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={handleAutoGroup} disabled={autoGrouping}>
               {autoGrouping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
               <span className="hidden sm:inline">Reagrupar todos</span>
@@ -251,10 +255,23 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
 
           <div className="flex-1 min-h-0 -mx-6 px-6 overflow-y-auto">
             {groupsWithProducts.length === 0 && ungrouped.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>{search ? 'Nenhum grupo ou item encontrado' : 'Nenhum grupo cadastrado'}</p>
-              </div>
+              search ? (
+                <EmptyState
+                  size="sm"
+                  icon={MagnifyingGlass}
+                  title={`Nenhum resultado para "${search}"`}
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                      Limpar busca
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Nenhum grupo cadastrado</p>
+                </div>
+              )
             ) : (
               <Accordion type="multiple" className="space-y-1">
                 {groupsWithProducts.map(g => (

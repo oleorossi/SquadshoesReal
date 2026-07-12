@@ -7,12 +7,13 @@ import { generateWeeklyPurchasingPlan, WeeklyOrder, SheetMaterial, buyByKey } fr
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { CircleNotch as Loader2, ShoppingCart, Warning as AlertTriangle, TrendUp as TrendingUp, Package, Download, GridFour as LayoutGrid, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, ShoppingCart, Warning as AlertTriangle, TrendUp as TrendingUp, Package, Download, GridFour as LayoutGrid, CalendarBlank as CalendarDays, MagnifyingGlass } from '@phosphor-icons/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 function useAllSheetMaterials() {
   return useQuery({
@@ -125,10 +126,7 @@ export default function WeeklyPurchasingContent() {
   const filteredPlan = useMemo(() => {
     if (!result) return [];
     if (!search.trim()) return result.plan;
-    const q = normalizeForSearch(search);
-    return result.plan.filter(
-      (r) => normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.sku).includes(q)
-    );
+    return result.plan.filter((r) => searchMatchesAllTerms(search, r.name, r.sku));
   }, [result, search]);
 
   // Per-week aggregated rows for the "weekly" view
@@ -285,11 +283,13 @@ export default function WeeklyPurchasingContent() {
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-        <Input
-          placeholder="Buscar material por nome ou SKU..."
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
+          onChange={setSearch}
+          placeholder="Buscar por material ou SKU…"
+          resultCount={filteredPlan.length}
+          totalCount={result?.plan.length}
+          className="w-full max-w-sm"
         />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[200px]">
@@ -337,8 +337,23 @@ export default function WeeklyPurchasingContent() {
         <TabsContent value="weekly" className="space-y-4 mt-4">
           {visibleWeeklyReports.length === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                Nenhuma necessidade de compra identificada para os filtros selecionados.
+              <CardContent className="p-8">
+                {search.trim() ? (
+                  <EmptyState
+                    size="sm"
+                    icon={MagnifyingGlass}
+                    title={`Nenhum resultado para "${search}"`}
+                    action={
+                      <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                        Limpar busca
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <p className="text-center text-muted-foreground">
+                    Nenhuma necessidade de compra identificada para os filtros selecionados.
+                  </p>
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -398,8 +413,23 @@ export default function WeeklyPurchasingContent() {
         <TabsContent value="matrix" className="mt-4">
           {filteredPlan.length === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                Nenhuma necessidade de compra identificada para os filtros selecionados.
+              <CardContent className="p-8">
+                {search.trim() ? (
+                  <EmptyState
+                    size="sm"
+                    icon={MagnifyingGlass}
+                    title={`Nenhum resultado para "${search}"`}
+                    action={
+                      <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                        Limpar busca
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <p className="text-center text-muted-foreground">
+                    Nenhuma necessidade de compra identificada para os filtros selecionados.
+                  </p>
+                )}
               </CardContent>
             </Card>
           ) : (

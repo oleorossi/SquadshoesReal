@@ -2,11 +2,11 @@ import { useState, useMemo } from 'react';
 import { useColors } from '@/hooks/useColors';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Check, CaretUpDown as ChevronsUpDown, Plus, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface ColorsMultiSelectProps {
   value: string;
@@ -29,9 +29,8 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
   }, [value]);
 
   const filteredColors = useMemo(() => {
-    const q = normalizeForSearch(search);
-    if (!q) return systemColors;
-    return systemColors.filter(c => normalizeForSearch(c.name).includes(q));
+    if (!search.trim()) return systemColors;
+    return systemColors.filter(c => searchMatchesAllTerms(search, c.name));
   }, [systemColors, search]);
 
   const toggle = (color: string) => {
@@ -94,16 +93,18 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
-          <Input
-            placeholder="Buscar ou digitar nova cor..."
+          <SearchInput
+            placeholder="Buscar ou digitar nova cor…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={setSearch}
             onKeyDown={e => {
               if (e.key === 'Enter') {
                 e.preventDefault();
                 if (showAddButton) addCustom();
               }
             }}
+            resultCount={filteredColors.length}
+            totalCount={systemColors.length}
             className="mb-2"
           />
           <div className="max-h-48 overflow-y-auto space-y-0.5">
@@ -128,7 +129,16 @@ export function ColorsMultiSelect({ value, onChange }: ColorsMultiSelectProps) {
               </button>
             ))}
             {filteredColors.length === 0 && !showAddButton && (
-              <p className="text-sm text-muted-foreground px-2 py-1.5">Nenhuma cor encontrada</p>
+              search.trim() ? (
+                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                  <p className="text-sm text-muted-foreground truncate">Nenhum resultado para "{search}"</p>
+                  <Button type="button" variant="outline" size="sm" className="h-6 text-xs shrink-0" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground px-2 py-1.5">Nenhuma cor encontrada</p>
+              )
             )}
             {showAddButton && (
               <button

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, CalendarBlank as CalendarDays, Warning as AlertTriangle, Wallet } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -26,7 +27,8 @@ import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import AdvancesPanel from '@/components/hr/AdvancesPanel';
@@ -53,7 +55,13 @@ export default function Employees() {
   // Gates de ação da área RH/Pessoas (/rh). Admin e sem-granular sempre passam.
   const perm = useCan('/rh');
   const [form, setForm] = useState(emptyEmployee);
-  const [search, setSearch] = useState('');
+  // Aceita ?q= na URL — a busca global navega pra cá com ?q=<termo>.
+  // ?q= REATIVO: o ⌘K navega pra /rh?tab=funcionarios&q=<nome> e a página não
+  // remonta quando já se está no RH (AppLayout keia só por pathname).
+  const [searchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [search, setSearch] = useState(urlQ);
+  useEffect(() => { if (urlQ) setSearch(urlQ); }, [urlQ]);
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
   const [deptFilter, setDeptFilter] = usePersistedState('emp-dept-filter', 'all');
   // Sub-abas da página Funcionários: cadastro + Adiantamentos (movido da Folha em 2026-06-28).
@@ -70,12 +78,7 @@ export default function Employees() {
   ).sort() as string[];
 
   const filteredEmployees = employees.filter(e => {
-    const q = normalizeForSearch(search);
-    const matchSearch = !q ||
-      normalizeForSearch(e.name).includes(q) ||
-      normalizeForSearch(e.role).includes(q) ||
-      normalizeForSearch(e.department).includes(q) ||
-      normalizeForSearch(e.external_id).includes(q);
+    const matchSearch = searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id, e.phone, e.whatsapp);
     const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? e.active : !e.active);
     const matchDept = deptFilter === 'all' || e.department === deptFilter;
     return matchSearch && matchStatus && matchDept;
@@ -173,10 +176,14 @@ export default function Employees() {
         <div className="space-y-3 mt-4">
             {/* Filters */}
             <div className="flex flex-wrap gap-2 items-center">
-              <div className="relative flex-1 min-w-[180px] max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar nome, cargo, depto..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-              </div>
+              <SearchInput
+                className="flex-1 min-w-[180px] max-w-xs"
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por nome, cargo, depto, ID relógio…"
+                resultCount={filteredEmployees.length}
+                totalCount={employees.length}
+              />
               <div className="flex gap-1 bg-muted rounded-md p-1">
                 {(['all', 'active', 'inactive'] as const).map(s => (
                   <button
@@ -228,7 +235,12 @@ export default function Employees() {
                   {filteredEmployees.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={9} className="p-0">
-                        <EmptyState icon={Users2} title="Nenhum funcionário encontrado" description="Ajuste os filtros ou cadastre um novo funcionário." />
+                        <EmptyState
+                          icon={search ? Search : Users2}
+                          title={search ? `Nenhum resultado para "${search}"` : 'Nenhum funcionário encontrado'}
+                          description="Ajuste os filtros ou cadastre um novo funcionário."
+                          action={search ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button> : undefined}
+                        />
                       </TableCell>
                     </TableRow>
                   )}

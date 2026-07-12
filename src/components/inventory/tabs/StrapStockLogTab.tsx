@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { CircleNotch as Loader2, MagnifyingGlass as Search, ArrowDownRight, ArrowUpRight, ArrowCounterClockwise as RotateCcw, ChartBar as BarChart3 } from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
+import { CircleNotch as Loader2, MagnifyingGlass, ArrowDownRight, ArrowUpRight, ArrowCounterClockwise as RotateCcw, ChartBar as BarChart3 } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import StrapSummaryDialog from '../StrapSummaryDialog';
 import { useIsAdmin } from '@/hooks/useUserManagement';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type StockMovement = {
   id: string;
@@ -47,16 +48,16 @@ export default function StrapStockLogTab() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const filtered = search.trim()
-    ? movements.filter((m) => {
-        const q = normalizeForSearch(search);
-        return (
-          normalizeForSearch(m.products?.name).includes(q) ||
-          normalizeForSearch(m.products?.sku).includes(q) ||
-          normalizeForSearch(m.description).includes(q)
-        );
-      })
-    : movements;
+  const filtered = movements.filter((m) =>
+    searchMatchesAllTerms(
+      search,
+      m.products?.name,
+      m.products?.sku,
+      m.description,
+      m.orders?.order_number,
+      m.orders?.sale_orders?.order_number,
+    ),
+  );
 
   if (!isAdmin) return null;
 
@@ -71,15 +72,14 @@ export default function StrapStockLogTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por material ou descrição..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          className="flex-1 max-w-sm"
+          placeholder="Buscar por material, SKU, pedido ou descrição…"
+          value={search}
+          onChange={setSearch}
+          resultCount={filtered.length}
+          totalCount={movements.length}
+        />
         <p className="text-xs text-muted-foreground">
           Últimos 15 dias ({filtered.length} registros)
         </p>
@@ -90,9 +90,22 @@ export default function StrapStockLogTab() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          Nenhuma movimentação de tiras encontrada
-        </div>
+        search.trim() ? (
+          <EmptyState
+            size="sm"
+            icon={MagnifyingGlass}
+            title={`Nenhum resultado para "${search}"`}
+            action={
+              <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                Limpar busca
+              </Button>
+            }
+          />
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            Nenhuma movimentação de tiras encontrada
+          </div>
+        )
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
           <Table>
