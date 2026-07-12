@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
+import { resolveMaterialLabel } from '@/lib/labelUtils';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
@@ -1654,7 +1655,7 @@ export default function SaleOrders() {
                     const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
                     for (const order of selectedOrders) {
                       const displayOrderNumber = order.client_order_number || order.order_number || '';
-                      const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity').eq('sale_order_id', order.id);
+                      const { data: linkedOps } = await supabase.from('orders').select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id').eq('sale_order_id', order.id);
                       if (!linkedOps || linkedOps.length === 0) continue;
                       for (const op of linkedOps) {
                         const { data: refData } = await supabase.from('technical_sheets').select('image_url, images, shoe_category, code, name').eq('id', op.reference_id).single();
@@ -1665,8 +1666,22 @@ export default function SaleOrders() {
                         const { data: variant } = await supabase.from('reference_color_variants').select('image_url, barcode').eq('reference_id', op.reference_id).eq('color', color).maybeSingle();
                         const labelBarcode = variant?.barcode || op.order_number || '';
                         const imgUrl = variant?.image_url ? await getSignedUrl(variant.image_url) : refImageUrl;
-                        const { data: matData } = await supabase.from('sheet_materials').select('products(name)').eq('sheet_id', op.reference_id).limit(1).maybeSingle();
-                        const mainMaterial = (matData?.products as any)?.name || '';
+                        // MATERIAL: cascata única (variação do PV > cabedal > tiras/forração)
+                        // — antes lia a 1ª linha arbitrária da BOM e divergia das demais etiquetas.
+                        let itemVariantId: string | null = null;
+                        if ((op as any).sale_order_item_id) {
+                          const { data: soi } = await (supabase as any)
+                            .from('sale_order_items')
+                            .select('material_variant_id')
+                            .eq('id', (op as any).sale_order_item_id)
+                            .maybeSingle();
+                          itemVariantId = soi?.material_variant_id || null;
+                        }
+                        const mainMaterial = await resolveMaterialLabel({
+                          referenceId: op.reference_id,
+                          materialVariantId: itemVariantId,
+                          color,
+                        }).catch(() => '');
                         const grade = op.grade as Record<string, number> | null;
                         if (grade && Object.keys(grade).length > 0) {
                           for (const [size, qty] of Object.entries(grade)) {

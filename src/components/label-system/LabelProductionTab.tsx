@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
-import { fetchMainMaterial } from '@/lib/labelUtils';
+import { resolveMaterialLabels, materialLabelKey, type MaterialLabelInput } from '@/lib/labelUtils';
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
@@ -503,18 +503,23 @@ export function LabelProductionTab() {
   //   (2) Cor do PV editada DEPOIS da OP criada, sem ressincronizar a OP.
   // Em ambos `orders.color` fica vazio e o rótulo da caixa externa mostrava "—".
   // Aqui buscamos a cor atual do sale_order_item pra usar como fallback.
-  const { data: itemColorLookup = new Map<string, string>() } = useQuery({
+  // Também traz material_variant_id: a variação do PV é o topo da cascata do
+  // MATERIAL impresso (spec variacao-material-pv). Sem o filtro not-null de
+  // color — item com variante setada costuma ter color NULL (a variante LIMPA
+  // item.color) e ficaria de fora do lookup.
+  const { data: itemColorLookup = new Map<string, { color: string; variantId: string | null }>() } = useQuery({
     queryKey: ['sale_order_items_color_lookup'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sale_order_items')
-        .select('id, color')
-        .not('color', 'is', null);
+        .select('id, color, material_variant_id');
       if (error) throw error;
-      const map = new Map<string, string>();
+      const map = new Map<string, { color: string; variantId: string | null }>();
       for (const it of data || []) {
-        const c = (it.color || '').trim();
-        if (c) map.set(it.id, c);
+        map.set(it.id, {
+          color: (it.color || '').trim(),
+          variantId: (it as any).material_variant_id || null,
+        });
       }
       return map;
     },
@@ -527,11 +532,13 @@ export function LabelProductionTab() {
   // (agrupamento, card da lista, etiqueta térmica e caixa externa) lê
   // `order.color`, então resolver aqui conserta TODAS as superfícies de uma vez
   // — sem inventar cor quando não há nenhuma fonte (mantém o "—").
+  // material_variant_id do item viaja junto (cascata do MATERIAL).
   const ordersWithResolvedColor = useMemo(() => {
     return (allOrders as any[]).map((o: any) => {
-      if (o.color && String(o.color).trim() !== '') return o;
-      const fallback = o.sale_order_item_id ? itemColorLookup.get(o.sale_order_item_id) : '';
-      return fallback ? { ...o, color: fallback } : o;
+      const item = o.sale_order_item_id ? itemColorLookup.get(o.sale_order_item_id) : undefined;
+      const enriched = { ...o, material_variant_id: item?.variantId ?? null };
+      if (o.color && String(o.color).trim() !== '') return enriched;
+      return item?.color ? { ...enriched, color: item.color } : enriched;
     });
   }, [allOrders, itemColorLookup]);
 
@@ -799,17 +806,39 @@ export function LabelProductionTab() {
     };
   };
 
+  // ── MATERIAL das etiquetas — cascata única (labelUtils.resolveMaterialLabels):
+  // variação do PV > cabedal da ficha > (tiras) forração pick-one pela cor.
+  // Pré-resolve em batch (grupo + cada OP) e lê por combo ref|variante|cor.
+  const groupVariantId = (group: any): string | null => {
+    const ids = new Set((group.orders as any[]).map(o => o.material_variant_id ?? null));
+    return ids.size === 1 ? ([...ids][0] as string | null) : null;
+  };
+  const buildMaterialMap = async (groups: any[]): Promise<Map<string, string>> => {
+    const inputs: MaterialLabelInput[] = [];
+    for (const g of groups) {
+      const gColor = g.colors[0] || '';
+      inputs.push({ referenceId: g.referenceId, materialVariantId: groupVariantId(g), color: gColor });
+      for (const o of (g.orders as any[])) {
+        inputs.push({ referenceId: g.referenceId, materialVariantId: o.material_variant_id ?? null, color: o.color || gColor });
+      }
+    }
+    try { return await resolveMaterialLabels(inputs); } catch { return new Map(); }
+  };
+  const materialFromMap = (map: Map<string, string>, referenceId: string, variantId: string | null, color: string) =>
+    map.get(materialLabelKey({ referenceId, materialVariantId: variantId, color })) || '';
+
   const handlePrintHangtags = async () => {
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     if (selectedGroups.length === 0) return;
     setIsGenerating(true);
     try {
       const { data: careData } = await supabase.from('care_instructions').select('*');
+      const materialMap = await buildMaterialMap(selectedGroups);
       const labels: any[] = [];
       let currentSerial = serializationStart;
       const logoUrl = new URL(logoImg, window.location.origin).href;
       for (const group of selectedGroups) {
-        const mainMaterial = await fetchMainMaterial(group.referenceId).catch(() => '');
+        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
         const care = careData?.find(c => mainMaterial.toLowerCase().includes(c.name.toLowerCase())) || careData?.[0];
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
@@ -853,7 +882,7 @@ export function LabelProductionTab() {
       const [refDataMap, materialMap] = await Promise.all([
         supabase.from('technical_sheets').select('id, image_url, images, code, shoe_category').in('id', uniqueRefIds)
           .then(({ data }) => { const map = new Map<string, any>(); for (const r of data || []) map.set(r.id, r); return map; }),
-        Promise.all(uniqueRefIds.map(async id => [id, await fetchMainMaterial(id).catch(() => '')] as const)).then(entries => new Map(entries)),
+        buildMaterialMap(thermalGroups),
       ]);
       const imageKeys = new Set<string>();
       const imageRequests: { key: string; referenceId: string; colorName: string }[] = [];
@@ -885,7 +914,7 @@ export function LabelProductionTab() {
       imageResults.forEach(([k, url, isFallback]) => { imageMap.set(k, url); imageFallbackMap.set(k, isFallback); });
 
       for (const group of thermalGroups) {
-        const mainMaterial = materialMap.get(group.referenceId) || '';
+        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
         const refData = refDataMap.get(group.referenceId);
         const colorName = group.colors[0] || '';
         const productImageUrl = imageMap.get(`${group.referenceId}|${colorName}`) || logoUrl;
@@ -901,12 +930,13 @@ export function LabelProductionTab() {
         } else {
           for (const order of group.orders) {
             const orderColor = order.color || colorName;
+            const orderMaterial = materialFromMap(materialMap, group.referenceId, order.material_variant_id ?? null, orderColor);
             const orderKey = `${group.referenceId}|${orderColor}`;
             const orderImageUrl = imageMap.get(orderKey) || productImageUrl;
             const orderImageFallback = imageMap.has(orderKey) ? (imageFallbackMap.get(orderKey) ?? false) : productImageFallback;
             const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
             for (let i = 0; i < numFichas; i++) {
-              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`, imageUrl: orderImageUrl, imageIsFallback: orderImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
+              labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial: orderMaterial, color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`, barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`, imageUrl: orderImageUrl, imageIsFallback: orderImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
         }
@@ -934,7 +964,7 @@ export function LabelProductionTab() {
       const [refDataMap, materialMap] = await Promise.all([
         supabase.from('technical_sheets').select('id, image_url, images, code, shoe_category').in('id', uniqueRefIds)
           .then(({ data }) => { const map = new Map<string, any>(); for (const r of data || []) map.set(r.id, r); return map; }),
-        Promise.all(uniqueRefIds.map(async id => [id, await fetchMainMaterial(id).catch(() => '')] as const)).then(entries => new Map(entries)),
+        buildMaterialMap(thermalGroups),
       ]);
       // Resolve a foto do produto (mesmo fallback de 5 níveis da térmica HTML).
       // O PDF não embutia foto — usuário imprimia via PDF e recebia etiqueta sem
@@ -963,7 +993,7 @@ export function LabelProductionTab() {
 
       const labels: { refCode: string; refName: string; mainMaterial: string; color: string; size: string; barcode: string; shoeCategory?: string; clientOrderNumber?: string; qty?: number; strapsLabel?: string; imageUrl?: string; imageIsFallback?: boolean; }[] = [];
       for (const group of thermalGroups) {
-        const mainMaterial = materialMap.get(group.referenceId) || '';
+        const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), group.colors[0] || '');
         const refData = refDataMap.get(group.referenceId);
         const colorName = group.colors[0] || '';
         const effRefCode = getEffectiveRefCode(group);
@@ -985,10 +1015,11 @@ export function LabelProductionTab() {
         } else {
           for (const order of group.orders) {
             const orderColor = order.color || colorName;
+            const orderMaterial = materialFromMap(materialMap, group.referenceId, order.material_variant_id ?? null, orderColor);
             const { gradeText, pairsInOneFicha, numFichas } = getOrderFichaMetrics(order);
             for (let i = 0; i < numFichas; i++) {
               labels.push({
-                refCode: effRefCode, refName: effRefName, mainMaterial,
+                refCode: effRefCode, refName: effRefName, mainMaterial: orderMaterial,
                 color: getEffectiveColor(group, orderColor), size: gradeText || `${pairsInOneFicha} PRS`,
                 barcode: `${effRefCode || order.order_number || group.groupKey}-${gradeText || pairsInOneFicha}`,
                 shoeCategory: refData?.shoe_category || '',
@@ -1049,17 +1080,19 @@ export function LabelProductionTab() {
     try {
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const refDataMap = new Map<string, any>();
-      const materialMap = new Map<string, string>();
       const imageMap = new Map<string, string>();
       const uniqueRefIds = [...new Set(boxGroups.map(g => g.referenceId))];
-      await Promise.all(uniqueRefIds.map(async (refId) => {
-        const [{ data: refData }, material] = await Promise.all([
-          supabase.from('technical_sheets').select('image_url, images, code, shoe_category').eq('id', refId).single(),
-          fetchMainMaterial(refId).catch(() => ''),
-        ]);
-        refDataMap.set(refId, refData);
-        materialMap.set(refId, material);
-      }));
+      const [materialMap] = await Promise.all([
+        buildMaterialMap(boxGroups),
+        Promise.all(uniqueRefIds.map(async (refId) => {
+          const { data: refData } = await supabase
+            .from('technical_sheets')
+            .select('image_url, images, code, shoe_category')
+            .eq('id', refId)
+            .single();
+          refDataMap.set(refId, refData);
+        })),
+      ]);
       const imageKeys = new Set<string>();
       const imageRequests: { key: string; referenceId: string; colorName: string }[] = [];
       for (const group of boxGroups) {
@@ -1119,8 +1152,8 @@ export function LabelProductionTab() {
       const boxItems: BoxIdentificationData[] = [];
       for (const group of boxGroups) {
         const refData = refDataMap.get(group.referenceId);
-        const mainMaterial = materialMap.get(group.referenceId) || '';
         for (const order of group.orders) {
+          const mainMaterial = materialFromMap(materialMap, group.referenceId, (order as any).material_variant_id ?? null, order.color || group.colors[0] || '');
           // Parse grade defensivamente — Supabase devolve JSONB como objeto JS,
           // mas se vier string (caso de cache antigo, .raw, ou serialização
           // intermediária), parseamos. Antes assumíamos sempre objeto.

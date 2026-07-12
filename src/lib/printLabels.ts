@@ -119,6 +119,8 @@ interface LabelData {
   costPrice: number;
   salePrice: number;
   imageUrl: string;
+  /** MATERIAL resolvido (cascata do labelUtils) — vira mainMaterial no rótulo. */
+  material?: string;
 }
 
 function fmt(v: number) {
@@ -340,6 +342,8 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           <div class="row-marca">${brandLogo}<span class="brand-mark">${escapeHtml(brand)}</span></div>
           <div class="glabel">REFERENCIA</div>
           <div class="row-ref">${escapeHtml(item.refName || item.refCode || '—')}</div>
+          ${item.mainMaterial ? `<div class="glabel">MATERIAL</div>
+          <div class="row-mat">${escapeHtml(item.mainMaterial)}</div>` : ''}
           <div class="glabel">TAMANHO</div>
           ${sizeCells}<div class="cell total tam-total">TT</div>
           <div class="glabel last">QUANTIDADE</div>
@@ -474,10 +478,12 @@ ${LABEL_PRINT_HARDENING}
 .nf-row{display:grid;grid-template-columns:1.4fr 1fr;border-bottom:3px solid #000;flex-shrink:0;}
 .nf-cell{padding:6px 14px;border-right:3px solid #000;display:flex;align-items:baseline;gap:8px;background:#fff;color:#000;}
 .nf-cell .nf-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.06em;color:#555;}
-.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:40px;letter-spacing:0.02em;line-height:.92;color:#C00000;}
+/* Vermelho de conferência (spec variacao-material-pv): NF, pedido e cliente
+   em #D9264E (squad red) — os 3 campos que a expedição procura primeiro. */
+.nf-cell .nf-value{font-family:'Anton',sans-serif;font-size:40px;letter-spacing:0.02em;line-height:.92;color:#D9264E;}
 .prog-cell{padding:6px 14px;display:flex;flex-direction:column;justify-content:center;gap:1px;}
 .prog-cell .prog-label{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.06em;color:#555;}
-.prog-cell .prog-value{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:0.02em;line-height:1;color:#C00000;}
+.prog-cell .prog-value{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:0.02em;line-height:1;color:#D9264E;}
 
 /* REMETENTE (faixa fina) ───────────── */
 .remetente-row{display:flex;gap:6px;align-items:baseline;padding:3px 14px;border-bottom:1.5px solid #000;background:#fff;color:#000;flex-shrink:0;}
@@ -493,7 +499,7 @@ ${LABEL_PRINT_HARDENING}
 .body-left .field .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.06em;color:#555;}
 .body-left .field .val{font-weight:700;font-size:12px;}
 .body-left .field.mono .val{font-family:'JetBrains Mono',monospace;}
-.body-left .field.big .val{font-family:'Anton',sans-serif;font-weight:400;font-size:19px;letter-spacing:0.01em;}
+.body-left .field.big .val{font-family:'Anton',sans-serif;font-weight:400;font-size:19px;letter-spacing:0.01em;color:#D9264E;}
 .body-left .gap{height:4px;}
 
 .body-right{flex:1;display:flex;flex-direction:column;padding:8px 10px 6px;}
@@ -518,6 +524,10 @@ ${LABEL_PRINT_HARDENING}
 .grade-table > .row-marca{grid-column:2 / -1;background:#fff;color:#000;padding:3px 10px;text-align:left;display:flex;align-items:center;gap:8px;border-bottom:1px solid #000;}
 .grade-table > .row-marca .brand-mark{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:0.06em;color:#000;line-height:1;}
 .grade-table > .row-ref{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:15px;border-bottom:1px solid #000;font-family:'JetBrains Mono',monospace;font-weight:700;color:#C00000;display:flex;align-items:center;}
+/* MATERIAL (spec variacao-material-pv): nome do grupo/variação de material
+   (ex.: NAPA SOFT). Linha só existe quando o valor foi resolvido — cascata
+   variação do PV > cabedal da ficha > (tiras) forração pick-one. */
+.grade-table > .row-mat{grid-column:2 / -1;text-align:left;padding:4px 10px;font-size:16px;border-bottom:1px solid #000;font-family:'Anton',sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:#000;display:flex;align-items:center;}
 
 /* RODAPÉ PEDIDO + VOLUME ──────────── */
 .footer{display:flex;border-top:3px solid #000;background:#fff;color:#000;flex-shrink:0;}
@@ -1609,6 +1619,7 @@ export function printBoxLabels(items: LabelData[]) {
     refCode: item.refCode,
     refName: item.refName,
     color: item.color,
+    mainMaterial: item.material || '',
     boxNumber: idx + 1,
     totalBoxes: items.length,
     senderName: 'SQUAD SHOES',

@@ -3,6 +3,7 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass as Search, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { printBoxLabels } from '@/lib/printLabels';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
+import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
 import { DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { printHtml, writeRawPrintWindow, openPrintWindow } from '@/lib/printOrder';
 import { Button } from '@/components/ui/button';
@@ -115,6 +116,7 @@ export default function ReadyStockPanel() {
     });
     return Array.from(map.entries()).map(([key, items]) => ({
       key,
+      referenceId: items[0].reference_id,
       refName: items[0].technical_sheets?.name || '—',
       refCode: items[0].technical_sheets?.code || '',
       category: items[0].technical_sheets?.shoe_category || '',
@@ -151,7 +153,7 @@ export default function ReadyStockPanel() {
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const fmtNum = (v: number) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
-  const toLabelData = (g: typeof grouped[number]) => ({
+  const toLabelData = (g: typeof grouped[number], material = '') => ({
     refName: g.refName,
     refCode: g.refCode,
     color: g.color,
@@ -161,7 +163,18 @@ export default function ReadyStockPanel() {
     costPrice: g.costPrice,
     salePrice: g.price,
     imageUrl: g.imageUrl,
+    material,
   });
+
+  // MATERIAL das etiquetas da Pronta Entrega — estoque não tem PV/variação,
+  // então a cascata resolve por ficha+cor (cabedal > tiras/forração pick-one).
+  const resolveGroupMaterials = async () => {
+    const map = await resolveMaterialLabels(
+      grouped.map(g => ({ referenceId: g.referenceId, color: g.color })),
+    ).catch(() => new Map<string, string>());
+    return (g: typeof grouped[number]) =>
+      map.get(materialLabelKey({ referenceId: g.referenceId, color: g.color })) || '';
+  };
 
   const resetForm = () => {
     setSelRef('');
@@ -473,19 +486,23 @@ ${cardsHtml}
               <Printer className="h-4 w-4" />
               <span className="hidden sm:inline">PDF Lista</span>
             </Button>
-            <Button variant="outline" onClick={() => printBoxLabels(grouped.map(toLabelData))} className="gap-2">
+            <Button variant="outline" onClick={async () => {
+              const materialFor = await resolveGroupMaterials();
+              printBoxLabels(grouped.map(g => toLabelData(g, materialFor(g))));
+            }} className="gap-2">
               <BoxIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Rótulo Caixa</span>
             </Button>
-            <Button variant="outline" onClick={() => {
+            <Button variant="outline" onClick={async () => {
               // Etiqueta individual sai na impressora TÉRMICA (100×30mm, 1 por
               // página) — A4 fica pros rótulos de caixa e listas.
+              const materialFor = await resolveGroupMaterials();
               const thermal = grouped.flatMap(g =>
                 g.items.filter(i => i.quantity > 0).flatMap(i =>
                   Array.from({ length: i.quantity }, () => ({
                     refCode: g.refCode,
                     refName: g.refName,
-                    mainMaterial: '',
+                    mainMaterial: materialFor(g),
                     color: g.color,
                     size: i.size,
                     barcode: g.refCode || g.refName,
