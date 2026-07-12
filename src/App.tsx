@@ -102,6 +102,14 @@ const LabelSystem = lazy(() => import("./pages/LabelSystem"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
 const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
 const PCPHub = lazy(() => import("./pages/PCPHub"));
+// Remodelagem Produção 2026-07-12 (specs/remodelagem-producao.md): 7 itens
+// diretos no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
+const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
+const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
+const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
+const ProducaoSetoresConfig = lazy(() => import("./pages/ProducaoSetoresConfig"));
+const ProducaoApontamento = lazy(() => import("./pages/Setores"));
+const ProducaoAnalises = lazy(() => import("./pages/ProducaoAnalises"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
 // ProductionWavesPage: rota standalone /pcp/ondas virou redirect pro hub
 // (/pcp?tab=ondas) em 2026-07-01 — o PCPHub importa o componente como aba.
@@ -583,13 +591,39 @@ const router = createBrowserRouter([
         ),
       },
       {
+        // Legado: PCPHub agora é só o tradutor de /pcp?tab=… pras telas novas
         path: "pcp",
         element: <PCPHub />,
       },
+      // ── Produção remodelada (2026-07-12): 7 itens diretos ──────────────────
       {
-        // Rota legada: Ondas é aba do hub PCP (mesmo componente, sem duplicar rota).
+        path: "producao/planejamento",
+        element: <ProducaoPlanejamento />,
+      },
+      {
+        path: "producao/kanban",
+        element: <ProducaoKanban />,
+      },
+      {
+        path: "producao/estouro",
+        element: <ProducaoEstouro />,
+      },
+      {
+        path: "producao/setores",
+        element: <ProducaoSetoresConfig />,
+      },
+      {
+        path: "producao/apontamento",
+        element: <ProducaoApontamento />,
+      },
+      {
+        path: "producao/analises",
+        element: <ProducaoAnalises />,
+      },
+      {
+        // Rota legada: Ondas foram substituídas pelo motor dinâmico (R9).
         path: "pcp/ondas",
-        element: <Navigate to="/pcp?tab=ondas" replace />,
+        element: <Navigate to="/producao/planejamento" replace />,
       },
       {
         path: "pronta-entrega",
@@ -902,9 +936,9 @@ const router = createBrowserRouter([
         element: <ComercialDashboard />,
       },
       {
-        // Rota legada: dashboard de produção unificado no hub PCP.
+        // Rota legada: /producao sozinho cai no Planejamento (remodelagem 2026-07-12).
         path: "producao",
-        element: <Navigate to="/pcp?tab=dashboard" replace />,
+        element: <Navigate to="/producao/planejamento" replace />,
       },
       {
         // Rota legada: Live virou o modo "Cartões" do Quadro de Produção.
@@ -975,12 +1009,15 @@ const router = createBrowserRouter([
         element: <Navigate to="/pcp?tab=capacidade" replace />,
       },
       {
+        // Legado: o planejador de distribuição por setor (sector_distribution_plan,
+        // o 3º motor de PCP) foi aposentado (R9.3) — o Planejamento novo o substitui.
         path: "capacity-planning/distribuir",
-        element: <CapacityDistribution />,
+        element: <Navigate to="/producao/planejamento" replace />,
       },
       {
+        // Legado: Centro de Controle virou view de /producao/analises (R7.2)
         path: "centro-controle",
-        element: <ProductionControlCenter />,
+        element: <Navigate to="/producao/analises?view=centro-controle" replace />,
       },
       {
         path: "imprimir-fichas",
@@ -1002,8 +1039,9 @@ const router = createBrowserRouter([
         element: <Navigate to="/pcp?tab=dashboard" replace />,
       },
       {
+        // Legado: Qualidade de Produção virou view de /producao/analises (R7.2)
         path: "quality",
-        lazy: () => import("./pages/Quality").then(m => ({ Component: m.default })),
+        element: <Navigate to="/producao/analises?view=qualidade" replace />,
       },
       {
         path: "reports",
@@ -1020,19 +1058,19 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/CostPolicies").then(m => ({ Component: m.default })),
       },
       {
-        // Cronoanálise — estudo de tempos que alimenta bom_operations.standard_time_minutes
+        // Legado: Cronoanálise virou view de /producao/analises (R7.2)
         path: "cronoanalise",
-        lazy: () => import("./pages/Cronoanalise").then(m => ({ Component: m.default })),
+        element: <Navigate to="/producao/analises?view=cronoanalise" replace />,
       },
       {
-        // Paradas & OEE — apontamento de parada por setor + OEE real (view v_sector_oee)
+        // Legado: Paradas & OEE virou view de /producao/analises (R7.2)
         path: "producao/paradas",
-        lazy: () => import("./pages/ParadasOee").then(m => ({ Component: m.default })),
+        element: <Navigate to="/producao/analises?view=oee" replace />,
       },
       {
-        // Tempos de Setup — cadastro de tempo de troca de referência/cor por setor
+        // Legado: Tempos de Setup virou view de /producao/analises (R7.2)
         path: "producao/setup-times",
-        lazy: () => import("./pages/SetupTimes").then(m => ({ Component: m.default })),
+        element: <Navigate to="/producao/analises?view=setup" replace />,
       },
       {
         // Patrimônio / Imobilizado — cadastro de bens, depreciação linear e baixa

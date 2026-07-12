@@ -268,6 +268,22 @@ export function useUpdateOrderStage() {
  * `quantity` é o INCREMENTO (pares apontados agora), não o acumulado.
  * Negativo = correção/estorno. 0 = só iniciar/finalizar sem apontar.
  */
+export interface PointingWarning {
+  code: string;
+  message: string;
+  delivered?: number;
+}
+
+export interface ApontarResult {
+  success: boolean;
+  needs_confirmation?: boolean;
+  warnings?: PointingWarning[];
+  stage_name?: string;
+  quantity_processed?: number;
+  quantity_total?: number;
+  finalized?: boolean;
+}
+
 export function useApontarProducao() {
   const qc = useQueryClient();
   return useMutation({
@@ -278,6 +294,13 @@ export function useApontarProducao() {
       operatorEmployeeId?: string | null;
       note?: string | null;
       finalize?: boolean;
+      /**
+       * Regras de transição (R6.3): a RPC nunca trava — sem confirmação ela
+       * devolve { needs_confirmation: true, warnings } SEM gravar. O caller
+       * mostra o diálogo de confirmação e re-chama com os códigos confirmados;
+       * a confirmação fica gravada com autoria no ledger.
+       */
+      confirmedWarnings?: string[];
     }) => {
       const { data, error } = await supabase.rpc('apontar_producao_setor', {
         p_order_id: p.orderId,
@@ -286,11 +309,14 @@ export function useApontarProducao() {
         ...(p.operatorEmployeeId ? { p_operator_employee_id: p.operatorEmployeeId } : {}),
         ...(p.note ? { p_note: p.note } : {}),
         p_finalize: p.finalize ?? false,
+        ...(p.confirmedWarnings?.length ? { p_confirmed_warnings: p.confirmedWarnings } : {}),
       });
       if (error) throw error;
-      return data;
+      return data as unknown as ApontarResult;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Sem gravação (aguardando confirmação) = nada a invalidar
+      if ((data as ApontarResult | null)?.needs_confirmation) return;
       invalidateProductionCaches(qc);
     },
     onError: (err: Error) => toast.error(`Erro no apontamento: ${err.message}`),

@@ -110,48 +110,11 @@ export default function OrderPickingPage() {
         };
       });
 
-      const ids = baseOrders.map((o) => o.id);
-      if (!ids.length) return baseOrders;
-
-      // Carrega janela de pickup por PV via wave_items + waves.
-      // Um PV pode ter múltiplos items na mesma wave (cores/refs); pegamos o
-      // pickup_window do PRIMEIRO item por block_sequence (representa o item mais
-      // urgente do PV — se TER, tudo do PV sai TER; se FRI, sai FRI).
-      const { data: waveLink } = await supabase
-        .from('production_wave_item_sources' as any)
-        .select(`
-          sale_order_id,
-          production_wave_items!inner(
-            wave_id, pickup_window, block_sequence,
-            production_waves!inner(code, status, pickup_tuesday_date, pickup_friday_date)
-          )
-        `)
-        .in('sale_order_id', ids)
-        .in('production_wave_items.production_waves.status', ['draft','planning','running']);
-
-      const linkMap = new Map<string, { window: 'tuesday'|'friday'|null; date: string|null; code: string|null; seq: number }>();
-      for (const row of (waveLink ?? []) as any[]) {
-        if (!row.sale_order_id) continue;
-        const wi = row.production_wave_items;
-        const pw = wi?.production_waves;
-        if (!wi || !pw) continue;
-        const win = wi.pickup_window as 'tuesday'|'friday'|null;
-        const seq = Number(wi.block_sequence ?? 9_999_999);
-        const date = win === 'tuesday' ? pw.pickup_tuesday_date
-                   : win === 'friday'  ? pw.pickup_friday_date
-                   : null;
-        const existing = linkMap.get(row.sale_order_id);
-        if (!existing || seq < existing.seq) {
-          linkMap.set(row.sale_order_id, { window: win, date, code: pw.code ?? null, seq });
-        }
-      }
-
-      return baseOrders.map((o) => {
-        const link = linkMap.get(o.id);
-        return link
-          ? { ...o, pickup_window: link.window, pickup_date: link.date, wave_code: link.code }
-          : o;
-      });
+      // Ondas aposentadas (remodelagem 2026-07-12, specs/remodelagem-producao.md
+      // R9): a janela de pickup por onda deixou de existir — os PVs caem no
+      // agrupamento "sem onda" e a conferência segue normal. Os campos
+      // pickup_window/pickup_date/wave_code ficam null.
+      return baseOrders;
     },
     staleTime: 60_000,
   });

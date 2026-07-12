@@ -1689,17 +1689,9 @@ export function useUpdateSaleOrderStatus() {
         }
       }
 
-      // Onda de produção individual: cria e inicia onda quando PV vai para Em Produção
-      if (status === 'Em Produção') {
-        const { error: waveErr } = await (supabase as any).rpc('create_solo_wave', { p_sale_order_id: id });
-        if (waveErr) {
-          console.error('Onda de produção não criada:', waveErr.message);
-          toast.warning(
-            `Onda de produção não criada automaticamente — crie manualmente em Ondas. Erro: ${waveErr.message}`,
-            { duration: 8000 },
-          );
-        }
-      }
+      // Ondas aposentadas (remodelagem 2026-07-12, specs/remodelagem-producao.md
+      // R9): a OP entra na fila do motor dinâmico automaticamente na criação
+      // (trigger tg_orders_sync_production_queue) — nada a fazer aqui.
 
       // Auto-sync financial records
       await syncFinancialRecords(id);
@@ -2214,11 +2206,12 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      // Editar o PV recria OPs e remexe a alocação de setores/ondas → invalidar
-      // os quadros de produção pra não mostrar OP/onda obsoleta. Auditoria 2026-06-14.
-      qc.invalidateQueries({ queryKey: ['waves'] });
-      qc.invalidateQueries({ queryKey: ['production_waves'] });
-      qc.invalidateQueries({ queryKey: ['sector_distribution_plan'] });
+      // Editar o PV recria OPs → o trigger do banco já recalculou o motor
+      // dinâmico; aqui só refetch das views (Planejamento/Kanban/Estouro).
+      qc.invalidateQueries({ queryKey: ['production_queue_detail'] });
+      qc.invalidateQueries({ queryKey: ['production_schedule_grid'] });
+      qc.invalidateQueries({ queryKey: ['production_schedule_ops'] });
+      qc.invalidateQueries({ queryKey: ['production_overloads'] });
       // Editar o PV muda a demanda do MRP — invalida as necessidades/sugestões.
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
       qc.invalidateQueries({ queryKey: ['material-needs-report'] });

@@ -11,8 +11,9 @@ import { Progress } from '@/components/ui/progress';
 import { NumberInput } from '@/components/ui/number-input';
 import { Clock, Play, CheckCircle as CheckCircle2, Warning as AlertTriangle, Timer, CurrencyDollar as DollarSign, Lock, Scissors, Stack as Layers, Diamond as Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Cube as Box, MagnifyingGlass as ScanSearch, PencilLine as PenLine, ClipboardText as ClipboardList, Wind, GridFour as LayoutGrid, PaintBrush as Paintbrush, Truck } from '@phosphor-icons/react';
 import type { Icon as LucideIcon } from '@phosphor-icons/react';
-import { OrderStage, useUpdateOrderStage, useOrderStages, useApontarProducao } from '@/hooks/useOrderStages';
+import { OrderStage, useUpdateOrderStage, useOrderStages, useApontarProducao, ApontarResult, PointingWarning } from '@/hooks/useOrderStages';
 import { findBlockingStage, inboundAvailability } from '@/lib/production/stageFlow';
+import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -171,17 +172,51 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     }
   };
 
+  // Regras de transição (R6.3): a RPC devolve needs_confirmation SEM gravar;
+  // guardamos os params e reabrimos a mesma chamada com os códigos confirmados.
+  type ApontarParams = Parameters<typeof apontar.mutateAsync>[0];
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    params: ApontarParams;
+    warnings: PointingWarning[];
+    onDone?: (res: ApontarResult) => void;
+  } | null>(null);
+
+  const apontarComAvisos = async (params: ApontarParams, onDone?: (res: ApontarResult) => void) => {
+    const res = await apontar.mutateAsync(params);
+    if (res?.needs_confirmation) {
+      setPendingConfirm({ params, warnings: res.warnings || [], onDone });
+      return null;
+    }
+    applyRpcResult(res);
+    onDone?.(res);
+    return res;
+  };
+
+  const handleConfirmWarnings = async () => {
+    if (!pendingConfirm) return;
+    const { params, warnings, onDone } = pendingConfirm;
+    try {
+      const res = await apontar.mutateAsync({
+        ...params,
+        confirmedWarnings: warnings.map(w => w.code),
+      });
+      applyRpcResult(res);
+      setPendingConfirm(null);
+      onDone?.(res);
+    } catch {
+      setPendingConfirm(null);
+    }
+  };
+
   const handleStart = async () => {
     try {
       await saveFields();
-      const res = await apontar.mutateAsync({
+      await apontarComAvisos({
         orderId: stage.order_id,
         stageName: stage.stage_name,
         quantity: Math.max(0, form.quantity_processed - serverProcessed),
         operatorEmployeeId: operatorEmployeeId || null,
-      });
-      applyRpcResult(res);
-      toast.success('Setor iniciado!');
+      }, () => toast.success('Setor iniciado!'));
     } catch {
       // apontar.mutateAsync já mostra toast de erro (inclui bloqueio do DAG)
     }
@@ -192,14 +227,12 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       await saveFields();
       const delta = form.quantity_processed - serverProcessed;
       if (delta !== 0) {
-        const res = await apontar.mutateAsync({
+        await apontarComAvisos({
           orderId: stage.order_id,
           stageName: stage.stage_name,
           quantity: delta,
           operatorEmployeeId: operatorEmployeeId || null,
-        });
-        applyRpcResult(res);
-        toast.success(`Apontado: ${delta > 0 ? '+' : ''}${delta} pares (${form.quantity_processed}/${stage.quantity_total}).`);
+        }, () => toast.success(`Apontado: ${delta > 0 ? '+' : ''}${delta} pares (${form.quantity_processed}/${stage.quantity_total}).`));
       }
     } catch {
       // toasts de erro já emitidos pelas mutations
@@ -224,15 +257,16 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       // A RPC finaliza o setor, resolve/inicia o PRÓXIMO (paralelismo prep +
       // blocked_until), atualiza orders.production_step e finaliza a OP quando
       // era o último setor — substitui o antigo hack do Acabamento.
-      await apontar.mutateAsync({
+      await apontarComAvisos({
         orderId: stage.order_id,
         stageName: stage.stage_name,
         quantity: target - serverProcessed,
         operatorEmployeeId,
         finalize: true,
+      }, () => {
+        toast.success(`${stage.stage_name} finalizado — ${target}/${stage.quantity_total} pares.`);
+        onOpenChange(false);
       });
-      toast.success(`${stage.stage_name} finalizado — ${target}/${stage.quantity_total} pares.`);
-      onOpenChange(false);
     } catch {
       // apontar.mutateAsync already shows error toast via the mutation's onError
     }
@@ -478,6 +512,16 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             )}
           </div>
         </div>
+
+        {/* R6.3: avisos das regras de transição — confirmar grava com autoria */}
+        <ConfirmPointingWarnings
+          open={!!pendingConfirm}
+          warnings={pendingConfirm?.warnings || []}
+          contextLabel={`${stage.stage_name} — ${orderNumber || 'OP'}`}
+          onConfirm={handleConfirmWarnings}
+          onCancel={() => setPendingConfirm(null)}
+          confirming={apontar.isPending}
+        />
       </DialogContent>
     </Dialog>
   );

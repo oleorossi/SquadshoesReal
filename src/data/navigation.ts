@@ -48,15 +48,18 @@ export const menuGroups = [
     label: "Produção",
     icon: Factory,
     items: [
-      { name: "PCP",              icon: Kanban,            path: "/pcp" },
-      // Atalho direto pro acompanhamento setor a setor (2026-07-01): operação de
-      // setor era o destino mais frequente e custava PCP → Produzir → Setores.
-      { name: "Setores",          icon: Factory,           path: "/pcp?tab=setores" },
-      { name: "Ordens (OPs)",     icon: ListChecks,        path: "/orders" },
-      { name: "Imprimir Fichas",  icon: Printer,           path: "/imprimir-fichas" },
-      // Saíram daqui (2026-06-28): "Capacidade" (/capacity-planning) já é aba do PCP
-      // (Planejar→Capacidade) — evitava o mesmo destino por dois caminhos; "Ficha
-      // Montadores" foi pro grupo RH (produtividade das pessoas que montam).
+      // Remodelagem 2026-07-12 (specs/remodelagem-producao.md): fim do hub PCP
+      // de 14 abas — 7 itens DIRETOS, cada clique abre UMA tela clara. O motor
+      // dinâmico diário substituiu as Ondas; todas as telas leem dele.
+      { name: "Planejamento",         icon: ClipboardCheck,   path: "/producao/planejamento" },
+      { name: "Kanban",               icon: Kanban,            path: "/producao/kanban" },
+      { name: "Estouro de Produção",  icon: AlertTriangle,     path: "/producao/estouro" },
+      { name: "Setores",              icon: Factory,           path: "/producao/setores" },
+      { name: "Apontamento",          icon: ListChecks,        path: "/producao/apontamento" },
+      { name: "Imprimir Fichas",      icon: Printer,           path: "/imprimir-fichas" },
+      { name: "Análises",             icon: BarChart3,         path: "/producao/analises" },
+      // "Ordens (OPs)" saiu do menu (decisão do dono, spec R7.1: exatamente 7
+      // itens) — /orders segue vivo via links dos cards/fila e busca global.
     ],
   },
   {
@@ -194,18 +197,10 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   // Comercial
   { name: "SAC",                  icon: MessageSquare,    path: "/sac",                    group: "Comercial" },
   { name: "Forecast",             icon: TrendingUp,       path: "/forecast",               group: "Comercial" },
-  // Produção (visualizações alternativas + utilitários)
-  // As 4 visões abaixo viraram MODOS do "Quadro de Produção" no hub PCP
-  // (2026-07-01) — as rotas standalone /producao/* redirecionam pra cá.
-  { name: "Fluxo de Produção",    icon: Kanban,           path: "/pcp?tab=quadro&modo=matriz",   group: "Produção" },
-  { name: "Live (Tempo Real)",    icon: Activity,         path: "/pcp?tab=quadro&modo=cartoes",  group: "Produção" },
-  { name: "Timeline",             icon: GanttChartSquare, path: "/pcp?tab=quadro&modo=timeline", group: "Produção" },
-  { name: "Visão Agregada",       icon: Kanban,           path: "/pcp?tab=quadro&modo=lote",     group: "Produção" },
-  { name: "Centro de Controle",   icon: AlertTriangle,    path: "/centro-controle",        group: "Produção" },
-  { name: "Qualidade de Produção", icon: ShieldCheck,     path: "/quality",                group: "Produção" },
-  { name: "Cronoanálise",         icon: Timer,            path: "/cronoanalise",           group: "Produção" },
-  { name: "Paradas & OEE",        icon: Gauge,            path: "/producao/paradas",       group: "Produção" },
-  { name: "Tempos de Setup",      icon: Clock,            path: "/producao/setup-times",   group: "Produção" },
+  // Produção: os 9 itens avulsos saíram da sidebar na remodelagem 2026-07-12
+  // (R7.2) — Fluxo/Live/Timeline/Visão Agregada/Centro de Controle/Qualidade/
+  // Cronoanálise/Paradas & OEE/Tempos de Setup viraram views dentro de
+  // /producao/analises (redirects em App.tsx mantêm as URLs antigas vivas).
   // Logística
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
   { name: "Separação · Bipagem (EAN)", icon: ClipboardCheck, path: "/picking-sessions",   group: "Logística" },

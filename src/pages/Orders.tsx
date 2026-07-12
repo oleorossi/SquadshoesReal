@@ -889,121 +889,53 @@ function getWeekOptions() {
       }
     });
 
-    // ── Wave data for each order ──────────────────────────────────────────────
-    // Canonical post-rename order (migration 20260506120000); legacy values
-    // mapped to their new equivalent so XLS export still works for in-flight
-    // orders that haven't been migrated yet.
-    // Ordem canônica pós PR1-PR3: prep (palmilha‖forração‖mesa) → costura → restantes.
-    const STAGE_ORDER_XLS = [
-      'corte_palmilha', 'corte_forracao', 'mesa', 'costura', 'silk', 'colagem',
-      'montagem', 'solagem', 'acabamento', 'expedicao',
-    ];
-    const STAGE_LABEL_XLS: Record<string, string> = {
-      corte_palmilha: 'Corte Palmilha',
-      corte_forracao: 'Corte Forração',
-      mesa: 'Aviamento',
-      costura: 'Costura',
-      silk: 'Silk',
-      colagem: 'Colagem',
-      montagem: 'Montagem',
-      solagem: 'Solagem',
-      acabamento: 'Acabamento',
-      expedicao: 'Expedição',
-      // legacy aliases
-      corte: 'Corte',
-      palmilha: 'Palmilha',
-    };
-    // Legacy stage normalisation: 'corte'/'palmilha' → corte_palmilha.
-    // Cuidado: 'costura' agora é setor canônico próprio (PR 2) — NÃO normalizar pra corte_forracao.
-    const normalizeStage = (s?: string | null): string => {
-      if (!s) return '';
-      if (s === 'corte' || s === 'palmilha') return 'corte_palmilha';
-      return s;
-    };
-
-    type WaveInfo = {
-      waveCode: string;
-      currentStage: string;
-      nextStage: string;
-      prevMontagem: string;
-    };
-    const waveInfoBySaleOrderId: Record<string, WaveInfo> = {};
-
-    const saleOrderIds = [...new Set(ordersToExport.map((o: any) => o.sale_order_id).filter(Boolean))];
-    if (saleOrderIds.length > 0) {
-      const { data: sources } = await (supabase as any)
-        .from('production_wave_item_sources')
-        .select('sale_order_id, wave_item_id')
-        .in('sale_order_id', saleOrderIds);
-
-      const waveItemIds = [...new Set((sources || []).map((s: any) => s.wave_item_id).filter(Boolean))];
-      if (waveItemIds.length > 0) {
-        const { data: waveItems } = await (supabase as any)
-          .from('production_wave_items')
-          .select('id, wave_id')
-          .in('id', waveItemIds);
-
-        const waveItemToWaveId = new Map((waveItems || []).map((wi: any) => [wi.id, wi.wave_id]));
-        const waveIds = [...new Set((waveItems || []).map((wi: any) => wi.wave_id).filter(Boolean))];
-
-        if (waveIds.length > 0) {
-          const [{ data: waves }, { data: montagemStages }] = await Promise.all([
-            (supabase as any)
-              .from('production_waves')
-              .select('id, code, current_stage, week_start, status')
-              .in('id', waveIds)
-              // Production waves use Portuguese status values ('Cancelada' etc).
-              // The previous filter `'cancelled'` matched nothing, leaving cancelled waves visible.
-              .not('status', 'in', '("Cancelada","cancelada","cancelled","Cancelled")'),
-            (supabase as any)
-              .from('production_wave_stages')
-              .select('wave_id, started_at, finished_at')
-              .in('wave_id', waveIds)
-              .eq('stage', 'montagem'),
-          ]);
-
-          const waveMap = new Map((waves || []).map((w: any) => [w.id, w]));
-          const montagemMap = new Map((montagemStages || []).map((s: any) => [s.wave_id, s]));
-
-          for (const source of (sources || [])) {
-            if (!source.sale_order_id || waveInfoBySaleOrderId[source.sale_order_id]) continue;
-            const waveId = waveItemToWaveId.get(source.wave_item_id);
-            if (!waveId) continue;
-            const wave = waveMap.get(waveId);
-            if (!wave) continue;
-
-            const cs: string = normalizeStage((wave as any).current_stage || '');
-            const csIdx = STAGE_ORDER_XLS.indexOf(cs);
-            const montagemIdx = STAGE_ORDER_XLS.indexOf('montagem');
-            const nextStage = csIdx >= 0 && csIdx < STAGE_ORDER_XLS.length - 1
-              ? STAGE_LABEL_XLS[STAGE_ORDER_XLS[csIdx + 1]] || '—'
-              : '—';
-
-            const montagemRecord = montagemMap.get(waveId);
-            let prevMontagem: string;
-            if (cs === 'montagem') {
-              const since = (montagemRecord as any)?.started_at
-                ? ` (desde ${format(parseISO((montagemRecord as any).started_at), 'dd/MM')})`
-                : '';
-              prevMontagem = `Em andamento${since}`;
-            } else if (csIdx > montagemIdx || (wave as any).status === 'finished') {
-              prevMontagem = (montagemRecord as any)?.started_at
-                ? format(parseISO((montagemRecord as any).started_at), 'dd/MM/yyyy')
-                : '—';
-            } else {
-              prevMontagem = (wave as any).week_start
-                ? `~${format(parseISO((wave as any).week_start), 'dd/MM/yyyy')}`
-                : '—';
-            }
-
-            waveInfoBySaleOrderId[source.sale_order_id] = {
-              waveCode: (wave as any).code || '—',
-              currentStage: cs ? STAGE_LABEL_XLS[cs] || cs : '—',
-              nextStage,
-              prevMontagem,
-            };
-          }
+    // ── Estado por setor (motor único: order_stages + production_schedule) ──
+    // As colunas de ONDA foram aposentadas na remodelagem 2026-07-12
+    // (specs/remodelagem-producao.md R9): setor atual/próximo saem de
+    // order_stages e as previsões saem do motor dinâmico — mesmos números
+    // do Planejamento/Kanban (R2.7).
+    type OpProgress = { currentStage: string; nextStage: string; prevMontagem: string; prevConclusao: string };
+    const progressByOrderId: Record<string, OpProgress> = {};
+    const opIds = ordersToExport.map((o: any) => o.id);
+    if (opIds.length > 0) {
+      const [{ data: stageRows }, { data: schedRows }] = await Promise.all([
+        supabase
+          .from('order_stages')
+          .select('order_id, stage_name, stage_order, status')
+          .in('order_id', opIds)
+          .order('stage_order'),
+        (supabase as any)
+          .from('production_schedule')
+          .select('order_id, sector, date')
+          .in('order_id', opIds),
+      ]);
+      const stagesByOrder = new Map<string, any[]>();
+      (stageRows || []).forEach((st: any) => {
+        const arr = stagesByOrder.get(st.order_id) || [];
+        arr.push(st);
+        stagesByOrder.set(st.order_id, arr);
+      });
+      const montagemByOrder = new Map<string, string>();
+      const conclusaoByOrder = new Map<string, string>();
+      ((schedRows || []) as any[]).forEach((r: any) => {
+        if (r.sector === 'Montagem') {
+          const cur = montagemByOrder.get(r.order_id);
+          if (!cur || r.date < cur) montagemByOrder.set(r.order_id, r.date);
         }
+        const c = conclusaoByOrder.get(r.order_id);
+        if (!c || r.date > c) conclusaoByOrder.set(r.order_id, r.date);
+      });
+      const label = (n: string) => (n === 'Mesa' ? 'Aviamento' : n);
+      for (const [orderId, stages] of stagesByOrder) {
+        const pending = stages.filter((st: any) => st.status !== 'concluido');
+        const m = montagemByOrder.get(orderId);
+        const conc = conclusaoByOrder.get(orderId);
+        progressByOrderId[orderId] = {
+          currentStage: pending[0] ? label(pending[0].stage_name) : 'Concluída',
+          nextStage: pending[1] ? label(pending[1].stage_name) : '—',
+          prevMontagem: m ? format(parseISO(m), 'dd/MM/yyyy') : '—',
+          prevConclusao: conc ? format(parseISO(conc), 'dd/MM/yyyy') : '—',
+        };
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -1025,7 +957,7 @@ function getWeekOptions() {
       { header: 'Cidade/UF', key: 'cidade', width: 20 },
       { header: 'Semana Faturamento', key: 'semana', width: 20 },
       { header: 'Entrega Planejada', key: 'delivery', width: 16 },
-      { header: 'Onda', key: 'onda', width: 14 },
+      { header: 'Prev. Conclusão', key: 'prev_conclusao', width: 16 },
       { header: 'Setor Atual', key: 'setor_atual', width: 14 },
       { header: 'Próximo Setor', key: 'prox_setor', width: 14 },
       { header: 'Previsão Montagem', key: 'prev_montagem', width: 20 },
@@ -1052,7 +984,7 @@ function getWeekOptions() {
             .map(([k, v]) => `${k}:${v}`)
             .join(' ')
         : '';
-      const waveInfo = waveInfoBySaleOrderId[(order as any).sale_order_id] || null;
+      const progress = progressByOrderId[order.id] || null;
       worksheet.addRow({
         order_number: (order as any).order_number || '',
         reference: (order as any).technical_sheets?.name || (order as any).technical_sheets?.code || '',
@@ -1067,10 +999,10 @@ function getWeekOptions() {
         cidade,
         semana,
         delivery: (order as any).planned_delivery ? format(parseISO((order as any).planned_delivery), 'dd/MM/yyyy') : '',
-        onda: waveInfo?.waveCode || '—',
-        setor_atual: waveInfo?.currentStage || '—',
-        prox_setor: waveInfo?.nextStage || '—',
-        prev_montagem: waveInfo?.prevMontagem || '—',
+        prev_conclusao: progress?.prevConclusao || '—',
+        setor_atual: progress?.currentStage || '—',
+        prox_setor: progress?.nextStage || '—',
+        prev_montagem: progress?.prevMontagem || '—',
       });
     });
     const buffer = await workbook.xlsx.writeBuffer();

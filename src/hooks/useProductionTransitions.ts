@@ -44,6 +44,14 @@ export function invalidateProductionCaches(queryClient: ReturnType<typeof useQue
     ['finishing-packages'],
     // Pedidos de venda (refletem progresso da OP)
     ['sale_orders'],
+    // Motor dinâmico de produção (Planejamento/Kanban/Estouro — o apontamento
+    // dispara recompute no servidor; aqui só refetch das views)
+    ['sector_settings'],
+    ['production_schedule_grid'],
+    ['production_schedule_ops'],
+    ['production_queue_detail'],
+    ['production_overloads'],
+    ['production_engine_runs'],
   ];
   keys.forEach((k) => queryClient.invalidateQueries({ queryKey: k }));
 }

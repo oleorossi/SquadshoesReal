@@ -1,263 +1,60 @@
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useSearchParams, Link } from "react-router-dom";
-import { lazy, Suspense, useEffect } from "react";
-import { cn } from "@/lib/utils";
-import { useRealtimeOrderStages } from "@/hooks/useOrderStages";
-import { CircleNotch as Loader2, SquaresFour as LayoutDashboard, ClipboardText as ClipboardList, Factory, ChartBar as BarChart3, Stack as Boxes, ClockCounterClockwise as History, Waves, FlowArrow as Workflow, Clock } from '@phosphor-icons/react';
-import { Gauge, FileText as FileBarChart, Scissors, Warning as AlertTriangle, Kanban } from '@phosphor-icons/react';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { getSecondaryRoutesForGroup } from '@/data/navigation';
+import { Navigate, useSearchParams } from 'react-router-dom';
 
-const ProductionScheduleTimeline = lazy(() => import("@/components/financial/ProductionScheduleTimeline").then(m => ({ default: m.ProductionScheduleTimeline })));
-const Setores = lazy(() => import("./Setores"));
-const CapacityPlanning = lazy(() => import("./CapacityPlanning"));
-const PCPDashboard = lazy(() => import("./PCPDashboard"));
-const PickingListPage = lazy(() => import("./PickingListPage"));
-const OrderFlowAudit = lazy(() => import("./OrderFlowAudit"));
-const ProductionWavesPage = lazy(() => import("./ProductionWavesPage"));
-const LeadTime = lazy(() => import("./LeadTime"));
-const RCCPPlanning = lazy(() => import("@/components/production/RCCPPlanning"));
-const PostOPAnalysis = lazy(() => import("@/components/production/PostOPAnalysis"));
-const LotSplitPage = lazy(() => import("./LotSplitPage"));
-// Gargalo Diário + Semanal fundidos numa só tela com seletor de período (2026-06-28).
-const SectorBottleneckView = lazy(() => import("./SectorBottleneckView"));
-const ProductionPlanning = lazy(() => import("./ProductionPlanning"));
-// Quadro de Produção (fusão 2026-06-28): os 4 visuais do MESMO dado (order_stages)
-// viram MODOS de uma só tela, em vez de 4 rotas separadas na stripe.
-const ProductionFlow = lazy(() => import("./ProductionFlow"));
-const ProductionLive = lazy(() => import("./ProductionLive"));
-const ProductionTimeline = lazy(() => import("./ProductionTimeline"));
-const SectorAggregatedView = lazy(() => import("./SectorAggregatedView"));
-
-const TabLoader = () => (
-  <div className="flex items-center justify-center py-12">
-    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-  </div>
-);
-
-// "Quadro de Produção" — 1 tela, 4 modos do mesmo dado (order_stages). Substitui
-// as 4 rotas separadas (Fluxo/Live/Timeline/Visão Agregada) que poluíam a stripe.
-const QUADRO_MODES: { key: string; label: string }[] = [
-  { key: 'matriz', label: 'Matriz' },
-  { key: 'cartoes', label: 'Cartões' },
-  { key: 'timeline', label: 'Timeline' },
-  { key: 'lote', label: 'Lote agregado' },
-];
-function QuadroProducao() {
-  // Modo persistido na URL (?modo=) pra refresh/compartilhamento manterem a
-  // visão escolhida. 'matriz' é o default quando o param falta ou é inválido.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const rawMode = searchParams.get('modo') ?? 'matriz';
-  const mode = QUADRO_MODES.some((m) => m.key === rawMode) ? rawMode : 'matriz';
-  const setMode = (value: string) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('modo', value);
-      return next;
-    }, { replace: true });
-  };
-  return (
-    <div className="space-y-3">
-      <div className="inline-flex h-8 items-center gap-1 rounded-lg bg-muted/50 p-1">
-        {QUADRO_MODES.map((m) => (
-          <button
-            key={m.key}
-            type="button"
-            onClick={() => setMode(m.key)}
-            className={cn(
-              "h-6 rounded px-3 text-xs font-medium transition-colors",
-              mode === m.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      <Suspense fallback={<TabLoader />}>
-        {/* key={mode} → cross-fade curto ao alternar Matriz/Cartões/Timeline/Lote */}
-        <div key={mode} className="animate-fade-in">
-          {mode === 'matriz' && <ProductionFlow embedded />}
-          {mode === 'cartoes' && <ProductionLive embedded />}
-          {mode === 'timeline' && <ProductionTimeline embedded />}
-          {mode === 'lote' && <SectorAggregatedView embedded />}
-        </div>
-      </Suspense>
-    </div>
-  );
-}
-
-// Single hub for all production sectors — Setores aggregates Corte, Costura,
-// Solagem, Aviamento, Montagem and Acabamento internally.
-const tabs: { value: string; label: string; icon: any; description: string }[] = [
-  { value: "ondas", label: "Ondas", icon: Waves, description: "Agrupa as ordens em ondas de produção pra disparar a fábrica em lotes." },
-  { value: "planejamento", label: "Planejamento", icon: ClipboardList, description: "Distribui a carga de trabalho prevista entre os setores." },
-  { value: "cronograma", label: "Cronograma Reverso", icon: Workflow, description: "Calcula as datas de início de cada setor a partir do prazo de entrega (de trás pra frente)." },
-  { value: "lead-time", label: "Lead Time", icon: Clock, description: "Tempo total de atravessamento da fábrica por produto e por setor." },
-  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, description: "Indicadores gerais do PCP num relance." },
-  { value: "quadro", label: "Quadro de Produção", icon: Kanban, description: "Onde está cada OP agora — alterne entre Matriz, Cartões, Timeline e Lote agregado (mesma fonte, 4 visões)." },
-  { value: "setores", label: "Setores", icon: Factory, description: "Acompanhamento setor a setor (Corte, Costura, Solagem, Montagem...)." },
-  { value: "gargalos", label: "Gargalos", icon: AlertTriangle, description: "Gargalo por setor — demanda vs. capacidade no período (diário/semanal/quinzenal/mensal ou range de datas)." },
-  { value: "capacidade", label: "Capacidade", icon: BarChart3, description: "Capacidade instalada x ocupação de cada setor." },
-  { value: "picking", label: "Separação Semanal", icon: Boxes, description: "Separação semanal dos materiais para as ordens da semana." },
-  { value: "auditoria", label: "Auditoria de Fluxo", icon: History, description: "Histórico de mudanças no fluxo de produção." },
-  { value: "rccp", label: "RCCP", icon: Gauge, description: "Rough-Cut Capacity Planning: checagem grosseira de capacidade vs. plano de produção." },
-  { value: "pos-op", label: "Análise Pós-OP", icon: FileBarChart, description: "Análise de desempenho depois que as OPs fecham." },
-  { value: "lot-split", label: "Split de Lotes", icon: Scissors, description: "Divide um lote grande em sublotes pra paralelizar os setores." },
-];
-const TAB_BY_VALUE = Object.fromEntries(tabs.map((t) => [t.value, t]));
-
-// Auditoria 2026-06-28: de 14 abas (sidebar vertical) + 9 rotas (stripe
-// "Visualizações" flutuante) = 23 destinos em 2 trilhos empilhados, pra 1 TRILHO
-// de 3 SEGMENTOS (padrão MES: Planejar / Produzir / Analisar). Os "Quadros" de
-// produção (rotas externas) entram contextualmente no segmento Produzir, não mais
-// flutuando acima de tudo. RCCP fica em Planejar até ser fundido em
-// Capacidade (passo futuro — CapacityPlanning está em edição por outra sessão).
-const SEGMENTS: { key: string; label: string; items: string[] }[] = [
-  { key: "planejar", label: "Planejar", items: ["ondas", "planejamento", "cronograma", "capacidade", "rccp", "lead-time"] },
-  { key: "produzir", label: "Produzir", items: ["quadro", "setores", "gargalos", "picking", "lot-split"] },
-  { key: "analisar", label: "Analisar", items: ["dashboard", "auditoria", "pos-op"] },
-];
-
-// Backward-compat: legacy URLs like ?tab=corte should land on the consolidated Setores tab
-const LEGACY_SECTOR_TABS = new Set(['corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao']);
-// Gargalo Diário + Semanal fundidos em "gargalos" — deep-links antigos caem na nova tela.
-const LEGACY_GARGALO_TABS = new Set(['gargalo-diario', 'gargalo-semanal']);
+/**
+ * REDIRECT LEGADO (remodelagem 2026-07-12, specs/remodelagem-producao.md R7.3).
+ *
+ * O hub PCP de 14 abas foi substituído por itens diretos no menu Produção:
+ * Planejamento, Kanban, Estouro de Produção, Setores, Apontamento, Imprimir
+ * Fichas e Análises. Este componente só traduz as URLs antigas (/pcp?tab=…)
+ * pras telas novas — nenhum link antigo pode dar 404.
+ */
+const LEGACY_SECTOR_TABS = new Set([
+  'corte', 'forracao', 'costura', 'aviamento', 'silk',
+  'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao',
+]);
 
 export default function PCPHub() {
-  // Invalidação central (debounced) de TODAS as caches de produção — montada
-  // uma vez aqui no hub, cobre todas as abas.
-  useRealtimeOrderStages();
+  const [searchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || '';
+  const modo = searchParams.get('modo') || '';
+  const sub = searchParams.get('sub') || '';
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const rawTab = searchParams.get("tab") || "ondas";
-  const activeTab = LEGACY_SECTOR_TABS.has(rawTab) ? "setores"
-    : LEGACY_GARGALO_TABS.has(rawTab) ? "gargalos"
-    : rawTab;
-  const activeSegment = SEGMENTS.find((s) => s.items.includes(activeTab)) ?? SEGMENTS[0];
+  let to = '/producao/planejamento';
 
-  // Normaliza deep-links legados na URL: ?tab=corte vira ?tab=setores&sub=corte
-  // (o Setores lê `sub` e abre direto no setor, em vez de cair no localStorage);
-  // ?tab=gargalo-diario/semanal vira ?tab=gargalos.
-  useEffect(() => {
-    if (LEGACY_SECTOR_TABS.has(rawTab)) {
-      setSearchParams({ tab: "setores", sub: rawTab }, { replace: true });
-    } else if (LEGACY_GARGALO_TABS.has(rawTab)) {
-      setSearchParams({ tab: "gargalos" }, { replace: true });
+  if (LEGACY_SECTOR_TABS.has(tab)) {
+    to = `/producao/apontamento?sub=${tab}`;
+  } else {
+    switch (tab) {
+      case 'ondas':
+      case 'planejamento':
+      case 'cronograma':
+        to = '/producao/planejamento';
+        break;
+      case 'quadro':
+        // 'cartoes' (Live) virou o Kanban; matriz/timeline/lote são views legadas
+        to = modo && modo !== 'cartoes'
+          ? `/producao/analises?view=${modo}`
+          : '/producao/kanban';
+        break;
+      case 'setores':
+        to = sub ? `/producao/apontamento?sub=${sub}` : '/producao/apontamento';
+        break;
+      case 'gargalos':
+      case 'gargalo-diario':
+      case 'gargalo-semanal':
+        to = '/producao/analises?view=gargalos';
+        break;
+      case 'dashboard':   to = '/producao/analises?view=dashboard'; break;
+      case 'lead-time':   to = '/producao/analises?view=lead-time'; break;
+      case 'capacidade':  to = '/producao/analises?view=capacidade'; break;
+      case 'auditoria':   to = '/producao/analises?view=auditoria'; break;
+      case 'rccp':        to = '/producao/analises?view=rccp'; break;
+      case 'pos-op':      to = '/producao/analises?view=pos-op'; break;
+      case 'lot-split':   to = '/producao/analises?view=lot-split'; break;
+      case 'picking':     to = '/picking'; break;
+      default:            to = '/producao/planejamento';
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawTab]);
+  }
 
-  const handleTabChange = (value: string) => {
-    setSearchParams({ tab: value }, { replace: true });
-  };
-
-  // Stripe vira só os "quadros" NÃO fundidos (Centro de Controle, Qualidade,
-  // Cronoanálise, Paradas&OEE, Setup). Fluxo/Live/Timeline/Agregada agora são
-  // modos do "Quadro de Produção" — em navigation.ts eles apontam pra deep-links
-  // do próprio hub (/pcp?tab=quadro&modo=...), então basta excluir tudo que
-  // começa com /pcp pra não duplicar o seletor de modos como link externo.
-  const prodViews = getSecondaryRoutesForGroup('Produção').filter((r) => !r.path.startsWith('/pcp'));
-
-  return (
-    <div className="space-y-5 page-enter editorial-stagger">
-      <EditorialPageHeader
-        sectionLabel="PCP · CENTRAL"
-        title="Planejamento"
-        description="Planejamento, controle e produção da fábrica"
-      />
-
-      {/* Trilho único: 3 segmentos (Planejar / Produzir / Analisar) */}
-      <div className="inline-flex h-9 items-center gap-1 rounded-lg bg-muted/50 p-1">
-        {SEGMENTS.map((seg) => (
-          <button
-            key={seg.key}
-            type="button"
-            onClick={() => handleTabChange(seg.items[0])}
-            className={cn(
-              "h-7 rounded-md px-4 text-sm font-medium transition-colors",
-              activeSegment.key === seg.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {seg.label}
-          </button>
-        ))}
-      </div>
-
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        {/* Sub-navegação do segmento ativo */}
-        <div className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
-          {activeSegment.items.map((value) => {
-            const tab = TAB_BY_VALUE[value];
-            if (!tab) return null;
-            const isActive = activeTab === value;
-            return (
-              <Tooltip key={value} delayDuration={350}>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange(value)}
-                    className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                    )}
-                  >
-                    {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
-                    {tab.label}
-                  </button>
-                </TooltipTrigger>
-                {tab.description && (
-                  <TooltipContent side="bottom" sideOffset={8} className="max-w-[230px] text-xs">
-                    {tab.description}
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            );
-          })}
-
-          {/* Quadros de produção (Fluxo / Live / Timeline / etc.) — contextuais no
-              segmento Produzir, em vez de uma stripe flutuante acima de tudo. */}
-          {activeSegment.key === "produzir" && prodViews.length > 0 && (
-            <div className="ml-auto flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Quadros</span>
-              {prodViews.map((r) => (
-                <Link
-                  key={r.path}
-                  to={r.path}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border/60 px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                >
-                  <r.icon className="h-3 w-3" />
-                  <span>{r.name}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Conteúdo da aba ativa */}
-        <div className="mt-4 min-w-0">
-          <Suspense fallback={<TabLoader />}>
-            <TabsContent value="dashboard" className="mt-0"><PCPDashboard /></TabsContent>
-            <TabsContent value="lead-time" className="mt-0"><LeadTime /></TabsContent>
-            <TabsContent value="ondas" className="mt-0"><ProductionWavesPage embedded /></TabsContent>
-            <TabsContent value="planejamento" className="mt-0"><ProductionPlanning /></TabsContent>
-            <TabsContent value="cronograma" className="mt-0"><ProductionScheduleTimeline /></TabsContent>
-            <TabsContent value="quadro" className="mt-0"><QuadroProducao /></TabsContent>
-            <TabsContent value="setores" className="mt-0"><Setores /></TabsContent>
-            <TabsContent value="gargalos" className="mt-0"><SectorBottleneckView /></TabsContent>
-            <TabsContent value="capacidade" className="mt-0"><CapacityPlanning /></TabsContent>
-            <TabsContent value="picking" className="mt-0"><PickingListPage /></TabsContent>
-            <TabsContent value="auditoria" className="mt-0"><OrderFlowAudit embedded /></TabsContent>
-            <TabsContent value="rccp" className="mt-0"><RCCPPlanning /></TabsContent>
-            <TabsContent value="pos-op" className="mt-0"><PostOPAnalysis /></TabsContent>
-            <TabsContent value="lot-split" className="mt-0"><LotSplitPage /></TabsContent>
-          </Suspense>
-        </div>
-      </Tabs>
-    </div>
-  );
+  return <Navigate to={to} replace />;
 }

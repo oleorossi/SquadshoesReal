@@ -9573,6 +9573,79 @@ export type Database = {
           },
         ]
       }
+      overload_acknowledgements: {
+        Row: {
+          accepted_at: string
+          accepted_by: string | null
+          id: string
+          order_id: string | null
+          reason: string | null
+          scope_key: string
+          sector: string | null
+        }
+        Insert: {
+          accepted_at?: string
+          accepted_by?: string | null
+          id?: string
+          order_id?: string | null
+          reason?: string | null
+          scope_key: string
+          sector?: string | null
+        }
+        Update: {
+          accepted_at?: string
+          accepted_by?: string | null
+          id?: string
+          order_id?: string | null
+          reason?: string | null
+          scope_key?: string
+          sector?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overload_acknowledgements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overload_acknowledgements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "overload_acknowledgements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_late_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overload_acknowledgements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "overload_acknowledgements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "overload_acknowledgements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "vw_costura_queue"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       overtime_resolutions: {
         Row: {
           bank_minutes: number
@@ -11958,6 +12031,39 @@ export type Database = {
           },
         ]
       }
+      production_engine_runs: {
+        Row: {
+          duration_ms: number | null
+          horizon_end: string | null
+          queue_size: number | null
+          ran_at: string
+          ran_on: string
+          run_id: string
+          scheduled_pairs: number | null
+          triggered_by: string | null
+        }
+        Insert: {
+          duration_ms?: number | null
+          horizon_end?: string | null
+          queue_size?: number | null
+          ran_at?: string
+          ran_on?: string
+          run_id: string
+          scheduled_pairs?: number | null
+          triggered_by?: string | null
+        }
+        Update: {
+          duration_ms?: number | null
+          horizon_end?: string | null
+          queue_size?: number | null
+          ran_at?: string
+          ran_on?: string
+          run_id?: string
+          scheduled_pairs?: number | null
+          triggered_by?: string | null
+        }
+        Relationships: []
+      }
       production_equipment: {
         Row: {
           category: string | null
@@ -12353,6 +12459,7 @@ export type Database = {
       }
       production_pointings: {
         Row: {
+          confirmed_warnings: string[] | null
           created_at: string
           created_by: string | null
           id: string
@@ -12364,6 +12471,7 @@ export type Database = {
           stage_name: string
         }
         Insert: {
+          confirmed_warnings?: string[] | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -12375,6 +12483,7 @@ export type Database = {
           stage_name: string
         }
         Update: {
+          confirmed_warnings?: string[] | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -12469,6 +12578,161 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_stages"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_queue: {
+        Row: {
+          created_at: string
+          due_date: string | null
+          order_id: string
+          pinned_at: string | null
+          pinned_by: string | null
+          pinned_position: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_date?: string | null
+          order_id: string
+          pinned_at?: string | null
+          pinned_by?: string | null
+          pinned_position?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_date?: string | null
+          order_id?: string
+          pinned_at?: string | null
+          pinned_by?: string | null
+          pinned_position?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_late_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "vw_costura_queue"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      production_schedule: {
+        Row: {
+          capacity_source: string
+          carryover_pairs: number
+          created_at: string
+          date: string
+          id: number
+          order_id: string
+          planned_pairs: number
+          recalc_run_id: string
+          sector: string
+        }
+        Insert: {
+          capacity_source?: string
+          carryover_pairs?: number
+          created_at?: string
+          date: string
+          id?: never
+          order_id: string
+          planned_pairs: number
+          recalc_run_id: string
+          sector: string
+        }
+        Update: {
+          capacity_source?: string
+          carryover_pairs?: number
+          created_at?: string
+          date?: string
+          id?: never
+          order_id?: string
+          planned_pairs?: number
+          recalc_run_id?: string
+          sector?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_schedule_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_schedule_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_schedule_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_late_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_schedule_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_schedule_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_schedule_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "vw_costura_queue"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -17301,6 +17565,51 @@ export type Database = {
           sector?: string
           shoe_category?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      sector_settings: {
+        Row: {
+          check_material_reserved: boolean
+          check_prev_sector_limit: boolean
+          daily_capacity_pairs: number
+          enabled: boolean
+          ficha_capacity_column: string | null
+          flow_order: number
+          parallel_group: string | null
+          sector: string
+          team_notes: string | null
+          team_size: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          check_material_reserved?: boolean
+          check_prev_sector_limit?: boolean
+          daily_capacity_pairs?: number
+          enabled?: boolean
+          ficha_capacity_column?: string | null
+          flow_order: number
+          parallel_group?: string | null
+          sector: string
+          team_notes?: string | null
+          team_size?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          check_material_reserved?: boolean
+          check_prev_sector_limit?: boolean
+          daily_capacity_pairs?: number
+          enabled?: boolean
+          ficha_capacity_column?: string | null
+          flow_order?: number
+          parallel_group?: string | null
+          sector?: string
+          team_notes?: string | null
+          team_size?: number | null
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -25396,6 +25705,25 @@ export type Database = {
           },
         ]
       }
+      v_production_overloads: {
+        Row: {
+          carryover_total: number | null
+          client_name: string | null
+          color: string | null
+          due_date: string | null
+          kind: string | null
+          late_days: number | null
+          order_id: string | null
+          order_number: string | null
+          projected_completion: string | null
+          quantity: number | null
+          reference_name: string | null
+          remaining_pairs: number | null
+          sale_order_id: string | null
+          sale_order_number: string | null
+        }
+        Relationships: []
+      }
       v_production_planning_kpis: {
         Row: {
           daily_capacity: number | null
@@ -25406,6 +25734,183 @@ export type Database = {
           risk_level: string | null
           sector: string | null
           total_pairs: number | null
+        }
+        Relationships: []
+      }
+      v_production_queue_detail: {
+        Row: {
+          carryover_total: number | null
+          client_name: string | null
+          color: string | null
+          due_date: string | null
+          has_ficha_override: boolean | null
+          late_days: number | null
+          next_scheduled_date: string | null
+          order_id: string | null
+          order_number: string | null
+          order_status: string | null
+          pinned_at: string | null
+          pinned_by: string | null
+          pinned_position: number | null
+          projected_completion: string | null
+          quantity: number | null
+          queue_position: number | null
+          queue_status: string | null
+          reference_id: string | null
+          reference_name: string | null
+          reference_photo_url: string | null
+          remaining_pairs: number | null
+          sale_order_id: string | null
+          sale_order_number: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "sale_order_min_billing"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "sale_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_faturado_sem_ar"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_profitability"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_pv_outdated_status"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "orders_sale_order_id_fkey"
+            columns: ["sale_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_sale_order_billing_health"
+            referencedColumns: ["sale_order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "purchase_projection_timeline"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_late_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_order_pickup_window"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "production_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "vw_costura_queue"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "technical_sheets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_ficha_sole_range_mismatch"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_split_suggestions"
+            referencedColumns: ["sheet_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sheets_missing_lining_consumption"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_sku_forecast_summary"
+            referencedColumns: ["reference_id"]
+          },
+          {
+            foreignKeyName: "references"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "v_technical_sheets_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_production_schedule_grid: {
+        Row: {
+          capacity_pairs: number | null
+          carryover_pairs: number | null
+          date: string | null
+          enabled: boolean | null
+          flow_order: number | null
+          ops: number | null
+          ops_ficha_override: number | null
+          parallel_group: string | null
+          planned_pairs: number | null
+          sector: string | null
         }
         Relationships: []
       }
@@ -26676,6 +27181,7 @@ export type Database = {
       }
       apontar_producao_setor: {
         Args: {
+          p_confirmed_warnings?: string[]
           p_finalize?: boolean
           p_note?: string
           p_operator_employee_id?: string
@@ -26750,6 +27256,7 @@ export type Database = {
         Args: { p_end: string; p_start: string }
         Returns: number
       }
+      br_today: { Args: never; Returns: string }
       caixa_collective_type: { Args: { p_name: string }; Returns: string }
       calc_required_for_grade: {
         Args: {
@@ -27786,6 +28293,11 @@ export type Database = {
         }[]
       }
       recompute_payroll_paid: { Args: { p_run: string }; Returns: undefined }
+      recompute_production_schedule: {
+        Args: { p_triggered_by?: string }
+        Returns: Json
+      }
+      recompute_production_schedule_if_stale: { Args: never; Returns: Json }
       recompute_sale_order_cmv_recognition: {
         Args: { p_sale_order_id: string }
         Returns: undefined
@@ -27918,6 +28430,7 @@ export type Database = {
           product_name: string
         }[]
       }
+      resolve_op_due_date: { Args: { p_order_id: string }; Returns: string }
       resolve_palmilha_color: {
         Args: { p_cabedal_color: string; p_sheet_id: string }
         Returns: string

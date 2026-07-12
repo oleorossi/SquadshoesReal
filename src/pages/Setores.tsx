@@ -4,6 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Scissors, Footprints, Sparkle as Sparkles, Wrench, Paperclip, Palette, Package, Flame, Cloud, Pen } from '@phosphor-icons/react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useEnsureFreshSchedule } from '@/hooks/useProductionEngine';
 
 const Corte = lazy(() => import('./Corte'));
 const Forracao = lazy(() => import('./Costura')); // legado: Costura.tsx é "Corte Forração"
@@ -24,7 +26,15 @@ const TabLoader = () => (
 
  const SECTOR_TABS = ['corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
 
+/**
+ * APONTAMENTO (R6) — a porta de chão de fábrica do motor: uma aba por setor,
+ * cada uma com sua lista de OPs e o diálogo de apontar quantidade. Kanban e
+ * estas telas gravam no MESMO ledger/RPC (apontar_producao_setor), com os
+ * mesmos avisos confirmáveis e autoria.
+ */
 export default function Setores() {
+   // Garante a virada do dia do motor ao abrir a tela de chão de fábrica
+   useEnsureFreshSchedule();
    // Removido 'ordens' como sub-aba — lista global vive no menu lateral em /orders
    // pra eliminar duplicidade (era o mesmo componente embutido aqui).
    const [activeTab, setActiveTab] = usePersistedState<string>('setores-active-tab', 'corte');
@@ -59,7 +69,12 @@ export default function Setores() {
   };
 
    return (
-     <div className="space-y-4">
+     <div className="space-y-4 page-enter">
+       <EditorialPageHeader
+         sectionLabel="PRODUÇÃO · APONTAMENTO"
+         title="Apontamento"
+         description="Chão de fábrica: aponte a quantidade produzida em cada setor. Tudo cai no mesmo motor do Kanban e do Planejamento, com autoria registrada."
+       />
        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
             <TabsList indicator="none" className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
