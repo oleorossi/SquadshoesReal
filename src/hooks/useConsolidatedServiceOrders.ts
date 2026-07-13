@@ -67,7 +67,18 @@ export function useConsolidatedServiceOrders() {
         `)
         .order('created_at', { ascending: false })
         .limit(500);
-      if (error) throw error;
+      if (error) {
+        // Enquanto a migration 20260913120000 (tabela service_order_items) não
+        // estiver aplicada, o embed falha. Degrada pro estado vazio em vez de
+        // ficar em erro/retry — a aba mostra "Nenhuma OS consolidada ainda".
+        const code = String((error as any).code || '');
+        const msg = String((error as any).message || '');
+        if (code === 'PGRST200' || code === 'PGRST205' || code === '42P01'
+          || /service_order_items|could not find|schema cache|does not exist|relationship/i.test(msg)) {
+          return [];
+        }
+        throw error;
+      }
 
       // Só os contêineres do NOVO modelo (que têm linhas). OS flat legadas ficam
       // na aba "Ordens de Serviço" antiga.

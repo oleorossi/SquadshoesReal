@@ -22,6 +22,7 @@ import {
   type StrapIncompleteItem,
 } from '@/lib/strapShortages';
 import { addServiceOrderLine } from '@/hooks/useConsolidatedServiceOrders';
+import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 
 type Mode = 'artesanal' | 'comprar';
 
@@ -175,6 +176,7 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
       // a 2ª unidade). Idempotente por source_item_key (reprocessar não duplica).
       // Preço 0 até haver tarifa (contractor_service_rates) — firmado na entrega.
       let zeroRateCount = 0;
+      let usedFlatFallback = false;
       for (const r of artesanal) {
         if (!r.contractor_id) {
           throw new Error(`Selecione o prestador pra ${r.shortage.strap_label} ${r.shortage.strap_color}.`);
@@ -185,6 +187,7 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
         const pares = Math.max(0, Math.round(Number(r.shortage.pairs) || 0));
         // Metragem = pares × consumo por par (na unidade linear da tira). 2ª unidade.
         const metros = (Number(r.shortage.pairs) || 0) * (Number(r.shortage.consumption_per_pair) || 0);
+        const metrosRound = metros > 0 ? Math.round(metros * 100) / 100 : null;
         try {
           await addServiceOrderLine({
             contractorId: r.contractor_id,
@@ -196,17 +199,47 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
             color: r.shortage.strap_color,
             quantity: pares,
             unit: 'par',
-            meters: metros > 0 ? Math.round(metros * 100) / 100 : null,
+            meters: metrosRound,
             unitPrice: 0,
           });
         } catch (e: any) {
-          throw new Error(`OS ${r.shortage.strap_label}: ${e.message}`);
+          // Fallback defensivo: enquanto a migration 20260913120000 (RPC
+          // add_service_order_line + tabela service_order_items) não estiver
+          // aplicada no banco, o modelo consolidado não existe. Em vez de
+          // quebrar a geração de tiras (feature viva), cai no modelo antigo
+          // (1 service_orders flat por tira). Some sozinho quando a migration
+          // entrar. Só faz fallback se o erro for "objeto não existe no schema".
+          const msg = String(e?.message || '');
+          const code = String(e?.code || '');
+          const schemaMissing = code === 'PGRST202' || code === 'PGRST205' || code === '42883' || code === '42P01'
+            || /add_service_order_line|service_order_items|could not find|schema cache|does not exist/i.test(msg);
+          if (!schemaMissing) {
+            throw new Error(`OS ${r.shortage.strap_label}: ${msg}`);
+          }
+          usedFlatFallback = true;
+          const order_number = await generateServiceOrderNumber();
+          const { error: flatErr } = await (supabase as any).from('service_orders').insert({
+            contractor_id: r.contractor_id,
+            order_number,
+            description: desc,
+            material_name: materialName,
+            material_color: r.shortage.strap_color,
+            material_meters: metrosRound,
+            target_sector: 'Tiras',
+            sale_order_id: saleOrderId,
+            quantity: pares,
+            unit_price: 0,
+            total_value: 0,
+            status: 'Pendente',
+            service_date: new Date().toISOString().slice(0, 10),
+          });
+          if (flatErr) throw new Error(`OS ${r.shortage.strap_label}: ${flatErr.message}`);
         }
         zeroRateCount++;
       }
       if (zeroRateCount > 0) {
         toast.warning(
-          `${zeroRateCount} tira(s) adicionada(s) à OS do prestador a R$0 — cadastre a tarifa em Terceirizados → Tarifas por Referência pra valorar.`,
+          `${zeroRateCount} tira(s) adicionada(s) ${usedFlatFallback ? 'como OS avulsa' : 'à OS do prestador'} a R$0 — cadastre a tarifa em Terceirizados → Tarifas por Referência pra valorar.`,
         );
       }
 
