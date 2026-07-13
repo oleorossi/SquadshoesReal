@@ -18,7 +18,7 @@ import {
 } from '@phosphor-icons/react';
 import {
   useProductionScheduleGrid, useProductionQueueDetail, useScheduleOps,
-  usePinOrder, useEnsureFreshSchedule, useLastEngineRun,
+  usePinOrder, usePinOrderAt, useEnsureFreshSchedule, useLastEngineRun,
   ScheduleGridCell, QueueDetailRow,
 } from '@/hooks/useProductionEngine';
 import { useRealtimeOrderStages } from '@/hooks/useOrderStages';
@@ -59,6 +59,7 @@ export default function ProducaoPlanejamento() {
   const { data: queue = [], isLoading: queueLoading } = useProductionQueueDetail();
   const { data: lastRun } = useLastEngineRun();
   const pin = usePinOrder();
+  const pinAt = usePinOrderAt();
   const canEdit = useCan('/producao/planejamento').canEdit;
 
   const [search, setSearch] = useState('');
@@ -96,17 +97,20 @@ export default function ProducaoPlanejamento() {
     [queue, search],
   );
 
-  // Drag na fila = fixar a OP na posição do alvo (pin manual, R2.5)
+  // Drag na fila = fixar a OP NA posição do alvo (pin manual, R2.5). O RPC
+  // renumera o bloco de pins — gravar queue_position cru invertia a intenção.
   const handleQueueDrop = (target: QueueDetailRow) => {
     if (!dragOrderId || dragOrderId === target.order_id) return;
     setDragOrderId(null);
-    pin.mutate({ orderId: dragOrderId, position: target.queue_position });
+    pinAt.mutate({ orderId: dragOrderId, position: target.queue_position });
   };
 
+  // Tom da célula por UTILIZAÇÃO do motor (fração de dia), não pares×capacidade
+  // global — com override de ficha os dois divergem e davam vermelho falso.
   const cellTone = (c: ScheduleGridCell | undefined) => {
     if (!c) return 'text-muted-foreground/50';
     if (c.carryover_pairs > 0) return 'bg-red-500/10 text-red-600 dark:text-red-400';
-    if (c.planned_pairs >= c.capacity_pairs) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+    if (c.utilization >= 0.999) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
     return 'bg-green-500/10 text-green-600 dark:text-green-400';
   };
 
@@ -187,7 +191,7 @@ export default function ProducaoPlanejamento() {
                                       className={`w-full rounded-md px-1.5 py-1.5 font-mono transition-colors hover:ring-1 hover:ring-border ${cellTone(c)}`}
                                       onDoubleClick={() => setDrill({ sector: s.sector, date: d })}
                                     >
-                                      {c.planned_pairs}/{c.capacity_pairs}
+                                      {c.planned_pairs}/{c.effective_capacity_pairs}
                                       {c.carryover_pairs > 0 && (
                                         <div className="text-[10px] font-semibold">+{c.carryover_pairs} atraso</div>
                                       )}
@@ -196,7 +200,14 @@ export default function ProducaoPlanejamento() {
                                   {/* R2.8 — "como cheguei nisso" */}
                                   <PopoverContent className="w-72 text-xs space-y-1.5">
                                     <p className="font-semibold">{s.sector} — {fmtDate(d)}</p>
-                                    <p>Planejado: <strong className="font-mono">{c.planned_pairs}</strong> de <strong className="font-mono">{c.capacity_pairs}</strong> pares/dia (capacidade global do setor)</p>
+                                    <p>
+                                      Planejado: <strong className="font-mono">{c.planned_pairs}</strong> pares —{' '}
+                                      <strong className="font-mono">{Math.round(c.utilization * 100)}%</strong> do dia usado.
+                                      Capacidade do mix do dia ≈ <strong className="font-mono">{c.effective_capacity_pairs}</strong> pares
+                                      {c.effective_capacity_pairs !== c.capacity_pairs
+                                        ? <> (global do setor: <strong className="font-mono">{c.capacity_pairs}</strong>)</>
+                                        : ' (capacidade global do setor)'}
+                                    </p>
                                     <p>{c.ops} OP{c.ops !== 1 ? 's' : ''} no dia{c.ops_ficha_override > 0 ? ` — ${c.ops_ficha_override} com capacidade da FICHA TÉCNICA (override)` : ' — todas na capacidade global'}</p>
                                     {c.carryover_pairs > 0 && (
                                       <p className="text-red-600 dark:text-red-400">

@@ -421,7 +421,8 @@ function DropApontarDialog({
       );
       onClose();
     } catch {
-      // toast de erro já emitido pela mutation (ex.: estorno em setor concluído)
+      // toast de erro já emitido pela mutation (estorno em setor concluído é
+      // permitido desde a auditoria 2026-07-13 — reabre o estágio)
     }
   };
 

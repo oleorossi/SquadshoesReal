@@ -34,6 +34,10 @@ export interface ScheduleGridCell {
   planned_pairs: number;
   carryover_pairs: number;
   capacity_pairs: number;
+  /** Fração do dia que o motor usou (1.0 = dia cheio) — comparar por AQUI, não por pares×capacidade global */
+  utilization: number;
+  /** Capacidade do mix real do dia (rates de ficha ponderados); = global quando não há override */
+  effective_capacity_pairs: number;
   ops: number;
   ops_ficha_override: number;
   flow_order: number;
@@ -68,7 +72,7 @@ export interface QueueDetailRow {
 }
 
 export interface OverloadRow {
-  kind: 'late_op' | 'no_due';
+  kind: 'late_op' | 'no_due' | 'sem_agenda';
   order_id: string;
   order_number: string;
   reference_name: string | null;
@@ -273,6 +277,29 @@ export function usePinOrder() {
     onSuccess: (_d, p) => {
       invalidateEngineCaches(qc);
       toast.success(p.position === null ? 'OP despinada — volta pra ordenação por prazo.' : 'Prioridade fixada.');
+    },
+    onError: (err: Error) => toast.error(`Erro ao priorizar: ${err.message}`),
+  });
+}
+
+/**
+ * Pin por drag (R2.5): fixa a OP NA posição onde foi solta. O RPC renumera o
+ * bloco de pins (pinadas sempre vêm antes na fila do motor) — gravar
+ * queue_position cru em pinned_position colocava a OP na posição errada.
+ */
+export function usePinOrderAt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: { orderId: string; position: number }) => {
+      const { error } = await supabase.rpc('pin_order_at', {
+        p_order_id: p.orderId,
+        p_target_position: p.position,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateEngineCaches(qc);
+      toast.success('OP fixada na posição — fila recalculada.');
     },
     onError: (err: Error) => toast.error(`Erro ao priorizar: ${err.message}`),
   });

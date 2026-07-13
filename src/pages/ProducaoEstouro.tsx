@@ -49,14 +49,18 @@ export default function ProducaoEstouro() {
 
   const lateOps = useMemo(() => overloads.filter(o => o.kind === 'late_op'), [overloads]);
   const noDue = useMemo(() => overloads.filter(o => o.kind === 'no_due'), [overloads]);
+  // Fluxo travado: OP com pares restantes e NENHUM dia agendado pelo motor
+  const semAgenda = useMemo(() => overloads.filter(o => o.kind === 'sem_agenda'), [overloads]);
 
-  // Backlog (carryover) por setor nos próximos 30 dias + dias saturados
+  // Backlog (carryover) por setor nos próximos 30 dias + dias saturados.
+  // Saturação por UTILIZAÇÃO do motor (fração de dia) — pares×capacidade
+  // global dava falso positivo quando o rate vinha da ficha técnica.
   const sectorBacklog = useMemo(() => {
     const m = new Map<string, { carryover: number; saturatedDays: number; flow: number }>();
     grid.forEach(c => {
       const cur = m.get(c.sector) || { carryover: 0, saturatedDays: 0, flow: c.flow_order };
       cur.carryover += c.carryover_pairs;
-      if (c.planned_pairs >= c.capacity_pairs) cur.saturatedDays += 1;
+      if (c.utilization >= 0.999) cur.saturatedDays += 1;
       m.set(c.sector, cur);
     });
     return [...m.entries()]
@@ -66,8 +70,9 @@ export default function ProducaoEstouro() {
 
   const confirmAccept = () => {
     if (!acceptRow) return;
+    const prefix = acceptRow.kind === 'late_op' ? 'late' : acceptRow.kind === 'no_due' ? 'nodue' : 'noagenda';
     accept.mutate({
-      scopeKey: `${acceptRow.kind === 'late_op' ? 'late' : 'nodue'}:${acceptRow.order_id}`,
+      scopeKey: `${prefix}:${acceptRow.order_id}`,
       orderId: acceptRow.order_id,
       reason: acceptReason.trim() || undefined,
     });
@@ -209,6 +214,45 @@ export default function ProducaoEstouro() {
                     <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAcceptRow(o)}>
                       <CheckCircle className="h-3.5 w-3.5 mr-1" /> Ciente
                     </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── OPs travadas: trabalho restante sem NENHUM dia agendado ────────── */}
+      {semAgenda.length > 0 && (
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+            Fluxo travado — sem agenda ({semAgenda.length})
+          </h3>
+          <div className="space-y-2">
+            {semAgenda.map(o => (
+              <Card key={o.order_id} className="border-red-500/30">
+                <CardContent className="p-3 flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-[220px]">
+                    <Link to={`/orders/${o.order_id}/edit`} className="font-mono text-sm font-bold text-primary hover:underline">
+                      {o.order_number}
+                    </Link>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {o.reference_name}{o.color ? ` · ${o.color}` : ''} · restam {o.remaining_pairs} pares e o motor
+                      não conseguiu agendar NENHUM dia — normalmente um setor anterior fora do fluxo
+                      (ficha/configuração) sem ter entregue, ou setor 100% apontado sem finalizar.
+                    </p>
+                    <p className="text-xs mt-0.5">Prazo: <strong>{fmtDate(o.due_date)}</strong></p>
+                  </div>
+                  {canEdit && (
+                    <div className="flex flex-wrap gap-1.5">
+                      <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
+                        <Link to="/producao/setores"><SlidersIcon className="h-3.5 w-3.5" /> Rever fluxo</Link>
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAcceptRow(o)}>
+                        <CheckCircle className="h-3.5 w-3.5 mr-1" /> Ciente
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>

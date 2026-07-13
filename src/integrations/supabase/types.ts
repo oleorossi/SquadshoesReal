@@ -12460,6 +12460,7 @@ export type Database = {
       production_pointings: {
         Row: {
           confirmed_warnings: string[] | null
+          confirmed_warnings_detail: Json | null
           created_at: string
           created_by: string | null
           id: string
@@ -12472,6 +12473,7 @@ export type Database = {
         }
         Insert: {
           confirmed_warnings?: string[] | null
+          confirmed_warnings_detail?: Json | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -12484,6 +12486,7 @@ export type Database = {
         }
         Update: {
           confirmed_warnings?: string[] | null
+          confirmed_warnings_detail?: Json | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -12663,6 +12666,7 @@ export type Database = {
           carryover_pairs: number
           created_at: string
           date: string
+          day_fraction: number
           id: number
           order_id: string
           planned_pairs: number
@@ -12674,6 +12678,7 @@ export type Database = {
           carryover_pairs?: number
           created_at?: string
           date: string
+          day_fraction?: number
           id?: never
           order_id: string
           planned_pairs: number
@@ -12685,6 +12690,7 @@ export type Database = {
           carryover_pairs?: number
           created_at?: string
           date?: string
+          day_fraction?: number
           id?: never
           order_id?: string
           planned_pairs?: number
@@ -25904,6 +25910,7 @@ export type Database = {
           capacity_pairs: number | null
           carryover_pairs: number | null
           date: string | null
+          effective_capacity_pairs: number | null
           enabled: boolean | null
           flow_order: number | null
           ops: number | null
@@ -25911,6 +25918,7 @@ export type Database = {
           parallel_group: string | null
           planned_pairs: number | null
           sector: string | null
+          utilization: number | null
         }
         Relationships: []
       }
@@ -28211,6 +28219,10 @@ export type Database = {
           sample: string
           severity: string
         }[]
+      }
+      pin_order_at: {
+        Args: { p_order_id: string; p_target_position: number }
+        Returns: undefined
       }
       plan_costura_dispatch: {
         Args: { p_horizon_days?: number }
