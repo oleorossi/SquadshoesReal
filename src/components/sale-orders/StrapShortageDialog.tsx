@@ -21,6 +21,7 @@ import {
   type StrapShortage,
   type StrapIncompleteItem,
 } from '@/lib/strapShortages';
+import { addServiceOrderLine } from '@/hooks/useConsolidatedServiceOrders';
 
 type Mode = 'artesanal' | 'comprar';
 
@@ -167,13 +168,12 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
       const artesanal = rows.filter(r => r.mode === 'artesanal');
       const comprar = rows.filter(r => r.mode === 'comprar');
 
-      // 1) Artesanal → service_orders
-      // Auditoria 2026-06-28: este branch era a fábrica das 235 OS-lixo do MARCO
-      // (R$0, SEM vínculo de PV, material_name vazio). Correção: a OS agora nasce
-      // RASTREÁVEL — vinculada ao PV (sale_order_id) e com material_name preenchido
-      // (label+cor da tira), então nunca mais vira "órfã/vazia". O preço continua 0
-      // enquanto não houver tarifa cadastrada (contractor_service_rates) — nesse
-      // caso avisamos, em vez de gravar R$0 em silêncio.
+      // 1) Artesanal → LINHA na OS aberta do prestador (OS consolidada).
+      // Antes criava 1 service_orders por tira (o print com 7 OS). Agora cada tira
+      // vira uma LINHA (add_service_order_line faz find-or-create da OS aberta do
+      // prestador), com pares (quantidade) + metragem (metros = pares × consumo/par,
+      // a 2ª unidade). Idempotente por source_item_key (reprocessar não duplica).
+      // Preço 0 até haver tarifa (contractor_service_rates) — firmado na entrega.
       let zeroRateCount = 0;
       for (const r of artesanal) {
         if (!r.contractor_id) {
@@ -181,25 +181,32 @@ export function StrapShortageDialog({ open, saleOrderId, saleOrderNumber, onClos
         }
         const materialName = `TIRA ${r.shortage.strap_label} ${r.shortage.strap_color}`.trim();
         const desc = `TIRA ARTESANAL · ${r.shortage.strap_label} ${r.shortage.strap_color}` +
-          ` · Ref ${r.shortage.cabedal_color}` +
-          ` · ${r.shortage.shortage.toFixed(0)} ${r.shortage.product_id ? 'un faltam' : 'un (novo produto)'}`;
-        const { error } = await supabase.from('service_orders').insert({
-          contractor_id: r.contractor_id,
-          sale_order_id: saleOrderId,
-          material_name: materialName,
-          description: desc,
-          service_date: new Date().toISOString().slice(0, 10),
-          quantity: Math.ceil(r.shortage.shortage),
-          unit_price: 0,
-          total_value: 0,
-          status: 'Pendente',
-        } as any);
-        if (error) throw new Error(`OS ${r.shortage.strap_label}: ${error.message}`);
+          ` · Ref ${r.shortage.cabedal_color}`;
+        const pares = Math.max(0, Math.round(Number(r.shortage.pairs) || 0));
+        // Metragem = pares × consumo por par (na unidade linear da tira). 2ª unidade.
+        const metros = (Number(r.shortage.pairs) || 0) * (Number(r.shortage.consumption_per_pair) || 0);
+        try {
+          await addServiceOrderLine({
+            contractorId: r.contractor_id,
+            sourceItemKey: `strap::${r.shortage.sale_order_item_id}::${r.shortage.strap_label}::${r.shortage.strap_color}`,
+            materialName,
+            description: desc,
+            saleOrderId: saleOrderId,
+            targetSector: 'Tiras',
+            color: r.shortage.strap_color,
+            quantity: pares,
+            unit: 'par',
+            meters: metros > 0 ? Math.round(metros * 100) / 100 : null,
+            unitPrice: 0,
+          });
+        } catch (e: any) {
+          throw new Error(`OS ${r.shortage.strap_label}: ${e.message}`);
+        }
         zeroRateCount++;
       }
       if (zeroRateCount > 0) {
         toast.warning(
-          `${zeroRateCount} OS de tira criada(s) a R$0 — cadastre a tarifa do prestador em Terceirizados → Tarifas por Referência pra valorar.`,
+          `${zeroRateCount} tira(s) adicionada(s) à OS do prestador a R$0 — cadastre a tarifa em Terceirizados → Tarifas por Referência pra valorar.`,
         );
       }
 

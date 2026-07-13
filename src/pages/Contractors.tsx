@@ -2,6 +2,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
+import ConsolidatedServiceOrders from '@/components/contractors/ConsolidatedServiceOrders';
 import { printServiceOrderRemessa } from '@/lib/printServiceOrderRemessa';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -1528,6 +1529,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           {!embedded && (
             <TabsList>
               <TabsTrigger value="orders" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Ordens de Serviço</TabsTrigger>
+              <TabsTrigger value="consolidated" className="gap-1.5"><SquaresFour className="h-3.5 w-3.5" /> Consolidada</TabsTrigger>
               <TabsTrigger value="planning" className="gap-1.5"><ChartLineUp className="h-3.5 w-3.5" /> Planejamento</TabsTrigger>
               <TabsTrigger value="contractors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
               <TabsTrigger value="recipes" className="gap-1.5"><FlaskConical className="h-3.5 w-3.5" /> Receitas Artesanais</TabsTrigger>
@@ -1870,6 +1872,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                 )}
               </div>
             )}
+          </TabsContent>
+
+          {/* ── CONSOLIDADA TAB (OS por prestador · modelo contêiner+linhas) ── */}
+          <TabsContent value="consolidated" className="mt-3">
+            <ConsolidatedServiceOrders />
           </TabsContent>
 
           {/* ── PLANNING TAB ── */}
