@@ -275,21 +275,40 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // matrícula (employee_external_id). Independe da folha calculada — usa direto o
   // compRecords (time_records do período), pra conferência do arquivo do relógio.
   const espelhoEmps = useMemo(() => {
-    const byExt = new Map<string, { id: string; name: string; role?: string; department?: string; matchId?: string; rawDays: { date: string; punches: string[] }[] }>();
+    const norm = (s: string) => String(s ?? '').toLowerCase().trim();
+    // Casa uma matrícula/nome do relógio com um funcionário CADASTRADO e ATIVO —
+    // mesmo critério dos outros relatórios (matrícula, com external_id possivelmente
+    // separado por vírgula, OU nome normalizado). Retorna o funcionário ou undefined.
+    const matchEmployee = (extId: string, name: string) =>
+      (employees as any[]).find(e => {
+        if ((e as any).active === false) return false;
+        const eExt = String((e as any).external_id ?? '').split(',').map(x => x.trim()).filter(Boolean);
+        if (extId && eExt.includes(extId)) return true;
+        return norm((e as any).name) === norm(name);
+      });
+
+    type EspGroup = { id: string; name: string; role?: string; department?: string; matchId?: string; rawDays: { date: string; punches: string[] }[] };
+    const byExt = new Map<string, EspGroup>();
     for (const rec of (compRecords as any[])) {
       const ext = String(rec.employee_external_id ?? rec.employee_name ?? '—');
       const g = byExt.get(ext) || { id: ext, name: rec.employee_name || '—', rawDays: [] };
       g.rawDays.push({ date: rec.record_date, punches: Array.isArray(rec.punches) ? rec.punches : [] });
       byExt.set(ext, g);
     }
+    const out: EspGroup[] = [];
     for (const g of byExt.values()) {
-      const emp = (employees as any[]).find(e => String((e as any).external_id ?? '') === g.id);
+      const emp = matchEmployee(g.id, g.name);
+      // Só entra no espelho quem é funcionário cadastrado — igual aos outros
+      // relatórios. Usuário do relógio sem cadastro (ex.: "alex · matrícula 18")
+      // fica de fora, mesmo tendo batido no ponto.
+      if (!emp) continue;
       // matchId = id INTERNO do funcionário (mesmo de bundleEmps) — casa o Espelho
       // com o pacote da folha no modo por-funcionário do buildPayrollHtml.
-      if (emp) { g.role = (emp as any).role; g.department = (emp as any).department; g.matchId = (emp as any).id; }
+      g.role = (emp as any).role; g.department = (emp as any).department; g.matchId = (emp as any).id;
       g.rawDays.sort((a, b) => a.date.localeCompare(b.date));
+      out.push(g);
     }
-    return Array.from(byExt.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    return out.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }, [compRecords, employees]);
 
   // Escopo do Espelho (Todos / um funcionário) — casa o employee_id escolhido com
@@ -297,9 +316,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const scopedEspelho = useMemo(() => {
     if (!reportSel.espelho) return [];
     if (docScope === 'all') return espelhoEmps;
-    const ext = String((employeeMap.get(docScope) as any)?.external_id ?? '');
-    return espelhoEmps.filter(e => e.id === ext);
-  }, [reportSel.espelho, docScope, espelhoEmps, employeeMap]);
+    // docScope = id interno do funcionário. matchId agora está sempre preenchido
+    // (todo grupo do espelho é um funcionário cadastrado), então casa direto por ele.
+    return espelhoEmps.filter(e => e.matchId === docScope);
+  }, [reportSel.espelho, docScope, espelhoEmps]);
 
   // Documentos POR FUNCIONÁRIO (1 por pessoa) × RELATÓRIOS GERAIS (1 do período).
   const hasPerEmp = reportSel.calendario || reportSel.holerite;
