@@ -270,6 +270,27 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const groupNoun = groups[0]?.groupKind === 'reference' ? 'referência' : 'solado';
 
+  // ── Total de tiras do maço (SÓ Aviamento) — "todas as fichas somadas" ──
+  // Soma os metros de tira (component 'Tiras' do motor canônico, já em metros)
+  // de todos os grupos/cores. Alimenta o "Total Geral" no rodapé + a quebra por
+  // material+cor. Vazio fora do Aviamento ou quando a ref não tem tiras.
+  const allStrapRows = sector === 'Aviamento'
+    ? groups.flatMap(g => g.colorGroups.flatMap(cg =>
+        (cg.consumption || []).filter(r => r.component === 'Tiras' && (Number(r.required) || 0) > 0)))
+    : [];
+  const grandStrapMeters = allStrapRows.reduce((s, r) => s + (Number(r.required) || 0), 0);
+  const strapBreakdown = (() => {
+    const m = new Map<string, { name: string; color: string; meters: number }>();
+    for (const r of allStrapRows) {
+      const name = r.product_name || 'Tira';
+      const color = (r.color || '').trim();
+      const e = m.get(`${name}::${color}`);
+      if (e) e.meters += Number(r.required) || 0;
+      else m.set(`${name}::${color}`, { name, color, meters: Number(r.required) || 0 });
+    }
+    return Array.from(m.values()).sort((a, b) => b.meters - a.meters);
+  })();
+
   /** Tabela de grade compartilhada (Por Ficha + Total + etapas Aviamento). */
   const renderGradeTable = (cg: SilkColorGroup) => {
     // Corte Cabedal: se a ref tem knife_size_ranges cadastrado (knifeGrid
@@ -574,6 +595,106 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 </tr>
               );
             })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  /**
+   * Bloco "Consumo de Tiras · Metros" (SÓ Aviamento).
+   *
+   * Espelha o `renderConsumoCorte` (barra preta + número em Anton vermelho),
+   * mas para as TIRAS: filtra `cg.consumption` (motor canônico = modal do PV)
+   * pelo componente `Tiras`, cujo `required` já vem em METROS (cm/par ÷ 100,
+   * mesma conta do `debit_strap_stock`). Mostra, por material+cor de tira:
+   *   - "Por Ficha": metros pra montar 1 ficha (corrugado) = total ÷ nº fichas,
+   *     só quando a grade é uniforme e há mais de 1 ficha (idem "Por Ficha" da
+   *     grade); com grades mistas some (o rateio por ficha seria enganoso);
+   *   - "Total": metros da cor inteira (todas as fichas da cor).
+   * Straps de MESMO grupo+cor já vêm somados pelo motor (é o mesmo rolo). A
+   * linha só aparece quando a ref tem tiras habilitadas e com consumo > 0.
+   */
+  const renderConsumoTiras = (cg: SilkColorGroup) => {
+    if (sector !== 'Aviamento') return null;
+    const rows = (cg.consumption || []).filter(
+      (r) => r.component === 'Tiras' && (Number(r.required) || 0) > 0,
+    );
+    if (rows.length === 0) return null;
+    const nFichas = cg.fichas || 0;
+    const showPerFicha = !cg.mixedGrades && nFichas > 1;
+    const totalMeters = rows.reduce((s, r) => s + (Number(r.required) || 0), 0);
+    const meterCell = (v: number, px: number) => (
+      <>
+        <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: `${px}px`, letterSpacing: '-0.02em', color: '#C00000', lineHeight: 1 }}>
+          {fmtConsumoQty(v)}
+        </span>
+        <span className="font-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#000', marginLeft: 3 }}>m</span>
+      </>
+    );
+    return (
+      <div className="keep-together mt-1 bg-white" style={{ border: '1.5px solid #000' }}>
+        <div className="flex items-baseline justify-between gap-2 px-2 py-1" style={{ background: '#000' }}>
+          <span className="font-mono uppercase flex items-center gap-1.5" style={{ color: '#fff', fontSize: '9px', letterSpacing: '0.13em', fontWeight: 700 }}>
+            <Paperclip className="h-3 w-3" weight="bold" /> Consumo de Tiras · Metros
+          </span>
+          <span className="font-mono uppercase" style={{ color: '#d9d6d0', fontSize: '8px', letterSpacing: '0.06em' }}>
+            cálculo do PV
+          </span>
+        </div>
+        <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1.5px solid #000' }}>
+              <th className="text-left px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em' }}>Tira · cor</th>
+              {showPerFicha && (
+                <th className="text-right px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 92 }}>Por Ficha</th>
+              )}
+              <th className="text-right px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 96 }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const colorStr = (r.color || '').trim();
+              const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
+              const req = Number(r.required) || 0;
+              return (
+                <tr key={i} style={{ borderBottom: i < rows.length - 1 || rows.length > 1 ? '1px solid #000' : 'none' }}>
+                  <td className="px-2 py-1 align-middle">
+                    <span className="uppercase leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
+                      {r.product_name}
+                    </span>
+                    {showColor && (
+                      <span className="font-mono" style={{ fontSize: '9px', color: '#333', marginLeft: 4 }}>· {colorStr}</span>
+                    )}
+                  </td>
+                  {showPerFicha && (
+                    <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                      {meterCell(req / (nFichas || 1), 15)}
+                    </td>
+                  )}
+                  <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                    {meterCell(req, 18)}
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length > 1 && (
+              <tr>
+                <td className="px-2 py-1 align-middle">
+                  <span className="font-mono uppercase" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#000' }}>
+                    Total tiras · {cg.color}
+                  </span>
+                </td>
+                {showPerFicha && (
+                  <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                    {meterCell(totalMeters / (nFichas || 1), 15)}
+                  </td>
+                )}
+                <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                  {meterCell(totalMeters, 18)}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -1139,6 +1260,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 {/* Consumo · Corte do Rolo (Corte Cabedal — mesmo cálculo do PV) */}
                 {renderConsumoCorte(cg)}
 
+                {/* Consumo de Tiras · Metros (Aviamento — metros por ficha + total) */}
+                {renderConsumoTiras(cg)}
+
                 {/* Tally Box */}
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} />
               </div>
@@ -1161,11 +1285,54 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     ];
   };
 
+  // ── Total Geral de tiras no rodapé do maço (SÓ Aviamento) ──
+  // Mesmo padrão do "Total Geral / Total Placas" da ficha de Palmilha: pares do
+  // maço + metros de tira somados de TODAS as fichas, com quebra por material+
+  // cor. Só aparece quando há tiras com consumo (ref com tiras habilitadas).
+  const strapTrailingBlock = sector === 'Aviamento' && grandStrapMeters > 0 ? (
+    <div className="keep-together mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+      <div className="flex justify-between items-baseline">
+        <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+        <span
+          className="text-black uppercase leading-none py-1"
+          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
+        >
+          {grandTotal} <span className="text-xs font-mono tracking-widest">pares</span>
+        </span>
+      </div>
+      <div className="flex justify-between items-baseline" style={{ borderTop: '1px solid #000' }}>
+        <span className="section-label py-1" style={{ color: '#000' }}>Total Tiras · todas as fichas</span>
+        <span
+          className="uppercase leading-none py-1"
+          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em', color: '#C00000' }}
+        >
+          {fmtConsumoQty(grandStrapMeters)} <span className="text-xs font-mono tracking-widest" style={{ color: '#000' }}>m</span>
+        </span>
+      </div>
+      {strapBreakdown.length > 1 && (
+        <div className="pt-1" style={{ borderTop: '1px solid #000' }}>
+          {strapBreakdown.map((b, i) => (
+            <div key={i} className="flex justify-between items-baseline py-0.5">
+              <span className="font-mono uppercase" style={{ fontSize: '9px', color: '#333', letterSpacing: '0.04em' }}>
+                {b.name}{b.color ? ` · ${b.color}` : ''}
+              </span>
+              <span className="font-mono" style={{ fontSize: '11px', fontWeight: 700, color: '#C00000' }}>
+                {fmtConsumoQty(b.meters)} m
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   // ── Maço contínuo do setor: header agregado + grupos em sequência ──
   const blocks: SheetBlock[] = [
     headerBlock,
     ...(knivesBlock ? [knivesBlock] : []),
     ...groups.flatMap((group, gi) => buildGroupBlocks(group, gi)),
+    // Total Geral das tiras (keepWithPrev: nunca abre página sozinho).
+    ...(strapTrailingBlock ? [{ node: strapTrailingBlock, keepWithPrev: true }] : []),
   ];
 
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} />;

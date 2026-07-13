@@ -3248,10 +3248,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             }
             // Enriquecimento por grupo: clientes + faixa etária (selo do
             // sub-header). Faixa agregada do setor vai no header.
-            // Consumo (motor canônico = modal do PV) anexado SÓ nos setores de
-            // corte — a ficha mostra o bloco "Consumo · Corte do Rolo" filtrando
-            // pelo componente (forro no Corte Forração, cabedal no Corte Cabedal).
-            const attachConsumo = sectorName === 'Corte Forração' || sectorName === 'Corte Cabedal';
+            // Consumo (motor canônico = modal do PV) anexado nos setores de
+            // corte E no Aviamento — a ficha filtra pelo componente: forro no
+            // Corte Forração, cabedal no Corte Cabedal, e tiras (em metros) no
+            // Aviamento (bloco "Consumo de Tiras · Metros" + "Total Geral" das
+            // tiras de todas as fichas somadas). A fonte é a MESMA do modal do
+            // PV/débito (strap_colors → metros = cm/par ÷ 100), então bate por
+            // construção com o que a fábrica separa/consome.
+            const attachConsumo = sectorName === 'Corte Forração'
+              || sectorName === 'Corte Cabedal'
+              || sectorName === 'Aviamento';
             const enriched = groupsForSector.map(g => ({
               ...withClientNames(g),
               sizeBand: bandForOps(g.colorGroups.flatMap(cg => cg.opNumbers || [])),
