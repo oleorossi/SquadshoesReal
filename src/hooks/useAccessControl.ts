@@ -66,6 +66,14 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/producao/live': 'producao',
   '/producao/timeline': 'producao',
   '/producao/fluxo': 'producao',
+  // Rotas do menu de Produção (remodelagem do motor diário, 0747cea) — todas
+  // governadas pelo módulo 'producao', igual às demais /producao/*.
+  '/producao/planejamento': 'producao',
+  '/producao/kanban': 'producao',
+  '/producao/estouro': 'producao',
+  '/producao/setores': 'producao',
+  '/producao/apontamento': 'producao',
+  '/producao/analises': 'producao',
   '/relatorios/diario-producao': 'reports',
   '/relatorios/op': 'reports',
   '/relatorios/oee': 'reports',
