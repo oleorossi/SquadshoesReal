@@ -172,6 +172,31 @@ usa a largura da ficha de componente do grupo **da variante**. Débito/reserva/c
 derivam a variante server-side via `orders.sale_order_item_id` (não há coluna de
 variante em `orders`).
 
+### Forro/palmilha: fonte de verdade = SOLADO da referência (anti-duplicidade)
+O consumo de **forro** e **palmilha** vem dos valores preenchidos no **solado** da
+referência (`sole_technical_specs`: `lining_consumption_dm2` = forro do cabedal,
+`insole_lining_consumption_dm2` = forro da palmilha, `insole_consumption_dm2` = placa)
+— a ficha do modelo só **escolhe o grupo/cor** do material; a ÁREA por numeração é do
+solado. Espelha o SQL `calculate_order_consumption_by_grade`.
+
+**Invariante anti-duplicidade (mig `20260911120000`):** quando o solado dirige o forro
+da PALMILHA (`insole_lining_consumption_dm2 > 0`) e NÃO tem forro de cabedal
+(`lining_consumption_dm2` nulo), o `lining_consumption` (escalar) da ficha É a área da
+palmilha digitada no campo errado → **NÃO emitir a linha "Forração" (cabedal)**, senão a
+mesma napa é contada 2× (bug PV-00146; sintoma: dois consumos na ficha de Corte
+Forração). A supressão (`suppressCabedalForracao` no TS `orderConsumption.ts`,
+`v_suppress_cabedal_lining` no SQL) exige `sole_drives_consumption = true`.
+
+**Regra load-bearing (não repetir o bug 2026-07-15):** o motor TS lê essa flag + os
+campos de consumo via `sheet.*`. **TODO campo lido tem que estar em
+`TECHNICAL_SHEET_CONSUMPTION_COLUMNS`** (`orderConsumption.ts`) — a ficha de operador
+(`fetchTechnicalSheetsForConsumption`) E o modal do PV buscam por essa constante.
+Faltava `sole_drives_consumption` lá → a supressão virou no-op silencioso (TS loose não
+acusa `undefined`) e o forro-cabedal fantasma reapareceu no Corte Forração. Guard em
+`orderConsumption.test.ts`: extrai os `sheet.*` lidos do próprio motor e trava que todos
+estão no `.select()` (auto-derivado — não desatualiza). Isso vale pra QUALQUER coluna
+nova que o motor passe a ler, não só esta.
+
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:
 upper (cabedal), lining (forro), insole (palmilha) e **sheet_materials (BOM)** — este

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // O motor importa o client supabase (usado só pelos fetch*). Mockamos pra
 // não instanciar nada — este teste exercita APENAS o cálculo puro.
@@ -859,34 +861,52 @@ describe('orderConsumption — motor canônico', () => {
 /**
  * GUARD DE CONTRATO — colunas do fetch (`TECHNICAL_SHEET_CONSUMPTION_COLUMNS`).
  *
- * Toda coluna lida via `sheet.*` em `computeConsumptionForItems` PRECISA estar no
+ * REGRA CANÔNICA (CLAUDE.md → "Forro/palmilha: fonte de verdade = SOLADO"):
+ * toda coluna lida via `sheet.*` em `computeConsumptionForItems` PRECISA estar no
  * `.select()`, senão o campo chega `undefined` em produção e a regra que depende
- * dele vira no-op silencioso (TS loose não acusa). Foi exatamente o que aconteceu
- * com `sole_drives_consumption`: os testes acima passam porque `buildSheet` injeta
- * o campo na mão, mas o fetch real (ficha de operador + modal) NÃO o buscava →
- * `suppressCabedalForracao` nunca disparava → "Forração" (cabedal) fantasma
- * aparecia junto da "Forração Palmilha" no Corte Forração (mesma napa 2×).
+ * dele vira no-op silencioso (TS loose não acusa símbolo/campo undefined). Foi
+ * exatamente o que aconteceu com `sole_drives_consumption`: os testes de supressão
+ * acima passam porque `buildSheet` injeta o campo na mão, mas o fetch real (ficha de
+ * operador + modal) NÃO o buscava → `suppressCabedalForracao` nunca disparava → a
+ * "Forração" (cabedal) fantasma aparecia junto da "Forração Palmilha" no Corte
+ * Forração (mesma napa 2×). Bug PV-00146 / 2026-07-15.
  *
- * Este guard extrai o conjunto de colunas do próprio fetch e trava que todos os
- * campos load-bearing estão presentes — pega a regressão no ponto onde ela nasce.
+ * Este guard é AUTO-DERIVADO: lê o próprio `orderConsumption.ts`, extrai todos os
+ * acessos `sheet.*` do motor e trava que cada um está no `.select()`. Assim ele
+ * cobre QUALQUER coluna nova que o motor passe a ler — não precisa manter lista à
+ * mão (uma lista manual desatualiza e não pega o campo novo esquecido).
  */
 describe('orderConsumption — contrato de colunas do fetch', () => {
   const fetchedCols = new Set(
     TECHNICAL_SHEET_CONSUMPTION_COLUMNS.split(',').map(c => c.trim()).filter(Boolean),
   );
 
-  // Campos lidos por `sheet.*` no motor (mantido em sincronia com o código —
-  // `grep -oE "sheet(\\?|\\s+as any)?\\.[a-z_]+" src/lib/orderConsumption.ts`).
-  const REQUIRED_SHEET_COLUMNS = [
-    'upper_material', 'upper_material_product_id', 'upper_consumption', 'upper_consumption_per_size',
-    'lining_material', 'lining_material_product_id', 'lining_consumption',
-    'insole_material', 'insole_consumption', 'insole_has_lining', 'insole_ready_made', 'insole_lining_consumption',
-    'sole_material', 'sole_consumption', 'sole_color', 'sole_group_id', 'sole_drives_consumption',
-    'lining_accessories', 'components_accessories', 'direct_components', 'component_colors_enabled',
-  ];
+  /** Campos que o motor efetivamente lê de `sheet` (fonte: o próprio código, sem
+   *  comentários — pra não capturar `sheet.x` citado em documentação). Cobre
+   *  `sheet.x`, `sheet?.x`, `(sheet as any).x` e `(sheet as any)?.x`. */
+  const sheetFieldsReadByEngine = (): Set<string> => {
+    // vitest roda da raiz do repo (root do vitest.config); import.meta.url aqui
+    // não é scheme file, então resolvemos pelo cwd.
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/orderConsumption.ts'), 'utf8');
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')          // comentários de bloco
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');          // comentários de linha (preserva http://)
+    const re = /(?:\(\s*sheet\s+as\s+any\s*\)|\bsheet)\s*\??\.\s*([a-zA-Z_][a-zA-Z0-9_]*)/g;
+    const fields = new Set<string>();
+    for (const m of code.matchAll(re)) fields.add(m[1]);
+    return fields;
+  };
 
-  it.each(REQUIRED_SHEET_COLUMNS)('inclui a coluna load-bearing "%s"', (col) => {
-    expect(fetchedCols.has(col)).toBe(true);
+  it('busca TODA coluna que o motor lê via sheet.* (auto-derivado — não desatualiza)', () => {
+    const read = sheetFieldsReadByEngine();
+    // Sanidade: o motor lê muitos campos de sheet — se a regex achou pouco, ela
+    // quebrou e o guard estaria passando vazio (falso verde).
+    expect(read.size).toBeGreaterThan(15);
+    const missing = [...read].filter(c => !fetchedCols.has(c)).sort();
+    expect(
+      missing,
+      `campos lidos via sheet.* mas AUSENTES de TECHNICAL_SHEET_CONSUMPTION_COLUMNS: ${missing.join(', ')}`,
+    ).toEqual([]);
   });
 
   it('inclui sole_drives_consumption (anti-duplicidade Forração — migration 20260911120000)', () => {
