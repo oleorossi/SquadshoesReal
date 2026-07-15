@@ -6,6 +6,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import {
   computeConsumptionForItems,
+  TECHNICAL_SHEET_CONSUMPTION_COLUMNS,
   type ConsumptionContext,
   type ConsumptionItem,
 } from '@/lib/orderConsumption';
@@ -852,5 +853,43 @@ describe('orderConsumption — motor canônico', () => {
       expect(rowsBase.find(r => r.materialName === 'GLITTER PÓ')).toBeUndefined();
       expect(rowsBase.find(r => r.materialName === 'MATERIAL DE OUTRA VARIANTE')).toBeUndefined();
     });
+  });
+});
+
+/**
+ * GUARD DE CONTRATO — colunas do fetch (`TECHNICAL_SHEET_CONSUMPTION_COLUMNS`).
+ *
+ * Toda coluna lida via `sheet.*` em `computeConsumptionForItems` PRECISA estar no
+ * `.select()`, senão o campo chega `undefined` em produção e a regra que depende
+ * dele vira no-op silencioso (TS loose não acusa). Foi exatamente o que aconteceu
+ * com `sole_drives_consumption`: os testes acima passam porque `buildSheet` injeta
+ * o campo na mão, mas o fetch real (ficha de operador + modal) NÃO o buscava →
+ * `suppressCabedalForracao` nunca disparava → "Forração" (cabedal) fantasma
+ * aparecia junto da "Forração Palmilha" no Corte Forração (mesma napa 2×).
+ *
+ * Este guard extrai o conjunto de colunas do próprio fetch e trava que todos os
+ * campos load-bearing estão presentes — pega a regressão no ponto onde ela nasce.
+ */
+describe('orderConsumption — contrato de colunas do fetch', () => {
+  const fetchedCols = new Set(
+    TECHNICAL_SHEET_CONSUMPTION_COLUMNS.split(',').map(c => c.trim()).filter(Boolean),
+  );
+
+  // Campos lidos por `sheet.*` no motor (mantido em sincronia com o código —
+  // `grep -oE "sheet(\\?|\\s+as any)?\\.[a-z_]+" src/lib/orderConsumption.ts`).
+  const REQUIRED_SHEET_COLUMNS = [
+    'upper_material', 'upper_material_product_id', 'upper_consumption', 'upper_consumption_per_size',
+    'lining_material', 'lining_material_product_id', 'lining_consumption',
+    'insole_material', 'insole_consumption', 'insole_has_lining', 'insole_ready_made', 'insole_lining_consumption',
+    'sole_material', 'sole_consumption', 'sole_color', 'sole_group_id', 'sole_drives_consumption',
+    'lining_accessories', 'components_accessories', 'direct_components', 'component_colors_enabled',
+  ];
+
+  it.each(REQUIRED_SHEET_COLUMNS)('inclui a coluna load-bearing "%s"', (col) => {
+    expect(fetchedCols.has(col)).toBe(true);
+  });
+
+  it('inclui sole_drives_consumption (anti-duplicidade Forração — migration 20260911120000)', () => {
+    expect(fetchedCols.has('sole_drives_consumption')).toBe(true);
   });
 });

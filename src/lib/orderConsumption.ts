@@ -176,6 +176,15 @@ export type ConsumptionContext = {
  * permitir o fetch standalone por referência (ficha do operador).
  *
  * ⚠ Mantenha em sincronia com o `select` do modal: alterar um lado exige o outro.
+ * ⚠ TODA coluna lida via `sheet.*` em `computeConsumptionForItems` PRECISA estar
+ *   aqui — se faltar, o campo chega `undefined` e a regra que depende dele vira
+ *   no-op silencioso (o TS loose não acusa). `sole_drives_consumption` é o exemplo
+ *   canônico: sem ela `suppressCabedalForracao` (=== true) nunca dispara e a
+ *   "Forração" (cabedal) fantasma aparece junto da "Forração Palmilha" — mesma
+ *   napa contada 2× — no modal e na ficha de Corte Forração (espelha o SQL
+ *   by_grade, migration 20260911120000). Guardado por teste em
+ *   `orderConsumption.test.ts`. (Nota: é uma string de `.select()` PostgREST —
+ *   NÃO comentar dentro dela; PostgREST não entende comentários.)
  */
 export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   id,
@@ -196,6 +205,7 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   sole_consumption,
   sole_color,
   sole_group_id,
+  sole_drives_consumption,
   lining_accessories,
   components_accessories,
   direct_components,
