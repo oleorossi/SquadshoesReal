@@ -20,6 +20,8 @@ import { Switch } from '@/components/ui/switch';
 import { useReferences, useAddReference, useUpdateReference, useDeleteReference, useReferenceMaterials, useAddMaterial, useDeleteMaterial, useBulkAddMaterials, useRecentMaterials } from '@/hooks/useReferences';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
 import { useProducts } from '@/hooks/useProducts';
+import { useComponentSheets } from '@/hooks/useComponentSheets';
+import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
 import { ProductReference, ReferenceFormData, MaterialFormData, StrapColor } from '@/types/references';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -409,6 +411,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
   const { data: products = [] } = useProducts();
   const { data: references = [] } = useReferences();
   const { data: recentMaterials = [] } = useRecentMaterials();
+  const { data: componentSheets = [] } = useComponentSheets();
   const addMaterial = useAddMaterial();
   const deleteMaterial = useDeleteMaterial();
   const bulkAdd = useBulkAddMaterials();
@@ -436,18 +439,33 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
     return groups;
   }, [materials]);
 
+  // Mapa product_id → ficha de componente (largura/área pra conversão dm²→física)
+  const componentSheetMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    componentSheets.forEach((cs: any) => { map[cs.product_id] = cs; });
+    return map;
+  }, [componentSheets]);
+
+  // Regra canônica: material de ÁREA (dm²/par) com produto em unidade física
+  // (m/cm/placa) converte pela largura da ficha ANTES de × preço; item direto
+  // (cola/caixa/tira sem ficha) segue qty × preço.
+  const materialCost = useCallback((m: { product_id: string; quantity_per_unit: number | null }) => {
+    const prod = (m as any).products;
+    return bomMaterialCostPerPair(m.quantity_per_unit, prod?.unit_price, prod?.unit, componentSheetMap[m.product_id] || null);
+  }, [componentSheetMap]);
+
   // Cost summary by category
   const categoryCosts = useMemo(() => {
     const costs: Record<string, number> = {};
     let total = 0;
     materials.forEach(m => {
       const cat = (m as any).products?.category || 'Outros';
-      const cost = Number(m.quantity_per_unit) * Number((m as any).products?.unit_price || 0);
+      const cost = materialCost(m).cost;
       costs[cat] = (costs[cat] || 0) + cost;
       total += cost;
     });
     return { costs, total };
-  }, [materials]);
+  }, [materials, materialCost]);
 
   // Colors derived from materials in the technical sheet
   const materialColors = useMemo(() => {
@@ -758,7 +776,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                     <TableBody>
                       {catMaterials.map(m => {
                         const prod = (m as any).products;
-                        const costPerUnit = Number(m.quantity_per_unit) * Number(prod?.unit_price || 0);
+                        const { cost: costPerUnit, widthMissing } = materialCost(m);
                         const stockQty = Number(prod?.quantity || 0);
                         return (
                           <TableRow key={m.id}>
@@ -772,7 +790,17 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                               {Number(m.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {prod?.unit ?? ''}
                             </TableCell>
                             <TableCell className="text-xs text-right font-mono text-muted-foreground">
-                              {formatCurrency(costPerUnit)}
+                              <span className="inline-flex items-center gap-1">
+                                {widthMissing && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent><p className="text-xs max-w-[220px]">Material de área sem largura na ficha de componente — custo pode estar inflado. Cadastre em Materiais → Ficha de Componente → Dimensões.</p></TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {formatCurrency(costPerUnit)}
+                              </span>
                             </TableCell>
                             <TableCell className="text-xs text-right font-mono">
                               <span className={stockQty <= 0 ? 'text-destructive font-semibold' : ''}>
@@ -827,14 +855,26 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                     <TableBody>
                       {uncatMaterials.map(m => {
                         const prod = (m as any).products;
-                        const costPerUnit = Number(m.quantity_per_unit) * Number(prod?.unit_price || 0);
+                        const { cost: costPerUnit, widthMissing } = materialCost(m);
                         return (
                           <TableRow key={m.id}>
                             <TableCell className="text-xs font-medium">{prod?.name ?? '—'}</TableCell>
                             <TableCell className="text-xs font-mono text-muted-foreground">{prod?.sku ?? '—'}</TableCell>
                             <TableCell className="text-xs"><Badge variant="outline" className="text-xs">{prod?.category ?? '—'}</Badge></TableCell>
                             <TableCell className="text-xs text-right font-mono">{Number(m.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {prod?.unit ?? ''}</TableCell>
-                            <TableCell className="text-xs text-right font-mono text-muted-foreground">{formatCurrency(costPerUnit)}</TableCell>
+                            <TableCell className="text-xs text-right font-mono text-muted-foreground">
+                              <span className="inline-flex items-center gap-1">
+                                {widthMissing && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent><p className="text-xs max-w-[220px]">Material de área sem largura na ficha de componente — custo pode estar inflado. Cadastre em Materiais → Ficha de Componente → Dimensões.</p></TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {formatCurrency(costPerUnit)}
+                              </span>
+                            </TableCell>
                             <TableCell className="text-right">
                               <DeleteConfirmButton onConfirm={() => deleteMaterial.mutate(m.id)} title="Remover material?" size="h-6 w-6" iconSize="h-3 w-3" />
                             </TableCell>
@@ -939,7 +979,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                         {sizeMaterials.map(m => {
                           const prod = (m as any).products;
                           const mSizes = ((m as any).sizes as string).split(',').map((s: string) => s.trim());
-                          const costPerUnit = Number(m.quantity_per_unit) * Number(prod?.unit_price || 0);
+                          const { cost: costPerUnit, widthMissing } = materialCost(m);
                           return (
                             <TableRow key={m.id}>
                               <TableCell className="text-xs font-medium">{prod?.name ?? '—'}</TableCell>
@@ -958,7 +998,19 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                                   )}
                                 </TableCell>
                               ))}
-                              <TableCell className="text-xs text-right font-mono text-muted-foreground">{formatCurrency(costPerUnit)}</TableCell>
+                              <TableCell className="text-xs text-right font-mono text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  {widthMissing && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                      </TooltipTrigger>
+                                      <TooltipContent><p className="text-xs max-w-[220px]">Material de área sem largura na ficha de componente — custo pode estar inflado. Cadastre em Materiais → Ficha de Componente → Dimensões.</p></TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  {formatCurrency(costPerUnit)}
+                                </span>
+                              </TableCell>
                             </TableRow>
                           );
                         })}
@@ -971,7 +1023,7 @@ function MaterialsList({ referenceId, imageUrl, shoeCategory }: { referenceId: s
                             );
                           })}
                           <TableCell className="text-xs text-right font-mono">
-                            {formatCurrency(sizeMaterials.reduce((sum, m) => sum + Number(m.quantity_per_unit) * Number((m as any).products?.unit_price || 0), 0))}
+                            {formatCurrency(sizeMaterials.reduce((sum, m) => sum + materialCost(m).cost, 0))}
                           </TableCell>
                         </TableRow>
                       </TableBody>
@@ -1170,6 +1222,13 @@ function ColorsWithRecolor({
 function LinkedSheetView({ sheetId }: { sheetId: string }) {
   const { data: materials = [], isLoading } = useSheetMaterials(sheetId);
   const { data: sheets = [] } = useTechnicalSheets();
+  const { data: componentSheets = [] } = useComponentSheets();
+
+  const componentSheetMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    componentSheets.forEach((cs: any) => { map[cs.product_id] = cs; });
+    return map;
+  }, [componentSheets]);
 
   const sheet = sheets.find(s => s.id === sheetId);
 
@@ -1208,7 +1267,9 @@ function LinkedSheetView({ sheetId }: { sheetId: string }) {
           <TableBody>
             {materials.map(m => {
               const prod = (m as any).products;
-              const costPerUnit = Number(m.quantity_per_unit) * Number(prod?.unit_price || 0);
+              const { cost: costPerUnit, widthMissing } = bomMaterialCostPerPair(
+                m.quantity_per_unit, prod?.unit_price, prod?.unit, componentSheetMap[m.product_id] || null,
+              );
               return (
                 <TableRow key={m.id}>
                   <TableCell className="text-xs font-medium">{prod?.name ?? '—'}</TableCell>
@@ -1218,7 +1279,19 @@ function LinkedSheetView({ sheetId }: { sheetId: string }) {
                   <TableCell className="text-xs text-right font-mono">
                     {Number(m.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {prod?.unit ?? ''}
                   </TableCell>
-                  <TableCell className="text-xs text-right font-mono text-muted-foreground">{formatCurrency(costPerUnit)}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      {widthMissing && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertTriangle className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent><p className="text-xs max-w-[220px]">Material de área sem largura na ficha de componente — custo pode estar inflado. Cadastre em Materiais → Ficha de Componente → Dimensões.</p></TooltipContent>
+                        </Tooltip>
+                      )}
+                      {formatCurrency(costPerUnit)}
+                    </span>
+                  </TableCell>
                 </TableRow>
               );
             })}
