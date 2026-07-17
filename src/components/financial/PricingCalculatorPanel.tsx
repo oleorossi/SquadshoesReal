@@ -2,31 +2,19 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calculator, CurrencyDollar as DollarSign, Percent, TrendUp as TrendingUp, Warning as AlertTriangle, ChartBar as BarChart3, ChartPie as PieChart, Truck, UserCheck, Buildings as Building2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
+import { Calculator, CurrencyDollar as DollarSign, Percent, TrendUp as TrendingUp, Warning as AlertTriangle, ChartBar as BarChart3, Truck, UserCheck, Buildings as Building2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, CartesianGrid, Legend } from 'recharts';
+import { Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
+import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
+import {
+  parseDaysInput, formatDaysLabel, computeMarkupPrice,
+  deriveMarginFromTargetProfit, computeReverseAnalysis,
+} from '@/lib/markupCalc';
 
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function IndicatorCard({ label, value, sub, color = 'primary' }: { label: string; value: string; sub?: string; color?: string }) {
-  const colorMap: Record<string, string> = {
-    primary: 'border-primary/30 bg-primary/5 text-primary',
-    success: 'border-success/30 bg-success/5 text-success',
-    destructive: 'border-destructive/30 bg-destructive/5 text-destructive',
-    warning: 'border-warning/30 bg-warning/5 text-warning',
-    muted: 'border-border bg-muted/50 text-foreground',
-  };
-  return (
-    <div className={`rounded-xl border p-4 ${colorMap[color] || colorMap.primary}`}>
-      <p className="text-xs font-semibold uppercase tracking-wider opacity-70 mb-1">{label}</p>
-      <p className="display text-xl tabular-nums">{value}</p>
-      {sub && <p className="text-xs mt-0.5 opacity-60">{sub}</p>}
-    </div>
-  );
 }
 
 /** Pílula de saúde da margem real: verde ≥15% · âmbar 8–15% · vermelho <8%/negativa.
@@ -44,18 +32,6 @@ function MarginHealthPill({ pct }: { pct: number }) {
     </span>
   );
 }
-
-// Paleta puxada dos tokens (handoff Novidade). Antes tinha um verde primário
-// hardcoded que desencaixava do resto do sistema (vermelho Squad).
-const COLORS = [
-  'hsl(var(--primary))',          // custo (acento Squad)
-  'hsl(var(--destructive))',      // impostos
-  'hsl(var(--warning))',          // factoring
-  'hsl(var(--stage-cut-fg))',     // comissão (azul corte)
-  'hsl(var(--stage-sew-fg))',     // frete (roxo costura)
-  'hsl(var(--success))',          // lucro
-  'hsl(var(--stage-assy-fg))',    // overhead (laranja montagem)
-];
 
 const STORAGE_KEY = 'pricing-calculator-state';
 
@@ -116,8 +92,7 @@ export default function PricingCalculatorPanel() {
 
   // Effective overhead: manual override or policy-derived
   const getOverhead = (manual: string) => {
-    const v = parseFloat(manual);
-    return !isNaN(v) && v >= 0 && manual.trim() !== '' ? v : policyOverhead;
+    return manual.trim() !== '' ? parseBrlNumberNonNeg(manual) : policyOverhead;
   };
 
   const copySimulatorToReverse = () => {
@@ -129,7 +104,9 @@ export default function PricingCalculatorPanel() {
     setReverseFreightValue(freightValue);
     setReverseOverheadManual(overheadManual);
     if (results.isValid && results.suggestedPrice > 0) {
-      setSoldPrice(fmt(results.suggestedPrice));
+      // toFixed (ponto decimal), NUNCA fmt(): "1.234,56" num estado numérico é
+      // relido como 1.234 (bug parseNum BRL) e é rejeitado pelo input type=number.
+      setSoldPrice(results.suggestedPrice.toFixed(2));
     }
   };
 
@@ -144,148 +121,57 @@ export default function PricingCalculatorPanel() {
     setProfitMarginPct('');
   };
 
-  // Parse days: supports "60" or "30/60/90" → returns average
-  const parseDays = (input: string): number => {
-    const trimmed = input.trim();
-    if (!trimmed) return 0;
-    const parts = trimmed.split('/').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
-    if (parts.length === 0) return 0;
-    return parts.reduce((a, b) => a + b, 0) / parts.length;
-  };
-
-  const formatDaysLabel = (input: string): string => {
-    const trimmed = input.trim();
-    if (!trimmed) return '0d';
-    const parts = trimmed.split('/').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
-    if (parts.length <= 1) return `${parts[0] || 0}d`;
-    const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
-    return `${trimmed} (média ${fmt(avg)}d)`;
-  };
-
+  // Fórmula (markup divisor, à vista, modo inverso e reversa) mora em
+  // src/lib/markupCalc.ts — fonte única, travada por markupCalc.test.ts.
+  // Parse de campos com parseBrlNumberNonNeg (NUNCA parseFloat cru — auditoria
+  // 2026-06-14: "2.500,00" virava 2,5).
   const results = useMemo(() => {
-    const numCost = parseFloat(cost) || 0;
-    const numTax = parseFloat(taxPct) || 0;
-    const numFactoring = parseFloat(factoringRatePct) || 0;
-    const numDays = parseDays(days);
-    const numCommission = parseFloat(commissionPct) || 0;
-    const numFreight = parseFloat(freightValue) || 0;
+    const numCost = parseBrlNumberNonNeg(cost);
+    const numTax = parseBrlNumberNonNeg(taxPct);
+    const numFactoring = parseBrlNumberNonNeg(factoringRatePct);
+    const numDays = parseDaysInput(days);
+    const numCommission = parseBrlNumberNonNeg(commissionPct);
+    const numFreight = parseBrlNumberNonNeg(freightValue);
     const numOverhead = getOverhead(overheadManual);
-    const numTargetProfit = parseFloat(targetProfitBrl) || 0;
 
     // custo_base = custo_materia_prima + (despesas_fixas / capacidade) + frete
     const totalCost = numCost + numOverhead + numFreight;
-    const factoringTotalPct = (numFactoring / 30) * numDays;
 
-    // ── Modo inverso (auditoria 24/05/2026) ──
-    // Quando user digita "quero receber R$ X líquido por par", calculamos
-    // a margem % equivalente em vez de usar profitMarginPct manual.
-    //
-    // Derivação algébrica:
-    //   sale_price = totalCost / (1 - (tax + profit + factoring + commission) / 100)
-    //   profit_brl_por_par = sale_price * (profit_pct / 100)
-    //
-    // Substituindo profit_pct = (profit_brl / sale_price) * 100:
-    //   sale_price * (1 - (tax + factoring + commission)/100 - profit_brl/sale_price) = totalCost
-    //   sale_price * (1 - K/100) - profit_brl = totalCost
-    //   sale_price = (totalCost + profit_brl) / (1 - K/100)
-    //
-    // Onde K = tax + factoring + commission (não inclui margin).
-    let numProfit: number;
-    let derivedFromTarget = false;
-    if (numTargetProfit > 0) {
-      const nonMarginPct = numTax + factoringTotalPct + numCommission;
-      const denom = 1 - (nonMarginPct / 100);
-      if (denom > 0) {
-        const derivedPrice = (totalCost + numTargetProfit) / denom;
-        numProfit = derivedPrice > 0 ? (numTargetProfit / derivedPrice) * 100 : 0;
-        derivedFromTarget = true;
-      } else {
-        numProfit = parseFloat(profitMarginPct) || 0;
-      }
-    } else {
-      numProfit = parseFloat(profitMarginPct) || 0;
-    }
+    // Modo inverso "quero receber R$ X líquido": deriva a margem % equivalente;
+    // null (sem alvo ou taxas ≥ 100%) → usa a margem digitada.
+    const derivedMargin = deriveMarginFromTargetProfit({
+      totalCost, taxPct: numTax, factoringMonthlyPct: numFactoring,
+      days: numDays, commissionPct: numCommission,
+      targetProfitBrl: parseBrlNumberNonNeg(targetProfitBrl),
+    });
+    const numProfit = derivedMargin ?? parseBrlNumberNonNeg(profitMarginPct);
 
-    const totalMarkupPct = numTax + numProfit + factoringTotalPct + numCommission;
-    const markupDivisor = 1 - (totalMarkupPct / 100);
-    const isValid = markupDivisor > 0;
-    const suggestedPrice = isValid ? (totalCost / markupDivisor) : 0;
-    const realProfit = suggestedPrice * (numProfit / 100);
-    const taxValue = suggestedPrice * (numTax / 100);
-    const factoringValue = suggestedPrice * (factoringTotalPct / 100);
-    const commissionValue = suggestedPrice * (numCommission / 100);
+    const calc = computeMarkupPrice({
+      totalCost, taxPct: numTax, profitPct: numProfit,
+      factoringMonthlyPct: numFactoring, days: numDays, commissionPct: numCommission,
+    });
 
-    // Preço à vista (7 dias)
-    // À vista = "paga em até 7 dias", mas nunca MAIS dias de factoring que o prazo
-    // (senão o preço à vista fica > a prazo quando o prazo é < 7 dias). Auditoria 2026-06-14.
-    const factoringVistaP = (numFactoring / 30) * Math.min(7, numDays);
-    const markupVistaPct = numTax + numProfit + factoringVistaP + numCommission;
-    const markupVistaDivisor = 1 - (markupVistaPct / 100);
-    const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;
-
-    return {
-      factoringTotalPct, totalMarkupPct, suggestedPrice, realProfit, isValid,
-      taxValue, factoringValue, commissionValue, numFreight, numOverhead, totalCost, cashPrice,
-      derivedMarginPct: derivedFromTarget ? numProfit : null,
-    };
+    return { ...calc, numCost, numFreight, numOverhead, totalCost, derivedMarginPct: derivedMargin };
   }, [cost, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, policyOverhead]);
 
   const reverseResults = useMemo(() => {
-    const numSold = parseFloat(soldPrice) || 0;
-    const numReverseCost = parseFloat(reverseCost) || 0;
-    const numTax = parseFloat(reverseTaxPct) || 0;
-    const numFactoring = parseFloat(reverseFactoringPct) || 0;
-    const numDays = parseDays(reverseDays);
-    const numCommission = parseFloat(reverseCommissionPct) || 0;
-    const numFreight = parseFloat(reverseFreightValue) || 0;
+    const numFreight = parseBrlNumberNonNeg(reverseFreightValue);
     const numOverhead = getOverhead(reverseOverheadManual);
-
-    if (numSold <= 0 || numReverseCost <= 0) return null;
-
-    const factoringTotalPct = (numFactoring / 30) * numDays;
-    const taxValue = numSold * (numTax / 100);
-    const factoringValue = numSold * (factoringTotalPct / 100);
-    const commissionValue = numSold * (numCommission / 100);
-    const netRevenue = numSold - taxValue - factoringValue - commissionValue;
-    const totalCost = numReverseCost + numOverhead + numFreight;
-    const realProfit = netRevenue - totalCost;
-    const realMarginPct = (realProfit / numSold) * 100;
-    const markupPct = totalCost > 0 ? ((numSold - totalCost) / totalCost) * 100 : 0;
-
-    // Preço à vista (7 dias)
-    // À vista = "paga em até 7 dias", mas nunca MAIS dias de factoring que o prazo
-    // (senão o preço à vista fica > a prazo quando o prazo é < 7 dias). Auditoria 2026-06-14.
-    const factoringVistaP = (numFactoring / 30) * Math.min(7, numDays);
-    const cashMarkupPct = numTax + factoringVistaP + numCommission;
-    const cashDivisor = 1 - (cashMarkupPct / 100);
-    // Em venda com prejuízo grande (realProfit < -totalCost) o numerador fica
-    // negativo; um "preço à vista" negativo é nonsense → clampa em 0. Auditoria 2026-06-14.
-    const cashPrice = cashDivisor > 0 ? Math.max(0, (totalCost + realProfit) / cashDivisor) : 0;
-
-    // Preço sugerido (markup divisor com margem real encontrada)
-    // totalMarkupPct reflete a margem real; suggestedMarkupPct clamp ≥ 0 para o divisor
-    const totalMarkupPct = numTax + realMarginPct + factoringTotalPct + numCommission;
-    const suggestedMarkupPct = numTax + Math.max(0, realMarginPct) + factoringTotalPct + numCommission;
-    const suggestedDivisor = 1 - (suggestedMarkupPct / 100);
-    const suggestedPrice = suggestedDivisor > 0 ? (totalCost / suggestedDivisor) : 0;
-
-    return { taxValue, factoringValue, commissionValue, numFreight, numOverhead, netRevenue, realProfit, realMarginPct, markupPct, factoringTotalPct, numReverseCost, totalCost, numSold, cashPrice, suggestedPrice, totalMarkupPct, suggestedMarkupPct };
+    const numSold = parseBrlNumberNonNeg(soldPrice);
+    const numReverseCost = parseBrlNumberNonNeg(reverseCost);
+    const rev = computeReverseAnalysis({
+      soldPrice: numSold,
+      materialCost: numReverseCost,
+      overhead: numOverhead,
+      freight: numFreight,
+      taxPct: parseBrlNumberNonNeg(reverseTaxPct),
+      factoringMonthlyPct: parseBrlNumberNonNeg(reverseFactoringPct),
+      days: parseDaysInput(reverseDays),
+      commissionPct: parseBrlNumberNonNeg(reverseCommissionPct),
+    });
+    if (!rev) return null;
+    return { ...rev, numSold, numReverseCost, numFreight, numOverhead };
   }, [soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual, policyOverhead]);
-
-  // Chart data for simulator
-  const simulatorPieData = useMemo(() => {
-    if (!results.isValid || results.suggestedPrice <= 0) return [];
-    const numCostRaw = parseFloat(cost) || 0;
-    return [
-      { name: 'Matéria-Prima', value: numCostRaw },
-      { name: 'Rateio Despesas', value: results.numOverhead },
-      { name: 'Frete', value: results.numFreight },
-      { name: 'Impostos', value: results.taxValue },
-      { name: 'Antecipação', value: results.factoringValue },
-      { name: 'Comissão', value: results.commissionValue },
-      { name: 'Lucro', value: results.realProfit },
-    ].filter(d => d.value > 0);
-  }, [results, cost]);
 
   // Chart data for reverse calculator
   const reverseBarData = useMemo(() => {
@@ -300,19 +186,6 @@ export default function PricingCalculatorPanel() {
       { name: 'Custo MP', valor: -reverseResults.numReverseCost },
       { name: 'Lucro Real', valor: reverseResults.realProfit },
     ].filter(d => d.valor !== 0);
-  }, [reverseResults]);
-
-  const reversePieData = useMemo(() => {
-    if (!reverseResults || reverseResults.numSold <= 0) return [];
-    return [
-      { name: 'Custo MP', value: reverseResults.numReverseCost },
-      { name: 'Rateio Despesas', value: reverseResults.numOverhead },
-      { name: 'Impostos', value: reverseResults.taxValue },
-      { name: 'Antecipação', value: reverseResults.factoringValue },
-      { name: 'Comissão', value: reverseResults.commissionValue },
-      { name: 'Frete', value: reverseResults.numFreight },
-      { name: 'Lucro', value: Math.max(0, reverseResults.realProfit) },
-    ].filter(d => d.value > 0);
   }, [reverseResults]);
 
   return (
@@ -371,13 +244,13 @@ export default function PricingCalculatorPanel() {
             <div>
               <Label htmlFor="days" className="text-xs">Prazo (Dias)</Label>
               <Input id="days" type="text" value={days} onChange={(e) => setDays(e.target.value)} className="mt-1 h-9 text-sm" placeholder="60 ou 30/60/90" />
-              {days.includes('/') && <p className="text-xs text-muted-foreground mt-1">Média: {fmt(parseDays(days))} dias</p>}
+              {days.includes('/') && <p className="text-xs text-muted-foreground mt-1">Média: {fmt(parseDaysInput(days))} dias</p>}
             </div>
             <div>
               <Label htmlFor="profit" className="text-xs">
                 Margem (%)
                 {results.derivedMarginPct !== null && (
-                  <span className="ml-1 text-[10px] font-mono text-emerald-600">
+                  <span className="ml-1 text-[10px] font-mono text-success">
                     auto · {fmt(results.derivedMarginPct)}%
                   </span>
                 )}
@@ -391,7 +264,9 @@ export default function PricingCalculatorPanel() {
                   min="0"
                   value={
                     results.derivedMarginPct !== null
-                      ? fmt(results.derivedMarginPct)
+                      // toFixed (ponto): fmt() com vírgula é rejeitado pelo input
+                      // type=number e o campo renderizava VAZIO no modo auto.
+                      ? results.derivedMarginPct.toFixed(2)
                       : profitMarginPct
                   }
                   onChange={(e) => {
@@ -456,7 +331,7 @@ export default function PricingCalculatorPanel() {
               <div className="mt-3 pt-3 border-t border-foreground/10 grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">↑ Margem calculada</p>
-                  <p className="text-lg font-bold text-emerald-600 tabular-nums">
+                  <p className="text-lg font-bold text-success tabular-nums">
                     {fmt(results.derivedMarginPct)}%
                   </p>
                 </div>
@@ -525,10 +400,9 @@ export default function PricingCalculatorPanel() {
                   preço como barra 100% (substitui a pizza — ui-ux-pro-max desaconselha
                   pizza >5 categorias; aqui são 7). */}
               {(() => {
-                const custoMP = parseFloat(cost) || 0;
                 const realMarginPct = results.suggestedPrice > 0 ? (results.realProfit / results.suggestedPrice) * 100 : 0;
                 const segs = [
-                  { label: 'Custo MP', value: custoMP, color: 'hsl(var(--background) / 0.62)' },
+                  { label: 'Custo MP', value: results.numCost, color: 'hsl(var(--background) / 0.62)' },
                   { label: 'Rateio', value: results.numOverhead, color: 'hsl(var(--background) / 0.44)' },
                   { label: 'Frete', value: results.numFreight, color: 'hsl(var(--background) / 0.30)' },
                   { label: 'Impostos', value: results.taxValue, color: 'hsl(var(--primary) / 0.55)' },
@@ -597,14 +471,14 @@ export default function PricingCalculatorPanel() {
                       <div className="flex justify-between"><span className="text-muted-foreground">Preço de Venda</span><span className="font-semibold">R$ {fmt(results.suggestedPrice)}</span></div>
                       <div className="flex justify-between text-destructive"><span>(−) Impostos</span><span>R$ {fmt(results.taxValue)}</span></div>
                       <div className="flex justify-between text-warning"><span>(−) Antecipação ({formatDaysLabel(days)})</span><span>R$ {fmt(results.factoringValue)}</span></div>
-                      <div className="flex justify-between" style={{ color: 'hsl(200, 60%, 45%)' }}><span>(−) Comissão</span><span>R$ {fmt(results.commissionValue)}</span></div>
+                      <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(results.commissionValue)}</span></div>
                       <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Receita Líquida</span><span className="font-semibold">R$ {fmt(results.suggestedPrice - results.taxValue - results.factoringValue - results.commissionValue)}</span></div>
-                      <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(parseFloat(cost) || 0)}</span></div>
+                      <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(results.numCost)}</span></div>
                       {results.numOverhead > 0 && (
-                        <div className="flex justify-between" style={{ color: 'hsl(30, 70%, 50%)' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(results.numOverhead)}</span></div>
+                        <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(results.numOverhead)}</span></div>
                       )}
                       {results.numFreight > 0 && (
-                        <div className="flex justify-between" style={{ color: 'hsl(280, 50%, 50%)' }}><span>(−) Frete</span><span>R$ {fmt(results.numFreight)}</span></div>
+                        <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(results.numFreight)}</span></div>
                       )}
                       <div className={`border-t pt-1.5 flex justify-between font-bold ${results.realProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                         <span>(=) Lucro Real</span><span>R$ {fmt(results.realProfit)}</span>
@@ -683,7 +557,7 @@ export default function PricingCalculatorPanel() {
             <div>
               <Label htmlFor="reverseDays" className="text-xs">Prazo (Dias)</Label>
               <Input id="reverseDays" type="text" placeholder="60 ou 30/60/90" value={reverseDays} onChange={(e) => setReverseDays(e.target.value)} className="mt-1 h-9 text-sm" />
-              {reverseDays.includes('/') && <p className="text-xs text-muted-foreground mt-1">Média: {fmt(parseDays(reverseDays))} dias</p>}
+              {reverseDays.includes('/') && <p className="text-xs text-muted-foreground mt-1">Média: {fmt(parseDaysInput(reverseDays))} dias</p>}
             </div>
           </div>
 
@@ -728,53 +602,82 @@ export default function PricingCalculatorPanel() {
 
           {reverseResults ? (
             <>
-              {/* Indicadores */}
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                <IndicatorCard
-                  label="Lucro Real"
-                  value={`R$ ${fmt(reverseResults.realProfit)}`}
-                  sub="líquido por unidade"
-                  color={reverseResults.realProfit >= 0 ? 'success' : 'destructive'}
-                />
-                <IndicatorCard
-                  label="Margem Real"
-                  value={`${fmt(reverseResults.realMarginPct)}%`}
-                  sub="sobre preço de venda"
-                  color={reverseResults.realMarginPct >= 0 ? 'primary' : 'destructive'}
-                />
-                <IndicatorCard
-                  label="Receita Líquida"
-                  value={`R$ ${fmt(reverseResults.netRevenue)}`}
-                  sub="após descontos"
-                  color="muted"
-                />
-                <IndicatorCard
-                  label="Comissão"
-                  value={`R$ ${fmt(reverseResults.commissionValue)}`}
-                  sub={`${reverseCommissionPct || '0'}% s/ venda`}
-                  color="muted"
-                />
-                <IndicatorCard
-                  label="Markup Bruto"
-                  value={`${fmt(reverseResults.markupPct)}%`}
-                  sub="sobre custo + frete"
-                  color="warning"
-                />
-                <IndicatorCard
-                  label="Preço à Vista"
-                  value={`R$ ${fmt(reverseResults.cashPrice)}`}
-                  sub="mesmo lucro em 7 dias"
-                  color="primary"
-                />
-                <IndicatorCard
-                  label="Preço Sugerido"
-                  value={`R$ ${fmt(reverseResults.suggestedPrice)}`}
-                  sub={`markup divisor (${fmt(reverseResults.suggestedMarkupPct)}%)`}
-                  color="primary"
-                />
-               </div>
+              {/* ── Ticket de resultado — mesma linguagem visual do Simulador
+                  (bloco escuro adaptativo + barra de composição 100%). Substitui
+                  o grid de 7 cards (quebrava 5+2) e a pizza de 7 fatias. ── */}
+              {(() => {
+                const rr = reverseResults;
+                const segs = [
+                  { label: 'Custo MP', value: rr.numReverseCost, color: 'hsl(var(--background) / 0.62)' },
+                  { label: 'Rateio', value: rr.numOverhead, color: 'hsl(var(--background) / 0.44)' },
+                  { label: 'Frete', value: rr.numFreight, color: 'hsl(var(--background) / 0.30)' },
+                  { label: 'Impostos', value: rr.taxValue, color: 'hsl(var(--primary) / 0.55)' },
+                  { label: 'Comissão', value: rr.commissionValue, color: 'hsl(var(--primary) / 0.75)' },
+                  { label: 'Antecipação', value: rr.factoringValue, color: 'hsl(var(--primary))' },
+                  { label: 'Lucro', value: Math.max(0, rr.realProfit), color: 'hsl(var(--success))' },
+                ].filter((s) => s.value > 0);
+                const segTotal = segs.reduce((s, x) => s + x.value, 0) || 1;
+                return (
+                  <div className="rounded-2xl bg-foreground p-5 text-background sm:p-6">
+                    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+                      <div className="min-w-0">
+                        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-background/55">
+                          Lucro real por par · a prazo ({formatDaysLabel(reverseDays)})
+                        </p>
+                        <p
+                          className={`display mt-1 leading-[0.82] ${rr.realProfit < 0 ? 'text-destructive' : 'text-background'}`}
+                          style={{ fontSize: 'clamp(38px, 8vw, 58px)' }}
+                        >
+                          <span className="align-top font-mono font-bold text-background/45" style={{ fontSize: '0.3em' }}>R$ </span>
+                          {fmt(rr.realProfit)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-5">
+                        <div>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">À vista · 7d</p>
+                          <p className="font-mono text-base font-bold tabular-nums">R$ {fmt(rr.cashPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">Preço sugerido</p>
+                          <p className="font-mono text-base font-bold tabular-nums">R$ {fmt(rr.suggestedPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">Markup bruto</p>
+                          <p className="font-mono text-base font-bold tabular-nums">{fmt(rr.markupPct)}%</p>
+                        </div>
+                        <MarginHealthPill pct={rr.realMarginPct} />
+                      </div>
+                    </div>
 
-              {/* DRE resumida */}
+                    <div className="mt-5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-background/55">Composição do preço praticado</p>
+                        <p className="font-mono text-[10px] text-background/55">
+                          Preço venda R$ {fmt(rr.numSold)} · Custo base R$ {fmt(rr.totalCost)}
+                        </p>
+                      </div>
+                      <div className="mt-2 flex h-4 overflow-hidden rounded-md" style={{ border: '1px solid hsl(var(--background) / 0.25)' }}>
+                        {segs.map((s) => (
+                          <div key={s.label} style={{ width: `${(s.value / segTotal) * 100}%`, background: s.color }} title={`${s.label}: R$ ${fmt(s.value)}`} />
+                        ))}
+                      </div>
+                      <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                        {segs.map((s) => (
+                          <span key={s.label} className="flex items-center gap-1.5 font-mono text-[11px] text-background/80">
+                            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
+                            {s.label}
+                            <span className="font-bold">{((s.value / segTotal) * 100).toFixed(0)}%</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* DRE resumida + waterfall lado a lado (a pizza de 7 fatias saiu —
+                  a composição já está na barra 100% do ticket acima) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card className="border-dashed">
                 <CardContent className="p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Demonstrativo Simplificado</p>
@@ -782,14 +685,14 @@ export default function PricingCalculatorPanel() {
                     <div className="flex justify-between"><span className="text-muted-foreground">Preço de Venda</span><span className="font-semibold">R$ {fmt(reverseResults.numSold)}</span></div>
                     <div className="flex justify-between text-destructive"><span>(−) Impostos</span><span>R$ {fmt(reverseResults.taxValue)}</span></div>
                     <div className="flex justify-between text-warning"><span>(−) Antecipação ({formatDaysLabel(reverseDays)})</span><span>R$ {fmt(reverseResults.factoringValue)}</span></div>
-                    <div className="flex justify-between" style={{ color: 'hsl(200, 60%, 45%)' }}><span>(−) Comissão</span><span>R$ {fmt(reverseResults.commissionValue)}</span></div>
+                    <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(reverseResults.commissionValue)}</span></div>
                     <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Receita Líquida</span><span className="font-semibold">R$ {fmt(reverseResults.netRevenue)}</span></div>
                     <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(reverseResults.numReverseCost)}</span></div>
                     {reverseResults.numOverhead > 0 && (
-                      <div className="flex justify-between" style={{ color: 'hsl(30, 70%, 50%)' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(reverseResults.numOverhead)}</span></div>
+                      <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(reverseResults.numOverhead)}</span></div>
                     )}
                     {reverseResults.numFreight > 0 && (
-                      <div className="flex justify-between" style={{ color: 'hsl(280, 50%, 50%)' }}><span>(−) Frete</span><span>R$ {fmt(reverseResults.numFreight)}</span></div>
+                      <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(reverseResults.numFreight)}</span></div>
                     )}
                     <div className={`border-t pt-1.5 flex justify-between font-bold ${reverseResults.realProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                       <span>(=) Lucro Real</span><span>R$ {fmt(reverseResults.realProfit)}</span>
@@ -797,32 +700,6 @@ export default function PricingCalculatorPanel() {
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Gráficos */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {reversePieData.length > 0 && (
-                  <Card className="border-dashed">
-                    <CardHeader className="pb-2 pt-4 px-4">
-                      <div className="flex items-center gap-2">
-                        <PieChart className="h-4 w-4 text-muted-foreground" />
-                        <CardTitle className="text-sm">Composição do Preço</CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                      <div className="h-48">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <RePieChart>
-                            <Pie data={reversePieData} cx="50%" cy="50%" innerRadius={35} outerRadius={65} dataKey="value" strokeWidth={2} stroke="hsl(var(--card))">
-                              {reversePieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                            </Pie>
-                           <RechartsTooltip formatter={(v: number) => `R$ ${fmt(v)}`} />
-                            <Legend formatter={(v) => <span className="text-xs">{v}</span>} />
-                          </RePieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
 
                 {reverseBarData.length > 0 && (
                   <Card className="border-dashed">

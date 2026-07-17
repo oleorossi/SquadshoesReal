@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, FileText, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, UserCheck, Cube as Box, Percent, FloppyDisk as Save, ClockCounterClockwise as History, Trash as Trash2 } from '@phosphor-icons/react';
+import { Calculator, CurrencyDollar as DollarSign, FileText, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, UserCheck, Cube as Box, Percent, FloppyDisk as Save, ClockCounterClockwise as History, Trash as Trash2 } from '@phosphor-icons/react';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
@@ -29,6 +29,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format, parseISO } from 'date-fns';
+import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
+import { parseDaysInput, computeMarkupPrice, deriveMarginFromTargetProfit } from '@/lib/markupCalc';
 
 const STORAGE_KEY = 'pricing-by-sheet-state';
 
@@ -47,6 +49,7 @@ type SavedState = {
   factoringRatePct?: string;
   days?: string;
   profitMarginPct?: string;
+  targetProfitBrl?: string;
   commissionPct?: string;
   freightValue?: string;
   overheadManual?: string;
@@ -118,6 +121,8 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   const [factoringRatePct, setFactoringRatePct] = useState(saved.factoringRatePct ?? '');
   const [days, setDays] = useState(saved.days ?? '');
   const [profitMarginPct, setProfitMarginPct] = useState(saved.profitMarginPct ?? '');
+  // Modo inverso "quero receber R$ X líquido/par" — mesmo do painel Manual.
+  const [targetProfitBrl, setTargetProfitBrl] = useState(saved.targetProfitBrl ?? '');
   const [commissionPct, setCommissionPct] = useState(saved.commissionPct ?? '');
   const [freightValue, setFreightValue] = useState(saved.freightValue ?? '');
   const [overheadManual, setOverheadManual] = useState(saved.overheadManual ?? '');
@@ -127,11 +132,11 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   // Persiste a cada mudança
   useEffect(() => {
     const state: SavedState = {
-      sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct,
+      sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl,
       commissionPct, freightValue, overheadManual, laborManual, packagingManual,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual, packagingManual]);
+  }, [sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, laborManual, packagingManual]);
 
   // Auto-preenche factoring quando o usuário escolhe uma config
   useEffect(() => {
@@ -195,22 +200,18 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
     [sheets, sheetId]
   );
 
-  const getOverhead = () => {
-    const v = parseFloat(overheadManual);
-    return !isNaN(v) && v >= 0 && overheadManual.trim() !== '' ? v : policyOverhead;
-  };
+  // Campo vazio → default da política; preenchido → parseBrlNumberNonNeg
+  // (NUNCA parseFloat cru — auditoria 2026-06-14: "2.500,00" virava 2,5).
+  const getOverhead = () =>
+    overheadManual.trim() !== '' ? parseBrlNumberNonNeg(overheadManual) : policyOverhead;
 
-  const getLabor = () => {
-    const v = parseFloat(laborManual);
-    return !isNaN(v) && v >= 0 && laborManual.trim() !== '' ? v : policyLaborCost;
-  };
+  const getLabor = () =>
+    laborManual.trim() !== '' ? parseBrlNumberNonNeg(laborManual) : policyLaborCost;
 
   // Custo de embalagem por par — direto de cost_policies.packaging_cost_per_pair
   const policyPackaging = Number(costPolicy?.packaging_cost_per_pair) || 0;
-  const getPackaging = () => {
-    const v = parseFloat(packagingManual);
-    return !isNaN(v) && v >= 0 && packagingManual.trim() !== '' ? v : policyPackaging;
-  };
+  const getPackaging = () =>
+    packagingManual.trim() !== '' ? parseBrlNumberNonNeg(packagingManual) : policyPackaging;
 
   // Frete % auto-sugestão — cost_policies.freight_allocation_pct é uma referência
   // mas o usuário insere R$/par manualmente porque o cálculo aqui é em valor absoluto.
@@ -229,53 +230,50 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [costPolicy?.id]);
 
-  // Suporta "60" ou "30/60/90" → média
-  const parseDays = (input: string): number => {
-    const trimmed = input.trim();
-    if (!trimmed) return 0;
-    const parts = trimmed.split('/').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
-    if (parts.length === 0) return 0;
-    return parts.reduce((a, b) => a + b, 0) / parts.length;
-  };
-
+  // Fórmula (markup divisor, à vista, modo inverso) mora em src/lib/markupCalc.ts
+  // — fonte única compartilhada com o painel Manual, travada por markupCalc.test.ts.
   const results = useMemo(() => {
     const numCost = totalMaterialCost;
-    const numTax = parseFloat(taxPct) || 0;
-    const numFactoring = parseFloat(factoringRatePct) || 0;
-    const numDays = parseDays(days);
-    const numProfit = parseFloat(profitMarginPct) || 0;
-    const numCommission = parseFloat(commissionPct) || 0;
-    const numFreight = parseFloat(freightValue) || 0;
+    const numTax = parseBrlNumberNonNeg(taxPct);
+    const numFactoring = parseBrlNumberNonNeg(factoringRatePct);
+    const numDays = parseDaysInput(days);
+    const numCommission = parseBrlNumberNonNeg(commissionPct);
+    const numFreight = parseBrlNumberNonNeg(freightValue);
     const numOverhead = getOverhead();
     const numLabor = getLabor();
     const numPackaging = getPackaging();
 
     const totalCost = numCost + numLabor + numOverhead + numPackaging + numFreight;
-    const factoringTotalPct = (numFactoring / 30) * numDays;
-    const totalMarkupPct = numTax + numProfit + factoringTotalPct + numCommission;
-    const markupDivisor = 1 - (totalMarkupPct / 100);
-    const isValid = markupDivisor > 0 && numCost > 0;
-    const suggestedPrice = isValid ? (totalCost / markupDivisor) : 0;
-    const realProfit = suggestedPrice * (numProfit / 100);
-    const taxValue = suggestedPrice * (numTax / 100);
-    const factoringValue = suggestedPrice * (factoringTotalPct / 100);
-    const commissionValue = suggestedPrice * (numCommission / 100);
 
-    // Preço à vista (7 dias)
-    // À vista nunca com mais dias de factoring que o prazo (evita à vista > a prazo
-    // quando prazo < 7 dias). Auditoria 2026-06-14.
-    const factoringVistaP = (numFactoring / 30) * Math.min(7, numDays);
-    const markupVistaPct = numTax + numProfit + factoringVistaP + numCommission;
-    const markupVistaDivisor = 1 - (markupVistaPct / 100);
-    const cashPrice = (isValid && markupVistaDivisor > 0) ? (totalCost / markupVistaDivisor) : 0;
+    // Modo inverso: lucro-alvo em R$/par → margem % equivalente; null → margem digitada.
+    const derivedMargin = deriveMarginFromTargetProfit({
+      totalCost, taxPct: numTax, factoringMonthlyPct: numFactoring, days: numDays,
+      commissionPct: numCommission, targetProfitBrl: parseBrlNumberNonNeg(targetProfitBrl),
+    });
+    const numProfit = derivedMargin ?? parseBrlNumberNonNeg(profitMarginPct);
+
+    const calc = computeMarkupPrice({
+      totalCost, taxPct: numTax, profitPct: numProfit,
+      factoringMonthlyPct: numFactoring, days: numDays, commissionPct: numCommission,
+    });
+    // Aqui, além do divisor válido, exige custo de MP > 0 (sem BOM não há o que simular).
+    const isValid = calc.isValid && numCost > 0;
 
     return {
       numCost, numLabor, numOverhead, numPackaging, numFreight, totalCost,
-      factoringTotalPct, totalMarkupPct, markupDivisor,
-      isValid, suggestedPrice, cashPrice,
-      realProfit, taxValue, factoringValue, commissionValue,
+      factoringTotalPct: calc.factoringTotalPct, totalMarkupPct: calc.totalMarkupPct,
+      markupDivisor: calc.markupDivisor,
+      isValid,
+      suggestedPrice: isValid ? calc.suggestedPrice : 0,
+      cashPrice: isValid ? calc.cashPrice : 0,
+      realProfit: isValid ? calc.realProfit : 0,
+      taxValue: isValid ? calc.taxValue : 0,
+      factoringValue: isValid ? calc.factoringValue : 0,
+      commissionValue: isValid ? calc.commissionValue : 0,
+      derivedMarginPct: derivedMargin,
+      effectiveProfitPct: numProfit,
     };
-  }, [totalMaterialCost, taxPct, factoringRatePct, days, profitMarginPct, commissionPct, freightValue, overheadManual, laborManual, packagingManual, policyOverhead, policyLaborCost, policyPackaging]);
+  }, [totalMaterialCost, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, laborManual, packagingManual, policyOverhead, policyLaborCost, policyPackaging]);
 
   return (
     <div className="space-y-5">
@@ -481,12 +479,33 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Margem desejada (%)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Margem desejada (%)
+                  {results.derivedMarginPct !== null && (
+                    <span className="ml-1 text-[10px] font-mono text-success">
+                      auto · {fmt(results.derivedMarginPct)}%
+                    </span>
+                  )}
+                </Label>
                 <Input
                   type="number" step="0.01" placeholder="Ex: 25"
-                  value={profitMarginPct} onChange={e => setProfitMarginPct(e.target.value)}
-                  className="mt-1"
+                  value={
+                    results.derivedMarginPct !== null
+                      ? results.derivedMarginPct.toFixed(2)
+                      : profitMarginPct
+                  }
+                  onChange={e => {
+                    setProfitMarginPct(e.target.value);
+                    setTargetProfitBrl(''); // user editou margem → desativa modo inverso
+                  }}
+                  disabled={results.derivedMarginPct !== null}
+                  className="mt-1 h-9 text-sm disabled:opacity-60 disabled:bg-muted/40"
                 />
+                {results.derivedMarginPct !== null && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Derivada do "quero receber" abaixo
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Impostos (%)</Label>
@@ -494,7 +513,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   type="number" step="0.01"
                   placeholder={policyDefaultTaxPct > 0 ? `Política: ${fmt(policyDefaultTaxPct)}` : 'Ex: 7.65'}
                   value={taxPct} onChange={e => setTaxPct(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 {policyDefaultTaxPct > 0 && !taxPct && (
                   <p className="text-xs text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultTaxPct)}%</strong></p>
@@ -506,7 +525,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   type="number" step="0.01"
                   placeholder={policyDefaultCommissionPct > 0 ? `Política: ${fmt(policyDefaultCommissionPct)}` : 'Ex: 5'}
                   value={commissionPct} onChange={e => setCommissionPct(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 {policyDefaultCommissionPct > 0 && !commissionPct && (
                   <p className="text-xs text-muted-foreground mt-0.5">Default da política: <strong>{fmt(policyDefaultCommissionPct)}%</strong></p>
@@ -517,7 +536,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 <Input
                   type="number" step="0.01" placeholder="Ex: 1.50"
                   value={freightValue} onChange={e => setFreightValue(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 {policyFreightAllocPct > 0 && (
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -533,7 +552,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 <Input
                   type="number" step="0.01" placeholder="Ex: 1.99"
                   value={factoringRatePct} onChange={e => setFactoringRatePct(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
               </div>
               <div>
@@ -541,7 +560,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 <Input
                   placeholder="Ex: 30/60/90"
                   value={days} onChange={e => setDays(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">Use barras pra média (30/60/90)</p>
               </div>
@@ -553,7 +572,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   type="number" step="0.01"
                   placeholder={`Cadastrado: ${fmt(policyLaborCost)}`}
                   value={laborManual} onChange={e => setLaborManual(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Vazio usa <strong>{fmtBRL(policyLaborCost)}</strong> (operações ativas)
@@ -567,7 +586,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   type="number" step="0.01"
                   placeholder={`Política: ${fmt(policyOverhead)}`}
                   value={overheadManual} onChange={e => setOverheadManual(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Vazio usa <strong>{fmtBRL(policyOverhead)}</strong> (cost_policies)
@@ -581,12 +600,61 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   type="number" step="0.01"
                   placeholder={`Política: ${fmt(policyPackaging)}`}
                   value={packagingManual} onChange={e => setPackagingManual(e.target.value)}
-                  className="mt-1"
+                  className="mt-1 h-9 text-sm"
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Vazio usa <strong>{fmtBRL(policyPackaging)}</strong> (cost_policies.packaging)
                 </p>
               </div>
+            </div>
+
+            {/* ── Modo inverso — mesmo do painel Manual: em vez de digitar a
+                margem %, o usuário digita o lucro líquido que quer por par e o
+                sistema deriva margem + preço (markupCalc.deriveMarginFromTargetProfit). ── */}
+            <div className="rounded-lg border-[1.5px] border-dashed border-foreground/20 bg-muted/20 p-3">
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <Label htmlFor="sheetTargetProfit" className="text-xs font-bold uppercase tracking-wide">
+                  Quero receber líquido (R$/par)
+                </Label>
+                {targetProfitBrl && (
+                  <button
+                    type="button"
+                    onClick={() => setTargetProfitBrl('')}
+                    className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                <div className="relative">
+                  <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    id="sheetTargetProfit"
+                    type="number" step="0.01" min="0"
+                    value={targetProfitBrl}
+                    onChange={(e) => setTargetProfitBrl(e.target.value)}
+                    className="pl-8 h-9 text-sm font-semibold"
+                    placeholder="ex: 10,00"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground leading-tight">
+                  Digite o lucro líquido por par (após impostos, factoring e comissão).
+                  O sistema deriva a margem % e o preço de venda em cima do custo da ficha.
+                </p>
+              </div>
+              {results.derivedMarginPct !== null && results.suggestedPrice > 0 && (
+                <div className="mt-3 pt-3 border-t border-foreground/10 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">↑ Margem calculada</p>
+                    <p className="text-lg font-bold text-success tabular-nums">{fmt(results.derivedMarginPct)}%</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">↓ Preço de venda</p>
+                    <p className="text-lg font-bold text-primary tabular-nums">R$ {fmt(results.suggestedPrice)}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -614,12 +682,13 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   packaging_cost: results.numPackaging,
                   freight_cost: results.numFreight,
                   total_cost: results.totalCost,
-                  tax_pct: parseFloat(taxPct) || 0,
-                  factoring_rate_pct: parseFloat(factoringRatePct) || 0,
-                  factoring_days: parseDays(days),
+                  tax_pct: parseBrlNumberNonNeg(taxPct),
+                  factoring_rate_pct: parseBrlNumberNonNeg(factoringRatePct),
+                  factoring_days: parseDaysInput(days),
                   factoring_total_pct: results.factoringTotalPct,
-                  commission_pct: parseFloat(commissionPct) || 0,
-                  profit_margin_pct: parseFloat(profitMarginPct) || 0,
+                  commission_pct: parseBrlNumberNonNeg(commissionPct),
+                  // margem EFETIVA (derivada do "quero receber" quando ativo)
+                  profit_margin_pct: results.effectiveProfitPct,
                   suggested_price: results.suggestedPrice,
                   cash_price: results.cashPrice,
                   real_profit: results.realProfit,
@@ -660,7 +729,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 <p className="eyebrow text-success">Lucro real</p>
                 <p className="display text-2xl tabular-nums mt-1 text-success">{fmtBRL(results.realProfit)}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {profitMarginPct || 0}% sobre venda
+                  {fmt(results.effectiveProfitPct)}% sobre venda
                 </p>
               </div>
             </div>
