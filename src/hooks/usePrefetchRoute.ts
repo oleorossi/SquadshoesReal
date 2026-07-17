@@ -22,7 +22,6 @@ const routeImports: Record<string, () => Promise<any>> = {
   '/ajuste-estoque': () => import('@/pages/StockAdjustmentPage'),
   '/alertas-estoque': () => import('@/pages/StockAlerts'),
   '/reservas-estoque': () => import('@/pages/StockReservations'),
-  '/references': () => import('@/pages/References'),
   '/fichas-tecnicas': () => import('@/pages/TechnicalSheets'),
   '/consumo-base': () => import('@/pages/BaseConsumption'),
   '/artisanal-recipes': () => import('@/pages/ArtisanalRecipes'),
