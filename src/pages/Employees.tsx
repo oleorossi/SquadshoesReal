@@ -22,6 +22,7 @@ import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
   Employee,
 } from '@/hooks/useEmployees';
+import { useMontadorProducao } from '@/hooks/useMontadorProducao';
 import { MONTHLY_HOURS_DIVISOR } from '@/lib/hourlyPayroll';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -101,7 +102,21 @@ export default function Employees() {
   };
 
   const activeEmployees = employees.filter(e => e.active);
-  const totalMonthlyPayroll = activeEmployees.reduce((s, e) => s + (e.salary || 0), 0);
+  // Folha mensal FIXA = só salários (mensalista/remoto/diarista). Quem é por par
+  // (payment_type='producao') é variável — não tem salário fixo, sai daqui.
+  const totalMonthlyPayroll = activeEmployees
+    .filter(e => (e as any).payment_type !== 'producao')
+    .reduce((s, e) => s + (e.salary || 0), 0);
+  // Variável (por par) do MÊS corrente = Σ pares × R$/par dos funcionários por par.
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const mesFrom = `${ym}-01`;
+  const mesTo = `${ym}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+  const producaoIds = new Set(activeEmployees.filter(e => (e as any).payment_type === 'producao').map(e => e.id));
+  const { data: prodMap } = useMontadorProducao(mesFrom, mesTo, producaoIds.size > 0);
+  const variavelPorPar = producaoIds.size
+    ? Array.from(prodMap?.entries() || []).filter(([id]) => producaoIds.has(id)).reduce((s, [, v]) => s + v.bruto, 0)
+    : 0;
 
   const handleSave = () => {
     // A3 da auditoria 2026-05-28: warn em demissão retroativa.
@@ -170,7 +185,10 @@ export default function Employees() {
             tone="success"
             icon={UserCheck}
           />
-          <StatCard label="Folha Mensal" value={fmt(totalMonthlyPayroll)} hint="ativos" icon={DollarSign} />
+          <StatCard label="Folha Mensal" value={fmt(totalMonthlyPayroll)} hint="salário fixo · ativos" icon={DollarSign} />
+          {producaoIds.size > 0 && (
+            <StatCard label="Variável (por par)" value={fmt(variavelPorPar)} hint={`${producaoIds.size} por par · mês`} icon={Wallet} />
+          )}
         </StatGrid>
 
         <div className="space-y-3 mt-4">
@@ -278,7 +296,11 @@ export default function Employees() {
                           ? new Date(e.admission_date + 'T12:00:00').toLocaleDateString('pt-BR')
                           : '—'}
                       </TableCell>
-                      <TableCell className="font-mono text-sm text-right">{fmt(e.salary)}</TableCell>
+                      <TableCell className="font-mono text-sm text-right">
+                        {(e as any).payment_type === 'producao'
+                          ? <span className="font-sans text-xs text-muted-foreground">por par</span>
+                          : fmt(e.salary)}
+                      </TableCell>
                       <TableCell className="font-mono text-sm text-right text-muted-foreground">
                         {valorHora != null ? `${fmt(valorHora)}/h` : '—'}
                       </TableCell>
@@ -397,6 +419,7 @@ export default function Employees() {
                   <SelectItem value="mensalista">Mensalista — salário, desconta ponto</SelectItem>
                   <SelectItem value="remoto">Remoto — salário cheio, não bate ponto</SelectItem>
                   <SelectItem value="diarista">Diarista — paga por dia trabalhado</SelectItem>
+                  <SelectItem value="producao">Por par — paga por par produzido (Ficha de Montadores)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
@@ -404,10 +427,13 @@ export default function Employees() {
                   ? 'Recebe o salário cheio do período — o ponto não desconta falta/atraso nem paga hora extra.'
                   : (form as any).payment_type === 'diarista'
                   ? 'Paga a diária × dias com batida no período. Sem salário mensal nem desconto de falta.'
+                  : (form as any).payment_type === 'producao'
+                  ? 'Paga por par produzido (Ficha de Montadores), valorado por dificuldade. Ignora salário e ponto — o relógio serve só de presença. Líquido = pares × R$/par − adiantamentos.'
                   : 'Salário do mês − faltas/atrasos + hora extra, contados por dia (sem compensar entre dias).'}
               </p>
             </div>
 
+            {(form as any).payment_type !== 'producao' && (
             <div className="col-span-2">
               <Label>{(form as any).payment_type === 'diarista' ? 'Salário (referência — não usado no diarista)' : 'Salário (R$)'}</Label>
               <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
@@ -416,6 +442,7 @@ export default function Employees() {
                 valor-dia = salário ÷ 30. Base do atraso/HE/falta do mensalista (e do salário cheio do remoto).
               </p>
             </div>
+            )}
 
             {(form as any).payment_type === 'diarista' && (
               <div className="col-span-2">
@@ -425,9 +452,30 @@ export default function Employees() {
               </div>
             )}
 
+            {(form as any).payment_type === 'producao' && (
+              <>
+                <div>
+                  <Label>R$/par — dificuldade média</Label>
+                  <CurrencyInput value={(form as any).valor_par_medio || 0} onChange={v => setForm(f => ({ ...f, valor_par_medio: v } as any))} />
+                </div>
+                <div>
+                  <Label>R$/par — dificuldade difícil</Label>
+                  <CurrencyInput value={(form as any).valor_par_dificil || 0} onChange={v => setForm(f => ({ ...f, valor_par_dificil: v } as any))} />
+                </div>
+                {(!((form as any).valor_par_medio > 0) && !((form as any).valor_par_dificil > 0)) && (
+                  <p className="col-span-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Defina o R$/par (médio e/ou difícil) — sem valor, a folha por par sai R$ 0,00.
+                  </p>
+                )}
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Cada apontamento na Ficha de Montadores guarda o valor da época (congelado). Reajustar aqui não altera folhas passadas.
+                </p>
+              </>
+            )}
+
             {/* HE por funcionário — valor ABSOLUTO em R$/h (negociação individual, não-CLT).
-                Só mensalista faz hora extra descontada/paga; remoto e diarista não usam. */}
-            {(form as any).payment_type !== 'diarista' && (form as any).payment_type !== 'remoto' && (
+                Só mensalista faz hora extra descontada/paga; remoto, diarista e por par não usam. */}
+            {(form as any).payment_type !== 'diarista' && (form as any).payment_type !== 'remoto' && (form as any).payment_type !== 'producao' && (
               <>
                 <div>
                   <Label>Hora extra (R$/h)</Label>

@@ -36,9 +36,10 @@ export interface EmployeeTimesheetData {
   hourlySalary?: number;
   /** Per-employee overtime hourly rate (R$/hr). Overrides hourlySalary * multiplier when set. */
   overtimeHourlyRate?: number | null;
-  /** Regime: mensalista (padrão), remoto (salário cheio, ignora ponto) ou diarista
-   *  (diária × dias). Quando ausente = mensalista. */
-  paymentType?: 'mensalista' | 'remoto' | 'diarista';
+  /** Regime: mensalista (padrão), remoto (salário cheio, ignora ponto), diarista
+   *  (diária × dias) ou producao (por par — pago fora do ponto, na folha). Quando
+   *  ausente = mensalista. */
+  paymentType?: 'mensalista' | 'remoto' | 'diarista' | 'producao';
   /** Valor da diária (R$/dia) — só diarista. */
   dailyRate?: number;
   /** Salário mensal cheio (R$) — base do remoto. Default = hourlySalary × 220. */
@@ -708,10 +709,12 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
   const regime = emp.paymentType || 'mensalista';
   const monthlySalary = emp.monthlySalary ?? vh * SALARY_HOUR_DIVISOR; // salário cheio (220h)
 
-  // ── REMOTO / DIARISTA: zera ajustes de ponto (sem falta/atraso/HE) ──
-  if (regime === 'remoto' || regime === 'diarista') {
+  // ── REMOTO / DIARISTA / PRODUÇÃO: zera ajustes de ponto (sem falta/atraso/HE).
+  // Producao é pago por par na folha (fora do ponto) → base 0 aqui: o Espelho
+  // mostra só a presença, sem holerite baseado em ponto.
+  if (regime === 'remoto' || regime === 'diarista' || regime === 'producao') {
     const paidDays = dayRows.filter(r => (r.punches?.length || 0) >= 1).length;
-    const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : monthlySalary;
+    const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : regime === 'producao' ? 0 : monthlySalary;
     return {
       vh, valorDia, premiumMultiplier, dayRows, pendingDays,
       faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, heValue: 0,
@@ -776,6 +779,8 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
     ? `Diárias — ${e.paidDays} dia(s) × ${formatMoney(e.dailyRate)}`
     : e.paymentType === 'remoto'
     ? 'Salário (remoto — cheio, sem ponto)'
+    : e.paymentType === 'producao'
+    ? 'Por par (produção) — ver folha'
     : 'Salário base (mês · 220h)';
   const isMensal = (e.paymentType ?? 'mensalista') === 'mensalista';
 

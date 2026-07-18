@@ -181,10 +181,14 @@ export interface SalaryPayrollResult {
   net_value: number;       // bruto − adiantamentos
   // Regime de pagamento (2026-06-19): 'mensalista' = padrão (acima); 'remoto' =
   // salário cheio ignorando ponto (sem falta/atraso/HE); 'diarista' = diária × dias
-  // trabalhados (sem salário mensal nem desconto de falta).
-  payment_type: 'mensalista' | 'remoto' | 'diarista';
+  // trabalhados (sem salário mensal nem desconto de falta); 'producao' = pares
+  // produzidos × R$/par (Ficha de Montadores), ignora salário e ponto (2026-07-18).
+  payment_type: 'mensalista' | 'remoto' | 'diarista' | 'producao';
   daily_rate: number;      // R$/dia (só diarista)
   paid_days: number;       // dias pagos (diarista = dias com batida; senão worked_days)
+  /** Pares valorados (só producao): base do bruto = pares × R$/par snapshot. */
+  pares_medio?: number;
+  pares_dificil?: number;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -516,8 +520,14 @@ export interface PeriodFolhaInput {
   activeFrom?: string | null;
   /** Data de demissão (YYYY-MM-DD): dias DEPOIS dela são ignorados. */
   activeTo?: string | null;
-  payRegime?: 'mensalista' | 'remoto' | 'diarista';  // regime de pagamento (default mensalista)
+  payRegime?: 'mensalista' | 'remoto' | 'diarista' | 'producao';  // regime de pagamento (default mensalista)
   dailyRate?: number;                     // R$/dia (só diarista)
+  /** Produção por par (regime 'producao') — agregada do período a partir da Ficha
+   *  de Montadores (Σ pares × R$/par snapshot). O motor NÃO consulta o banco:
+   *  recebe pronto (ver src/lib/montadorProduction.ts). */
+  producaoBruto?: number;
+  producaoParesMedio?: number;
+  producaoParesDificil?: number;
   /** HE em R$/hora ABSOLUTO (spec 2026-07-09): dia útil/sábado/noturno. Default 0. */
   heNormalRate?: number;
   /** HE em R$/hora ABSOLUTO domingo/feriado. undefined/0 ⇒ usa heNormalRate. */
@@ -628,6 +638,28 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
       pending_days: pendingD,
       period_base: grossD, total_proventos: grossD, total_descontos: adv,
       gross_value: grossD, net_value: round2(grossD - adv),
+    };
+  }
+
+  // ── PRODUÇÃO (por par): bruto = Σ pares × R$/par (Ficha de Montadores), já
+  // valorado no caller pelo snapshot de cada apontamento. IGNORA salário e ponto
+  // por completo — sem salário, sem falta/atraso/HE, sem esperado. Líquido =
+  // bruto − adiantamentos (pode ficar negativo = saldo devedor). O relógio de
+  // ponto do funcionário serve só pra presença (spec funcionarios-pagamento-por-par).
+  if (regime === 'producao') {
+    const bruto = round2(Number(inp.producaoBruto) || 0);
+    return {
+      ...base, payment_type: 'producao', daily_rate: 0, paid_days: 0,
+      base_salary: 0, valor_dia: 0, valor_hora: 0,
+      expected_minutes: 0, worked_minutes: 0, normal_minutes: 0, premium_minutes: 0,
+      workdays: 0, worked_days: 0,
+      falta_days: 0, falta_dates: [], falta_desconto: 0, excused_days: 0,
+      atraso_minutes: 0, atraso_desconto: 0, late_days: [], he_days: [], he_minutes: 0,
+      he_normal_minutes: 0, he_holiday_minutes: 0, he_rate_missing: false, he_value: 0, pending_days: 0,
+      pares_medio: Number(inp.producaoParesMedio) || 0,
+      pares_dificil: Number(inp.producaoParesDificil) || 0,
+      period_base: bruto, total_proventos: bruto, total_descontos: adv,
+      gross_value: bruto, net_value: round2(bruto - adv),
     };
   }
 

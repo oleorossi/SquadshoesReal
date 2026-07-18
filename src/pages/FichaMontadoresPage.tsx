@@ -408,11 +408,23 @@ export default function FichaMontadoresPage() {
       .filter((sz) => (dm.medio[sz] || 0) > 0 || (dm.dificil[sz] || 0) > 0)
       .map((sz) => ({ tamanho: sz, medio: dm.medio[sz] || 0, dificil: dm.dificil[sz] || 0 }));
     const fichasCount = det.reduce((s, d) => s + Math.round(((d.medio || 0) + (d.dificil || 0)) / d.tamanho), 0);
+    // SNAPSHOT do R$/par: fonte única = cadastro do funcionário (payment_type='producao').
+    // Congela o valor da época em cada apontamento — reajustar o cadastro não reescreve
+    // folha passada. Não-producao (ou sem valor cadastrado) mantém o valor existente da
+    // linha (fluxo legado da aba Produtividade via persistRateMontador).
+    const emp = (employees as any[]).find((x) => x.id === e.id);
+    const isProducao = String(emp?.payment_type || "").toLowerCase() === "producao";
+    const vmCad = Number(emp?.valor_par_medio) || 0;
+    const vdCad = Number(emp?.valor_par_dificil) || 0;
+    const vmSnap = isProducao && vmCad > 0 ? vmCad : (existing?.valor_par_medio ?? existing?.valor_par ?? null);
+    const vdSnap = isProducao && vdCad > 0 ? vdCad : (existing?.valor_par_dificil ?? null);
     const payload: any = {
       dia, montador: e.name, montador_id: e.id, setor,
       fichas_dia: fichasCount, total: totalP, copias: 1, grade: "adulto", numeracoes: [], quantidades: [],
       cor: null, referencia: null, reference_id: null, detalhe: det, origem: "chamada",
-      valor_par: existing?.valor_par ?? 0, atualizado_em: new Date().toISOString(),
+      valor_par_medio: vmSnap, valor_par_dificil: vdSnap,
+      valor_par: (isProducao && vmCad > 0) ? vmCad : (existing?.valor_par ?? 0),
+      atualizado_em: new Date().toISOString(),
     };
     const write = (pl: any) => existing
       ? db.from("ficha_montadores").update(pl).eq("id", existing.id)
@@ -425,6 +437,8 @@ export default function FichaMontadoresPage() {
       if (msg.includes("detalhe")) delete retry.detalhe;
       if (msg.includes("origem")) delete retry.origem;
       if (msg.includes("setor")) delete retry.setor;
+      if (msg.includes("valor_par_medio")) delete retry.valor_par_medio;
+      if (msg.includes("valor_par_dificil")) delete retry.valor_par_dificil;
       ({ error } = await write(retry));
     }
     return error ? error.message : null;

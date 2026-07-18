@@ -19,6 +19,7 @@ import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
 import { computePeriodFolha, getDaysInRange, SALARY_DAY_DIVISOR } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
+import { aggregateProducaoByMontador, FICHA_MONTADORES_PRODUCAO_COLUMNS, type FichaMontadorRow } from '@/lib/montadorProduction';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
@@ -241,12 +242,27 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       return (data || []) as any[];
     },
   });
+  // Produção por par (Ficha de Montadores) do período — alimenta o regime 'producao'
+  // no comparativo (mês/quinzena). Só linhas 'chamada'; R$/par snapshot da linha.
+  const { data: compProducao = [] } = useQuery({
+    queryKey: ['payroll-comp-producao', appliedFrom, appliedTo],
+    enabled: !!(appliedFrom && appliedTo),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('ficha_montadores')
+        .select(FICHA_MONTADORES_PRODUCAO_COLUMNS)
+        .gte('dia', appliedFrom).lte('dia', appliedTo);
+      if (error) throw error;
+      return (data || []) as FichaMontadorRow[];
+    },
+  });
   const comparativo = useMemo(() => computeComparativoRows({
     employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
-    timeRecords: compRecords, advancesList: compAdvances,
+    timeRecords: compRecords, advancesList: compAdvances, producaoRows: compProducao,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
-  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, appliedFrom, appliedTo, compPeriod, coverage]);
+  }), [employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compProducao, appliedFrom, appliedTo, compPeriod, coverage]);
 
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
@@ -574,6 +590,14 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         absencesByEmp.set(ab.employee_id, set);
       }
 
+      // Produção por par (Ficha de Montadores) do período — base do regime 'producao'
+      // (Σ pares × R$/par snapshot de cada apontamento). Ignora salário/ponto.
+      const { data: fichaRows } = await (supabase as any)
+        .from('ficha_montadores')
+        .select(FICHA_MONTADORES_PRODUCAO_COLUMNS)
+        .gte('dia', cFrom).lte('dia', cTo);
+      const producaoByEmp = aggregateProducaoByMontador((fichaRows || []) as FichaMontadorRow[]);
+
       let calculated = 0;
       let withIncomplete = 0;
       let sharedMatricula = 0;
@@ -598,6 +622,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         // Escala do funcionário (própria ou a padrão — ex.: Dona Val não tem própria).
         const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
 
+        const regime = String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista' | 'producao';
+        const prod = producaoByEmp.get(emp.id);
+
         // MESMO motor da tela do Ponto (computePeriodFolha): monta os dias da escala +
         // batidas e calcula a folha líquida, com clamp pela cobertura.
         const result = computePeriodFolha({
@@ -616,8 +643,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
           monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)
           maxCoveredDate: maxCov,
-          payRegime: (String((emp as any).payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
+          payRegime: regime,
           dailyRate: Number((emp as any).daily_rate) || 0,
+          // Produção por par (regime 'producao') — bruto já valorado pelo snapshot.
+          producaoBruto: prod?.bruto || 0,
+          producaoParesMedio: prod?.paresMedio || 0,
+          producaoParesDificil: prod?.paresDificil || 0,
           // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
@@ -626,10 +657,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         if (result.pending_days > 0) withIncomplete++;
         if ((result as any).he_rate_missing) withMissingHeRate++;
 
+        const paresTot = (result.pares_medio || 0) + (result.pares_dificil || 0);
         await upsertRun.mutateAsync({
           employee_id: emp.id,
           period: cPeriod,
-          base_salary: Number(emp.salary) || 0,
+          base_salary: regime === 'producao' ? 0 : Number(emp.salary) || 0,
           hourly_rate: result.valor_hora,
           worked_minutes: result.worked_minutes,
           normal_minutes: result.normal_minutes,
@@ -651,7 +683,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           total_descontos: result.total_descontos,
           total_liquido: result.net_value,
           net_salary: result.net_value,
-          notes: result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Pendências` : null,
+          notes: regime === 'producao'
+            ? `Por par: ${paresTot} pares (${result.pares_medio || 0} méd + ${result.pares_dificil || 0} dif)`
+            : (result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Pendências` : null),
           status: 'rascunho',
         });
         calculated++;

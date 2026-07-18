@@ -17,10 +17,15 @@ export interface Employee {
   overtime_hourly_rate: number | null;
   overtime_multiplier: number;
   /** Regime de pagamento: mensalista (salário, desconta ponto), remoto (salário cheio,
-   *  não bate ponto) ou diarista (paga por dia trabalhado, valor da diária). */
-  payment_type: 'mensalista' | 'remoto' | 'diarista';
+   *  não bate ponto), diarista (paga por dia trabalhado, valor da diária) ou
+   *  producao (paga por PAR produzido — soma a Ficha de Montadores, ignora
+   *  salário e ponto). */
+  payment_type: 'mensalista' | 'remoto' | 'diarista' | 'producao';
   /** Valor da diária (R$/dia) quando diarista. */
   daily_rate: number | null;
+  /** R$/par por dificuldade quando producao (fonte única; snapshot no apontamento). */
+  valor_par_medio: number | null;
+  valor_par_dificil: number | null;
   work_schedule_id: string | null;
   /** Adicionais de HE por funcionário (regime contrato). 0 = hora simples.
    *  LEGADO (percentual) — substituídos por he_normal_rate/he_sunday_holiday_rate
@@ -66,7 +71,8 @@ type EmployeePayKeys =
   | 'hourly_rate' | 'overtime_hourly_rate' | 'overtime_multiplier'
   | 'payment_type' | 'daily_rate' | 'work_schedule_id'
   | 'overtime_50_pct' | 'overtime_100_pct' | 'night_bonus_pct'
-  | 'he_normal_rate' | 'he_sunday_holiday_rate';
+  | 'he_normal_rate' | 'he_sunday_holiday_rate'
+  | 'valor_par_medio' | 'valor_par_dificil';
 type EmployeeForm =
   Omit<Employee, 'id' | 'created_at' | 'updated_at' | EmployeePayKeys> &
   Partial<Pick<Employee, EmployeePayKeys>>;

@@ -9,6 +9,7 @@
 // dados de impressão (EmployeeTimesheetData).
 // ─────────────────────────────────────────────────────────────────────────────
 import { computePeriodFolha, getDaysInRange, expectedDayMinutes, type SalaryPayrollResult } from './salaryPayroll';
+import { sumProducaoRows, type FichaMontadorRow } from './montadorProduction';
 import { calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
 import { MONTHLY_HOURS_DIVISOR } from './hourlyPayroll';
 import type { EmployeeTimesheetData } from './printTimesheet';
@@ -52,7 +53,7 @@ export function buildEmployeePrintData(
     hourlySalary: (Number(emp?.salary) || 0) / MONTHLY_HOURS_DIVISOR,
     overtimeHourlyRate: emp?.overtime_hourly_rate ?? null,
     expectedDayMin: expectedDayMinutes(sch),
-    paymentType: (emp?.payment_type as 'mensalista' | 'remoto' | 'diarista') || 'mensalista',
+    paymentType: (emp?.payment_type as 'mensalista' | 'remoto' | 'diarista' | 'producao') || 'mensalista',
     dailyRate: Number(emp?.daily_rate) || 0,
     monthlySalary: Number(emp?.salary) || 0,
   };
@@ -81,6 +82,8 @@ export interface ComparativoArgs {
   swapOffSet?: Set<string>;
   timeRecords: { employee_external_id?: string | null; employee_name?: string | null; record_date: string; punches: string[] }[];
   advancesList: { employee_id: string; amount: number; advance_date: string }[];
+  /** Linhas de ficha_montadores (produção por par) do período — regime 'producao'. */
+  producaoRows?: FichaMontadorRow[];
   range: { from: string; to: string };
   period: string;             // YYYY-MM (mês de referência das quinzenas)
   maxCovered?: string | null; // clamp à cobertura (último dia importado)
@@ -140,6 +143,16 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
     advByEmp.get(a.employee_id)!.push({ advance_date: a.advance_date, amount: Number(a.amount) || 0 });
   }
 
+  // Produção por par (Ficha de Montadores) por montador — filtrada por dia dentro
+  // de cada janela (mês/quinzena) no cálculo. Só regime 'producao' usa.
+  const prodByEmp = new Map<string, FichaMontadorRow[]>();
+  for (const r of (args.producaoRows ?? [])) {
+    if (!r.montador_id) continue;
+    const list = prodByEmp.get(r.montador_id) || [];
+    list.push(r);
+    prodByEmp.set(r.montador_id, list);
+  }
+
   const rangeDays = getDaysInRange(range.from, range.to);
   const coveredDays = maxCovered ? rangeDays.filter(d => d.date <= maxCovered) : rangeDays;
 
@@ -157,20 +170,29 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
         || new Map<string, string[]>();
       const sch = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
       const empAdvances = advByEmp.get(emp.id) || [];
+      const empProdRows = prodByEmp.get(emp.id) || [];
+      const regime = String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista' | 'producao';
 
-      const folha = (from: string, to: string, periodDays?: number) => computePeriodFolha({
-        salary: Number(emp.salary) || 0, from, to,
-        schedule: sch, holidaysSet, swapWorkedSet, swapOffSet, punchesByDate: empPunches,
-        activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
-        coveredDates,
-        periodDays, monthDays, maxCoveredDate: maxCovered,
-        payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
-        dailyRate: Number(emp.daily_rate) || 0,
-        // HE em R$/h por funcionário — comparativo/holerite bate com a Folha (spec req.15).
-        heNormalRate: Number((emp as any).he_normal_rate) || 0,
-        heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
-        advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
-      });
+      const folha = (from: string, to: string, periodDays?: number) => {
+        // Produção por par da janela (dia ∈ [from,to]) — snapshot de R$/par por linha.
+        const prod = sumProducaoRows(empProdRows.filter(r => (r.dia || '') >= from && (r.dia || '') <= to));
+        return computePeriodFolha({
+          salary: Number(emp.salary) || 0, from, to,
+          schedule: sch, holidaysSet, swapWorkedSet, swapOffSet, punchesByDate: empPunches,
+          activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
+          coveredDates,
+          periodDays, monthDays, maxCoveredDate: maxCovered,
+          payRegime: regime,
+          dailyRate: Number(emp.daily_rate) || 0,
+          producaoBruto: prod.bruto,
+          producaoParesMedio: prod.paresMedio,
+          producaoParesDificil: prod.paresDificil,
+          // HE em R$/h por funcionário — comparativo/holerite bate com a Folha (spec req.15).
+          heNormalRate: Number((emp as any).he_normal_rate) || 0,
+          heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
+          advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
+        });
+      };
 
       const result = folha(range.from, range.to, rangeDays.length);
       const q1 = folha(`${period}-01`, `${period}-15`, 15);
@@ -181,10 +203,16 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
       // resolvida dentro de calculateDaySummary via o param `swap` — não duplicar aqui.
       const printDays = coveredDays.map(d => ({ date: d.date, dow: d.dow, punches: empPunches.get(d.date) || [], isHoliday: holidaysSet.has(d.date), swap: swapModeFor(d.date) }));
 
+      // Por par: ponto é só presença → não avaliar falta/escala (senão cairia em
+      // "Sem escala" vermelho). Situação própria neutra.
+      const sit = regime === 'producao'
+        ? { txt: 'Por par (produção)', tone: 'green' as const }
+        : computeSituacao(result, matchedDays, maxCovered, range.to);
+
       return {
         id: emp.id, ext: extKey || undefined, name: emp.name,
         result, q1, q2, matchedDays, advMes,
-        sit: computeSituacao(result, matchedDays, maxCovered, range.to),
+        sit,
         printData: buildEmployeePrintData(emp, sch, printDays),
       };
     })

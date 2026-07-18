@@ -426,6 +426,39 @@ describe('computePeriodFolha — regimes remoto e diarista (2026-06-19)', () => 
   });
 });
 
+describe('computePeriodFolha — regime PRODUÇÃO (por par, 2026-07-18)', () => {
+  it('bruto = Σ pares×valor; ignora salário e ponto; net = bruto − adiantamentos', () => {
+    // Mesmo com salário e batidas cheias no período, o motor ignora tudo isso.
+    const punches = new Map<string, string[]>();
+    for (const d of ['2026-05-04', '2026-05-05', '2026-05-06', '2026-05-07', '2026-05-08']) punches.set(d, full);
+    const r = computePeriodFolha({
+      salary: 3000, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL,
+      punchesByDate: punches, payRegime: 'producao',
+      producaoBruto: 171, producaoParesMedio: 130, producaoParesDificil: 20, advancesTotal: 71,
+    });
+    expect(r.payment_type).toBe('producao');
+    expect(r.base_salary).toBe(0);            // salário não entra
+    expect(r.expected_minutes).toBe(0);        // ponto não gera esperado
+    expect(r.falta_days).toBe(0);
+    expect(r.atraso_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+    expect(r.pending_days).toBe(0);
+    expect(r.pares_medio).toBe(130);
+    expect(r.pares_dificil).toBe(20);
+    expect(r.gross_value).toBeCloseTo(171, 2);
+    expect(r.net_value).toBeCloseTo(100, 2);   // 171 − 71
+  });
+
+  it('produção zero + adiantamento = saldo devedor (negativo), sem quebrar', () => {
+    const r = computePeriodFolha({
+      salary: 0, from: '2026-05-04', to: '2026-05-08', schedule: SCHED, holidaysSet: NO_HOL,
+      punchesByDate: new Map(), payRegime: 'producao', producaoBruto: 0, advancesTotal: 50,
+    });
+    expect(r.gross_value).toBe(0);
+    expect(r.net_value).toBeCloseTo(-50, 2);
+  });
+});
+
 describe('computePeriodFolha — SEM tolerância (todo minuto conta, 2026-06-30) e ordenação de batidas (D18)', () => {
   const sched = (tol: number) => ({ ...SCHED, tolerance_minutes: tol });
 
