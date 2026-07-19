@@ -344,9 +344,12 @@ BEGIN
       'partial',            coalesce(array_length(v_undim, 1), 0) > 0,
       'undimensioned',      to_jsonb(v_undim),
       -- R12: modelo que só tem tempo padrão não é resultado medido
+      -- [#21 R12] só valor DO MODELO (própria ficha ou herdado de outra
+      -- referência) tira o rótulo "tempos padrão". 'medido' é escala do setor —
+      -- contá-lo deixava 50 de 51 modelos empatados em índice 100.
       'somente_padrao', NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(v_sectors) s
-         WHERE s->>'minutes_source' IN ('bom', 'ultima_referencia', 'medido')),
+         WHERE s->>'minutes_source' IN ('bom', 'ultima_referencia')),
       'warnings',           to_jsonb(v_warnings),
       'sectors',            v_sectors,
       'bottleneck_sector',  CASE WHEN v_bottleneck IS NULL THEN NULL
