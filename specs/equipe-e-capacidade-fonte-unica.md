@@ -48,7 +48,27 @@ Diagnóstico com números reais (2026-07-19):
    editor vê 720 — três números para a mesma coisa na mesma tela.
 7. **Divergência de custo sem explicação:** operação de BOM cujo setor saiu do
    roteiro (`production_sectors`) soma no custeio do PV mas some da engine —
-   DS22 mostra MO R$ 1,75/par na tela e R$ 2,05/par no custeio.
+   DS22 mostra MO R$ 1,75/par na tela e R$ 2,05/par no custeio. O gap de
+   R$ 0,2941 é exatamente Costura (0,1364) + Expedição (0,1577), as duas
+   operações órfãs.
+8. **A mão de obra está subestimada ~4,1× onde há medição real.** Em Montagem a
+   folha é R$ 7.200/mês ÷ 22 dias = R$ 327,27/dia, e a produção real medida pela
+   Chamada do Dia foi 7.116 pares em 13 dias = 547,4 pares/dia — custo real de
+   **R$ 0,598/par** contra **R$ 0,145/par** do modelo atual. São três erros
+   multiplicativos independentes, sendo o principal usar custo-hora de **uma**
+   pessoa dividido pelos pares do **setor inteiro**. Corrigir isso vai
+   aproximadamente **dobrar** `order_costs.labor_cost` e derrubar a margem dos
+   PVs novos — precisa do comparativo antes/depois aplicado também a custo, não
+   só a datas.
+9. **A dispersão está na produtividade, não no salário.** Entre os 3 montadores
+   medidos o rendimento varia **3×** (346,8 · 206,2 · 115,0 pares/dia) enquanto
+   todos ganham exatamente o mesmo salário. O modelo por headcount implica 204
+   pares por pessoa e apaga essa diferença.
+10. **O Planejamento Diário lê uma terceira fonte de capacidade.** Ele usa
+    `technical_sheets.*_capacity_per_day` (com fallback nos 600 fixos), e **não**
+    o que a tela de Produtividade edita — hoje são trilhos paralelos. Trocar a
+    capacidade move as datas da fábrica inteira, com variação de **-58%**
+    (Solagem) a **+104%** (Colagem) por setor.
 
 ## Scope
 
@@ -164,10 +184,22 @@ Diagnóstico com números reais (2026-07-19):
 
 ### Produtividade individual (2ª rodada da entrevista)
 
-19. **Rendimento por funcionário.** Cada funcionário tem um campo de
-    **produtividade média em pares/dia**, preenchido no módulo de RH (ex.:
-    costureiro A = 150, costureiro B = 180). É a média da pessoa no setor dela,
-    **sem amarração a modelo**.
+> **Achado que muda o desenho:** a produtividade individual em pares/dia **já
+> existe e já é digitada** — é a **Chamada do Dia** (`ficha_montadores`, tela
+> `src/pages/FichaMontadoresPage.tsx`): 33 lançamentos reais de 15 a 29/06/2026,
+> 3 montadores, médias de **346,8 · 206,2 · 115,0 pares/dia**. A tabela já é
+> genérica por setor (`ficha_montadores.setor`) e a tela já tem o array `SETORES`
+> preparado para ganhar setor novo em uma linha. **Criar um campo "pares/dia" em
+> `employees` seria a quarta fonte do mesmo fato** — exatamente o erro que este
+> spec existe para corrigir.
+
+19. **Rendimento por funcionário vem da Chamada do Dia, estendida aos 10
+    setores.** Não se cria campo novo em `employees`: a Chamada é promovida a
+    registro de produtividade de toda a fábrica (hoje só `montagem` tem
+    lançamento). A produtividade de uma pessoa num setor é a **média dos
+    lançamentos dela** naquele setor, numa janela recente configurável (padrão:
+    últimos 30 dias com lançamento). Onde não houver Chamada, o número pode ser
+    digitado direto como valor de referência da pessoa.
 20. **Capacidade do setor = soma das pessoas.** A capacidade base de um setor é a
     **soma** da produtividade dos funcionários ativos daquele setor (A + B = 330
     pares/dia), substituindo o cálculo abstrato por `equipe × jornada ÷ minutos`.
@@ -185,16 +217,52 @@ Diagnóstico com números reais (2026-07-19):
     produtividade preenchida entra na soma com a **média dos funcionários medidos
     do mesmo setor**, marcado na tela como estimativa. Se **ninguém** do setor
     tiver número, o setor fica **não dimensionado** (Requisito 7) — nunca zero.
-24. **Coerência com o custo.** O custo por par continua saindo de minutos-pessoa ×
-    taxa: com N pessoas e capacidade C do setor, `min-pessoa/par = N × jornada ÷
-    C`. Com A e B (2 pessoas, 540 min) e C=330, dá 3,27 min/par. O invariante
-    "MO da engine = MO do custeio" (Requisito 13) tem que continuar valendo depois
-    dessa mudança.
+24. **Coerência com o custo — fórmula exata.** `min-pessoa/par = Σ(jornadas das
+    pessoas medidas) ÷ Σ(pares dessas mesmas pessoas)`. Com A e B (2 × 540 min) e
+    330 pares, dá **3,2727** min/par. **Não** usar a média aritmética dos min/par
+    individuais (3,60 e 3,00 → 3,30): erra sempre para mais, e o erro cresce com a
+    dispersão entre as pessoas. O `N` do numerador tem que ser **o mesmo conjunto
+    de pessoas** que gerou os pares do denominador — misturar roster do RH com
+    headcount manual produz erro de 3× (caso real: Colagem tem 1 pessoa no RH e
+    headcount manual 3).
 25. **Não duplicar cadastro de equipe.** Com o rendimento individual, a contagem
     de pessoas do setor passa a ser **derivada** da lista de funcionários — o
     campo de equipe do painel (Requisitos 1–6) deixa de ser digitado como número
     solto e passa a mostrar a composição ("2 pessoas · 330 pares/dia"), com
     ajuste manual apenas como exceção (terceirizado, reforço temporário).
+26. **Cobertura tem que ser total para o número valer.** A soma só é válida com
+    **100% dos ativos do setor medidos**. Com cobertura parcial (2 de 3
+    costureiros), a tela exibe `parcial: 2 de 3 medidos` e extrapola pela média
+    (Requisito 23) — nunca soma só os medidos. Motivo: 330 quando o real é 500 é
+    um número **plausível e silencioso**, que vira gargalo falso e estrangula o
+    planejamento sem nenhum alarme — pior que o zero que causou o problema atual.
+27. **Pessoa em dois setores.** O registro de produtividade carrega uma **fração
+    de alocação por setor**, com validação de que a soma das frações de um mesmo
+    funcionário não passa de 1,0. A produtividade se declara como "pares/dia se
+    dedicado integralmente", e a contribuição para o setor é `pares × fração`, com
+    a jornada entrando também proporcional. Sem isso, quem atua em dois setores
+    tem os mesmos 540 minutos contados duas vezes (caso real: uma funcionária com
+    cargo "Faz tudo").
+28. **Eficiência não pode ser aplicada duas vezes.** Produtividade observada já
+    embute a ineficiência real. Setor cuja capacidade vem de medição **não** sofre
+    o desconto de `efficiency_pct` (hoje 85%), senão 330 lançados viram 280
+    exibidos. A eficiência permanece apenas como multiplicador de cenário sobre
+    capacidade teórica.
+29. **Custo-hora do setor passa a derivar do RH junto com a capacidade.** Se o
+    roster do RH define a capacidade, tem que definir também a taxa:
+    `hourly_rate(setor) = média dos salários das pessoas do setor ÷ 220`. Caso
+    contrário o denominador vem do RH e o numerador de um cadastro manual
+    desatualizado, e o custo erra sem sinal. Observação registrada: **hoje isso
+    não muda nenhum valor** — a dispersão salarial dentro de cada setor é zero
+    (Costura 2 × R$ 2.400, Montagem 3 × R$ 2.400, Colagem R$ 1.850, Acabamento
+    R$ 1.850) — mas passa a importar assim que houver salários diferentes.
+30. **Escala vem do RH; forma vem do BOM.** A soma das produtividades dá **um**
+    número por setor. Escrevê-lo direto no BOM de todas as fichas apagaria a
+    diferença entre modelos (é o sintoma já registrado: os 8 custos mais recentes
+    têm MO idêntica de R$ 2,0471/par). Regra: a produtividade define a **escala**
+    do setor; a diferença entre modelos continua vindo da razão entre os tempos
+    das fichas (Requisito 21 — a ficha manda quando tem valor). Uma célula
+    modelo × setor tem **uma só escritora**.
 
 ## Data model / Domain
 
@@ -282,8 +350,39 @@ sector_settings.headcount ◄── ajuste manual (0,5 aceito; sobrepõe por set
 - Assumido: "ativo" é o funcionário não desligado, independentemente de estar em
   férias ou afastado.
 
+## Ordem de implantação (as etapas 0 e 1 são pré-requisitos quebrados hoje)
+
+**Etapa 0 — destravar, antes de qualquer código novo.** (a) Fechar o Requisito 13:
+enquanto DS22 divergir R$ 0,2941/par entre engine e custeio, não há como provar
+que a mudança preserva o invariante. (b) Trocar "equipe vazia = 0 pares" por "não
+dimensionado" (Requisito 7) — sozinho isso devolve o uso da tela hoje. (c) Dados:
+reclassificar os 9 funcionários sem setor canônico, preencher `termination_date`
+(hoje o desligamento é um booleano sem data) e responder a pergunta da Costura.
+
+**Etapa 1 — medição.** Estender a Chamada do Dia aos 10 setores (aditivo, sem
+migration de schema) e criar a leitura agregada por pessoa/setor com fração de
+alocação. Sem lançamento diário nos outros 9 setores, nada disso produz número —
+e o histórico mostra que a **disciplina de preenchimento é o gargalo real**: a
+Montagem parou de lançar em 29/06, três semanas atrás.
+
+**Etapa 2 — ligar no motor.** Capacidade do setor = soma medida; custo-hora
+derivado do RH; precedência da ficha; e só então a unificação com o Planejamento
+Diário (Requisito 10), com o comparativo antes/depois de datas **e** de custo.
+
 ## Open questions
 
+- **O "150 pares" de uma pessoa foi medido produzindo qual modelo?** Você definiu
+  que é a média da pessoa, sem amarrar a modelo, e que a ficha manda quando tiver
+  valor — o que resolve o uso prático. Fica o registro do risco: sem saber o mix
+  em que a média foi observada, a escala do setor herda o mix daquele período em
+  silêncio. Mitigação sugerida (barata): a Chamada passa a registrar,
+  opcionalmente, a referência produzida no dia — os campos `referencia`/
+  `reference_id` **já existem na tabela** e estão sempre nulos.
+- **Ativar pagamento por par muda o significado do número.** Hoje a Chamada é
+  medição pura (nenhum funcionário no regime `producao`, todos os valores por par
+  zerados), então os pares lançados não têm viés. Quando o pagamento por par
+  entrar, o mesmo lançamento passa a valer dinheiro — decidir se a medição de
+  capacidade continua na mesma linha ou ganha trilha própria.
 - **O que é o setor "Costura" no seu chão de fábrica: costura do cabedal ou da
   palmilha?** Hoje um trigger remove a Costura do roteiro quando a palmilha é
   pronta (`insole_ready_made`), tratando-a como etapa da palmilha — e por isso 5
@@ -335,6 +434,18 @@ sector_settings.headcount ◄── ajuste manual (0,5 aceito; sobrepõe por set
 - [ ] R23 — Um terceiro costureiro sem medição entra pela média (165) marcado como
       estimativa; se apagar os três números, a Costura vira "não dimensionada" e
       nenhum modelo mostra 0 pares/dia.
-- [ ] R24 — `min-pessoa/par` da Costura resulta 3,27 com 2 pessoas e 330 pares/dia,
-      e a MO por par da engine continua batendo com `order_costs.labor_cost ÷ qty`.
+- [ ] R24 — `min-pessoa/par` da Costura resulta **3,2727** com 2 pessoas e 330
+      pares/dia (e não 3,30 da média aritmética), e a MO por par da engine
+      continua batendo com `order_costs.labor_cost ÷ qty`.
+- [ ] R26 — Com 2 de 3 costureiros medidos, a tela mostra "parcial: 2 de 3
+      medidos" e extrapola pela média; **não** exibe a soma dos dois como se
+      fosse a capacidade do setor.
+- [ ] R27 — Uma pessoa alocada 50% em Colagem e 50% em Acabamento contribui com
+      metade dos pares e metade da jornada em cada, e o sistema recusa alocação
+      somando mais de 100%.
+- [ ] R28 — Um setor com capacidade medida de 330 pares/dia exibe 330, não 280
+      (sem desconto de eficiência sobre número observado).
+- [ ] R30 — Depois de ligar a produtividade, dois modelos com tempos diferentes na
+      mesma Costura continuam com custos diferentes (a escala do setor não
+      achatou a diferença entre modelos).
 - [ ] Typecheck, `bun run test` e build de produção verdes.
