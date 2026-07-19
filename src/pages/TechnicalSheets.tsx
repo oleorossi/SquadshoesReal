@@ -3352,7 +3352,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </p>
               )}
               {(form.direct_components || []).map((comp: any, idx: number) => {
-                const unit = (comp.unit || 'un').toString().trim() || 'un';
+                // Preço e unidade vêm do produto VIVO, não do snapshot gravado no
+                // JSONB da ficha: o snapshot só é reescrito quando o componente é
+                // re-selecionado no dropdown, então corrigir o cadastro do material
+                // não refletia aqui — a ficha seguia exibindo o custo velho. O
+                // custeio real (calculate_order_cost_item) já lê products.unit_price
+                // ao vivo; isto só alinha a UI com ele. Snapshot vira fallback pra
+                // componente cujo produto foi desativado/removido.
+                const liveProd = (products as any[]).find((p: any) => p.id === comp.product_id);
+                const unit = ((liveProd?.unit ?? comp.unit) || 'un').toString().trim() || 'un';
+                const unitPrice = Number(liveProd?.unit_price ?? comp.unit_price) || 0;
                 return (
                 <div key={idx} className="grid grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
                   <DirectComponentSelect
@@ -3375,9 +3384,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     }} className="mt-1 h-9 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
                   </div>
                   <div className="flex items-end gap-2">
-                    {comp.unit_price > 0 && comp.quantity > 0 && (
+                    {unitPrice > 0 && comp.quantity > 0 && (
+                      // Mostra a conta inteira (qtd × R$/unidade), não só o total:
+                      // "= R$ 20,00/par" sozinho não denuncia que o custo cadastrado
+                      // está na unidade errada. Com "20 cm × R$ 1,0000/cm" na frente,
+                      // um preço digitado por metro num produto em cm salta aos olhos.
                       <span className="text-xs text-muted-foreground font-mono mb-2">
-                        = {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(comp.unit_price * comp.quantity)}/par
+                        {comp.quantity} {unit} × {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(unitPrice)}/{unit}
+                        {' = '}
+                        <strong className="text-foreground">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unitPrice * comp.quantity)}/par</strong>
                       </span>
                     )}
                     <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
