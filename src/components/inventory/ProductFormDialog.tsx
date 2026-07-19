@@ -1713,7 +1713,13 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
                       <div>
                         <Label className="text-xs text-muted-foreground">
-                          {form.unit === 'kg' ? 'Custo por kg (R$)' : ['metro', 'm', 'metros'].includes(form.unit) ? 'Custo por metro (R$)' : form.unit === 'par' ? 'Custo por par (R$)' : 'Custo Unitário (R$)'}
+                          {/* SEMPRE nomear a unidade. Antes só kg/m/par ganhavam rótulo
+                              explícito e todo o resto (cm, dm², g, placa, L…) caía num
+                              genérico "Custo Unitário (R$)" — que não diz unitário de
+                              quê. Num produto com unit='cm' isso convida a digitar o
+                              preço do METRO: foi assim que o elástico da NL03 entrou a
+                              R$ 1,00/cm (= R$ 100,00/m) e inflou o custeio em 100×. */}
+                          Custo por {form.unit || 'unidade'} (R$)
                         </Label>
                         <CurrencyInput 
                           id="unit_price" 
