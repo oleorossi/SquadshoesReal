@@ -30,13 +30,23 @@ import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyD
 
 type Grade = "adulto" | "infantil";
 type Tab = "lancamento" | "produtividade" | "fichas";
-type Setor = "montagem" | "solagem";
+type Setor =
+  | "corte_palmilha" | "corte_forracao" | "aviamento" | "costura" | "silk"
+  | "colagem" | "montagem" | "solagem" | "acabamento" | "expedicao";
 /** Setores com chamada do dia INDEPENDENTE (mesma dinâmica, dados + relatórios
  *  separados por `ficha_montadores.setor`). Pra adicionar um setor novo é só
  *  incluir aqui — a tela ganha a aba automaticamente. */
 const SETORES: { id: Setor; label: string; sing: string; plural: string; pattern: RegExp }[] = [
-  { id: "montagem", label: "Montadores", sing: "montador", plural: "montadores", pattern: /montagem|montador/i },
-  { id: "solagem",  label: "Soladores",  sing: "solador",  plural: "soladores",  pattern: /solagem|solador/i },
+  { id: "corte_palmilha", label: "Corte Palmilha", sing: "cortador",  plural: "cortadores",  pattern: /corte\s*palmilha|palmilh/i },
+  { id: "corte_forracao", label: "Corte Forração", sing: "cortador",  plural: "cortadores",  pattern: /corte\s*forra|forra/i },
+  { id: "aviamento",      label: "Aviamento",      sing: "aviador",   plural: "aviadores",   pattern: /aviamento|mesa/i },
+  { id: "costura",        label: "Costura",        sing: "costureiro", plural: "costureiros", pattern: /costura|costurei/i },
+  { id: "silk",           label: "Silk",           sing: "silkeiro",  plural: "silkeiros",   pattern: /silk|serigraf/i },
+  { id: "colagem",        label: "Colagem",        sing: "colador",   plural: "coladores",   pattern: /colagem|colador/i },
+  { id: "montagem",       label: "Montadores",     sing: "montador",  plural: "montadores",  pattern: /montagem|montador/i },
+  { id: "solagem",        label: "Soladores",      sing: "solador",   plural: "soladores",   pattern: /solagem|solador/i },
+  { id: "acabamento",     label: "Acabamento",     sing: "acabador",  plural: "acabadores",  pattern: /acabamento|acabador/i },
+  { id: "expedicao",      label: "Expedição",      sing: "expedidor", plural: "expedidores", pattern: /expedi/i },
 ];
 type ChamadaView = "dia" | "semana";
 type PeriodMode = "hoje" | "semana" | "q1" | "q2" | "mes" | "custom";

@@ -43,12 +43,17 @@ export function PlanningCapacityComparison() {
       );
       setConfirmOpen(false);
       qc.invalidateQueries({ queryKey: ["planning-capacity-comparison"] });
-      qc.invalidateQueries({ queryKey: ["sector-settings"] });
+      qc.invalidateQueries({ queryKey: ["sector_settings"] });
+      qc.invalidateQueries({ queryKey: ["sector-team"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const aplicaveis = (rows ?? []).filter((r) => r.capacidade_nova != null);
+  // Só conta o que REALMENTE muda — antes anunciava setores cuja capacidade
+  // derivada já era igual à atual, e o toast depois dizia outro número.
+  const aplicaveis = (rows ?? []).filter(
+    (r) => r.capacidade_nova != null && Math.round(r.capacidade_nova) !== r.capacidade_atual,
+  );
 
   if (isLoading) {
     return (

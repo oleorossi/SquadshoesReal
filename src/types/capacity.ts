@@ -66,7 +66,7 @@ export interface ModelProductivity {
   /** true quando NENHUM setor resolveu tempo — fora do ranking e sem snapshot. */
   incomplete: boolean;
   /** Calculou com o que dá, mas há setor sem equipe informada (R7). */
-  partial: boolean;
+  partial: boolean | null;
   /** Setores não dimensionados que ficaram fora do cálculo (R7/R16). */
   undimensioned: string[];
   /** Só tem tempo padrão da categoria — não entra no ranking comparativo (R12). */

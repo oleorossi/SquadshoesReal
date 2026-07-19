@@ -102,6 +102,8 @@ export function SectorTeamPanel({ onSaved, showActions = true, className }: Sect
       qc.invalidateQueries({ queryKey: ["sector-team"] });
       qc.invalidateQueries({ queryKey: ["sector-headcount"] });
       qc.invalidateQueries({ queryKey: ["model-productivity"] });
+      qc.invalidateQueries({ queryKey: ["sector-measured-capacity"] });
+      qc.invalidateQueries({ queryKey: ["planning-capacity-comparison"] });
     },
   });
 
@@ -139,7 +141,7 @@ export function SectorTeamPanel({ onSaved, showActions = true, className }: Sect
             <div className="flex flex-wrap items-center gap-2 min-h-11">
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground shrink-0"
+                className="text-muted-foreground hover:text-foreground shrink-0 h-11 w-11 -ml-2 flex items-center justify-center"
                 aria-label={`Ver pessoas de ${r.sector}`}
                 onClick={() => setAberto((a) => (a === r.sector ? null : r.sector))}
               >
@@ -162,7 +164,7 @@ export function SectorTeamPanel({ onSaved, showActions = true, className }: Sect
                 )}
               </div>
               <OrigemBadge origem={r.origem} />
-              {r.rh_count > 0 && (draft[r.sector] ?? "") !== String(r.rh_count) && (
+              {r.rh_count > 0 && r.origem === "manual" && (draft[r.sector] ?? "") !== String(r.rh_count) && (
                 <Button
                   type="button"
                   variant="outline"

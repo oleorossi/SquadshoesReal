@@ -44,7 +44,7 @@ export function SectorPeopleProductivity({ sector }: { sector: string }) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Record<string, string>>({});
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["sector-measured-capacity", sector],
     queryFn: () => getSectorMeasuredCapacity(sector),
   });
@@ -86,6 +86,13 @@ export function SectorPeopleProductivity({ sector }: { sector: string }) {
       <div className="flex items-center gap-2 py-4 justify-center text-muted-foreground text-xs">
         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando pessoas…
       </div>
+    );
+  }
+  if (error) {
+    return (
+      <p className="text-xs text-red-600 py-2">
+        Não foi possível carregar as pessoas deste setor: {(error as Error).message}
+      </p>
     );
   }
   if (!data || data.membros.length === 0) {
