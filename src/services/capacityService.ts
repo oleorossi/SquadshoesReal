@@ -8,6 +8,7 @@ import type {
   ModelProductivityResult,
   ProductivitySnapshot,
   SectorHeadcountRow,
+  SetCapacityResult,
 } from "@/types/capacity";
 
 export interface SheetOption {
@@ -120,6 +121,30 @@ export async function updateSectorHeadcounts(changes: Record<string, number | nu
   });
   if (error) throw error;
   return (data ?? 0) as number;
+}
+
+/** Edição de capacidade produtiva POR MODELO × SETOR (R19): o dono digita
+ *  pares/dia observados e o servidor converte pra min/par (= headcount ×
+ *  jornada ÷ pares), gravando como tempo manual no BOM da ficha. A dificuldade
+ *  do modelo fica embutida no min/par — modelo que rende menos pares fica mais
+ *  caro por par no custo-minuto e no custeio do PV (trigger costs_dirty). */
+export async function setModelSectorCapacity(
+  sheetId: string,
+  sector: string,
+  pairsPerDay: number,
+): Promise<SetCapacityResult> {
+  if (!sheetId) throw new Error("Ficha obrigatória");
+  if (!sector) throw new Error("Setor obrigatório");
+  if (typeof pairsPerDay !== "number" || !Number.isFinite(pairsPerDay) || pairsPerDay <= 0) {
+    throw new Error("Capacidade inválida: informe pares/dia maior que zero");
+  }
+  const { data, error } = await (supabase as any).rpc("set_model_sector_capacity", {
+    p_sheet_id: sheetId,
+    p_sector: sector,
+    p_pairs_per_day: pairsPerDay,
+  });
+  if (error) throw error;
+  return data as unknown as SetCapacityResult;
 }
 
 /** Congela o cálculo atual da ficha no banco de custos. Server-side recalcula

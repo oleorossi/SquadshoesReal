@@ -11,6 +11,7 @@ import {
   Sliders,
   FloppyDisk,
   ClockCounterClockwise,
+  PencilSimple,
   Plus,
   X,
   Trash,
@@ -40,6 +41,7 @@ import {
   listProductivitySnapshots,
   listSectorHeadcount,
   saveProductivitySnapshot,
+  setModelSectorCapacity,
   updateCapacityParameters,
   updateSectorHeadcounts,
 } from "@/services/capacityService";
@@ -88,6 +90,17 @@ export default function ProdutividadeModelos() {
   const [historySheet, setHistorySheet] = useState<{ id: string; name: string } | null>(null);
   const [teamDraft, setTeamDraft] = useState<Record<string, string>>({});
   const [paramsDraft, setParamsDraft] = useState<Record<string, string>>({});
+  // Edição de capacidade POR MODELO × SETOR (R19): pares/dia → min/par.
+  const [capEdit, setCapEdit] = useState<{
+    sheetId: string;
+    sheetName: string;
+    sectorKey: string;
+    sectorLabel: string;
+    headcount: number | null;
+    hourlyRate: number;
+    currentMinutes: number | null;
+  } | null>(null);
+  const [capDraft, setCapDraft] = useState("");
 
   const { data: sheetOptions } = useQuery({
     queryKey: ["capacity-sheet-options"],
@@ -136,6 +149,23 @@ export default function ProdutividadeModelos() {
       qc.invalidateQueries({ queryKey: ["productivity-snapshots"] });
     },
     onError: (e: Error) => toast.error("Não foi possível remover: " + e.message),
+  });
+
+  const setCapacityMutation = useMutation({
+    mutationFn: async () => {
+      if (!capEdit) return null;
+      const pairs = Number(capDraft.replace(",", "."));
+      return await setModelSectorCapacity(capEdit.sheetId, capEdit.sectorLabel, pairs);
+    },
+    onSuccess: (r) => {
+      if (!r) return;
+      toast.success(
+        `${r.sector}: ${r.pairs_per_day} pares/dia → ${formatNumber(r.minutes_per_pair, 2)} min/par (MO ${formatCurrency(r.mo_per_pair)}/par)`,
+      );
+      setCapEdit(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => invalidateCalc(),
   });
 
   const saveTeamMutation = useMutation({
@@ -401,6 +431,31 @@ export default function ProdutividadeModelos() {
                               <span className={cn("font-mono text-xs tabular-nums ml-auto", s.is_bottleneck ? "text-primary font-semibold" : "text-muted-foreground")}>
                                 {s.pairs_per_day == null ? "" : `${s.pairs_per_day} p/d`}
                               </span>
+                              <button
+                                type="button"
+                                className="text-muted-foreground/50 hover:text-foreground shrink-0"
+                                title={`Editar capacidade — ${s.label} · ${m.name}`}
+                                aria-label={`Editar capacidade de ${s.label} do modelo ${m.name}`}
+                                onClick={() => {
+                                  const journey = params?.journey_minutes ?? 540;
+                                  const capAtual =
+                                    (s.headcount ?? 0) > 0 && (s.minutes_per_pair ?? 0) > 0
+                                      ? Math.round(((s.headcount as number) * journey) / (s.minutes_per_pair as number))
+                                      : null;
+                                  setCapDraft(capAtual != null ? String(capAtual) : "");
+                                  setCapEdit({
+                                    sheetId: m.sheet_id,
+                                    sheetName: m.name,
+                                    sectorKey: s.sector_key,
+                                    sectorLabel: s.label,
+                                    headcount: s.headcount,
+                                    hourlyRate: s.hourly_rate,
+                                    currentMinutes: s.minutes_per_pair,
+                                  });
+                                }}
+                              >
+                                <PencilSimple className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </td>
                         );
@@ -610,6 +665,129 @@ export default function ProdutividadeModelos() {
             <Button onClick={() => saveParamsMutation.mutate()} disabled={saveParamsMutation.isPending}>
               {saveParamsMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: capacidade do dia por modelo × setor (R19) */}
+      <Dialog open={!!capEdit} onOpenChange={(open) => !open && setCapEdit(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Capacidade do dia — {capEdit?.sectorLabel} · {capEdit?.sheetName}
+            </DialogTitle>
+            <DialogDescription>
+              Quantos pares a equipe atual produz num dia NESTE modelo. Modelo mais difícil rende
+              menos pares — e o custo/par sobe sozinho.
+            </DialogDescription>
+          </DialogHeader>
+          {(capEdit?.headcount ?? 0) <= 0 ? (
+            <div className="space-y-3">
+              <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                Cadastre a equipe de {capEdit?.sectorLabel} primeiro — a conversão pares/dia →
+                min/par precisa do headcount do setor.
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setCapEdit(null);
+                  setTeamDraft(
+                    Object.fromEntries(
+                      (teamRows ?? []).map((r) => [r.sector, r.headcount == null ? "" : String(r.headcount)]),
+                    ),
+                  );
+                  setTeamOpen(true);
+                }}
+              >
+                <UsersThree className="h-4 w-4 mr-1.5" /> Abrir Equipe
+              </Button>
+            </div>
+          ) : (
+            (() => {
+              const journey = params?.journey_minutes ?? 540;
+              const eff = params?.efficiency_pct ?? 85;
+              const hc = capEdit?.headcount ?? 0;
+              const rate = capEdit?.hourlyRate ?? 0;
+              const pairsNum = Number(capDraft.replace(",", "."));
+              const valido = Number.isFinite(pairsNum) && pairsNum > 0;
+              const previewMin = valido ? (hc * journey) / pairsNum : null;
+              const previewMo = previewMin != null ? (previewMin * rate) / 60 : null;
+              const previewShown = valido ? Math.floor(pairsNum * (eff / 100)) : null;
+              const refs = models
+                .filter((m) => m.sheet_id !== capEdit?.sheetId)
+                .map((m) => ({
+                  name: m.name,
+                  s: m.sectors.find((x) => x.sector_key === capEdit?.sectorKey),
+                }))
+                .filter((x) => x.s && (x.s.minutes_per_pair ?? 0) > 0)
+                .map((x) => ({
+                  name: x.name,
+                  pares: Math.round((hc * journey) / (x.s!.minutes_per_pair as number)),
+                }));
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm">Capacidade neste modelo</span>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        autoFocus
+                        type="text"
+                        inputMode="decimal"
+                        aria-label={`Capacidade de ${capEdit?.sectorLabel} no modelo ${capEdit?.sheetName} (pares/dia)`}
+                        className="h-9 w-28 text-right font-mono"
+                        value={capDraft}
+                        onChange={(e) => setCapDraft(e.target.value)}
+                      />
+                      <span className="text-[11px] text-muted-foreground w-14">pares/dia</span>
+                    </div>
+                  </div>
+                  <div className="rounded-md bg-muted/40 px-3 py-2.5 font-mono text-[11.5px] leading-relaxed tabular-nums">
+                    <p>
+                      {formatNumber(hc, hc % 1 ? 1 : 0)} pessoa{hc === 1 ? "" : "s"} × {formatNumber(journey, 0)} min ÷{" "}
+                      {valido ? formatNumber(pairsNum, 0) : "—"} pares ={" "}
+                      <b>{previewMin == null ? "—" : formatNumber(previewMin, 2)} min/par</b>
+                    </p>
+                    <p>
+                      MO custo-minuto: {previewMin == null ? "—" : formatNumber(previewMin, 2)} min ×{" "}
+                      {formatCurrency(rate)}/h ÷ 60 ={" "}
+                      <b>{previewMo == null ? "—" : formatCurrency(previewMo)}/par</b>
+                    </p>
+                    <p className="text-muted-foreground">
+                      A tela exibirá {previewShown == null ? "—" : previewShown} p/d (eficiência {formatNumber(eff, 0)}%).
+                    </p>
+                  </div>
+                  {refs.length > 0 && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <p className="font-medium text-foreground">Referência dos outros modelos neste setor:</p>
+                      {refs.map((r) => (
+                        <p key={r.name} className="font-mono tabular-nums">
+                          {r.name}: ~{r.pares} pares/dia
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Grava como tempo manual no BOM da ficha — o custeio dos PVs deste modelo
+                    recalcula sozinho e outras referências novas herdam via "última referência".
+                  </p>
+                </div>
+              );
+            })()
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCapEdit(null)}>Cancelar</Button>
+            <Button
+              onClick={() => setCapacityMutation.mutate()}
+              disabled={
+                setCapacityMutation.isPending ||
+                (capEdit?.headcount ?? 0) <= 0 ||
+                !(Number(capDraft.replace(",", ".")) > 0)
+              }
+            >
+              {setCapacityMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar capacidade
             </Button>
           </DialogFooter>
         </DialogContent>

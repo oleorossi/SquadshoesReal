@@ -197,6 +197,22 @@ Fatos que fundamentam as decisões abaixo (auditoria read-only):
     "Histórico" por referência listando snapshots (data, pares/dia, gargalo, custo
     custo-minuto e gargalo, parâmetros usados), ordenado do mais recente; consulta
     via service (`listProductivitySnapshots(sheetId)`).
+19. **Edição de capacidade na tela (aditivo 2, 2026-07-19)**: cada célula da matriz
+    (modelo × setor) tem edição — o dono digita **pares/dia observados** e o RPC
+    `set_model_sector_capacity` (mig `20260719140000`) converte para
+    `min/par = headcount × jornada ÷ pares_dia` (minutos-PESSOA pagos; SEM aplicar
+    eficiência — capacidade observada já embute a ineficiência real; a eficiência
+    global segue valendo só na EXIBIÇÃO de pares/dia), gravando como
+    `time_source='manual'` no BOM da ficha. Consequências encadeadas: custeio dos
+    PVs recalcula via trigger costs_dirty; engine lê como camada 1; referências
+    novas herdam via `ultima_referencia`. **Dificuldade por modelo** = capacidades
+    diferentes no MESMO setor (300 vs 240 p/d na Costura ⇒ 3,6 vs 4,5 min/par ⇒
+    MO R$ 0,65 vs R$ 0,82/par com 2 pessoas) — o "coeficiente" emerge da razão,
+    sem cadastro paralelo de coeficientes (que driftaria do BOM). Guard-rails:
+    exige headcount do setor (conversão impossível sem equipe); recusa setor que
+    não pertence a `production_sectors` da ficha (linha órfã no BOM não autoriza —
+    testado com DS22×Costura); recusa sobrescrever setor com >1 operação
+    manual/cronoanálise (breakdown detalhado se edita na aba Operações).
 
 ## Data model / Domain
 
@@ -364,4 +380,9 @@ Documentar esse contraste num comment do RPC e no header da página.
       erro claro; anon não executa o RPC nem lê a tabela.
 - [ ] R18: dialog Histórico lista os snapshots salvos (data + pares/dia + custos) e
       reflete um snapshot novo sem reload manual (invalidation).
+- [ ] R19: editar capacidade de um setor num modelo grava min/par correto no BOM
+      (300 p/d com 2 pessoas ⇒ 3,6 min/par — conferido no banco), o custo-minuto
+      do modelo muda na hora, e dois modelos com capacidades diferentes no mesmo
+      setor mostram MO/par diferentes; setor órfão e setor sem equipe são
+      recusados com mensagem clara.
 - [ ] Gates G1–G5 conferidos como registrados nesta spec (nenhum pendente bloqueante).

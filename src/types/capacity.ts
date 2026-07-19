@@ -99,6 +99,19 @@ export interface ProductivitySnapshot {
   created_at: string;
 }
 
+/** Retorno de set_model_sector_capacity (edição de capacidade na tela):
+ *  pares/dia digitado → min/par gravado no BOM da ficha (time_source manual). */
+export interface SetCapacityResult {
+  action: 'updated' | 'inserted';
+  sector: string;
+  pairs_per_day: number;
+  headcount: number;
+  journey_minutes: number;
+  minutes_per_pair: number;
+  hourly_rate: number;
+  mo_per_pair: number;
+}
+
 /** Linha de capacity_consistency_report() (/diagnostics). */
 export interface CapacityConsistencyRow {
   categoria: string;

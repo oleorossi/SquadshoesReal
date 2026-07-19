@@ -14,6 +14,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 import {
   getModelProductivity,
+  setModelSectorCapacity,
   updateCapacityParameters,
   updateSectorHeadcount,
   updateSectorHeadcounts,
@@ -82,6 +83,21 @@ describe("capacityService — validações client-side", () => {
     await expect(updateSectorHeadcounts({ Montagem: 2.5, Costura: null })).resolves.toBe(2);
     expect(rpcMock).toHaveBeenCalledWith("update_sector_headcounts", {
       p_headcounts: { Montagem: 2.5, Costura: null },
+    });
+  });
+
+  it("capacidade do dia rejeita pares/dia inválido sem chamar o banco", async () => {
+    await expect(setModelSectorCapacity("abc", "Costura", 0)).rejects.toThrow(/capacidade inválida/i);
+    await expect(setModelSectorCapacity("abc", "Costura", -10)).rejects.toThrow(/capacidade inválida/i);
+    await expect(setModelSectorCapacity("abc", "Costura", Number.NaN)).rejects.toThrow(/capacidade inválida/i);
+    await expect(setModelSectorCapacity("", "Costura", 300)).rejects.toThrow(/ficha obrigatória/i);
+    expect(rpcMock).not.toHaveBeenCalled();
+    rpcMock.mockResolvedValue({ data: { minutes_per_pair: 3.6 }, error: null });
+    await expect(setModelSectorCapacity("abc", "Costura", 300)).resolves.toMatchObject({ minutes_per_pair: 3.6 });
+    expect(rpcMock).toHaveBeenCalledWith("set_model_sector_capacity", {
+      p_sheet_id: "abc",
+      p_sector: "Costura",
+      p_pairs_per_day: 300,
     });
   });
 
