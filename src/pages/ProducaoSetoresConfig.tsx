@@ -19,6 +19,8 @@ import {
 } from '@/hooks/useProductionEngine';
 import { useCan } from '@/hooks/useAccessControl';
 import { toast } from 'sonner';
+import { SectorTeamPanel } from '@/components/production/SectorTeamPanel';
+import { PlanningCapacityComparison } from '@/components/production/PlanningCapacityComparison';
 
 /**
  * Tela SETORES (R1) — a configuração CENTRAL da produção. O que está aqui é a
@@ -102,6 +104,23 @@ export default function ProducaoSetoresConfig() {
         </p>
       )}
 
+      {/* Painel ÚNICO de Equipe (R1) — idêntico ao do botão Equipe em
+          Produtividade por Modelo, gravando no mesmo campo. */}
+      <Card>
+        <CardContent className="pt-5">
+          <h2 className="display text-sm uppercase tracking-wide mb-3">Equipe por setor</h2>
+          <SectorTeamPanel />
+        </CardContent>
+      </Card>
+
+      {/* R10: capacidade derivada × a que o Planejamento usa hoje, antes de trocar. */}
+      <Card>
+        <CardContent className="pt-5">
+          <h2 className="display text-sm uppercase tracking-wide mb-3">Capacidade do Planejamento — hoje × derivada</h2>
+          <PlanningCapacityComparison />
+        </CardContent>
+      </Card>
+
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
@@ -151,26 +170,6 @@ export default function ProducaoSetoresConfig() {
                       className="h-8 w-24 font-mono text-right"
                     />
                     <span className="text-xs text-muted-foreground">pares/dia</span>
-                  </div>
-
-                  {/* Equipe (informativa — não entra no cálculo) */}
-                  <div className="flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      type="number"
-                      min={0}
-                      placeholder="—"
-                      defaultValue={s.team_size ?? ''}
-                      key={`${s.sector}-team-${s.team_size}`}
-                      onBlur={e => {
-                        const v = e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value)));
-                        if (v !== s.team_size) update.mutate({ sector: s.sector, team_size: v });
-                      }}
-                      disabled={!canEdit}
-                      className="h-8 w-16 font-mono text-right"
-                      title="Nº de pessoas no setor (informativo)"
-                    />
-                    <span className="text-xs text-muted-foreground">pessoas</span>
                   </div>
 
                   <div className="flex items-center gap-4 ml-auto">

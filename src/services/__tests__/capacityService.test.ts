@@ -14,7 +14,9 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 import {
   getModelProductivity,
+  getSectorMeasuredCapacity,
   setModelSectorCapacity,
+  upsertEmployeeProductivity,
   updateCapacityParameters,
   updateSectorHeadcount,
   updateSectorHeadcounts,
@@ -98,6 +100,33 @@ describe("capacityService — validações client-side", () => {
       p_sheet_id: "abc",
       p_sector: "Costura",
       p_pairs_per_day: 300,
+    });
+  });
+
+  it("produtividade individual rejeita valor inválido e alocação fora de 0-100%", async () => {
+    await expect(
+      upsertEmployeeProductivity({ employeeId: "e1", sector: "Costura", pairsPerDay: 0 }),
+    ).rejects.toThrow(/produtividade inválida/i);
+    await expect(
+      upsertEmployeeProductivity({ employeeId: "e1", sector: "Costura", pairsPerDay: -5 }),
+    ).rejects.toThrow(/produtividade inválida/i);
+    await expect(
+      upsertEmployeeProductivity({ employeeId: "", sector: "Costura", pairsPerDay: 150 }),
+    ).rejects.toThrow(/funcionário obrigatório/i);
+    await expect(
+      upsertEmployeeProductivity({ employeeId: "e1", sector: "Costura", pairsPerDay: 150, allocationFraction: 1.5 }),
+    ).rejects.toThrow(/alocação inválida/i);
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("capacidade medida exige setor", async () => {
+    await expect(getSectorMeasuredCapacity("")).rejects.toThrow(/setor obrigatório/i);
+    expect(rpcMock).not.toHaveBeenCalled();
+    rpcMock.mockResolvedValue({ data: { pairs_per_day: 330, min_person_per_pair: 3.2727 }, error: null });
+    await expect(getSectorMeasuredCapacity("Costura")).resolves.toMatchObject({ pairs_per_day: 330 });
+    expect(rpcMock).toHaveBeenCalledWith("sector_measured_capacity", {
+      p_sector: "Costura",
+      p_window_days: 30,
     });
   });
 

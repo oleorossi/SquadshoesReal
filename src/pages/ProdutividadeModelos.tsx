@@ -32,18 +32,17 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
+import { SectorTeamPanel } from "@/components/production/SectorTeamPanel";
 import {
-  assertHeadcount,
   deleteProductivitySnapshot,
   getCapacityParameters,
   getModelProductivity,
   listActiveSheets,
   listProductivitySnapshots,
-  listSectorHeadcount,
+  listSectorTeam,
   saveProductivitySnapshot,
   setModelSectorCapacity,
   updateCapacityParameters,
-  updateSectorHeadcounts,
 } from "@/services/capacityService";
 import type { ModelProductivity, SectorProductivity } from "@/types/capacity";
 
@@ -62,6 +61,20 @@ function SourceChip({ sector }: { sector: SectorProductivity }) {
         title={`Último valor preenchido na referência ${sector.source_sheet_name ?? "?"}`}
       >
         última ref · {sector.source_sheet_name}
+      </Badge>
+    );
+  }
+  if (sector.minutes_source === "medido") {
+    const cob = sector.cobertura_medicao === "parcial"
+      ? ` · parcial ${sector.pessoas_medidas}/${sector.pessoas_total}`
+      : "";
+    return (
+      <Badge
+        variant="outline"
+        className="bg-green-500/10 text-green-600 border-transparent text-[10px]"
+        title={`Soma da produtividade das pessoas do setor${cob ? " (cobertura parcial — extrapolado pela média)" : ""}`}
+      >
+        medido{cob}
       </Badge>
     );
   }
@@ -88,7 +101,6 @@ export default function ProdutividadeModelos() {
   const [teamOpen, setTeamOpen] = useState(false);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [historySheet, setHistorySheet] = useState<{ id: string; name: string } | null>(null);
-  const [teamDraft, setTeamDraft] = useState<Record<string, string>>({});
   const [paramsDraft, setParamsDraft] = useState<Record<string, string>>({});
   // Edição de capacidade POR MODELO × SETOR (R19): pares/dia → min/par.
   const [capEdit, setCapEdit] = useState<{
@@ -120,8 +132,8 @@ export default function ProdutividadeModelos() {
     queryFn: getCapacityParameters,
   });
   const { data: teamRows } = useQuery({
-    queryKey: ["sector-headcount"],
-    queryFn: listSectorHeadcount,
+    queryKey: ["sector-team"],
+    queryFn: listSectorTeam,
   });
   const { data: snapshots, isLoading: snapsLoading } = useQuery({
     queryKey: ["productivity-snapshots", historySheet?.id],
@@ -168,32 +180,6 @@ export default function ProdutividadeModelos() {
     onSettled: () => invalidateCalc(),
   });
 
-  const saveTeamMutation = useMutation({
-    // Valida TUDO antes de escrever e grava numa transação só (RPC batch) —
-    // sem escrita parcial quando um valor do meio é inválido/falha.
-    mutationFn: async () => {
-      const changes: Record<string, number | null> = {};
-      for (const row of teamRows ?? []) {
-        const draft = teamDraft[row.sector];
-        if (draft === undefined) continue;
-        const parsed = draft.trim() === "" ? null : Number(draft.replace(",", "."));
-        assertHeadcount(parsed);
-        if (parsed !== row.headcount) changes[row.sector] = parsed;
-      }
-      if (Object.keys(changes).length === 0) return 0;
-      return await updateSectorHeadcounts(changes);
-    },
-    onSuccess: (n) => {
-      toast.success(n > 0 ? `Equipe atualizada (${n} setor${n === 1 ? "" : "es"})` : "Nada pra salvar");
-      setTeamOpen(false);
-    },
-    onError: (e: Error) => toast.error(e.message),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["sector-headcount"] });
-      invalidateCalc();
-    },
-  });
-
   const saveParamsMutation = useMutation({
     mutationFn: async () => {
       const patch: Record<string, number> = {};
@@ -237,16 +223,33 @@ export default function ProdutividadeModelos() {
 
   const nomePorId = useMemo(() => new Map((sheetOptions ?? []).map((s) => [s.id, s.name])), [sheetOptions]);
 
+  /** R16: avisos que IMPEDEM o número aparecem sempre, no topo, com ação. */
+  const undimAvisos = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of models) {
+      for (const u of m.undimensioned ?? []) {
+        set.add(`${u} está sem equipe informada — fora do cálculo de capacidade`);
+      }
+    }
+    return [...set];
+  }, [models]);
+
   const allWarnings = useMemo(() => {
     const set = new Set<string>();
     for (const id of result?.missing_sheet_ids ?? []) {
       set.add(`${nomePorId.get(id) ?? id.slice(0, 8)}: ficha removida ou indisponível — retirada do comparativo`);
     }
-    for (const m of models) for (const w of m.warnings) set.add(`${m.name}: ${w}`);
+    for (const m of models) {
+      for (const w of m.warnings) {
+        if (w.includes("sem equipe cadastrada")) continue; // já está no bloco do topo
+        set.add(`${m.name}: ${w}`);
+      }
+    }
     return [...set];
   }, [models, result?.missing_sheet_ids, nomePorId]);
 
-  const teamTotal = (teamRows ?? []).reduce((acc, r) => acc + (r.headcount ?? 0), 0);
+  const teamTotal = (teamRows ?? []).reduce((acc, r) => acc + (r.valor ?? 0), 0);
+  const setoresPendentes = (teamRows ?? []).filter((r) => r.origem === "nao_informado").length;
 
   const toggleSheet = (id: string) => {
     setSelectedIds((prev) => {
@@ -309,12 +312,14 @@ export default function ProdutividadeModelos() {
         <Button
           size="sm"
           className="h-9"
-          onClick={() => {
-            setTeamDraft(Object.fromEntries((teamRows ?? []).map((r) => [r.sector, r.headcount == null ? "" : String(r.headcount)])));
-            setTeamOpen(true);
-          }}
+          onClick={() => setTeamOpen(true)}
         >
-          <UsersThree className="h-4 w-4 mr-1.5" /> Equipe{teamTotal > 0 ? ` (${formatNumber(teamTotal, teamTotal % 1 ? 1 : 0)})` : ""}
+          <UsersThree className="h-4 w-4 mr-1.5" /> Equipe
+          {setoresPendentes > 0
+            ? ` (${setoresPendentes} pendente${setoresPendentes === 1 ? "" : "s"})`
+            : teamTotal > 0
+              ? ` (${formatNumber(teamTotal, teamTotal % 1 ? 1 : 0)})`
+              : ""}
         </Button>
       </div>
 
@@ -407,8 +412,11 @@ export default function ProdutividadeModelos() {
                         <span className="font-medium">{row.label}</span>
                         <span className="block text-[11px] text-muted-foreground">
                           {(() => {
-                            const hc = models.flatMap((m) => m.sectors).find((s) => s.sector_key === row.key)?.headcount;
-                            return hc == null ? "sem equipe" : `${formatNumber(hc, hc % 1 ? 1 : 0)} pessoa${hc === 1 ? "" : "s"}`;
+                            const sec = models.flatMap((m) => m.sectors).find((s) => s.sector_key === row.key);
+                            const hc = sec?.headcount;
+                            if (hc == null) return "sem equipe";
+                            const origem = sec?.team_source === "rh" ? " · do RH" : sec?.team_source === "manual" ? " · manual" : "";
+                            return `${formatNumber(hc, hc % 1 ? 1 : 0)} pessoa${hc === 1 ? "" : "s"}${origem}`;
                           })()}
                         </span>
                       </td>
@@ -429,7 +437,11 @@ export default function ProdutividadeModelos() {
                               </span>
                               <SourceChip sector={s} />
                               <span className={cn("font-mono text-xs tabular-nums ml-auto", s.is_bottleneck ? "text-primary font-semibold" : "text-muted-foreground")}>
-                                {s.pairs_per_day == null ? "" : `${s.pairs_per_day} p/d`}
+                                {s.nao_dimensionado
+                                  ? "sem equipe"
+                                  : s.pairs_per_day == null
+                                    ? ""
+                                    : `${s.pairs_per_day} p/d`}
                               </span>
                               <button
                                 type="button"
@@ -437,12 +449,8 @@ export default function ProdutividadeModelos() {
                                 title={`Editar capacidade — ${s.label} · ${m.name}`}
                                 aria-label={`Editar capacidade de ${s.label} do modelo ${m.name}`}
                                 onClick={() => {
-                                  const journey = params?.journey_minutes ?? 540;
-                                  const capAtual =
-                                    (s.headcount ?? 0) > 0 && (s.minutes_per_pair ?? 0) > 0
-                                      ? Math.round(((s.headcount as number) * journey) / (s.minutes_per_pair as number))
-                                      : null;
-                                  setCapDraft(capAtual != null ? String(capAtual) : "");
+                                  // R11: prefill = o mesmo número exibido na célula.
+                                  setCapDraft(s.pairs_per_day != null ? String(s.pairs_per_day) : "");
                                   setCapEdit({
                                     sheetId: m.sheet_id,
                                     sheetName: m.name,
@@ -529,6 +537,24 @@ export default function ProdutividadeModelos() {
           </div>
 
           {/* Avisos */}
+          {undimAvisos.length > 0 && (
+            <div className="space-y-1.5">
+              {undimAvisos.map((w) => (
+                <div key={w} className="flex items-start gap-2 rounded-md bg-primary/10 px-3 py-2 text-xs text-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
+                  <span className="flex-1">{w}</span>
+                  <button
+                    type="button"
+                    className="text-primary underline shrink-0 font-medium"
+                    onClick={() => setTeamOpen(true)}
+                  >
+                    Informar equipe
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {allWarnings.length > 0 && (
             <div className="space-y-1.5">
               {allWarnings.slice(0, 8).map((w) => (
@@ -592,40 +618,16 @@ export default function ProdutividadeModelos() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: equipe por setor */}
+      {/* Dialog: equipe por setor — painel ÚNICO compartilhado com Produção → Setores (R1) */}
       <Dialog open={teamOpen} onOpenChange={setTeamOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Equipe por setor</DialogTitle>
             <DialogDescription>
-              Pessoas por setor (aceita 0,5 pra pessoa dividida). Zera a capacidade quando vazio.
+              Quantas pessoas trabalham em cada setor. O mesmo painel está em Produção → Setores.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-80 overflow-y-auto -mx-1 px-1">
-            {(teamRows ?? []).map((r) => (
-              <div key={r.sector} className="flex items-center justify-between gap-3">
-                <span className="text-sm">{r.sector}</span>
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    aria-label={`Equipe — ${r.sector} (pessoas)`}
-                    className="h-8 w-24 text-right font-mono"
-                    value={teamDraft[r.sector] ?? ""}
-                    onChange={(e) => setTeamDraft((d) => ({ ...d, [r.sector]: e.target.value }))}
-                  />
-                  <span className="text-[11px] text-muted-foreground w-10">pessoas</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTeamOpen(false)}>Cancelar</Button>
-            <Button onClick={() => saveTeamMutation.mutate()} disabled={saveTeamMutation.isPending}>
-              {saveTeamMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Salvar equipe
-            </Button>
-          </DialogFooter>
+          <SectorTeamPanel onSaved={() => setTeamOpen(false)} />
         </DialogContent>
       </Dialog>
 
@@ -693,11 +695,6 @@ export default function ProdutividadeModelos() {
                 className="w-full"
                 onClick={() => {
                   setCapEdit(null);
-                  setTeamDraft(
-                    Object.fromEntries(
-                      (teamRows ?? []).map((r) => [r.sector, r.headcount == null ? "" : String(r.headcount)]),
-                    ),
-                  );
                   setTeamOpen(true);
                 }}
               >
@@ -714,7 +711,6 @@ export default function ProdutividadeModelos() {
               const valido = Number.isFinite(pairsNum) && pairsNum > 0;
               const previewMin = valido ? (hc * journey) / pairsNum : null;
               const previewMo = previewMin != null ? (previewMin * rate) / 60 : null;
-              const previewShown = valido ? Math.floor(pairsNum * (eff / 100)) : null;
               const refs = models
                 .filter((m) => m.sheet_id !== capEdit?.sheetId)
                 .map((m) => ({
@@ -755,7 +751,9 @@ export default function ProdutividadeModelos() {
                       <b>{previewMo == null ? "—" : formatCurrency(previewMo)}/par</b>
                     </p>
                     <p className="text-muted-foreground">
-                      A tela exibirá {previewShown == null ? "—" : previewShown} p/d (eficiência {formatNumber(eff, 0)}%).
+                      Capacidade informada {valido ? formatNumber(pairsNum, 0) : "—"} p/d — é o que a tela vai
+                      exibir. O fator de eficiência ({formatNumber(eff, 0)}%) só vale para setor sem medição,
+                      porque o número que você observou já embute a ineficiência real.
                     </p>
                   </div>
                   {refs.length > 0 && (
@@ -870,13 +868,23 @@ function ModelCard({
         </span>
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="bignum text-5xl leading-none">{model.pairs_per_day ?? 0}</span>
+        <span className="bignum text-5xl leading-none">{model.pairs_per_day ?? "—"}</span>
         <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">pares/dia</span>
       </div>
+      {model.somente_padrao && (
+        <p className="text-[11px] text-amber-600">
+          Tempos padrão da categoria — capacidade ainda não medida neste modelo.
+        </p>
+      )}
+      {model.partial && model.undimensioned.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Sem <b>{model.undimensioned.join(", ")}</b> no cálculo (equipe não informada).
+        </p>
+      )}
       <div className="space-y-1">
         <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
           <span>Índice de produtividade</span>
-          <b className="text-foreground">{model.productivity_index ?? "—"}</b>
+          <b className="text-foreground">{model.somente_padrao ? "não medido" : (model.productivity_index ?? "—")}</b>
         </div>
         <div className="h-1.5 rounded-full bg-muted overflow-hidden">
           <div className="h-full rounded-full bg-foreground" style={{ width: `${model.productivity_index ?? 0}%` }} />

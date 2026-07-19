@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SectorSelectField } from '@/components/hr/SectorSelectField';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { CurrencyInput } from '@/components/ui/currency-input';
@@ -396,7 +397,7 @@ export default function Employees() {
               {form.external_id && <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado ao relógio de ponto</p>}
             </div>
             <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
-            <div><Label>Departamento</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} /></div>
+            <div><SectorSelectField value={form.department} onChange={v => setForm(f => ({ ...f, department: v }))} /></div>
             <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
             <div>
               <Label>Demissão</Label>

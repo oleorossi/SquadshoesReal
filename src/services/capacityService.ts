@@ -6,8 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import type {
   CapacityParameters,
   ModelProductivityResult,
+  PlanningComparisonRow,
   ProductivitySnapshot,
   SectorHeadcountRow,
+  SectorMeasuredCapacity,
+  SectorTeamRow,
   SetCapacityResult,
 } from "@/types/capacity";
 
@@ -95,6 +98,95 @@ export async function listSectorHeadcount(): Promise<SectorHeadcountRow[]> {
     .order("flow_order");
   if (error) throw error;
   return (data ?? []) as SectorHeadcountRow[];
+}
+
+/** Linhas do painel único de Equipe: ajuste manual salvo + valor em uso + origem
+ *  + contagem viva do RH (R1/R6/R17). */
+export async function listSectorTeam(): Promise<SectorTeamRow[]> {
+  const { data, error } = await (supabase as any)
+    .from("sector_settings")
+    .select("sector, flow_order, headcount")
+    .eq("enabled", true)
+    .order("flow_order");
+  if (error) throw error;
+
+  const rows = (data ?? []) as SectorHeadcountRow[];
+  const efetivos = await Promise.all(
+    rows.map(async (r) => {
+      const { data: t, error: e } = await (supabase as any).rpc("sector_effective_team", {
+        p_sector: r.sector,
+      });
+      if (e) throw e;
+      const first = Array.isArray(t) ? t[0] : t;
+      return {
+        sector: r.sector,
+        flow_order: r.flow_order,
+        override: r.headcount,
+        valor: first?.valor ?? null,
+        origem: first?.origem ?? "nao_informado",
+        rh_count: first?.rh_count ?? 0,
+      } as SectorTeamRow;
+    }),
+  );
+  return efetivos;
+}
+
+/** Capacidade medida do setor: soma das pessoas com origem por pessoa (R20/R24/R26). */
+export async function getSectorMeasuredCapacity(
+  sector: string,
+  windowDays = 30,
+): Promise<SectorMeasuredCapacity> {
+  if (!sector) throw new Error("Setor obrigatório");
+  const { data, error } = await (supabase as any).rpc("sector_measured_capacity", {
+    p_sector: sector,
+    p_window_days: windowDays,
+  });
+  if (error) throw error;
+  return data as unknown as SectorMeasuredCapacity;
+}
+
+/** Produtividade informada de uma pessoa num setor (pares/dia se dedicada
+ *  integralmente) + fração de alocação (R19/R27). */
+export async function upsertEmployeeProductivity(params: {
+  employeeId: string;
+  sector: string;
+  pairsPerDay: number | null;
+  allocationFraction?: number;
+}): Promise<void> {
+  const { employeeId, sector, pairsPerDay, allocationFraction = 1 } = params;
+  if (!employeeId) throw new Error("Funcionário obrigatório");
+  if (!sector) throw new Error("Setor obrigatório");
+  if (pairsPerDay !== null && (!Number.isFinite(pairsPerDay) || pairsPerDay <= 0)) {
+    throw new Error("Produtividade inválida: informe pares/dia maior que zero");
+  }
+  if (!Number.isFinite(allocationFraction) || allocationFraction <= 0 || allocationFraction > 1) {
+    throw new Error("Alocação inválida: use entre 1% e 100% da jornada");
+  }
+  const { error } = await (supabase as any).from("employee_sector_allocation").upsert(
+    {
+      employee_id: employeeId,
+      sector,
+      productivity_override: pairsPerDay,
+      allocation_fraction: allocationFraction,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "employee_id,sector" },
+  );
+  if (error) throw error;
+}
+
+/** Comparativo da capacidade que o Planejamento Diário usa hoje × a derivada (R10). */
+export async function getPlanningComparison(): Promise<PlanningComparisonRow[]> {
+  const { data, error } = await (supabase as any).rpc("capacity_planning_comparison");
+  if (error) throw error;
+  return (data ?? []) as PlanningComparisonRow[];
+}
+
+/** Aplica a capacidade derivada no Planejamento Diário. Só depois do comparativo (R10). */
+export async function applyCapacityToPlanning(): Promise<{ alterados: number; mudancas: unknown[] }> {
+  const { data, error } = await (supabase as any).rpc("apply_capacity_to_planning");
+  if (error) throw error;
+  return data as { alterados: number; mudancas: unknown[] };
 }
 
 export async function updateSectorHeadcount(sector: string, headcount: number | null): Promise<void> {
