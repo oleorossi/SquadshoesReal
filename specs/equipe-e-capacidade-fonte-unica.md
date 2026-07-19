@@ -9,10 +9,11 @@
 
 ## Goal
 
-Fazer com que **quantas pessoas trabalham em cada setor** seja um dado único,
-preenchido num lugar reconhecível, alimentado pelo RH e visível com a origem — e
-que esse número governe tanto o **custo de mão de obra por par** (precificação)
-quanto o **Planejamento Diário** da fábrica.
+Fazer com que a **capacidade produtiva de cada setor** seja um dado único,
+construído a partir das **pessoas reais** (cada funcionário com seu rendimento em
+pares/dia, preenchido no RH e somado por setor), visível com a origem de cada
+número — e que essa capacidade governe tanto o **custo de mão de obra por par**
+(precificação) quanto o **Planejamento Diário** da fábrica.
 
 ## Background / Problem
 
@@ -161,6 +162,40 @@ Diagnóstico com números reais (2026-07-19):
 18. **Mobile.** O painel funciona em 360px (o dono usa no chão de fábrica): alvos
     de toque de no mínimo 44px, contraste adequado e sem rolagem horizontal.
 
+### Produtividade individual (2ª rodada da entrevista)
+
+19. **Rendimento por funcionário.** Cada funcionário tem um campo de
+    **produtividade média em pares/dia**, preenchido no módulo de RH (ex.:
+    costureiro A = 150, costureiro B = 180). É a média da pessoa no setor dela,
+    **sem amarração a modelo**.
+20. **Capacidade do setor = soma das pessoas.** A capacidade base de um setor é a
+    **soma** da produtividade dos funcionários ativos daquele setor (A + B = 330
+    pares/dia), substituindo o cálculo abstrato por `equipe × jornada ÷ minutos`.
+21. **Precedência: a ficha técnica manda.** Quando a referência tiver capacidade
+    lançada para aquele setor (o valor que o dono informa em Produtividade por
+    Modelo), **é ela que vale** como total do setor para aquele modelo. A soma das
+    pessoas é a base usada apenas quando a ficha não tem valor.
+22. **Distribuição proporcional ao rendimento.** Em ambos os casos, a produção do
+    setor se reparte entre as pessoas **na proporção do rendimento individual**.
+    Com A=150 e B=180 (45,45% e 54,55%), um modelo cuja ficha diz 240 pares/dia
+    resulta em 109 pares para A e 131 para B. Essa distribuição é exibida e serve
+    de base para metas e conferência — arredondamento não pode criar ou perder
+    pares (a diferença de arredondamento vai para o maior rendimento).
+23. **Funcionário sem medição entra pela média dos colegas.** Quem ainda não tem
+    produtividade preenchida entra na soma com a **média dos funcionários medidos
+    do mesmo setor**, marcado na tela como estimativa. Se **ninguém** do setor
+    tiver número, o setor fica **não dimensionado** (Requisito 7) — nunca zero.
+24. **Coerência com o custo.** O custo por par continua saindo de minutos-pessoa ×
+    taxa: com N pessoas e capacidade C do setor, `min-pessoa/par = N × jornada ÷
+    C`. Com A e B (2 pessoas, 540 min) e C=330, dá 3,27 min/par. O invariante
+    "MO da engine = MO do custeio" (Requisito 13) tem que continuar valendo depois
+    dessa mudança.
+25. **Não duplicar cadastro de equipe.** Com o rendimento individual, a contagem
+    de pessoas do setor passa a ser **derivada** da lista de funcionários — o
+    campo de equipe do painel (Requisitos 1–6) deixa de ser digitado como número
+    solto e passa a mostrar a composição ("2 pessoas · 330 pares/dia"), com
+    ajuste manual apenas como exceção (terceirizado, reforço temporário).
+
 ## Data model / Domain
 
 ```
@@ -291,4 +326,15 @@ sector_settings.headcount ◄── ajuste manual (0,5 aceito; sobrepõe por set
 - [ ] R16/R17/R18 — O aviso do setor não dimensionado aparece no topo com link de
       ação; o painel abre no primeiro pendente; funciona em 360px com alvos de
       44px; `check:tokens` limpo.
+- [ ] R19/R20 — Preencher 150 no costureiro A e 180 no B pelo RH faz a Costura
+      exibir 330 pares/dia sem nenhum outro cadastro.
+- [ ] R21 — Com a ficha do modelo X informando 240 pares/dia na Costura, o cálculo
+      daquele modelo usa 240 (e não 330); um modelo sem valor na ficha usa 330.
+- [ ] R22 — A distribuição mostra 109 para A e 131 para B (soma exata de 240, sem
+      par perdido no arredondamento).
+- [ ] R23 — Um terceiro costureiro sem medição entra pela média (165) marcado como
+      estimativa; se apagar os três números, a Costura vira "não dimensionada" e
+      nenhum modelo mostra 0 pares/dia.
+- [ ] R24 — `min-pessoa/par` da Costura resulta 3,27 com 2 pessoas e 330 pares/dia,
+      e a MO por par da engine continua batendo com `order_costs.labor_cost ÷ qty`.
 - [ ] Typecheck, `bun run test` e build de produção verdes.
