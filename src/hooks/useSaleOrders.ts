@@ -1355,6 +1355,8 @@ export function useUpdateSaleOrderStatus() {
                 // caixas (colmeia + individual) quando a ficha tem ambas no BOM
                 // — mesma regra de filter_caixa_by_packaging_mode do custeio.
                 p_packaging_mode: pkgMode,
+                // Variante de material do item (CONS-4, auditoria 2026-07-19).
+                p_material_variant_id: (item as any).material_variant_id ?? null,
               } as any);
 
               const shortages = (stockCheck || []).filter((s: any) => !s.sufficient);

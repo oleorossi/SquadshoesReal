@@ -46,6 +46,7 @@ export function useCheckStockAvailability() {
     grade?: Record<string, number> | null,
     strapColors?: any[] | null,
     packagingMode?: string | null,
+    materialVariantId?: string | null,
   ) => {
     // strapColors vem de sale_order_items (com cor real escolhida pelo cliente),
     // não da ficha (que tem template sem cor). Sem isso a RPC não conseguia
@@ -55,6 +56,9 @@ export function useCheckStockAvailability() {
     // packagingMode (auditoria 2026-07-01): sem ele a RPC contava as DUAS
     // caixas (colmeia + individual) quando a ficha tem ambas no BOM — mesma
     // regra de filter_caixa_by_packaging_mode usada no custeio.
+    // materialVariantId (auditoria 2026-07-19, CONS-4): sem ele a RPC resolvia
+    // os materiais com variante NULL — o badge avaliava o material da FICHA,
+    // não o da variante escolhida no item do PV.
     const { data, error } = await supabase.rpc('check_stock_availability', {
       p_reference_id: referenceId,
       p_order_quantity: quantity,
@@ -62,6 +66,7 @@ export function useCheckStockAvailability() {
       p_order_grade: grade ?? null,
       p_strap_colors: strapColors ?? null,
       p_packaging_mode: packagingMode ?? null,
+      p_material_variant_id: materialVariantId ?? null,
     } as any);
     if (error) throw error;
     return data as Array<{

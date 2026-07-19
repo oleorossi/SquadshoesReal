@@ -49,29 +49,31 @@ Migrations: `20260915100000_debit-consistency-report.sql` + `20260915110000_audi
 
 **Guardas de regressão:** SQL → `run_debit_guard_tests()` (G1–G10; painel em /diagnostics; wrapper `src/services/__tests__/debitGuards.integration.test.ts` com `RUN_DB_INTEGRATION=1`). TS → `src/lib/__tests__/orderConsumption.test.ts` (46 testes, incluindo os guards novos).
 
-## 3. Achados CONFIRMADOS ainda PENDENTES (17 — com fix proposto)
+## 3. Achados CONFIRMADOS restantes — **APLICADOS em 2026-07-19** (17)
 
-Nenhum é débito de valor errado acontecendo hoje; são avisos faltando, divergências latentes ou telas secundárias. Fix proposto está no detalhe de cada achado (arquivo `scratchpad`/relato do verificador — resumo aqui):
+Nenhum era débito de valor errado acontecendo; eram avisos faltando, divergências latentes ou telas secundárias. **Todos os 17 foram aplicados**: SQL via migration `20260916120000_audit-debito-pendencias-secao3.sql` (construída a partir do `pg_get_functiondef` VIVO e aplicada em produção via Management API, com verificação embutida), TS no commit desta aplicação. Guards novos **G11–G22** em `run_debit_guard_tests()` (22/22 verdes) + casos 3b/3c/2c em `run_consumption_integration_tests()` (13/13 verdes) + testes vitest em `bomConsumption.test.ts` (19) — suíte completa 1117 verdes.
 
-| # | Sev | Onde | Resumo |
-|---|-----|------|--------|
-| CONS-1 | MÉDIO | `calculate_order_consumption_by_grade` | Contrato `source='fallback_average'`+`consumption_warning` (mig 20260518120000) sumiu da versão viva — tamanho que cai na média escalar sai rotulado `sheet_per_size` (enganoso). 7/47 fichas caem 100% na média hoje. UnitAudit.tsx e `consumption_consistency_report` referenciam o contrato morto. |
-| CONS-4 | MÉDIO | `check_stock_availability` | Badge de disponibilidade do PV resolve materiais com variante NULL — avalia o material da FICHA, não o da variante escolhida. |
-| DEB-5 | MÉDIO | `debit_packaging_for_order` | Caminho `box_types` grava `stock_movements.product_id = box_types.id` (não é produto) — se disparar, `record_order_consumption` aborta por FK na finalização. |
-| RES-5 | MÉDIO | `list_orphan_reservations` | Não enxerga resíduo `partially_consumed` nem `reserved` com `quantity_consumed > 0`. |
-| RES-9 | MÉDIO | `restore_product_stocks_for_order` | Pula produto com `stock_grade` não-vazio sem estornar nem avisar — cobertura depende 100% de `restore_sole_grade_for_order`. |
-| BOM-2 | MÉDIO | `bomConsumption.ts` | Resolução de solado só pin da variante + mapping explícito (P1) — sem P0 conjugação/P2/P3 do motor canônico. |
-| BOM-4 | MÉDIO | `bomConsumption.ts` | Placa da palmilha ignora `insole_consumption_dm2` do solado (usa só escalar/yield da ficha). |
-| BOM-5 | MÉDIO | `bomConsumption.ts` | Sem componente Fachete (nem warning). |
-| BOM-6 | MÉDIO | `bomConsumption.ts` | Ignora `direct_components` e componentes por cor (`component_colors`). |
-| SQL-1/CONS-2 | BAIXO* | `calculate_order_consumption_by_grade` | Loop de `sheet_materials` sem escopo de variante (`get_effective_bom`). *Latente: 0 linhas variant-specific hoje e a UI não grava a coluna — rebaixado pelo verificador. |
-| CONS-5 | BAIXO | resolvers | Sobrecargas MORTAS e divergentes de `resolve_upper/lining_material_for_variant` (4-arg) ainda existem no schema — dropar. |
-| CONS-6 | BAIXO | Fachete SQL×TS | SQL usa só `technical_sheets.lining_material`; TS prioriza `products.fachete_material_group_id`. |
-| CONS-7 | BAIXO | forro cabedal | SQL gateia em `insole_has_lining=true`; TS não tem o gate (divergência latente). |
-| CONS-8 | BAIXO | `tg_guard_implausible_consumption` | Só cobre `technical_sheets` — `sole_technical_specs` (fonte do forro/palmilha/fachete) entra sem teto. |
-| RES-6 | BAIXO | triggers release | Matriz de status divergente entre as duas triggers de release ('Faturado'/'FINALIZADO' não liberam `partially_consumed`). |
-| RES-8 | BAIXO | `confirm_picking_reservation` | Ignora kind `sole_grade` (debitaria quantity sem stock_grade) e é o único RPC do ciclo sem `is_approved_user()`. |
-| BOM-7 | BAIXO | `bomConsumption.ts` | Linha Solado ignora `sole_consumption>1` e some sem `sole_material` textual. |
+| # | Sev | Onde | Bug → Fix aplicado |
+|---|-----|------|--------------------|
+| CONS-1 | MÉDIO | `calculate_order_consumption_by_grade` | Contrato `source='fallback_average'`+`consumption_warning` (mig 20260518120000) tinha sumido da versão viva. → Reintroduzido por componente (Cabedal/Forração/Palmilha/Forração Palmilha), com lista dos tamanhos em fallback no warning; override de variante e forro alternativo/suprimido NÃO contam como fallback. Guard G11 + CASO 3b/3c/2c. |
+| CONS-4 | MÉDIO | `check_stock_availability` | Badge do PV resolvia materiais com variante NULL. → Novo parâmetro `p_material_variant_id` (sobrecarga 6-arg dropada — sem ambiguidade no PostgREST), threading no by_grade + resolvers + BOM efetivo; callers TS (`useCheckStockAvailability`, `SaleOrderForm`, aprovação em `useSaleOrders`) passam a variante do item. Guard G12. |
+| DEB-5 | MÉDIO | `debit_packaging_for_order` → `record_order_consumption` | Débito de embalagem grava `stock_movements.product_id = box_types.id` (sem FK); a finalização abortava na FK de `production_consumptions`. → `record_order_consumption` filtra movimentos cujo product_id não existe em `products` (o ledger de caixas continua onde está — idempotência e estorno dependem dele). Guard G13. |
+| RES-5 | MÉDIO | `list_orphan_reservations` | Não via `partially_consumed` nem `reserved` com consumo parcial. → Órfã = reserva ativa com resíduo > 0 em OP terminal (matriz de status unificada com RES-6). Guard G14. |
+| RES-9 | MÉDIO | `restore_product_stocks_for_order` | Pulava produto com `stock_grade` não-vazio em silêncio. → Estorna o RESÍDUO escalar (net de movimentos − o que o `restore_sole_grade_for_order` ainda vai devolver, via reservas `sole_grade` sem `sole_restored_at`), sem tocar a numeração; idempotente e seguro em qualquer ordem de chamada. Guard G15. |
+| BOM-2 | MÉDIO | `bomConsumption.ts` | Solado só por pin da variante + mapping explícito. → Cascata canônica P0–P3 extraída pra `resolveSoleProductIdCanonical` (exportada de `orderConsumption.ts`, fonte única) e usada na Lista de Separação. |
+| BOM-4 | MÉDIO | `bomConsumption.ts` | Placa ignorava `insole_consumption_dm2` do solado. → Per-size do solado prevalece (escalar como fallback), espelho do `computeInsoleDm2` canônico; override legado de variante suprime o per-size. |
+| BOM-5 | MÉDIO | `bomConsumption.ts` | Sem componente Fachete. → Bloco espelhando o canônico: grupo por `products.fachete_material_group_id` (fallback `lining_material`), dm²→m pela largura; sem specs → linha de AVISO qtd 0. |
+| BOM-6 | MÉDIO | `bomConsumption.ts` | Ignorava `direct_components`/componentes por cor. → Mesmo gate do SQL/motor canônico (lista POR COR substitui `direct_components`); BOM pula produto já emitido (sem duplicar). |
+| SQL-1/CONS-2 | BAIXO | `calculate_order_consumption_by_grade` | Loop de `sheet_materials` sem escopo de variante. → `get_effective_bom(p_reference_id, p_material_variant_id)` no by_grade E no `check_stock_availability` (loop + pré-varredura de caixas). Guard G16. |
+| CONS-5 | BAIXO | resolvers | Sobrecargas 4-arg mortas/divergentes (sem o pin da ficha). → DROP das 3 (varrido: nenhum caller em SQL/views/TS). Guard G17. |
+| CONS-6 | BAIXO | Fachete SQL×TS | SQL usava só `lining_material`. → Prioriza `products.fachete_material_group_id` do solado (paridade TS). Guard G18. |
+| CONS-7 | BAIXO | forro cabedal | SQL gateava o forro do CABEDAL em `insole_has_lining=true` (campo que descreve a PALMILHA); TS nunca teve o gate. → Gate removido no by_grade e no `check_stock_availability`; permanece SÓ na parcela de Forração Palmilha (igual TS). Guard G19. |
+| CONS-8 | BAIXO | guard implausível | `sole_technical_specs` sem teto. → Trigger `tg_guard_implausible_sole_spec` (teto 50 dm²/par nas 4 colunas; máximo vivo hoje: 6,85). Guard G20. |
+| RES-6 | BAIXO | triggers release | Matrizes divergentes. → Matriz ÚNICA nas duas triggers: terminal = {Finalizado, FINALIZADO, Faturado, Cancelado, Cancelada, Concluído, Concluido}; libera `reserved` + `partially_consumed` com sync de `reserved_stock`. Guard G21. |
+| RES-8 | BAIXO | `confirm_picking_reservation` | Sem `is_approved_user()` e aceitava reserva de solado por grade. → Gate de usuário aprovado + rejeição de kind `sole_grade`/`sole_pending_grade` (picking escalar não baixa `stock_grade`). Guard G22. |
+| BOM-7 | BAIXO | `bomConsumption.ts` | Linha Solado ignorava `sole_consumption>1` e sumia sem `sole_material` textual. → Grupo do produto-solado RESOLVIDO (qualquer fonte da cascata); consumo = override da variante > `sole_consumption` > default canônico 1 par/par. |
+
+**Bônus da aplicação:** `run_consumption_integration_tests()` estava 100% abortando em produção (fixture sem `product_groups.sector`, NOT NULL desde a mig 20260901140000) e carregava expectativas fósseis de waste padrão 8% (o default vivo é 0, paridade com o TS) — fixture e expectativas corrigidos; suíte 13/13 verde.
 
 **Refutados (2):** CONS-3 (o "caso vivo" tinha pin de produto que resolve) e RES-4 (`process_outdated_reservations` limpar o flag por VISITA é decisão de design documentada).
 
@@ -101,4 +103,4 @@ Casos estruturais por trás desses números:
 
 - **/diagnostics → Consumo**: dois painéis novos — *Débito × Ficha técnica* (esperado×debitado, badges por classe, maiores divergências) e *Guards da auditoria de débito* (G1–G10). Rodar com o botão "Executar".
 - **OP com problema de reserva agora GRITA**: `material_status='erro_reserva'` + nota na OP; baixa parcial/sem estoque na conversão vira nota na OP + reserva de shortfall reconciliável.
-- **Decisão pendente sua**: o que fazer com o estoque fantasma das 21 OPs de maio (a contagem física + ajuste manual é o caminho — o relatório dá a lista por material); e se prioriza o SPEC de invalidação de snapshot por cor (item 4.3) e os 17 pendentes da seção 3.
+- **Decisão pendente sua**: o que fazer com o estoque fantasma das 21 OPs de maio (a contagem física + ajuste manual é o caminho — o relatório dá a lista por material); e se prioriza o SPEC de invalidação de snapshot por cor (item 4.3). ~~Os 17 pendentes da seção 3~~ → **aplicados em 2026-07-19** (mig `20260916120000`, guards G11–G22).

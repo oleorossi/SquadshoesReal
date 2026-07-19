@@ -11,6 +11,7 @@ import {
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import { resolveSoleProductIdCanonical } from '@/lib/orderConsumption';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import {
   aggregateArtisanalStrapCut,
@@ -35,6 +36,10 @@ export type ConsumptionRow = {
    *  unit='dm²'). Estoque/débito/compra são em dm²; exibir só "placas" tornava
    *  a comparação com estoque inválida (auditoria 2026-07-01). */
   plateEquivalent?: number;
+  /** Aviso não-bloqueante (ex.: solado fachetado sem specs de fachete). A linha
+   *  entra mesmo com qtd 0 só pra alertar o gap de cadastro — espelha o
+   *  `warning` do motor canônico (orderConsumption.ts). */
+  warning?: string;
 };
 
 export const COMPONENT_ORDER = [
@@ -66,7 +71,10 @@ const calcGroupPlateAreaDm2 = (group: any): number => {
 const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow) => {
   const totalQuantity = Number(row.totalQuantity) || 0;
   const groupName = row.groupName?.trim();
-  if (!groupName || totalQuantity <= 0) return;
+  if (!groupName) return;
+  // Linha SÓ de aviso (ex.: fachete sem specs) entra com qtd 0 pra alertar o
+  // gap de cadastro (paridade com o motor canônico); as demais de qtd 0 saem.
+  if (totalQuantity <= 0 && !row.warning) return;
 
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
@@ -77,12 +85,13 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   if (existing) {
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
+    if (row.warning && !existing.warning) existing.warning = row.warning;
     // Equivalência em placas soma junto (é linear na mesma proporção do dm²).
     if (row.plateEquivalent) existing.plateEquivalent = (existing.plateEquivalent || 0) + row.plateEquivalent;
     return;
   }
 
-  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing, plateEquivalent: row.plateEquivalent });
+  map.set(key, { componentType: row.componentType, groupName, materialName, productUnit, color, totalQuantity, widthMissing: row.widthMissing, plateEquivalent: row.plateEquivalent, warning: row.warning });
 };
 
 export async function calculateBomForOrders(orderIds: string[]): Promise<ConsumptionRow[]> {
@@ -112,7 +121,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_ready_made, insole_has_lining, insole_lining_consumption, sole_material, sole_consumption, sole_color, sole_group_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption')
+      .select('id, upper_material, upper_consumption, upper_consumption_per_size, lining_material, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_ready_made, insole_has_lining, insole_lining_consumption, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
@@ -120,7 +129,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // de uma variante (semântica get_effective_bom) — escopo aplicado no loop.
       .select('sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, products(name, unit, category), product_groups(name)')
       .in('sheet_id', refIds),
-    supabase.from('products').select('id, name, color, group_id, sole_classification').eq('active', true),
+    // `quantity` entra pra cascata canônica de solado (P0/P2 escolhem por maior
+    // estoque); `unit` pra unidade de estoque; `is_fachetado`/
+    // `fachete_material_group_id` pro componente Fachete (BOM-2/BOM-5).
+    supabase.from('products').select('id, name, color, group_id, quantity, unit, sole_classification, is_fachetado, fachete_material_group_id').eq('active', true),
     supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
     supabase
       .from('component_sheets')
@@ -130,7 +142,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       : Promise.resolve({ data: [] }),
     (supabase as any)
       .from('technical_sheet_sole_colors')
-      .select('sheet_id, product_color, sole_product_id')
+      .select('sheet_id, product_color, sole_product_id, sole_group_id')
       .in('sheet_id', refIds),
     // packaging_mode do PV — a ficha pode listar VÁRIAS caixas no BOM (colmeia +
     // individual) como alternativas; o pedido escolhe uma via packaging_mode e a
@@ -153,7 +165,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (variantIds.length > 0) {
       const { data: variantRows } = await (supabase as any)
         .from('reference_material_variants')
-        .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, sole_material_product_id')
+        .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override')
         .in('id', variantIds);
       for (const v of (variantRows || []) as any[]) variantsById.set(v.id, v);
     }
@@ -165,6 +177,72 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   for (const m of (soleColorMappings || []) as any[]) {
     if (m.sole_product_id) soleColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.product_color)}`, m.sole_product_id);
   }
+  // Cascata CANÔNICA de solado (BOM-2): antes a Lista de Separação só conhecia
+  // pin da variante + mapping explícito (P1) — pedidos que dependem de
+  // coligação de cor (P0), mapping legado por grupo (P2) ou primary_sole_id
+  // (P3) resolviam solado DIFERENTE do que o débito baixa. Mapas idênticos aos
+  // do motor canônico (fetchConsumptionContext/orderConsumption.ts).
+  const soleColorGroupMap = new Map<string, string>();
+  for (const m of (soleColorMappings || []) as any[]) {
+    if (!m.sole_product_id && m.sole_group_id) soleColorGroupMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_group_id);
+  }
+  const sheetSoleGroupMap = new Map<string, string>();
+  const sheetPrimarySoleMap = new Map<string, string>();
+  for (const s of (sheetsData || []) as any[]) {
+    if (s.id && s.sole_group_id) sheetSoleGroupMap.set(s.id, s.sole_group_id);
+    if (s.id && s.primary_sole_id) sheetPrimarySoleMap.set(s.id, s.primary_sole_id);
+  }
+  const soleConjugationsByGroup = new Map<
+    string,
+    Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>
+  >();
+  {
+    const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
+    if (soleGroupIds.length > 0) {
+      const { data: conjugations } = await (supabase as any)
+        .from('sole_color_conjugations')
+        .select('sole_group_id, cabedal_color, palmilha_color, is_default, active')
+        .in('sole_group_id', soleGroupIds)
+        .eq('active', true);
+      for (const c of (conjugations || []) as any[]) {
+        const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
+        arr.push({ cabedal_color: c.cabedal_color, palmilha_color: c.palmilha_color, is_default: !!c.is_default });
+        soleConjugationsByGroup.set(c.sole_group_id, arr);
+      }
+    }
+  }
+
+  // Componentes por cor (opt-in via component_colors_enabled) — BOM-6. Chave
+  // (sheet_id::corNormalizada), mesma paridade de match do SQL/motor canônico.
+  const componentColorMap = new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
+  {
+    const { data: componentColorMappings } = await (supabase as any)
+      .from('technical_sheet_component_colors')
+      .select('sheet_id, cabedal_color, product_id, quantity_per_unit')
+      .in('sheet_id', refIds);
+    for (const m of (componentColorMappings || []) as any[]) {
+      if (!m.product_id) continue;
+      const key = `${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`;
+      const arr = componentColorMap.get(key) || [];
+      arr.push({ productId: m.product_id, quantityPerUnit: Number(m.quantity_per_unit) || 0 });
+      componentColorMap.set(key, arr);
+    }
+  }
+
+  // Cor do FORRO mapeada por cor do cabedal — usada pela linha de Fachete
+  // (paridade com o motor canônico; as demais linhas seguem com a cor do pedido).
+  const liningColorMap = new Map<string, string>();
+  const liningDefaultMap = new Map<string, string>();
+  {
+    const { data: liningColorMappings } = await (supabase as any)
+      .from('technical_sheet_lining_colors')
+      .select('sheet_id, cabedal_color, lining_color')
+      .in('sheet_id', refIds);
+    for (const m of (liningColorMappings || []) as any[]) {
+      liningColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`, m.lining_color);
+      if (m.cabedal_color === '__DEFAULT__') liningDefaultMap.set(m.sheet_id, m.lining_color);
+    }
+  }
 
   // FORRO DO CABEDAL por número (dm²/par) do SOLADO — fonte do consumo do forro
   // (2026-07-01), espelha orderConsumption/custeio. A ficha só escolhe grupo/cor.
@@ -174,11 +252,18 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // (orderConsumption.ts) e do SQL by_grade. Faltava na Lista de Separação:
   // o campo era buscado na ficha mas nunca emitido (auditoria 2026-07-19, BOM-1).
   const insoleLiningSpecBySole = new Map<string, Record<string, number>>();
+  // PALMILHA PLACA por número (dm²/par) do SOLADO (insole_consumption_dm2) —
+  // BOM-4: a Lista de Separação ignorava e usava só escalar/yield da ficha,
+  // divergindo do modal/débito quando o solado dirige o consumo.
+  const insoleSpecBySole = new Map<string, Record<string, number>>();
+  // FACHETE por número (dm²/par) do SOLADO (fachete_lining_consumption_dm2) —
+  // BOM-5: componente inteiro faltava na Lista de Separação.
+  const facheteSpecBySole = new Map<string, Record<string, number>>();
   {
     const { data: liningSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, lining_consumption_dm2, insole_lining_consumption_dm2')
-      .or('lining_consumption_dm2.gt.0,insole_lining_consumption_dm2.gt.0');
+      .select('sole_id, size, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2')
+      .or('lining_consumption_dm2.gt.0,insole_lining_consumption_dm2.gt.0,insole_consumption_dm2.gt.0,fachete_lining_consumption_dm2.gt.0');
     for (const r of (liningSpecs || []) as any[]) {
       if (r.size == null) continue;
       const v = Number(r.lining_consumption_dm2) || 0;
@@ -192,6 +277,18 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         const m = insoleLiningSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = lv;
         insoleLiningSpecBySole.set(r.sole_id, m);
+      }
+      const iv = Number(r.insole_consumption_dm2) || 0;
+      if (iv > 0) {
+        const m = insoleSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = iv;
+        insoleSpecBySole.set(r.sole_id, m);
+      }
+      const fv = Number(r.fachete_lining_consumption_dm2) || 0;
+      if (fv > 0) {
+        const m = facheteSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = fv;
+        facheteSpecBySole.set(r.sole_id, m);
       }
     }
   }
@@ -348,7 +445,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // de cabedal (lining_consumption_dm2 nulo) ⇒ a "Forração" (cabedal) da
     // ficha É a palmilha digitada no campo errado — não emitir 2× a mesma napa.
     // Faltava na Lista de Separação (auditoria 2026-07-19, BOM-3).
-    const soleIdForLiningBom = variantSolePid || soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
+    // Resolução CANÔNICA de solado (BOM-2): pin da variante > cascata P0–P3
+    // (coligação de cor → mapping explícito → mapping legado por grupo/maior
+    // estoque → primary_sole_id) — a MESMA função do motor canônico
+    // (resolveSoleProductIdCanonical), não mais só o mapping explícito.
+    const resolvedSolePid: string | null = variantSolePid
+      || resolveSoleProductIdCanonical(order.reference_id, orderColor, {
+        sheetSoleGroupMap,
+        soleConjugationsByGroup,
+        soleColorMap,
+        soleColorGroupMap,
+        sheetPrimarySoleMap,
+        allProducts: allProducts || [],
+      });
+    const soleIdForLiningBom = resolvedSolePid;
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
       && Object.values(insoleLiningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0)
       && !Object.values(liningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0);
@@ -384,7 +494,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // de fábrica): a grade não cobra placa. Mesma regra do orderConsumption.ts
     // (motor canônico). Antes o BOM contava placa mesmo na palmilha pronta,
     // inflando consumo/compra (MRP)/custo.
-    const soleProductIdForInsole = variantSolePid || soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
+    const soleProductIdForInsole = resolvedSolePid;
     const insoleSoleProd = soleProductIdForInsole
       ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole)
       : null;
@@ -394,7 +504,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const insoleGroupName = insoleVariantGroup || sheet?.insole_material || '';
       const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
       const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
-      const insoleDm2 = calculateGradeBasedDm2(item, Number(sheet?.insole_consumption) || 0, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
+      // PLACA por número do SOLADO (BOM-4): quando o solado tem
+      // insole_consumption_dm2 preenchido, o dm² vem dele por numeração
+      // (escalar como fallback) e a ficha de componente vira só conversão —
+      // espelha computeInsoleDm2 do motor canônico. Override LEGADO da
+      // variante é consumo explícito e suprime o per-size do solado.
+      const hasLegacyInsoleOverride = !!variant && variant.insole_consumption_override != null;
+      const insoleScalarConsumption = hasLegacyInsoleOverride
+        ? (Number(variant.insole_consumption_override) || 0)
+        : (Number(sheet?.insole_consumption) || 0);
+      const insoleSolePerSize = hasLegacyInsoleOverride ? {} : (insoleSpecBySole.get(soleProductIdForInsole || '') || {});
+      const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
+      const insoleDm2 = insoleSoleVals.length > 0
+        ? calculateGradeBasedDm2(item, insoleSoleVals.reduce((a, b) => a + b, 0) / insoleSoleVals.length, null, insoleSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption)
+        : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
       const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
       // Aplica waste_pct também no caminho que usa dimensões do grupo, para
       // manter paridade com convertDm2ToPlates() (fallback).
@@ -457,20 +580,63 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       }
     }
 
-    // Solado — cor REAL do solado resolvido (soleColorMap, espelha resolve_sole_color
-    // do débito) em vez de chutar Preto/Caramelo por heurística de string (auditoria
-    // 2026-06-14, Área 2). Fallback pra cor do pedido; só por último um rótulo neutro.
-    const soleColor = ((insoleSoleProd as any)?.color || orderColor || '—').trim() || '—';
-    // Solado pinado na variante: agrupa pelo grupo do produto pinado (a ficha
-    // pode nem ter sole_material) — espelha resolve_sole_for_variant.
-    const variantSoleGroupName = variantSolePid
+    // Solado — cor REAL do solado resolvido (cascata canônica, espelha
+    // resolve_sole_color do débito). Fallback pra cor do pedido → sole_color da
+    // ficha → rótulo neutro.
+    const soleColor = ((insoleSoleProd as any)?.color || orderColor || sheet?.sole_color || '—').trim() || '—';
+    // BOM-7 (paridade com o motor canônico): agrupa pelo grupo do produto-solado
+    // RESOLVIDO (qualquer fonte da cascata, não só pin de variante) — a ficha
+    // pode nem ter sole_material textual e o solado sumia da Lista. Consumo =
+    // override da variante > sole_consumption da ficha > default CANÔNICO de
+    // 1 par/par (com `? 1 : 0`, sole_consumption 0/null apagava a linha
+    // enquanto o débito baixa 1 par por par).
+    const resolvedSoleGroupName = resolvedSolePid
       ? (groupNameById((insoleSoleProd as any)?.group_id) || (insoleSoleProd as any)?.name || '')
       : '';
-    const solePerPair = (variantSolePid || sheet?.sole_material) ? 1 : 0;
+    const solePerPair = ((variant?.sole_consumption_override != null
+      ? Number(variant.sole_consumption_override)
+      : Number(sheet?.sole_consumption)) || 1);
     addConsumptionRow(consumptionMap, {
-      componentType: 'Solado', groupName: variantSoleGroupName || sheet?.sole_material || '', materialName: 'Solado',
+      componentType: 'Solado', groupName: resolvedSoleGroupName || sheet?.sole_material || '', materialName: 'Solado',
       productUnit: 'par', color: soleColor, totalQuantity: solePerPair * itemQuantity,
     });
+
+    // FACHETE — forração EXTRA do salto fachetado (BOM-5). Espelha o motor
+    // canônico (orderConsumption.ts): solado is_fachetado com consumo por
+    // numeração em sole_technical_specs.fachete_lining_consumption_dm2; o
+    // material vem do grupo products.fachete_material_group_id (fallback
+    // lining_material da ficha); dm²→metro pela largura da ficha do material.
+    // Sem consumo cadastrado, emite linha de AVISO (qtd 0) — antes o forro
+    // extra do salto simplesmente não entrava no picking.
+    if ((insoleSoleProd as any)?.is_fachetado && resolvedSolePid) {
+      const facheteGroupId = (insoleSoleProd as any).fachete_material_group_id;
+      const facheteGroupName = facheteGroupId ? (groupNameById(facheteGroupId) || '') : '';
+      const facheteMaterialName = facheteGroupName || (sheet?.lining_material || '');
+      const fachetePerSize = facheteSpecBySole.get(resolvedSolePid) || {};
+      const facheteVals = Object.values(fachetePerSize).filter((v) => Number(v) > 0) as number[];
+      const facheteLiningColor = liningColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`)
+        || liningDefaultMap.get(order.reference_id) || orderColor;
+      if (facheteMaterialName && facheteVals.length > 0) {
+        const facheteSheet = getPreferredGroupSheet(facheteMaterialName, { color: facheteLiningColor, mode: 'linear', preferYield: true });
+        const avgFachete = facheteVals.reduce((a, b) => a + b, 0) / facheteVals.length;
+        // sheet null força o uso PURO do override (dm²/par) — senão trataria
+        // dm² como metros (~100× errado); depois converte pela largura.
+        const facheteDm2 = calculateGradeBasedDm2(item, avgFachete, null, fachetePerSize, resolvedSolePid, sheet?.sole_drives_consumption);
+        const facheteWidthMissing = isLinearWidthMissing(facheteSheet, 'm');
+        const facheteTotal = facheteWidthMissing ? facheteDm2 : convertDm2ToLinearMeters(facheteDm2, facheteSheet);
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Forração', groupName: facheteMaterialName, materialName: 'Fachete',
+          productUnit: facheteWidthMissing ? 'dm2' : 'metro', color: facheteLiningColor,
+          totalQuantity: facheteTotal, widthMissing: facheteWidthMissing,
+        });
+      } else {
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Forração', groupName: facheteMaterialName || 'Fachete', materialName: 'Fachete',
+          productUnit: 'dm2', color: facheteLiningColor, totalQuantity: 0,
+          warning: 'Solado fachetado sem consumo de fachete cadastrado — a forração extra do salto NÃO entrou na Lista. Cadastre fachete_lining_consumption_dm2 em Materiais → Solado.',
+        });
+      }
+    }
 
     // Tiras
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
@@ -487,6 +653,40 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         materialName: strap.label || strap.group_name || 'Tira',
         productUnit: 'metro', color: strap.color || orderColor,
         totalQuantity: strapConsumptionCm / 100,
+      });
+    }
+
+    // Componentes por cor (opt-in) OU direct_components (fallback) — BOM-6.
+    // Espelha o gate do motor canônico/SQL: com component_colors_enabled ligado
+    // e mapeamento pra cor do pedido, a lista POR COR substitui
+    // direct_components por completo; sem flag (ou cor sem mapeamento), cai em
+    // direct_components. Antes a Lista de Separação ignorava os dois caminhos —
+    // itens cadastrados direto na ficha (ex.: BINÓCULO 6MM 8/par) ficavam fora
+    // do picking.
+    const hasOrderColor = !!orderColor && orderColor !== '—';
+    const perColorComponents = (hasOrderColor && sheet?.component_colors_enabled)
+      ? componentColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`)
+      : undefined;
+    const directComponents = (perColorComponents && perColorComponents.length > 0)
+      ? perColorComponents.map((r) => ({ product_id: r.productId, quantity: r.quantityPerUnit }))
+      : (Array.isArray(sheet?.direct_components) ? sheet.direct_components : []);
+    const directProductIds = new Set<string>();
+    for (const dc of directComponents) {
+      const pid = (dc as any)?.product_id;
+      const qtyPerPair = Number((dc as any)?.quantity) || 0;
+      if (!pid || qtyPerPair <= 0) continue;
+      const prod = (allProducts || []).find((p: any) => p.id === pid);
+      if (!prod) continue;
+      directProductIds.add(pid);
+      const dcGroupName = groupNameById((prod as any).group_id)
+        || (dc as any)?.product_name || (prod as any).name || 'Componente';
+      addConsumptionRow(consumptionMap, {
+        componentType: classifyBomMaterial(dcGroupName, (prod as any).name || '', ''),
+        groupName: dcGroupName,
+        materialName: (prod as any).name || (dc as any)?.product_name || 'Componente',
+        productUnit: (prod as any).unit || (dc as any)?.unit || 'un',
+        color: (prod as any).color || '—',
+        totalQuantity: qtyPerPair * itemQuantity,
       });
     }
 
@@ -536,6 +736,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const product = material.products as any;
       const group = material.product_groups as any;
       if (!product) continue;
+
+      // Skip se já entrou via componentes diretos/por cor (BOM-6) — direct tem
+      // prioridade; BOM é fallback pra materiais não declarados direto (mesma
+      // regra do motor canônico).
+      if (directProductIds.has(material.product_id)) continue;
 
       const groupName = group?.name || product.category || product.name || 'Outros';
       const groupKey = groupName.toLowerCase();

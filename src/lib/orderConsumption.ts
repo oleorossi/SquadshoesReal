@@ -213,6 +213,99 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   component_colors_enabled
 `;
 
+/** Mapas mínimos pra resolução canônica de solado (prioridade P0–P3 do
+ *  resolve_sole_color SQL). Subconjunto de ConsumptionContext — exportado pra
+ *  Lista de Separação (bomConsumption.ts) usar a MESMA cascata sem duplicar
+ *  lógica (auditoria 2026-07-19, BOM-2). */
+export type SoleResolutionMaps = {
+  sheetSoleGroupMap: Map<string, string>;
+  soleConjugationsByGroup: Map<string, Array<{ cabedal_color: string; palmilha_color: string; is_default: boolean }>>;
+  soleColorMap: Map<string, string>;
+  soleColorGroupMap?: Map<string, string>;
+  sheetPrimarySoleMap?: Map<string, string>;
+  allProducts: any[];
+};
+
+/** Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe"). */
+const normColorCanonical = (s: string | null | undefined): string =>
+  (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+/**
+ * Resolve produto-solado por (sheet_id, cor cabedal) — espelha a PRIORIDADE
+ * CANÔNICA do resolve_sole_color vivo no banco (migration 20260706170000):
+ *   P0  coligação de cor (sole_color_conjugations): match exato → default '*',
+ *       produto do sole_group_id na cor-alvo com MAIOR estoque;
+ *   P1  mapping explícito (technical_sheet_sole_colors com sole_product_id);
+ *   P2  mapping legado sem produto (só sole_group_id) → maior estoque do grupo;
+ *   P3  primary_sole_id da ficha técnica.
+ * Fonte ÚNICA da cascata pro modal/fichas (computeConsumptionForItems) e pra
+ * Lista de Separação (bomConsumption.ts).
+ */
+export function resolveSoleProductIdCanonical(
+  refId: string,
+  cabedalColor: string,
+  maps: SoleResolutionMaps,
+): string | null {
+  const {
+    sheetSoleGroupMap,
+    soleConjugationsByGroup,
+    soleColorMap,
+    allProducts,
+  } = maps;
+  const soleColorGroupMap = maps.soleColorGroupMap ?? new Map<string, string>();
+  const sheetPrimarySoleMap = maps.sheetPrimarySoleMap ?? new Map<string, string>();
+  const normColor = normColorCanonical;
+  const colorNorm = normColor(cabedalColor);
+
+  // P0 — coligação de cor por sole_group_id da ficha.
+  const soleGroupId = sheetSoleGroupMap.get(refId);
+  if (soleGroupId && colorNorm) {
+    const rules = soleConjugationsByGroup.get(soleGroupId) || [];
+    let targetColor: string | null =
+      rules.find(r => normColor(r.cabedal_color) === colorNorm)?.palmilha_color || null;
+    if (!targetColor) targetColor = rules.find(r => r.is_default)?.palmilha_color || null;
+    if (targetColor) {
+      const targetNorm = normColor(targetColor);
+      const candidates = (allProducts || [])
+        .filter((x: any) => x.group_id === soleGroupId && normColor(x.color) === targetNorm)
+        .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
+      if (candidates[0]) return candidates[0].id;
+    }
+  }
+
+  // P1 — mapping explícito. Chave normalizada (NFD+lower) — consistente com o
+  // build do soleColorMap; depois scan normalizado via normColor (≡ normalizeColorKey).
+  const direct = soleColorMap.get(`${refId}::${normalizeColorKey(cabedalColor)}`);
+  if (direct) return direct;
+  for (const [k, v] of soleColorMap.entries()) {
+    const sep = k.indexOf('::');
+    if (sep < 0 || k.slice(0, sep) !== refId) continue;
+    if (normColor(k.slice(sep + 2)) === colorNorm) return v;
+  }
+
+  // P2 — mapping legado sem sole_product_id → produto do grupo com maior estoque.
+  let fallbackGroupId = soleColorGroupMap.get(`${refId}::${cabedalColor}`) || null;
+  if (!fallbackGroupId) {
+    for (const [k, v] of soleColorGroupMap.entries()) {
+      const sep = k.indexOf('::');
+      if (sep < 0 || k.slice(0, sep) !== refId) continue;
+      if (normColor(k.slice(sep + 2)) === colorNorm) { fallbackGroupId = v; break; }
+    }
+  }
+  if (fallbackGroupId) {
+    const byStock = (allProducts || [])
+      .filter((x: any) => x.group_id === fallbackGroupId)
+      .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
+    if (byStock[0]) return byStock[0].id;
+  }
+
+  // P3 — primary_sole_id da ficha técnica (allProducts já filtra active=true).
+  const primary = sheetPrimarySoleMap.get(refId);
+  if (primary && (allProducts || []).some((x: any) => x.id === primary)) return primary;
+
+  return null;
+}
+
 /** Classifica um material de BOM (sheet_materials) num componentType. */
 export const classifyBomMaterial = (groupName: string, productName: string, category: string): string => {
   const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
@@ -577,66 +670,19 @@ export function computeConsumptionForItems(
   const normColor = (s: string | null | undefined): string =>
     (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
-  // Resolve produto-solado por (sheet_id, cor cabedal) — espelha a PRIORIDADE
-  // CANÔNICA do resolve_sole_color vivo no banco (migration 20260706170000):
-  //   P0  coligação de cor (sole_color_conjugations): match exato → default '*',
-  //       produto do sole_group_id na cor-alvo com MAIOR estoque;
-  //   P1  mapping explícito (technical_sheet_sole_colors com sole_product_id);
-  //   P2  mapping legado sem produto (só sole_group_id) → maior estoque do grupo;
-  //   P3  primary_sole_id da ficha técnica.
-  // ⚠ Antes o motor de UI tentava P1 ANTES de P0 e não tinha P2/P3 — modal e
-  // fichas podiam mostrar um solado diferente do que o débito SQL consome.
-  const resolveSoleProductId = (refId: string, cabedalColor: string): string | null => {
-    const colorNorm = normColor(cabedalColor);
-
-    // P0 — coligação de cor por sole_group_id da ficha.
-    const soleGroupId = sheetSoleGroupMap.get(refId);
-    if (soleGroupId && colorNorm) {
-      const rules = soleConjugationsByGroup.get(soleGroupId) || [];
-      let targetColor: string | null =
-        rules.find(r => normColor(r.cabedal_color) === colorNorm)?.palmilha_color || null;
-      if (!targetColor) targetColor = rules.find(r => r.is_default)?.palmilha_color || null;
-      if (targetColor) {
-        const targetNorm = normColor(targetColor);
-        const candidates = (allProducts || [])
-          .filter((x: any) => x.group_id === soleGroupId && normColor(x.color) === targetNorm)
-          .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
-        if (candidates[0]) return candidates[0].id;
-      }
-    }
-
-    // P1 — mapping explícito. Chave normalizada (NFD+lower) — consistente com o
-    // build do soleColorMap; depois scan normalizado via normColor (≡ normalizeColorKey).
-    const direct = soleColorMap.get(`${refId}::${normalizeColorKey(cabedalColor)}`);
-    if (direct) return direct;
-    for (const [k, v] of soleColorMap.entries()) {
-      const sep = k.indexOf('::');
-      if (sep < 0 || k.slice(0, sep) !== refId) continue;
-      if (normColor(k.slice(sep + 2)) === colorNorm) return v;
-    }
-
-    // P2 — mapping legado sem sole_product_id → produto do grupo com maior estoque.
-    let fallbackGroupId = soleColorGroupMap.get(`${refId}::${cabedalColor}`) || null;
-    if (!fallbackGroupId) {
-      for (const [k, v] of soleColorGroupMap.entries()) {
-        const sep = k.indexOf('::');
-        if (sep < 0 || k.slice(0, sep) !== refId) continue;
-        if (normColor(k.slice(sep + 2)) === colorNorm) { fallbackGroupId = v; break; }
-      }
-    }
-    if (fallbackGroupId) {
-      const byStock = (allProducts || [])
-        .filter((x: any) => x.group_id === fallbackGroupId)
-        .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
-      if (byStock[0]) return byStock[0].id;
-    }
-
-    // P3 — primary_sole_id da ficha técnica (allProducts já filtra active=true).
-    const primary = sheetPrimarySoleMap.get(refId);
-    if (primary && (allProducts || []).some((x: any) => x.id === primary)) return primary;
-
-    return null;
-  };
+  // Resolve produto-solado por (sheet_id, cor cabedal) — cascata canônica
+  // P0–P3 extraída pra resolveSoleProductIdCanonical (exportada; reuso na
+  // Lista de Separação — bomConsumption.ts). Comportamento idêntico ao closure
+  // que vivia aqui (travado por orderConsumption.test.ts).
+  const resolveSoleProductId = (refId: string, cabedalColor: string): string | null =>
+    resolveSoleProductIdCanonical(refId, cabedalColor, {
+      sheetSoleGroupMap,
+      soleConjugationsByGroup,
+      soleColorMap,
+      soleColorGroupMap,
+      sheetPrimarySoleMap,
+      allProducts,
+    });
 
   const getComponentSheetsForGroup = (groupName: string) => {
     const normalizedGroup = normalizeText(groupName);

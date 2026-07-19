@@ -257,3 +257,192 @@ describe('calculateArtisanalStrapRollCut — não multiplica por fichas (achado 
     expect(rows[0].cut.cm_a_cortar).toBeCloseTo(2.4, 6);
   });
 });
+
+// ─── Auditoria 2026-07-19 — pendências BOM-2/4/5/6/7 aplicadas ───────────────
+//
+// BOM-2: resolução de solado usa a cascata CANÔNICA (P0 coligação → P1 mapping
+//        explícito → P2 mapping legado por grupo → P3 primary_sole_id), não mais
+//        só pin de variante + mapping explícito.
+// BOM-4: placa da palmilha usa insole_consumption_dm2 do SOLADO por numeração.
+// BOM-5: componente Fachete emitido (ou linha de AVISO quando sem specs).
+// BOM-6: direct_components / componentes por cor entram no picking (sem duplicar BOM).
+// BOM-7: linha Solado usa sole_consumption>1 e existe mesmo sem sole_material textual.
+
+const withSole = (t: Record<string, unknown[]>, sole: Record<string, any> = {}) => {
+  (t.technical_sheets[0] as any).sole_group_id = 'g-sole';
+  (t.technical_sheets[0] as any).primary_sole_id = sole.id ?? 'p-sole';
+  t.products = [...(t.products as any[]), {
+    id: 'p-sole', name: '204 - CARAMELO', color: 'CARAMELO', group_id: 'g-sole',
+    quantity: 100, sole_classification: null, ...sole,
+  }];
+  t.product_groups = [...(t.product_groups as any[]), {
+    id: 'g-sole', name: 'SOLADO 204', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+  }];
+  return t;
+};
+
+describe('calculateBomForOrders — cascata canônica de solado (BOM-2/BOM-7)', () => {
+  it('P3: primary_sole_id resolve o solado sem mapping explícito nem sole_material', async () => {
+    // buildSheet tem sole_material '' e sole_consumption 0 — antes a linha de
+    // Solado simplesmente NÃO existia (groupName vazio + solePerPair 0).
+    mockDb.tables = withSole(buildBomTables());
+    const rows = await calculateBomForOrders(['op1']);
+    const solado = rows.find(r => r.componentType === 'Solado');
+    expect(solado?.groupName).toBe('SOLADO 204');
+    expect(solado?.color).toBe('CARAMELO');
+    // BOM-7: default canônico de 1 par/par (sole_consumption 0/null não apaga).
+    expect(solado?.totalQuantity).toBe(720);
+  });
+
+  it('P0: coligação de cor escolhe o produto do grupo na cor-alvo com MAIOR estoque', async () => {
+    const t = withSole(buildBomTables());
+    // Dois solados no grupo; a coligação manda PRETO → CARAMELO. O de maior
+    // estoque na cor-alvo (p-sole-c2, qty 500) deve vencer o primary (p-sole).
+    t.products = [...(t.products as any[]), {
+      id: 'p-sole-c2', name: '204 - CARAMELO GG', color: 'CARAMELO', group_id: 'g-sole',
+      quantity: 500, sole_classification: null,
+    }];
+    t.sole_color_conjugations = [{
+      sole_group_id: 'g-sole', cabedal_color: 'PRETO', palmilha_color: 'CARAMELO',
+      is_default: false, active: true,
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const solado = rows.find(r => r.componentType === 'Solado');
+    expect(solado?.groupName).toBe('SOLADO 204');
+    expect(solado?.color).toBe('CARAMELO');
+    // Confirma que veio da P0 (maior estoque) e não do primary: a palmilha
+    // por número abaixo usa o MESMO produto — validado no teste de BOM-4.
+  });
+
+  it('BOM-7: sole_consumption=2 multiplica o total (2 pares de solado por par)', async () => {
+    const t = withSole(buildBomTables());
+    (t.technical_sheets[0] as any).sole_consumption = 2;
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const solado = rows.find(r => r.componentType === 'Solado');
+    expect(solado?.totalQuantity).toBe(1440);
+  });
+});
+
+describe('calculateBomForOrders — placa da palmilha por número do solado (BOM-4)', () => {
+  it('insole_consumption_dm2 do solado substitui o escalar da ficha', async () => {
+    const t = withSole(buildBomTables());
+    // Escalar da ficha = 5 dm²/par (→ 3600 dm²). Solado manda 4 dm²/par → 2880.
+    t.sole_technical_specs = [35, 36, 37, 38].map(size => ({
+      sole_id: 'p-sole', size, insole_consumption_dm2: 4,
+    }));
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const palmilha = rows.find(r => r.componentType === 'Palmilha');
+    expect(palmilha?.productUnit).toBe('dm²');
+    expect(palmilha?.totalQuantity).toBeCloseTo(2880, 6);
+  });
+
+  it('sem specs no solado, mantém o caminho escalar antigo (3600 dm²)', async () => {
+    mockDb.tables = withSole(buildBomTables());
+    const rows = await calculateBomForOrders(['op1']);
+    const palmilha = rows.find(r => r.componentType === 'Palmilha');
+    expect(palmilha?.totalQuantity).toBeCloseTo(3600, 6);
+  });
+});
+
+describe('calculateBomForOrders — componente Fachete (BOM-5)', () => {
+  it('solado fachetado emite Fachete pelo grupo fachete_material_group_id', async () => {
+    const t = withSole(buildBomTables(), { is_fachetado: true, fachete_material_group_id: 'g-fach' });
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-fach', name: 'FORRO FACHETE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.sole_technical_specs = [35, 36, 37, 38].map(size => ({
+      sole_id: 'p-sole', size, fachete_lining_consumption_dm2: 2,
+    }));
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const fachete = rows.find(r => r.materialName === 'Fachete');
+    expect(fachete?.componentType).toBe('Forração');
+    expect(fachete?.groupName).toBe('FORRO FACHETE');
+    // 2 dm²/par × 720 = 1440; sem ficha de componente com largura → dm² + aviso.
+    expect(fachete?.totalQuantity).toBeCloseTo(1440, 6);
+    expect(fachete?.productUnit).toBe('dm2');
+    expect(fachete?.widthMissing).toBe(true);
+  });
+
+  it('fachetado SEM specs de fachete → linha de AVISO com qtd 0', async () => {
+    const t = withSole(buildBomTables(), { is_fachetado: true, fachete_material_group_id: 'g-fach' });
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-fach', name: 'FORRO FACHETE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const fachete = rows.find(r => r.materialName === 'Fachete');
+    expect(fachete).toBeTruthy();
+    expect(fachete?.totalQuantity).toBe(0);
+    expect(fachete?.warning).toMatch(/fachete/i);
+  });
+
+  it('solado NÃO fachetado: nenhuma linha de Fachete', async () => {
+    mockDb.tables = withSole(buildBomTables());
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.find(r => r.materialName === 'Fachete')).toBeUndefined();
+  });
+});
+
+describe('calculateBomForOrders — direct_components e componentes por cor (BOM-6)', () => {
+  const withBinoculo = (t: Record<string, unknown[]>) => {
+    t.products = [...(t.products as any[]), {
+      id: 'p-bin', name: 'BINÓCULO 6MM', color: 'DOURADO', group_id: 'g-bin',
+      unit: 'un', quantity: 0, sole_classification: null,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-bin', name: 'BINOCULO 6MM', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    return t;
+  };
+
+  it('direct_components entram no picking (antes eram ignorados)', async () => {
+    const t = withBinoculo(buildBomTables());
+    (t.technical_sheets[0] as any).direct_components = [{ product_id: 'p-bin', quantity: 8 }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const bin = rows.find(r => r.groupName === 'BINOCULO 6MM');
+    expect(bin?.totalQuantity).toBe(8 * 720);
+    expect(bin?.materialName).toBe('BINÓCULO 6MM');
+  });
+
+  it('produto em direct_components E no BOM: direct prevalece, sem duplicar', async () => {
+    const t = withBinoculo(buildBomTables());
+    (t.technical_sheets[0] as any).direct_components = [{ product_id: 'p-bin', quantity: 8 }];
+    t.sheet_materials = [...(t.sheet_materials as any[]), {
+      sheet_id: 'ts1', product_id: 'p-bin', group_id: 'g-bin', quantity_per_unit: 1, color: null,
+      products: { name: 'BINÓCULO 6MM', unit: 'un', category: 'Componente' },
+      product_groups: { name: 'BINOCULO 6MM' },
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const binRows = rows.filter(r => r.groupName === 'BINOCULO 6MM');
+    const total = binRows.reduce((s, r) => s + r.totalQuantity, 0);
+    // Só o direct (8/par); a linha do BOM (1/par = 720) é pulada.
+    expect(total).toBe(8 * 720);
+  });
+
+  it('component_colors_enabled + cor mapeada SUBSTITUI direct_components', async () => {
+    const t = withBinoculo(buildBomTables());
+    t.products = [...(t.products as any[]), {
+      id: 'p-strass', name: 'STRASS PRATA', color: 'PRATA', group_id: 'g-strass',
+      unit: 'un', quantity: 0, sole_classification: null,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-strass', name: 'STRASS', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    (t.technical_sheets[0] as any).component_colors_enabled = true;
+    (t.technical_sheets[0] as any).direct_components = [{ product_id: 'p-bin', quantity: 8 }];
+    t.technical_sheet_component_colors = [{
+      sheet_id: 'ts1', cabedal_color: 'PRETO', product_id: 'p-strass', quantity_per_unit: 4,
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.find(r => r.groupName === 'STRASS')?.totalQuantity).toBe(4 * 720);
+    // A lista POR COR substitui direct_components por completo.
+    expect(rows.find(r => r.groupName === 'BINOCULO 6MM')).toBeUndefined();
+  });
+});

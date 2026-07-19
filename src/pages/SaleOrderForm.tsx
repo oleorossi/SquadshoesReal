@@ -893,6 +893,9 @@ export default function SaleOrderForm() {
             // Modo de embalagem do PV: filtra a caixa do modo errado quando a
             // ficha tem colmeia E individual no BOM (paridade com o custeio).
             f.packaging_mode || null,
+            // Variante de material do item (CONS-4): sem ela a checagem
+            // avaliava o material da FICHA, não o da variante escolhida.
+            (item as any).material_variant_id ?? null,
           );
           return { availability, refLabel, color: item.color };
         })

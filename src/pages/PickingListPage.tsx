@@ -966,6 +966,11 @@ export default function PickingListPage() {
                                   ⚠ sem largura
                                 </div>
                               )}
+                              {row.warning && (
+                                <div className="text-[10px] text-amber-600 mt-0.5" title={row.warning}>
+                                  ⚠ consumo não calculado
+                                </div>
+                              )}
                             </TableCell>
                           </TableRow>
                         );
