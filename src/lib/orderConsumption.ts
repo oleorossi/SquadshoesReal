@@ -8,6 +8,7 @@ import {
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   normalizeText,
   normalizeColorKey,
+  LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
@@ -367,9 +368,11 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   for (const m of (soleColorMappings || []) as any[]) {
     if (!m.sole_product_id && m.sole_group_id) soleColorGroupMap.set(`${m.sheet_id}::${m.product_color}`, m.sole_group_id);
   }
+  // Chaves de cor com normalizeColorKey (case+acento) — toLowerCase puro deixava
+  // "Café" ≠ "CAFE" escapar do mapeamento (auditoria 2026-07-19, COLOR-1).
   const palmilhaColorMap = new Map<string, { color: string; productId: string | null }>();
   for (const m of (palmilhaColorMappings || []) as any[]) {
-    palmilhaColorMap.set(`${m.sheet_id}::${(m.cabedal_color || '').toLowerCase()}`, { color: m.palmilha_color, productId: m.palmilha_product_id });
+    palmilhaColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`, { color: m.palmilha_color, productId: m.palmilha_product_id });
   }
   const palmilhaDefaultMap = new Map<string, { color: string; productId: string | null }>();
   for (const m of (palmilhaColorMappings || []) as any[]) {
@@ -378,7 +381,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
 
   const liningColorMap = new Map<string, string>();
   for (const m of (liningColorMappings || []) as any[]) {
-    liningColorMap.set(`${m.sheet_id}::${(m.cabedal_color || '').toLowerCase()}`, m.lining_color);
+    liningColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`, m.lining_color);
   }
   const liningDefaultMap = new Map<string, string>();
   for (const m of (liningColorMappings || []) as any[]) {
@@ -867,7 +870,7 @@ export function computeConsumptionForItems(
       && Object.values(insoleLiningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0)
       && !Object.values(liningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0);
     if (liningMatch && !suppressCabedalForracao) {
-      const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+      const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
       const soleProductId = resolveSoleForItem();
       const isPrincipalLining = liningVariantDriven || liningMatch.group === (sheet?.lining_material || '');
@@ -923,7 +926,7 @@ export function computeConsumptionForItems(
       || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
 
     if (!isPalmilhaPronta) {
-      const palmMapping = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
+      const palmMapping = palmilhaColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || palmilhaDefaultMap.get(item.reference_id);
       // Variante dirige a palmilha: grupo da variante substitui o da ficha; pin
       // de produto da variante prevalece sobre o pin do mapping de cor (espelha
       // resolve_insole_material_for_variant: variant.product_id > variant.group_id
@@ -1045,7 +1048,7 @@ export function computeConsumptionForItems(
       // Emite quando há consumo escalar OU o solado tem valores por número — senão a
       // forração-de-palmilha dirigida pelo solado nunca sairia se o escalar fosse 0.
       if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
-        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
         const forrSheet = getPreferredGroupSheet(liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
         const forrWidthMissing = isLinearWidthMissing(forrSheet, 'm');
         // Solado com valores: dm² por número dele (escalar como fallback), e a ficha do
@@ -1158,7 +1161,7 @@ export function computeConsumptionForItems(
       const fachetePerSize = facheteSpecBySole.get(soleProductIdResolved) || {};
       const facheteVals = Object.values(fachetePerSize).filter((v) => Number(v) > 0) as number[];
       if (facheteMaterialName && facheteVals.length > 0) {
-        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
         const facheteSheet = getPreferredGroupSheet(facheteMaterialName, { color: mappedLiningColor, mode: 'linear', preferYield: true });
         const avgFachete = facheteVals.reduce((a, b) => a + b, 0) / facheteVals.length;
         // sheet null força o uso PURO do override (valores em dm²/par); não usa o
@@ -1182,7 +1185,7 @@ export function computeConsumptionForItems(
         // sumia silenciosamente e o operador subcortava o forro. Agora emite uma
         // linha de alerta (qtd 0, neutra) pra tornar o gap visível até alguém
         // cadastrar `sole_technical_specs.fachete_lining_consumption_dm2`.
-        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || liningDefaultMap.get(item.reference_id) || orderColor;
+        const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
         addConsumptionRow(consumptionMap, {
           componentType: 'Fachete',
           groupName: facheteMaterialName || 'Fachete',
@@ -1354,7 +1357,7 @@ export function computeConsumptionForItems(
       if ((bomComponentType === 'Cabedal' || bomComponentType === 'Forração' || bomComponentType === 'Tiras') && orderColor && orderColor !== '—') {
         const matColor = normalizeText(material.color || product.color);
         if (matColor) {
-          const itemLiningColor = liningColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`)
+          const itemLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`)
             || liningDefaultMap.get(item.reference_id) || orderColor;
           const acceptable = [orderColor, itemLiningColor].map((c) => normalizeText(c)).filter(Boolean);
           const matches = acceptable.some((c) =>
@@ -1382,7 +1385,7 @@ export function computeConsumptionForItems(
       // senão a mesma placa aparece em 2 linhas (PLACA(S) + DM²).
       const bomTypeForDedup = classifyBomMaterial(groupName, product.name || '', product.category || '');
       if (bomTypeForDedup === 'Palmilha') {
-        const palmMap = palmilhaColorMap.get(`${item.reference_id}::${orderColor.toLowerCase()}`) || palmilhaDefaultMap.get(item.reference_id);
+        const palmMap = palmilhaColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || palmilhaDefaultMap.get(item.reference_id);
         if (palmMap?.productId && palmMap.productId === material.product_id) continue;
         // Caminho legacy (sem mapping explícito) — sheet.insole_material aponta
         // pro mesmo grupo: skipa pra evitar PLACA + DM² duplicada.
@@ -1393,7 +1396,9 @@ export function computeConsumptionForItems(
 
       let productUnit = product.unit || 'un';
       const unitLc = productUnit.toLowerCase();
-      const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+      // Set canônico (materialConsumption) — a lista inline omitia 'm linear'
+      // e o item nessa unidade não convertia dm²→m no caminho BOM (UNIT-1).
+      const isLinearUnit = LINEAR_UNITS.has(unitLc);
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;

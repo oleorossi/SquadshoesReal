@@ -48,8 +48,7 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
     setLoading(true);
 
     try {
-      // OPs de produção. orders.grade já é TOTAL (escalado pra quantidade), então
-      // fichas=1 evita dupla contagem. sale_order_id puxa o packaging_mode do PV.
+      // OPs de produção. sale_order_id puxa o packaging_mode do PV.
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select('id, reference_id, color, quantity, grade, sale_order_item_id, sale_order_id')
@@ -87,7 +86,12 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
           color: o.color || '—',
           quantity: Number(o.quantity) || 0,
           grade: (o.grade as Record<string, number> | null) ?? null,
-          fichas: 1,
+          // `fichas: null` deixa o fallback EXATO (quantity ÷ gradeTotal) dos
+          // motores agir — escala-invariante: grade REAL (Σ = quantity ⇒ 1×) e
+          // grade BASE legada (Σ = 1 ficha ⇒ quantity/base) saem certas. Com 1
+          // fixo, OP legada com grade base subcontava per-size/tiras até ~50×
+          // (auditoria 2026-07-19, TS-1 — mesmo fix do bomConsumption).
+          fichas: null,
           strap_colors: o.sale_order_item_id ? (strapByItem.get(o.sale_order_item_id) ?? null) : null,
           // Variante de material do item do PV — resolve os materiais da OP
           // (cabedal/forro/palmilha/solado/BOM) pela variante escolhida.

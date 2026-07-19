@@ -34,10 +34,15 @@ type SelectionMode = 'any' | 'linear' | 'plate';
 // 'metro' (singular) é sinônimo aceito em UNIT_SYNONYMS; mantido por segurança.
 // 'm linear' é o alvo canônico de toCanonical() em nfUnitConversion.ts pra
 // mtl/m lin/ml (linear) — faltava aqui (achado na revisão de bugs 2026-07-01).
-const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'metros', 'meters', 'mt', 'm linear']);
+// Exportados (auditoria 2026-07-19, UNIT-1): orderConsumption/bomConsumption
+// mantinham listas inline SEM 'm linear' — item nessa unidade não convertia no
+// caminho BOM. Fonte única aqui; não recriar listas locais.
+export const LINEAR_UNITS = new Set(['cm', 'm', 'metro', 'metros', 'meters', 'mt', 'm linear']);
 // 'un' é CONTAGEM, não placa — removido (auditoria 2026-06-11). Mantê-lo aqui
 // fazia um item de contagem com ficha dimensionada passar por convertDm2ToPlates.
-const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'placa', 'placas']);
+// 'm2' (grafia sem acento, sinônimo proibido mas ainda visto em cadastro legado)
+// aceito como leitura defensiva de 'm²'.
+export const PLATE_UNITS = new Set(['dm2', 'dm²', 'm²', 'm2', 'placa', 'placas']);
 
 const asNumericRecord = (value: NumericRecordLike): Record<string, number> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

@@ -912,4 +912,41 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
   it('inclui sole_drives_consumption (anti-duplicidade Forração — migration 20260911120000)', () => {
     expect(fetchedCols.has('sole_drives_consumption')).toBe(true);
   });
+
+  // MESMO guard pro select inline da Lista de Separação (bomConsumption.ts) —
+  // ficava sem trava e o mesmo bug do sole_drives_consumption (coluna lida sem
+  // estar no .select() → no-op silencioso com TS loose) podia voltar por lá
+  // (auditoria 2026-07-19, TEST-1).
+  it('bomConsumption: busca TODA coluna que lê via sheet.* (auto-derivado)', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/bomConsumption.ts'), 'utf8');
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    const selectMatch = code.match(/\.from\('technical_sheets'\)\s*\.select\('([^']+)'\)/);
+    expect(selectMatch, 'select de technical_sheets não encontrado em bomConsumption.ts').toBeTruthy();
+    const bomCols = new Set(selectMatch![1].split(',').map(c => c.trim()).filter(Boolean));
+    const re = /(?:\(\s*sheet\s+as\s+any\s*\)|\bsheet)\s*\??\.\s*([a-zA-Z_][a-zA-Z0-9_]*)/g;
+    const read = new Set<string>();
+    for (const m of code.matchAll(re)) read.add(m[1]);
+    expect(read.size).toBeGreaterThan(8);
+    const missing = [...read].filter(c => !bomCols.has(c)).sort();
+    expect(
+      missing,
+      `bomConsumption lê via sheet.* colunas AUSENTES do .select(): ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  // Travas dos fixes da auditoria 2026-07-19 (specs/auditoria-debito-ficha-grade.md):
+  // BOM-1 — Lista de Separação emite a Forração da Palmilha (napa da placa);
+  // BOM-3 — e aplica a supressão anti-duplicidade cabedal×palmilha;
+  // TS-1 — visão de consumo por OP não força fichas=1 (grade base legada
+  //        subcontava per-size/tiras ~50×; fichas null usa o fallback exato).
+  it('fixes da auditoria de débito não regridem (BOM-1/BOM-3/TS-1)', () => {
+    const bomSrc = readFileSync(resolve(process.cwd(), 'src/lib/bomConsumption.ts'), 'utf8');
+    expect(bomSrc).toContain("materialName: 'Forração Palmilha'");
+    expect(bomSrc).toContain('suppressCabedalForracao');
+    expect(bomSrc).toContain('insoleLiningSpecBySole');
+    const dialogSrc = readFileSync(resolve(process.cwd(), 'src/components/orders/OrderConsumptionDialog.tsx'), 'utf8');
+    expect(dialogSrc).not.toMatch(/fichas:\s*1[,\s]/);
+  });
 });

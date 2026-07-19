@@ -8,6 +8,7 @@ import {
   isLinearWidthMissing,
   normalizeText,
   normalizeColorKey,
+  LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
@@ -168,17 +169,30 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // FORRO DO CABEDAL por número (dm²/par) do SOLADO — fonte do consumo do forro
   // (2026-07-01), espelha orderConsumption/custeio. A ficha só escolhe grupo/cor.
   const liningSpecBySole = new Map<string, Record<string, number>>();
+  // FORRAÇÃO DA PALMILHA por número (dm²/par) do SOLADO
+  // (insole_lining_consumption_dm2) — mesma fonte do motor canônico
+  // (orderConsumption.ts) e do SQL by_grade. Faltava na Lista de Separação:
+  // o campo era buscado na ficha mas nunca emitido (auditoria 2026-07-19, BOM-1).
+  const insoleLiningSpecBySole = new Map<string, Record<string, number>>();
   {
     const { data: liningSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, lining_consumption_dm2')
-      .gt('lining_consumption_dm2', 0);
+      .select('sole_id, size, lining_consumption_dm2, insole_lining_consumption_dm2')
+      .or('lining_consumption_dm2.gt.0,insole_lining_consumption_dm2.gt.0');
     for (const r of (liningSpecs || []) as any[]) {
+      if (r.size == null) continue;
       const v = Number(r.lining_consumption_dm2) || 0;
-      if (v <= 0 || r.size == null) continue;
-      const m = liningSpecBySole.get(r.sole_id) || {};
-      m[String(r.size)] = v;
-      liningSpecBySole.set(r.sole_id, m);
+      if (v > 0) {
+        const m = liningSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = v;
+        liningSpecBySole.set(r.sole_id, m);
+      }
+      const lv = Number(r.insole_lining_consumption_dm2) || 0;
+      if (lv > 0) {
+        const m = insoleLiningSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = lv;
+        insoleLiningSpecBySole.set(r.sole_id, m);
+      }
     }
   }
 
@@ -328,9 +342,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const liningMatch = liningVariantGroup
       ? { group: liningVariantGroup, consumption: Number(sheet?.lining_consumption) || 0 }
       : resolveOption(sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0, liningAlts, orderColor);
-    if (liningMatch) {
+    // Anti-duplicidade FORRAÇÃO (cabedal × palmilha) — mesma condição do motor
+    // canônico (orderConsumption.ts) e do SQL (mig 20260911120000): solado
+    // dirige o forro de PALMILHA (insole_lining_consumption_dm2 > 0) sem forro
+    // de cabedal (lining_consumption_dm2 nulo) ⇒ a "Forração" (cabedal) da
+    // ficha É a palmilha digitada no campo errado — não emitir 2× a mesma napa.
+    // Faltava na Lista de Separação (auditoria 2026-07-19, BOM-3).
+    const soleIdForLiningBom = variantSolePid || soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
+    const suppressCabedalForracao = sheet?.sole_drives_consumption === true
+      && Object.values(insoleLiningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0)
+      && !Object.values(liningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0);
+    if (liningMatch && !suppressCabedalForracao) {
       const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-      const soleProductId = variantSolePid || soleColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`) || null;
+      const soleProductId = soleIdForLiningBom;
       const isPrincipalLining = !!liningVariantGroup || liningMatch.group === (sheet?.lining_material || '');
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
       // Alternativa: consumo por número da própria ficha. Principal: do SOLADO.
@@ -402,6 +426,33 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
           productUnit: 'placa', color: '—', totalQuantity: insolePlates,
+        });
+      }
+
+      // FORRAÇÃO DA PALMILHA — napa (grupo do forro) que cobre a placa. Área por
+      // número vem do SOLADO (insole_lining_consumption_dm2); fallback escalar da
+      // ficha (insole_lining_consumption). Espelha orderConsumption.ts — faltava
+      // na Lista de Separação: a napa da palmilha nunca entrava no picking
+      // (auditoria 2026-07-19, BOM-1).
+      const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
+      const liningGroupForPalm = liningVariantGroup || sheet?.lining_material || '';
+      const insoleLiningSolePerSize = insoleLiningSpecBySole.get(soleProductIdForInsole || '') || {};
+      const insoleLiningSoleVals = Object.values(insoleLiningSolePerSize).filter((v) => Number(v) > 0) as number[];
+      if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
+        const forrSheet = getPreferredGroupSheet(liningGroupForPalm, { color: orderColor, mode: 'linear', preferYield: true });
+        const forrWidthMissing = isLinearWidthMissing(forrSheet, 'm');
+        let forrTotal: number;
+        if (insoleLiningSoleVals.length > 0) {
+          const avgInsoleLiningSole = insoleLiningSoleVals.reduce((a, b) => a + b, 0) / insoleLiningSoleVals.length;
+          const forrDm2 = calculateGradeBasedDm2(item, avgInsoleLiningSole, null, insoleLiningSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption);
+          forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
+        } else {
+          forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole, sheet?.sole_drives_consumption).total;
+        }
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Forração', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
+          productUnit: 'metro', color: orderColor, totalQuantity: forrTotal,
+          widthMissing: forrWidthMissing,
         });
       }
     }
@@ -510,7 +561,9 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
       let productUnit = product.unit || 'un';
       const unitLc = (productUnit || '').toString().toLowerCase().trim();
-      const isLinearUnit = ['m', 'metro', 'mt', 'meters', 'metros', 'cm'].includes(unitLc);
+      // Set canônico (materialConsumption) — a lista inline omitia 'm linear'
+      // e o item nessa unidade não convertia dm²→m no caminho BOM (UNIT-1).
+      const isLinearUnit = LINEAR_UNITS.has(unitLc);
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;

@@ -30,6 +30,13 @@ type DiagnosticItem = {
 
 type ConsistencyRow = { check_name: string; severity: string; item_count: number; sample: string | null };
 type ParityRow = { case_name: string; ok: boolean; message: string | null };
+/** Linha do debit_consistency_report() — esperado (ficha × grade) × debitado
+ *  (stock_movements) por OP×produto, tolerância 1% + piso 0,01. */
+type DebitRow = {
+  order_number: string; op_status: string; product_name: string; unit: string | null;
+  component: string; esperado: number; debitado: number; delta: number;
+  delta_pct: number | null; classe: 'ok' | 'furo' | 'extra' | 'divergente'; obs: string | null;
+};
 
 /** Linha de check (consistência de consumo OU frescor do PCP) — mesma forma.
  *  item_count=0 → passou (verde); >0 destaca por severidade ('alto'/'error' = erro,
@@ -73,12 +80,16 @@ export default function SystemDiagnostics() {
   const [parityChecks, setParityChecks] = useState<ParityRow[] | null>(null);
   const [freshChecks, setFreshChecks] = useState<ConsistencyRow[] | null>(null);
   const [cpcChecks, setCpcChecks] = useState<ConsistencyRow[] | null>(null);
+  // Auditoria débito ficha×grade (specs/auditoria-debito-ficha-grade.md):
+  // esperado×debitado por OP×produto + guards de regressão dos fixes.
+  const [debitRows, setDebitRows] = useState<DebitRow[] | null>(null);
+  const [debitGuards, setDebitGuards] = useState<ParityRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
     try {
-      const [consRes, parRes, freshRes, cpcRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
@@ -86,11 +97,17 @@ export default function SystemDiagnostics() {
         // component_colors_consistency_report — auditoria componentes-por-cor
         // (migration 20260910140000, ainda não nos tipos gerados) → cast.
         (supabase as any).rpc('component_colors_consistency_report'),
+        // debit_consistency_report / run_debit_guard_tests — auditoria débito
+        // ficha×grade (migration 20260915100000/110000, não nos tipos) → cast.
+        (supabase as any).rpc('debit_consistency_report'),
+        (supabase as any).rpc('run_debit_guard_tests'),
       ]);
       if (consRes.error) throw consRes.error;
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
       setFreshChecks((freshRes?.error ? [] : (freshRes?.data ?? [])) as ConsistencyRow[]);
       setCpcChecks((cpcRes?.error ? [] : (cpcRes?.data ?? [])) as ConsistencyRow[]);
+      setDebitRows((debitRes?.error ? [] : (debitRes?.data ?? [])) as DebitRow[]);
+      setDebitGuards((guardRes?.error ? [] : (guardRes?.data ?? [])) as ParityRow[]);
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
         setParityChecks([]);
@@ -512,6 +529,95 @@ export default function SystemDiagnostics() {
             )}
             {(freshChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
               <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · DÉBITO"
+            title="Débito × Ficha técnica (esperado × debitado por OP)"
+            subtitle="Recalcula o consumo esperado (ficha × grade, com grade base escalada) das OPs dos últimos 60 dias e compara com o debitado em stock_movements. Tolerância 1% + piso 0,01. Fonte: debit_consistency_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {debitRows === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir a auditoria de débito por OP.</p>
+            )}
+            {debitRows !== null && (() => {
+              const problemas = debitRows.filter((r) => r.classe !== 'ok');
+              const porClasse = new Map<string, number>();
+              for (const r of debitRows) porClasse.set(r.classe, (porClasse.get(r.classe) ?? 0) + 1);
+              const LIMITE = 60;
+              const exibidas = problemas
+                .slice()
+                .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+                .slice(0, LIMITE);
+              return (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(['ok', 'furo', 'divergente', 'extra'] as const).map((c) => (
+                      <Badge key={c} variant="outline" className={`text-xs uppercase ${
+                        c === 'ok' ? 'text-success' : c === 'furo' ? 'text-destructive' : 'text-warning'
+                      }`}>{c}: {porClasse.get(c) ?? 0}</Badge>
+                    ))}
+                  </div>
+                  {problemas.length === 0 && (
+                    <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Todos os débitos batem com a ficha × grade (dentro da tolerância).</div>
+                  )}
+                  {problemas.length > 0 && (
+                    <ScrollArea className="h-[320px] rounded-md border border-border">
+                      <div className="divide-y divide-border">
+                        {exibidas.map((r, i) => (
+                          <div key={i} className="flex items-start gap-3 px-3 py-2 hover:bg-muted/40">
+                            <div className="mt-0.5">
+                              {r.classe === 'furo'
+                                ? <XCircle className="h-4 w-4 text-destructive" />
+                                : <AlertTriangle className="h-4 w-4 text-warning" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-semibold text-foreground">{r.order_number}</p>
+                                <span className="text-sm text-foreground truncate">{r.product_name}</span>
+                                <Badge variant="secondary" className="text-xs">{r.component}</Badge>
+                                <Badge variant="outline" className="text-xs uppercase">{r.classe}</Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                esperado {Number(r.esperado).toLocaleString('pt-BR')} {r.unit ?? ''} · debitado {Number(r.debitado).toLocaleString('pt-BR')} {r.unit ?? ''}
+                                {r.delta_pct != null ? ` · Δ ${Number(r.delta_pct).toLocaleString('pt-BR')}%` : ''}
+                                {r.obs ? ` · ${r.obs}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                  {problemas.length > LIMITE && (
+                    <p className="text-xs text-muted-foreground">Exibindo as {LIMITE} maiores divergências de {problemas.length} — a lista completa sai de debit_consistency_report() no SQL.</p>
+                  )}
+                </>
+              );
+            })()}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · DÉBITO"
+            title="Guards da auditoria de débito (fixes 2026-07-19)"
+            subtitle="Trava de regressão dos fixes da auditoria débito ficha×grade (grade base escalada, ledger honesto na conversão, variant_sole, retry de solado, erro_reserva visível). Fonte: run_debit_guard_tests(). Use o botão acima pra rodar."
+            bodyClassName="space-y-2"
+          >
+            {debitGuards === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir os guards da auditoria de débito.</p>
+            )}
+            {(debitGuards ?? []).map((p, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="mt-0.5">{p.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-destructive" />}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">{p.case_name}</p>
+                    <Badge variant="outline" className={`text-xs uppercase ${p.ok ? 'text-success' : 'text-destructive'}`}>{p.ok ? 'ok' : 'falhou'}</Badge>
+                  </div>
+                  {p.message && <p className="text-xs text-muted-foreground mt-0.5 break-all">{p.message}</p>}
+                </div>
+              </div>
             ))}
           </Panel>
 

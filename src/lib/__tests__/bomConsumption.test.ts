@@ -28,7 +28,7 @@ vi.mock('@/integrations/supabase/client', () => {
       then: (onFulfilled: any, onRejected: any) =>
         Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected),
     };
-    for (const method of ['select', 'in', 'eq', 'gt', 'not', 'order', 'limit']) {
+    for (const method of ['select', 'in', 'eq', 'gt', 'or', 'not', 'order', 'limit']) {
       builder[method] = () => builder;
     }
     return builder;
