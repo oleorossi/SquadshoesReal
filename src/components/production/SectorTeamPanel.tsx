@@ -12,13 +12,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UsersThree, CircleNotch as Loader2, ArrowsClockwise } from "@phosphor-icons/react";
+import { UsersThree, CircleNotch as Loader2, ArrowsClockwise, CaretDown, CaretRight } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatNumber } from "@/lib/utils";
 import { assertHeadcount, listSectorTeam, updateSectorHeadcounts } from "@/services/capacityService";
 import type { SectorTeamRow, TeamSource } from "@/types/capacity";
+import { SectorPeopleProductivity } from "./SectorPeopleProductivity";
 
 const ORIGEM_LABEL: Record<TeamSource, string> = {
   rh: "do RH",
@@ -55,6 +56,8 @@ export function SectorTeamPanel({ onSaved, showActions = true, className }: Sect
   const [draft, setDraft] = useState<Record<string, string>>({});
   const firstPendingRef = useRef<HTMLInputElement | null>(null);
   const [focado, setFocado] = useState(false);
+  // R25: a linha abre a composição (pessoas × pares/dia) em vez de ser número solto.
+  const [aberto, setAberto] = useState<string | null>(null);
 
   const { data: rows, isLoading } = useQuery({
     queryKey: ["sector-team"],
@@ -132,13 +135,16 @@ export function SectorTeamPanel({ onSaved, showActions = true, className }: Sect
           const ref = isPendente && !pendenteVisto ? (pendenteVisto = true, firstPendingRef) : undefined;
           const divergeRh = r.override != null && r.rh_count > 0 && r.override !== r.rh_count;
           return (
-            <div
-              key={r.sector}
-              className={cn(
-                "flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 min-h-11",
-                isPendente && "bg-primary/5",
-              )}
-            >
+            <div key={r.sector} className={cn("rounded-md px-2 py-1.5", isPendente && "bg-primary/5")}>
+            <div className="flex flex-wrap items-center gap-2 min-h-11">
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground shrink-0"
+                aria-label={`Ver pessoas de ${r.sector}`}
+                onClick={() => setAberto((a) => (a === r.sector ? null : r.sector))}
+              >
+                {aberto === r.sector ? <CaretDown className="h-4 w-4" /> : <CaretRight className="h-4 w-4" />}
+              </button>
               <div className="min-w-[104px] flex-1">
                 <span className="text-sm">{r.sector}</span>
                 {divergeRh && (
@@ -181,6 +187,12 @@ export function SectorTeamPanel({ onSaved, showActions = true, className }: Sect
                 />
                 <span className="text-[11px] text-muted-foreground w-12">pessoas</span>
               </div>
+            </div>
+            {aberto === r.sector && (
+              <div className="pl-6 pr-1 pb-1 border-l border-border/60 ml-1.5">
+                <SectorPeopleProductivity sector={r.sector} />
+              </div>
+            )}
             </div>
           );
         })}
