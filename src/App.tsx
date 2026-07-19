@@ -110,6 +110,7 @@ const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
 const ProducaoSetoresConfig = lazy(() => import("./pages/ProducaoSetoresConfig"));
 const ProducaoApontamento = lazy(() => import("./pages/Setores"));
 const ProducaoAnalises = lazy(() => import("./pages/ProducaoAnalises"));
+const ProdutividadeModelos = lazy(() => import("./pages/ProdutividadeModelos"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
 // ProductionWavesPage: rota standalone /pcp/ondas virou redirect pro hub
 // (/pcp?tab=ondas) em 2026-07-01 — o PCPHub importa o componente como aba.
@@ -619,6 +620,12 @@ const router = createBrowserRouter([
       {
         path: "producao/analises",
         element: <ProducaoAnalises />,
+      },
+      {
+        // Engine de capacidade (specs/produtividade-por-modelo.md) — rota
+        // secundária (Cmd+K / hub Atalhos), NÃO entra na sidebar (cap de 7, R7.1).
+        path: "producao/produtividade",
+        element: <ProdutividadeModelos />,
       },
       {
         // Rota legada: Ondas foram substituídas pelo motor dinâmico (R9).

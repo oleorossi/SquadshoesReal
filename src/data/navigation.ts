@@ -201,6 +201,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   // (R7.2) — Fluxo/Live/Timeline/Visão Agregada/Centro de Controle/Qualidade/
   // Cronoanálise/Paradas & OEE/Tempos de Setup viraram views dentro de
   // /producao/analises (redirects em App.tsx mantêm as URLs antigas vivas).
+  { name: "Produtividade por Modelo", icon: Gauge,   path: "/producao/produtividade", group: "Produção" },
   // Logística
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
   { name: "Separação · Bipagem (EAN)", icon: ClipboardCheck, path: "/picking-sessions",   group: "Logística" },

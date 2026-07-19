@@ -84,12 +84,18 @@ export default function SystemDiagnostics() {
   // esperado×debitado por OP×produto + guards de regressão dos fixes.
   const [debitRows, setDebitRows] = useState<DebitRow[] | null>(null);
   const [debitGuards, setDebitGuards] = useState<ParityRow[] | null>(null);
+  // Engine de capacidade (specs/produtividade-por-modelo.md): gaps de cadastro
+  // que distorcem gargalo/pares-dia/custo-par — tempo faltando, setor sem
+  // equipe, divergência minutos×capacidade da ficha, taxa órfã.
+  const [capacityChecks, setCapacityChecks] = useState<
+    Array<{ categoria: string; severidade: string; referencia: string; detalhe: string }> | null
+  >(null);
   const [consRunning, setConsRunning] = useState(false);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
@@ -101,6 +107,8 @@ export default function SystemDiagnostics() {
         // ficha×grade (migration 20260915100000/110000, não nos tipos) → cast.
         (supabase as any).rpc('debit_consistency_report'),
         (supabase as any).rpc('run_debit_guard_tests'),
+        // capacity_consistency_report — engine de capacidade (mig 20260719120100).
+        (supabase as any).rpc('capacity_consistency_report'),
       ]);
       if (consRes.error) throw consRes.error;
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
@@ -108,6 +116,7 @@ export default function SystemDiagnostics() {
       setCpcChecks((cpcRes?.error ? [] : (cpcRes?.data ?? [])) as ConsistencyRow[]);
       setDebitRows((debitRes?.error ? [] : (debitRes?.data ?? [])) as DebitRow[]);
       setDebitGuards((guardRes?.error ? [] : (guardRes?.data ?? [])) as ParityRow[]);
+      setCapacityChecks(capRes?.error ? [] : (capRes?.data ?? []));
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
         setParityChecks([]);
@@ -529,6 +538,40 @@ export default function SystemDiagnostics() {
             )}
             {(freshChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
               <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PCP · CAPACIDADE"
+            title="Capacidade & Produtividade — consistência"
+            subtitle="Gaps que distorcem gargalo/pares-dia/custo-par: setor sem tempo em nenhuma camada, operação pendente, setor sem equipe, divergência minutos×capacidade da ficha, taxa órfã. Fonte: capacity_consistency_report(). Use o botão acima pra rodar."
+            bodyClassName="space-y-1.5"
+          >
+            {capacityChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir a consistência da engine de capacidade (/producao/produtividade).</p>
+            )}
+            {capacityChecks !== null && capacityChecks.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhum gap de cadastro na engine de capacidade.</div>
+            )}
+            {(capacityChecks ?? []).map((c, i) => (
+              <div key={i} className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+                <Badge
+                  variant="outline"
+                  className={
+                    c.severidade === 'alta'
+                      ? 'bg-red-500/10 text-red-600 border-transparent text-[10px] shrink-0'
+                      : c.severidade === 'media'
+                        ? 'bg-amber-500/10 text-amber-600 border-transparent text-[10px] shrink-0'
+                        : 'bg-muted text-muted-foreground border-transparent text-[10px] shrink-0'
+                  }
+                >
+                  {c.categoria}
+                </Badge>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{c.referencia}</p>
+                  <p className="text-xs text-muted-foreground">{c.detalhe}</p>
+                </div>
+              </div>
             ))}
           </Panel>
 
