@@ -3,6 +3,8 @@
 > Spec fechada em 2026-07-19 a partir do rascunho diagnóstico do dono + verificação
 > automatizada em 3 frentes (banco real `ssvxfoybzmjlypnipqzn`, repo, motores
 > existentes). Divergências em relação ao rascunho original estão marcadas **[Δ]**.
+> **APROVADA pelo dono em 2026-07-19**, com 2 aditivos do dono incorporados (R16–R18):
+> fallback "última referência preenchida" e banco de custos salvos por referência.
 > Mockup de alta fidelidade da tela (light+dark, tokens reais):
 > https://claude.ai/code/artifact/3e3f2c82-9508-459a-9120-e234e8121dac
 
@@ -29,6 +31,12 @@ tela comparativa nova em `/producao/produtividade`.
    é só informativo; `employees.department` é texto livre com 7/18 ativos sem setor.
 4. Perguntas do dono sem resposta no sistema: gargalo por modelo, pares/dia com a
    equipe atual, ranking de produtividade entre modelos, custo/par pelos dois métodos.
+5. **Aditivo do dono (aprovação):** (a) tempos de setores "padrão" (ex.: corte de
+   fibra de palmilha, corte de forração) não mudam entre modelos — a engine deve
+   **sempre puxar os últimos valores que o dono preencheu na referência anterior**
+   quando a ficha nova não tem o tempo próprio; (b) deve existir um **banco de custos
+   por referência**: salvar o resultado calculado (pares/dia, gargalo, custos) e
+   poder consultá-lo depois.
 
 ## Verificação contra o banco real (2026-07-19)
 
@@ -74,6 +82,8 @@ Fatos que fundamentam as decisões abaixo (auditoria read-only):
   `sector_headcount` (ver Data model).
 - **Migration B** — RPC `get_model_productivity(uuid[])` + diagnóstico
   `capacity_consistency_report()` + REVOKEs.
+- **Migration C** — banco de custos: tabela `model_productivity_snapshots` + RPC
+  `save_model_productivity_snapshot(uuid)` (recalcula server-side e congela) + RLS.
 - `src/types/capacity.ts` (contrato do jsonb), `src/services/capacityService.ts`,
   `src/pages/ProdutividadeModelos.tsx`.
 - Rota `/producao/produtividade` (lazy em `App.tsx`), entrada em `secondaryRoutes`
@@ -166,6 +176,27 @@ Fatos que fundamentam as decisões abaixo (auditoria read-only):
 15. **Testes**: `src/services/__tests__/capacityService.test.ts` (vitest) cobrindo as
     validações de input do R12 (sem tocar no banco — mock do client) e o parse do
     contrato; typecheck `bunx tsc -p tsconfig.app.json --noEmit` limpo.
+16. **Fallback "última referência" (aditivo)**: a cadeia de minutos do R5 ganha um
+    degrau intermediário — `BOM da própria ficha` > **último valor preenchido pelo
+    dono em qualquer outra referência** (linha ativa mais recente por stage com
+    `time_source IN ('manual','cronoanalise')` e `minutes > 0`, por `updated_at`) >
+    `sector_minutes_default` da categoria. Marcado `minutes_source='ultima_referencia'`
+    com o nome da ficha de origem no payload (`source_sheet_name`) e chip próprio na
+    UI. Valores derivados pelo generator (`capacidade`/`default`) NÃO contam como
+    "preenchidos pelo dono".
+17. **Banco de custos por referência (aditivo)**: tabela
+    `model_productivity_snapshots` (FK `technical_sheet_id`, nome congelado,
+    `pairs_per_day`, `bottleneck_sector`, custos dos dois métodos, `params` jsonb
+    com jornada/eficiência/dias úteis/headcount vigentes, `sectors` jsonb com o
+    breakdown, `created_by`/`created_at`). Gravação **exclusivamente** via RPC
+    `save_model_productivity_snapshot(p_sheet_id)` que chama `get_model_productivity`
+    server-side (cliente não envia números — não confiar em payload do browser);
+    ficha `incomplete` não pode ser salva (erro claro). RLS authenticated; REVOKE
+    anon/PUBLIC no RPC.
+18. **Histórico na UI (aditivo)**: botão "Salvar custos" por modelo + dialog
+    "Histórico" por referência listando snapshots (data, pares/dia, gargalo, custo
+    custo-minuto e gargalo, parâmetros usados), ordenado do mais recente; consulta
+    via service (`listProductivitySnapshots(sheetId)`).
 
 ## Data model / Domain
 
@@ -180,9 +211,19 @@ cost_policies (ativa: overhead 24k / meta 20k) ───────────
         │
         ▼
 RPC get_model_productivity(uuid[]) → jsonb          capacity_consistency_report() → /diagnostics
-        │
-        ▼
-capacityService.ts → ProdutividadeModelos.tsx (/producao/produtividade)
+        │                                            save_model_productivity_snapshot(uuid)
+        ▼                                                    │
+capacityService.ts → ProdutividadeModelos.tsx        model_productivity_snapshots (histórico)
+                     (/producao/produtividade)
+```
+
+**Cadeia de minutos por setor (R5 + R16):**
+```
+1. BOM da própria ficha (operações ativas, Σ min/par)          → 'bom'
+2. Último valor preenchido pelo dono em OUTRA referência        → 'ultima_referencia'
+   (time_source manual|cronoanalise, mais recente por stage)
+3. sector_minutes_default da categoria (COALESCE(cat,''))       → 'default'
+4. Nada ⇒ setor fora do cálculo + incomplete/warning
 ```
 
 **[Δ] vs rascunho:** de 3 tabelas novas para **1 tabela + 1 coluna** —
@@ -235,6 +276,12 @@ Documentar esse contraste num comment do RPC e no header da página.
   aparecem apenas no consistency report.
 - `p_sheet_ids` vazio ⇒ erro claro no RPC; service bloqueia antes.
 - Ficha inexistente no array ⇒ ignorada com warning agregado (não aborta o lote).
+- Fallback última referência sem nenhum valor manual/cronoanálise no sistema ⇒ cai
+  direto no padrão da categoria (degrau 3) sem erro.
+- Snapshot de ficha `incomplete` ⇒ RPC de save recusa com mensagem clara.
+- Snapshot não é atualizado retroativamente (é congelamento — mesma semântica de
+  `order_costs`/`reference_sector_pricing`): corrigir a ficha depois NÃO conserta
+  snapshots antigos; a UI mostra a data de cada um.
 
 ## Constraints & assumptions
 
@@ -307,4 +354,14 @@ Documentar esse contraste num comment do RPC e no header da página.
 - [ ] R14: rota mapeada em `ROUTE_MODULE_MAP` + `secondaryRoutes`;
       `NavigationAccessConsistency.test.ts` e `check-navigation-access.mjs` verdes;
       sidebar Produção continua com 7 itens.
+- [ ] R16: ficha sem BOM num setor com valor manual/cronoanálise em outra referência
+      usa esse valor (marcado `ultima_referencia` + ficha de origem), e só cai no
+      padrão da categoria quando não há valor preenchido em lugar nenhum — query
+      manual comparando as 3 camadas.
+- [ ] R17: `save_model_productivity_snapshot(SP101)` insere linha em
+      `model_productivity_snapshots` com números idênticos ao
+      `get_model_productivity` do momento; tentar salvar ficha `incomplete` retorna
+      erro claro; anon não executa o RPC nem lê a tabela.
+- [ ] R18: dialog Histórico lista os snapshots salvos (data + pares/dia + custos) e
+      reflete um snapshot novo sem reload manual (invalidation).
 - [ ] Gates G1–G5 conferidos como registrados nesta spec (nenhum pendente bloqueante).
