@@ -95,6 +95,11 @@ BEGIN
 
   SELECT * INTO v_params FROM capacity_parameters LIMIT 1;
   IF NOT FOUND THEN
+    -- SECURITY INVOKER + RLS: usuário authenticated mas não-aprovado vê 0 linhas
+    -- aqui — sem este check ele receberia um erro enganoso de "migration faltando".
+    IF NOT public.is_approved_user() THEN
+      RAISE EXCEPTION 'não autorizado';
+    END IF;
     RAISE EXCEPTION 'capacity_parameters sem linha — aplicar migration 20260719120000';
   END IF;
 
@@ -240,12 +245,16 @@ BEGIN
         v_warnings := v_warnings ||
           format('%s: sem tempo em nenhuma camada (BOM / última referência / padrão da categoria)', v_rec.label);
       ELSE
+        -- O override do source='default' vem ANTES do check de custo-hora: o
+        -- warning tem que avaliar o valor FINAL da MO, senão a linha 'default'
+        -- do BOM (cost_per_hour semeado) mascara taxa removida e a MO zera em
+        -- silêncio (achado do review 2026-07-19).
+        IF v_source = 'default' THEN
+          v_mo_sector := round(v_minutes * v_rate / 60.0, 4);
+        END IF;
         IF v_rate = 0 AND coalesce(v_mo_sector, 0) = 0 THEN
           v_warnings := v_warnings ||
             format('%s: sem custo-hora em sector_labor_rates — MO do setor ficou R$ 0', v_rec.label);
-        END IF;
-        IF v_source = 'default' THEN
-          v_mo_sector := round(v_minutes * v_rate / 60.0, 4);
         END IF;
 
         IF coalesce(v_rec.headcount, 0) > 0 THEN
@@ -449,6 +458,32 @@ AS $$
    WHERE NOT EXISTS (
      SELECT 1 FROM bom_operations bo
       WHERE public.capacity_sector_key(bo.stage) = slr.sector_key)
+
+  UNION ALL
+  -- 5b. Operação manual/cronoanálise órfã: setor saiu de production_sectors mas a
+  --     linha segue ativa — entra no custeio (labor) sem entrar na capacidade,
+  --     quebrando o invariante MO ≡ order_costs.labor_cost/qty em silêncio.
+  SELECT 'operacao_orfa', 'media', ts.name,
+         format('Operação %L ativa no stage %s mas o setor saiu de production_sectors — soma no custeio sem entrar na capacidade',
+                bo.operation_name, bo.stage)
+    FROM bom_operations bo JOIN technical_sheets ts ON ts.id = bo.sheet_id
+   WHERE bo.active AND bo.standard_time_minutes > 0
+     AND bo.time_source IN ('manual', 'cronoanalise')
+     AND jsonb_typeof(ts.production_sectors) = 'array'
+     AND jsonb_array_length(ts.production_sectors) > 0
+     AND NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements_text(ts.production_sectors) s
+        WHERE public.capacity_sector_key(s) = public.capacity_sector_key(bo.stage))
+
+  UNION ALL
+  -- 5c. Drift entre team_size (tela /producao/setores) e headcount (engine):
+  --     dois cadastros de equipe divergindo em silêncio.
+  SELECT 'headcount_drift', 'media', ss.sector,
+         format('team_size=%s (tela Setores) difere de headcount=%s (engine de capacidade) — alinhar os dois cadastros',
+                ss.team_size, ss.headcount)
+    FROM sector_settings ss
+   WHERE ss.team_size IS NOT NULL AND ss.headcount IS NOT NULL
+     AND ss.team_size::numeric <> ss.headcount
 
   UNION ALL
   -- 6. Categorias de ficha sem cobertura nos defaults de minutos

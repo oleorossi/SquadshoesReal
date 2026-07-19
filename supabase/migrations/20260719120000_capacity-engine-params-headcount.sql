@@ -24,14 +24,18 @@ CREATE TABLE IF NOT EXISTS public.capacity_parameters (
   updated_by             uuid NULL DEFAULT auth.uid()
 );
 
--- Seed: jornada real da escala default (mesma expressão do generate_bom_operations).
+-- Seed: jornada real da escala default (mesma expressão do generate_bom_operations),
+-- com clamp por range: escala fora de [60,720] (turno noturno cruzando meia-noite,
+-- jornada absurda) cai pro 540 em vez de violar o CHECK e abortar o db push.
 INSERT INTO public.capacity_parameters (id, journey_minutes)
-SELECT true,
-       COALESCE(NULLIF((
-         SELECT round(extract(epoch from (exit_time - entry_time
-                  - coalesce(lunch_end - lunch_start, interval '0'))) / 60)
-           FROM work_schedules WHERE is_default ORDER BY created_at LIMIT 1
-       ), 0), 540)
+SELECT true, CASE WHEN j.v >= 60 AND j.v <= 720 THEN j.v ELSE 540 END
+  FROM (
+    SELECT COALESCE((
+      SELECT round(extract(epoch from (exit_time - entry_time
+               - coalesce(lunch_end - lunch_start, interval '0'))) / 60)
+        FROM work_schedules WHERE is_default ORDER BY created_at LIMIT 1
+    ), 540) AS v
+  ) j
 ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE public.capacity_parameters ENABLE ROW LEVEL SECURITY;

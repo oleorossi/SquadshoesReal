@@ -32,6 +32,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import {
+  assertHeadcount,
   deleteProductivitySnapshot,
   getCapacityParameters,
   getModelProductivity,
@@ -40,7 +41,7 @@ import {
   listSectorHeadcount,
   saveProductivitySnapshot,
   updateCapacityParameters,
-  updateSectorHeadcount,
+  updateSectorHeadcounts,
 } from "@/services/capacityService";
 import type { ModelProductivity, SectorProductivity } from "@/types/capacity";
 
@@ -138,27 +139,29 @@ export default function ProdutividadeModelos() {
   });
 
   const saveTeamMutation = useMutation({
+    // Valida TUDO antes de escrever e grava numa transação só (RPC batch) —
+    // sem escrita parcial quando um valor do meio é inválido/falha.
     mutationFn: async () => {
-      const changes = (teamRows ?? []).filter((row) => {
+      const changes: Record<string, number | null> = {};
+      for (const row of teamRows ?? []) {
         const draft = teamDraft[row.sector];
-        if (draft === undefined) return false;
+        if (draft === undefined) continue;
         const parsed = draft.trim() === "" ? null : Number(draft.replace(",", "."));
-        return parsed !== row.headcount;
-      });
-      for (const row of changes) {
-        const draft = teamDraft[row.sector];
-        const parsed = draft.trim() === "" ? null : Number(draft.replace(",", "."));
-        await updateSectorHeadcount(row.sector, parsed);
+        assertHeadcount(parsed);
+        if (parsed !== row.headcount) changes[row.sector] = parsed;
       }
-      return changes.length;
+      if (Object.keys(changes).length === 0) return 0;
+      return await updateSectorHeadcounts(changes);
     },
     onSuccess: (n) => {
       toast.success(n > 0 ? `Equipe atualizada (${n} setor${n === 1 ? "" : "es"})` : "Nada pra salvar");
       setTeamOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["sector-headcount"] });
       invalidateCalc();
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const saveParamsMutation = useMutation({
@@ -171,14 +174,17 @@ export default function ProdutividadeModelos() {
         }
       }
       await updateCapacityParameters(patch);
+      return Object.keys(patch).length;
     },
-    onSuccess: () => {
-      toast.success("Parâmetros atualizados");
-      setParamsOpen(false);
+    onSuccess: (n) => {
+      toast.success(n > 0 ? "Parâmetros atualizados" : "Nada pra salvar — preencha algum valor");
+      if (n > 0) setParamsOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["capacity-parameters"] });
       invalidateCalc();
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const models = result?.models ?? [];
@@ -188,18 +194,27 @@ export default function ProdutividadeModelos() {
   );
   const incompleteModels = models.filter((m) => m.incomplete);
 
-  /** União dos setores na ordem canônica (flow_order já vem ordenado do RPC). */
+  /** União dos setores na ordem canônica de flow_order (setor ausente no 1º
+   *  modelo mas presente no 2º entraria no fim sem esta ordenação). */
   const sectorRows = useMemo(() => {
     const seen = new Map<string, string>();
     for (const m of models) for (const s of m.sectors) if (!seen.has(s.sector_key)) seen.set(s.sector_key, s.label);
-    return [...seen.entries()].map(([key, label]) => ({ key, label }));
-  }, [models]);
+    const ordem = new Map((teamRows ?? []).map((r) => [r.sector, r.flow_order]));
+    return [...seen.entries()]
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => (ordem.get(a.label) ?? 999) - (ordem.get(b.label) ?? 999));
+  }, [models, teamRows]);
+
+  const nomePorId = useMemo(() => new Map((sheetOptions ?? []).map((s) => [s.id, s.name])), [sheetOptions]);
 
   const allWarnings = useMemo(() => {
     const set = new Set<string>();
+    for (const id of result?.missing_sheet_ids ?? []) {
+      set.add(`${nomePorId.get(id) ?? id.slice(0, 8)}: ficha removida ou indisponível — retirada do comparativo`);
+    }
     for (const m of models) for (const w of m.warnings) set.add(`${m.name}: ${w}`);
     return [...set];
-  }, [models]);
+  }, [models, result?.missing_sheet_ids, nomePorId]);
 
   const teamTotal = (teamRows ?? []).reduce((acc, r) => acc + (r.headcount ?? 0), 0);
 
@@ -222,8 +237,6 @@ export default function ProdutividadeModelos() {
       return terms.every((t) => alvo.includes(t));
     });
   }, [sheetOptions, pickerSearch]);
-
-  const nomePorId = useMemo(() => new Map((sheetOptions ?? []).map((s) => [s.id, s.name])), [sheetOptions]);
 
   return (
     <div className="space-y-5 p-4 md:p-6 max-w-[1220px] mx-auto">
@@ -444,7 +457,9 @@ export default function ProdutividadeModelos() {
                         <td className="py-2 px-3 text-right border-l border-border/60">
                           {m.costs.bottleneck_cost_per_pair == null ? "—" : formatCurrency(m.costs.bottleneck_cost_per_pair)}
                         </td>
-                        <td className="py-2 pl-3 text-right text-amber-600">{delta == null ? "—" : `+ ${formatCurrency(delta)}`}</td>
+                        <td className={cn("py-2 pl-3 text-right", delta != null && delta > 0 ? "text-amber-600" : "text-muted-foreground")}>
+                          {delta == null ? "—" : `${delta < 0 ? "− " : "+ "}${formatCurrency(Math.abs(delta))}`}
+                        </td>
                       </tr>
                     );
                   })}
@@ -537,10 +552,9 @@ export default function ProdutividadeModelos() {
                 <span className="text-sm">{r.sector}</span>
                 <div className="flex items-center gap-1.5">
                   <Input
-                    type="number"
-                    min={0}
-                    step={0.5}
+                    type="text"
                     inputMode="decimal"
+                    aria-label={`Equipe — ${r.sector} (pessoas)`}
                     className="h-8 w-24 text-right font-mono"
                     value={teamDraft[r.sector] ?? ""}
                     onChange={(e) => setTeamDraft((d) => ({ ...d, [r.sector]: e.target.value }))}
@@ -579,8 +593,9 @@ export default function ProdutividadeModelos() {
                 <span className="text-sm">{f.label}</span>
                 <div className="flex items-center gap-1.5">
                   <Input
-                    type="number"
+                    type="text"
                     inputMode="decimal"
+                    aria-label={`${f.label} (${f.unidade})`}
                     className="h-8 w-24 text-right font-mono"
                     value={paramsDraft[f.key] ?? ""}
                     onChange={(e) => setParamsDraft((d) => ({ ...d, [f.key]: e.target.value }))}

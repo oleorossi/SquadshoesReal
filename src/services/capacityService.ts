@@ -106,6 +106,22 @@ export async function updateSectorHeadcount(sector: string, headcount: number | 
   if (error) throw error;
 }
 
+/** Grava a equipe de VÁRIOS setores numa transação só (RPC update_sector_headcounts,
+ *  mig 20260719120300) — evita escrita parcial quando um update falha no meio. */
+export async function updateSectorHeadcounts(changes: Record<string, number | null>): Promise<number> {
+  const entries = Object.entries(changes);
+  if (entries.length === 0) return 0;
+  for (const [sector, headcount] of entries) {
+    if (!sector) throw new Error("Setor obrigatório");
+    assertHeadcount(headcount);
+  }
+  const { data, error } = await (supabase as any).rpc("update_sector_headcounts", {
+    p_headcounts: changes,
+  });
+  if (error) throw error;
+  return (data ?? 0) as number;
+}
+
 /** Congela o cálculo atual da ficha no banco de custos. Server-side recalcula
  *  via get_model_productivity — o cliente NUNCA envia os números (R17). */
 export async function saveProductivitySnapshot(sheetId: string): Promise<unknown> {

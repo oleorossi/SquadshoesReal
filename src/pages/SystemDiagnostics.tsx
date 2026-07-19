@@ -116,7 +116,14 @@ export default function SystemDiagnostics() {
       setCpcChecks((cpcRes?.error ? [] : (cpcRes?.data ?? [])) as ConsistencyRow[]);
       setDebitRows((debitRes?.error ? [] : (debitRes?.data ?? [])) as DebitRow[]);
       setDebitGuards((guardRes?.error ? [] : (guardRes?.data ?? [])) as ParityRow[]);
-      setCapacityChecks(capRes?.error ? [] : (capRes?.data ?? []));
+      // Falha do RPC NÃO pode virar lista vazia (estado verde falso): mantém
+      // null (estado "rode a verificação") e avisa.
+      if (capRes?.error) {
+        setCapacityChecks(null);
+        toast.message('Consistência de capacidade indisponível', { description: capRes.error.message });
+      } else {
+        setCapacityChecks(capRes?.data ?? []);
+      }
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
         setParityChecks([]);

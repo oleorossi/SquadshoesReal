@@ -16,6 +16,7 @@ import {
   getModelProductivity,
   updateCapacityParameters,
   updateSectorHeadcount,
+  updateSectorHeadcounts,
   saveProductivitySnapshot,
 } from "../capacityService";
 
@@ -72,6 +73,16 @@ describe("capacityService — validações client-side", () => {
     const result = await getModelProductivity(["abc-123"]);
     expect(rpcMock).toHaveBeenCalledWith("get_model_productivity", { p_sheet_ids: ["abc-123"] });
     expect(result.models).toEqual([]);
+  });
+
+  it("batch de equipe valida TODO o mapa antes de chamar o banco (tudo-ou-nada)", async () => {
+    await expect(updateSectorHeadcounts({ Montagem: 2, Costura: -1 })).rejects.toThrow(/equipe inválida/i);
+    expect(rpcMock).not.toHaveBeenCalled();
+    rpcMock.mockResolvedValue({ data: 2, error: null });
+    await expect(updateSectorHeadcounts({ Montagem: 2.5, Costura: null })).resolves.toBe(2);
+    expect(rpcMock).toHaveBeenCalledWith("update_sector_headcounts", {
+      p_headcounts: { Montagem: 2.5, Costura: null },
+    });
   });
 
   it("snapshot exige ficha e repassa erro do servidor (ex.: ficha incompleta)", async () => {
