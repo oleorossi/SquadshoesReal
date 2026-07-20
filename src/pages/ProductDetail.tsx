@@ -276,7 +276,11 @@ export default function ProductDetail() {
       if (error instanceof z.ZodError) {
         error.errors.forEach(err => toast.error(err.message));
       } else {
-        toast.error('Erro ao salvar material');
+        // Guards do banco (ex.: largura obrigatória em material de área,
+        // tg_require_width_for_area_material) trazem a instrução no message —
+        // engolir isso deixa o usuário sem saber o que preencher.
+        const message = (error as { message?: string })?.message;
+        toast.error(message || 'Erro ao salvar material');
       }
     } finally {
       setSaving(false);

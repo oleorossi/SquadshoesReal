@@ -50,8 +50,6 @@
 -- um sale_order_item que não existe mais e segue com 1.248 m. É dado morto
 -- (o débito resolve por sale_order_item_id), mas deve ser limpo.
 
-BEGIN;
-
 -- ---------------------------------------------------------------------------
 -- 1) Backfill das larguras (1370 mm — largura dominante: 42 de 50 fichas de
 --    napa já cadastradas, incluindo SANTORINE e SUDANI inteiras).
@@ -215,5 +213,3 @@ DROP TRIGGER IF EXISTS tg_require_width_for_area_material ON public.component_sh
 CREATE TRIGGER tg_require_width_for_area_material
   BEFORE INSERT OR UPDATE ON public.component_sheets
   FOR EACH ROW EXECUTE FUNCTION public.tg_require_width_for_area_material();
-
-COMMIT;
