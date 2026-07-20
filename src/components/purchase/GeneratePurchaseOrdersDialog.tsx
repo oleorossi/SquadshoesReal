@@ -97,17 +97,43 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     return m;
   }, [products]);
 
+  // Identificação do item pro fornecedor: código (SKU) + descrição técnica. Nos
+  // materiais comprados o SKU já É o código do fornecedor, e a technical_name
+  // carrega a especificação que o nome curto não tem (acabamento, embalagem,
+  // bitola, ONU). Sem isso a OC ia só com "Binóculo 10mm" — ambíguo quando o
+  // fornecedor tem várias versões da mesma peça.
+  const identityByProduct = useMemo(() => {
+    const m = new Map<string, { sku: string | null; technical_name: string | null; color: string | null }>();
+    for (const p of products as any[]) {
+      m.set(p.id, {
+        sku: (p.sku || '').trim() || null,
+        technical_name: (p.technical_name || '').trim() || null,
+        color: (p.color || '').trim() || null,
+      });
+    }
+    return m;
+  }, [products]);
+
   const enrichedNeeds = useMemo(
     () => needs.map((n: any) => {
       const conv = conversionByProduct.get(n.material_id);
+      const ident = identityByProduct.get(n.material_id);
       return {
         ...n,
+        // Cor: a do consumo manda; na falta dela cai no cadastro do produto.
+        // Materiais sem cor cadastrada seguem sem cor — a especificação vai na
+        // descrição técnica. NÃO se adivinha cor a partir do nome: descrições
+        // como "ABS MARROM 12MM /DOURADO" têm duas, e chutar uma na OC é o
+        // erro que esta tela existe pra evitar.
+        color: (n.color || '').trim() || ident?.color || '',
+        sku: ident?.sku ?? null,
+        technical_name: ident?.technical_name ?? null,
         purchase_multiple: multipleByProduct.get(n.material_id) ?? null,
         purchase_unit: conv?.purchase_unit ?? null,
         conversion_factor: conv?.conversion_factor ?? 1,
       };
     }),
-    [needs, multipleByProduct, conversionByProduct],
+    [needs, multipleByProduct, conversionByProduct, identityByProduct],
   );
 
   const drafts = useMemo(
@@ -298,6 +324,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                   <Table className="[&_td]:py-1.5 [&_th]:py-1.5">
                     <TableHeader>
                       <TableRow className="[&_th]:text-xs [&_th]:text-muted-foreground">
+                        <TableHead>Código</TableHead>
                         <TableHead>Material</TableHead>
                         <TableHead>Cor</TableHead>
                         <TableHead className="text-right">Necessário</TableHead>
@@ -314,9 +341,17 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                         return (
                         <Fragment key={`${it.material_id}::${it.color ?? ''}`}>
                         <TableRow className={gradeSizes.length > 0 ? '[&>td]:border-b-0' : ''}>
+                          <TableCell className="font-mono text-xs text-muted-foreground">{it.sku || '—'}</TableCell>
                           <TableCell className={`font-medium ${it.color_mismatch ? 'text-destructive' : ''}`}>
                             {it.product_name}
                             {it.color_mismatch && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide">⚠ cor não cadastrada</span>}
+                            {/* Descrição técnica só quando acrescenta — em vários
+                                cadastros ela repete o nome ou o próprio código. */}
+                            {it.technical_name
+                              && it.technical_name.toLowerCase() !== it.product_name.trim().toLowerCase()
+                              && it.technical_name.toLowerCase() !== (it.sku || '').trim().toLowerCase() && (
+                              <div className="mt-0.5 text-[11px] font-normal leading-snug text-muted-foreground">{it.technical_name}</div>
+                            )}
                           </TableCell>
                           <TableCell className={it.color_mismatch ? 'text-destructive font-semibold' : 'text-muted-foreground'}>{it.color || '—'}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">
@@ -342,7 +377,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                         </TableRow>
                         {gradeSizes.length > 0 && (
                           <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={8} className="pt-0">
+                            <TableCell colSpan={9} className="pt-0">
                               <div className="flex flex-wrap items-center gap-1 pl-1">
                                 <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Grade · numeração</span>
                                 {gradeSizes.sort((a, b) => parseFloat(a) - parseFloat(b)).map((sz) => (

@@ -122,6 +122,21 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
             ? `<div style="margin-top:1px;font-family:${MONO};font-size:7.5pt;color:${MUTED};letter-spacing:.05em;text-transform:uppercase">${esc(it.color)}</div>`
             : '';
 
+          // Identificação exata do item: código do produto (nos materiais
+          // comprados, o código do próprio fornecedor) + descrição técnica com a
+          // especificação que o nome curto não carrega. A descrição só entra
+          // quando acrescenta — em vários cadastros ela repete o nome ou o código.
+          const desc = (it.technical_name || '').trim();
+          const descUtil = desc
+            && desc.toLowerCase() !== it.product_name.trim().toLowerCase()
+            && desc.toLowerCase() !== (it.sku || '').trim().toLowerCase();
+          const skuLine = it.sku
+            ? `<div style="margin-top:1px;font-family:${MONO};font-size:7.5pt;color:#5E5850;letter-spacing:.04em">${esc(it.sku)}</div>`
+            : '';
+          const descLine = descUtil
+            ? `<div style="margin-top:1px;font-size:7.5pt;line-height:1.25;color:${MUTED}">${esc(desc)}</div>`
+            : '';
+
           return `
         <tr>
           <td style="padding:5px 5px 5px 0;border-bottom:1px solid ${HAIR};vertical-align:top;width:14px">
@@ -129,7 +144,7 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
           </td>
           <td style="padding:5px;border-bottom:1px solid ${HAIR};vertical-align:top">
             <div style="font-weight:650;font-size:9.5pt;line-height:1.2">${esc(it.product_name)}</div>
-            ${colorLine}${gradeBlock}
+            ${skuLine}${colorLine}${descLine}${gradeBlock}
           </td>
           <td style="padding:5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;font-family:${MONO};font-size:8.5pt;color:${MUTED};white-space:nowrap">${num(it.needed_qty)}</td>
           <td style="padding:5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;font-family:${MONO};font-size:8.5pt;color:${MUTED};white-space:nowrap">${num(it.stock_qty)}</td>

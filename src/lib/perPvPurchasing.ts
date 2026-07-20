@@ -20,6 +20,16 @@ export interface PvMaterialNeed {
   product_name: string;
   unit: string;
   color?: string | null;
+  /** Código do produto (`products.sku`). Nos materiais de componente/napa/cola
+   *  esse campo já guarda o CÓDIGO DO FORNECEDOR (ex.: 8440418106 no binóculo,
+   *  6835/6836 nas napas) — é o dado que faz o fornecedor separar o item certo.
+   *  Enriquecido pela UI a partir do cadastro. */
+  sku?: string | null;
+  /** Descrição técnica do cadastro (`products.technical_name`). Carrega a
+   *  especificação real que o nome curto não tem — acabamento, embalagem,
+   *  bitola, classificação ONU (ex.: "ABS MARROM 12MM /DOURADO / +-1000PCS COM
+   *  PREGO 6MM"). Enriquecida pela UI. */
+  technical_name?: string | null;
   /** Necessidade BRUTA do(s) PV(s): consumo × pares (já convertido dm²→física). */
   needed_qty: number;
   /** Estoque líquido disponível (quantity − reserved_stock). Informativo. */
@@ -62,6 +72,10 @@ export interface DraftPurchaseOrderItem {
   product_name: string;
   unit: string;
   color: string | null;
+  /** Código do produto — vai pra OC do fornecedor. Ver PvMaterialNeed.sku. */
+  sku?: string | null;
+  /** Descrição técnica — vai pra OC do fornecedor. Ver PvMaterialNeed.technical_name. */
+  technical_name?: string | null;
   /** Quantidade a comprar (default = needed_qty bruto; editável na UI). */
   quantity: number;
   needed_qty: number;
@@ -173,6 +187,8 @@ export function buildPerPvPurchaseOrders(
         product_name: n.product_name,
         unit: n.unit || 'un',
         color: (n.color ?? null) || null,
+        sku: n.sku ?? null,
+        technical_name: n.technical_name ?? null,
         quantity: 0, // definido abaixo
         needed_qty: round3(needed),
         stock_qty: round3(stock),
@@ -241,6 +257,8 @@ export function buildPerPvPurchaseOrders(
       product_name: it.product_name,
       unit: it.unit,
       color: it.color,
+      sku: it.sku ?? null,
+      technical_name: it.technical_name ?? null,
       quantity: it.quantity,
       needed_qty: it.needed_qty,
       stock_qty: it.stock_qty,

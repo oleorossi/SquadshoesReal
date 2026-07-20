@@ -61,30 +61,49 @@ export function printPerPvOcPdf({ drafts, pvNumbers }: PrintPerPvOcArgs): number
       }
 
       // ── Tabela de itens ────────────────────────────────────────────
-      const body = d.items.map(it => [
-        it.product_name + (it.color_mismatch ? '  [cor nao cadastrada]' : ''),
-        it.color || '—',
-        fmtNum(it.needed_qty),
-        fmtNum(it.stock_qty),
-        fmtNum(it.quantity) + ((it.rounding_surplus ?? 0) > 0 ? ` (+${fmtNum(it.rounding_surplus as number)})` : ''),
-        it.unit,
-        formatCurrency(it.unit_price),
-        formatMoney(it.quantity * it.unit_price),
-      ]);
+      // O fornecedor separa o pedido a partir DESTA tabela, então cada linha tem
+      // que identificar o item sem ambiguidade: código do produto (que nos
+      // materiais comprados é o código do próprio fornecedor), nome, descrição
+      // técnica com a especificação completa e a cor. Só o nome curto não basta —
+      // "Binóculo 10mm" existe em mais de um acabamento.
+      const body = d.items.map(it => {
+        const desc = (it.technical_name || '').trim();
+        // Descrição técnica vira 2ª linha da célula, mas só quando acrescenta
+        // algo: em vários cadastros ela repete o nome ou o próprio SKU.
+        const redundante = !desc
+          || desc.toLowerCase() === it.product_name.trim().toLowerCase()
+          || desc.toLowerCase() === (it.sku || '').trim().toLowerCase();
+        return [
+          it.sku || '—',
+          it.product_name
+            + (redundante ? '' : `\n${desc}`)
+            + (it.color_mismatch ? '\n[cor nao cadastrada — confirmar antes de separar]' : ''),
+          it.color || '—',
+          fmtNum(it.needed_qty),
+          fmtNum(it.stock_qty),
+          fmtNum(it.quantity) + ((it.rounding_surplus ?? 0) > 0 ? ` (+${fmtNum(it.rounding_surplus as number)})` : ''),
+          it.unit,
+          formatCurrency(it.unit_price),
+          formatMoney(it.quantity * it.unit_price),
+        ];
+      });
 
       autoTable(doc, {
         startY,
-        head: [['Material', 'Cor', 'Necessário', 'Estoque', 'A comprar', 'Un', 'Preço', 'Total']],
+        head: [['Código', 'Material', 'Cor', 'Necessário', 'Estoque', 'A comprar', 'Un', 'Preço', 'Total']],
         body,
-        foot: [['', '', '', '', '', '', 'Total', formatMoney(d.total)]],
+        foot: [['', '', '', '', '', '', '', 'Total', formatMoney(d.total)]],
         styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
         headStyles: { fillColor: [33, 28, 25], textColor: 255, fontSize: 8.5, fontStyle: 'bold' },
         footStyles: { fillColor: [245, 243, 240], textColor: 20, fontStyle: 'bold', fontSize: 9 },
         alternateRowStyles: { fillColor: [250, 249, 246] },
         columnStyles: {
-          2: { halign: 'right' }, 3: { halign: 'right' },
-          4: { halign: 'right', fontStyle: 'bold' },
-          6: { halign: 'right' }, 7: { halign: 'right' },
+          0: { cellWidth: 62, font: 'courier', fontSize: 7.5 },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 54, fontStyle: 'bold' },
+          3: { halign: 'right' }, 4: { halign: 'right' },
+          5: { halign: 'right', fontStyle: 'bold' },
+          7: { halign: 'right' }, 8: { halign: 'right' },
         },
         margin: { left: 40, right: 40 },
       });

@@ -235,6 +235,36 @@ describe('summarizePerPvDrafts', () => {
   });
 });
 
+describe('identificação do item pro fornecedor', () => {
+  it('leva código (SKU) e descrição técnica pro item da OC', () => {
+    // O fornecedor separa o pedido pela OC: sem código nem especificação,
+    // "Binóculo 10mm" é ambíguo entre acabamentos. buildPerPvPurchaseOrders monta
+    // o item campo a campo (não por spread), então esses dois precisam de
+    // propagação explícita — este guard trava isso.
+    const drafts = buildPerPvPurchaseOrders([
+      need({
+        material_id: 'bino',
+        product_name: 'Binóculo 10mm',
+        color: 'OURO LIGHT',
+        sku: '8440418106',
+        technical_name: 'BINOCULO 10MM OURO LIGHT +-1000PCS',
+        unit: 'un',
+        needed_qty: 5760,
+      }),
+    ]);
+    const item = drafts[0].items[0];
+    expect(item.sku).toBe('8440418106');
+    expect(item.technical_name).toBe('BINOCULO 10MM OURO LIGHT +-1000PCS');
+    expect(item.color).toBe('OURO LIGHT');
+  });
+
+  it('item sem código/descrição no cadastro não quebra o empacotamento', () => {
+    const drafts = buildPerPvPurchaseOrders([need({ material_id: 'sem-sku' })]);
+    expect(drafts[0].items[0].sku).toBeNull();
+    expect(drafts[0].items[0].technical_name).toBeNull();
+  });
+});
+
 describe('isPerPvPurchaseOrder', () => {
   it('só é per_pv quando source_type === "per_pv"', () => {
     expect(isPerPvPurchaseOrder({ source_type: 'per_pv' })).toBe(true);
