@@ -90,10 +90,12 @@ export default function PricingCalculatorPanel() {
       soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual,
       targetProfitBrl]);
 
-  // Effective overhead: manual override or policy-derived
-  const getOverhead = (manual: string) => {
-    return manual.trim() !== '' ? parseBrlNumberNonNeg(manual) : policyOverhead;
-  };
+  // Rateio de despesas: SÓ entra no cálculo se o usuário digitar. Campo vazio
+  // (ou zerado) = sem rateio. Antes caía silenciosamente no valor da política
+  // (`policyOverhead`), então uma simulação "sem rateio" saía descontando
+  // R$ X/par que o usuário nunca preencheu. A política virou sugestão
+  // clicável ("Aplicar política") em vez de fallback automático.
+  const getOverhead = (manual: string) => parseBrlNumberNonNeg(manual);
 
   const copySimulatorToReverse = () => {
     setReverseCost(cost);
@@ -354,11 +356,19 @@ export default function PricingCalculatorPanel() {
               </Label>
               <div className="relative mt-1">
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input id="overhead" type="number" step="0.01" min="0" value={overheadManual} onChange={(e) => setOverheadManual(e.target.value)} className="pl-8 h-9 text-sm" placeholder={fmt(policyOverhead)} />
+                <Input id="overhead" type="number" step="0.01" min="0" value={overheadManual} onChange={(e) => setOverheadManual(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {policyOverhead > 0 ? `Política: R$ ${fmt(policyOverhead)}/par` : 'Despesas fixas ÷ capacidade'}
-              </p>
+              {policyOverhead > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setOverheadManual(policyOverhead.toFixed(2))}
+                  className="text-xs text-muted-foreground mt-1 underline underline-offset-2 hover:text-foreground"
+                >
+                  Aplicar política: R$ {fmt(policyOverhead)}/par
+                </button>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">Despesas fixas ÷ capacidade</p>
+              )}
             </div>
             <div>
               <Label htmlFor="commission" className="text-xs flex items-center gap-1.5">
@@ -570,11 +580,19 @@ export default function PricingCalculatorPanel() {
               </Label>
               <div className="relative mt-1">
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input id="reverseOverhead" type="number" step="0.01" min="0" value={reverseOverheadManual} onChange={(e) => setReverseOverheadManual(e.target.value)} className="pl-8 h-9 text-sm" placeholder={fmt(policyOverhead)} />
+                <Input id="reverseOverhead" type="number" step="0.01" min="0" value={reverseOverheadManual} onChange={(e) => setReverseOverheadManual(e.target.value)} className="pl-8 h-9 text-sm" placeholder="0,00" />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {policyOverhead > 0 ? `Política: R$ ${fmt(policyOverhead)}/par` : 'Despesas fixas ÷ capacidade'}
-              </p>
+              {policyOverhead > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setReverseOverheadManual(policyOverhead.toFixed(2))}
+                  className="text-xs text-muted-foreground mt-1 underline underline-offset-2 hover:text-foreground"
+                >
+                  Aplicar política: R$ {fmt(policyOverhead)}/par
+                </button>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">Despesas fixas ÷ capacidade</p>
+              )}
             </div>
             <div>
               <Label htmlFor="reverseCommission" className="text-xs flex items-center gap-1.5">
