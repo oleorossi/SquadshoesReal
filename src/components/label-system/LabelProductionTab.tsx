@@ -15,7 +15,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download } from '@phosphor-icons/react';
+import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, Download, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +54,87 @@ const LABEL_SIZES = [
   { id: '80x30',  label: '80 × 30 mm',  width: 80,  height: 30, description: 'Compacta' },
   { id: '60x30',  label: '60 × 30 mm',  width: 60,  height: 30, description: 'Mini' },
 ] as const;
+
+/**
+ * Campos do rótulo de caixa externa que a edição manual expõe — a ordem aqui é
+ * a ordem em que aparecem no editor, e as seções espelham os blocos impressos
+ * na etiqueta (topo → base), pra quem edita achar o campo olhando o papel.
+ *
+ * `numeric` volta a number no merge (o form guarda tudo como texto).
+ * A grade (TAMANHO/QUANTIDADE) não entra aqui — é lista, tem editor próprio.
+ */
+type EditableBoxField =
+  | 'nfe' | 'clientOrderNumber' | 'orderNumber' | 'barcode' | 'lote' | 'remessa'
+  | 'boxNumber' | 'totalBoxes' | 'taloes' | 'totalPairsInRemessa' | 'transporter' | 'fab'
+  | 'senderName' | 'senderCnpj' | 'senderAddress'
+  | 'recipientRazaoSocial' | 'recipientName' | 'recipientCnpj' | 'recipientCode'
+  | 'recipientAddress' | 'recipientNumber' | 'recipientNeighborhood' | 'recipientCity'
+  | 'recipientUf' | 'recipientCep' | 'recipientBranchCode' | 'recipientBranchName'
+  | 'marca' | 'refCode' | 'refName' | 'color' | 'mainMaterial' | 'shoeCategory'
+  | 'strapsLabel' | 'sizeRangeLabel';
+
+type BoxFieldSection = 'documento' | 'remetente' | 'destinatario' | 'produto';
+
+const EDITABLE_BOX_FIELDS: {
+  key: EditableBoxField;
+  label: string;
+  section: BoxFieldSection;
+  numeric?: boolean;
+  /** Ocupa a linha inteira do grid (textos longos). */
+  wide?: boolean;
+  hint?: string;
+}[] = [
+  { key: 'nfe', label: 'NF', section: 'documento' },
+  { key: 'clientOrderNumber', label: 'Pedido / Ped. compra', section: 'documento' },
+  { key: 'orderNumber', label: 'OP', section: 'documento', hint: 'Não muda o código de barras — edite-o abaixo se precisar.' },
+  { key: 'barcode', label: 'Código de barras', section: 'documento' },
+  { key: 'boxNumber', label: 'Volume (nº)', section: 'documento', numeric: true },
+  { key: 'totalBoxes', label: 'Volume (total)', section: 'documento', numeric: true },
+  { key: 'taloes', label: 'Talões', section: 'documento', numeric: true },
+  { key: 'totalPairsInRemessa', label: 'Pares na remessa', section: 'documento', numeric: true },
+  { key: 'lote', label: 'Lote', section: 'documento' },
+  { key: 'remessa', label: 'Remessa', section: 'documento' },
+  { key: 'transporter', label: 'Transportadora', section: 'documento' },
+  { key: 'fab', label: 'Fábrica / setor', section: 'documento' },
+
+  { key: 'senderName', label: 'Remetente', section: 'remetente', wide: true },
+  { key: 'senderCnpj', label: 'CNPJ do remetente', section: 'remetente' },
+  { key: 'senderAddress', label: 'Endereço do remetente', section: 'remetente', wide: true },
+
+  { key: 'recipientRazaoSocial', label: 'Cliente (razão social)', section: 'destinatario', wide: true },
+  { key: 'recipientName', label: 'Nome fantasia', section: 'destinatario', wide: true },
+  { key: 'recipientCnpj', label: 'CNPJ', section: 'destinatario' },
+  { key: 'recipientCode', label: 'Identif. cli.', section: 'destinatario' },
+  { key: 'recipientAddress', label: 'Endereço', section: 'destinatario', wide: true },
+  { key: 'recipientNumber', label: 'Número', section: 'destinatario' },
+  { key: 'recipientNeighborhood', label: 'Bairro', section: 'destinatario' },
+  { key: 'recipientCity', label: 'Cidade', section: 'destinatario' },
+  { key: 'recipientUf', label: 'UF', section: 'destinatario' },
+  { key: 'recipientCep', label: 'CEP', section: 'destinatario' },
+  { key: 'recipientBranchCode', label: 'Cód. filial', section: 'destinatario' },
+  { key: 'recipientBranchName', label: 'Filial', section: 'destinatario' },
+
+  { key: 'marca', label: 'Marca', section: 'produto' },
+  { key: 'refCode', label: 'Referência (código)', section: 'produto' },
+  { key: 'refName', label: 'Nome / modelo', section: 'produto' },
+  { key: 'color', label: 'Cor', section: 'produto' },
+  { key: 'mainMaterial', label: 'Material', section: 'produto' },
+  { key: 'shoeCategory', label: 'Categoria', section: 'produto' },
+  { key: 'sizeRangeLabel', label: 'Faixa de numeração', section: 'produto' },
+  { key: 'strapsLabel', label: 'Tiras / observação', section: 'produto', wide: true },
+];
+
+/** Campos do GRUPO (não da OP) — só estes podem ser replicados nos selecionados. */
+const PRODUCT_BOX_FIELDS: EditableBoxField[] = [
+  'marca', 'refCode', 'refName', 'color', 'mainMaterial', 'shoeCategory', 'sizeRangeLabel', 'strapsLabel',
+];
+
+const BOX_SECTIONS: { id: BoxFieldSection; title: string; description: string }[] = [
+  { id: 'documento', title: 'Documento', description: 'NF, pedido, OP e volumes — únicos desta ordem.' },
+  { id: 'produto', title: 'Produto', description: 'Referência, cor e material impressos no corpo da etiqueta.' },
+  { id: 'destinatario', title: 'Destinatário', description: 'Puxado do cadastro do cliente e do pedido de venda.' },
+  { id: 'remetente', title: 'Remetente', description: 'Bloco REMET. do topo da etiqueta.' },
+];
 
 /** Build a normalized strap signature string for grouping. Orders with different straps = different products.
  *  Uses sale_order_item_id as primary key; falls back to sale_order_id|reference_id|color|gradeHash
@@ -648,8 +729,50 @@ export function LabelProductionTab() {
    */
   type LabelOverride = { refCode?: string; refName?: string; color?: string };
   const [labelOverrides, setLabelOverrides] = useState<Record<string, LabelOverride>>({});
-  const [editingLabelGroup, setEditingLabelGroup] = useState<string | null>(null);
-  const [editingLabelForm, setEditingLabelForm] = useState<LabelOverride>({});
+
+  /**
+   * Edição manual COMPLETA do rótulo, por OP (`order_number` é a chave — é o
+   * que identifica uma etiqueta; os volumes 1/65…65/65 da mesma OP compartilham
+   * todos os campos menos a numeração do volume).
+   *
+   * Por que por OP e não em lote: NF, OP, volume, grade e destinatário são
+   * únicos de cada ordem — aplicar em lote gravaria a NF de uma OP na etiqueta
+   * de outra. Os campos de PRODUTO (referência, nome, cor, material, marca) são
+   * do grupo, então esses ganham o botão "replicar nos selecionados", que grava
+   * no `labelOverrides` de grupo já existente.
+   *
+   * Escopo: só esta impressão (vive em memória). Recarregar a página zera.
+   */
+  type BoxOverride = Partial<Record<EditableBoxField, string>> & {
+    grade?: { size: string; qty: number }[];
+  };
+  const [boxOverrides, setBoxOverrides] = useState<Record<string, BoxOverride>>({});
+  const [editorItems, setEditorItems] = useState<BoxIdentificationData[] | null>(null);
+  const [editorIndex, setEditorIndex] = useState(0);
+  const [editorForm, setEditorForm] = useState<BoxOverride>({});
+  const [editorLoading, setEditorLoading] = useState(false);
+
+  /** Valor que o SISTEMA imprimiria naquele campo, já como texto. */
+  const systemFieldValue = (item: BoxIdentificationData, key: EditableBoxField): string => {
+    const v = item[key];
+    return v === undefined || v === null ? '' : String(v);
+  };
+
+  /** Aplica a edição manual sobre o rótulo calculado. Campo vazio = original. */
+  const applyBoxOverride = (item: BoxIdentificationData): BoxIdentificationData => {
+    const ov = boxOverrides[item.orderNumber];
+    if (!ov) return item;
+    const merged: BoxIdentificationData = { ...item };
+    for (const f of EDITABLE_BOX_FIELDS) {
+      const v = ov[f.key];
+      if (v === undefined || String(v).trim() === '') continue;
+      // Campos numéricos do rótulo (volume, total de pares, talões) precisam
+      // voltar a number — o form guarda tudo como texto.
+      (merged as unknown as Record<string, unknown>)[f.key] = f.numeric ? Number(v) || 0 : v;
+    }
+    if (ov.grade && ov.grade.length > 0) merged.grade = ov.grade;
+    return merged;
+  };
 
   const getEffectiveStrapsLabel = (group: GroupedReference) => {
     if (strapsLabelOverrides[group.groupKey] !== undefined) return strapsLabelOverrides[group.groupKey];
@@ -1071,19 +1194,19 @@ export function LabelProductionTab() {
     }
   };
 
-  const handlePrintBoxLabels = async () => {
-    const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-    // Filter: only groups that allow master/box labels
-    const boxGroups = selectedGroups.filter(g => {
+  /** Grupos selecionados que aceitam rótulo de caixa externa. */
+  const selectedBoxGroups = () => filtered
+    .filter(g => selected.has(g.groupKey))
+    .filter(g => {
       const allowed = getAllowedLabelTypes(g.packagingMode);
       return allowed.masterBox || allowed.boxLabel;
     });
-    if (boxGroups.length === 0) {
-      toast.error('Nenhum pedido selecionado permite rótulo de caixa externa.');
-      return;
-    }
-    setIsGenerating(true);
-    try {
+
+  // Monta os rótulos de caixa externa com TODOS os campos já resolvidos
+  // (remetente, cliente, marca, material, imagem, grade, volumes). Fonte ÚNICA:
+  // a impressão E o editor manual leem daqui — se o editor recalculasse por
+  // conta própria, ele mostraria um valor e a etiqueta imprimiria outro.
+  const computeBoxItems = async (boxGroups: GroupedReference[]): Promise<BoxIdentificationData[]> => {
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const refDataMap = new Map<string, any>();
       const imageMap = new Map<string, string>();
@@ -1282,6 +1405,125 @@ export function LabelProductionTab() {
         boxItems[i].pageNumber = i + 1;
         boxItems[i].pageTotal = totalItems;
       }
+      return boxItems;
+  };
+
+  /** Abre o editor manual com TODOS os campos já preenchidos pelo sistema. */
+  const openLabelEditor = async () => {
+    const boxGroups = selectedBoxGroups();
+    if (boxGroups.length === 0) {
+      toast.error('Selecione ao menos um item que gere rótulo de caixa externa.');
+      return;
+    }
+    setEditorLoading(true);
+    try {
+      const items = await computeBoxItems(boxGroups);
+      // 1 linha por OP: os volumes da mesma ordem compartilham todos os campos
+      // menos a numeração, que o editor expõe como "volume nº / total".
+      const byOrder = new Map<string, BoxIdentificationData>();
+      for (const it of items) if (!byOrder.has(it.orderNumber)) byOrder.set(it.orderNumber, it);
+      const list = [...byOrder.values()];
+      if (list.length === 0) { toast.error('Os itens selecionados não geraram nenhuma etiqueta.'); return; }
+      setEditorItems(list);
+      setEditorIndex(0);
+      setEditorForm(boxOverrides[list[0].orderNumber] || {});
+    } catch (err: any) {
+      toast.error(err.message || 'Não foi possível carregar os dados da etiqueta.');
+    } finally {
+      setEditorLoading(false);
+    }
+  };
+
+  /** Valor exibido no campo: edição manual quando existe, senão o do sistema. */
+  const editorValue = (item: BoxIdentificationData, key: EditableBoxField): string => {
+    const manual = editorForm[key];
+    if (manual !== undefined) return manual;
+    return systemFieldValue(item, key);
+  };
+
+  /** Grava o formulário atual em boxOverrides, guardando só o que DIVERGE do
+   *  sistema — assim "limpar o campo" volta ao original sem caso especial. */
+  const commitEditorForm = (index = editorIndex, form = editorForm) => {
+    const item = editorItems?.[index];
+    if (!item) return;
+    const clean: BoxOverride = {};
+    for (const f of EDITABLE_BOX_FIELDS) {
+      const v = form[f.key];
+      if (v === undefined) continue;
+      const original = systemFieldValue(item, f.key);
+      if (String(v).trim() === '' || String(v) === original) continue;
+      clean[f.key] = String(v);
+    }
+    if (form.grade && JSON.stringify(form.grade) !== JSON.stringify(item.grade)) {
+      clean.grade = form.grade;
+    }
+    setBoxOverrides(prev => {
+      const next = { ...prev };
+      if (Object.keys(clean).length > 0) next[item.orderNumber] = clean;
+      else delete next[item.orderNumber];
+      return next;
+    });
+    return clean;
+  };
+
+  /** Copia os campos de PRODUTO da OP aberta para todas as OPs do editor.
+   *  Grava também no override de grupo (labelOverrides) pra que a etiqueta
+   *  TÉRMICA — que é montada por grupo, não por OP — saia igual à caixa. */
+  const replicateProductFields = () => {
+    if (!editorItems) return;
+    const src = editorItems[editorIndex];
+    const values = Object.fromEntries(
+      PRODUCT_BOX_FIELDS.map(k => [k, editorValue(src, k)]),
+    ) as Partial<Record<EditableBoxField, string>>;
+
+    setBoxOverrides(prev => {
+      const next = { ...prev };
+      for (const it of editorItems) {
+        const cur = { ...(next[it.orderNumber] || {}) };
+        for (const k of PRODUCT_BOX_FIELDS) {
+          const v = values[k] ?? '';
+          const original = systemFieldValue(it, k);
+          if (v.trim() === '' || v === original) delete cur[k];
+          else cur[k] = v;
+        }
+        if (Object.keys(cur).length > 0) next[it.orderNumber] = cur;
+        else delete next[it.orderNumber];
+      }
+      return next;
+    });
+
+    setLabelOverrides(prev => {
+      const next = { ...prev };
+      for (const g of filtered.filter(g => selected.has(g.groupKey))) {
+        const o: LabelOverride = { ...(next[g.groupKey] || {}) };
+        if (values.refCode && values.refCode !== g.refCode) o.refCode = values.refCode;
+        if (values.refName && values.refName !== g.refName) o.refName = values.refName;
+        if (values.color && values.color !== (g.colors[0] || '')) o.color = values.color;
+        if (Object.keys(o).length > 0) next[g.groupKey] = o;
+        else delete next[g.groupKey];
+      }
+      return next;
+    });
+
+    toast.success(`Produto replicado em ${editorItems.length} ${editorItems.length === 1 ? 'OP' : 'OPs'} — caixa externa e térmica.`);
+  };
+
+  const goToEditorIndex = (i: number) => {
+    if (!editorItems || i < 0 || i >= editorItems.length) return;
+    commitEditorForm();
+    setEditorIndex(i);
+    setEditorForm(boxOverrides[editorItems[i].orderNumber] || {});
+  };
+
+  const handlePrintBoxLabels = async () => {
+    const boxGroups = selectedBoxGroups();
+    if (boxGroups.length === 0) {
+      toast.error('Nenhum pedido selecionado permite rótulo de caixa externa.');
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const boxItems = (await computeBoxItems(boxGroups)).map(applyBoxOverride);
       setPrintHtml(buildBoxIdentificationHtml(boxItems));
       const orderIds = boxGroups.flatMap(g => g.orders.map((o: any) => o.id));
       await supabase.from('print_jobs').insert({ batch_name: `Rótulos Caixa - ${new Date().toLocaleString()}`, total_labels: boxItems.length, status: 'completed', order_ids: orderIds } as any);
@@ -1571,24 +1813,14 @@ export function LabelProductionTab() {
                   </div>
                 )}
 
-                {/* Editar manualmente Referência/Nome/Cor — propaga em térmica + caixa externa */}
+                {/* Editar manualmente TODOS os campos do rótulo, OP a OP */}
                 <div className="flex flex-col gap-1">
                   <Button
                     variant="outline"
                     className="gap-2 h-9 shadow-sm border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
-                    title="Alterar Referência/Nome/Cor manualmente — afeta TODAS as etiquetas (térmica + caixa) dos grupos selecionados"
-                    onClick={() => {
-                      const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-                      if (selectedGroups.length === 0) { toast.error('Selecione ao menos um item.'); return; }
-                      const firstGroup = selectedGroups[0];
-                      const cur = labelOverrides[firstGroup.groupKey] || {};
-                      setEditingLabelGroup(firstGroup.groupKey);
-                      setEditingLabelForm({
-                        refCode: cur.refCode ?? firstGroup.refCode,
-                        refName: cur.refName ?? firstGroup.refName,
-                        color: cur.color ?? (firstGroup.colors[0] || ''),
-                      });
-                    }}
+                    title="Editar todos os campos do rótulo (NF, cliente, produto, grade) — OP a OP"
+                    disabled={editorLoading}
+                    onClick={() => { void openLabelEditor(); }}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Editar Etiqueta
@@ -1695,102 +1927,244 @@ export function LabelProductionTab() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Label dialog — overrides de Referência/Nome/Cor */}
-      <Dialog open={!!editingLabelGroup} onOpenChange={(open) => { if (!open) setEditingLabelGroup(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-4 w-4 text-amber-500" />
-              Editar Etiqueta — Manual
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Substitui Referência, Nome e/ou Cor nas etiquetas geradas pelo sistema. A alteração é
-              propagada em <strong>todas as etiquetas</strong> (térmica individual + caixa externa)
-              dos grupos selecionados. Não altera o cadastro original — só esta impressão.
-            </p>
-            <div className="space-y-2">
-              <Label className="text-xs">Referência (código impresso)</Label>
-              <Input
-                value={editingLabelForm.refCode ?? ''}
-                onChange={(e) => setEditingLabelForm(f => ({ ...f, refCode: e.target.value }))}
-                placeholder="Ex: REF-CLIENTE-X"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Nome / Modelo</Label>
-              <Input
-                value={editingLabelForm.refName ?? ''}
-                onChange={(e) => setEditingLabelForm(f => ({ ...f, refName: e.target.value }))}
-                placeholder="Ex: Mocassim Verona"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Cor</Label>
-              <Input
-                value={editingLabelForm.color ?? ''}
-                onChange={(e) => setEditingLabelForm(f => ({ ...f, color: e.target.value }))}
-                placeholder="Ex: Caramelo"
-                className="text-sm"
-              />
-            </div>
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-400">
-              💡 Deixe um campo vazio pra usar o original. A edição vale só pra esta impressão.
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" size="sm" onClick={() => {
-              const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-              setLabelOverrides(prev => {
-                const next = { ...prev };
-                for (const g of selectedGroups) delete next[g.groupKey];
-                return next;
-              });
-              setEditingLabelGroup(null);
-              toast.info(`Override removido de ${selectedGroups.length} ${selectedGroups.length === 1 ? 'item' : 'itens'}.`);
-            }}>
-              Restaurar Original
-            </Button>
-            <Button size="sm" onClick={() => {
-              if (!editingLabelGroup) return;
-              const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-              if (selectedGroups.length === 0) {
-                toast.error('Nenhum item selecionado.');
-                setEditingLabelGroup(null);
-                return;
-              }
-              setLabelOverrides(prev => {
-                const next = { ...prev };
-                for (const g of selectedGroups) {
-                  const o: LabelOverride = {};
-                  if (editingLabelForm.refCode && editingLabelForm.refCode.trim() !== '' && editingLabelForm.refCode !== g.refCode) {
-                    o.refCode = editingLabelForm.refCode.trim();
-                  }
-                  if (editingLabelForm.refName && editingLabelForm.refName.trim() !== '' && editingLabelForm.refName !== g.refName) {
-                    o.refName = editingLabelForm.refName.trim();
-                  }
-                  if (editingLabelForm.color && editingLabelForm.color.trim() !== '' && editingLabelForm.color !== (g.colors[0] || '')) {
-                    o.color = editingLabelForm.color.trim();
-                  }
-                  if (Object.keys(o).length > 0) {
-                    next[g.groupKey] = o;
-                  } else {
-                    delete next[g.groupKey];
-                  }
-                }
-                return next;
-              });
-              toast.success(`Etiqueta ajustada em ${selectedGroups.length} ${selectedGroups.length === 1 ? 'grupo' : 'grupos'} — térmica + caixa externa.`);
-              setEditingLabelGroup(null);
-            }}>
-              Aplicar a Todos Selecionados
-            </Button>
-          </DialogFooter>
+      {/* Editor manual COMPLETO do rótulo — todos os campos, OP a OP.
+          Prefill = exatamente o que o sistema imprimiria (computeBoxItems),
+          então o que está na tela é o que sai no papel. */}
+      <Dialog
+        open={!!editorItems}
+        onOpenChange={(open) => {
+          if (!open) { commitEditorForm(); setEditorItems(null); }
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[88vh] flex flex-col gap-0 p-0">
+          {(() => {
+            const item = editorItems?.[editorIndex];
+            if (!item) return null;
+            const edited = boxOverrides[item.orderNumber] || {};
+            const editedCount = Object.keys(edited).length;
+            const gradeRows = editorForm.grade ?? item.grade ?? [];
+            const setGrade = (rows: { size: string; qty: number }[]) =>
+              setEditorForm(f => ({ ...f, grade: rows }));
+
+            return (
+              <>
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+                  <DialogTitle className="flex items-center gap-2">
+                    <Pencil className="h-4 w-4 text-amber-500" />
+                    Editar Etiqueta — Manual
+                  </DialogTitle>
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Todos os campos vêm preenchidos com o que o sistema imprimiria. Altere o que
+                    precisar — vale só para esta impressão, o cadastro original não muda.
+                  </p>
+                </DialogHeader>
+
+                {/* Navegação OP a OP — NF, volume e grade são de cada ordem */}
+                <div className="flex items-center gap-2 px-6 py-3 bg-muted/30 border-b border-border">
+                  <Button
+                    variant="outline" size="icon" className="h-8 w-8 shrink-0"
+                    disabled={editorIndex === 0}
+                    onClick={() => goToEditorIndex(editorIndex - 1)}
+                    aria-label="OP anterior"
+                  >
+                    <CaretLeft className="h-4 w-4" />
+                  </Button>
+                  <Select
+                    value={String(editorIndex)}
+                    onValueChange={(v) => goToEditorIndex(Number(v))}
+                  >
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editorItems!.map((it, i) => (
+                        <SelectItem key={it.orderNumber || i} value={String(i)} className="text-xs">
+                          {it.orderNumber} · {it.refName || it.refCode} · {it.color}
+                          {boxOverrides[it.orderNumber] ? ' · editada' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline" size="icon" className="h-8 w-8 shrink-0"
+                    disabled={editorIndex >= editorItems!.length - 1}
+                    onClick={() => goToEditorIndex(editorIndex + 1)}
+                    aria-label="Próxima OP"
+                  >
+                    <CaretRight className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0 ml-1">
+                    {editorIndex + 1} de {editorItems!.length}
+                  </span>
+                  {editedCount > 0 && (
+                    <Badge variant="outline" className="h-6 shrink-0 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                      {editedCount} {editedCount === 1 ? 'campo alterado' : 'campos alterados'}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7">
+                  {BOX_SECTIONS.map(section => (
+                    <section key={section.id} className="space-y-3">
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                          {section.title}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">{section.description}</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {EDITABLE_BOX_FIELDS.filter(f => f.section === section.id).map(f => {
+                          const value = editorValue(item, f.key);
+                          const original = systemFieldValue(item, f.key);
+                          const isEdited = value !== original;
+                          return (
+                            <div key={f.key} className={cn('space-y-1.5', f.wide && 'sm:col-span-2')}>
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`lbl-${f.key}`} className="text-xs font-medium">
+                                  {f.label}
+                                </Label>
+                                {isEdited && (
+                                  <button
+                                    type="button"
+                                    className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                                    onClick={() => setEditorForm(prev => {
+                                      const next = { ...prev };
+                                      delete next[f.key];
+                                      return next;
+                                    })}
+                                  >
+                                    restaurar
+                                  </button>
+                                )}
+                              </div>
+                              <Input
+                                id={`lbl-${f.key}`}
+                                value={value}
+                                inputMode={f.numeric ? 'numeric' : undefined}
+                                onChange={(e) => setEditorForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                                className={cn('h-9 text-sm', isEdited && 'border-amber-500/60 bg-amber-500/5')}
+                              />
+                              {f.hint && (
+                                <p className="text-xs text-muted-foreground">{f.hint}</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+
+                  {/* Grade — tabela TAMANHO / QUANTIDADE do corpo da etiqueta */}
+                  <section className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                          Grade
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Tamanhos e quantidades de UMA etiqueta (um talão), não o total da OP.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          Total: {gradeRows.reduce((s, g) => s + (Number(g.qty) || 0), 0)} prs
+                        </span>
+                        <Button
+                          variant="outline" size="sm" className="h-7 text-xs"
+                          onClick={() => setGrade([...gradeRows, { size: '', qty: 0 }])}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Tamanho
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {gradeRows.map((row, i) => (
+                        <div key={i} className="flex flex-col gap-1 w-20">
+                          <Input
+                            value={row.size}
+                            aria-label={`Tamanho ${i + 1}`}
+                            className="h-8 text-sm text-center font-bold tabular-nums"
+                            onChange={(e) => {
+                              const rows = [...gradeRows];
+                              rows[i] = { ...rows[i], size: e.target.value };
+                              setGrade(rows);
+                            }}
+                          />
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={String(row.qty ?? '')}
+                              inputMode="numeric"
+                              aria-label={`Quantidade do tamanho ${row.size || i + 1}`}
+                              className="h-8 text-sm text-center tabular-nums"
+                              onChange={(e) => {
+                                const rows = [...gradeRows];
+                                rows[i] = { ...rows[i], qty: Number(e.target.value.replace(/\D/g, '')) || 0 };
+                                setGrade(rows);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Remover tamanho ${row.size || i + 1}`}
+                              className="text-muted-foreground hover:text-destructive shrink-0"
+                              onClick={() => setGrade(gradeRows.filter((_, idx) => idx !== i))}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {gradeRows.length === 0 && (
+                        <p className="text-xs text-muted-foreground py-2">
+                          Sem grade — a etiqueta sai sem a tabela de tamanhos.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                </div>
+
+                <DialogFooter className="px-6 py-4 border-t border-border gap-2 sm:justify-between">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost" size="sm"
+                      onClick={() => {
+                        setBoxOverrides(prev => {
+                          const next = { ...prev };
+                          delete next[item.orderNumber];
+                          return next;
+                        });
+                        setEditorForm({});
+                        toast.info(`Etiqueta da ${item.orderNumber} restaurada ao original.`);
+                      }}
+                    >
+                      Restaurar esta OP
+                    </Button>
+                    {/* Sem isto, a edição de produto vale só pro rótulo de caixa
+                        desta OP — a etiqueta TÉRMICA é montada por grupo. */}
+                    <Button
+                      variant="outline" size="sm"
+                      title="Leva referência, nome, cor, material, marca e tiras desta OP para as demais OPs e para as etiquetas térmicas"
+                      onClick={replicateProductFields}
+                    >
+                      Aplicar produto {editorItems!.length > 1 ? `nas ${editorItems!.length} OPs` : 'na térmica também'}
+                    </Button>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      commitEditorForm();
+                      setEditorItems(null);
+                      toast.success('Edições salvas — as etiquetas desta impressão já saem com elas.');
+                    }}
+                  >
+                    Salvar
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
+
 
       {/* Strap label edit dialog */}
       <Dialog open={!!editingStrapsGroup} onOpenChange={(open) => { if (!open) setEditingStrapsGroup(null); }}>
