@@ -10,6 +10,7 @@ import type {
   ProductivitySnapshot,
   SectorHeadcountRow,
   SectorMeasuredCapacity,
+  SectorOperation,
   SectorTeamRow,
   SetCapacityResult,
 } from "@/types/capacity";
@@ -269,4 +270,45 @@ export async function deleteProductivitySnapshot(id: string): Promise<void> {
     .delete()
     .eq("id", id);
   if (error) throw error;
+}
+
+/** Etapas que compõem um setor numa ficha (Costura Cabedal × Costura Palmilha).
+ *  O motor agrupa por setor porque o fluxo é por setor; aqui abrimos o detalhe. */
+export async function getSheetSectorOperations(
+  sheetId: string,
+  sector?: string,
+): Promise<SectorOperation[]> {
+  if (!sheetId) throw new Error("Ficha obrigatória");
+  const { data, error } = await (supabase as any).rpc("get_sheet_sector_operations", {
+    p_sheet_id: sheetId,
+    p_sector: sector ?? null,
+  });
+  if (error) throw error;
+  return (data ?? []) as SectorOperation[];
+}
+
+/** Cria ou atualiza uma etapa do setor. Tempo 0 desativa a etapa. */
+export async function setSheetSectorOperation(params: {
+  sheetId: string;
+  sector: string;
+  operacao: string;
+  minutos: number;
+  custoHora?: number | null;
+}): Promise<unknown> {
+  const { sheetId, sector, operacao, minutos, custoHora } = params;
+  if (!sheetId) throw new Error("Ficha obrigatória");
+  if (!sector) throw new Error("Setor obrigatório");
+  if (!operacao?.trim()) throw new Error("Informe o nome da etapa");
+  if (!Number.isFinite(minutos) || minutos < 0) {
+    throw new Error("Tempo inválido: informe minutos por par (0 desativa a etapa)");
+  }
+  const { data, error } = await (supabase as any).rpc("set_sheet_sector_operation", {
+    p_sheet_id: sheetId,
+    p_sector: sector,
+    p_operacao: operacao.trim(),
+    p_minutos: minutos,
+    p_custo_hora: custoHora ?? null,
+  });
+  if (error) throw error;
+  return data;
 }

@@ -12,6 +12,7 @@ import {
   FloppyDisk,
   ClockCounterClockwise,
   PencilSimple,
+  ListBullets,
   Plus,
   X,
   Trash,
@@ -33,6 +34,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { SectorTeamPanel } from "@/components/production/SectorTeamPanel";
+import { SectorOperationsDialog } from "@/components/production/SectorOperationsDialog";
 import {
   deleteProductivitySnapshot,
   getCapacityParameters,
@@ -113,6 +115,9 @@ export default function ProdutividadeModelos() {
     currentMinutes: number | null;
   } | null>(null);
   const [capDraft, setCapDraft] = useState("");
+  // Etapas dentro de um setor (Costura Cabedal × Costura Palmilha): o fluxo trata
+  // o setor como bloco, mas o custo distingue as etapas.
+  const [opsEdit, setOpsEdit] = useState<{ sheetId: string; sheetName: string; sector: string } | null>(null);
 
   const { data: sheetOptions } = useQuery({
     queryKey: ["capacity-sheet-options"],
@@ -464,6 +469,19 @@ export default function ProdutividadeModelos() {
                               >
                                 <PencilSimple className="h-3.5 w-3.5" />
                               </button>
+                              {/* Etapas do setor (ex.: Costura Cabedal × Palmilha):
+                                  o fluxo trata o setor como bloco, o custo distingue. */}
+                              <button
+                                type="button"
+                                className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+                                aria-label={`Etapas de ${s.label} em ${m.name}`}
+                                title="Ver e editar as etapas deste setor"
+                                onClick={() =>
+                                  setOpsEdit({ sheetId: m.sheet_id, sheetName: m.name, sector: s.label })
+                                }
+                              >
+                                <ListBullets className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </td>
                         );
@@ -617,6 +635,13 @@ export default function ProdutividadeModelos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SectorOperationsDialog
+        sheetId={opsEdit?.sheetId ?? null}
+        sheetName={opsEdit?.sheetName ?? ""}
+        sector={opsEdit?.sector ?? ""}
+        onClose={() => setOpsEdit(null)}
+      />
 
       {/* Dialog: equipe por setor — painel ÚNICO compartilhado com Produção → Setores (R1) */}
       <Dialog open={teamOpen} onOpenChange={setTeamOpen}>
