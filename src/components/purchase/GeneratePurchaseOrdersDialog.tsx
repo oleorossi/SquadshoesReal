@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
+import { computePurchaseBaseTotal, isSuspectUnrolledArtisanal } from '@/lib/baseMaterialTotal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -28,6 +29,11 @@ import { printPerPvOcPdf } from '@/lib/printPerPvOcPdf';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+
+/** Quantidade de material base em pt-BR — mesma grafia da faixa verde do
+ *  modal de Consumo, pra quem cruza as duas telas ver o mesmo número. */
+const formatBaseQty = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
 type Props = {
   open: boolean;
@@ -142,6 +148,60 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   );
   const summary = useMemo(() => summarizePerPvDrafts(drafts), [drafts]);
 
+  // ── Material base (napa) — mesma leitura da faixa verde do Consumo ────────
+  // O grupo do produto é o que diz se a linha é napa; a RPC não manda essa
+  // informação, mas o cadastro já está carregado aqui.
+  const groupNameByProduct = useMemo(() => {
+    const byId = new Map((groups as any[]).map((g) => [g.id, (g.name || '').trim()]));
+    const m = new Map<string, string>();
+    // `useProducts` já embute product_groups(name) — prefere o embutido pra não
+    // depender da query de grupos ter resolvido antes desta render.
+    for (const p of products as any[]) {
+      m.set(p.id, ((p.product_groups?.name as string) || byId.get(p.group_id) || '').trim());
+    }
+    return m;
+  }, [products, groups]);
+
+  /** Quantos produtos ARTESANAIS cada grupo tem — base da suspeita de tira que
+   *  escapou do rollup (um irmão sem a flag no meio de um grupo artesanal). */
+  const artisanalCountByGroup = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of products as any[]) {
+      if (p.is_artisanal && p.group_id) m.set(p.group_id, (m.get(p.group_id) || 0) + 1);
+    }
+    return m;
+  }, [products]);
+
+  const productById = useMemo(
+    () => new Map((products as any[]).map((p) => [p.id, p])),
+    [products],
+  );
+
+  // Usa a quantidade A COMPRAR (líquida de estoque e já no múltiplo de compra),
+  // não a necessidade bruta: nesta tela todo número é o que vai na OC — o
+  // "Total estimado" ao lado é o dinheiro dessa mesma quantidade. Por isso o
+  // valor acompanha o toggle "Descontar estoque" e pode ficar ABAIXO do total
+  // que o modal de Consumo mostra, que é consumo, não compra.
+  const baseInputsFor = (items: any[]) => items.map((it) => ({
+    groupName: groupNameByProduct.get(it.material_id) || '',
+    unit: it.purchase_unit || it.unit,
+    qty: Number(it.quantity) || 0,
+  }));
+
+  const baseTotal = useMemo(
+    () => computePurchaseBaseTotal(baseInputsFor(drafts.flatMap((d) => d.items))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drafts, groupNameByProduct],
+  );
+
+  /** Linhas que deveriam ter virado napa e não viraram (flag faltando no
+   *  produto) — a OC compraria tira pronta sem avisar ninguém. */
+  const unrolledSuspects = useMemo(
+    () => drafts.flatMap((d) => d.items).filter((it) =>
+      isSuspectUnrolledArtisanal(productById.get(it.material_id) || {}, artisanalCountByGroup)),
+    [drafts, productById, artisanalCountByGroup],
+  );
+
   const titleScope = pvIds.length === 1
     ? (pvNumbers?.[0] || 'pedido')
     : `${pvIds.length} pedidos`;
@@ -215,7 +275,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
         {!isLoading && !isError && drafts.length > 0 && (
           <div className="space-y-4">
             {/* Resumo (KPIs) — total, OCs, itens e o que precisa de atenção */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-lg border border-border bg-border overflow-hidden">
+            <div className={`grid grid-cols-2 gap-px rounded-lg border border-border bg-border overflow-hidden ${baseTotal ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
               <div className="bg-card p-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total estimado</p>
                 <p className="text-xl font-bold tabular-nums leading-tight text-primary">{formatMoney(summary.total)}</p>
@@ -228,6 +288,18 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Itens</p>
                 <p className="text-xl font-bold tabular-nums leading-tight">{summary.itemCount}</p>
               </div>
+              {/* Napa do pedido inteiro — mesmo número da faixa verde do Consumo */}
+              {baseTotal && (
+                <div className="bg-card p-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">Material base</p>
+                  <p className="text-xl font-bold tabular-nums leading-tight text-green-700 dark:text-green-400">
+                    {formatBaseQty(baseTotal.total)} m
+                  </p>
+                  <p className="text-[10px] text-muted-foreground font-mono truncate" title={baseTotal.parts.map(p => `${formatBaseQty(p.qty)} m ${p.name}`).join(' · ')}>
+                    {netOfStock ? 'a comprar · ' : ''}{baseTotal.parts.map(p => p.name).join(' · ')}
+                  </p>
+                </div>
+              )}
               <div className="bg-card p-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Precisam atenção</p>
                 <p className={`text-xl font-bold tabular-nums leading-tight ${(summary.noSupplierItemCount + summary.colorMismatchCount) > 0 ? 'text-amber-600 dark:text-amber-500' : ''}`}>
@@ -263,6 +335,30 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                   numa única OC <strong>"{NO_SUPPLIER_LABEL}"</strong>. Cadastre o fornecedor do
                   produto pra direcionar automaticamente nas próximas vezes.
                 </span>
+              </div>
+            )}
+
+            {/* Tira que deveria ter virado napa — flag `is_artisanal` faltando
+                no produto faz a OC comprar tira PRONTA, calada. Avisa, não
+                corrige sozinho: virar a flag muda o que se compra. */}
+            {unrolledSuspects.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <strong>{unrolledSuspects.length} item(ns) sendo comprado(s) como tira pronta.</strong>{' '}
+                  Os outros produtos do mesmo grupo são cortados do rolo, mas estes estão sem a marca
+                  de <strong>material artesanal</strong> no cadastro — então não viraram napa aqui.
+                  <ul className="mt-1.5 space-y-1">
+                    {unrolledSuspects.map((i) => (
+                      <li key={`${i.material_id}-${i.color ?? ''}`} className="text-xs font-mono">
+                        {i.product_name} · <strong>{i.color || '—'}</strong> · {formatBaseQty(Number(i.needed_qty) || 0)} {i.unit}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-xs">
+                    Pra converter em napa, marque o produto como artesanal em <strong>Estoque → Materiais</strong>.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -314,6 +410,19 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                       {d.supplier_name}
                     </span>
                     <Badge variant="outline" className="shrink-0">{d.items.length} item(ns)</Badge>
+                    {(() => {
+                      const b = computePurchaseBaseTotal(baseInputsFor(d.items));
+                      if (!b) return null;
+                      return (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-green-600/40 bg-green-500/10 text-green-700 dark:text-green-400 font-mono tabular-nums"
+                          title={b.parts.map(p => `${formatBaseQty(p.qty)} m ${p.name}`).join(' · ')}
+                        >
+                          base {formatBaseQty(b.total)} m
+                        </Badge>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="text-sm font-medium tabular-nums">{formatMoney(d.total)}</span>
