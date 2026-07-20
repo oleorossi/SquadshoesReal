@@ -1022,7 +1022,10 @@ export default function SaleOrders() {
         const gradeTotal = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
         const qty = Number(i.quantity) || 0;
         const fichas = gradeTotal > 0 ? Math.max(1, Math.round(qty / gradeTotal)) : 1;
-        return { reference_id: i.reference_id, color: i.color || '', grade, unit_price: Number(i.unit_price) || 0, quantity: qty, fichas, strap_colors: (i.strap_colors as any[]) || [], material_variant_id: (i as any).material_variant_id || null };
+        // `id` viaja junto: é ele que faz o salvamento ATUALIZAR a linha em vez
+        // de apagar e recriar — o que rompia o vínculo de OP/OS/alocação e
+        // duplicava as OPs (incidente PV-00146, migration 20260919120000).
+        return { id: i.id, reference_id: i.reference_id, color: i.color || '', grade, unit_price: Number(i.unit_price) || 0, quantity: qty, fichas, strap_colors: (i.strap_colors as any[]) || [], material_variant_id: (i as any).material_variant_id || null };
       });
     } else {
       nextItems = [{ ...emptyItem }];

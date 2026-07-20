@@ -90,12 +90,18 @@ export default function SystemDiagnostics() {
   const [capacityChecks, setCapacityChecks] = useState<
     Array<{ categoria: string; severidade: string; referencia: string; detalhe: string }> | null
   >(null);
+  // Vínculos quebrados do PV (migration 20260919120000): OP ativa sem item,
+  // OS sem vínculo com o item, item com 2+ OPs ativas. Nasceram do incidente
+  // PV-00146 — a duplicação de OP só foi descoberta por etiqueta duplicada.
+  const [linkChecks, setLinkChecks] = useState<
+    Array<{ check_name: string; severity: string; qtd: number; detalhe: string }> | null
+  >(null);
   const [consRunning, setConsRunning] = useState(false);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
@@ -109,6 +115,8 @@ export default function SystemDiagnostics() {
         (supabase as any).rpc('run_debit_guard_tests'),
         // capacity_consistency_report — engine de capacidade (mig 20260719120100).
         (supabase as any).rpc('capacity_consistency_report'),
+        // broken_sale_order_links_report — identidade do item do PV (mig 20260919120000).
+        (supabase as any).rpc('broken_sale_order_links_report'),
       ]);
       if (consRes.error) throw consRes.error;
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
@@ -123,6 +131,12 @@ export default function SystemDiagnostics() {
         toast.message('Consistência de capacidade indisponível', { description: capRes.error.message });
       } else {
         setCapacityChecks(capRes?.data ?? []);
+      }
+      if (linkRes?.error) {
+        setLinkChecks(null);
+        toast.message('Vínculos do pedido indisponíveis', { description: linkRes.error.message });
+      } else {
+        setLinkChecks(linkRes?.data ?? []);
       }
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
@@ -545,6 +559,38 @@ export default function SystemDiagnostics() {
             )}
             {(freshChecks ?? []).slice().sort((a, b) => b.item_count - a.item_count).map((c, i) => (
               <CheckRow key={i} row={c} />
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="PEDIDO · VÍNCULOS"
+            title="Vínculos do item do pedido"
+            subtitle="OP ativa sem item do PV, OS sem vínculo com o item, item com mais de uma OP ativa. Tudo deve ficar em ZERO — se subir, alguma rotina voltou a apagar e recriar sale_order_items (foi o que duplicou as etiquetas do PV-00146). Fonte: broken_sale_order_links_report()."
+            bodyClassName="space-y-1.5"
+          >
+            {linkChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra checar os vínculos do pedido de venda.</p>
+            )}
+            {linkChecks !== null && linkChecks.every(c => Number(c.qtd) === 0) && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Nenhum vínculo quebrado.</div>
+            )}
+            {(linkChecks ?? []).filter(c => Number(c.qtd) > 0).map((c, i) => (
+              <div key={i} className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+                <Badge
+                  variant="outline"
+                  className={
+                    c.severity === 'critico'
+                      ? 'bg-red-500/10 text-red-600 border-transparent text-[10px] shrink-0 tabular-nums'
+                      : 'bg-amber-500/10 text-amber-600 border-transparent text-[10px] shrink-0 tabular-nums'
+                  }
+                >
+                  {c.qtd}
+                </Badge>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{c.check_name}</p>
+                  <p className="text-xs text-muted-foreground break-words">{c.detalhe}</p>
+                </div>
+              </div>
             ))}
           </Panel>
 

@@ -424,6 +424,12 @@ export const ORDER_TYPE_LABELS: Record<string, string> =
   Object.fromEntries(ORDER_TYPES.map(t => [t.value, t.label]));
 
 export type SaleOrderItemFormData = {
+  /** Id da linha no banco. Presente ao EDITAR um PV existente; ausente em item
+   *  novo. É o que dá IDENTIDADE ESTÁVEL ao item: `update_sale_order_atomic`
+   *  atualiza no lugar em vez de apagar+recriar, e com isso nada que aponte
+   *  para o item (OP, OS, alocação de lote) tem o vínculo destruído a cada
+   *  salvamento. Ver migration 20260919120000. */
+  id?: string;
   reference_id: string;
   color: string;
   grade: Record<string, number>;
@@ -1804,14 +1810,26 @@ export function useUpdateSaleOrder() {
         );
       }
 
-      // 1. Fetch existing OPs BEFORE the atomic update so we can tear them down after.
-      const { data: existingOPs, error: existingOpsError } = await supabase
+      // 1. Fetch existing OPs BEFORE the atomic update so we can tear down the
+      //    ones that this save deixa órfãs.
+      const { data: allExistingOPs, error: existingOpsError } = await supabase
         .from('orders')
-        .select('id, reference_id, quantity, status')
+        .select('id, reference_id, quantity, status, sale_order_item_id')
         .eq('sale_order_id', id);
       if (existingOpsError) throw existingOpsError;
 
-      const existingOpIds = (existingOPs || []).map(op => op.id);
+      // Só desmonta a OP de item REMOVIDO (ou já órfã). Antes desmontava TODAS
+      // e contava com o gatilho pra recriar — o que, além de liberar e re-reservar
+      // material a cada salvamento, abriu a janela do incidente PV-00146: duas
+      // chamadas concorrentes, a segunda leu a lista de OPs antes da primeira
+      // criar as dela, não desmontou nada, e o DELETE de itens orfanou as novas.
+      // Com identidade estável (RPC faz UPDATE), a OP do item que ficou é
+      // atualizada pelo próprio gatilho, sem churn de reserva.
+      const keptItemIds = new Set((items || []).map(i => i.id).filter(Boolean) as string[]);
+      const existingOPs = (allExistingOPs || []).filter(
+        op => !op.sale_order_item_id || !keptItemIds.has(op.sale_order_item_id),
+      );
+      const existingOpIds = existingOPs.map(op => op.id);
 
       // Guard against saving an order with no items — the RPC would DELETE all
       // existing items and leave an empty order with total=0, silently zeroing AR.
@@ -1819,10 +1837,11 @@ export function useUpdateSaleOrder() {
         throw new Error('Não é possível salvar um pedido sem itens.');
       }
 
-      // 2. Tear down existing OPs BEFORE the atomic items replace.
-      //    If we did the reverse (items first, then teardown), a teardown failure
-      //    would leave old OPs in DB while the PV's items were already replaced —
-      //    creating OPs with stale references and no matching sale_order_items.
+      // 2. Desmonta as OPs órfãs/de item removido ANTES da RPC — nesta ordem
+      //    porque o banco agora RECUSA apagar item com OP ativa
+      //    (trg_block_item_delete_with_active_op): se a OP não sair primeiro, o
+      //    DELETE do item estoura em vez de orfanar em silêncio. É a trava
+      //    funcionando, não um erro.
       //    All OPs at this point are Reservado or earlier (enforced by guard 0a).
       //    Sole grade restoration must precede product restoration — otherwise
       //    conjugated per-size buckets stay depleted (silent stock corruption).
@@ -1874,6 +1893,9 @@ export function useUpdateSaleOrder() {
       // 3. Atomic header + items replace — single SQL transaction with SELECT FOR UPDATE.
       // OPs are already gone so the replace cannot leave orphaned OP→item references.
       const itemsPayload = items.map(i => ({
+        // Manda o id quando o item já existe → a RPC faz UPDATE no lugar.
+        // Sem isto o item seria recriado e todo vínculo se romperia.
+        id: i.id || null,
         reference_id: i.reference_id || null,
         color: i.color ?? '',
         quantity: i.quantity ?? 0,
