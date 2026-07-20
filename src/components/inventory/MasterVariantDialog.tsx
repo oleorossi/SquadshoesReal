@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -219,7 +220,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Quantidade atual <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <Input type="number" step="0.01" min={0} value={form.quantity ?? 0} onChange={e => update('quantity', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.quantity ?? 0} onChange={v => update('quantity', v)} min={0} step="0.01" className="mt-1 h-9" />
               </div>
               <div>
                 <Label className="text-xs">Unidade</Label>
@@ -230,14 +231,14 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
               </div>
               <div>
                 <Label className="text-xs">Estoque mínimo <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <Input type="number" step="0.01" min={0} value={form.min_stock ?? 0} onChange={e => update('min_stock', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.min_stock ?? 0} onChange={v => update('min_stock', v)} min={0} step="0.01" className="mt-1 h-9" />
               </div>
               {/* Removidos em 2026-05 a pedido do usuário:
                   - "Estoque máximo": nunca usado em business logic
                   - "Estoque de segurança": duplicava conceitualmente o mínimo */}
               <div>
                 <Label className="text-xs">Reservado <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <Input type="number" step="0.01" min={0} value={form.reserved_stock ?? 0} onChange={e => update('reserved_stock', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.reserved_stock ?? 0} onChange={v => update('reserved_stock', v)} min={0} step="0.01" className="mt-1 h-9" />
               </div>
             </div>
             <div>
@@ -255,23 +256,23 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Custo unitário (R$)</Label>
-                <Input type="number" step="0.0001" min={0} value={form.unit_price ?? 0} onChange={e => update('unit_price', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.unit_price ?? 0} onChange={v => update('unit_price', v)} min={0} step="0.0001" className="mt-1 h-9" />
               </div>
               <div>
                 <Label className="text-xs">Preço atacado (R$)</Label>
-                <Input type="number" step="0.01" min={0} value={form.price_wholesale ?? 0} onChange={e => update('price_wholesale', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.price_wholesale ?? 0} onChange={v => update('price_wholesale', v)} min={0} step="0.01" className="mt-1 h-9" />
               </div>
               <div>
                 <Label className="text-xs">Preço varejo (R$)</Label>
-                <Input type="number" step="0.01" min={0} value={form.price_retail ?? 0} onChange={e => update('price_retail', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.price_retail ?? 0} onChange={v => update('price_retail', v)} min={0} step="0.01" className="mt-1 h-9" />
               </div>
               <div>
                 <Label className="text-xs">Lead time (dias)</Label>
-                <Input type="number" min={0} value={form.lead_time_days ?? 0} onChange={e => update('lead_time_days', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.lead_time_days ?? 0} onChange={v => update('lead_time_days', v)} min={0} step="1" decimals={0} className="mt-1 h-9" />
               </div>
               <div className="col-span-2">
                 <Label className="text-xs">Quantidade mínima de compra</Label>
-                <Input type="number" step="0.01" min={0} value={form.min_order_quantity ?? 0} onChange={e => update('min_order_quantity', Number(String(e.target.value).replace(',', '.')))} className="mt-1 h-9 font-mono" />
+                <NumberInput value={form.min_order_quantity ?? 0} onChange={v => update('min_order_quantity', v)} min={0} step="0.01" className="mt-1 h-9" />
               </div>
             </div>
             <div>
@@ -858,15 +859,15 @@ export function MasterVariantDialog({
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Custo unitário (R$)</Label>
-                            <Input type="number" step="0.0001" value={groupForm.unit_price} onChange={e => updateGroup('unit_price', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.unit_price} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Atacado (R$)</Label>
-                            <Input type="number" step="0.01" value={groupForm.price_wholesale} onChange={e => updateGroup('price_wholesale', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.price_wholesale} onChange={v => updateGroup('price_wholesale', v)} step="0.01" className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Varejo (R$)</Label>
-                            <Input type="number" step="0.01" value={groupForm.price_retail} onChange={e => updateGroup('price_retail', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.price_retail} onChange={v => updateGroup('price_retail', v)} step="0.01" className="mt-1 h-9" />
                           </div>
                         </div>
                       </section>
@@ -876,15 +877,15 @@ export function MasterVariantDialog({
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Estoque Mínimo</Label>
-                            <Input type="number" value={groupForm.min_stock} onChange={e => updateGroup('min_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.min_stock} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Estoque Máximo</Label>
-                            <Input type="number" value={groupForm.max_stock} onChange={e => updateGroup('max_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.max_stock} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Segurança</Label>
-                            <Input type="number" value={groupForm.safety_stock} onChange={e => updateGroup('safety_stock', safeNum(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.safety_stock} onChange={v => updateGroup('safety_stock', v)} className="mt-1 h-9" />
                           </div>
                           <div className="col-span-3">
                             <Label className="text-xs">Localização física</Label>
@@ -903,19 +904,19 @@ export function MasterVariantDialog({
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           <div>
                             <Label className="text-xs">Comprimento</Label>
-                            <Input type="number" value={groupForm.dimensions_length} onChange={e => updateGroup('dimensions_length', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.dimensions_length} onChange={v => updateGroup('dimensions_length', v)} className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Largura</Label>
-                            <Input type="number" value={groupForm.dimensions_width} onChange={e => updateGroup('dimensions_width', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.dimensions_width} onChange={v => updateGroup('dimensions_width', v)} className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Altura</Label>
-                            <Input type="number" value={groupForm.dimensions_height} onChange={e => updateGroup('dimensions_height', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.dimensions_height} onChange={v => updateGroup('dimensions_height', v)} className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Espessura</Label>
-                            <Input type="number" value={groupForm.dimensions_thickness} onChange={e => updateGroup('dimensions_thickness', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.dimensions_thickness} onChange={v => updateGroup('dimensions_thickness', v)} className="mt-1 h-9" />
                           </div>
                           <div className="col-span-4">
                             <Label className="text-xs">Unidade dimensional</Label>
@@ -950,11 +951,11 @@ export function MasterVariantDialog({
                           </div>
                           <div>
                             <Label className="text-xs">Taxa de conversão</Label>
-                            <Input type="number" step="0.0001" value={groupForm.conversion_rate} onChange={e => updateGroup('conversion_rate', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.conversion_rate} onChange={v => updateGroup('conversion_rate', v)} step="0.0001" className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Rendimento por metro</Label>
-                            <Input type="number" step="0.0001" value={groupForm.yield_per_meter} onChange={e => updateGroup('yield_per_meter', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.yield_per_meter} onChange={v => updateGroup('yield_per_meter', v)} step="0.0001" className="mt-1 h-9" />
                           </div>
                           <div>
                             <Label className="text-xs">Unidade de rendimento</Label>
@@ -991,11 +992,11 @@ export function MasterVariantDialog({
                           </div>
                           <div>
                             <Label className="text-xs">Lead time padrão (dias)</Label>
-                            <Input type="number" value={groupForm.lead_time_days} onChange={e => updateGroup('lead_time_days', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.lead_time_days} onChange={v => updateGroup('lead_time_days', v)} className="mt-1 h-9" />
                           </div>
                           <div className="col-span-2">
                             <Label className="text-xs">Qtd mínima de compra</Label>
-                            <Input type="number" value={groupForm.min_order_quantity} onChange={e => updateGroup('min_order_quantity', Number(e.target.value))} className="mt-1 h-9 font-mono" />
+                            <NumberInput value={groupForm.min_order_quantity} onChange={v => updateGroup('min_order_quantity', v)} className="mt-1 h-9" />
                           </div>
                         </div>
                       </section>
