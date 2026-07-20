@@ -64,10 +64,10 @@ const LABEL_SIZES = [
  * A grade (TAMANHO/QUANTIDADE) não entra aqui — é lista, tem editor próprio.
  */
 type EditableBoxField =
-  | 'nfe' | 'clientOrderNumber' | 'orderNumber' | 'barcode' | 'lote' | 'remessa'
+  | 'nfe' | 'clientOrderNumber' | 'saleOrderNumber' | 'orderNumber' | 'barcode' | 'lote' | 'remessa'
   | 'boxNumber' | 'totalBoxes' | 'taloes' | 'totalPairsInRemessa' | 'transporter' | 'fab'
   | 'senderName' | 'senderCnpj' | 'senderAddress'
-  | 'recipientRazaoSocial' | 'recipientName' | 'recipientCnpj' | 'recipientCode'
+  | 'recipientRazaoSocial' | 'recipientName' | 'recipientCnpj'
   | 'recipientAddress' | 'recipientNumber' | 'recipientNeighborhood' | 'recipientCity'
   | 'recipientUf' | 'recipientCep' | 'recipientBranchCode' | 'recipientBranchName'
   | 'marca' | 'refCode' | 'refName' | 'color' | 'mainMaterial' | 'shoeCategory'
@@ -86,6 +86,7 @@ const EDITABLE_BOX_FIELDS: {
 }[] = [
   { key: 'nfe', label: 'NF', section: 'documento' },
   { key: 'clientOrderNumber', label: 'Pedido / Ped. compra', section: 'documento' },
+  { key: 'saleOrderNumber', label: 'Pedido de venda (PV)', section: 'documento', hint: 'Só é impresso quando o pedido do cliente está em branco.' },
   { key: 'orderNumber', label: 'OP', section: 'documento', hint: 'Não muda o código de barras — edite-o abaixo se precisar.' },
   { key: 'barcode', label: 'Código de barras', section: 'documento' },
   { key: 'boxNumber', label: 'Volume (nº)', section: 'documento', numeric: true },
@@ -104,7 +105,6 @@ const EDITABLE_BOX_FIELDS: {
   { key: 'recipientRazaoSocial', label: 'Cliente (razão social)', section: 'destinatario', wide: true },
   { key: 'recipientName', label: 'Nome fantasia', section: 'destinatario', wide: true },
   { key: 'recipientCnpj', label: 'CNPJ', section: 'destinatario' },
-  { key: 'recipientCode', label: 'Identif. cli.', section: 'destinatario' },
   { key: 'recipientAddress', label: 'Endereço', section: 'destinatario', wide: true },
   { key: 'recipientNumber', label: 'Número', section: 'destinatario' },
   { key: 'recipientNeighborhood', label: 'Bairro', section: 'destinatario' },
@@ -1350,9 +1350,6 @@ export function LabelProductionTab() {
           const recipientRazaoSocial = client?.razao_social || so?.client_name || undefined;
           const recipientBranchCode = client?.branch_code || undefined;
           const recipientBranchName = client?.branch_name || undefined;
-          const recipientCode = client?.cnpj
-            ? client.cnpj.replace(/\D/g, '').slice(-5)
-            : (so?.client_cnpj ? String(so.client_cnpj).replace(/\D/g, '').slice(-5) : undefined);
           const transporter = so?.transporters?.name || undefined;
 
           for (let f = 0; f < fichas; f++) {
@@ -1369,7 +1366,6 @@ export function LabelProductionTab() {
               recipientName: so?.client_name || '',
               recipientRazaoSocial,
               recipientCnpj: so?.client_cnpj || '',
-              recipientCode,
               recipientAddress,
               recipientNeighborhood,
               recipientCity,
@@ -1379,6 +1375,7 @@ export function LabelProductionTab() {
               recipientBranchName,
               transporter,
               clientOrderNumber: so?.client_order_number || '',
+              saleOrderNumber: so?.order_number || '',
               shoeCategory: refData?.shoe_category || '',
               mainMaterial,
               marca: brandMap.get(brandKeyFor(group.referenceId, order.color || '', client?.id || null)) || 'Squad Shoes',

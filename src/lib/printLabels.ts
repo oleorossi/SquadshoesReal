@@ -64,7 +64,6 @@ export interface BoxIdentificationData {
   recipientRazaoSocial?: string;
   recipientCnpj?: string;
   recipientNumber?: string;
-  recipientCode?: string;
   recipientAddress?: string;
   recipientNeighborhood?: string;
   recipientCity?: string;
@@ -76,6 +75,11 @@ export interface BoxIdentificationData {
   recipientBranchName?: string;
   transporter?: string;
   clientOrderNumber?: string;
+  /** Nosso PV (sale_orders.order_number, ex.: "PV-00146"). Só aparece no header
+   *  como FALLBACK quando o pedido do cliente vem vazio — o cliente reconhece o
+   *  pedido dele; sem ele, o nosso número é a próxima referência mais útil (e o
+   *  OP fica como último recurso, já que ele também vive no rodapé). */
+  saleOrderNumber?: string;
   shoeCategory?: string;
   mainMaterial?: string;
   /** Marca impressa na linha MARCA da grade = silk do solado (cascata
@@ -227,8 +231,10 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
     // mantendo o layout do header íntegro (a célula PROG. continua).
     const nfValue = item.nfe || '';
     // Topo = PEDIDO DO CLIENTE (o que o cliente reconhece); sem ele, cai no
-    // nosso OP. Pedido do dono 2026-06-30.
-    const pedidoTopo = item.clientOrderNumber || item.orderNumber || '';
+    // nosso PV, e só então no OP. Pedido do dono 2026-06-30, refinado 2026-07-20:
+    // antes pulava direto pro OP, que já aparece no rodapé — o header ficava
+    // repetindo o mesmo número e o PV não saía em lugar nenhum do rótulo.
+    const pedidoTopo = item.clientOrderNumber || item.saleOrderNumber || item.orderNumber || '';
     const progParts = [
       pedidoTopo ? escapeHtml(String(pedidoTopo)) : '',
       item.ficha ? `FICHA ${escapeHtml(item.ficha)}` : '',
@@ -243,9 +249,6 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
           return c.length === 8 ? `${c.slice(0, 5)}-${c.slice(5)}` : item.recipientCep!;
         })()
       : '';
-    const identifCli = [item.recipientBranchCode, item.recipientBranchName].filter(Boolean).join(' — ')
-      || item.recipientCode
-      || '';
     const recipientFields = [
       fieldRow('CLIENTE', cliente, { big: true }),
       fieldRow('CNPJ', item.recipientCnpj),
@@ -255,8 +258,12 @@ export function buildBoxIdentificationHtml(items: BoxIdentificationData[]): stri
       fieldRow('UF', item.recipientUf),
       fieldRow('CEP', cepFmt),
     ].filter(Boolean).join('');
+    // CÓD. PRODUTO substituiu IDENTIF. CLI em 2026-07-20 (pedido do dono): o
+    // slot imprimia os 5 últimos dígitos do CNPJ do cliente (ou código/nome da
+    // filial) — dado interno nosso, que nem a expedição nem o cliente usam. O
+    // refCode já chegava aqui, só não era impresso em lugar nenhum do rótulo.
     const orderFields = [
-      identifCli ? fieldRow('IDENTIF. CLI', identifCli, { mono: true }) : '',
+      fieldRow('CÓD. PRODUTO', item.refCode, { mono: true }),
       fieldRow('PED. COMPRA', item.clientOrderNumber, { mono: true }),
     ].filter(Boolean).join('');
 
