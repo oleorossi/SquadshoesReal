@@ -349,7 +349,13 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
   const materialName = row.materialName?.trim() || groupName;
-  const key = `${row.componentType}||${groupName}||${color}||${productUnit}`;
+  // O nome do material entra na chave: dois PRODUTOS diferentes do mesmo grupo,
+  // cor e unidade são materiais distintos, não a mesma linha (PV-00147: "Binóculo
+  // 10mm" e "Binóculo 10mm Strass", ambos COMPONENTES DIVERSOS/OURO LIGHT/un,
+  // colapsavam numa linha só — somava 4+4 un/par e rotulava com o primeiro nome,
+  // escondendo o segundo binóculo do modal e da ficha de operador). O mesmo
+  // produto vindo de items/refs diferentes continua somando (nome idêntico).
+  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}`;
   const existing = map.get(key);
 
   if (existing) {

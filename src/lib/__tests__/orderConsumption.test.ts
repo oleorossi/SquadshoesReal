@@ -340,12 +340,42 @@ describe('orderConsumption — motor canônico', () => {
     expect(embal[0].totalQuantity).toBeCloseTo(24, 6);
   });
 
-  it('SEM packaging_mode → comportamento legado (funde as duas caixas, qtd somada)', () => {
+  it('SEM packaging_mode → lista as duas caixas em linhas separadas (cada uma na sua qtd)', () => {
+    // Sem modo definido não dá pra escolher a alternativa, mas as duas caixas
+    // são PRODUTOS distintos: cada uma vira sua própria linha com a quantidade
+    // real. Antes fundiam numa linha só do grupo EMBALAGEM, somando 1,992
+    // colmeias + 24 individuais = 25,992 "caixas" rotuladas com o primeiro nome.
     const item = buildItem(); // sem packagingMode
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
-    expect(embal).toHaveLength(1); // fundidas no grupo EMBALAGEM
-    expect(embal[0].totalQuantity).toBeCloseTo(24 * (0.083 + 1), 6); // 25.992
+    expect(embal).toHaveLength(2);
+    const colmeia = embal.find(r => r.materialName === 'CAIXA COLMEIA 11');
+    const individual = embal.find(r => r.materialName === 'CAIXA INDIVIDUAL 11');
+    expect(colmeia?.totalQuantity).toBeCloseTo(24 * 0.083, 6);
+    expect(individual?.totalQuantity).toBeCloseTo(24, 6);
+  });
+
+  it('produtos distintos no mesmo grupo/cor/unidade NÃO se fundem (PV-00147: dois binóculos)', () => {
+    // "Binóculo 10mm" e "Binóculo 10mm Strass" vivem em COMPONENTES DIVERSOS,
+    // ambos OURO LIGHT/un. A chave do acumulador não tinha o nome do material,
+    // então o segundo caía em cima do primeiro: 4+4 un/par numa linha só e o
+    // Strass sumia do modal de Consumo e da ficha de operador.
+    const ctx = buildContext();
+    ctx.allProducts.push(
+      { id: 'p-bino', name: 'Binóculo 10mm', color: 'OURO LIGHT', group_id: 'g-comp', quantity: 0, reserved_stock: 0, unit: 'un', category: 'Componente' },
+      { id: 'p-bino-strass', name: 'Binóculo 10mm Strass', color: 'OURO LIGHT', group_id: 'g-comp', quantity: 0, reserved_stock: 0, unit: 'un', category: 'Componente' },
+    );
+    ctx.productGroups.push({ id: 'g-comp', name: 'COMPONENTES DIVERSOS', dimensions_length: null, dimensions_width: null, dimensions_unit: null });
+    const sheet = { ...buildSheet(), direct_components: [
+      { product_id: 'p-bino', quantity: 4, unit: 'un' },
+      { product_id: 'p-bino-strass', quantity: 4, unit: 'un' },
+    ] };
+
+    const rows = computeConsumptionForItems([buildItem({ technical_sheets: sheet })], ctx);
+    const binos = rows.filter(r => r.groupName === 'COMPONENTES DIVERSOS');
+    expect(binos).toHaveLength(2);
+    expect(binos.map(r => r.materialName).sort()).toEqual(['Binóculo 10mm', 'Binóculo 10mm Strass']);
+    for (const r of binos) expect(r.totalQuantity).toBeCloseTo(24 * 4, 6);
   });
 
   it('solado fachetado gera linha Fachete (forração extra) convertida dm²→metro', () => {

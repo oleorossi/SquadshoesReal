@@ -79,7 +79,11 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
   const materialName = row.materialName?.trim() || groupName;
-  const key = `${row.componentType}||${groupName}||${color}||${productUnit}`;
+  // Nome do material na chave — paridade com orderConsumption.ts: produtos
+  // distintos do mesmo grupo/cor/unidade (ex.: "Binóculo 10mm" × "Binóculo 10mm
+  // Strass" em COMPONENTES DIVERSOS/OURO LIGHT) são linhas separadas, senão a
+  // Lista de Separação some com um deles.
+  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}`;
   const existing = map.get(key);
 
   if (existing) {
