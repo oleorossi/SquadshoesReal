@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
@@ -87,6 +88,30 @@ export function useCurrentProfile() {
       return data as Profile | null;
     },
   });
+}
+
+/**
+ * Nomes dos papéis do usuário, como `string[]`.
+ *
+ * ⚠ Existe por causa de um bug real (20/07/2026): `SaleOrderForm` e `SaleOrders`
+ * tinham cada um um `useQuery` inline com a MESMA queryKey do `useUserRoles`
+ * (`['user_roles', userId]`) mas devolvendo formato DIFERENTE — eles mapeavam
+ * pra `string[]`, o hook devolve `UserRole[]` (objetos). O React Query guarda
+ * por CHAVE, não por origem: quem preenchesse o cache primeiro vencia. Depois de
+ * passar por qualquer tela que usa o hook canônico, o cache ficava com objetos e
+ * `userRoles.includes('admin')` comparava objeto com string → **false**. Efeito:
+ * administrador de verdade era barrado por "Apenas administradores podem faturar
+ * antes da semana mínima calculada" e não conseguia fechar o pedido.
+ *
+ * Derivar do MESMO hook mata a colisão: uma chave, um formato.
+ */
+export function useUserRoleNames(userId?: string) {
+  const { data = [], ...rest } = useUserRoles(userId);
+  const names = useMemo(
+    () => (data as UserRole[]).map(r => r?.role).filter(Boolean) as string[],
+    [data],
+  );
+  return { ...rest, data: names };
 }
 
 export function useUserRoles(userId?: string) {

@@ -18,6 +18,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useClients } from '@/hooks/useClients';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAdmin } from '@/hooks/useUserManagement';
 import { useCheckStockAvailability } from '@/hooks/useOrders';
 import { getCanonicalReferenceIdMap, getCanonicalSaleOrderReferences } from '@/lib/saleOrderReferences';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -84,15 +85,12 @@ export default function SaleOrderForm() {
     pendingStatusOverride?: string;
   }>({ open: false, ops: [] });
 
-  const { data: userRoles = [] } = useQuery({
-    queryKey: ['user_roles', user?.id],
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const { data } = await supabase.from('user_roles').select('role').eq('user_id', user!.id);
-      return data?.map(r => r.role) || [];
-    },
-  });
-  const isAdmin = userRoles.includes('admin');
+  // Fonte ÚNICA dos papéis. Havia aqui um useQuery inline com a MESMA queryKey
+  // do useUserRoles mas devolvendo string[] em vez de UserRole[] — o cache do
+  // React Query é por chave, então bastava passar antes por uma tela que usa o
+  // hook canônico pra este componente ler OBJETOS e `includes('admin')` dar
+  // false. Admin de verdade era barrado ao faturar antes da semana mínima.
+  const isAdmin = useIsAdmin();
 
   const canonicalReferenceIdMap = useMemo(
     () => getCanonicalReferenceIdMap(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null }>),

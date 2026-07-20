@@ -43,6 +43,7 @@ import SaleOrderFormPanel from '@/components/sale-orders/SaleOrderFormPanel';
 import { ImportClientsDialog } from '@/components/clients/ImportClientsDialog';
 import { BulkNfeDialog } from '@/components/nfe/BulkNfeDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAdmin } from '@/hooks/useUserManagement';
 import { useAccessControl, useCan } from '@/hooks/useAccessControl';
 import { useEmitNfe, useNfeEmitidas, useCheckNfeStatus, useCancelNfe, useCompanies } from '@/hooks/useNfe';
 import { NfeDevolucaoDialog } from '@/components/nfe/NfeDevolucaoDialog';
@@ -239,14 +240,7 @@ export default function SaleOrders() {
     };
   }, [clients, representatives, references]);
 
-  const { data: userRoles = [] } = useQuery({
-    queryKey: ['user_roles', user?.id],
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const { data } = await supabase.from('user_roles').select('role').eq('user_id', user!.id);
-      return data?.map(r => r.role) || [];
-    },
-  });
+
 
   // Set de sale_order_ids com NF-e autorizada — fonte da verdade fiscal pra
   // pintar a linha de verde no /sales (pedido user 19/05/2026 — não usar status,
@@ -269,7 +263,11 @@ export default function SaleOrders() {
     },
     staleTime: 60 * 1000,
   });
-  const isAdmin = userRoles.includes('admin');
+  // Mesma colisão de cache do SaleOrderForm: havia aqui um useQuery inline com
+  // a queryKey ['user_roles', id] devolvendo string[], enquanto useUserRoles
+  // devolve UserRole[]. Uma chave, dois formatos → includes('admin') dava false
+  // pra admin de verdade. Usa o hook canônico.
+  const isAdmin = useIsAdmin();
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
   // e KPIs financeiros sem retirar a navegação.
