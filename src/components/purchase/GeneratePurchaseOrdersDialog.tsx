@@ -15,7 +15,7 @@ import {
   FileText,
   Files,
 } from '@phosphor-icons/react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 import { useMaterialsPerPv, useGeneratePerPvPurchaseOrders } from '@/hooks/usePerPvPurchasing';
 import { useProducts } from '@/hooks/useProducts';
 import { useGroups } from '@/hooks/useGroups';
@@ -192,7 +192,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-lg border border-border bg-border overflow-hidden">
               <div className="bg-card p-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total estimado</p>
-                <p className="text-xl font-bold tabular-nums leading-tight text-primary">{formatCurrency(summary.total)}</p>
+                <p className="text-xl font-bold tabular-nums leading-tight text-primary">{formatMoney(summary.total)}</p>
               </div>
               <div className="bg-card p-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ordens de compra</p>
@@ -290,7 +290,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                     <Badge variant="outline" className="shrink-0">{d.items.length} item(ns)</Badge>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm font-medium tabular-nums">{formatCurrency(d.total)}</span>
+                    <span className="text-sm font-medium tabular-nums">{formatMoney(d.total)}</span>
                     <ChevronDown className="h-4 w-4 transition-transform text-muted-foreground" />
                   </div>
                 </CollapsibleTrigger>
@@ -338,7 +338,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                           </TableCell>
                           <TableCell className="text-muted-foreground">{it.unit}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">{formatCurrency(it.unit_price)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatCurrency(it.quantity * it.unit_price)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatMoney(it.quantity * it.unit_price)}</TableCell>
                         </TableRow>
                         {gradeSizes.length > 0 && (
                           <TableRow className="hover:bg-transparent">
@@ -371,7 +371,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             {drafts.length > 0 && (
               <>
                 <strong>{summary.orderCount}</strong> OC(s) · {summary.itemCount} item(ns) ·{' '}
-                total estimado <strong>{formatCurrency(summary.total)}</strong>
+                total estimado <strong>{formatMoney(summary.total)}</strong>
               </>
             )}
           </div>

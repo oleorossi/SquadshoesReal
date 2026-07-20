@@ -1,4 +1,4 @@
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 import {
   NO_SUPPLIER_LABEL,
   type DraftPurchaseOrder,
@@ -7,20 +7,38 @@ import {
 
 /**
  * Impressão A4 dos materiais necessários do canal "Compras por Pedido".
- * Mesmo padrão do PDF de "Consumo de Materiais"
- * (MaterialConsumptionDialog.handlePrintPdf): monta HTML, abre window.open e
- * dispara print. Agrupa por fornecedor (+ tabela "Sem Fornecedor" destacada).
+ * Monta HTML, abre window.open e dispara print (mesmo padrão do PDF de
+ * "Consumo de Materiais"). Agrupa por fornecedor + bloco "Sem Fornecedor".
  *
- * Robustez de paginação (review 2026-06-19): diferente do PDF de consumo (cards
- * curtos em grid 2 colunas), aqui UM fornecedor pode ter dezenas de itens e a
- * tabela transborda a folha. Por isso cada fornecedor é UMA tabela cujo <thead>
- * (banda do fornecedor + rótulos de coluna) usa display:table-header-group →
- * repete no topo de cada página; cada <tr> de item usa break-inside:avoid →
- * nunca é cortado no meio. Sem overflow:hidden (atrapalha a fragmentação).
+ * ── Design (redesenho 2026-07-20) ────────────────────────────────────────────
+ * É um documento OPERACIONAL: o comprador lê pra comprar. Decisões:
+ *  • MEDIDA DE LEITURA: largura travada em 190mm (A4 útil). Antes o HTML herdava
+ *    a largura da janela (2560px num monitor wide) e o nome do material ficava a
+ *    meio metro do valor — o olho tinha que viajar.
+ *  • "A COMPRAR" É A COLUNA-HERÓI: é o único número que o comprador executa.
+ *    Mono 11pt bold. `Necessário` e `Estoque` viram CONTEXTO (cinza, 8.5pt).
+ *  • ARREDONDAMENTO VISÍVEL: `rounding_surplus` (já calculado em perPvPurchasing,
+ *    exibido em azul no modal) agora aparece na linha impressa — antes o
+ *    comprador via "necessário 46,147 → comprar 50 m" sem saber de onde vinham
+ *    os 4 m a mais, e isso é exatamente a linha que gera discussão com o
+ *    fornecedor.
+ *  • "SEM FORNECEDOR" É TAREFA, NÃO ERRO: âmbar (#8A5A00), não vermelho, com o
+ *    peso do problema explícito (quantos itens, quanto R$, que % do pedido).
+ *  • CAIXA DE CONFERÊNCIA por item — o comprador risca conforme pede.
+ *  • MOEDA: totais/subtotais em `formatMoney` (2 casas). Preço unitário segue em
+ *    `formatCurrency` (até 4 casas) porque R$ 0,031/un virando R$ 0,03 faria o
+ *    documento não fechar (4.608 × 0,03 = 138,24 ≠ 142,85).
  *
- * Não dá baixa em nada — é só um espelho impresso do que o modal mostra, pra
- * conferência/cotação antes de gerar as OCs. Retorna false se o popup foi
- * bloqueado (o caller avisa o usuário).
+ * Robustez de paginação: cada fornecedor é UMA tabela cujo <thead> usa
+ * display:table-header-group → repete no topo de cada página; cada <tr> usa
+ * break-inside:avoid → nunca é cortado no meio. Sem overflow:hidden (atrapalha
+ * a fragmentação).
+ *
+ * Regra de print do projeto: sem primitive shadcn, sem token com alpha — cor
+ * cravada em hex (bordas #000 puras) pra ter garantia visual no papel.
+ *
+ * Não dá baixa em nada — é espelho impresso do modal, pra conferência/cotação
+ * antes de gerar as OCs. Retorna false se o popup foi bloqueado.
  */
 
 export interface PerPvPrintInput {
@@ -47,74 +65,104 @@ function esc(v: unknown): string {
 const num = (n: number) =>
   (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 
-/** @returns true se a janela de impressão foi aberta; false se bloqueada. */
-export function printPerPvMaterials(input: PerPvPrintInput): boolean {
+const INK = '#1A1714';
+const MUTED = '#8A847A';
+const HAIR = '#E2DED6';
+const AMBER = '#8A5A00';
+const OXIDE = '#B0342B';
+
+// Fontes do contexto de PRINT (window.open próprio — não herda o index.css do
+// app, então só vale stack de sistema). Display segue a convenção do projeto
+// ('Anton', Impact — uppercase decisivo); número SEMPRE mono, porque num
+// documento de compra coluna de número que não alinha é defeito.
+const DISPLAY = `'Anton', 'Arial Narrow', Impact, sans-serif`;
+const MONO = `'SFMono-Regular', 'JetBrains Mono', 'Courier New', monospace`;
+const BODY = `system-ui, -apple-system, 'Segoe UI', sans-serif`;
+
+/**
+ * Monta o HTML A4 do relatório. Separado do window.open pra ser testável e
+ * renderizável fora do browser (conferência do layout sem abrir impressão).
+ */
+export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
   const { scopeLabel, pvNumbers, drafts, netOfStock, summary } = input;
 
   const tables = drafts
     .map((d) => {
       const isNoSupplier = d.supplier_id === null;
-      const headBg = isNoSupplier ? '#fef2f2' : '#1f2937';
-      const headColor = isNoSupplier ? '#dc2626' : '#ffffff';
-      const border = isNoSupplier ? '#fca5a5' : '#1f2937';
+      const bandBg = isNoSupplier ? AMBER : INK;
+      const countLabel = isNoSupplier
+        ? `${d.items.length} ${d.items.length === 1 ? 'item' : 'itens'} · atribuir`
+        : `${d.items.length} ${d.items.length === 1 ? 'item' : 'itens'}`;
 
       const rowsHtml = d.items
         .map((it) => {
           const gradeSizes = it.grade
-            ? Object.keys(it.grade).filter((k) => (it.grade![k] ?? 0) > 0).sort((a, b) => parseFloat(a) - parseFloat(b))
+            ? Object.keys(it.grade)
+                .filter((k) => (it.grade![k] ?? 0) > 0)
+                .sort((a, b) => parseFloat(a) - parseFloat(b))
             : [];
-          const bb = gradeSizes.length ? 'none' : '1px solid #e5e7eb';
-          // Grade do solado por numeração (total de pares) — espelho do consumo.
-          const gradeRow = gradeSizes.length
-            ? `
-        <tr>
-          <td colspan="6" style="padding:0 6px 4px;border-bottom:1px solid #e5e7eb">
-            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
-              <span style="font-size:7pt;text-transform:uppercase;letter-spacing:.3px;color:#6b7280;font-weight:700;margin-right:2px">Grade · numeração</span>
-              ${gradeSizes
+          // Grade do solado por numeração — vive DENTRO da célula do material
+          // (antes era uma <tr> extra, que a paginação podia separar da linha).
+          const gradeBlock = gradeSizes.length
+            ? `<div style="margin-top:3px;font-family:${MONO};font-size:7pt;color:#5E5850;letter-spacing:.02em">${gradeSizes
                 .map(
                   (sz) =>
-                    `<span style="border:1px solid #d1d5db;background:#f3f4f6;border-radius:3px;padding:1px 5px;font-size:8pt"><span style="color:#6b7280;font-family:monospace">${esc(sz)}</span> <strong style="font-family:monospace">${num(it.grade![sz])}</strong></span>`,
+                    `<span style="display:inline-block;border:1px solid #C9C3B9;padding:0 3px;margin:0 2px 2px 0"><span style="color:#7B756B">${esc(sz)}</span>·<strong>${num(it.grade![sz])}</strong></span>`,
                 )
-                .join('')}
-            </div>
-          </td>
-        </tr>`
+                .join('')}</div>`
             : '';
+
+          const surplus = Number(it.rounding_surplus) || 0;
+          const roundNote =
+            surplus > 0
+              ? `<span style="display:block;font-family:${MONO};font-size:7pt;color:${AMBER};margin-top:1px;white-space:nowrap">&#8593; m&uacute;ltiplo +${num(surplus)}</span>`
+              : '';
+
+          const colorLine = it.color
+            ? `<div style="margin-top:1px;font-family:${MONO};font-size:7.5pt;color:${MUTED};letter-spacing:.05em;text-transform:uppercase">${esc(it.color)}</div>`
+            : '';
+
           return `
         <tr>
-          <td style="padding:3px 6px;border-bottom:${bb}">
-            <div style="font-weight:600;font-size:10pt">${esc(it.product_name)}</div>
-            ${it.color ? `<div style="color:#6b7280;font-size:8.5pt">${esc(it.color)}</div>` : ''}
+          <td style="padding:5px 5px 5px 0;border-bottom:1px solid ${HAIR};vertical-align:top;width:14px">
+            <span style="display:block;width:9px;height:9px;border:1px solid #000;margin-top:2px"></span>
           </td>
-          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${num(it.needed_qty)}</td>
-          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${num(it.stock_qty)}</td>
-          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;font-weight:700;font-size:10pt">${num(it.quantity)} <span style="color:#6b7280;font-weight:400;font-size:8pt">${esc(it.unit)}</span></td>
-          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;color:#6b7280;font-size:9pt">${esc(formatCurrency(it.unit_price))}</td>
-          <td style="padding:3px 6px;border-bottom:${bb};text-align:right;font-family:monospace;font-size:9.5pt">${esc(formatCurrency(it.quantity * it.unit_price))}</td>
-        </tr>${gradeRow}`;
+          <td style="padding:5px;border-bottom:1px solid ${HAIR};vertical-align:top">
+            <div style="font-weight:650;font-size:9.5pt;line-height:1.2">${esc(it.product_name)}</div>
+            ${colorLine}${gradeBlock}
+          </td>
+          <td style="padding:5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;font-family:${MONO};font-size:8.5pt;color:${MUTED};white-space:nowrap">${num(it.needed_qty)}</td>
+          <td style="padding:5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;font-family:${MONO};font-size:8.5pt;color:${MUTED};white-space:nowrap">${num(it.stock_qty)}</td>
+          <td style="padding:5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;white-space:nowrap">
+            <span style="font-family:${MONO};font-size:11pt;font-weight:700">${num(it.quantity)}<span style="font-size:7.5pt;font-weight:400;color:#5E5850;margin-left:2px">${esc(it.unit)}</span></span>${roundNote}
+          </td>
+          <td style="padding:5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;font-family:${MONO};font-size:8.5pt;color:#5E5850;white-space:nowrap">${esc(formatCurrency(it.unit_price))}</td>
+          <td style="padding:5px 0 5px 5px;border-bottom:1px solid ${HAIR};text-align:right;vertical-align:top;font-family:${MONO};font-size:9.5pt;font-weight:650;white-space:nowrap">${esc(formatMoney(it.quantity * it.unit_price))}</td>
+        </tr>`;
         })
         .join('');
 
       // 1 tabela por fornecedor. O <thead> (banda + rótulos) repete por página.
       return `
-        <table class="supplier" style="width:100%;border-collapse:collapse;border:2px solid ${border};margin-bottom:8px;background:white">
+        <table class="supplier">
           <thead>
             <tr>
-              <th colspan="6" style="background:${headBg};color:${headColor};padding:5px 8px;font-weight:700;font-size:10.5pt;text-align:left">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-                  <span>▌${esc(d.supplier_name)} <span style="font-weight:600;opacity:.85;font-size:8.5pt">· ${d.items.length} item(ns)</span></span>
-                  <span style="font-size:9.5pt">${esc(formatCurrency(d.total))}</span>
+              <th colspan="7" style="padding:0;border:none">
+                <div style="background:${bandBg};color:#fff;padding:5px 9px;display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+                  <span style="font-family:${DISPLAY};text-transform:uppercase;font-weight:800;letter-spacing:.045em;font-size:11.5pt;line-height:1.15">${esc(d.supplier_name)}</span>
+                  <span style="font-family:${MONO};font-size:7.5pt;letter-spacing:.1em;opacity:.75;white-space:nowrap">${esc(countLabel)}</span>
+                  <span style="margin-left:auto;font-family:${MONO};font-size:11pt;font-weight:700;white-space:nowrap">${esc(formatMoney(d.total))}</span>
                 </div>
               </th>
             </tr>
-            <tr style="background:#f9fafb;color:#6b7280;font-size:7.5pt;text-transform:uppercase;letter-spacing:.3px">
-              <th style="padding:3px 6px;text-align:left">Material</th>
-              <th style="padding:3px 6px;text-align:right">Necessário</th>
-              <th style="padding:3px 6px;text-align:right">Estoque</th>
-              <th style="padding:3px 6px;text-align:right">A comprar</th>
-              <th style="padding:3px 6px;text-align:right">Preço est.</th>
-              <th style="padding:3px 6px;text-align:right">Total</th>
+            <tr>
+              <th style="border-bottom:1px solid #000"></th>
+              <th style="padding:5px 5px 3px;text-align:left;border-bottom:1px solid #000">Material</th>
+              <th style="padding:5px 5px 3px;text-align:right;border-bottom:1px solid #000">Necess&aacute;rio</th>
+              <th style="padding:5px 5px 3px;text-align:right;border-bottom:1px solid #000">Estoque</th>
+              <th style="padding:5px 5px 3px;text-align:right;border-bottom:1px solid #000">A comprar</th>
+              <th style="padding:5px 5px 3px;text-align:right;border-bottom:1px solid #000">Pre&ccedil;o un.</th>
+              <th style="padding:5px 0 3px 5px;text-align:right;border-bottom:1px solid #000">Total</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
@@ -122,49 +170,108 @@ export function printPerPvMaterials(input: PerPvPrintInput): boolean {
     })
     .join('');
 
+  // "Sem fornecedor" = TAREFA. Quantifica o impacto (R$ e % do pedido) — sem
+  // isso o aviso é só um sinal vermelho que ninguém sabe quanto custa ignorar.
+  const noSupplierDraft = drafts.find((d) => d.supplier_id === null);
+  const noSupplierTotal = noSupplierDraft?.total ?? 0;
+  const pct = summary.total > 0 ? Math.round((noSupplierTotal / summary.total) * 100) : 0;
   const noSupplierNote = summary.hasNoSupplier
-    ? `<p style="background:#fef2f2;color:#b91c1c;padding:5px 8px;border-radius:4px;font-size:8.5pt;margin:0 0 8px">⚠ ${summary.noSupplierItemCount} item(ns) sem fornecedor cadastrado — agrupados em "${esc(NO_SUPPLIER_LABEL)}".</p>`
+    ? `<div style="display:flex;align-items:baseline;gap:8px;margin:10px 0 0;padding:7px 10px;border:1.2px solid ${AMBER};border-left-width:4px;background:#FBF4E6">
+         <span style="font-family:${MONO};font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;color:${AMBER};font-weight:700;white-space:nowrap">Antes de comprar</span>
+         <span style="font-size:8.5pt;color:#4A4038"><strong>${summary.noSupplierItemCount} ${summary.noSupplierItemCount === 1 ? 'item' : 'itens'}</strong> (${esc(formatMoney(noSupplierTotal))} — ${pct}% do pedido) sem fornecedor cadastrado, agrupados em &ldquo;${esc(NO_SUPPLIER_LABEL)}&rdquo;. Atribua um fornecedor para virar Ordem de Compra.</span>
+       </div>`
     : '';
 
   const modeNote = netOfStock
-    ? 'quantidade = falta líquida (estoque descontado)'
-    : 'quantidade = necessidade bruta (estoque não descontado)';
+    ? 'Quantidade = falta líquida (estoque descontado)'
+    : 'Quantidade = necessidade bruta (estoque não descontado)';
 
-  const pvList = pvNumbers.length ? ` · ${esc(pvNumbers.join(', '))}` : '';
+  const pvList = pvNumbers.length ? esc(pvNumbers.join(', ')) : '';
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Materiais necessários — ${esc(scopeLabel)}</title>
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Materiais necessários — ${esc(scopeLabel)}</title>
     <style>
-      @page { size: A4 portrait; margin: 8mm; }
+      @page { size: A4 portrait; margin: 10mm; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
-      body { font-family: system-ui, -apple-system, sans-serif; color: #111; font-size: 10pt; line-height: 1.3; max-width: 100%; overflow-x: hidden; }
-      h1 { font-size: 14pt; margin: 0 0 2px; }
-      .sub { color: #6b7280; font-size: 9pt; margin: 0 0 8px; }
-      .totals-strip { margin-bottom: 10px; padding: 6px 0; border-top: 2px solid #1f2937; border-bottom: 2px solid #1f2937; display:flex; gap:6px; flex-wrap:wrap; }
-      .chip { display:inline-block; background:#1f2937; color:white; padding:3px 10px; border-radius:4px; font-size:9.5pt; font-weight:600; }
-      .chip-light { background:#e5e7eb; color:#1f2937; }
-      table.supplier { max-width: 100%; }
-      /* Cabeçalho (banda + rótulos) repete em cada página quando a tabela
-         transborda a folha; linhas de item nunca são cortadas no meio. */
+      /* MEDIDA DE LEITURA: trava em 190mm (A4 útil). Sem isso o relatório herda a
+         largura da janela e as colunas se esparramam num monitor wide. */
+      body { font-family: ${BODY}; color: ${INK}; font-size: 9.5pt; line-height: 1.35;
+             max-width: 190mm; margin: 0 auto; padding: 0 2mm; }
+      table.supplier { width: 100%; border-collapse: collapse; margin: 14px 0 0; }
       table.supplier thead { display: table-header-group; }
       table.supplier tbody tr { break-inside: avoid; }
+      table.supplier thead th { font-family: ${MONO}; font-size: 7pt; letter-spacing: .1em;
+        text-transform: uppercase; color: #7B756B; font-weight: 400; white-space: nowrap; }
+      .keep { break-inside: avoid; }
     </style></head>
     <body>
-      <h1>Materiais necessários — ${esc(scopeLabel)}</h1>
-      <p class="sub">Compras por Pedido${pvList} · ${modeNote} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
-      <div class="totals-strip">
-        <span class="chip">Total estimado: ${esc(formatCurrency(summary.total))}</span>
-        <span class="chip chip-light">${summary.orderCount} OC(s)</span>
-        <span class="chip chip-light">${summary.itemCount} item(ns)</span>
-        <span class="chip chip-light">${summary.supplierCount} fornecedor(es)${summary.hasNoSupplier ? ' + sem fornecedor' : ''}</span>
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;border-bottom:2.5px solid #000;padding-bottom:9px">
+        <div style="font-family:${DISPLAY};text-transform:uppercase;font-weight:800;letter-spacing:.04em;font-size:10.5pt;line-height:1">
+          Squad Shoes
+          <span style="display:block;font-family:${MONO};font-size:6.5pt;letter-spacing:.14em;color:#7B756B;font-weight:400;margin-top:3px;text-transform:none">Compras por Pedido</span>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:${DISPLAY};text-transform:uppercase;font-weight:800;letter-spacing:.02em;font-size:21pt;line-height:.9">Materiais<br>Necess&aacute;rios</div>
+          <div style="font-family:${MONO};font-size:11pt;font-weight:700;letter-spacing:.02em;margin-top:4px">${esc(scopeLabel)}</div>
+        </div>
       </div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:7px;font-family:${MONO};font-size:6.8pt;letter-spacing:.09em;text-transform:uppercase;color:#7B756B">
+        <span>Gerado ${new Date().toLocaleDateString('pt-BR')}</span>
+        ${pvList ? `<span>${pvList}</span>` : ''}
+        <span>${esc(modeNote)}</span>
+        <span>Pre&ccedil;o estimado — sujeito a confirma&ccedil;&atilde;o</span>
+      </div>
+
+      <div style="display:flex;margin-top:11px;border:1.5px solid #000">
+        <div style="flex:1.6;padding:7px 10px;border-right:1px solid #000">
+          <div style="font-family:${MONO};font-size:6.5pt;letter-spacing:.13em;text-transform:uppercase;color:#7B756B">Total estimado</div>
+          <div style="font-family:${DISPLAY};font-size:19pt;line-height:1.05;margin-top:1px;color:${OXIDE}">${esc(formatMoney(summary.total))}</div>
+        </div>
+        <div style="flex:1;padding:7px 10px;border-right:1px solid #000">
+          <div style="font-family:${MONO};font-size:6.5pt;letter-spacing:.13em;text-transform:uppercase;color:#7B756B">Ordens</div>
+          <div style="font-family:${DISPLAY};font-size:16pt;line-height:1.05;margin-top:1px">${summary.orderCount}</div>
+        </div>
+        <div style="flex:1;padding:7px 10px;border-right:1px solid #000">
+          <div style="font-family:${MONO};font-size:6.5pt;letter-spacing:.13em;text-transform:uppercase;color:#7B756B">Itens</div>
+          <div style="font-family:${DISPLAY};font-size:16pt;line-height:1.05;margin-top:1px">${summary.itemCount}</div>
+        </div>
+        <div style="flex:1;padding:7px 10px">
+          <div style="font-family:${MONO};font-size:6.5pt;letter-spacing:.13em;text-transform:uppercase;color:#7B756B">Fornecedores</div>
+          <div style="font-family:${DISPLAY};font-size:16pt;line-height:1.05;margin-top:1px">${summary.supplierCount}${summary.hasNoSupplier ? `<span style="font-family:${MONO};font-size:8pt"> +1 s/</span>` : ''}</div>
+        </div>
+      </div>
+
       ${noSupplierNote}
       ${tables}
+
+      <div class="keep" style="display:flex;align-items:center;gap:12px;margin-top:16px;background:${OXIDE};color:#fff;padding:9px 12px">
+        <span style="font-family:${DISPLAY};text-transform:uppercase;font-weight:800;letter-spacing:.05em;font-size:12pt">Total estimado</span>
+        <span style="font-family:${MONO};font-size:7.5pt;opacity:.88;letter-spacing:.06em">${summary.orderCount} ${summary.orderCount === 1 ? 'ordem' : 'ordens'} · ${summary.itemCount} ${summary.itemCount === 1 ? 'item' : 'itens'}</span>
+        <span style="margin-left:auto;font-family:${MONO};font-size:16pt;font-weight:700">${esc(formatMoney(summary.total))}</span>
+      </div>
+
+      <div class="keep" style="display:flex;justify-content:space-between;gap:26px;margin-top:26px">
+        <div style="flex:1;border-top:1.2px solid #000;padding-top:4px;text-align:center;font-family:${MONO};font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:#7B756B">Comprador</div>
+        <div style="flex:1;border-top:1.2px solid #000;padding-top:4px;text-align:center;font-family:${MONO};font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:#7B756B">Confer&ecirc;ncia</div>
+        <div style="flex:1;border-top:1.2px solid #000;padding-top:4px;text-align:center;font-family:${MONO};font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:#7B756B">Aprova&ccedil;&atilde;o</div>
+      </div>
+
+      <p class="keep" style="margin:14px 0 0;font-size:7pt;color:${MUTED};line-height:1.5;border-top:1px solid ${HAIR};padding-top:7px">
+        <strong>Como ler:</strong> <em>Necess&aacute;rio</em> &eacute; o consumo calculado pelas fichas t&eacute;cnicas do pedido; <em>Estoque</em> &eacute; o saldo dispon&iacute;vel; <em>A comprar</em> &eacute; a falta arredondada para o m&uacute;ltiplo de compra — quando h&aacute; arredondamento, a diferen&ccedil;a aparece na pr&oacute;pria linha.
+        Totais e subtotais em 2 casas decimais; o pre&ccedil;o unit&aacute;rio mant&eacute;m a precis&atilde;o cadastrada (ex.: R$ 0,031/un), pois arredond&aacute;-lo para centavos distorceria o total.
+      </p>
+
     </body></html>`;
 
+  return html;
+}
+
+/** @returns true se a janela de impressão foi aberta; false se bloqueada. */
+export function printPerPvMaterials(input: PerPvPrintInput): boolean {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return false;
-  printWindow.document.write(html);
+  printWindow.document.write(buildPerPvMaterialsHtml(input));
   printWindow.document.close();
   printWindow.focus();
   setTimeout(() => printWindow.print(), 400);

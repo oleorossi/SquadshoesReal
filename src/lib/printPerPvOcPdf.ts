@@ -7,7 +7,7 @@
 // não bloquear/mesclar múltiplos "save" disparados no mesmo clique.
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 import type { DraftPurchaseOrder } from '@/lib/perPvPurchasing';
 
 const fmtNum = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -69,14 +69,14 @@ export function printPerPvOcPdf({ drafts, pvNumbers }: PrintPerPvOcArgs): number
         fmtNum(it.quantity) + ((it.rounding_surplus ?? 0) > 0 ? ` (+${fmtNum(it.rounding_surplus as number)})` : ''),
         it.unit,
         formatCurrency(it.unit_price),
-        formatCurrency(it.quantity * it.unit_price),
+        formatMoney(it.quantity * it.unit_price),
       ]);
 
       autoTable(doc, {
         startY,
         head: [['Material', 'Cor', 'Necessário', 'Estoque', 'A comprar', 'Un', 'Preço', 'Total']],
         body,
-        foot: [['', '', '', '', '', '', 'Total', formatCurrency(d.total)]],
+        foot: [['', '', '', '', '', '', 'Total', formatMoney(d.total)]],
         styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
         headStyles: { fillColor: [33, 28, 25], textColor: 255, fontSize: 8.5, fontStyle: 'bold' },
         footStyles: { fillColor: [245, 243, 240], textColor: 20, fontStyle: 'bold', fontSize: 9 },

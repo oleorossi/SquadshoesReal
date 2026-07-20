@@ -105,14 +105,38 @@ export function parseSafeNumber(val: any, fallback = 0, label = 'parseSafeNumber
   return fallback;
 }
 
-/** Format a number as currency (BRL) with safe input handling */
+/**
+ * Format a number as currency (BRL) with safe input handling.
+ *
+ * ⚠ Vai até 4 casas de propósito: é o formatador de **PREÇO UNITÁRIO / taxa**,
+ * onde a precisão cadastrada importa (R$ 0,031/un arredondado pra R$ 0,03
+ * distorce o total em ~10%). Para **TOTAIS e SUBTOTAIS use `formatMoney`** —
+ * dinheiro fechado é sempre 2 casas (R$ 0.000,00). Misturar os dois foi o que
+ * produzia "Total estimado: R$ 12.689,945" no relatório de Compras por Pedido.
+ */
 export function formatCurrency(val: any): string {
   const num = parseSafeNumber(val, 0, 'formatCurrency');
-  return new Intl.NumberFormat('pt-BR', { 
-    style: 'currency', 
-    currency: 'BRL', 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 4 
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4
+  }).format(num);
+}
+
+/**
+ * Dinheiro FECHADO (total, subtotal, saldo) em BRL — sempre 2 casas,
+ * `R$ 0.000,00`, conforme a convenção do projeto. Use em qualquer valor que o
+ * usuário lê como "quanto vou pagar". Para preço unitário/taxa use
+ * `formatCurrency` (mantém a precisão cadastrada).
+ */
+export function formatMoney(val: any): string {
+  const num = parseSafeNumber(val, 0, 'formatMoney');
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(num);
 }
 
