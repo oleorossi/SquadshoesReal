@@ -1986,8 +1986,18 @@ export function useUpdateSaleOrder() {
           const item = items[idx];
           if (!item.reference_id) continue;
 
-          // Match to the inserted item by index to get the DB id
+          // Match to the inserted item by index to get the DB id.
+          // Sem o id, a OP nasceria ÓRFÃ (sale_order_item_id NULL): invisível
+          // pro guard do gatilho, fora do índice único (NULL não colide) e
+          // segurando reserva sem dono — exatamente o estado que duplicou as
+          // etiquetas do PV-00146. Melhor não criar a OP e avisar do que gravar
+          // um vínculo nulo em silêncio.
           const matchedItem = insertedItems[idx];
+          if (!matchedItem?.id) {
+            console.error('[useUpdateSaleOrder] item sem id retornado pelo RPC — OP não criada:', item.reference_id);
+            toast.error(`Não foi possível vincular a OP ao item do pedido (ref ${item.reference_id?.slice(0, 8) ?? '?'}). Nenhuma OP foi criada para esse item — rode "Ressincronizar OPs" no PV.`);
+            continue;
+          }
 
           // Scale grade by fichas to get actual quantities per size
           const fichas = item.fichas || 1;
@@ -2006,7 +2016,7 @@ export function useUpdateSaleOrder() {
             color: item.color || '',
             grade: scaledGrade,
             sale_order_id: id,
-            sale_order_item_id: matchedItem?.id || null,
+            sale_order_item_id: matchedItem.id,
             notes: 'Atualizada automaticamente do PV',
             status: opStatus,
             item_observation: item.observation || null,

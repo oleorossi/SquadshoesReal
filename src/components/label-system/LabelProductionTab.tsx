@@ -37,6 +37,7 @@ import { resolveMaterialLabels, materialLabelKey, type MaterialLabelInput } from
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildThermalLabelsPdf, buildHangtagHtml, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG } from '@/lib/printLabels';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
+import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
 import { toast } from 'sonner';
 import { useOrders } from '@/hooks/useOrders';
 import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
@@ -826,14 +827,21 @@ export function LabelProductionTab() {
     ),
     [saleOrders]
   );
+  // OP cancelada/rascunho sai de TODAS as abas — não é trabalho, não conta par,
+  // não gera etiqueta. Antes o filtro só excluía 'Finalizado', então as OPs
+  // duplicadas do PV-00146 continuaram na tela mesmo depois de canceladas no
+  // banco, e a quantidade seguiu dobrada (2.496 no lugar de 1.248).
   const activeOrdersAll = productionOrders.filter((o: any) =>
-    o.status !== 'Finalizado' && !finishedSaleOrderIds.has(o.sale_order_id)
+    !isCancelledOrDraftOrder(o.status)
+    && o.status !== 'Finalizado'
+    && !finishedSaleOrderIds.has(o.sale_order_id)
   );
   // Split active orders into printed vs not printed
   const activeOrders = activeOrdersAll.filter((o: any) => !printedOrderIds.has(o.id));
   const printedActiveOrders = activeOrdersAll.filter((o: any) => printedOrderIds.has(o.id));
   const finishedOrders = productionOrders.filter((o: any) =>
-    o.status === 'Finalizado' || finishedSaleOrderIds.has(o.sale_order_id)
+    !isCancelledOrDraftOrder(o.status)
+    && (o.status === 'Finalizado' || finishedSaleOrderIds.has(o.sale_order_id))
   );
   const currentOrders = statusTab === 'producao' ? activeOrders : statusTab === 'imprimidos' ? printedActiveOrders : finishedOrders;
 

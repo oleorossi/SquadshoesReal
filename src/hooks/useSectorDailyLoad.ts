@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { EXCLUDED_ORDER_STATUSES } from '@/lib/orderStatus';
 import {
   loadHolidayCache,
   computeSectorDailyLoad,
@@ -20,12 +21,9 @@ import { loadBottlenecksForOrders, type BottleneckInfo } from '@/lib/sectorBottl
  * Fonte única dos setores: DISPLAY_SECTORS (sectors.ts). Sem motor SQL novo.
  */
 
-// Espelha a lista de status excluídos da view v_sector_weekly_load (OPs ativas).
-const EXCLUDED_ORDER_STATUSES = [
-  'Finalizado', 'Concluído', 'concluido', 'finalizado', 'concluído',
-  'Cancelada', 'Cancelado', 'cancelada', 'cancelado',
-  'Rascunho', 'rascunho',
-];
+// Fonte única (src/lib/orderStatus.ts) — a lista morava aqui e cada tela que
+// precisava do mesmo conceito escrevia a sua; o Sistema de Etiquetas escreveu
+// errado e deixava OP cancelada contando pares.
 const EXCLUDED_SET = new Set(EXCLUDED_ORDER_STATUSES.map((s) => s.toLowerCase()));
 
 export interface RealStageOp {
