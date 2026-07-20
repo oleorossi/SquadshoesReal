@@ -479,3 +479,12 @@ AS $function$
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.broken_sale_order_links_report() TO authenticated;
+
+-- ── 6. compact_sale_order_items × o índice único ────────────────────────────
+-- Aplicado à parte (migration compact_items_respect_one_active_op): a função
+-- funde itens duplicados e REPONTA orders.sale_order_item_id pro principal. Se
+-- dois itens fundidos tivessem OP ativa cada, o repontamento deixaria 2 OPs
+-- ativas no mesmo item e violaria ux_orders_one_active_op_per_item.
+-- Passou a cancelar as OPs excedentes (liberando reservas) antes de repontar —
+-- os itens viram um, as OPs também. Era armadilha latente: o único PV com itens
+-- duplicados hoje (PV-2026-00084) tem 0 OP ativa.

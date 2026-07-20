@@ -1039,6 +1039,13 @@ export default function SaleOrders() {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editOrderId) return;
+    // Trava de duplo-submit: `mutate` é disparado e o dialog fecha na sequência,
+    // então um clique duplo rápido cabe ANTES do re-render que desabilita o
+    // botão. Foi o gatilho do incidente PV-00146 — dois salvamentos com 18 ms de
+    // diferença. Hoje o salvamento é idempotente (upsert), mas o desmonte de OP
+    // de item removido NÃO é: dois em paralelo estornariam estoque duas vezes
+    // (restore_sole_grade_for_order credita a grade toda vez que roda).
+    if (updateOrder.isPending) return;
     const validItems = editItems.filter(i => i.reference_id);
     if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
