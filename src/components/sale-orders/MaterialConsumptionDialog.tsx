@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { escapeHtml } from '@/lib/htmlUtils';
+import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
 import { soleMatrixHtml, buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import {
   fetchConsumptionContext,
@@ -58,6 +59,24 @@ const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forra�
 // Normalização de texto (lowercase + sem acento) — usada no match de cor do
 // estoque e no match de OS já gerada de corte de cabedal.
 const normTxt = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+/** Mesma faixa do material base, no PDF. Inline styles + cor sólida (regra de
+ *  print do projeto: token com alpha some no papel). */
+function baseTotalPdfHtml(rows: ConsumptionRow[]): string {
+  const base = computeBaseMaterialTotal(rows);
+  if (!base) return '';
+  const split = base.parts.length > 1
+    ? ` <span style="font-weight:400;font-size:8pt;color:#4b5563">= ${base.parts
+        .map(p => `${formatQty(p.qty, 'm')} ${escapeHtml(p.name)}`).join(' + ')}</span>`
+    : '';
+  const warn = base.skipped > 0
+    ? ` <span style="font-weight:400;font-size:8pt;color:#b45309">· ${base.skipped} fora do total (cadastro incompleto)</span>`
+    : '';
+  return `<div style="background:#f0fdf4;border-bottom:1px solid #86efac;padding:3px 8px;font-size:9.5pt;color:#15803d">
+      <span style="font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Material base</span>
+      <span style="font-weight:700;font-size:11pt;margin-left:6px">${formatQty(base.total, 'm')} m</span>${split}${warn}
+    </div>`;
+}
 
 // ── Formatação de quantidade pt-BR (DISPLAY-ONLY) ──────────────────────────
 // Aditiva e pura — NÃO mexe em formatUnit (compartilhado com o PDF). par/un/
@@ -883,6 +902,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             <span>▌${escapeHtml(componentType)}</span>
             <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
           </div>
+          ${baseTotalPdfHtml(componentRows)}
           <table style="width:100%;border-collapse:collapse;background:white">
             <tbody>${rowsHtml}</tbody>
           </table>
@@ -1057,6 +1077,36 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {subtotal}
                         {short > 0 && <span className="text-red-600 dark:text-red-400 font-medium"> · {short} em falta</span>}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {/* Total do material base da seção — o número que vira pedido
+                    de compra. Some quando a seção não tem napa nenhuma (ex.:
+                    cor só de solado + linha), pra não poluir com "0,00 m". */}
+                {(() => {
+                  const base = computeBaseMaterialTotal(componentRows);
+                  if (!base) return null;
+                  return (
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border border-green-600/25 bg-green-500/5 px-3 py-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
+                        Material base
+                      </span>
+                      <span className="font-mono tabular-nums text-lg font-bold text-green-700 dark:text-green-400">
+                        {formatQty(base.total, 'm')}<span className="text-xs font-semibold ml-0.5">m</span>
+                      </span>
+                      {base.parts.length > 1 && (
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          = {base.parts.map(p => `${formatQty(p.qty, 'm')} ${p.name}`).join(' + ')}
+                        </span>
+                      )}
+                      {base.skipped > 0 && (
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                          {base.skipped} {base.skipped === 1 ? 'item ficou' : 'itens ficaram'} fora do total — cadastro incompleto
+                        </span>
+                      )}
+                      <span className="ml-auto text-[11px] text-muted-foreground">
+                        tiras convertidas em napa + napa cortada direto
                       </span>
                     </div>
                   );
