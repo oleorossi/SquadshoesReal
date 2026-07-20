@@ -565,7 +565,7 @@ export default function SystemDiagnostics() {
           <Panel
             eyebrow="PEDIDO · VÍNCULOS"
             title="Vínculos do item do pedido"
-            subtitle="OP ativa sem item do PV, OS sem vínculo com o item, item com mais de uma OP ativa. Tudo deve ficar em ZERO — se subir, alguma rotina voltou a apagar e recriar sale_order_items (foi o que duplicou as etiquetas do PV-00146). Fonte: broken_sale_order_links_report()."
+            subtitle="OP ativa sem item do PV, OS do fluxo por-item com vínculo destruído, item com mais de uma OP ativa. Tudo deve ficar em ZERO — se subir, alguma rotina voltou a apagar e recriar sale_order_items (foi o que duplicou as etiquetas do PV-00146). OS por PV/setor não entra: não tem item único e acusaria falso positivo. Fonte: broken_sale_order_links_report()."
             bodyClassName="space-y-1.5"
           >
             {linkChecks === null && !consRunning && (

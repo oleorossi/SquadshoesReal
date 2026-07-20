@@ -21,8 +21,17 @@
 -- O estrago não era só de OP. TRÊS tabelas apontam para sale_order_items e o
 -- DELETE atingia as três a cada salvamento:
 --   • orders                     SET NULL → OP órfã + reserva dobrada
---   • service_orders             SET NULL → 78 de 78 OS de PV estão sem vínculo
+--   • service_orders             SET NULL → OS perde o vínculo com a linha do PV
 --   • sale_order_lot_allocations CASCADE  → linha apagada em SILÊNCIO
+--
+-- ⚠ CORREÇÃO de um erro meu na 1ª análise: eu disse que "78 de 78 OS de PV
+-- estão sem vínculo POR CAUSA disto". O número é real, a causa não era. Das 356
+-- OS da base, ZERO jamais tiveram a coluna preenchida — só
+-- `send_terceirizacao_os` a grava, e esse fluxo mal foi usado. E 77 dessas 78
+-- pertencem a PV com VÁRIOS itens, então nem faria sentido apontar pra um item.
+-- Dano comprovado do DELETE em OS: UM caso — OS-00359, que guarda
+-- source_item_key='c5e9141a-…::corte_forracao' e o item c5e9141a não existe
+-- mais. O check do /diagnostics mede exatamente isso (ver parte 5).
 --
 -- Remendar tabela por tabela não escala (e para CASCADE não existe remendo).
 -- Esta migration ataca a causa: o item passa a MANTER IDENTIDADE entre
@@ -438,14 +447,20 @@ AS $function$
     AND o.status NOT IN ('Cancelada','Cancelado','Finalizado','Concluído')
 
   UNION ALL
+  -- Só OS do fluxo POR ITEM: se ela tem source_item_key/terceirizacao mas perdeu
+  -- o id do item, o vínculo foi DESTRUÍDO. OS por PV/setor não tem item único e
+  -- não deve acusar nada (senão o guard fica âmbar pra sempre e vira ruído).
   SELECT
-    'OS de PV sem vínculo com o item'::text,
-    'aviso'::text,
+    'OS por item com vínculo destruído'::text,
+    'critico'::text,
     count(*),
-    'Perdem rastro de qual linha do pedido originou o serviço'::text
+    COALESCE(string_agg(s.order_number, ', ' ORDER BY s.order_number), '—')
   FROM public.service_orders s
-  WHERE s.sale_order_id IS NOT NULL
-    AND s.source_sale_order_item_id IS NULL
+  WHERE s.source_sale_order_item_id IS NULL
+    AND (
+      (s.source_item_key IS NOT NULL AND s.source_item_key <> '')
+      OR s.source_terceirizacao_id IS NOT NULL
+    )
 
   UNION ALL
   SELECT
