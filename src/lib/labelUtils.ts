@@ -6,12 +6,29 @@ import { supabase } from "@/integrations/supabase/client";
 // Fonte ÚNICA pra etiqueta térmica, rótulo caixa externa e etiqueta individual:
 //   1. Variação do PV (sale_order_items.material_variant_id) → material_name
 //      da reference_material_variants (ex.: "NAPA SOFT").
+//   1b. Item SEM variante gravada, mas a referência TEM variantes ativas →
+//      infere a variante pela COR do item: se exatamente UMA variante tem
+//      grupo de material (cabedal/forro/palmilha) que cobre a cor
+//      (group_covers_color — mesma resolução do motor de consumo/débito),
+//      imprime o material_name dela. Ambíguo (cor em 2+ variantes) ou sem
+//      match → segue a cascata normal. Ver bug DS21/PORCELANA abaixo.
 //   2. Grupo de cabedal da ficha (technical_sheets.upper_material).
 //   3. Cabedal de tiras (has_straps, sem grupo de cabedal) → grupo de FORRAÇÃO
 //      resolvido pick-one pra cor do item: lining_material se cobre a cor,
 //      senão a 1ª alternativa de lining_accessories que cobre (mesma resolução
 //      do motor de consumo/débito — group_covers_color).
 //   4. Nada disso → '' (a linha MATERIAL é omitida, nunca "—").
+//
+// ⚠ Por que o passo 1b existe (bug PV-00146 / OP-2026-01158, 20/07/2026):
+// a etiqueta do DS21 PORCELANA saiu "NAPA PALHA". O item do PV nasceu com
+// `material_variant_id` NULL (o seletor "Material *" do PV só avisa em âmbar,
+// não bloqueia; e as variantes só foram cadastradas em 11/07, então TODO PV
+// anterior tem NULL — 220 de 295 itens). Sem variante, a cascata caía no
+// `upper_material` da ficha = "NAPA PALHA", que na DS21 é campo residual
+// (`upper_consumption = 1`), enquanto o corpo real do calçado é o
+// `lining_material` NAPA SOFT (5,83 dm²/par). A reserva da OP já apontava
+// NAPA SOFT PORCELANA — só a etiqueta divergia. Inferir pela cor realinha a
+// etiqueta com o que a fábrica de fato corta.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type MaterialLabelInput = {
@@ -58,13 +75,47 @@ export async function resolveMaterialLabels(
   }
   if (pending.length === 0) return out;
 
-  // 2+3) Ficha: cabedal, ou forração pick-one quando o cabedal é de tiras.
+  // 1b+2+3) Variantes ativas da referência (inferência pela cor) e a ficha
+  // (cabedal, ou forração pick-one quando o cabedal é de tiras).
   const refIds = [...new Set(pending.map(c => c.referenceId))];
-  const { data: sheets } = await supabase
-    .from('technical_sheets')
-    .select('id, upper_material, lining_material, lining_accessories, has_straps')
-    .in('id', refIds);
+  const [{ data: sheets }, { data: variants }] = await Promise.all([
+    supabase
+      .from('technical_sheets')
+      .select('id, upper_material, lining_material, lining_accessories, has_straps')
+      .in('id', refIds),
+    supabase
+      .from('reference_material_variants')
+      .select('id, reference_id, material_name, upper_material_group_id, lining_material_group_id, insole_material_group_id')
+      .in('reference_id', refIds)
+      .eq('active', true),
+  ]);
   const sheetById = new Map((sheets || []).map(s => [s.id, s]));
+
+  // Grupos das variantes → nome (group_covers_color trabalha por NOME).
+  const variantGroupIds = [...new Set(
+    (variants || []).flatMap(v => [
+      v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id,
+    ]).filter(Boolean) as string[],
+  )];
+  const groupNameById = new Map<string, string>();
+  if (variantGroupIds.length > 0) {
+    const { data: groups } = await supabase
+      .from('product_groups')
+      .select('id, name')
+      .in('id', variantGroupIds);
+    for (const g of groups || []) groupNameById.set(g.id, (g.name || '').trim());
+  }
+  type VariantCandidate = { materialName: string; groupNames: string[] };
+  const variantsByRef = new Map<string, VariantCandidate[]>();
+  for (const v of variants || []) {
+    const groupNames = [
+      v.upper_material_group_id, v.lining_material_group_id, v.insole_material_group_id,
+    ].map(id => (id ? groupNameById.get(id) : '')).filter(Boolean) as string[];
+    if (groupNames.length === 0) continue;
+    const list = variantsByRef.get(v.reference_id) || [];
+    list.push({ materialName: (v.material_name || '').trim(), groupNames });
+    variantsByRef.set(v.reference_id, list);
+  }
 
   // Coberturas de cor necessárias (grupo|cor), deduplicadas → 1 RPC cada.
   const coverageKeys = new Set<string>();
@@ -79,9 +130,15 @@ export async function resolveMaterialLabels(
   };
   for (const c of pending) {
     const sheet = sheetById.get(c.referenceId);
+    const color = (c.color || '').trim();
+    // 1b) cobertura dos grupos das variantes (inferência pela cor).
+    if (color) {
+      for (const v of variantsByRef.get(c.referenceId) || []) {
+        for (const g of v.groupNames) coverageKeys.add(`${g}|${color}`);
+      }
+    }
     if (!sheet) continue;
     const upper = (sheet.upper_material || '').trim();
-    const color = (c.color || '').trim();
     if (!upper && sheet.has_straps && color) {
       for (const g of liningCandidates(sheet)) coverageKeys.add(`${g}|${color}`);
     }
@@ -99,6 +156,21 @@ export async function resolveMaterialLabels(
   for (const c of pending) {
     const key = materialLabelKey(c);
     const sheet = sheetById.get(c.referenceId);
+    const itemColor = (c.color || '').trim();
+
+    // 1b) Variante inferida pela COR — só quando UMA única variante da
+    // referência tem grupo que cobre a cor. Ambíguo (ex.: OFF WHITE existe em
+    // NAPA SOFT e NAPA SUDANI) cai na cascata antiga, sem chutar.
+    if (itemColor) {
+      const hits = (variantsByRef.get(c.referenceId) || []).filter(v =>
+        v.groupNames.some(g => covers.get(`${g}|${itemColor}`)),
+      );
+      if (hits.length === 1 && hits[0].materialName) {
+        out.set(key, hits[0].materialName);
+        continue;
+      }
+    }
+
     if (!sheet) { out.set(key, ''); continue; }
     const upper = (sheet.upper_material || '').trim();
     if (upper) { out.set(key, upper); continue; }
