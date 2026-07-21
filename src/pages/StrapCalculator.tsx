@@ -287,24 +287,19 @@ export default function StrapCalculator() {
                 </div>
 
                 <div className="px-2 pb-1">
-                  <div
-                    className={cn(
-                      'grid items-center gap-3 border-b border-border/60 px-2 pb-2',
-                      showCost ? 'grid-cols-[7.5rem_1fr_5.5rem_1.75rem]' : 'grid-cols-[7.5rem_1fr_1.75rem]',
-                    )}
-                  >
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <div className="flex items-center gap-3 border-b border-border/60 px-2 pb-2">
+                    <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       Comprimento
                     </span>
-                    <span className="text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    <span className="flex-1 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       Tira que sai
                     </span>
                     {showCost && (
-                      <span className="text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      <span className="w-20 shrink-0 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                         Custo
                       </span>
                     )}
-                    <span />
+                    <span className="w-7 shrink-0" />
                   </div>
 
                   {linhasParciais.map((linha) => {
@@ -319,19 +314,18 @@ export default function StrapCalculator() {
                     return (
                       <div
                         key={linha.id}
-                        className={cn(
-                          'grid items-center gap-3 border-t border-border/40 px-2 py-1.5 first:border-t-0 hover:bg-muted/40',
-                          showCost ? 'grid-cols-[7.5rem_1fr_5.5rem_1.75rem]' : 'grid-cols-[7.5rem_1fr_1.75rem]',
-                        )}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-2 py-1.5 first:border-t-0 hover:bg-muted/40"
                       >
-                        <NumberInput
-                          value={linha.comprimento}
-                          onChange={(v) => setComprimentoParcial(linha.id, v)}
-                          unit={unidadeParcial}
-                          decimals={2}
-                          className="h-9 text-right"
-                        />
-                        <div className="text-right font-mono text-sm font-semibold tabular-nums text-foreground">
+                        <div className="w-24 shrink-0">
+                          <NumberInput
+                            value={linha.comprimento}
+                            onChange={(v) => setComprimentoParcial(linha.id, v)}
+                            unit={unidadeParcial}
+                            decimals={2}
+                            className="h-9 text-right"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1 text-right font-mono text-sm font-semibold tabular-nums text-foreground">
                           {vazio ? (
                             <span className="font-normal text-muted-foreground/60">—</span>
                           ) : (
@@ -346,7 +340,7 @@ export default function StrapCalculator() {
                           )}
                         </div>
                         {showCost && (
-                          <div className="text-right font-mono text-[13px] tabular-nums text-muted-foreground">
+                          <div className="w-20 shrink-0 text-right font-mono text-[13px] tabular-nums text-muted-foreground">
                             {vazio ? <span className="text-muted-foreground/60">—</span> : formatCurrency(custo)}
                           </div>
                         )}
@@ -355,7 +349,7 @@ export default function StrapCalculator() {
                           onClick={() => removeLinhaParcial(linha.id)}
                           aria-label="Remover linha"
                           title="Remover linha"
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
                         >
                           <Trash className="h-4 w-4" />
                         </button>
