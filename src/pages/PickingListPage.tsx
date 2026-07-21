@@ -90,6 +90,13 @@ export default function PickingListPage() {
     from: todayPlusDaysISO(-90),
     to: todayISO(),
   });
+  // Escopo da separação: SEMANAL (filtra pela janela de produção da semana) ou
+  // POR PEDIDO (ignora a data e você escolhe/cola os PVs/OPs). É a mesma tela e
+  // a mesma checklist — o modo só decide QUAL filtro dirige a lista, pra não
+  // misturar os dois fluxos numa pilha de filtros. Persistido por navegador.
+  const [scopeMode, setScopeMode] = usePersistedState<'semanal' | 'pedido'>(
+    'picking_scope_mode_v1', 'semanal',
+  );
   const [pvSearch, setPvSearch] = useState('');
   // Seleção "item a item": PVs escolhidos na checklist.
   const [selectedPvIds, setSelectedPvIds] = useState<Set<string>>(new Set());
@@ -214,6 +221,20 @@ export default function PickingListPage() {
   }, []);
 
   const isSemFiltro = range.from === SEM_FILTRO.from && range.to === SEM_FILTRO.to;
+
+  // Trocar de modo ajusta a janela de data pra combinar com o fluxo:
+  //  • semanal → volta pra "Esta semana" (o filtro que dá sentido ao modo);
+  //  • pedido  → tira o filtro de data (mostra todas as OPs ativas, você escolhe).
+  const switchScope = useCallback((mode: 'semanal' | 'pedido') => {
+    setScopeMode(mode);
+    if (mode === 'pedido') {
+      setRange(SEM_FILTRO);
+      setAdvancedOpen(true); // já abre a busca por número de PV/OP
+    } else {
+      const week = presets[0]; // "Esta semana"
+      setRange({ from: week.from, to: week.to });
+    }
+  }, [presets, setScopeMode, setRange]);
 
   // ── Calculation trigger ────────────────────────────────────────────────────
 
@@ -516,7 +537,31 @@ export default function PickingListPage() {
 
       {/* Seletor de janela temporal + checklist de OPs */}
       <Panel bodyClassName="space-y-3">
-        {/* Intervalo de datas (início de produção) */}
+        {/* Modo do escopo: Semanal (janela de produção) × Por Pedido (escolhe PVs/OPs) */}
+        <div className="inline-flex rounded-md border bg-muted/40 p-0.5">
+          {([
+            { key: 'semanal', label: 'Semanal', hint: 'Separar tudo que produz na janela' },
+            { key: 'pedido', label: 'Por Pedido', hint: 'Escolher PVs/OPs específicos' },
+          ] as const).map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => switchScope(opt.key)}
+              title={opt.hint}
+              className={cn(
+                'h-7 px-3 rounded text-xs font-semibold transition-colors',
+                scopeMode === opt.key
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Intervalo de datas (início de produção) — só no modo Semanal */}
+        {scopeMode === 'semanal' && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Calendar className="h-3.5 w-3.5" />
@@ -568,9 +613,10 @@ export default function PickingListPage() {
             </Button>
           </div>
         </div>
+        )}
 
         {/* Aviso de fallback */}
-        {usedFallback && !isSemFiltro && (
+        {scopeMode === 'semanal' && usedFallback && !isSemFiltro && (
           <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
             <WarningIcon className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
@@ -775,7 +821,9 @@ export default function PickingListPage() {
           <EmptyState
             icon={ClipboardList}
             title="Selecione os PVs e gere a separação"
-            description="Ajuste a janela de produção acima, marque os PVs/OPs desejados e clique em “Gerar separação”."
+            description={scopeMode === 'semanal'
+              ? "Ajuste a janela de produção acima, marque os PVs/OPs desejados e clique em “Gerar separação”."
+              : "Marque os PVs/OPs desejados (ou cole os números na busca avançada) e clique em “Gerar separação”."}
           />
         </Panel>
       )}

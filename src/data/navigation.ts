@@ -124,9 +124,9 @@ export const menuGroups = [
       // tarifas/simulador/rotas — era órfão (só alcançável por cards da Expedição).
       { name: "Transporte",       icon: Truck,          path: "/transporte" },
       // Picking/Conferência com nomes distintos pra deixar o FLUXO claro (são 3
-      // etapas, não duplicatas): Materiais (semanal, mesma tela da aba "Separação
-      // Semanal" do PCP) → Bipagem EAN (em atalhos) → Conferência de Saída.
-      { name: "Separação · Materiais (Semanal)", icon: ClipboardCheck, path: "/picking" },
+      // etapas, não duplicatas): Separação de Materiais (com seletor Semanal ×
+      // Por Pedido no próprio filtro) → Bipagem EAN (em atalhos) → Conferência.
+      { name: "Separação · Materiais", icon: ClipboardCheck, path: "/picking" },
       { name: "Conferência · Saída", icon: ClipboardCheck, path: "/conferencia-saida" },
       { name: "Romaneios",        icon: FileText,       path: "/manifests" },
       { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
