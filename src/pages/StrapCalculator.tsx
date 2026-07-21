@@ -6,20 +6,34 @@
  * de tira saem por metro linear (número-herói), o total do rolo, e quanto se gasta em
  * material. Modelo contínuo (sem piso) — ver `@/lib/strapYield`.
  */
-import { useMemo, useState } from 'react';
-import { Scissors, ArrowRight, Info, Ruler, Warning } from '@phosphor-icons/react';
+import { useMemo, useRef, useState } from 'react';
+import { Scissors, ArrowRight, Info, Ruler, Warning, Plus, Trash, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { cn, formatCurrency } from '@/lib/utils';
-import { computeStrapYield, STRAP_YIELD_DEFAULTS, type StrapYieldInput } from '@/lib/strapYield';
+import {
+  computeStrapYield,
+  partialCutYield,
+  PARTIAL_CUT_UNIT_TO_M,
+  STRAP_YIELD_DEFAULTS,
+  type PartialCutUnit,
+  type StrapYieldInput,
+} from '@/lib/strapYield';
 
 /** Número pt-BR com até `dec` casas, sem zeros à direita. '—' se não-finito. */
 const nf = (n: number, dec = 2): string =>
   Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: dec }) : '—';
+
+/** Comprimentos parciais (mm) que a tabela "Cortes Parciais" traz prontos. */
+const PARTIAL_PRESETS_MM = [30, 50, 100, 300, 500, 1000];
+
+/** Uma linha da tabela de cortes parciais (comprimento na unidade selecionada). */
+type LinhaParcial = { id: number; comprimento: number };
 
 export default function StrapCalculator() {
   const [larguraMaterialMm, setLarguraMaterialMm] = useState<number>(STRAP_YIELD_DEFAULTS.larguraMaterialMm);
@@ -44,6 +58,24 @@ export default function StrapCalculator() {
   const result = useMemo(() => (submitted ? computeStrapYield(submitted) : null), [submitted]);
   const dirty = submitted != null && JSON.stringify(current) !== JSON.stringify(submitted);
 
+  // ── Cortes parciais: tabela de trechos do rolo (só o comprimento varia) ──────
+  const [unidadeParcial, setUnidadeParcial] = useState<PartialCutUnit>('mm');
+  const partialIdRef = useRef(0);
+  const mkPartialRows = (mms: number[]): LinhaParcial[] =>
+    mms.map((mm) => ({ id: (partialIdRef.current += 1), comprimento: mm }));
+  const [linhasParciais, setLinhasParciais] = useState<LinhaParcial[]>(() => mkPartialRows(PARTIAL_PRESETS_MM));
+
+  const addLinhaParcial = () =>
+    setLinhasParciais((prev) => [...prev, { id: (partialIdRef.current += 1), comprimento: 0 }]);
+  const removeLinhaParcial = (id: number) =>
+    setLinhasParciais((prev) => prev.filter((l) => l.id !== id));
+  const setComprimentoParcial = (id: number, comprimento: number) =>
+    setLinhasParciais((prev) => prev.map((l) => (l.id === id ? { ...l, comprimento } : l)));
+  const restaurarPresetsParciais = () => {
+    setUnidadeParcial('mm');
+    setLinhasParciais(mkPartialRows(PARTIAL_PRESETS_MM));
+  };
+
   const calcular = () => {
     setSubmitted({ ...current });
     setRunId((n) => n + 1);
@@ -56,6 +88,7 @@ export default function StrapCalculator() {
     setComprimentoRoloM(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
     setCustoMetroLinear(0);
     setSubmitted(null);
+    restaurarPresetsParciais();
   };
 
   const showCost = result?.valid && result.custoMaterialRolo != null;
@@ -220,6 +253,132 @@ export default function StrapCalculator() {
                   Informe o custo do material para ver quanto você gasta.
                 </div>
               )}
+
+              {/* Cortes parciais — quanto rende cada trecho do rolo */}
+              <Card className="overflow-hidden">
+                <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+                  <Scissors className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" weight="fill" />
+                  <div className="min-w-0">
+                    <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em] text-foreground">
+                      Cortes Parciais
+                    </div>
+                    <div className="text-xs text-muted-foreground">Quanto rende cada trecho do rolo</div>
+                  </div>
+                  <div className="flex-1" />
+                  <ToggleGroup
+                    type="single"
+                    value={unidadeParcial}
+                    onValueChange={(v) => v && setUnidadeParcial(v as PartialCutUnit)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-0.5 rounded-lg border border-border bg-muted/30 p-0.5"
+                    aria-label="Unidade do comprimento"
+                  >
+                    {(['mm', 'cm', 'm'] as const).map((u) => (
+                      <ToggleGroupItem
+                        key={u}
+                        value={u}
+                        className="h-7 rounded-md border-0 px-2.5 font-mono text-xs font-semibold text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                      >
+                        {u}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </div>
+
+                <div className="px-2 pb-1">
+                  <div
+                    className={cn(
+                      'grid items-center gap-3 border-b border-border/60 px-2 pb-2',
+                      showCost ? 'grid-cols-[7.5rem_1fr_5.5rem_1.75rem]' : 'grid-cols-[7.5rem_1fr_1.75rem]',
+                    )}
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Comprimento
+                    </span>
+                    <span className="text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Tira que sai
+                    </span>
+                    {showCost && (
+                      <span className="text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        Custo
+                      </span>
+                    )}
+                    <span />
+                  </div>
+
+                  {linhasParciais.map((linha) => {
+                    const comprimentoM = linha.comprimento * PARTIAL_CUT_UNIT_TO_M[unidadeParcial];
+                    const vazio = !(linha.comprimento > 0);
+                    const { tiraM, custo } = partialCutYield(
+                      result.metragemPorMetroLiq,
+                      comprimentoM,
+                      showCost ? submitted!.custoMetroLinear : null,
+                    );
+                    const maiorQueRolo = comprimentoM > submitted!.comprimentoRoloM;
+                    return (
+                      <div
+                        key={linha.id}
+                        className={cn(
+                          'grid items-center gap-3 border-t border-border/40 px-2 py-1.5 first:border-t-0 hover:bg-muted/40',
+                          showCost ? 'grid-cols-[7.5rem_1fr_5.5rem_1.75rem]' : 'grid-cols-[7.5rem_1fr_1.75rem]',
+                        )}
+                      >
+                        <NumberInput
+                          value={linha.comprimento}
+                          onChange={(v) => setComprimentoParcial(linha.id, v)}
+                          unit={unidadeParcial}
+                          decimals={2}
+                          className="h-9 text-right"
+                        />
+                        <div className="text-right font-mono text-sm font-semibold tabular-nums text-foreground">
+                          {vazio ? (
+                            <span className="font-normal text-muted-foreground/60">—</span>
+                          ) : (
+                            <>
+                              {nf(tiraM, 3)} m
+                              {maiorQueRolo && (
+                                <span className="block text-[9.5px] font-medium text-amber-600 dark:text-amber-400">
+                                  maior que o rolo
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        {showCost && (
+                          <div className="text-right font-mono text-[13px] tabular-nums text-muted-foreground">
+                            {vazio ? <span className="text-muted-foreground/60">—</span> : formatCurrency(custo)}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeLinhaParcial(linha.id)}
+                          aria-label="Remover linha"
+                          title="Remover linha"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+                        >
+                          <Trash className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-3">
+                  <Button type="button" size="sm" onClick={addLinhaParcial} className="h-8 gap-1.5">
+                    <Plus className="h-3.5 w-3.5" weight="bold" />
+                    Adicionar comprimento
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={restaurarPresetsParciais}
+                    className="ml-auto flex items-center gap-1.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    <ArrowCounterClockwise className="h-3.5 w-3.5" />
+                    Restaurar presets
+                  </button>
+                </div>
+              </Card>
             </div>
           )}
 

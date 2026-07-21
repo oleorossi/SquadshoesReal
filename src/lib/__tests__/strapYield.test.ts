@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { computeStrapYield, STRAP_YIELD_DEFAULTS } from '@/lib/strapYield';
+import {
+  computeStrapYield,
+  partialCutYield,
+  PARTIAL_CUT_UNIT_TO_M,
+  STRAP_YIELD_DEFAULTS,
+} from '@/lib/strapYield';
 import { ROLO_LARGURA_MM, ROLO_COMPRIMENTO_M, PERDA_PCT } from '@/lib/strapRollCut';
 
 const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
@@ -100,5 +105,57 @@ describe('defaults', () => {
     expect(STRAP_YIELD_DEFAULTS.larguraMaterialMm).toBe(ROLO_LARGURA_MM);
     expect(STRAP_YIELD_DEFAULTS.comprimentoRoloM).toBe(ROLO_COMPRIMENTO_M);
     expect(STRAP_YIELD_DEFAULTS.perdaPct).toBe(PERDA_PCT * 100);
+  });
+});
+
+describe('partialCutYield — cortes parciais do rolo', () => {
+  // taxa do exemplo da tela: 1370 / 18 × (1−15%) = 64,6944… m/m
+  const RATE = computeStrapYield({
+    larguraMaterialMm: 1370,
+    larguraTiraMm: 18,
+    perdaPct: 15,
+    comprimentoRoloM: 40,
+  }).metragemPorMetroLiq;
+
+  it('taxa-âncora ≈ 64,694 m/m', () => {
+    expect(round(RATE, 4)).toBe(64.6944);
+  });
+
+  it('unidades → metros', () => {
+    expect(PARTIAL_CUT_UNIT_TO_M.mm).toBe(0.001);
+    expect(PARTIAL_CUT_UNIT_TO_M.cm).toBe(0.01);
+    expect(PARTIAL_CUT_UNIT_TO_M.m).toBe(1);
+  });
+
+  it('30 mm (0,03 m) → ≈ 1,941 m de tira e ≈ R$ 0,60 a 19,90 R$/m', () => {
+    const r = partialCutYield(RATE, 30 * PARTIAL_CUT_UNIT_TO_M.mm, 19.9);
+    expect(round(r.tiraM, 3)).toBe(1.941);
+    expect(round(r.custo ?? -1, 3)).toBe(0.597);
+  });
+
+  it('1 m → taxa cheia e custo = custo por metro linear', () => {
+    const r = partialCutYield(RATE, 1, 19.9);
+    expect(round(r.tiraM, 4)).toBe(64.6944);
+    expect(round(r.custo ?? -1, 2)).toBe(19.9);
+  });
+
+  it('sem custo informado → custo null, tira segue calculada', () => {
+    const r = partialCutYield(RATE, 0.5);
+    expect(round(r.tiraM, 3)).toBe(32.347);
+    expect(r.custo).toBeNull();
+  });
+
+  it('comprimento ≤ 0 → zeros (UI mostra "—"); custo 0 se informado, null se não', () => {
+    expect(partialCutYield(RATE, 0, 19.9)).toEqual({ tiraM: 0, custo: 0 });
+    expect(partialCutYield(RATE, -5, 19.9)).toEqual({ tiraM: 0, custo: 0 });
+    expect(partialCutYield(RATE, 0)).toEqual({ tiraM: 0, custo: null });
+  });
+
+  it('taxa inválida (≤ 0) → zeros, sem lançar', () => {
+    expect(partialCutYield(0, 0.03, 19.9)).toEqual({ tiraM: 0, custo: 0 });
+  });
+
+  it('custo negativo é ignorado (custo null)', () => {
+    expect(partialCutYield(RATE, 0.3, -1).custo).toBeNull();
   });
 });

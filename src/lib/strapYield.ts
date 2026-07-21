@@ -114,3 +114,56 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
 
   return result;
 }
+
+/* ───────────────────────────── Cortes parciais ──────────────────────────────
+ * Rendimento de um TRECHO parcial do rolo (não o rolo inteiro). Reaproveita a taxa
+ * líquida (m de tira / m linear) já validada acima e só varia o comprimento — é a
+ * régua da tabela "Cortes Parciais" da tela. Comprimento digitado em mm/cm/m.
+ */
+
+/** Unidade de comprimento aceita na tabela de cortes parciais. */
+export type PartialCutUnit = 'mm' | 'cm' | 'm';
+
+/** Fator de conversão da unidade escolhida → metros (unidade-base do cálculo). */
+export const PARTIAL_CUT_UNIT_TO_M: Record<PartialCutUnit, number> = {
+  mm: 1 / 1000,
+  cm: 1 / 100,
+  m: 1,
+};
+
+export interface PartialCutResult {
+  /** metros de tira que saem do trecho (`taxa × comprimento_em_m`). 0 se inválido. */
+  tiraM: number;
+  /**
+   * custo do trecho (`custoMetroLinear × comprimento_em_m`). `null` quando o custo
+   * não foi informado; 0 quando informado mas o comprimento é inválido.
+   */
+  custo: number | null;
+}
+
+/**
+ * Rendimento de um corte parcial: dada a taxa líquida `metragemPorMetroLiq` (m de
+ * tira por metro linear, vinda de `computeStrapYield`) e um `comprimentoM` (já em
+ * METROS), devolve quanta tira sai e — se `custoMetroLinear` for informado — quanto
+ * custa aquele trecho. Degrada com elegância: comprimento ≤ 0 ou não-finito → zeros
+ * (a UI decide exibir "—"); nunca lança.
+ */
+export function partialCutYield(
+  metragemPorMetroLiq: number,
+  comprimentoM: number,
+  custoMetroLinear?: number | null,
+): PartialCutResult {
+  const rate = Number(metragemPorMetroLiq) || 0;
+  const Lm = Number(comprimentoM) || 0;
+  const valid = rate > 0 && Lm > 0;
+
+  const tiraM = valid ? rate * Lm : 0;
+
+  let custo: number | null = null;
+  const Cml = custoMetroLinear;
+  if (Cml != null && Number.isFinite(Number(Cml)) && Number(Cml) >= 0) {
+    custo = valid ? Number(Cml) * Lm : 0;
+  }
+
+  return { tiraM, custo };
+}
