@@ -78,6 +78,9 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     quantity: 0,
     group_id: spec.groupId,
     active: true,
+    // Tiras são artesanais (cortadas de napa). Marca no lote pra ficar consistente
+    // com o cadastro unitário; a receita (base) fica pro cadastro por cor (dialog).
+    is_artisanal: isStrapLike || undefined,
     image_url: '',
     yield_per_meter: last?.yield_per_meter ?? null,
     yield_unit: last?.yield_unit ?? null,

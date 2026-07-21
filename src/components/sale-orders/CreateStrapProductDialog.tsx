@@ -6,7 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { CircleNotch as Loader2, Package, Warning as AlertTriangle, Check, PencilSimple as Pencil } from '@phosphor-icons/react';
+import { Switch } from '@/components/ui/switch';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { CircleNotch as Loader2, Package, Warning as AlertTriangle, Check, PencilSimple as Pencil, Flask as FlaskConical, ArrowRight, Scissors } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeUuidFields, cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -14,6 +16,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { UNITS, LOCATIONS } from '@/types/inventory';
 import { sectorOfGroup, sectorLabel } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
+import { useContractors } from '@/hooks/useContractors';
+import { useCreateArtisanalRecipe } from '@/hooks/useArtisanalRecipes';
+
+/** Normaliza p/ comparar cor/nome sem acento nem caixa (napa CAFÉ = CAFE etc). */
+const normKey = (v: string) =>
+  (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
 interface Props {
   open: boolean;
@@ -123,6 +131,8 @@ const resolveUniqueSku = async (preferredSku: string, groupName: string, color: 
 export default function CreateStrapProductDialog({ open, onOpenChange, groupId, groupName, color, onCreated }: Props) {
   const qc = useQueryClient();
   const { data: groups = [] } = useGroups();
+  const { data: contractors = [] } = useContractors();
+  const createRecipe = useCreateArtisanalRecipe();
   const group = groups.find(g => g.id === groupId);
   const [loading, setLoading] = useState(false);
   const [prefilling, setPrefilling] = useState(true);
@@ -153,6 +163,43 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
   const [dimWidth, setDimWidth] = useState(0);
   const [dimThickness, setDimThickness] = useState(0);
   const [dimUnit, setDimUnit] = useState('mm');
+
+  // ── Produção artesanal (a tira é CORTADA de uma napa base da MESMA cor) ──────
+  // Cadastrar "como nas outras tiras" = criar o produto final + marcar artesanal
+  // + garantir a receita (tipo → base). A base é POR COR: o mesmo tipo pode ter
+  // 2 receitas (ex.: NAPA SOFT e NAPA MADRID) — o débito da OS resolve pela
+  // receita escolhida na produção, então nada aqui reescreve a base das outras cores.
+  const [isArtisanal, setIsArtisanal] = useState(false);
+  // Só grupos de tira (ou que já têm receita) mostram a seção artesanal — pro
+  // reuso deste dialog em cabedal/forração (napa) não aparecer seção irrelevante.
+  const [canBeArtisanal, setCanBeArtisanal] = useState(false);
+  const [baseMaterial, setBaseMaterial] = useState('');
+  const [recipeYield, setRecipeYield] = useState(1);
+  const [recipeCutWidth, setRecipeCutWidth] = useState(0);
+  const [recipeLabor, setRecipeLabor] = useState(0);
+  const [contractorId, setContractorId] = useState('');
+  // Grupos (nomes normalizados) que TÊM a cor atual — pra checagem de cobertura da base.
+  const [colorBaseNorm, setColorBaseNorm] = useState<Set<string>>(new Set());
+
+  // Grupos ativos que TÊM um produto na cor `c` (ex.: NAPA MADRID tem CAPUCCINO).
+  // Serve pra pré-escolher a base e avisar quando a napa não cobre a cor.
+  const loadColorBases = async (c: string): Promise<string[]> => {
+    const col = (c || '').trim();
+    if (!col) { setColorBaseNorm(new Set()); return []; }
+    const { data } = await supabase
+      .from('products')
+      .select('color, product_groups(name)')
+      .eq('active', true)
+      .ilike('color', col);
+    const names = Array.from(new Set(
+      (data || [])
+        .filter((r: any) => normKey(r.color) === normKey(col))
+        .map((r: any) => (r.product_groups?.name || '').trim())
+        .filter(Boolean),
+    ));
+    setColorBaseNorm(new Set(names.map(normKey)));
+    return names;
+  };
 
   useEffect(() => {
     if (!open || !groupId) return;
@@ -235,6 +282,35 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
         setShowForm(true);
       }
 
+      // ── Defaults da produção artesanal ────────────────────────────────────
+      // A tira final é cortada de uma napa base da MESMA cor. Buscamos as receitas
+      // deste tipo (pode haver >1 base) e os grupos que têm a cor, pra pré-escolher
+      // a base — preferindo NAPA MADRID quando ela cobre a cor.
+      const [{ data: recipeRows }, colorBases] = await Promise.all([
+        supabase.from('artisanal_recipes').select('id, artisanal_product_name, base_product_name, yield_per_meter, cut_width_mm, labor_cost_per_meter, default_contractor_id'),
+        loadColorBases(color),
+      ]);
+      const typeNorm = normKey(groupName);
+      const forType = (recipeRows || []).filter((r: any) => normKey(r.artisanal_product_name) === typeNorm);
+      const coveredNorm = new Set(colorBases.map(normKey));
+      const preferBase = (names: string[]) => names.find(n => normKey(n) === normKey('NAPA MADRID')) || names[0] || '';
+      const recipeBasesCovering = forType.map((r: any) => r.base_product_name).filter((b: string) => coveredNorm.has(normKey(b)));
+      const napaCovering = colorBases.filter((n) => /napa|couro|dublagem/i.test(n));
+      const defBase = recipeBasesCovering.length ? preferBase(recipeBasesCovering)
+        : napaCovering.length ? preferBase(napaCovering)
+        : forType.length ? forType[0].base_product_name
+        : '';
+      const recForDefaults = forType.find((r: any) => normKey(r.base_product_name) === normKey(defBase)) || forType[0];
+
+      const artisanalGroup = isStrapLikeGroup || forType.length > 0 || (lastProduct as any)?.is_artisanal === true;
+      setCanBeArtisanal(artisanalGroup);
+      setIsArtisanal(artisanalGroup);
+      setBaseMaterial(defBase);
+      setRecipeYield(recForDefaults ? Number(recForDefaults.yield_per_meter) || 1 : 1);
+      setRecipeCutWidth(recForDefaults?.cut_width_mm ? Number(recForDefaults.cut_width_mm) : 0);
+      setRecipeLabor(recForDefaults ? Number(recForDefaults.labor_cost_per_meter) || 0 : 0);
+      setContractorId(recForDefaults?.default_contractor_id || '');
+
       setPrefilling(false);
     })();
   }, [open, groupId, groupName, color]);
@@ -245,7 +321,17 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
     const t = c.trim();
     setName(`${groupName}: ${t}`);
     setSku(skuBase ? deriveSkuFromBase(skuBase, t) : `${normalizeSkuPart(groupName, 'TIRA', 6)}-${normalizeSkuPart(t, 'COR', 4)}`);
+    // Recalcula a cobertura da base pra nova cor (aviso âmbar ✓/⚠).
+    void loadColorBases(t);
   };
+
+  // Cobertura da base escolhida: a napa base tem produto na cor selecionada?
+  const baseCovered = !!baseMaterial && colorBaseNorm.has(normKey(baseMaterial));
+  // Opções de base: grupos "material base" (napa/couro/dublagem) + o já escolhido.
+  const baseOptions = Array.from(new Set([
+    ...groups.filter(g => /napa|couro|dublagem|material/i.test(g.name || '')).map(g => g.name),
+    ...(baseMaterial ? [baseMaterial] : []),
+  ])).sort((a, b) => a.localeCompare(b, 'pt-BR')).map(n => ({ value: n, label: n }));
 
   const handleUseExisting = async (product: SimilarProduct, openEdit = false) => {
     if (product.group_id !== groupId) {
@@ -295,6 +381,40 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
     }
   };
 
+  // Garante que exista a receita (tipo → base escolhida) pro tipo desta tira.
+  // NÃO mexe em receitas de OUTRAS bases: o mesmo tipo pode ter 2 bases (ex.:
+  // NAPA SOFT e NAPA MADRID) — o débito da OS resolve pela receita escolhida na
+  // produção. artisanal_product_name = NOME EXATO do grupo (findProductByNameColor
+  // casa a saída por grupo).
+  const ensureRecipeForBase = async () => {
+    const base = baseMaterial.trim();
+    const yieldVal = Number(recipeYield) || 0;
+    if (!base || yieldVal <= 0) return;
+    const { data: existing } = await supabase
+      .from('artisanal_recipes')
+      .select('id, artisanal_product_name, base_product_name');
+    const typeNorm = normKey(groupName);
+    const already = (existing || []).some((r: any) =>
+      normKey(r.artisanal_product_name) === typeNorm && normKey(r.base_product_name) === normKey(base));
+    if (already) return;
+    // Não deixa a falha da receita derrubar o cadastro do produto (é o produto
+    // que destrava o PV; a receita pode ser ajustada depois em Terceirizados).
+    try {
+      await createRecipe.mutateAsync({
+        name: `Receita: ${groupName} — ${base}`,
+        artisanal_product_name: groupName,
+        base_product_name: base,
+        yield_per_meter: yieldVal,
+        cut_width_mm: recipeCutWidth ? Math.round(Number(recipeCutWidth)) : null,
+        labor_cost_per_meter: Number(recipeLabor) || 0,
+        default_contractor_id: contractorId || null,
+        active: true,
+      } as any);
+    } catch {
+      /* createRecipe já emite toast.error; produto segue criado */
+    }
+  };
+
   const handleSubmit = async () => {
     const trimmedName = name.trim();
     const trimmedColor = colorInput.trim();
@@ -326,6 +446,14 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
       });
 
       if (existingProduct) {
+        // Produto já existe na cor — mesmo assim garante a marcação artesanal +
+        // a receita da base escolhida (ex.: cadastrar a variante NAPA MADRID de
+        // uma cor que só tinha receita NAPA SOFT).
+        if (isArtisanal) {
+          await supabase.from('products').update({ is_artisanal: true } as any).eq('id', existingProduct.id);
+          await ensureRecipeForBase();
+          qc.invalidateQueries({ queryKey: ['artisanal_recipes'] });
+        }
         toast.info(`"${existingProduct.name}" já está cadastrado neste grupo`);
         qc.invalidateQueries({ queryKey: ['products'] });
         qc.invalidateQueries({ queryKey: ['products_for_colors'] });
@@ -352,6 +480,7 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
         group_id: groupId,
         active: true,
         image_url: '',
+        is_artisanal: isArtisanal,
         yield_per_meter: yieldPerMeter,
         yield_unit: yieldUnit,
         dimensions_length: dimLength,
@@ -366,6 +495,12 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
         ({ error } = await supabase.from('products').insert({ ...productData, sku: retrySku } as any));
       }
       if (error) throw error;
+
+      // Vincula a receita de produção (tipo → base) — "como nas outras tiras".
+      if (isArtisanal) {
+        await ensureRecipeForBase();
+        qc.invalidateQueries({ queryKey: ['artisanal_recipes'] });
+      }
 
       toast.success(`Produto "${trimmedName}" criado no estoque!`);
       qc.invalidateQueries({ queryKey: ['products'] });
@@ -661,6 +796,98 @@ export default function CreateStrapProductDialog({ open, onOpenChange, groupId, 
                       </Select>
                     </div>
                   </div>
+                )}
+
+                {/* ── Produção artesanal: base (napa) + receita — "como nas outras tiras" ── */}
+                {canBeArtisanal && (
+                <div className={cn('rounded-lg border', isArtisanal ? 'border-primary/30' : 'border-border')}>
+                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
+                    <div className="flex items-center gap-2">
+                      <FlaskConical className="h-4 w-4 text-primary shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold leading-none">Produção artesanal</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">A tira é cortada de uma napa base da mesma cor.</p>
+                      </div>
+                    </div>
+                    <Switch checked={isArtisanal} onCheckedChange={setIsArtisanal} aria-label="Produto artesanal" />
+                  </div>
+
+                  {isArtisanal && (
+                    <div className="p-3 space-y-3">
+                      {/* Conversão base → tira */}
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-1.5 rounded bg-blue-500/10 px-2 py-1.5 flex-1 min-w-0 text-blue-700 dark:text-blue-400">
+                          <Package className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate text-xs font-medium">{baseMaterial || '(napa base)'}{colorInput.trim() ? ` · ${colorInput.trim().toUpperCase()}` : ''}</span>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex items-center gap-1.5 rounded bg-emerald-500/10 px-2 py-1.5 flex-1 min-w-0 text-emerald-700 dark:text-emerald-400">
+                          <Scissors className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate text-xs font-medium">{groupName}{colorInput.trim() ? ` · ${colorInput.trim().toUpperCase()}` : ''}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs">Matéria-prima base (grupo)</Label>
+                        <SearchableSelect
+                          value={baseMaterial}
+                          onChange={setBaseMaterial}
+                          options={baseOptions}
+                          placeholder="Selecione a napa base..."
+                        />
+                      </div>
+
+                      {/* Cobertura da base na cor */}
+                      {baseMaterial && colorInput.trim() && (
+                        baseCovered ? (
+                          <div className="flex items-start gap-2 rounded-md bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+                            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span><strong>{baseMaterial}</strong> tem a cor <strong>{colorInput.trim().toUpperCase()}</strong> — a produção não trava por falta de matéria-prima.</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span><strong>{baseMaterial}</strong> não tem a cor <strong>{colorInput.trim().toUpperCase()}</strong> cadastrada. Cadastre a napa nessa cor antes de produzir, ou escolha outra base.</span>
+                          </div>
+                        )
+                      )}
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div>
+                          <Label className="text-xs">Rend. (m/m base)</Label>
+                          <NumberInput value={recipeYield} onChange={setRecipeYield} min={0} step="0.01" className="h-9 text-sm" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Largura corte (mm)</Label>
+                          <NumberInput value={recipeCutWidth} onChange={setRecipeCutWidth} min={0} className="h-9 text-sm" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">MO / metro (R$)</Label>
+                          <NumberInput value={recipeLabor} onChange={setRecipeLabor} min={0} step="0.01" className="h-9 text-sm" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs">Terceirizado padrão</Label>
+                        <Select value={contractorId || 'none'} onValueChange={v => setContractorId(v === 'none' ? '' : v)}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhum</SelectItem>
+                            {contractors.filter((c: any) => c.active).map((c: any) => (
+                              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {baseMaterial && Number(recipeYield) > 0 && (
+                        <div className="rounded bg-primary/5 border border-primary/20 px-3 py-2 text-xs">
+                          1 m de <span className="font-semibold">{baseMaterial}</span> → <span className="font-semibold text-primary">{Number(recipeYield)} m</span> de <span className="font-semibold">{groupName}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 )}
 
                 <DialogFooter>
