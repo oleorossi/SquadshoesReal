@@ -119,6 +119,71 @@ const rowIsShort = (r: ConsumptionRow): boolean => {
   return rowAvailable(r) < r.totalQuantity;
 };
 
+// ── Total de consumo SOMADO por item (grupo + cor) ─────────────────────────
+// Um mesmo material aparece em várias linhas — uma por APLICAÇÃO (FRENTE, TIRA 1,
+// TIRA 3…). Elas dividem o MESMO estoque: `available` = groupAvailable(grupo,cor),
+// idêntico em todas as linhas-irmãs. Somamos o consumo das aplicações e avaliamos
+// o estoque UMA vez sobre esse total (pegando um representante de `available` —
+// NUNCA somar, senão 100+100+100 = 300 fantasma). Solado fica de fora: é avaliado
+// por numeração (soleRowShort / SoleSection), nunca por total agregado.
+type ItemGroup = {
+  key: string;
+  componentType: string;
+  groupName: string;
+  color: string;
+  productUnit: string;
+  rows: ConsumptionRow[];
+  /** Soma do consumo das aplicações do item. */
+  total: number;
+  /** Estoque do item — um representante (mesmo balde grupo+cor), não a soma. */
+  available: number;
+  /** true = todas as linhas com largura/consumo cadastrados (comparável c/ estoque). */
+  known: boolean;
+};
+
+const itemKey = (r: ConsumptionRow) =>
+  `${r.componentType}||${r.groupName}||${r.color}||${r.productUnit}`;
+
+/** Agrega linhas NÃO-solado por item, preservando a ordem de primeira aparição.
+ *  Presentation-only — não toca no motor de consumo. */
+const aggregateItems = (rows: ConsumptionRow[]): ItemGroup[] => {
+  const map = new Map<string, ItemGroup>();
+  for (const r of rows) {
+    const k = itemKey(r);
+    let it = map.get(k);
+    if (!it) {
+      it = {
+        key: k,
+        componentType: r.componentType,
+        groupName: r.groupName,
+        color: r.color,
+        productUnit: r.productUnit,
+        rows: [],
+        total: 0,
+        available: rowAvailable(r),
+        known: true,
+      };
+      map.set(k, it);
+    }
+    it.rows.push(r);
+    it.total += Number(r.totalQuantity) || 0;
+    if (r.widthMissing || r.warning) it.known = false;
+  }
+  return Array.from(map.values());
+};
+
+/** Item em falta = cadastro completo E estoque (balde único) < consumo somado. */
+const itemIsShort = (it: ItemGroup): boolean => it.known && it.available < it.total;
+
+// Contagem "em falta" ITEM-a-item (não linha-a-linha): tiras da mesma cor que
+// dividem estoque contam UMA vez. Solado segue por numeração (soleRowShort).
+// Fonte única do chip da toolbar e do subtotal por seção.
+const countShort = (rows: ConsumptionRow[]): number => {
+  const sole = rows.filter(r => r.componentType === 'Solado' && rowIsShort(r)).length;
+  const others = aggregateItems(rows.filter(r => r.componentType !== 'Solado')).filter(itemIsShort).length;
+  return sole + others;
+};
+
 /* ── Terceirização do Corte de Cabedal ─────────────────────────────────────
  * Itens do PV cuja ficha técnica NÃO tem tiras (has_straps !== true) passam
  * pela sub-etapa "Corte Cabedal" — mesma regra `requiresUpperCut` da ficha de
@@ -812,9 +877,10 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     return map;
   }, [rows]);
 
-  // Contagem de linhas EM FALTA — mesma regra do render (rowIsShort). Alimenta
-  // o chip de escassez da toolbar e o contador por seção. Presentation-only.
-  const emFaltaCount = useMemo(() => rows.filter(rowIsShort).length, [rows]);
+  // Contagem EM FALTA por ITEM — mesma regra do render (faixa por item). Tiras
+  // da mesma cor que dividem estoque contam UMA vez; solado por numeração.
+  // Alimenta o chip de escassez da toolbar e o contador por seção. Presentation-only.
+  const emFaltaCount = useMemo(() => countShort(rows), [rows]);
 
   const formatUnit = (unit: string) => {
     const labels: Record<string, string> = {
@@ -1070,7 +1136,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   const subt = new Map<string, number>();
                   for (const r of componentRows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
                   const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
-                  const short = componentRows.filter(rowIsShort).length;
+                  const short = countShort(componentRows);
                   return (
                     <div className="flex items-baseline justify-between gap-3 border-b border-border/60 pb-1">
                       <span className="text-xs font-semibold uppercase tracking-wider text-foreground">{componentType}</span>
@@ -1137,19 +1203,25 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {componentRows.map((row, index) => {
-                        // widthMissing infla o consumo ~100× e warning = consumo não
-                        // calculado (fachete sem specs): comparar com estoque seria
-                        // enganoso, então a linha fica neutra (o aviso âmbar permanece).
-                        const known = !row.widthMissing && !row.warning;
-                        // Na visão por COR o solado também cai nesta tabela genérica
-                        // (a seção é uma cor, não "Solado"); rowAvailable usa o total do
-                        // stock_grade como disponível em vez de `available` (undefined p/ solado).
-                        const avail = rowAvailable(row);
-                        const ok = avail >= row.totalQuantity;
-                        return (
+                      {(() => {
+                        // Solado, quando cai nesta tabela genérica (visão por COR), segue
+                        // linha-a-linha por numeração — fora do agrupamento por item.
+                        const soleRows = componentRows.filter(r => r.componentType === 'Solado');
+                        const items = aggregateItems(componentRows.filter(r => r.componentType !== 'Solado'));
+
+                        // Uma linha de aplicação. `neutralStock` = o veredito de estoque
+                        // vive na FAIXA do item (multi-aplicação) → a célula Em estoque da
+                        // linha fica neutra, pra não repetir/duplicar o mesmo balde.
+                        const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean) => {
+                          // widthMissing infla o consumo ~100× e warning = consumo não
+                          // calculado (fachete sem specs): comparar com estoque seria
+                          // enganoso, então a linha fica neutra (o aviso âmbar permanece).
+                          const known = !row.widthMissing && !row.warning;
+                          const avail = rowAvailable(row);
+                          const ok = avail >= row.totalQuantity;
+                          return (
                         <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-                          <TableCell className={`font-medium ${known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
+                          <TableCell className={`font-medium ${!neutralStock && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
                             <div className="flex items-center gap-1.5">
                               {row.widthMissing && (
                                 <TooltipProvider delayDuration={150}>
@@ -1194,8 +1266,10 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="text-right" aria-label={!known ? 'largura não cadastrada' : ok ? 'em estoque' : 'em falta'}>
-                            {!known ? (
+                          <TableCell className="text-right" aria-label={neutralStock ? 'total do item na faixa acima' : !known ? 'largura não cadastrada' : ok ? 'em estoque' : 'em falta'}>
+                            {neutralStock ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : !known ? (
                               <span className="text-muted-foreground">—</span>
                             ) : ok ? (
                               <span className="inline-flex items-center justify-end gap-1">
@@ -1216,7 +1290,57 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                           </TableCell>
                           <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
                         </TableRow>
-                      ); })}
+                          );
+                        };
+
+                        // Faixa VERDE do total somado do item (mesma ideia da faixa
+                        // "Material base"): consumo somado entre aplicações + veredito de
+                        // estoque UMA vez. Só pra item que aparece em 2+ aplicações.
+                        const renderBand = (item: ItemGroup) => {
+                          const ok = item.available >= item.total;
+                          return (
+                            <TableRow key={`band-${item.key}`} className="border-0 hover:bg-transparent">
+                              <TableCell colSpan={6} className="p-0">
+                                <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y px-3 py-2 ${item.known ? 'border-green-600/25 bg-green-500/5' : 'border-amber-600/25 bg-amber-500/5'}`}>
+                                  <span className={`text-[11px] font-bold uppercase tracking-wider ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                                    Total do item · {item.groupName}
+                                  </span>
+                                  <span className={`font-mono tabular-nums text-lg font-bold ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                                    {formatQty(item.total, item.productUnit)}<span className="text-xs font-semibold ml-0.5">{formatUnit(item.productUnit)}</span>
+                                  </span>
+                                  <span className="font-mono text-[11px] text-muted-foreground">
+                                    = {item.rows.map(r => `${formatQty(r.totalQuantity, r.productUnit)} ${r.materialName || 'aplicação'}`).join(' + ')}
+                                  </span>
+                                  {!item.known ? (
+                                    <span className="ml-auto text-[11px] text-amber-600 dark:text-amber-400">estoque não comparável — cadastro incompleto</span>
+                                  ) : ok ? (
+                                    <span className="ml-auto inline-flex items-center gap-1 text-[11px]">
+                                      <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
+                                      <span className="text-muted-foreground">em estoque</span>
+                                      <span className="font-mono tabular-nums text-foreground">{formatQty(item.available, item.productUnit)} {formatUnit(item.productUnit)}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] flex-wrap justify-end">
+                                      <WarningIcon weight="fill" className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" aria-hidden="true" />
+                                      <span className="text-muted-foreground">em estoque {formatQty(item.available, item.productUnit)} {formatUnit(item.productUnit)} ·</span>
+                                      <span className="font-medium text-red-600 dark:text-red-400">faltam {formatQty(item.total - item.available, item.productUnit)} {formatUnit(item.productUnit)}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        };
+
+                        const out: JSX.Element[] = [];
+                        for (const item of items) {
+                          const multi = item.rows.length > 1;
+                          if (multi) out.push(renderBand(item));
+                          item.rows.forEach((row, i) => out.push(renderRow(row, i, multi)));
+                        }
+                        soleRows.forEach((row, i) => out.push(renderRow(row, i, false)));
+                        return out;
+                      })()}
                     </TableBody>
                   </Table>
                 </div>
