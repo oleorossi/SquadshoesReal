@@ -198,6 +198,21 @@ Ver [[artisanal-strap-debit-flow]], [[project_straps_in_costing_mrp]].
 - Precisa de seletor de base **na hora de produzir a OS** (quando a cor existe nas duas bases
   com estoque)? Fora do escopo v1; confirmar se surge necessidade real.
 
+## Adendo — Editor de receita multi-base (Terceirizados › Receitas)
+Decisão do usuário (21/07): a base é escolhida **no editor de receita artesanal**
+(`ArtisanalRecipes.tsx`), e o **rendimento pode mudar por base** (NAPA MADRID ainda com
+largura 0mm; NAPA SOFT 1000mm). Implementado:
+- O editor deixou de ter **uma** base; agora tem uma **lista de bases** (grupo + rendimento +
+  MO por base). Campos compartilhados (tipo/produto artesanal, largura de corte, tempo base,
+  terceirizado, notas, ativa) valem pra todas as bases.
+- Ao salvar, **materializa uma receita-irmã por base** (upsert idempotente por `(tipo, base)`
+  normalizado; apaga as irmãs cujo base foi removido). Mantém o modelo (B) — o débito da OS
+  já resolve pela receita escolhida, **sem migration/trigger**.
+- Na OS de produção, o picker de receita lista cada base (com rendimento); ao produzir, o
+  débito baixa a napa daquela base **na cor da tira** (`tg_debit_service_order_base` casa
+  base group + cor). Nenhuma base existente muda sem ação explícita.
+- Editar qualquer linha da lista carrega **todas** as bases daquele tipo (reconciliação).
+
 ## Definition of Done
 - [ ] **Req 1-2**: No PV, clicar `Cadastrar "{cor}"` numa tira sem estoque abre a janela
       "Cadastrar Tira Artesanal" pré-preenchida — verificado abrindo um PV com tira CAPUCCINO

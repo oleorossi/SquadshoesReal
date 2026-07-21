@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle, Scissors } from '@phosphor-icons/react';
+import { Sparkle as Sparkles, Plus, PencilSimple as Pencil, Trash as Trash2, MagnifyingGlass as Search, CircleNotch as Loader2, Calculator, ArrowRight, Users, Warning as AlertTriangle, Scissors, X } from '@phosphor-icons/react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -46,7 +49,24 @@ const emptyRecipe: Partial<ArtisanalRecipe> = {
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+/** Normaliza p/ comparar tipo/base sem acento nem caixa. */
+const normKey = (v: string) =>
+  (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+
+/** Uma base da receita (matéria-prima). O mesmo tipo de tira pode ter várias
+ *  bases (ex.: NAPA SOFT e NAPA MADRID), cada uma com seu rendimento/custo —
+ *  materializadas como uma linha em `artisanal_recipes` por base (irmãs). */
+interface BaseRow {
+  id?: string; // id da receita irmã existente (update) ou vazio (create)
+  base_product_name: string;
+  yield_per_meter: number;
+  labor_cost_per_meter: number;
+}
+
+const emptyBaseRow = (): BaseRow => ({ base_product_name: '', yield_per_meter: 1, labor_cost_per_meter: 0 });
+
 export default function ArtisanalRecipes({ embedded = false }: { embedded?: boolean } = {}) {
+  const qc = useQueryClient();
    const { data: recipes = [], isLoading, isError } = useArtisanalRecipes();
    const { data: contractors = [] } = useContractors();
    const { data: products = [] } = useProducts();
@@ -59,6 +79,11 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
   const [dialog, setDialog] = useState(false);
   const [editing, setEditing] = useState<Partial<ArtisanalRecipe>>(emptyRecipe);
   const [isEditing, setIsEditing] = useState(false);
+  // Bases (matéria-prima) da receita em edição — uma linha por base.
+  const [baseRows, setBaseRows] = useState<BaseRow[]>([emptyBaseRow()]);
+  // Ids das receitas-irmãs carregadas ao abrir (pra saber o que apagar se a base for removida).
+  const [loadedSiblingIds, setLoadedSiblingIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const productNames = useMemo(() => {
     const set = new Set<string>();
@@ -101,34 +126,105 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
 
   const openNew = () => {
     setEditing({ ...emptyRecipe });
+    setBaseRows([emptyBaseRow()]);
+    setLoadedSiblingIds([]);
     setIsEditing(false);
     setDialog(true);
   };
   const openEdit = (r: ArtisanalRecipe) => {
-    setEditing(r);
+    // Carrega TODAS as receitas-irmãs do mesmo tipo de tira (mesmo
+    // artisanal_product_name) — cada base vira uma linha editável.
+    const siblings = recipes.filter(
+      (x) => normKey(x.artisanal_product_name) === normKey(r.artisanal_product_name),
+    );
+    setEditing({ ...r });
+    setBaseRows(
+      (siblings.length ? siblings : [r]).map((s) => ({
+        id: s.id,
+        base_product_name: s.base_product_name,
+        yield_per_meter: Number(s.yield_per_meter) || 1,
+        labor_cost_per_meter: Number(s.labor_cost_per_meter) || 0,
+      })),
+    );
+    setLoadedSiblingIds(siblings.map((s) => s.id));
     setIsEditing(true);
     setDialog(true);
   };
 
-  const handleSave = () => {
-    if (
-      !editing.name?.trim() ||
-      !editing.base_product_name?.trim() ||
-      !editing.artisanal_product_name?.trim()
-    ) {
+  const setBaseRow = (i: number, patch: Partial<BaseRow>) =>
+    setBaseRows((rows) => rows.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  const addBaseRow = () => setBaseRows((rows) => [...rows, emptyBaseRow()]);
+  const removeBaseRow = (i: number) =>
+    setBaseRows((rows) => (rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows));
+
+  const handleSave = async () => {
+    const type = (editing.artisanal_product_name || '').trim();
+    const validRows = baseRows.filter((r) => r.base_product_name?.trim());
+    if (!editing.name?.trim() || !type || validRows.length === 0) {
+      toast.error('Preencha nome, produto artesanal e ao menos uma base.');
       return;
     }
+    // Base duplicada dentro da mesma receita não faz sentido.
+    const seen = new Set<string>();
+    for (const r of validRows) {
+      const k = normKey(r.base_product_name);
+      if (seen.has(k)) { toast.error(`Base "${r.base_product_name}" repetida.`); return; }
+      seen.add(k);
+    }
     const cutWidth = Number(editing.cut_width_mm);
-    const payload = {
-      ...editing,
-      yield_per_meter: Number(editing.yield_per_meter) || 1,
-      labor_cost_per_meter: Number(editing.labor_cost_per_meter) || 0,
+    const shared = {
+      name: editing.name!.trim(),
+      artisanal_product_name: type,
+      base_time_minutes: Math.max(0, Number(editing.base_time_minutes) || 0),
       cut_width_mm: Number.isFinite(cutWidth) && cutWidth > 0 ? Math.round(cutWidth) : null,
+      default_contractor_id: editing.default_contractor_id || null,
+      notes: editing.notes?.trim() || null,
+      active: editing.active ?? true,
     };
-    if (isEditing && editing.id) {
-      update.mutate(payload as ArtisanalRecipe, { onSuccess: () => setDialog(false) });
-    } else {
-      create.mutate(payload, { onSuccess: () => setDialog(false) });
+    setSaving(true);
+    try {
+      // Upsert idempotente por (tipo, base). Mantém as bases não-editadas de outras
+      // cores; cada base é uma receita irmã (o débito da OS resolve pela receita).
+      const existingByBase = new Map(
+        recipes
+          .filter((x) => normKey(x.artisanal_product_name) === normKey(type))
+          .map((x) => [normKey(x.base_product_name), x.id] as const),
+      );
+      for (const row of validRows) {
+        const base = row.base_product_name.trim();
+        const payload = {
+          ...shared,
+          base_product_name: base,
+          yield_per_meter: Number(row.yield_per_meter) || 1,
+          labor_cost_per_meter: Number(row.labor_cost_per_meter) || 0,
+        };
+        const existingId = row.id || existingByBase.get(normKey(base));
+        if (existingId) {
+          const { error } = await supabase.from('artisanal_recipes').update(payload as any).eq('id', existingId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('artisanal_recipes').insert(payload as any);
+          if (error) throw error;
+        }
+      }
+      // Bases removidas: irmãs carregadas que não estão mais na lista → apagar.
+      const keptIds = new Set(validRows.map((r) => r.id).filter(Boolean) as string[]);
+      const toDelete = loadedSiblingIds.filter((id) => !keptIds.has(id));
+      for (const id of toDelete) {
+        const { error } = await supabase.from('artisanal_recipes').delete().eq('id', id);
+        if (error) throw error;
+      }
+      qc.invalidateQueries({ queryKey: ['artisanal_recipes'] });
+      toast.success(
+        validRows.length > 1
+          ? `Receita salva com ${validRows.length} bases.`
+          : 'Receita salva!',
+      );
+      setDialog(false);
+    } catch (e: any) {
+      toast.error(`Erro ao salvar receita: ${e?.message || e}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -382,29 +478,6 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
 
              <div className="col-span-2 space-y-1.5">
                <Label className="text-xs font-medium text-muted-foreground">
-                 Grupo de produto base (matéria-prima) *
-               </Label>
-               <Select
-                 value={editing.base_product_name || ''}
-                 onValueChange={(v) =>
-                   setEditing((p) => ({ ...p, base_product_name: v }))
-                 }
-               >
-                 <SelectTrigger className="h-9">
-                   <SelectValue placeholder="Selecione o grupo base..." />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {groups.map((g) => (
-                     <SelectItem key={g.id} value={g.name}>
-                       {g.name}
-                     </SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
-
-             <div className="col-span-2 space-y-1.5">
-               <Label className="text-xs font-medium text-muted-foreground">
                  Grupo de produto artesanal (resultado) *
                </Label>
                <Select
@@ -426,48 +499,81 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
                </Select>
              </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">
-                Rendimento (m artesanal por m base) *
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min={0.01}
-                value={editing.yield_per_meter ?? 1}
-                onFocus={(e) => {
-                  if (Number(e.target.value) === 0) e.target.value = '';
-                }}
-                onChange={(e) =>
-                  setEditing((p) => ({ ...p, yield_per_meter: Number(e.target.value) || 0 }))
-                }
-                className="h-9 font-mono"
-              />
-              <p className="text-xs text-muted-foreground">
-                Ex: 0,7 = 1m de base produz 0,7m de artesanal
+            {/* Bases (matéria-prima) — a MESMA tira pode ser cortada de várias napas
+                (ex.: NAPA SOFT e NAPA MADRID), cada uma com seu rendimento. Cada base
+                vira uma variação da receita; na OS você escolhe a base e o débito baixa
+                a napa certa na cor da tira. */}
+            <div className="col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  Bases (matéria-prima) *
+                </Label>
+                <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addBaseRow}>
+                  <Plus className="h-3.5 w-3.5" /> Adicionar base
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-1">
+                A mesma tira pode ser cortada de mais de uma napa. Cada base tem seu próprio
+                rendimento; na produção você escolhe de qual base cortar.
               </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">
-                Custo de MO por metro produzido (R$)
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                value={editing.labor_cost_per_meter ?? 0}
-                onFocus={(e) => {
-                  if (Number(e.target.value) === 0) e.target.value = '';
-                }}
-                onChange={(e) =>
-                  setEditing((p) => ({
-                    ...p,
-                    labor_cost_per_meter: Number(e.target.value) || 0,
-                  }))
-                }
-                className="h-9 font-mono"
-              />
+              {baseRows.map((row, i) => (
+                <div key={row.id || i} className="relative rounded-lg border p-2.5 pt-3 space-y-2 bg-muted/20">
+                  {baseRows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeBaseRow(i)}
+                      className="absolute -right-2 -top-2 rounded-full border bg-card p-0.5 text-muted-foreground hover:text-destructive"
+                      aria-label="Remover base"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <Select
+                    value={row.base_product_name || ''}
+                    onValueChange={(v) => setBaseRow(i, { base_product_name: v })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecione o grupo base..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((g) => (
+                        <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground">Rendimento (m/m base) *</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0.01}
+                        value={row.yield_per_meter ?? 1}
+                        onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
+                        onChange={(e) => setBaseRow(i, { yield_per_meter: Number(e.target.value) || 0 })}
+                        className="h-9 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground">MO / metro (R$)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={row.labor_cost_per_meter ?? 0}
+                        onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
+                        onChange={(e) => setBaseRow(i, { labor_cost_per_meter: Number(e.target.value) || 0 })}
+                        className="h-9 font-mono"
+                      />
+                    </div>
+                  </div>
+                  {row.base_product_name && Number(row.yield_per_meter) > 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      1 m de {row.base_product_name} → {Number(row.yield_per_meter)} m de {editing.artisanal_product_name || 'tira'}
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
 
             <div className="col-span-2 space-y-1.5">
@@ -584,9 +690,10 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
             </Button>
             <Button
               onClick={handleSave}
-              disabled={create.isPending || update.isPending}
+              disabled={saving}
               className="h-9"
             >
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar
             </Button>
           </DialogFooter>
