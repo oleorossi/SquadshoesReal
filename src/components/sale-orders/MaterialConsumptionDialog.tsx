@@ -941,7 +941,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         continue;
       }
 
-      const rowsHtml = componentRows.map(row => {
+      const renderPdfRow = (row: ConsumptionRow) => {
         const aplicacao = row.sizeBreakdown && Object.keys(row.sizeBreakdown).length > 0
           ? Object.entries(row.sizeBreakdown)
               .sort(([a], [b]) => Number(a) - Number(b))
@@ -960,7 +960,39 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           </td>
         </tr>
       `;
-      }).join('');
+      };
+
+      // Faixa do total SOMADO do item (mesma da tela). Cores sólidas — regra de
+      // print do projeto (token com alpha some no papel).
+      const itemBandHtml = (item: ItemGroup) => {
+        const ok = item.available >= item.total;
+        const bg = item.known ? '#f0fdf4' : '#fffbeb';
+        const bd = item.known ? '#86efac' : '#fcd34d';
+        const fg = item.known ? '#15803d' : '#b45309';
+        const verdict = !item.known
+          ? `<span style="font-size:8pt;color:#b45309">estoque não comparável — cadastro incompleto</span>`
+          : ok
+            ? `<span style="font-size:8pt;color:#15803d">em estoque ${item.available.toFixed(2)} ${formatUnit(item.productUnit)}</span>`
+            : `<span style="font-size:8pt;color:#b91c1c;font-weight:700">faltam ${(item.total - item.available).toFixed(2)} ${formatUnit(item.productUnit)}</span>`;
+        return `
+        <tr><td colspan="2" style="padding:0">
+          <div style="background:${bg};border-top:1px solid ${bd};border-bottom:1px solid ${bd};padding:3px 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <span style="color:${fg}"><span style="font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Total do item · ${escapeHtml(item.groupName)}</span>
+            <span style="font-weight:700;font-size:11pt;margin-left:6px">${item.total.toFixed(2)} ${formatUnit(item.productUnit)}</span></span>
+            ${verdict}
+          </div>
+        </td></tr>`;
+      };
+
+      // Solado (visão por cor) segue linha-a-linha; demais agrupam por item.
+      const solePdfRows = componentRows.filter(r => r.componentType === 'Solado');
+      const itemsPdf = aggregateItems(componentRows.filter(r => r.componentType !== 'Solado'));
+      const rowsHtml = [
+        ...itemsPdf.map(item =>
+          (item.rows.length > 1 ? itemBandHtml(item) : '') + item.rows.map(renderPdfRow).join('')
+        ),
+        ...solePdfRows.map(renderPdfRow),
+      ].join('');
 
       cards.push(`
         <div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
