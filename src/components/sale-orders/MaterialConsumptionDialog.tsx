@@ -1,36 +1,24 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CircleNotch as Loader2, Package, FileText, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Warning as WarningIcon, Scissors, CheckCircle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CircleNotch as Loader2, Package, CheckCircle, Scissors } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
-import { escapeHtml } from '@/lib/htmlUtils';
-import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN, BASE_LINEAR_UNITS } from '@/lib/baseMaterialTotal';
-import { soleMatrixHtml, buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import {
   fetchConsumptionContext,
   computeConsumptionForItems,
   TECHNICAL_SHEET_CONSUMPTION_COLUMNS,
   type ConsumptionItem,
-  type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
-import {
-  aggregateArtisanalStrapCut,
-  isArtisanalStrap,
-  normalizeWidthToMm,
-  rollFillLabel,
-  strapRollBarHtml,
-  type ArtisanalStrapAggInput,
-  type ArtisanalStrapCutRow,
-} from '@/lib/strapRollCut';
-import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
+import { annotateConsumptionAvailability, normTxt, type ConsumptionRow } from '@/lib/consumptionRows';
+import MaterialConsumptionView from '@/components/sale-orders/MaterialConsumptionView';
+import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 
 type Props = {
   open: boolean;
@@ -39,174 +27,11 @@ type Props = {
   orderNumber: string;
 };
 
-/** Linha do modal = consumo canônico (motor em @/lib/orderConsumption) +
- *  disponibilidade em estoque anotada localmente (verde/vermelho). */
-type ConsumptionRow = MaterialConsumptionRow & {
-  /** Disponibilidade em estoque no momento da consulta (não-solado): soma do
-   *  estoque dos produtos do grupo que casam na cor. Verde se cobre o consumo. */
-  available?: number;
-  /** Solado: estoque por numeração (stock_grade do produto-solado resolvido).
-   *  Permite marcar verde/vermelho número a número. */
-  soleSizeStock?: Record<string, number>;
-  /** Equivalente em material-base SE produzido artesanalmente (Materiais
-   *  Artesanais → artisanal_recipes). Ex.: tira overlock que rende 88 m por 1 m
-   *  de NAPA SOFT → base = metros_de_tira / yield_per_meter, na mesma cor.
-   *  `baseName` é a napa da FICHA da referência (materialFamily), não a base fixa
-   *  da receita. `pending` = a família é conhecida mas NÃO há receita/rendimento
-   *  cadastrado pra essa base (ex.: tira em NAPA MADRID sem receita) → não
-   *  converte às cegas; a UI mostra "a cadastrar". */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
-};
-
-// Família de napa de uma linha, pra segmentar por cor × família. Tira: a napa
-// da ficha da referência (materialFamily, vindo do motor). Napa direta
-// (cabedal/forração/palmilha/fachete): a própria groupName quando é napa/couro.
-// Demais (solado, cola, embalagem): sem família (null) → ficam num bloco neutro.
-const rowFamily = (r: ConsumptionRow): string | null => {
-  if (r.componentType === 'Tiras') return (r.materialFamily || '').trim() || null;
-  if (BASE_MATERIAL_COMPONENTS.has(r.componentType)) {
-    const g = (r.groupName || '').trim();
-    return g && BASE_GROUP_PATTERN.test(g) ? g : null;
-  }
-  return null;
-};
-// Separador interno da chave de seção composta cor|família (visão por Cor).
-// Char de controle (unit separator) — não aparece em nome de cor/napa.
-const SECTION_SEP = String.fromCharCode(31);
-
-const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forração Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
-
-// Normalização de texto (lowercase + sem acento) — usada no match de cor do
-// estoque e no match de OS já gerada de corte de cabedal.
-const normTxt = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-
-// ── Formatação de quantidade pt-BR (DISPLAY-ONLY) ──────────────────────────
-// Aditiva e pura — NÃO mexe em formatUnit (compartilhado com o PDF). par/un/
-// placa = inteiro com separador de milhar; área/linear/massa/volume = 2 casas.
-// Corrige "2208.00 PAR" → "2.208" e "6399.39" → "6.399,39".
-const INTEGER_UNITS = new Set(['par', 'un', 'placa']);
-const formatQty = (value: number, unit: string): string => {
-  const isInt = INTEGER_UNITS.has((unit || '').toLowerCase());
-  return new Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: isInt ? 0 : 2,
-    maximumFractionDigits: isInt ? 0 : 2,
-  }).format(Number(value) || 0);
-};
-const pluralizeItens = (n: number) => `${n} ${n === 1 ? 'item' : 'itens'}`;
-
-// Disponível efetivo da linha (espelha EXATAMENTE o cálculo do render: solado
-// soma o stock_grade; demais usam `available`). Fonte única pro contador de
-// escassez, o subtotal por seção e o status da linha — zero lógica nova.
-const rowAvailable = (r: ConsumptionRow): number =>
-  r.componentType === 'Solado'
-    ? Object.values(r.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0)
-    : (r.available ?? 0);
-// Solado é avaliado POR NUMERAÇÃO (igual à matriz): falta se ALGUM número não
-// é coberto pelo stock_grade — distribuído por `buildColAvailability` (mesma
-// função da matriz, conjugadas inclusas). Sem isto, um solado com estoque TOTAL
-// suficiente mas mal distribuído mostrava célula vermelha na matriz e NÃO
-// entrava no contador "em falta" (divergência visível pro usuário).
-const soleRowShort = (r: ConsumptionRow): boolean => {
-  const breakdown = r.sizeBreakdown || {};
-  const sizes = Object.keys(breakdown);
-  if (sizes.length === 0) return rowAvailable(r) < r.totalQuantity;
-  const avail = buildColAvailability(r.soleSizeStock, sizes, breakdown);
-  return sizes.some((s) => (Number(breakdown[s]) || 0) > (Number(avail[s]) || 0));
-};
-// "Em falta" = largura conhecida E (solado: algum número descoberto; demais:
-// disponível < necessário). Espelha o status visível no render.
-// Linha de AVISO sem quantidade (ex.: fachete sem specs) é neutra; linha com
-// quantidade REAL + aviso (fallback_average — F2-02) COMPARA normalmente, como
-// o SQL (stock_ok é calculado nas linhas fallback_average).
-const rowIsShort = (r: ConsumptionRow): boolean => {
-  if (r.widthMissing || (r.warning && !(r.totalQuantity > 0))) return false;
-  if (r.componentType === 'Solado') return soleRowShort(r);
-  return rowAvailable(r) < r.totalQuantity;
-};
-
-// ── Total de consumo SOMADO por item (grupo + cor) ─────────────────────────
-// Um mesmo material aparece em várias linhas — uma por APLICAÇÃO (FRENTE, TIRA 1,
-// TIRA 3…). Elas dividem o MESMO estoque: `available` = groupAvailable(grupo,cor),
-// idêntico em todas as linhas-irmãs. Somamos o consumo das aplicações e avaliamos
-// o estoque UMA vez sobre esse total (pegando um representante de `available` —
-// NUNCA somar, senão 100+100+100 = 300 fantasma). Solado fica de fora: é avaliado
-// por numeração (soleRowShort / SoleSection), nunca por total agregado.
-type ItemGroup = {
-  key: string;
-  componentType: string;
-  groupName: string;
-  color: string;
-  productUnit: string;
-  rows: ConsumptionRow[];
-  /** Soma do consumo das aplicações do item. */
-  total: number;
-  /** Estoque do item — um representante (mesmo balde grupo+cor), não a soma. */
-  available: number;
-  /** true = todas as linhas com largura/consumo cadastrados (comparável c/ estoque). */
-  known: boolean;
-};
-
-// Item = BALDE de estoque (grupo + cor + unidade), INDEPENDENTE do componente.
-// A mesma napa+cor usada em cabedal E em forração é UM item só — divide o MESMO
-// estoque (`groupAvailable` é por grupo+cor, sem componente). Sem `componentType`
-// na chave, a visão SEGMENTADA (clicar Cor / Grupo / Unidade) mantém o item
-// agrupado em vez de repetir a mesma napa uma vez por componente. Na visão por
-// componente (padrão) o `componentType` é constante dentro da seção, então o
-// resultado é idêntico ao anterior — a mudança só afeta os buckets que cruzam
-// componentes (exatamente os da segmentação). (Pedido user 2026-07-22.)
-const itemKey = (r: ConsumptionRow) =>
-  `${r.groupName}||${r.color}||${r.productUnit}`;
-
-/** Agrega linhas NÃO-solado por item, preservando a ordem de primeira aparição.
- *  Presentation-only — não toca no motor de consumo. */
-const aggregateItems = (rows: ConsumptionRow[]): ItemGroup[] => {
-  const map = new Map<string, ItemGroup>();
-  for (const r of rows) {
-    const k = itemKey(r);
-    let it = map.get(k);
-    if (!it) {
-      it = {
-        key: k,
-        componentType: r.componentType,
-        groupName: r.groupName,
-        color: r.color,
-        productUnit: r.productUnit,
-        rows: [],
-        total: 0,
-        available: rowAvailable(r),
-        known: true,
-      };
-      map.set(k, it);
-    }
-    it.rows.push(r);
-    it.total += Number(r.totalQuantity) || 0;
-    // Aviso SEM quantidade = cadastro incompleto → item vira "desconhecido".
-    // Aviso COM quantidade (fallback_average) mantém a comparação com estoque.
-    if (r.widthMissing || (r.warning && !(r.totalQuantity > 0))) it.known = false;
-  }
-  return Array.from(map.values());
-};
-
-/** Item em falta = cadastro completo E estoque (balde único) < consumo somado. */
-const itemIsShort = (it: ItemGroup): boolean => it.known && it.available < it.total;
-
-// Contagem "em falta" ITEM-a-item (não linha-a-linha): tiras da mesma cor que
-// dividem estoque contam UMA vez. Solado segue por numeração (soleRowShort).
-// Fonte única do chip da toolbar e do subtotal por seção.
-const countShort = (rows: ConsumptionRow[]): number => {
-  const sole = rows.filter(r => r.componentType === 'Solado' && rowIsShort(r)).length;
-  const others = aggregateItems(rows.filter(r => r.componentType !== 'Solado')).filter(itemIsShort).length;
-  return sole + others;
-};
-
 /* ── Terceirização do Corte de Cabedal ─────────────────────────────────────
  * Itens do PV cuja ficha técnica NÃO tem tiras (has_straps !== true) passam
- * pela sub-etapa "Corte Cabedal" — mesma regra `requiresUpperCut` da ficha de
- * operador (PrintWorkSheetsPage). A seção abaixo permite gerar a OS de
- * terceirização direto do modal, espelhando o payload do
- * ServiceOrderFormDialog (criação manual canônica do menu Terceirizados). */
+ * pela sub-etapa "Corte Cabedal". A seção abaixo permite gerar a OS de
+ * terceirização direto do modal, espelhando o payload do ServiceOrderFormDialog. */
 type UpperCutGroup = {
-  /** chave estável referência+cor */
   key: string;
   refId: string;
   refCode: string | null;
@@ -215,167 +40,16 @@ type UpperCutGroup = {
   pairs: number;
 };
 
-/** Valor de domínio pro setor de corte de cabedal — existe no enum SQL
- *  `production_stage_enum` ('corte_cabedal') e segue o padrão lowercase dos
- *  demais target_sector ('costura', 'corte_palmilha', ...). */
+/** Valor de domínio pro setor de corte de cabedal (enum SQL 'corte_cabedal'). */
 const UPPER_CUT_SECTOR = 'corte_cabedal';
 
-/** Status que encerram uma OS — mesma lista usada no fluxo de gargalos
- *  (useSectorBottlenecks) e nos guards do Contractors.tsx. OS nesses status
- *  NÃO bloqueia gerar outra (anti-duplicação só considera OS ativa). */
+/** Status que encerram uma OS — OS nesses status NÃO bloqueia gerar outra. */
 const FINALIZED_OS_STATUSES = ['received', 'Concluído', 'concluido', 'finalizado', 'Finalizado', 'Cancelado', 'cancelled', 'cancelado'];
-
-/**
- * Solado em matriz numeração × cor (igual à visão da OC), com cada célula colorida
- * por disponibilidade: verde = estoque do nº cobre o necessário, vermelho = falta.
- * `sizeSortKey`/`buildColAvailability` (e a versão HTML `soleMatrixHtml`) moram em
- * `@/lib/soleMatrixHtml` — FONTE ÚNICA reusada por este React e pelos PDFs.
- */
-function SoleMatrix({ rows }: { rows: ConsumptionRow[] }) {
-  const sizes = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of rows) for (const s of Object.keys(r.sizeBreakdown || {})) set.add(s);
-    return Array.from(set).sort((a, b) => sizeSortKey(a) - sizeSortKey(b));
-  }, [rows]);
-  const totalsBySize = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const r of rows) for (const [s, q] of Object.entries(r.sizeBreakdown || {})) m[s] = (m[s] || 0) + (Number(q) || 0);
-    return m;
-  }, [rows]);
-
-  // Fallback: solado sem breakdown por numeração — tabela simples por cor,
-  // colorida pelo total (soma do stock_grade ≥ total necessário).
-  if (sizes.length === 0) {
-    return (
-      <div className="rounded-lg border overflow-hidden overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead>Solado</TableHead><TableHead>Cor</TableHead>
-              <TableHead className="text-right">Consumo Total</TableHead>
-              <TableHead className="text-right w-28">Em estoque</TableHead>
-              <TableHead className="text-center w-24">Unidade</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((r, i) => {
-              const have = Object.values(r.soleSizeStock || {}).reduce((s, v) => s + (Number(v) || 0), 0);
-              const ok = have >= r.totalQuantity;
-              return (
-                <TableRow key={i}>
-                  <TableCell className={`font-medium ${!ok ? 'border-l-2 border-red-500/60' : ''}`}>{r.groupName}</TableCell>
-                  <TableCell>{r.color}</TableCell>
-                  <TableCell className="text-right font-mono font-bold tabular-nums">{formatQty(r.totalQuantity, 'par')}</TableCell>
-                  <TableCell className="text-right" aria-label={ok ? 'em estoque' : 'em falta'}>
-                    <span className="inline-flex items-center justify-end gap-1">
-                      {ok
-                        ? <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
-                        : <WarningIcon weight="fill" className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" aria-hidden="true" />}
-                      <span className={`font-mono tabular-nums font-semibold ${ok ? 'text-foreground' : 'text-red-600 dark:text-red-400'}`}>{formatQty(have, 'par')}</span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center text-xs text-muted-foreground">par</TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border overflow-hidden overflow-x-auto keep-together">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/50">
-            <TableHead>Cor</TableHead>
-            {sizes.map((s) => <TableHead key={s} className="text-center px-2 whitespace-nowrap">{s}</TableHead>)}
-            <TableHead className="text-right">Total</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((r, i) => {
-            const total = Object.values(r.sizeBreakdown || {}).reduce((s, v) => s + (Number(v) || 0), 0) || r.totalQuantity;
-            return (
-              <TableRow key={i}>
-                <TableCell><Badge variant="outline" className="text-xs">{r.color}</Badge></TableCell>
-                {(() => {
-                  const avail = buildColAvailability(r.soleSizeStock, sizes, r.sizeBreakdown || {});
-                  return sizes.map((s) => {
-                  const need = r.sizeBreakdown?.[s] || 0;
-                  const have = avail[s] || 0;
-                  if (need <= 0) return <TableCell key={s} className="text-center text-muted-foreground">·</TableCell>;
-                  const ok = have >= need;
-                  return (
-                    <TableCell
-                      key={s}
-                      title={`Necessário ${need} · Em estoque ${Math.round(have * 10) / 10}`}
-                      aria-label={ok ? `${s}: em estoque` : `${s}: em falta`}
-                      className={`text-center font-mono font-semibold tabular-nums ${ok ? 'text-foreground' : 'text-red-600 dark:text-red-400 border-b-2 border-red-500/60'}`}
-                    >
-                      {formatQty(need, 'par')}
-                    </TableCell>
-                  );
-                  });
-                })()}
-                <TableCell className="text-right font-mono font-bold tabular-nums whitespace-nowrap">{formatQty(total, 'par')} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
-              </TableRow>
-            );
-          })}
-          <TableRow className="bg-muted/40 font-semibold">
-            <TableCell>Total por numeração</TableCell>
-            {sizes.map((s) => <TableCell key={s} className="text-center font-mono tabular-nums">{formatQty(totalsBySize[s] || 0, 'par')}</TableCell>)}
-            <TableCell className="text-right font-mono tabular-nums">{formatQty(Object.values(totalsBySize).reduce((s, v) => s + v, 0), 'par')} <span className="text-[10px] text-muted-foreground">par</span></TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-/**
- * Seção Solado: uma MATRIZ POR TIPO DE SOLADO (separadas). Ex.: solado 01 e 238 no
- * mesmo PV/OC aparecem em tabelas distintas, cada uma com sua própria numeração
- * (conjugada ou individual) × cor. Pedido user 2026-05-30.
- */
-function SoleSection({ rows }: { rows: ConsumptionRow[] }) {
-  // UM QUADRO POR (modelo + COR) — não mistura cores na mesma tabela (pedido user
-  // 2026-06-29). Cada cor é seu próprio box; idem `soleMatrixHtml` no PDF.
-  const bySole = useMemo(() => {
-    const m = new Map<string, { sole: string; color: string; rows: ConsumptionRow[] }>();
-    for (const r of rows) {
-      const sole = r.groupName || '—';
-      const color = r.color || '—';
-      const k = `${sole}|||${color}`;
-      if (!m.has(k)) m.set(k, { sole, color, rows: [] });
-      m.get(k)!.rows.push(r);
-    }
-    return Array.from(m.values()).sort((a, b) => a.sole.localeCompare(b.sole, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
-  }, [rows]);
-  return (
-    <div className="space-y-3">
-      {bySole.map(({ sole, color, rows: soleRows }) => (
-        <div key={`${sole}|||${color}`} className="space-y-1 keep-together">
-          <div className="text-xs font-semibold flex items-center gap-2">
-            <span className="inline-block rounded-sm border border-border px-2 py-0.5 text-foreground">{sole}</span>
-            <span className="text-muted-foreground font-normal">{color}</span>
-          </div>
-          <SoleMatrix rows={soleRows} />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrderId, orderNumber }: Props) {
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
-  // Bloco SEPARADO (vermelho) das tiras artesanais cortadas do rolo. Derivado
-  // das linhas 'Tiras' já agregadas (grupo+cor, em metros) — mesma detecção e
-  // mesma matemática (strapRollCut) usadas no Resumo Consolidado e na Lista de
-  // Separação. Sem isto, o modal por-PV mostrava as tiras só no preto.
   const [artisanalStrapRows, setArtisanalStrapRows] = useState<ArtisanalStrapCutRow[]>([]);
 
   // ── Corte de Cabedal — terceirização ────────────────────────────────────
@@ -392,9 +66,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
 
   // Gatilho de recálculo automático: invalidado pelo save do PV
-  // (useUpdateSaleOrder → invalidateQueries(['consumption-source'])). Ao salvar
-  // o pedido, esta query refetcha; o `dataUpdatedAt` muda e o efeito abaixo
-  // recarrega o consumo SOZINHO — sem fechar/reabrir nem clicar Recalcular.
+  // (useUpdateSaleOrder → invalidateQueries(['consumption-source'])).
   const { dataUpdatedAt: pvTouchedAt } = useQuery({
     queryKey: ['consumption-source', saleOrderId],
     queryFn: async () => {
@@ -424,11 +96,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // O sub-select de technical_sheets reusa TECHNICAL_SHEET_CONSUMPTION_COLUMNS
       // (fonte ÚNICA das colunas que o motor canônico lê) + os campos exclusivos
       // do modal (code/name p/ a seção de Corte de Cabedal, has_straps p/ decidir
-      // quem entra nela). Antes a lista era duplicada inline e DRIFTOU do motor:
-      // faltavam lining_consumption_per_size (→ modal usava o escalar e divergia
-      // do per-size que a ficha usa) e os *_material_product_id (→ pino de SKU não
-      // aparecia no modal). Compor da constante elimina a divergência por
-      // construção. (Auditoria do motor 2026-06-29.)
+      // quem entra nela).
       const { data: items, error: itemsError } = await supabase
         .from('sale_order_items')
         .select(`
@@ -481,12 +149,9 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         .filter((g) => g.pairs > 0)
         .sort((a, b) => (a.refCode || a.refName).localeCompare(b.refCode || b.refName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
 
-      // OS ativas de corte de cabedal já vinculadas a ESTE PV (anti-duplicação):
-      // casa pela referência (code, senão nome) + cor presentes na description.
+      // OS ativas de corte de cabedal já vinculadas a ESTE PV (anti-duplicação).
       const osByKey: Record<string, string> = {};
       if (upperGroups.length > 0) {
-        // Inclui OSs vinculadas via linked_sale_order_ids (ex.: excedente do
-        // Planejamento cobrindo este PV) — não só as criadas por este modal.
         const { data: existingOs } = await (supabase as any)
           .from('service_orders')
           .select('order_number, description, status')
@@ -500,7 +165,6 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           const hit = activeOs.find((o) => {
             const desc = normTxt(o.description || '');
             if (!desc.includes(refToken)) return false;
-            // se o grupo tem cor definida, exige a cor na description também
             if (g.color !== '—' && !desc.includes(normTxt(g.color))) return false;
             return true;
           });
@@ -518,31 +182,6 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
 
       const ctx = await fetchConsumptionContext(refIds);
 
-      // Receitas artesanais (Materiais Artesanais): cada uma liga um produto
-      // artesanal (ex.: tira) a um material-base (napa) com yield_per_meter
-      // (metros de saída por 1 m de base). Usado pra (a) mostrar, ao lado do
-      // consumo da tira, quanto de napa-base sairia se feita artesanalmente; e
-      // (b) DETECTAR que a tira é artesanal cortada do rolo (grupo de RESULTADO
-      // `artisanal_product_name`) + largura de corte (`cut_width_mm`, mm).
-      // Query DEFENSIVA em cut_width_mm: se a coluna ainda não foi migrada, o
-      // PostgREST erra e refazemos sem ela (não quebra o modal).
-      let recipesData: any[] | null = null;
-      {
-        const withWidth = await supabase
-          .from('artisanal_recipes')
-          .select('artisanal_product_name, base_product_name, yield_per_meter, cut_width_mm' as any)
-          .eq('active', true);
-        if (!withWidth.error) {
-          recipesData = withWidth.data as any[];
-        } else {
-          const fallback = await supabase
-            .from('artisanal_recipes')
-            .select('artisanal_product_name, base_product_name, yield_per_meter')
-            .eq('active', true);
-          recipesData = (fallback.data as any[]) || null;
-        }
-      }
-
       // Modo de embalagem do PEDIDO — quando a ficha tem várias caixas no BOM
       // (colmeia + individual), o motor mostra só a caixa do modo escolhido.
       const { data: soPkg } = await supabase
@@ -553,222 +192,18 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       const packagingMode = (soPkg as any)?.packaging_mode ?? null;
       const itemsWithMode = (items as any[]).map((it) => ({ ...it, packagingMode }));
 
-      // Motor CANÔNICO (mesmo de @/lib/orderConsumption usado pela ficha do
-      // operador, por OP). Aqui calculamos por PEDIDO: agrega todos os itens do
-      // PV. Só o consumo previsto — a disponibilidade é anotada logo abaixo.
-      const rows = computeConsumptionForItems(
+      // Motor CANÔNICO (por PEDIDO: agrega todos os itens do PV) + anotação de
+      // disponibilidade/tiras artesanais (fonte única compartilhada).
+      const computed = computeConsumptionForItems(
         itemsWithMode as unknown as ConsumptionItem[],
         ctx,
-      ) as ConsumptionRow[];
-
-      // ── Disponibilidade em estoque (no momento da consulta) ──────────────
-      // Não-solado: soma o estoque dos produtos do grupo que casam na cor.
-      // Solado: pega o stock_grade do produto-solado (número a número).
-      const colorMatchesProduct = (p: any, color: string): boolean => {
-        if (!color || color === '—') return true;
-        const c = normTxt(color);
-        const pName = normTxt(p.name); const pColor = normTxt(p.color);
-        if (pColor === c || pName === c) return true;
-        const after = pName.includes(':') ? normTxt(pName.split(':').pop() || '') : pName.includes('-') ? normTxt(pName.split('-').pop() || '') : '';
-        if (after && after === c) return true;
-        if (pColor.length > 3 && c.length > 3 && (c.includes(pColor) || pColor.includes(c))) return true;
-        return false;
-      };
-      const groupAvailable = (groupName: string, color: string): number => {
-        const group = (ctx.productGroups || []).find((g: any) => normTxt(g.name) === normTxt(groupName));
-        return (ctx.allProducts || []).filter((p: any) => {
-          // membro do grupo; só cai no match por nome quando o grupo não existe
-          // (evita puxar produto de OUTRO grupo que só compartilha o nome)
-          const ok = group ? p.group_id === group.id : normTxt(p.name) === normTxt(groupName);
-          if (!ok) return false;
-          return colorMatchesProduct(p, color);
-        }).reduce((s: number, p: any) => {
-          // disponível = quantidade − reservado (consistente com o resto do app)
-          const avail = (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0);
-          return s + Math.max(0, avail);
-        }, 0);
-      };
-      const extractStockGrade = (prod: any): Record<string, number> => {
-        const out: Record<string, number> = {};
-        const g = prod?.stock_grade;
-        if (g && typeof g === 'object') {
-          for (const [k, v] of Object.entries(g)) {
-            if (k.startsWith('_')) continue; // pula meta (_size_to, _size_from)
-            const n = Number(v);
-            if (Number.isFinite(n)) out[k] = n;
-          }
-        }
-        return out;
-      };
-      // Estoque por numeração do solado. Como agora agrupamos o solado pelo MODELO
-      // (nome do grupo, que difere do nome do produto), o id resolvido pelo motor
-      // (`soleProductId`) é a forma confiável de achar a variante de cor certa.
-      // Fallback pro casamento por nome quando o motor não resolveu o produto
-      // (solado só via texto sheet.sole_material).
-      const soleStockById = (productId: string): Record<string, number> => {
-        const prod = (ctx.allProducts || []).find((p: any) => p.id === productId);
-        return extractStockGrade(prod);
-      };
-      const soleStockGrade = (groupName: string, color: string): Record<string, number> => {
-        const prod = (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName) && colorMatchesProduct(p, color))
-          || (ctx.allProducts || []).find((p: any) => normTxt(p.name) === normTxt(groupName));
-        return extractStockGrade(prod);
-      };
-      // Mapa nome-do-produto-artesanal (normalizado) → { base, yield }. O nome
-      // da receita usa grafia variada (ex.: "Tira Overlock 5mm") e o grupo da
-      // tira vem em CAIXA ALTA ("TIRA OVERLOCK 5MM") — normTxt resolve isso.
-      const recipeMap = new Map<string, { base: string; yieldPerMeter: number }>();
-      // Rendimento por (TIRA, BASE): a base de uma tira é a napa da ficha da
-      // referência (materialFamily), não a base fixa da receita. A mesma tira
-      // em NAPA SOFT e em NAPA MADRID são receitas distintas (rendimento muda
-      // com a largura do rolo). Chave `${nomeNorm}::${baseNorm}`.
-      const recipeYieldByNameBase = new Map<string, number>();
-      for (const r of (recipesData || []) as any[]) {
-        const y = Number(r.yield_per_meter) || 0;
-        if (y > 0 && r.artisanal_product_name) {
-          // recipeMap = compat legado (1ª receita por nome), usado só de fallback
-          // quando a linha não tem família (tira sem ficha/napa resolvida).
-          if (!recipeMap.has(normTxt(r.artisanal_product_name))) {
-            recipeMap.set(normTxt(r.artisanal_product_name), { base: r.base_product_name, yieldPerMeter: y });
-          }
-          if (r.base_product_name) {
-            recipeYieldByNameBase.set(`${normTxt(r.artisanal_product_name)}::${normTxt(r.base_product_name)}`, y);
-          }
-        }
-      }
-      const LINEAR = new Set(['m', 'metro', 'metros', 'mt']);
-
-      // ── Tiras artesanais (corte do rolo): detecção + largura de corte ───────
-      // Detecção AUTORITATIVA = grupo da tira é o RESULTADO de uma receita ativa
-      // (`artisanal_product_name`). Inclui receitas com yield 0 (recipeMap acima
-      // exige yield > 0; aqui basta o nome). Largura prioriza `cut_width_mm` da
-      // receita → largura do grupo (`product_groups.dimensions_width`).
-      const recipeOutputNorms = new Set<string>();
-      const recipeWidth = new Map<string, number>();
-      // Base do rolo por norm — INDEPENDENTE de yield (o `recipeMap` acima exige
-      // yield > 0; o agrupamento por base+cor do otimizador precisa valer também
-      // pra receitas yield-0, igual aos outros 2 painéis). Não ler do recipeMap.
-      const recipeBaseByNorm = new Map<string, string>();
-      for (const r of (recipesData || []) as any[]) {
-        const norm = normTxt(r.artisanal_product_name || '');
-        if (!norm) continue;
-        recipeOutputNorms.add(norm);
-        const w = Number(r.cut_width_mm) || 0;
-        if (w > (recipeWidth.get(norm) || 0)) recipeWidth.set(norm, w);
-        const base = (r.base_product_name || '').toString().trim();
-        if (base && !recipeBaseByNorm.has(norm)) recipeBaseByNorm.set(norm, base);
-      }
-      const groupWidthByNorm = new Map<string, number>();
-      const groupNameByNorm = new Map<string, string>();
-      // norm do nome → group_id, pra agregar por (group_id+cor) igual aos outros painéis.
-      const groupIdByNorm = new Map<string, string>();
-      for (const g of (ctx.productGroups || []) as any[]) {
-        const norm = normTxt(g.name);
-        if (!norm) continue;
-        if (!groupNameByNorm.has(norm)) groupNameByNorm.set(norm, g.name);
-        if (g.id && !groupIdByNorm.has(norm)) groupIdByNorm.set(norm, String(g.id));
-        const w = normalizeWidthToMm(g.dimensions_width, g.dimensions_unit);
-        if (w > (groupWidthByNorm.get(norm) || 0)) groupWidthByNorm.set(norm, w);
-      }
-      // Flag `is_artisanal_strap` no grupo — sinal secundário (recipe vence).
-      // Query DEFENSIVA: coluna pode não estar migrada → seguimos sem ela.
-      const groupArtisanalFlag = new Map<string, boolean>();
-      {
-        const { data: flagged, error: flagErr } = await supabase
-          .from('product_groups')
-          .select('name, is_artisanal_strap' as any);
-        if (!flagErr && Array.isArray(flagged)) {
-          for (const g of flagged as any[]) {
-            if ((g as any)?.is_artisanal_strap) groupArtisanalFlag.set(normTxt(g.name), true);
-          }
-        }
-      }
-      const strapWidthForNorm = (norm: string) =>
-        recipeWidth.get(norm) || groupWidthByNorm.get(norm) || 0;
-
-      for (const row of rows) {
-        if (row.componentType === 'Solado') {
-          row.soleSizeStock = row.soleProductId
-            ? soleStockById(row.soleProductId)
-            : soleStockGrade(row.groupName, row.color);
-        } else {
-          row.available = groupAvailable(row.groupName, row.color);
-        }
-        // Equivalente em material-base se feita artesanalmente. Só faz sentido
-        // pra linhas lineares (metros) — yield_per_meter é m-saída por m-base.
-        // GATE por componentType 'Tiras' (2026-07-22): a conversão artesanal só
-        // vale pra linha de TIRA. Sem esse gate o motor casava "às cegas" o NOME
-        // do grupo contra qualquer receita — então uma napa-base consumida DIRETO
-        // (cabedal/forração/palmilha) cujo grupo tivesse o mesmo nome de um
-        // artisanal_product_name virava "tira cortada de X". Foi o bug PV-00148:
-        // a NAPA MADRID da forração de palmilha (2,43 m diretos) aparecia como
-        // "= 0,06 m NAPA SOFT · artesanal" e sumia do total de material base
-        // (contava 0,06 m de NAPA SOFT no lugar de 2,43 m de NAPA MADRID).
-        //
-        // Base = napa da FICHA da referência (`materialFamily`), NÃO a base fixa
-        // da receita. A mesma tira em NAPA SOFT × NAPA MADRID vira base diferente
-        // (rendimento por `(tira, base)`). Sem família resolvida (tira sem ficha),
-        // cai na 1ª receita por nome (compat legado). Família conhecida SEM receita
-        // pra essa base (ex.: tira em NAPA MADRID ainda sem rendimento cadastrado)
-        // → `pending`: não converte às cegas; a UI mostra "a cadastrar".
-        if (row.componentType === 'Tiras'
-            && LINEAR.has((row.productUnit || '').toLowerCase())
-            && row.totalQuantity > 0) {
-          const nameNorm = normTxt(row.groupName);
-          const legacy = recipeMap.get(nameNorm) || recipeMap.get(normTxt(row.materialName));
-          const baseName = (row.materialFamily || '').trim() || legacy?.base || '';
-          if (baseName) {
-            const yld = recipeYieldByNameBase.get(`${nameNorm}::${normTxt(baseName)}`)
-              || (legacy && normTxt(legacy.base) === normTxt(baseName) ? legacy.yieldPerMeter : 0);
-            row.artisanal = yld > 0
-              ? { baseName, baseQty: row.totalQuantity / yld, yieldPerMeter: yld }
-              : { baseName, baseQty: 0, yieldPerMeter: 0, pending: true };
-          }
-        }
-      }
-
-      const sortedRows = [...rows].sort((a, b) => {
-        const typeDiff = COMPONENT_ORDER.indexOf(a.componentType as (typeof COMPONENT_ORDER)[number]) - COMPONENT_ORDER.indexOf(b.componentType as (typeof COMPONENT_ORDER)[number]);
-        if (typeDiff !== 0) return typeDiff;
-        const groupDiff = a.groupName.localeCompare(b.groupName, 'pt-BR');
-        if (groupDiff !== 0) return groupDiff;
-        const materialDiff = a.materialName.localeCompare(b.materialName, 'pt-BR');
-        if (materialDiff !== 0) return materialDiff;
-        return a.color.localeCompare(b.color, 'pt-BR');
-      });
-
-      // Linhas do bloco vermelho: uma por (grupo+cor) de tira artesanal. As
-      // linhas 'Tiras' já vêm agregadas por grupo+cor em METROS (motor canônico),
-      // então `totalQuantity` é exatamente os metros_necessarios do corte do rolo
-      // — o mesmo total que a seção "Tiras" exibe acima (por isso o bloco vermelho
-      // não repete a coluna de metros: só mostra o cm a cortar do rolo).
-      const artisanalInputs: ArtisanalStrapAggInput[] = [];
-      for (const row of sortedRows) {
-        if (row.componentType !== 'Tiras' || !(row.totalQuantity > 0)) continue;
-        const norm = normTxt(row.groupName);
-        const detected = isArtisanalStrap({
-          recipeFlag: recipeOutputNorms.has(norm),
-          groupFlag: groupArtisanalFlag.get(norm),
-          name: `${row.groupName} ${row.materialName || ''}`,
-        });
-        if (!detected) continue;
-        artisanalInputs.push({
-          // group_id resolvido pelo nome do grupo (as linhas canônicas já vêm
-          // somadas por grupo+cor); agrupar por (group_id+cor) mantém paridade
-          // com os outros painéis e soma os metros antes do corte do rolo.
-          groupKey: groupIdByNorm.get(norm) || norm,
-          groupName: groupNameByNorm.get(norm) || row.groupName,
-          color: (row.color || '—').toString().trim() || '—',
-          metros: row.totalQuantity,
-          largura_mm: strapWidthForNorm(norm),
-          baseName: recipeBaseByNorm.get(norm) || undefined,
-        });
-      }
-      const artisanalCut: ArtisanalStrapCutRow[] = aggregateArtisanalStrapCut(artisanalInputs);
+      );
+      const { rows: annotatedRows, artisanalStrapRows: strapCut } =
+        await annotateConsumptionAvailability(computed, ctx);
 
       if (isCancelled()) return;
-      setRows(sortedRows);
-      setArtisanalStrapRows(artisanalCut);
+      setRows(annotatedRows);
+      setArtisanalStrapRows(strapCut);
     } catch (err) {
       if (isCancelled()) return;
       console.error('Erro ao carregar consumo:', err);
@@ -780,16 +215,14 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
   };
 
   /** Cria a OS de corte de cabedal pro grupo (ref+cor) — espelha o payload do
-   *  ServiceOrderFormDialog (criação manual canônica): order_number via
-   *  generateServiceOrderNumber(), status 'Pendente', service_date hoje. */
+   *  ServiceOrderFormDialog (criação manual canônica). */
   const handleCreateUpperCutOS = async (g: UpperCutGroup) => {
     const contractorId = contractorByKey[g.key];
     if (!saleOrderId || !contractorId || creatingKey) return;
     setCreatingKey(g.key);
     try {
       const order_number = await generateServiceOrderNumber();
-      // Tarifa vigente serviço×prestadora (Fase 1 facção) — evita OS sem preço
-      // (65% das OSs históricas) e alimenta a conta a pagar por pares bons.
+      // Tarifa vigente serviço×prestadora (Fase 1 facção) — evita OS sem preço.
       let unitPrice = 0;
       try {
         const { data: rate } = await (supabase as any).rpc('get_contractor_rate', {
@@ -822,7 +255,6 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       if (error) throw new Error(error.message);
 
       setExistingOsByKey((prev) => ({ ...prev, [g.key]: inserted.order_number as string }));
-      // Re-valida os caches das listas de Terceirizados — a OS aparece sem refresh.
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['contractors'] });
       qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
@@ -839,340 +271,6 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     }
   };
 
-  type SortKey = 'componentType' | 'groupName' | 'materialName' | 'color' | 'totalQuantity' | 'productUnit';
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      if (sortDir === 'asc') setSortDir('desc');
-      else { setSortKey(null); setSortDir('asc'); }
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
-    }
-  };
-
-  const SortIcon = ({ col }: { col: SortKey }) => {
-    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
-    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
-  };
-
-  const sortedRows = useMemo(() => {
-    if (!sortKey) return rows;
-    return [...rows].sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortKey === 'totalQuantity') return (a.totalQuantity - b.totalQuantity) * dir;
-      const aVal = (a[sortKey] || '').toLowerCase();
-      const bVal = (b[sortKey] || '').toLowerCase();
-      return aVal.localeCompare(bVal, 'pt-BR') * dir;
-    });
-  }, [rows, sortKey, sortDir]);
-
-  const grouped = useMemo(() => {
-    // Visão SEGMENTADA: ao ordenar por qualquer coluna de TEXTO (Grupo, Aplicação,
-    // Cor, Unidade), monta seções por valor daquela coluna — o valor vazio/sem
-    // ("Sem cor", "Sem grupo"…) sempre no topo e, depois, cada valor com TODOS os
-    // seus materiais (tira, forração, cabedal, solado…) em sequência. A ordem dos
-    // valores respeita asc/desc; dentro de cada seção ordena por tipo de
-    // componente → grupo → aplicação → cor. (Pedido user.)
-    const SEGMENT_KEYS: SortKey[] = ['groupName', 'materialName', 'color', 'productUnit'];
-    if (sortKey && SEGMENT_KEYS.includes(sortKey)) {
-      const key = sortKey as 'groupName' | 'materialName' | 'color' | 'productUnit';
-      const emptyLabel = key === 'color' ? 'Sem cor'
-        : key === 'groupName' ? 'Sem grupo'
-        : key === 'materialName' ? 'Sem aplicação'
-        : 'Sem unidade';
-      const sortWithin = (arr: ConsumptionRow[]) => [...arr].sort((a, b) => {
-        const t = COMPONENT_ORDER.indexOf(a.componentType as (typeof COMPONENT_ORDER)[number])
-          - COMPONENT_ORDER.indexOf(b.componentType as (typeof COMPONENT_ORDER)[number]);
-        if (t !== 0) return t;
-        return a.groupName.localeCompare(b.groupName, 'pt-BR')
-          || a.materialName.localeCompare(b.materialName, 'pt-BR')
-          || a.color.localeCompare(b.color, 'pt-BR');
-      });
-      const empties: ConsumptionRow[] = [];
-      const byVal = new Map<string, ConsumptionRow[]>();
-      for (const row of rows) {
-        const v = (row[key] || '').trim();
-        if (!v || v === '—') { empties.push(row); continue; }
-        if (!byVal.has(v)) byVal.set(v, []);
-        byVal.get(v)!.push(row);
-      }
-      const dir = sortDir === 'asc' ? 1 : -1;
-      const keys = Array.from(byVal.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR') * dir);
-      const out = new Map<string, ConsumptionRow[]>();
-      // Na visão por COR, quebra cada cor por FAMÍLIA de napa: NAPA SOFT e NAPA
-      // MADRID da mesma cor viram seções separadas ("CAPUCCINO · NAPA SOFT" …),
-      // cada uma com sua própria faixa MATERIAL BASE. Linhas sem napa (solado,
-      // cola) ficam num bloco neutro só com a cor. SECTION_SEP separa cor|família
-      // na chave; o render desmonta pra montar o cabeçalho. (Pedido user 2026-07-22.)
-      const emitSection = (label: string, secRows: ConsumptionRow[]) => {
-        if (key !== 'color') { out.set(label, sortWithin(secRows)); return; }
-        const fams = new Map<string, ConsumptionRow[]>();
-        const neutral: ConsumptionRow[] = [];
-        for (const r of secRows) {
-          const f = rowFamily(r);
-          if (f) { if (!fams.has(f)) fams.set(f, []); fams.get(f)!.push(r); }
-          else neutral.push(r);
-        }
-        if (fams.size === 0) { out.set(label, sortWithin(secRows)); return; }
-        for (const f of Array.from(fams.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'))) {
-          out.set(`${label}${SECTION_SEP}${f}`, sortWithin(fams.get(f)!));
-        }
-        if (neutral.length) out.set(label, sortWithin(neutral));
-      };
-      if (empties.length) emitSection(emptyLabel, empties); // sempre no topo
-      for (const k of keys) emitSection(k, byVal.get(k)!);
-      return out;
-    }
-    if (sortKey === 'totalQuantity') {
-      return new Map([['Todos', sortedRows]]);
-    }
-    const map = new Map<string, ConsumptionRow[]>();
-    for (const row of sortedRows) {
-      if (!map.has(row.componentType)) map.set(row.componentType, []);
-      map.get(row.componentType)!.push(row);
-    }
-    return map;
-  }, [rows, sortedRows, sortKey, sortDir]);
-
-  const totalsByUnit = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of rows) {
-      map.set(row.productUnit, (map.get(row.productUnit) || 0) + row.totalQuantity);
-    }
-    return map;
-  }, [rows]);
-
-  // Contagem EM FALTA por ITEM — mesma regra do render (faixa por item). Tiras
-  // da mesma cor que dividem estoque contam UMA vez; solado por numeração.
-  // Alimenta o chip de escassez da toolbar e o contador por seção. Presentation-only.
-  const emFaltaCount = useMemo(() => countShort(rows), [rows]);
-
-  const formatUnit = (unit: string) => {
-    const labels: Record<string, string> = {
-      metro: 'm',
-      m: 'm',
-      'm²': 'm²',
-      dm2: 'dm²',
-      par: 'par',
-      un: 'un',
-      kg: 'kg',
-      litro: 'L',
-      placa: 'placa(s)',
-    };
-    return labels[unit] || unit || 'un';
-  };
-
-  const handlePrintPdf = useCallback(() => {
-    // Cores de cabeçalho por componentType (visual hierarchy)
-    const componentColors: Record<string, { bg: string; border: string; text: string }> = {
-      'Cabedal':    { bg: '#fef3c7', border: '#f59e0b', text: '#78350f' },
-      'Forração':      { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
-      'Fachete':    { bg: '#cffafe', border: '#0891b2', text: '#155e75' },
-      'Palmilha':   { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
-      'Forração Palmilha': { bg: '#cffafe', border: '#06b6d4', text: '#155e75' },
-      'Solado':     { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
-      'Tiras':      { bg: '#fce7f3', border: '#ec4899', text: '#831843' },
-      'Químicos':   { bg: '#ede9fe', border: '#8b5cf6', text: '#4c1d95' },
-      'Embalagem':  { bg: '#e0e7ff', border: '#6366f1', text: '#312e81' },
-      'Outros':     { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' },
-    };
-
-    // ═══ PDF "Comprar primeiro" (organização escolhida pelo usuário 2026-07-22) ═══
-    // Lidera com a LISTA DE COMPRA de napa (material base) por família → cor,
-    // depois o que está PENDENTE de cadastro, depois os demais materiais e o
-    // corte do rolo. A conversão tira→napa e a família já vêm prontas nas linhas
-    // do motor (row.artisanal / materialFamily); aqui só reorganiza a saída.
-    const napaAccent = (name: string): string => {
-      const n = normTxt(name);
-      if (n.includes('sudani')) return '#a75232';
-      if (n.includes('madrid')) return '#9a5b2e';
-      if (n.includes('palha')) return '#8a7320';
-      if (n.includes('soft')) return '#3f5c93';
-      if (BASE_GROUP_PATTERN.test(name)) return '#5a6b4a';
-      return '#6b7280';
-    };
-    const r2 = (n: number) => Math.round(n * 100) / 100;
-
-    // (a) lista de compra de napa por (família → cor); (b) pendentes; (c) resto.
-    const napaBuy = new Map<string, Map<string, number>>();
-    const pendingStraps: { tira: string; color: string; napa: string; tiraM: number }[] = [];
-    const pendCountByKey = new Map<string, number>();
-    const otherRows: ConsumptionRow[] = [];
-    const addNapa = (napa: string, color: string, qty: number) => {
-      if (!napaBuy.has(napa)) napaBuy.set(napa, new Map());
-      const cm = napaBuy.get(napa)!;
-      cm.set(color, (cm.get(color) || 0) + r2(qty));
-    };
-    for (const row of rows) {
-      if (row.artisanal?.pending) {
-        const napa = row.artisanal.baseName || 'Material base';
-        pendingStraps.push({ tira: row.groupName, color: row.color, napa, tiraM: row.totalQuantity });
-        const k = `${normTxt(napa)}||${normTxt(row.color)}`;
-        pendCountByKey.set(k, (pendCountByKey.get(k) || 0) + 1);
-        continue;
-      }
-      if (row.artisanal && row.artisanal.baseQty > 0) {
-        addNapa(row.artisanal.baseName || 'Material base', row.color, row.artisanal.baseQty);
-        continue;
-      }
-      const isNapaDireta = BASE_MATERIAL_COMPONENTS.has(row.componentType)
-        && BASE_LINEAR_UNITS.has((row.productUnit || '').toLowerCase())
-        && !row.widthMissing && !row.warning && row.totalQuantity > 0;
-      if (isNapaDireta) { addNapa(row.groupName, row.color, row.totalQuantity); continue; }
-      otherRows.push(row);
-    }
-
-    // (a) MATERIAL BASE (NAPA) A COMPRAR — família → cor, com selo de pendência.
-    const napaFams = Array.from(napaBuy.entries()).map(([napa, cm]) => {
-      const colors = Array.from(cm.entries()).map(([color, qty]) => ({ color, qty }))
-        .sort((a, b) => b.qty - a.qty);
-      const total = colors.reduce((s, c) => s + c.qty, 0);
-      return { napa, colors, total };
-    }).sort((a, b) => b.total - a.total);
-    const grandNapa = napaFams.reduce((s, f) => s + f.total, 0);
-    const napaSection = napaFams.length === 0 ? '' : `
-      <div style="break-inside:avoid;margin-bottom:12px;border:1px solid #e6e1d8;border-radius:6px;overflow:hidden">
-        <div style="background:#e7f4ec;border-bottom:1px solid #bce2c8;padding:6px 10px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-          <span style="font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803d">Material base (napa) a comprar</span>
-          <span style="font-family:monospace;font-weight:800;color:#15803d;font-size:12pt">${formatQty(grandNapa, 'm')} m</span>
-          <span style="margin-left:auto;font-size:8pt;color:#6b7280">napa cortada direto + tiras convertidas</span>
-        </div>
-        <table style="width:100%;border-collapse:collapse">${napaFams.map((f) => {
-          const acc = napaAccent(f.napa);
-          const famHead = `<tr><td colspan="3" style="padding:6px 8px;border-top:1.5px solid #1f2937;background:#faf8f4">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="display:inline-flex;align-items:center;gap:5px;font-size:8.5pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${acc}">
-                <span style="width:8px;height:8px;border-radius:2px;background:${acc};display:inline-block"></span>${escapeHtml(f.napa)}</span>
-              <span style="margin-left:auto;font-family:monospace;font-weight:800;color:${acc}">${formatQty(f.total, 'm')} m</span>
-            </div></td></tr>`;
-          const colorRows = f.colors.map((c) => {
-            const pend = pendCountByKey.get(`${normTxt(f.napa)}||${normTxt(c.color)}`) || 0;
-            const status = pend > 0
-              ? `<span style="font-size:8pt;font-weight:700;background:#fbefd8;color:#b45309;border:1px solid #ead4a4;padding:1px 6px;border-radius:20px">+${pend} a cadastrar</span>`
-              : '';
-            return `<tr>
-              <td style="padding:4px 8px 4px 20px;border-bottom:1px solid #efeae1;font-weight:600">${escapeHtml(c.color || '—')}</td>
-              <td style="padding:4px 8px;border-bottom:1px solid #efeae1;text-align:right;font-family:monospace;font-weight:700;color:${acc}">${formatQty(c.qty, 'm')} <span style="color:#9a9284;font-size:8pt">m</span></td>
-              <td style="padding:4px 8px;border-bottom:1px solid #efeae1;text-align:right;width:120px">${status}</td>
-            </tr>`;
-          }).join('');
-          return famHead + colorRows;
-        }).join('')}</table>
-      </div>`;
-
-    // (b) PENDENTE DE CADASTRO — tiras cuja napa não tem rendimento cadastrado.
-    const pendingSection = pendingStraps.length === 0 ? '' : `
-      <div style="break-inside:avoid;margin-bottom:12px;border:1px solid #ead4a4;border-radius:6px;overflow:hidden">
-        <div style="background:#fbefd8;padding:6px 10px;color:#b45309;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.5px">
-          ⚠ Pendente de cadastro · ${pendingStraps.length} tira${pendingStraps.length !== 1 ? 's' : ''} sem rendimento</div>
-        <p style="font-size:8pt;color:#a8752f;margin:5px 10px 3px">Cadastre o rendimento da tira nessas napas pra estes metros entrarem no total a comprar acima.</p>
-        <table style="width:100%;border-collapse:collapse">${pendingStraps.map((p) => `<tr>
-          <td style="padding:3px 10px;border-bottom:1px solid #f0e7d8;font-weight:600;color:#b45309">${escapeHtml(p.tira)}<span style="color:#a8752f;font-weight:400"> · ${escapeHtml(p.color || '—')} · ${escapeHtml(p.napa)}</span></td>
-          <td style="padding:3px 10px;border-bottom:1px solid #f0e7d8;text-align:right;font-family:monospace;color:#b45309">${formatQty(p.tiraM, 'm')} <span style="font-size:8pt;color:#a8752f">m de tira</span></td>
-        </tr>`).join('')}</table>
-      </div>`;
-
-    // (c) OUTROS MATERIAIS (não-napa) — por componente; solado = matriz de grade.
-    const otherByType = new Map<string, ConsumptionRow[]>();
-    for (const row of otherRows) {
-      if (!otherByType.has(row.componentType)) otherByType.set(row.componentType, []);
-      otherByType.get(row.componentType)!.push(row);
-    }
-    const otherCards = Array.from(otherByType.entries()).map(([ct, crows]) => {
-      const colors = componentColors[ct] || componentColors['Outros'];
-      const subt = new Map<string, number>();
-      for (const r of crows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
-      const totalSummary = Array.from(subt.entries()).map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`).join(' · ');
-      const head = `<div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center"><span>▌${escapeHtml(ct)}</span><span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span></div>`;
-      if (ct === 'Solado') {
-        return `<div class="card" style="grid-column:1 / -1;border:2px solid ${colors.border};border-radius:6px;overflow:hidden;margin-bottom:6px">${head}<div style="background:white;padding:0 6px 6px">${soleMatrixHtml(crows)}</div></div>`;
-      }
-      const body = crows.map((r) => {
-        const app = r.materialName || r.groupName;
-        return `<tr><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb"><div style="font-weight:600;font-size:9.5pt">${escapeHtml(app)}</div><div style="color:#6b7280;font-size:8pt">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}</div></td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:9.5pt">${r.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8pt">${formatUnit(r.productUnit)}</span></td></tr>`;
-      }).join('');
-      return `<div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;margin-bottom:6px">${head}<table style="width:100%;border-collapse:collapse;background:white"><tbody>${body}</tbody></table></div>`;
-    }).join('');
-    const otherSection = otherRows.length === 0 ? '' : `
-      <div style="font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin:6px 0 6px;border-top:1.5px solid #d1d5db;padding-top:6px">Outros materiais</div>
-      <div class="grid">${otherCards}</div>`;
-
-
-    const totalsHtml = Array.from(totalsByUnit.entries()).map(([unit, total]) =>
-      `<span style="display:inline-block;background:#1f2937;color:white;padding:3px 10px;border-radius:4px;margin-right:6px;font-size:9.5pt;font-weight:600">
-        ${total.toFixed(1)} ${formatUnit(unit)}
-      </span>`
-    ).join('');
-
-    // Bloco vermelho: tiras artesanais — corte do rolo (mesmo conteúdo da tela).
-    const strapCutHtml = artisanalStrapRows.length === 0 ? '' : `
-        <div style="break-inside:avoid;margin-top:10px">
-          <div style="background:#fef2f2;color:#dc2626;padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;border-radius:4px">✂️ Tiras artesanais — corte do rolo (40m × 1370mm)</div>
-          <p style="font-size:8.5pt;color:#dc2626;margin:4px 0">Cortar do rolo — não é consumo direto de estoque.</p>
-          <table style="width:100%;border-collapse:collapse;font-size:9.5pt;border:1px solid #fca5a5">
-            <thead><tr style="color:#dc2626;background:#fef2f2">
-              <th style="padding:4px 6px;text-align:left;font-size:8.5pt;text-transform:uppercase">Tira (cor · largura)</th>
-              <th style="padding:4px 6px;text-align:right;font-size:8.5pt;text-transform:uppercase">Cortar do rolo (cm)</th>
-            </tr></thead>
-            <tbody>${artisanalStrapRows.map((r) => {
-              const { cut } = r;
-              const cortar = cut.valid
-                ? `<span style="font-weight:700;font-size:11pt">${cut.cm_a_cortar.toFixed(1)} cm</span>`
-                : `<span style="font-size:8.5pt">⚠ ${cut.warning || 'sem largura'}</span>`;
-              const fill = rollFillLabel(cut);
-              const breakdownHtml = fill ? `<div style="font-size:7.5pt;opacity:.85">${fill}</div>` : '';
-              const larguraTxt = cut.widthMissing ? '' : ` · ${r.largura_mm.toFixed(0)} mm`;
-              return `<tr style="color:#dc2626">
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;font-weight:600">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}${larguraTxt}</td>
-                <td style="padding:3px 6px;border-bottom:1px solid #fecaca;text-align:right;font-family:monospace">${cortar}${strapRollBarHtml(cut)}${breakdownHtml}</td>
-              </tr>`;
-            }).join('')}</tbody>
-          </table>
-        </div>`;
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo de Materiais — ${escapeHtml(orderNumber)}</title>
-      <style>
-        /* Margem 8mm (não 6mm) + box-sizing global p/ as bordas não serem
-           cortadas: com 6mm o conteúdo encostava na zona não-imprimível da
-           impressora e a borda direita dos cards saía cortada. Mesma correção
-           já aplicada em printLabels.ts/PrintWorkSheetsPage. */
-        @page { size: A4 portrait; margin: 8mm; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; }
-        body { font-family: system-ui, -apple-system, sans-serif; color: #111; font-size: 10pt; line-height: 1.3; max-width: 100%; overflow-x: hidden; }
-        h1 { font-size: 14pt; margin: 0 0 2px; }
-        .sub { color: #6b7280; font-size: 9pt; margin: 0 0 8px; }
-        .totals-strip { margin-bottom: 10px; padding: 6px 0; border-top: 2px solid #1f2937; border-bottom: 2px solid #1f2937; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
-        .card { max-width: 100%; }
-        table { max-width: 100%; }
-        @media print {
-          .card { break-inside: avoid; }
-        }
-      </style></head>
-      <body>
-        <h1>Consumo de Materiais — ${escapeHtml(orderNumber)}</h1>
-        <p class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR')} · ${napaBuy.size} napa(s) a comprar${pendingStraps.length ? ` · ${pendingStraps.length} pendente(s) de cadastro` : ''}</p>
-        <div class="totals-strip">${totalsHtml}</div>
-        ${napaSection}
-        ${pendingSection}
-        ${otherSection}
-        ${strapCutHtml}
-      </body></html>`;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 400);
-    }
-  }, [rows, totalsByUnit, orderNumber, artisanalStrapRows]);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-7xl max-h-[92vh] overflow-y-auto">
@@ -1181,338 +279,17 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
             <Package className="h-5 w-5 text-primary" />
             Consumo de Materiais — {orderNumber}
           </DialogTitle>
-        <DialogDescription className="sr-only">Consumo calculado por material com disponibilidade em estoque.</DialogDescription>
+          <DialogDescription className="sr-only">Consumo calculado por material com disponibilidade em estoque.</DialogDescription>
         </DialogHeader>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">Nenhum consumo de material encontrado para este pedido.</p>
-        ) : (
-          <div className="space-y-4">
-            {rows.some(r => r.widthMissing) && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
-                <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo pode estar inflado</p>
-                  <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
-                    Materiais marcados com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> não têm <strong>largura cadastrada</strong> na Ficha de Componente.
-                    Sem isso, o sistema trata dm² como metro, fazendo o consumo aparecer ~100× maior que o real.
-                    Cadastre em <strong>Materiais → produto → Ficha de Componente → Dimensões</strong> pra corrigir.
-                  </p>
-                </div>
-              </div>
-            )}
-            {rows.some(r => r.warning && !(r.totalQuantity > 0)) && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
-                <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo não calculado por falta de cadastro</p>
-                  <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
-                    Linhas marcadas com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> aparecem <strong>sem quantidade</strong> porque falta cadastro (ex.: solado fachetado sem consumo de fachete). O consumo desses itens <strong>não entrou no total</strong> até você completar o cadastro em <strong>Materiais → Solado</strong>.
-                  </p>
-                </div>
-              </div>
-            )}
-            {/* Fallback de tamanho sem spec (F2-02): a linha TEM quantidade —
-                estimada pelo escalar da ficha nos números sem consumo por
-                numeração (mesmo contrato do SQL, source=fallback_average). */}
-            {rows.some(r => r.warning && r.totalQuantity > 0) && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
-                <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo estimado pelo escalar da ficha</p>
-                  <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
-                    Algumas numerações da grade <strong>não têm consumo por número</strong> cadastrado no solado — nesses números o cálculo usou o <strong>escalar da ficha técnica</strong> (mesma regra do custeio/débito). Cadastre as numerações que faltam em <strong>Materiais → Solado</strong> pra ter o valor exato.
-                  </p>
-                </div>
-              </div>
-            )}
-            {/* `-mx-6 px-6` sangra a barra até as bordas cancelando o p-6 do
-                DialogContent; `bg-background` casa com o fundo do dialog (sem
-                emenda de cor no modo escuro). Separadores verticais foram
-                removidos: em wrap a 360px ficavam órfãos no início da linha —
-                o `gap-x-4` já separa os stats. */}
-            <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                {/* Totais por unidade — stat enxuto (mono tabular) no lugar de pills cinza iguais */}
-                {Array.from(totalsByUnit.entries()).map(([unit, total]) => (
-                  <span key={unit} className="flex items-center gap-1.5">
-                    <span className="font-mono tabular-nums font-semibold text-foreground">{formatQty(total, unit)}</span>
-                    <span className="text-xs text-muted-foreground">{formatUnit(unit)}</span>
-                  </span>
-                ))}
-                <span className="text-xs text-muted-foreground">{pluralizeItens(rows.length)}</span>
-                {/* Chip de escassez — o ÚNICO elemento colorido da toolbar */}
-                {emFaltaCount > 0 ? (
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400">
-                    <WarningIcon weight="fill" className="h-3 w-3" aria-hidden="true" />{emFaltaCount} em falta
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
-                    <CheckCircle weight="fill" className="h-3 w-3" aria-hidden="true" />tudo em estoque
-                  </span>
-                )}
-                {/* Legenda = espelho do tratamento das linhas (ícone+texto, não só cor) */}
-                <span className="flex items-center gap-2 text-xs text-muted-foreground ml-1">
-                  <span className="flex items-center gap-1"><CheckCircle weight="fill" className="h-3 w-3 text-green-600 dark:text-green-400" aria-hidden="true" /> em estoque</span>
-                  <span className="inline-flex items-center gap-1 rounded-sm px-1 bg-red-500/10 text-red-600 dark:text-red-400"><WarningIcon weight="fill" className="h-3 w-3" aria-hidden="true" /> falta</span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => loadConsumption()} disabled={loading}>
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Recalcular
-                </Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrintPdf}>
-                  <FileText className="h-4 w-4" /> Gerar PDF
-                </Button>
-              </div>
-            </div>
-
-            {Array.from(grouped.entries()).map(([componentType, componentRows]) => (
-              <div key={componentType} className="space-y-1.5">
-                {componentType !== 'Todos' && (() => {
-                  // Subtotal por unidade da seção (reusa a lógica do PDF; só display).
-                  const subt = new Map<string, number>();
-                  for (const r of componentRows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
-                  const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
-                  const short = countShort(componentRows);
-                  // Chave composta cor|família (visão por Cor): cabeçalho mostra a
-                  // cor + chip da napa (NAPA SOFT / NAPA MADRID não se misturam).
-                  const [secLabel, secFamily] = String(componentType).split(SECTION_SEP);
-                  return (
-                    <div className="flex items-baseline justify-between gap-3 border-b-2 border-foreground/60 pb-1.5">
-                      <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
-                        <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
-                        {secLabel}
-                        {secFamily && (
-                          <span className="inline-flex items-center rounded-sm border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground">
-                            {secFamily}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {subtotal}
-                        {short > 0 && <span className="text-red-600 dark:text-red-400 font-medium"> · {short} em falta</span>}
-                      </span>
-                    </div>
-                  );
-                })()}
-                {/* Total do material base da seção — o número que vira pedido
-                    de compra. Some quando a seção não tem napa nenhuma (ex.:
-                    cor só de solado + linha), pra não poluir com "0,00 m". */}
-                {(() => {
-                  const base = computeBaseMaterialTotal(componentRows);
-                  if (!base) return null;
-                  return (
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                        Material base
-                      </span>
-                      <span className="font-mono tabular-nums text-lg font-bold text-primary">
-                        {formatQty(base.total, 'm')}<span className="text-xs font-semibold ml-0.5">m</span>
-                      </span>
-                      {base.parts.length > 1 && (
-                        <span className="font-mono text-[11px] text-muted-foreground">
-                          = {base.parts.map(p => `${formatQty(p.qty, 'm')} ${p.name}`).join(' + ')}
-                        </span>
-                      )}
-                      {base.skipped > 0 && (
-                        <span className="text-[11px] text-amber-600 dark:text-amber-400">
-                          {base.skipped} {base.skipped === 1 ? 'item ficou' : 'itens ficaram'} fora do total — cadastro incompleto
-                        </span>
-                      )}
-                      <span className="ml-auto text-[11px] text-muted-foreground">
-                        tiras convertidas em napa + napa cortada direto
-                      </span>
-                    </div>
-                  );
-                })()}
-                {componentType === 'Solado'
-                  ? <SoleSection rows={componentRows} />
-                  : (
-                 <div className="rounded-lg border overflow-hidden overflow-x-auto">
-                   <Table className="[&_td]:py-2 [&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70">
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead aria-sort={sortKey === 'groupName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('groupName')}>Grupo de material <SortIcon col="groupName" /></button>
-                        </TableHead>
-                        <TableHead aria-sort={sortKey === 'materialName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('materialName')}>Aplicação <SortIcon col="materialName" /></button>
-                        </TableHead>
-                        <TableHead aria-sort={sortKey === 'color' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                          <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('color')}>Cor <SortIcon col="color" /></button>
-                        </TableHead>
-                        <TableHead aria-sort={sortKey === 'totalQuantity' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                          <button type="button" className="flex w-full items-center justify-end select-none hover:text-foreground" onClick={() => handleSort('totalQuantity')}>Consumo Total <SortIcon col="totalQuantity" /></button>
-                        </TableHead>
-                        <TableHead className="text-right w-36">Em estoque</TableHead>
-                        <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                          <button type="button" className="flex w-full items-center justify-center select-none hover:text-foreground" onClick={() => handleSort('productUnit')}>Unidade <SortIcon col="productUnit" /></button>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(() => {
-                        // Solado, quando cai nesta tabela genérica (visão por COR), segue
-                        // linha-a-linha por numeração — fora do agrupamento por item.
-                        const soleRows = componentRows.filter(r => r.componentType === 'Solado');
-                        const items = aggregateItems(componentRows.filter(r => r.componentType !== 'Solado'));
-
-                        // Uma linha de aplicação. `neutralStock` = o veredito de estoque
-                        // vive na FAIXA do item (multi-aplicação) → a célula Em estoque da
-                        // linha fica neutra, pra não repetir/duplicar o mesmo balde.
-                        const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean) => {
-                          // widthMissing infla o consumo ~100× e aviso SEM quantidade =
-                          // consumo não calculado (fachete sem specs): comparar com estoque
-                          // seria enganoso → linha neutra (o aviso âmbar permanece). Aviso
-                          // COM quantidade (fallback_average — F2-02) compara normalmente,
-                          // como o SQL.
-                          const known = !row.widthMissing && !(row.warning && !(row.totalQuantity > 0));
-                          const avail = rowAvailable(row);
-                          const ok = avail >= row.totalQuantity;
-                          return (
-                        <TableRow key={`${row.componentType}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-                          <TableCell className={`font-medium ${!neutralStock && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
-                            <div className="flex items-center gap-1.5">
-                              {row.widthMissing && (
-                                <TooltipProvider delayDuration={150}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <WarningIcon weight="fill" className="h-4 w-4 text-amber-600 shrink-0" />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-xs">
-                                      <p className="text-xs">
-                                        Largura do material não cadastrada em <strong>Materiais → Ficha de Componente</strong>.
-                                        Consumo pode estar até <strong>100× inflado</strong>. Cadastre <code>dimensions_width</code> pra corrigir.
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                              {row.warning && (
-                                <TooltipProvider delayDuration={150}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <WarningIcon weight="fill" className="h-4 w-4 text-amber-600 shrink-0" />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-xs">
-                                      <p className="text-xs">{row.warning}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                              {row.groupName}
-                            </div>
-                          </TableCell>
-                          <TableCell>{row.materialName}</TableCell>
-                          <TableCell>{row.color}</TableCell>
-                          <TableCell className="text-right font-mono font-bold tabular-nums">
-                            {row.warning && !(row.totalQuantity > 0)
-                              ? <span className="text-muted-foreground font-normal">—</span>
-                              : formatQty(row.totalQuantity, row.productUnit)}
-                            {row.artisanal && (
-                              row.artisanal.pending ? (
-                                <div className="text-[10px] font-normal text-amber-600 dark:text-amber-400 mt-0.5 whitespace-nowrap">
-                                  base {row.artisanal.baseName} · rendimento a cadastrar
-                                </div>
-                              ) : (
-                                <div className="text-[10px] font-normal text-muted-foreground mt-0.5 whitespace-nowrap">
-                                  ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
-                                  <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
-                                </div>
-                              )
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right" aria-label={neutralStock ? 'total do item na faixa acima' : !known ? 'largura não cadastrada' : ok ? 'em estoque' : 'em falta'}>
-                            {neutralStock ? (
-                              <span className="text-muted-foreground">—</span>
-                            ) : !known ? (
-                              <span className="text-muted-foreground">—</span>
-                            ) : ok ? (
-                              <span className="inline-flex items-center justify-end gap-1">
-                                <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
-                                <span className="font-mono tabular-nums text-foreground">{formatQty(avail, row.productUnit)}</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center justify-end gap-1 flex-wrap">
-                                <span className="font-mono tabular-nums text-red-600 dark:text-red-400">{formatQty(avail, row.productUnit)}</span>
-                                <span
-                                  className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] font-medium bg-red-500/10 text-red-600 dark:text-red-400"
-                                  title={`Faltam ${formatQty(row.totalQuantity - avail, row.productUnit)} ${formatUnit(row.productUnit)}`}
-                                >
-                                  <WarningIcon weight="fill" className="h-3 w-3" aria-hidden="true" />falta
-                                </span>
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
-                        </TableRow>
-                          );
-                        };
-
-                        // Faixa VERDE do total somado do item (mesma ideia da faixa
-                        // "Material base"): consumo somado entre aplicações + veredito de
-                        // estoque UMA vez. Só pra item que aparece em 2+ aplicações.
-                        const renderBand = (item: ItemGroup) => {
-                          const ok = item.available >= item.total;
-                          return (
-                            <TableRow key={`band-${item.key}`} className="border-0 hover:bg-transparent">
-                              <TableCell colSpan={6} className="p-0">
-                                <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y px-3 py-2 ${item.known ? 'border-green-600/25 bg-green-500/5' : 'border-amber-600/25 bg-amber-500/5'}`}>
-                                  <span className={`text-[11px] font-bold uppercase tracking-wider ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                                    Total do item · {item.groupName}
-                                  </span>
-                                  <span className={`font-mono tabular-nums text-lg font-bold ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                                    {formatQty(item.total, item.productUnit)}<span className="text-xs font-semibold ml-0.5">{formatUnit(item.productUnit)}</span>
-                                  </span>
-                                  <span className="font-mono text-[11px] text-muted-foreground">
-                                    = {item.rows.map(r => `${formatQty(r.totalQuantity, r.productUnit)} ${r.materialName || 'aplicação'}`).join(' + ')}
-                                  </span>
-                                  {!item.known ? (
-                                    <span className="ml-auto text-[11px] text-amber-600 dark:text-amber-400">estoque não comparável — cadastro incompleto</span>
-                                  ) : ok ? (
-                                    <span className="ml-auto inline-flex items-center gap-1 text-[11px]">
-                                      <CheckCircle weight="fill" className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden="true" />
-                                      <span className="text-muted-foreground">em estoque</span>
-                                      <span className="font-mono tabular-nums text-foreground">{formatQty(item.available, item.productUnit)} {formatUnit(item.productUnit)}</span>
-                                    </span>
-                                  ) : (
-                                    <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] flex-wrap justify-end">
-                                      <WarningIcon weight="fill" className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" aria-hidden="true" />
-                                      <span className="text-muted-foreground">em estoque {formatQty(item.available, item.productUnit)} {formatUnit(item.productUnit)} ·</span>
-                                      <span className="font-medium text-red-600 dark:text-red-400">faltam {formatQty(item.total - item.available, item.productUnit)} {formatUnit(item.productUnit)}</span>
-                                    </span>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        };
-
-                        const out: JSX.Element[] = [];
-                        for (const item of items) {
-                          const multi = item.rows.length > 1;
-                          if (multi) out.push(renderBand(item));
-                          item.rows.forEach((row, i) => out.push(renderRow(row, i, multi)));
-                        }
-                        soleRows.forEach((row, i) => out.push(renderRow(row, i, false)));
-                        return out;
-                      })()}
-                    </TableBody>
-                  </Table>
-                </div>
-                )}
-              </div>
-            ))}
-
-            {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
-            <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
-          </div>
-        )}
+        <MaterialConsumptionView
+          rows={rows}
+          artisanalStrapRows={artisanalStrapRows}
+          title={`Consumo de Materiais — ${orderNumber}`}
+          loading={loading}
+          onRecalcular={() => loadConsumption()}
+          emptyMessage="Nenhum consumo de material encontrado para este pedido."
+        />
 
         {/* ── Corte de Cabedal — Terceirização ──────────────────────────────
             Visível quando ≥1 item do PV tem referência SEM tiras (modelo com
