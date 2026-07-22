@@ -843,8 +843,9 @@ variante de material, palmilha pronta, numeração conjugada.
 
 > As 43 divergências reais foram aprovadas para correção em bloco no checkpoint.
 > Fase 2 executada em 2 ondas (7 pacotes disjuntos) + 1 complemento pós-verificação;
-> **14 migrations** (`20260920100000`–`160000`) aplicadas via MCP em produção e
-> commitadas em `supabase/migrations/`. Fase 3: 6 verificadores independentes
+> **14 migrations com DDL** (`20260920100000`–`150000` + `161000`, mais 2 marcadores
+> no-op do incidente F3-5) aplicadas via MCP em produção e commitadas em
+> `supabase/migrations/`. Fase 3: 6 verificadores independentes
 > re-checaram cada correção na definição viva + código atual e exercitaram os
 > motores na MESMA amostra (PV-00146/145/142/139/PV-2026-00097).
 
@@ -1090,14 +1091,30 @@ _Notas da família:_ Verificação independente F5 (lançamento de estoque). Fon
 
 _Notas da família:_ Verificação executada contra o banco de produção ssvxfoybzmjlypnipqzn (somente leitura; única função executada com efeito potencial foi calculate_order_cost_item com p_persist=false, que comprovadamente não escreve) e o repo /Users/leonardomonnerat/Downloads/CODE (HEAD 744e6f8; fix do painel no commit 8822c0e). Os 4 achados da família F6 auditados estão CORRIGIDOS e os 4 foram exercitados na amostra (PV-00146 item 5a0625c1 e ficha DS22/903925). Observações laterais: (1) snapshots antigos de order_costs seguem com overhead 0 até serem recalculados — comportamento de freeze documentado, não regressão do fix F6-3; (2) o painel exclui tiras do custo MP com banner explícito — decisão de design do fix F6-1 (tiras dependem das cores do PV), não correção parcial; (3) F6-2 (malha costs_dirty) não fazia parte do escopo desta família e não foi verificado.
 
-### Complemento F3-5 (aplicado na Fase 3)
+### Complemento F3-5 (aplicado na Fase 3) — com INCIDENTE e correção
 
 A perna POR COR do gate de lead de fornecedor (cobrava o total do PV contra cada cor de
 solado da BOM — PV-00146: 7 solados × 2.808 pares, recuo de até 21 dias úteis no
-`purchase_deadline`) foi fechada pela migration **`20260920160000_shortage-gate-color-aware.sql`**:
-o gate de `compute_wave_timeline`/`compute_min_billing_date` agora deriva de
-`get_wave_material_needs` (motor canônico — cor/variante/grade/conversão/reservas próprias);
+`purchase_deadline`) foi fechada fazendo o gate de `compute_wave_timeline`/
+`compute_min_billing_date` derivar do motor canônico de necessidades;
 `conversion_warning` não aciona o gate e item artesanal usa a falta da BASE.
+
+**Incidente (2026-07-22, ~15 min de indisponibilidade das funções de prazo):** a 1ª versão
+(`20260920160000`) chamava `get_wave_material_needs` diretamente — que por sua vez chama
+`compute_wave_timeline` na primeira instrução (pro `os_send_date` de artesanais, desde a mig
+`20260920121000`) → **recursão mútua infinita (erro 54001)** em `compute_wave_timeline`,
+`compute_min_billing_date`, `get_wave_material_needs` e, por arrasto, `v_mrp_needs`.
+Detectado pelos smoke tests imediatamente após a aplicação; **rollback aplicado na hora**
+(estado da `20260920121000` restaurado e confirmado 4/4 na amostra).
+
+**Fix definitivo (`20260920161000_shortage-gate-color-aware-v2.sql`):** o corpo de
+`get_wave_material_needs` foi extraído para `get_wave_material_needs_core(p_sale_order_ids,
+p_corte_start)` — sem NENHUMA chamada às funções de prazo; o wrapper público mantém o
+contrato (timeline 1× → core 1×); o gate das duas funções de prazo chama **só a core** com
+corte NULL. Verificação anti-recursão por grep no próprio arquivo (3/3) + fidelidade
+byte-a-byte contra as definições vivas (md5 6/6). Os arquivos `20260920160000` e
+`20260920160001` viraram marcadores no-op no repo para manter o replay de `db push`
+consistente com o histórico aplicado em produção.
 
 ## Pendências deixadas de propósito (reparo de dados — proibido nesta frente)
 

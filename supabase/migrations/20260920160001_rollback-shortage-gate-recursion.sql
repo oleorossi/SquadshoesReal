@@ -1,0 +1,18 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- NO-OP de registro histórico — rollback do incidente de recursão mútua.
+--
+-- Em produção (2026-07-22), o DDL da 20260920160000 causou recursão mútua
+-- infinita compute_wave_timeline ↔ get_wave_material_needs (SQLSTATE 54001).
+-- O rollback foi executado direto no banco reaplicando as definições de
+-- compute_wave_timeline e compute_min_billing_date da migration
+-- 20260920121000_wave-needs-reservations-and-shortage-gate.sql (estado
+-- imediatamente anterior ao incidente).
+--
+-- Este arquivo NÃO precisa de DDL: no replay de `supabase db push` a
+-- 20260920121000 já deixa o banco exatamente no estado pós-rollback, e a
+-- 20260920160000 virou no-op. Ele existe só pra documentar a sequência real
+-- de eventos e manter a numeração do histórico consistente com produção.
+--
+-- Fix definitivo (gate canônico sem ciclo):
+-- 20260920161000_shortage-gate-color-aware-v2.sql.
+-- ════════════════════════════════════════════════════════════════════════════
