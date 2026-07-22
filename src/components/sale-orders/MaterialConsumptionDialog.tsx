@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { escapeHtml } from '@/lib/htmlUtils';
-import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN, BASE_LINEAR_UNITS } from '@/lib/baseMaterialTotal';
 import { soleMatrixHtml, buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import {
   fetchConsumptionContext,
@@ -79,24 +79,6 @@ const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forra�
 // Normalização de texto (lowercase + sem acento) — usada no match de cor do
 // estoque e no match de OS já gerada de corte de cabedal.
 const normTxt = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-
-/** Mesma faixa do material base, no PDF. Inline styles + cor sólida (regra de
- *  print do projeto: token com alpha some no papel). */
-function baseTotalPdfHtml(rows: ConsumptionRow[]): string {
-  const base = computeBaseMaterialTotal(rows);
-  if (!base) return '';
-  const split = base.parts.length > 1
-    ? ` <span style="font-weight:400;font-size:8pt;color:#4b5563">= ${base.parts
-        .map(p => `${formatQty(p.qty, 'm')} ${escapeHtml(p.name)}`).join(' + ')}</span>`
-    : '';
-  const warn = base.skipped > 0
-    ? ` <span style="font-weight:400;font-size:8pt;color:#b45309">· ${base.skipped} fora do total (cadastro incompleto)</span>`
-    : '';
-  return `<div style="background:#f0fdf4;border-bottom:1px solid #86efac;padding:3px 8px;font-size:9.5pt;color:#15803d">
-      <span style="font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Material base</span>
-      <span style="font-weight:700;font-size:11pt;margin-left:6px">${formatQty(base.total, 'm')} m</span>${split}${warn}
-    </div>`;
-}
 
 // ── Formatação de quantidade pt-BR (DISPLAY-ONLY) ──────────────────────────
 // Aditiva e pura — NÃO mexe em formatUnit (compartilhado com o PDF). par/un/
@@ -998,106 +980,127 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       'Outros':     { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' },
     };
 
-    // Agrupa por componentType pra cards
-    const cards: string[] = [];
-    for (const [componentType, componentRows] of grouped.entries()) {
-      if (componentType === 'Todos') continue;
-      // Chave composta cor|família (visão por Cor) → título "CAPUCCINO · NAPA SOFT".
-      const [secLabel, secFamily] = String(componentType).split(SECTION_SEP);
-      const secTitle = secFamily ? `${secLabel} · ${secFamily}` : secLabel;
-      const colors = componentColors[secLabel] || componentColors['Outros'];
-      // Calcula total do componente (agrupa por unidade)
-      const totalsThisComp = new Map<string, number>();
-      for (const r of componentRows) {
-        totalsThisComp.set(r.productUnit, (totalsThisComp.get(r.productUnit) || 0) + r.totalQuantity);
-      }
-      const totalSummary = Array.from(totalsThisComp.entries())
-        .map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`)
-        .join(' · ');
+    // ═══ PDF "Comprar primeiro" (organização escolhida pelo usuário 2026-07-22) ═══
+    // Lidera com a LISTA DE COMPRA de napa (material base) por família → cor,
+    // depois o que está PENDENTE de cadastro, depois os demais materiais e o
+    // corte do rolo. A conversão tira→napa e a família já vêm prontas nas linhas
+    // do motor (row.artisanal / materialFamily); aqui só reorganiza a saída.
+    const napaAccent = (name: string): string => {
+      const n = normTxt(name);
+      if (n.includes('sudani')) return '#a75232';
+      if (n.includes('madrid')) return '#9a5b2e';
+      if (n.includes('palha')) return '#8a7320';
+      if (n.includes('soft')) return '#3f5c93';
+      if (BASE_GROUP_PATTERN.test(name)) return '#5a6b4a';
+      return '#6b7280';
+    };
+    const r2 = (n: number) => Math.round(n * 100) / 100;
 
-      // Solado: MATRIZ numeração × cor por modelo (igual à tela), full-width pra
-      // caber a grade de numeração. Substitui o texto inline "Nº 34: 184 · …".
-      if (componentType === 'Solado') {
-        cards.push(`
-        <div class="card" style="grid-column:1 / -1;border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
-          <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
-            <span>▌${escapeHtml(secTitle)}</span>
-            <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
-          </div>
-          <div style="background:white;padding:0 6px 6px">${soleMatrixHtml(componentRows)}</div>
-        </div>
-      `);
+    // (a) lista de compra de napa por (família → cor); (b) pendentes; (c) resto.
+    const napaBuy = new Map<string, Map<string, number>>();
+    const pendingStraps: { tira: string; color: string; napa: string; tiraM: number }[] = [];
+    const pendCountByKey = new Map<string, number>();
+    const otherRows: ConsumptionRow[] = [];
+    const addNapa = (napa: string, color: string, qty: number) => {
+      if (!napaBuy.has(napa)) napaBuy.set(napa, new Map());
+      const cm = napaBuy.get(napa)!;
+      cm.set(color, (cm.get(color) || 0) + r2(qty));
+    };
+    for (const row of rows) {
+      if (row.artisanal?.pending) {
+        const napa = row.artisanal.baseName || 'Material base';
+        pendingStraps.push({ tira: row.groupName, color: row.color, napa, tiraM: row.totalQuantity });
+        const k = `${normTxt(napa)}||${normTxt(row.color)}`;
+        pendCountByKey.set(k, (pendCountByKey.get(k) || 0) + 1);
         continue;
       }
-
-      const renderPdfRow = (row: ConsumptionRow) => {
-        const aplicacao = row.sizeBreakdown && Object.keys(row.sizeBreakdown).length > 0
-          ? Object.entries(row.sizeBreakdown)
-              .sort(([a], [b]) => Number(a) - Number(b))
-              .map(([s, qty]) => `Nº ${s}: ${qty}`)
-              .join(' · ')
-          : row.materialName;
-        return `
-        <tr>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb">
-            <div style="font-weight:600;font-size:10pt">${escapeHtml(aplicacao)}</div>
-            <div style="color:#6b7280;font-size:8.5pt">${escapeHtml(row.groupName)}${row.color && row.color !== '—' ? ` · ${escapeHtml(row.color)}` : ''}</div>
-          </td>
-          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">
-            ${row.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8.5pt">${formatUnit(row.productUnit)}</span>
-            ${row.artisanal ? (row.artisanal.pending
-              ? `<div style="color:#b45309;font-weight:400;font-size:7.5pt;white-space:nowrap">base ${escapeHtml(row.artisanal.baseName)} · rendimento a cadastrar</div>`
-              : `<div style="color:#6b7280;font-weight:400;font-size:7.5pt;white-space:nowrap">≈ ${row.artisanal.baseQty.toFixed(2)} m ${escapeHtml(row.artisanal.baseName)} · artesanal (1 m → ${row.artisanal.yieldPerMeter} m)</div>`) : ''}
-          </td>
-        </tr>
-      `;
-      };
-
-      // Faixa do total SOMADO do item (mesma da tela). Cores sólidas — regra de
-      // print do projeto (token com alpha some no papel).
-      const itemBandHtml = (item: ItemGroup) => {
-        const ok = item.available >= item.total;
-        const bg = item.known ? '#f0fdf4' : '#fffbeb';
-        const bd = item.known ? '#86efac' : '#fcd34d';
-        const fg = item.known ? '#15803d' : '#b45309';
-        const verdict = !item.known
-          ? `<span style="font-size:8pt;color:#b45309">estoque não comparável — cadastro incompleto</span>`
-          : ok
-            ? `<span style="font-size:8pt;color:#15803d">em estoque ${item.available.toFixed(2)} ${formatUnit(item.productUnit)}</span>`
-            : `<span style="font-size:8pt;color:#b91c1c;font-weight:700">faltam ${(item.total - item.available).toFixed(2)} ${formatUnit(item.productUnit)}</span>`;
-        return `
-        <tr><td colspan="2" style="padding:0">
-          <div style="background:${bg};border-top:1px solid ${bd};border-bottom:1px solid ${bd};padding:3px 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-            <span style="color:${fg}"><span style="font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Total do item · ${escapeHtml(item.groupName)}</span>
-            <span style="font-weight:700;font-size:11pt;margin-left:6px">${item.total.toFixed(2)} ${formatUnit(item.productUnit)}</span></span>
-            ${verdict}
-          </div>
-        </td></tr>`;
-      };
-
-      // Solado (visão por cor) segue linha-a-linha; demais agrupam por item.
-      const solePdfRows = componentRows.filter(r => r.componentType === 'Solado');
-      const itemsPdf = aggregateItems(componentRows.filter(r => r.componentType !== 'Solado'));
-      const rowsHtml = [
-        ...itemsPdf.map(item =>
-          (item.rows.length > 1 ? itemBandHtml(item) : '') + item.rows.map(renderPdfRow).join('')
-        ),
-        ...solePdfRows.map(renderPdfRow),
-      ].join('');
-
-      cards.push(`
-        <div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
-          <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
-            <span>▌${escapeHtml(secTitle)}</span>
-            <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
-          </div>
-          ${baseTotalPdfHtml(componentRows)}
-          <table style="width:100%;border-collapse:collapse;background:white">
-            <tbody>${rowsHtml}</tbody>
-          </table>
-        </div>
-      `);
+      if (row.artisanal && row.artisanal.baseQty > 0) {
+        addNapa(row.artisanal.baseName || 'Material base', row.color, row.artisanal.baseQty);
+        continue;
+      }
+      const isNapaDireta = BASE_MATERIAL_COMPONENTS.has(row.componentType)
+        && BASE_LINEAR_UNITS.has((row.productUnit || '').toLowerCase())
+        && !row.widthMissing && !row.warning && row.totalQuantity > 0;
+      if (isNapaDireta) { addNapa(row.groupName, row.color, row.totalQuantity); continue; }
+      otherRows.push(row);
     }
+
+    // (a) MATERIAL BASE (NAPA) A COMPRAR — família → cor, com selo de pendência.
+    const napaFams = Array.from(napaBuy.entries()).map(([napa, cm]) => {
+      const colors = Array.from(cm.entries()).map(([color, qty]) => ({ color, qty }))
+        .sort((a, b) => b.qty - a.qty);
+      const total = colors.reduce((s, c) => s + c.qty, 0);
+      return { napa, colors, total };
+    }).sort((a, b) => b.total - a.total);
+    const grandNapa = napaFams.reduce((s, f) => s + f.total, 0);
+    const napaSection = napaFams.length === 0 ? '' : `
+      <div style="break-inside:avoid;margin-bottom:12px;border:1px solid #e6e1d8;border-radius:6px;overflow:hidden">
+        <div style="background:#e7f4ec;border-bottom:1px solid #bce2c8;padding:6px 10px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+          <span style="font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803d">Material base (napa) a comprar</span>
+          <span style="font-family:monospace;font-weight:800;color:#15803d;font-size:12pt">${formatQty(grandNapa, 'm')} m</span>
+          <span style="margin-left:auto;font-size:8pt;color:#6b7280">napa cortada direto + tiras convertidas</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse">${napaFams.map((f) => {
+          const acc = napaAccent(f.napa);
+          const famHead = `<tr><td colspan="3" style="padding:6px 8px;border-top:1.5px solid #1f2937;background:#faf8f4">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:8.5pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${acc}">
+                <span style="width:8px;height:8px;border-radius:2px;background:${acc};display:inline-block"></span>${escapeHtml(f.napa)}</span>
+              <span style="margin-left:auto;font-family:monospace;font-weight:800;color:${acc}">${formatQty(f.total, 'm')} m</span>
+            </div></td></tr>`;
+          const colorRows = f.colors.map((c) => {
+            const pend = pendCountByKey.get(`${normTxt(f.napa)}||${normTxt(c.color)}`) || 0;
+            const status = pend > 0
+              ? `<span style="font-size:8pt;font-weight:700;background:#fbefd8;color:#b45309;border:1px solid #ead4a4;padding:1px 6px;border-radius:20px">+${pend} a cadastrar</span>`
+              : '';
+            return `<tr>
+              <td style="padding:4px 8px 4px 20px;border-bottom:1px solid #efeae1;font-weight:600">${escapeHtml(c.color || '—')}</td>
+              <td style="padding:4px 8px;border-bottom:1px solid #efeae1;text-align:right;font-family:monospace;font-weight:700;color:${acc}">${formatQty(c.qty, 'm')} <span style="color:#9a9284;font-size:8pt">m</span></td>
+              <td style="padding:4px 8px;border-bottom:1px solid #efeae1;text-align:right;width:120px">${status}</td>
+            </tr>`;
+          }).join('');
+          return famHead + colorRows;
+        }).join('')}</table>
+      </div>`;
+
+    // (b) PENDENTE DE CADASTRO — tiras cuja napa não tem rendimento cadastrado.
+    const pendingSection = pendingStraps.length === 0 ? '' : `
+      <div style="break-inside:avoid;margin-bottom:12px;border:1px solid #ead4a4;border-radius:6px;overflow:hidden">
+        <div style="background:#fbefd8;padding:6px 10px;color:#b45309;font-weight:800;font-size:9pt;text-transform:uppercase;letter-spacing:.5px">
+          ⚠ Pendente de cadastro · ${pendingStraps.length} tira${pendingStraps.length !== 1 ? 's' : ''} sem rendimento</div>
+        <p style="font-size:8pt;color:#a8752f;margin:5px 10px 3px">Cadastre o rendimento da tira nessas napas pra estes metros entrarem no total a comprar acima.</p>
+        <table style="width:100%;border-collapse:collapse">${pendingStraps.map((p) => `<tr>
+          <td style="padding:3px 10px;border-bottom:1px solid #f0e7d8;font-weight:600;color:#b45309">${escapeHtml(p.tira)}<span style="color:#a8752f;font-weight:400"> · ${escapeHtml(p.color || '—')} · ${escapeHtml(p.napa)}</span></td>
+          <td style="padding:3px 10px;border-bottom:1px solid #f0e7d8;text-align:right;font-family:monospace;color:#b45309">${formatQty(p.tiraM, 'm')} <span style="font-size:8pt;color:#a8752f">m de tira</span></td>
+        </tr>`).join('')}</table>
+      </div>`;
+
+    // (c) OUTROS MATERIAIS (não-napa) — por componente; solado = matriz de grade.
+    const otherByType = new Map<string, ConsumptionRow[]>();
+    for (const row of otherRows) {
+      if (!otherByType.has(row.componentType)) otherByType.set(row.componentType, []);
+      otherByType.get(row.componentType)!.push(row);
+    }
+    const otherCards = Array.from(otherByType.entries()).map(([ct, crows]) => {
+      const colors = componentColors[ct] || componentColors['Outros'];
+      const subt = new Map<string, number>();
+      for (const r of crows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
+      const totalSummary = Array.from(subt.entries()).map(([u, v]) => `${v.toFixed(1)} ${formatUnit(u)}`).join(' · ');
+      const head = `<div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center"><span>▌${escapeHtml(ct)}</span><span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span></div>`;
+      if (ct === 'Solado') {
+        return `<div class="card" style="grid-column:1 / -1;border:2px solid ${colors.border};border-radius:6px;overflow:hidden;margin-bottom:6px">${head}<div style="background:white;padding:0 6px 6px">${soleMatrixHtml(crows)}</div></div>`;
+      }
+      const body = crows.map((r) => {
+        const app = r.materialName || r.groupName;
+        return `<tr><td style="padding:3px 6px;border-bottom:1px solid #e5e7eb"><div style="font-weight:600;font-size:9.5pt">${escapeHtml(app)}</div><div style="color:#6b7280;font-size:8pt">${escapeHtml(r.groupName)}${r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : ''}</div></td>
+          <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:9.5pt">${r.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8pt">${formatUnit(r.productUnit)}</span></td></tr>`;
+      }).join('');
+      return `<div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;margin-bottom:6px">${head}<table style="width:100%;border-collapse:collapse;background:white"><tbody>${body}</tbody></table></div>`;
+    }).join('');
+    const otherSection = otherRows.length === 0 ? '' : `
+      <div style="font-size:9pt;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin:6px 0 6px;border-top:1.5px solid #d1d5db;padding-top:6px">Outros materiais</div>
+      <div class="grid">${otherCards}</div>`;
+
 
     const totalsHtml = Array.from(totalsByUnit.entries()).map(([unit, total]) =>
       `<span style="display:inline-block;background:#1f2937;color:white;padding:3px 10px;border-radius:4px;margin-right:6px;font-size:9.5pt;font-weight:600">
@@ -1153,9 +1156,11 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       </style></head>
       <body>
         <h1>Consumo de Materiais — ${escapeHtml(orderNumber)}</h1>
-        <p class="sub">${rows.length} item${rows.length !== 1 ? 'ns' : ''} · ${grouped.size} componente${grouped.size !== 1 ? 's' : ''} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+        <p class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR')} · ${napaBuy.size} napa(s) a comprar${pendingStraps.length ? ` · ${pendingStraps.length} pendente(s) de cadastro` : ''}</p>
         <div class="totals-strip">${totalsHtml}</div>
-        <div class="grid">${cards.join('')}</div>
+        ${napaSection}
+        ${pendingSection}
+        ${otherSection}
         ${strapCutHtml}
       </body></html>`;
 
@@ -1166,7 +1171,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       printWindow.focus();
       setTimeout(() => printWindow.print(), 400);
     }
-  }, [grouped, totalsByUnit, orderNumber, rows.length, artisanalStrapRows]);
+  }, [rows, totalsByUnit, orderNumber, artisanalStrapRows]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
