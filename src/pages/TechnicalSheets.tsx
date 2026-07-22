@@ -6201,7 +6201,7 @@ function SheetBOM({ sheetId, lossPct, safetyPct, onLossChange, onSafetyChange, s
                     <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0" align="start">
+                <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start">
                   <Command shouldFilter={false}>
                     <CommandInput placeholder="Buscar grupo..." />
                     <CommandList>

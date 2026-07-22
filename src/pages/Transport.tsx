@@ -454,7 +454,7 @@ function CapacityTab() {
               <Label>Nome *</Label>
               <Input value={bauForm.nome} onChange={e => setBauForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Fiorino Padrão" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Comprimento (m)</Label>
                 <Input type="number" step="0.01" value={(bauForm.comprimento_cm / 100) || ''} onChange={e => setBauForm(f => ({ ...f, comprimento_cm: Math.round(Number(e.target.value) * 100) }))} />
@@ -487,7 +487,7 @@ function CapacityTab() {
               <Label>Nome *</Label>
               <Input value={boxForm.nome} onChange={e => setBoxForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Caixa Corrugada P" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Comprimento (cm)</Label>
                 <Input type="number" value={boxForm.comprimento_cm || ''} onChange={e => setBoxForm(f => ({ ...f, comprimento_cm: Number(e.target.value) }))} />
@@ -524,7 +524,7 @@ function CapacityTab() {
               <Label>Nome *</Label>
               <Input value={itemForm.nome} onChange={e => setItemForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Produto Avulso" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Comprimento (cm)</Label>
                 <Input type="number" value={itemForm.comprimento_cm || ''} onChange={e => setItemForm(f => ({ ...f, comprimento_cm: Number(e.target.value) }))} />

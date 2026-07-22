@@ -564,7 +564,7 @@ function FinanceiroTab({ groupId }: { groupId: string }) {
     <div className="space-y-3 pt-4">
       {credit && (
         <Panel eyebrow="COMERCIAL · GRUPO ECONÔMICO" title="Aging Consolidado">
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               <AgingBox label="A vencer" value={credit.ar_a_vencer} color="emerald" />
               <AgingBox label="0-30d" value={credit.ar_atraso_0_30} color="amber" />
               <AgingBox label="30-60d" value={credit.ar_atraso_30_60} color="orange" />

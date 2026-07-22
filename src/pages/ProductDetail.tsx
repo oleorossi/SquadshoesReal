@@ -585,7 +585,7 @@ export default function ProductDetail() {
 
         {/* Dimensões */}
         <Panel title="Dimensões do Material">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Altura</Label>
                 <NumberInput value={plateLength} onChange={setPlateLength} min={0} step="0.1" className="mt-1" />

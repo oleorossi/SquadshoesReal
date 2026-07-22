@@ -1122,7 +1122,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         return (
           <Panel title={`Calendário de tempo · ${periodTitle}`} flush>
             <div className="p-4 space-y-3">
-              <select value={cur?.id || ''} onChange={e => setCalEmp(e.target.value)} className="h-9 w-full max-w-xs rounded-md border bg-background px-3 text-sm">
+              <select value={cur?.id || ''} onChange={e => setCalEmp(e.target.value)} className="h-9 w-full max-w-xs rounded-md border bg-background px-3 text-base md:text-sm">
                 {crows.map(r => <option key={r.id} value={r.id}>{employeeMap.get(r.id)?.name || (r as any).name}</option>)}
               </select>
               <div className="grid grid-cols-7 gap-1.5">

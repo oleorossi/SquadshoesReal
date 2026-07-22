@@ -190,7 +190,7 @@ export default function ProductionLive({ embedded = false }: { embedded?: boolea
                   : 'Sem apontamento de conclusão na última hora — baseado em saídas de estoque'}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-8">
+            <div className="grid grid-cols-3 gap-4 sm:gap-8">
               <div>
                 <div className="eyebrow text-xs">OPs ativas</div>
                 <div className="display text-2xl mt-1">{stats.running}</div>

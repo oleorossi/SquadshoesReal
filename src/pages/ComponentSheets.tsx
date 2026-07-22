@@ -770,7 +770,7 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
             Dimensões da placa/rolo de {representativeProduct?.category?.toLowerCase()}
           </p>
         )}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <Label className="text-xs">Base ({form.dimensions_unit || 'mm'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_length || ''} onChange={e => setForm(f => ({ ...f, dimensions_length: Number(e.target.value) }))} className="mt-1" placeholder="1200" />
@@ -1227,7 +1227,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
               <Ruler className="h-4 w-4 text-primary" />
               Dimensões do Material
             </h3>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">Base / comp. ({form.dimensions_unit || 'mm'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_length || ''} onChange={e => updateField('dimensions_length', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />

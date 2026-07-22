@@ -416,6 +416,19 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 
+/* Rede de segurança mobile: um elemento que vaze (min-w, nowrap longo) não
+   pode virar scroll horizontal da página inteira. `clip` (e não `hidden`)
+   porque clip não cria scroll container — sticky headers continuam presos
+   ao viewport. Scroll lateral legítimo continua nos wrappers overflow-x-auto. */
+html, body { overflow-x: clip; }
+
+/* Mobile touch polish: remove o flash cinza de tap do WebKit e o delay de
+   double-tap-zoom em controles (o zoom por pinça continua funcionando). */
+a, button, [role="button"], input, select, textarea, label {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);

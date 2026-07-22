@@ -27,7 +27,7 @@ import { DiagnosticsFab } from '@/components/DiagnosticsFab';
 const QuickActionsFAB = () => {
   const navigate = useNavigate();
   return (
-    <div className="fixed bottom-20 right-5 md:bottom-7 md:right-7 z-50">
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-5 md:bottom-7 md:right-7 z-50">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -345,7 +345,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
     const isCollapsed = !mobile && sidebarCollapsed;
 
     return (
-      <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground overflow-hidden glass-sidebar">
+      <div className={cn("flex flex-col h-full bg-sidebar text-sidebar-foreground overflow-hidden glass-sidebar", mobile && "safe-top")}>
 
         {/* ── Brand header ── */}
         <div className={cn(
@@ -829,7 +829,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
           <div className="flex-1 min-w-0 flex flex-col min-h-screen relative overflow-x-hidden">
             {/* Mobile top bar */}
             <header className={cn(
-              'md:hidden sticky top-0 z-30 border-b border-border/60 h-14 flex items-center px-4 gap-2 bg-background/95 backdrop-blur-sm',
+              'md:hidden sticky top-0 z-30 border-b border-border/60 h-14 flex items-center px-4 gap-2 bg-background/95 backdrop-blur-sm safe-top box-content',
               printMode && 'print:hidden'
             )}>
               {!isDashboard ? (
@@ -883,7 +883,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               // barras vazias gigantes nas laterais — pedido user 19/05/2026
               // "sempre se adequar à resolução de quem está acessando".
               // Padding cresce com a tela (mobile 4 → md 6 → lg 8 → xl 10 → 2xl 12).
-              'flex-1 w-full px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 pb-20 md:pb-6 overflow-auto',
+              'flex-1 w-full px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 overflow-auto',
               printMode && 'print:px-0 print:py-0 print:overflow-visible'
             )}>
               <div className="md:hidden">

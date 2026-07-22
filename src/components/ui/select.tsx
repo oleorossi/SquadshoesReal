@@ -21,7 +21,7 @@ const SelectTrigger = React.forwardRef<
       // Focus: borda foreground sólida sem ring colorido (igual Input).
       // h-9 alinha com o Input (input.tsx) e o SearchableSelect — campos lado
       // a lado em forms ficavam com 4px de diferença de altura.
-      "flex h-9 w-full items-center justify-between rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:border-foreground focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 aria-[invalid=true]:border-primary",
+      "flex h-9 w-full items-center justify-between rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 py-2 text-base md:text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:border-foreground focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 aria-[invalid=true]:border-primary",
       className,
     )}
     {...props}

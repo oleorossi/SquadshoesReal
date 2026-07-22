@@ -357,7 +357,7 @@ function FinancialEntriesTab() {
         <Button size="sm" onClick={() => { setForm({ entry_date: format(todayMidnight(), 'yyyy-MM-dd'), type: 'despesa', description: '', amount: 0, account_id: '', cost_center_id: '', bank_account_id: '', reference_type: 'manual', reference_id: '', collection: '', sku: '', notes: '' }); setDialog(true); }}><Plus className="h-4 w-4 mr-1" /> Novo Lançamento</Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Receitas</p><p className="text-lg font-bold text-green-600">{fmt(totals.receitas)}</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Despesas</p><p className="text-lg font-bold text-destructive">{fmt(totals.despesas)}</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Resultado</p><p className={`text-lg font-bold ${totals.resultado >= 0 ? 'text-green-600' : 'text-destructive'}`}>{fmt(totals.resultado)}</p></CardContent></Card>
