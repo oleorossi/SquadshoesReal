@@ -1,7 +1,11 @@
 # Base da tira segue a napa da ficha técnica (roteamento por referência)
 
-> **Status: PLANEJADO (intenção futura).** Bloqueado em dados de cadastro (ver §4).
-> Confirmado pelo usuário em 22/07/2026 a partir da auditoria do PV-00148.
+> **Status: IMPLEMENTADO em 22/07/2026** (commits 7e8695d TS + b18323f SQL). O
+> ROTEAMENTO por família está vivo em todas as superfícies (§5). O que continua
+> bloqueado é só o CADASTRO pra NAPA MADRID de fato converter (§4): sem largura de
+> rolo + receita `(tira, NAPA MADRID)`, as linhas NAPA MADRID aparecem como
+> `needed 0 + conversion_warning` / "a cadastrar" (por design — não compra a napa
+> errada). Confirmado pelo usuário a partir da auditoria do PV-00148.
 
 ## 1. Problema
 
