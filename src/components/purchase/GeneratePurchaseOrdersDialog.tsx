@@ -30,8 +30,8 @@ import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProduc
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-/** Quantidade de material base em pt-BR — mesma grafia da faixa verde do
- *  modal de Consumo, pra quem cruza as duas telas ver o mesmo número. */
+/** Quantidade de material base em pt-BR — mesma grafia da faixa de Material
+ *  base do modal de Consumo, pra quem cruza as duas telas ver o mesmo número. */
 const formatBaseQty = (v: number) =>
   new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
@@ -148,7 +148,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   );
   const summary = useMemo(() => summarizePerPvDrafts(drafts), [drafts]);
 
-  // ── Material base (napa) — mesma leitura da faixa verde do Consumo ────────
+  // ── Material base (napa) — mesma leitura da faixa de Material base do Consumo ─
   // O grupo do produto é o que diz se a linha é napa; a RPC não manda essa
   // informação, mas o cadastro já está carregado aqui.
   const groupNameByProduct = useMemo(() => {
@@ -288,11 +288,11 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Itens</p>
                 <p className="text-xl font-bold tabular-nums leading-tight">{summary.itemCount}</p>
               </div>
-              {/* Napa do pedido inteiro — mesmo número da faixa verde do Consumo */}
+              {/* Napa do pedido inteiro — mesmo número da faixa de Material base do Consumo */}
               {baseTotal && (
                 <div className="bg-card p-2.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">Material base</p>
-                  <p className="text-xl font-bold tabular-nums leading-tight text-green-700 dark:text-green-400">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Material base</p>
+                  <p className="text-xl font-bold tabular-nums leading-tight text-primary">
                     {formatBaseQty(baseTotal.total)} m
                   </p>
                   <p className="text-[10px] text-muted-foreground font-mono truncate" title={baseTotal.parts.map(p => `${formatBaseQty(p.qty)} m ${p.name}`).join(' · ')}>
@@ -406,6 +406,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               <Collapsible key={d.supplier_id ?? '__none__'} defaultOpen className="rounded-lg border">
                 <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-3 hover:bg-muted/40 [&[data-state=open]>svg]:rotate-180">
                   <div className="flex items-center gap-2 min-w-0">
+                    <span aria-hidden="true" className={`inline-block h-3.5 w-[3px] shrink-0 rounded-sm ${d.supplier_id === null ? 'bg-amber-500' : 'bg-primary'}`} />
                     <span className={`font-semibold truncate ${d.supplier_id === null ? 'text-amber-700' : ''}`}>
                       {d.supplier_name}
                     </span>
@@ -416,7 +417,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                       return (
                         <Badge
                           variant="outline"
-                          className="shrink-0 border-green-600/40 bg-green-500/10 text-green-700 dark:text-green-400 font-mono tabular-nums"
+                          className="shrink-0 border-primary/40 bg-primary/10 text-primary font-mono tabular-nums"
                           title={b.parts.map(p => `${formatBaseQty(p.qty)} m ${p.name}`).join(' · ')}
                         >
                           base {formatBaseQty(b.total)} m

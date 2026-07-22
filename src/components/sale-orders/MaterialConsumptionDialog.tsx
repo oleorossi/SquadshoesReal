@@ -144,8 +144,16 @@ type ItemGroup = {
   known: boolean;
 };
 
+// Item = BALDE de estoque (grupo + cor + unidade), INDEPENDENTE do componente.
+// A mesma napa+cor usada em cabedal E em forração é UM item só — divide o MESMO
+// estoque (`groupAvailable` é por grupo+cor, sem componente). Sem `componentType`
+// na chave, a visão SEGMENTADA (clicar Cor / Grupo / Unidade) mantém o item
+// agrupado em vez de repetir a mesma napa uma vez por componente. Na visão por
+// componente (padrão) o `componentType` é constante dentro da seção, então o
+// resultado é idêntico ao anterior — a mudança só afeta os buckets que cruzam
+// componentes (exatamente os da segmentação). (Pedido user 2026-07-22.)
 const itemKey = (r: ConsumptionRow) =>
-  `${r.componentType}||${r.groupName}||${r.color}||${r.productUnit}`;
+  `${r.groupName}||${r.color}||${r.productUnit}`;
 
 /** Agrega linhas NÃO-solado por item, preservando a ordem de primeira aparição.
  *  Presentation-only — não toca no motor de consumo. */
@@ -674,7 +682,17 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         }
         // Equivalente em material-base se feita artesanalmente. Só faz sentido
         // pra linhas lineares (metros) — yield_per_meter é m-saída por m-base.
-        const recipe = recipeMap.get(normTxt(row.groupName)) || recipeMap.get(normTxt(row.materialName));
+        // GATE por componentType 'Tiras' (2026-07-22): a conversão artesanal só
+        // vale pra linha de TIRA. Sem esse gate o motor casava "às cegas" o NOME
+        // do grupo contra qualquer receita — então uma napa-base consumida DIRETO
+        // (cabedal/forração/palmilha) cujo grupo tivesse o mesmo nome de um
+        // artisanal_product_name virava "tira cortada de X". Foi o bug PV-00148:
+        // a NAPA MADRID da forração de palmilha (2,43 m diretos) aparecia como
+        // "= 0,06 m NAPA SOFT · artesanal" e sumia do total de material base
+        // (contava 0,06 m de NAPA SOFT no lugar de 2,43 m de NAPA MADRID).
+        const recipe = row.componentType === 'Tiras'
+          ? (recipeMap.get(normTxt(row.groupName)) || recipeMap.get(normTxt(row.materialName)))
+          : undefined;
         if (recipe && LINEAR.has((row.productUnit || '').toLowerCase()) && row.totalQuantity > 0) {
           row.artisanal = {
             baseName: recipe.base,
@@ -1189,8 +1207,11 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
                   const short = countShort(componentRows);
                   return (
-                    <div className="flex items-baseline justify-between gap-3 border-b border-border/60 pb-1">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-foreground">{componentType}</span>
+                    <div className="flex items-baseline justify-between gap-3 border-b-2 border-foreground/60 pb-1.5">
+                      <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
+                        <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
+                        {componentType}
+                      </span>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {subtotal}
                         {short > 0 && <span className="text-red-600 dark:text-red-400 font-medium"> · {short} em falta</span>}
@@ -1205,11 +1226,11 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   const base = computeBaseMaterialTotal(componentRows);
                   if (!base) return null;
                   return (
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border border-green-600/25 bg-green-500/5 px-3 py-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
                         Material base
                       </span>
-                      <span className="font-mono tabular-nums text-lg font-bold text-green-700 dark:text-green-400">
+                      <span className="font-mono tabular-nums text-lg font-bold text-primary">
                         {formatQty(base.total, 'm')}<span className="text-xs font-semibold ml-0.5">m</span>
                       </span>
                       {base.parts.length > 1 && (
@@ -1232,7 +1253,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   ? <SoleSection rows={componentRows} />
                   : (
                  <div className="rounded-lg border overflow-hidden overflow-x-auto">
-                   <Table>
+                   <Table className="[&_td]:py-2 [&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead aria-sort={sortKey === 'groupName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
