@@ -524,8 +524,10 @@ export function computeForwardSchedule(
 // Deriva da MESMA cascata de computeParallelWindows (todos os 9 setores do fluxo,
 // paralelismo prep correto). Pro dia D, somamos pairs_per_day das OPs cujo
 // [start, end) do setor contém D (em dia útil). Capacidade do dia = média
-// ponderada por pares (mesma fórmula de v_sector_bottlenecks), pra o utilization%
-// bater com a tela semanal /gargalos. Usado pela tela "Setores por Dia" (PCP).
+// ponderada por pares. Obs.: a view semanal v_sector_bottlenecks migrou pro
+// modelo ADITIVO de dias de máquina (F1-02, mig 20260920101000) — a comparação
+// dia-a-dia aqui continua ponderada por ser um recorte de UM dia.
+// Usado pela tela "Setores por Dia" (PCP).
 //
 // É pura: recebe OPs + fichas já carregadas + o cache de feriados já populado
 // (loadHolidayCache no hook). Não toca rede.
@@ -657,8 +659,9 @@ export function computeSectorDailyLoad(
     } else if (capacityPerDay <= 0) {
       severity = 'unknown';            // setor sem capacidade cadastrada → não dá pra comparar
     } else {
-      // Compara a razão CRUA antes de arredondar (espelha v_sector_bottlenecks):
-      // 100,4% é gargalo (warning), não pode arredondar p/ 100 e cair em 'ok'.
+      // Compara a razão CRUA antes de arredondar (mesmos limiares 1.0/1.5 de
+      // v_sector_bottlenecks): 100,4% é gargalo (warning), não pode arredondar
+      // p/ 100 e cair em 'ok'.
       const ratio = b.pairs / capacityPerDay;
       utilizationPct = Math.round(ratio * 100); // só p/ exibição
       if (ratio > 1.5) severity = 'critical';

@@ -244,6 +244,56 @@ export const calculateGradeBasedDm2 = (
   }, 0);
 };
 
+/**
+ * Espelho TS de `public.convert_to_product_unit(qty, src, tgt)` (SQL vivo).
+ * Converte a quantidade do item-padrão do solado (sole_standard_items_consumption,
+ * ex.: g/par) pra unidade de ESTOQUE do produto (ex.: kg) — mesma tabela de
+ * conversões do SQL. Retorna:
+ *   - qty convertida quando há regra (g→kg, ml→L, cm→m, dm²→m², mil→un, …);
+ *   - qty INTACTA quando src==tgt, alguma unidade é vazia/desconhecida ou as
+ *     duas são do mesmo "tipo" sem fator cadastrado (ex.: par→un);
+ *   - null quando os tipos são CONHECIDOS e INCOMPATÍVEIS (ex.: g→m) — o caller
+ *     deve manter a qty crua e sinalizar aviso, igual ao SQL.
+ */
+export function convertToProductUnit(
+  qty: number,
+  sourceUnit: string | null | undefined,
+  targetUnit: string | null | undefined,
+): number | null {
+  const src = (sourceUnit || '').toLowerCase().trim();
+  const tgt = (targetUnit || '').toLowerCase().trim();
+  const q = Number(qty) || 0;
+  if (src === tgt || src === '' || tgt === '') return q;
+
+  const FACTORS: Record<string, number> = {
+    'g>kg': 1 / 1000, 'mg>kg': 1 / 1000000, 'mg>g': 1 / 1000,
+    'kg>g': 1000, 'kg>mg': 1000000, 'g>mg': 1000,
+    'ml>l': 1 / 1000, 'l>ml': 1000,
+    'cm>m': 1 / 100, 'm>cm': 100, 'mm>m': 1 / 1000, 'm>mm': 1000,
+    'mm>cm': 1 / 10, 'cm>mm': 10,
+    'dm²>m²': 1 / 100, 'm²>dm²': 100, 'cm²>dm²': 1 / 100, 'dm²>cm²': 100,
+    'cm²>m²': 1 / 10000, 'm²>cm²': 10000, 'mm²>cm²': 1 / 100, 'cm²>mm²': 100,
+    'mm²>dm²': 1 / 10000, 'mm²>m²': 1 / 1000000,
+    'mil>un': 1000, 'un>mil': 1 / 1000, 'cento>un': 100, 'un>cento': 1 / 100,
+    'dz>un': 12, 'un>dz': 1 / 12, 'cento>mil': 1 / 10, 'mil>cento': 10,
+  };
+  const factor = FACTORS[`${src}>${tgt}`];
+  if (factor != null) return q * factor;
+
+  const kindOf = (u: string): string => {
+    if (['g', 'mg', 'kg'].includes(u)) return 'mass';
+    if (['ml', 'l'].includes(u)) return 'volume';
+    if (['mm', 'cm', 'm'].includes(u)) return 'length';
+    if (['mm²', 'cm²', 'dm²', 'm²'].includes(u)) return 'area';
+    if (['un', 'mil', 'cento', 'dz', 'par'].includes(u)) return 'count';
+    return 'unknown';
+  };
+  const srcKind = kindOf(src);
+  const tgtKind = kindOf(tgt);
+  if (srcKind !== tgtKind && srcKind !== 'unknown' && tgtKind !== 'unknown') return null;
+  return q;
+}
+
 export const convertDm2ToLinearMeters = (totalDm2: number, componentSheet: ComponentSheetCandidate | null) => {
   const linearWidthMm = getLinearWidthMm(componentSheet);
   if (linearWidthMm <= 0) return totalDm2;

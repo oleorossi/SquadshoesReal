@@ -13,6 +13,12 @@ const SECTOR_LABEL: Record<string, string> = {
   mesa: 'Mesa (Aviamento)',
   corte_palmilha: 'Corte Palmilha',
   corte_forracao: 'Corte Forração / Cabedal',
+  // F1-02: v_sector_weekly_load agora cobre os 9 setores do fluxo
+  silk: 'Silk',
+  colagem: 'Colagem',
+  montagem: 'Montagem',
+  solagem: 'Solagem',
+  acabamento: 'Acabamento',
 };
 
 interface Props {

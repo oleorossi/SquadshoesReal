@@ -47,6 +47,23 @@ interface DefaultLeadTime {
   notes: string | null;
 }
 
+// Colunas do Lead Time Dinâmico (v_capacity_driven_lead_times) — F1-03:
+// a view foi reconstruída com aliases canônicos por setor, os 10 setores do
+// fluxo e total respeitando o paralelismo dos preps (MAX(Corte Palmilha,
+// Corte Forração, Costura, Aviamento) + sequenciais + buffer).
+const DYNAMIC_SECTORS = [
+  { label: 'Corte Palmilha', days: 'dynamic_days_corte_palmilha', load: 'current_load_corte_palmilha' },
+  { label: 'Corte Forração', days: 'dynamic_days_corte_forracao', load: 'current_load_corte_forracao' },
+  { label: 'Costura', days: 'dynamic_days_costura', load: 'current_load_costura' },
+  { label: 'Aviamento', days: 'dynamic_days_aviamento', load: 'current_load_aviamento' },
+  { label: 'Silk', days: 'dynamic_days_silk', load: 'current_load_silk' },
+  { label: 'Colagem', days: 'dynamic_days_colagem', load: 'current_load_colagem' },
+  { label: 'Montagem', days: 'dynamic_days_montagem', load: 'current_load_montagem' },
+  { label: 'Solagem', days: 'dynamic_days_solagem', load: 'current_load_solagem' },
+  { label: 'Acabamento', days: 'dynamic_days_acabamento', load: 'current_load_acabamento' },
+  { label: 'Expedição', days: 'dynamic_days_expedicao', load: 'current_load_expedicao' },
+] as const;
+
 const emptyForm: Omit<DefaultLeadTime, 'id'> = {
   shoe_category: '',
   lead_time_corte_dias: 2,
@@ -498,17 +515,13 @@ export default function LeadTime() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-              <Table className="min-w-[640px]">
+              <Table className="min-w-[860px]">
                 <TableHeader>
                    <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                      <TableHead>Categoria</TableHead>
-                     <TableHead className="text-center">Corte</TableHead>
-                     <TableHead className="text-center">Forração</TableHead>
-                     <TableHead className="text-center">Silk</TableHead>
-                     <TableHead className="text-center">Colagem</TableHead>
-                     <TableHead className="text-center">Montagem</TableHead>
-                     <TableHead className="text-center">Acabamento</TableHead>
-                     <TableHead className="text-center">Expedição</TableHead>
+                     {DYNAMIC_SECTORS.map((s) => (
+                       <TableHead key={s.label} className="text-center">{s.label}</TableHead>
+                     ))}
                      <TableHead className="text-center">Total</TableHead>
                    </TableRow>
                 </TableHeader>
@@ -516,34 +529,12 @@ export default function LeadTime() {
                   {dynamicLeadTimes.map((dlt) => (
                     <TableRow key={dlt.shoe_category}>
                       <TableCell className="font-medium">{dlt.shoe_category}</TableCell>
-                        <TableCell className="text-center text-muted-foreground">
-                          {dlt.dynamic_days_corte}d
-                          <div className="text-xs opacity-70">{dlt.current_load_corte} prs</div>
+                      {DYNAMIC_SECTORS.map((s) => (
+                        <TableCell key={s.label} className="text-center text-muted-foreground">
+                          {dlt[s.days] ?? 0}d
+                          <div className="text-xs opacity-70">{dlt[s.load] ?? 0} prs</div>
                         </TableCell>
-                        <TableCell className="text-center text-muted-foreground">
-                          {dlt.dynamic_days_forracao}d
-                          <div className="text-xs opacity-70">{dlt.current_load_forracao} prs</div>
-                        </TableCell>
-                       <TableCell className="text-center text-muted-foreground">
-                         {dlt.dynamic_days_silk}d
-                         <div className="text-xs opacity-70">{dlt.current_load_silk} prs</div>
-                       </TableCell>
-                       <TableCell className="text-center text-muted-foreground">
-                         {dlt.dynamic_days_colagem}d
-                         <div className="text-xs opacity-70">{dlt.current_load_colagem} prs</div>
-                       </TableCell>
-                       <TableCell className="text-center text-muted-foreground">
-                         {dlt.dynamic_days_montagem}d
-                         <div className="text-xs opacity-70">{dlt.current_load_montagem} prs</div>
-                       </TableCell>
-                       <TableCell className="text-center text-muted-foreground">
-                         {dlt.dynamic_days_acabamento}d
-                         <div className="text-xs opacity-70">{dlt.current_load_acabamento} prs</div>
-                       </TableCell>
-                        <TableCell className="text-center text-muted-foreground">
-                          {dlt.dynamic_days_expedicao}d
-                          <div className="text-xs opacity-70">{dlt.current_load_expedicao} prs</div>
-                        </TableCell>
+                      ))}
                       <TableCell className="text-center">
                         <Badge className="bg-warning text-warning-foreground hover:bg-warning/90">
                           {dlt.total_dynamic_lead_time_days} dias úteis
@@ -553,7 +544,7 @@ export default function LeadTime() {
                   ))}
                   {dynamicLeadTimes.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={DYNAMIC_SECTORS.length + 2} className="text-center py-8 text-muted-foreground">
                         Nenhum dado de backlog disponível para as categorias configuradas.
                       </TableCell>
                     </TableRow>

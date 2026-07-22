@@ -49,7 +49,12 @@ export const CONSUMPTION_SOURCES = [
 export const ConsumptionLineSchema = z
   .object({
     component: z.string().min(1, 'component vazio'),
-    product_id: z.string().min(1, 'product_id vazio'),
+    // NULO permitido SÓ em linha de AVISO (required=0 + consumption_warning) —
+    // o SQL emite legitimamente product_id NULL no ramo de solado fachetado sem
+    // specs de fachete (source='sole_fachete'); exigir string derrubava o
+    // payload INTEIRO com ConsumptionSchemaError (F2-10). O superRefine abaixo
+    // preserva a rejeição pra qualquer outra linha sem product_id.
+    product_id: z.string().min(1, 'product_id vazio').nullable(),
     product_name: z.string().min(1, 'product_name vazio'),
     color: z.string().nullable().optional(),
     consumption_per_unit: z
@@ -77,7 +82,22 @@ export const ConsumptionLineSchema = z
   })
   // Postgres devolve numeric como string em alguns drivers — coercionamos
   // ANTES da validação para evitar falsos positivos quando isso acontece.
-  .passthrough();
+  .passthrough()
+  .superRefine((line, ctx) => {
+    if (line.product_id != null) return;
+    const warning = (line as Record<string, unknown>).consumption_warning;
+    const isWarningLine =
+      Number(line.required) === 0 &&
+      typeof warning === 'string' &&
+      warning.trim().length > 0;
+    if (!isWarningLine) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['product_id'],
+        message: 'product_id nulo só é permitido em linha de AVISO (required=0 + consumption_warning)',
+      });
+    }
+  });
 
 export const ConsumptionResponseSchema = z.array(ConsumptionLineSchema);
 
@@ -156,7 +176,8 @@ export function validateConsumptionPayload(raw: unknown): ConsumptionLine[] {
 
 export type ConsumptionLine = {
   component: string;
-  product_id: string;
+  /** null SÓ em linha de AVISO (required=0 + consumption_warning) — ver schema. */
+  product_id: string | null;
   product_name: string;
   color?: string | null;
   consumption_per_unit: number;
@@ -171,6 +192,9 @@ export type ConsumptionLine = {
   /** Aviso de get_material_conversion_info quando o material não tem largura
    *  cadastrada em component_sheets — o valor pode estar ~100x inflado. */
   conversion_warning?: string | null;
+  /** Aviso não-bloqueante do motor (ex.: fallback_average de tamanho sem spec,
+   *  fachete sem consumo cadastrado). Presente nas linhas de AVISO. */
+  consumption_warning?: string | null;
 };
 
 export type ConsumptionSummary = {

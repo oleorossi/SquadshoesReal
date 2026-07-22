@@ -2,7 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type SectorKey = 'costura' | 'mesa' | 'corte_palmilha' | 'corte_forracao';
+// F1-02 (auditoria de motores 2026-07): v_sector_weekly_load/v_sector_bottlenecks
+// foram reconstruídas sobre a cascata canônica do compute_wave_timeline e agora
+// cobrem os 9 setores do fluxo (antes só 4).
+export type SectorKey =
+  | 'costura' | 'mesa' | 'corte_palmilha' | 'corte_forracao'
+  | 'silk' | 'colagem' | 'montagem' | 'solagem' | 'acabamento';
 
 export interface ContributingOrder {
   order_id: string;
@@ -38,6 +43,11 @@ export const SECTOR_LABEL: Record<SectorKey | 'corte_cabedal', string> = {
   corte_palmilha: 'Corte Palmilha',
   corte_forracao: 'Corte Forração',
   corte_cabedal: 'Corte Cabedal',
+  silk: 'Silk',
+  colagem: 'Colagem',
+  montagem: 'Montagem',
+  solagem: 'Solagem',
+  acabamento: 'Acabamento',
 };
 
 export function useSectorBottlenecks() {

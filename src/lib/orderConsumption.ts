@@ -5,6 +5,7 @@ import {
   isLinearWidthMissing,
   convertDm2ToLinearMeters,
   convertDm2ToPlates,
+  convertToProductUnit,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   normalizeText,
   normalizeColorKey,
@@ -169,6 +170,13 @@ export type ConsumptionContext = {
   /** variant_id → campos de resolução da variante de material do item do PV.
    *  Opcional (testes antigos e callers sem variante não constroem). */
   materialVariantsById?: Map<string, MaterialVariantResolution>;
+  /** sole_product_id → itens-padrão do solado por numeração
+   *  (`sole_standard_items_consumption`: colas/químicos com consumo POR NÚMERO,
+   *  na unidade cadastrada — ex.: g/par). Espelha o ramo "Item padrão (solado)"
+   *  do SQL by_grade: o motor TS emite essas linhas com o MESMO dedup anti-BOM
+   *  (produto coberto pelo item-padrão sai do BOM/direct). Opcional (testes
+   *  antigos não constroem). Auditoria F2-01. */
+  soleStandardItemsBySole?: Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>;
 };
 
 /**
@@ -306,6 +314,39 @@ export function resolveSoleProductIdCanonical(
   return null;
 }
 
+/**
+ * Espelho TS de `resolve_material_product(grupo, cor)` (SQL vivo) — a cascata
+ * canônica de escolha do PRODUTO dentro de um grupo:
+ *   1. cor EXATA (case/acento-insensitive), maior estoque;
+ *   2. cor contida no NOME do produto (partial_name), maior estoque;
+ *   3. qualquer produto do grupo, maior estoque (color_mismatch/group_generic);
+ * sem cor → maior estoque do grupo (group_fallback).
+ * Usada pra alinhar a resolução de produto do motor TS (Palmilha/Fachete) ao
+ * caminho SQL (custeio/débito/reserva) — auditoria F2-03/F2-09.
+ */
+export function resolveMaterialProductCanonical(
+  groupName: string,
+  color: string | null | undefined,
+  allProducts: any[],
+  productGroups: any[],
+): any | null {
+  if (!groupName) return null;
+  const group = (productGroups || []).find((g: any) => g.name === groupName);
+  if (!group) return null;
+  const byStock = (allProducts || [])
+    .filter((p: any) => p.group_id === group.id)
+    .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
+  if (byStock.length === 0) return null;
+  const colorNorm = normColorCanonical(color === '—' ? '' : color);
+  if (colorNorm) {
+    const exact = byStock.find((p: any) => normColorCanonical(p.color) === colorNorm);
+    if (exact) return exact;
+    const partial = byStock.find((p: any) => normColorCanonical(p.name).includes(colorNorm));
+    if (partial) return partial;
+  }
+  return byStock[0];
+}
+
 /** Classifica um material de BOM (sheet_materials) num componentType. */
 export const classifyBomMaterial = (groupName: string, productName: string, category: string): string => {
   const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
@@ -429,7 +470,8 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
       .from('products')
       // `unit` entrou pra resolução da unidade de ESTOQUE da palmilha (fix
       // auditoria motores 2026-07-01: linha em dm² quando o estoque é em dm²).
-      .select('id, name, unit, color, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      // `category` entrou pra classificar os itens-padrão do solado (F2-01).
+      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
       .eq('active', true),
     supabase
       .from('product_groups')
@@ -612,6 +654,42 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     }
   }
 
+  // ITENS-PADRÃO do solado por numeração (sole_standard_items_consumption) —
+  // F2-01: espelha o ramo "Item padrão (solado)" do SQL by_grade. Candidatos =
+  // qualquer produto que a cascata de solado destas fichas possa resolver
+  // (mappings explícitos, primary, produtos dos grupos de solado, pins de
+  // variante) — mesma população que resolveSoleProductIdCanonical enxerga.
+  const soleStandardItemsBySole = new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
+  {
+    const candidateIds = new Set<string>();
+    for (const pid of soleColorMap.values()) candidateIds.add(pid);
+    for (const pid of sheetPrimarySoleMap.values()) candidateIds.add(pid);
+    const candidateGroupIds = new Set<string>([
+      ...sheetSoleGroupMap.values(),
+      ...soleColorGroupMap.values(),
+    ]);
+    for (const p of (allProducts || []) as any[]) {
+      if (p.group_id && candidateGroupIds.has(p.group_id)) candidateIds.add(p.id);
+    }
+    for (const v of materialVariantsById.values()) {
+      if (v.sole_material_product_id) candidateIds.add(v.sole_material_product_id);
+    }
+    if (candidateIds.size > 0) {
+      const { data: stdItems } = await (supabase as any)
+        .from('sole_standard_items_consumption')
+        .select('sole_product_id, standard_item_id, size, consumption, unit')
+        .in('sole_product_id', [...candidateIds])
+        .gt('consumption', 0);
+      for (const r of (stdItems || []) as any[]) {
+        const cons = Number(r.consumption) || 0;
+        if (cons <= 0 || r.size == null || !r.standard_item_id) continue;
+        const arr = soleStandardItemsBySole.get(r.sole_product_id) || [];
+        arr.push({ standardItemId: r.standard_item_id, size: Number(r.size), consumption: cons, unit: r.unit ?? null });
+        soleStandardItemsBySole.set(r.sole_product_id, arr);
+      }
+    }
+  }
+
   return {
     materials: materials || [],
     allProducts: allProducts || [],
@@ -633,6 +711,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     insoleLiningSpecBySole,
     componentColorMap,
     materialVariantsById,
+    soleStandardItemsBySole,
   };
 }
 
@@ -671,6 +750,8 @@ export function computeConsumptionForItems(
   const insoleLiningSpecBySole = ctx.insoleLiningSpecBySole ?? new Map<string, Record<string, number>>();
   const componentColorMap = ctx.componentColorMap ?? new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
   const materialVariantsById = ctx.materialVariantsById ?? new Map<string, MaterialVariantResolution>();
+  const soleStandardItemsBySole = ctx.soleStandardItemsBySole
+    ?? new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
 
   // Normalização case/acento-insensitive ("Caramelo" = "CARAMELO", "Café" = "Cafe").
   const normColor = (s: string | null | undefined): string =>
@@ -708,6 +789,39 @@ export function computeConsumptionForItems(
       preferYield = false,
     }: { color?: string; mode?: 'any' | 'linear' | 'plate'; preferYield?: boolean } = {},
   ) => getPreferredComponentSheetFromCandidates(getComponentSheetsForGroup(groupName), { color, mode, preferYield });
+
+  // Ficha de conversão dm²→física com a MESMA ordem do SQL
+  // (get_material_conversion_info): a ficha de componente do PRODUTO
+  // resolvido/pinado vence quando tem dimensões; só sem ela cai na preferência
+  // por cor dentro do grupo. Antes o TS ignorava a cs do pin e casava só por
+  // cor — perda (waste_pct)/largura divergiam do custeio/débito (F2-04).
+  const getConversionSheetForProduct = (
+    productId: string | null | undefined,
+    groupName: string,
+    opts: { color?: string; mode?: 'any' | 'linear' | 'plate'; preferYield?: boolean } = {},
+  ) => {
+    if (productId) {
+      const own = (componentSheets || []).find((c: any) => c.product_id === productId);
+      if (own && (Number(own.dimensions_width) > 0 || Number(own.dimensions_length) > 0)) return own;
+    }
+    return getPreferredGroupSheet(groupName, opts);
+  };
+
+  // Tamanhos da grade do item SEM valor por numeração no mapa de specs — usados
+  // pro aviso `fallback_average` (contrato SQL: tamanho sem spec cai no ESCALAR
+  // da ficha e a linha sai com consumption_warning; F2-02).
+  const sizesMissingFromSpec = (item: ConsumptionItem, perSize: Record<string, number>): string[] => {
+    const grade = (item as any).grade as Record<string, number> | null | undefined;
+    if (!grade || typeof grade !== 'object') return [];
+    const missing: string[] = [];
+    for (const [k, v] of Object.entries(grade)) {
+      if (k.startsWith('_') || !((Number(v) || 0) > 0)) continue;
+      if (!((Number(perSize[k]) || 0) > 0)) missing.push(k);
+    }
+    return missing;
+  };
+  const fallbackAverageWarning = (missing: string[]): string =>
+    `Tamanhos usando a média escalar da ficha (sem consumo por numeração): ${missing.join(', ')}`;
 
   // Helper: o grupo (por nome) contém algum produto que casa na cor?
   const groupHasColor = (groupName: string, color: string): boolean => {
@@ -836,8 +950,14 @@ export function computeConsumptionForItems(
           upperAlts, orderColor,
         );
     if (upperMatch) {
-      const upperSheet = getPreferredGroupSheet(upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const isPrincipal = upperVariantDriven || upperMatch.group === (sheet?.upper_material || '');
+      // Pin de SKU calculado ANTES da ficha de conversão: a cs do produto
+      // pinado dirige largura/perda quando existir (ordem do SQL — F2-04).
+      const upperPin = upperVariant.pin
+        || (isPrincipal && (sheet as any)?.upper_material_product_id
+          ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
+          : null);
+      const upperSheet = getConversionSheetForProduct(upperPin?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       // Override LEGADO da variante substitui o escalar E suprime o per-size da
       // ficha (é um consumo explícito). Sem override, o per-size da ficha segue
@@ -849,14 +969,10 @@ export function computeConsumptionForItems(
           ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
           : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
-      // Pin de SKU: o da VARIANTE (produto legado) prevalece; senão o da ficha
-      // (Material 1). Quando fixado + ativo, o débito SQL baixa ESSE produto
-      // (resolve_upper_material_for_variant → 'variant'/'sheet_pin'). Aqui só
-      // refletimos o NOME no custeio/modal; a quantidade não muda. (2026-06-28)
-      const upperPin = upperVariant.pin
-        || (isPrincipal && (sheet as any)?.upper_material_product_id
-          ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
-          : null);
+      // Pin de SKU (acima): o da VARIANTE (produto legado) prevalece; senão o
+      // da ficha (Material 1). Quando fixado + ativo, o débito SQL baixa ESSE
+      // produto (resolve_upper_material_for_variant → 'variant'/'sheet_pin') e
+      // a conversão dm²→m usa a cs DELE (F2-04).
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: upperMatch.group,
@@ -872,16 +988,19 @@ export function computeConsumptionForItems(
     for (const mandMat of mandatoryCabedalMaterials) {
       const mandConsumption = Number(mandMat.consumption) || 0;
       if (!mandMat.material || mandConsumption <= 0) continue;
-      const mandSheet = getPreferredGroupSheet(mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
-      const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0)
-        ? mandMat.consumption_per_size
-        : null;
-      const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
       // Item fixado (product_id) → exibe o nome do produto exato (o débito SQL
       // debita esse item; ver debit_stock_for_order). Sem pino, mantém o rótulo.
       const pinnedProd = mandMat.product_id
         ? (allProducts || []).find((p: any) => p.id === mandMat.product_id)
         : null;
+      // Conversão dm²→m pela cs do produto PINADO quando houver (ordem do SQL:
+      // get_material_conversion_info do pin — F2-04; caso vivo: NAPA ONÇA com
+      // waste próprio ≠ da cs casada por cor do grupo).
+      const mandSheet = getConversionSheetForProduct(pinnedProd?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
+      const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0)
+        ? mandMat.consumption_per_size
+        : null;
+      const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: mandMat.material,
@@ -921,11 +1040,17 @@ export function computeConsumptionForItems(
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
       && Object.values(insoleLiningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0)
       && !Object.values(liningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0);
+    // Pin de SKU do forro (variante > ficha) — hoisted: dirige a ficha de
+    // conversão (F2-04) do Forro E da Forração Palmilha abaixo.
+    const isPrincipalLining = !!liningMatch && (liningVariantDriven || liningMatch.group === (sheet?.lining_material || ''));
+    const liningPin = liningVariant.pin
+      || (isPrincipalLining && (sheet as any)?.lining_material_product_id
+        ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
+        : null);
     if (liningMatch && !suppressCabedalForracao) {
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
-      const liningSheet = getPreferredGroupSheet(liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
+      const liningSheet = getConversionSheetForProduct(liningPin?.id, liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
       const soleProductId = resolveSoleForItem();
-      const isPrincipalLining = liningVariantDriven || liningMatch.group === (sheet?.lining_material || '');
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
       // FORRAÇÃO ALTERNATIVA (lining_accessories): consumo por número da própria
       // ficha (é escolha do modelo). A PRINCIPAL não usa mais per_size da ficha.
@@ -945,19 +1070,19 @@ export function computeConsumptionForItems(
       const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
       const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
       let liningTotal: number;
+      let liningWarning: string | undefined;
       if (isPrincipalLining && liningSoleVals.length > 0) {
         // sheet=null → usa o override PURO em dm² (não trata como metro); depois
         // converte dm²→metro pela largura da ficha do material (igual fachete).
-        const avgLiningSole = liningSoleVals.reduce((a, b) => a + b, 0) / liningSoleVals.length;
-        const liningDm2 = calculateGradeBasedDm2(item, avgLiningSole, null, liningSolePerSize, soleProductId, sheet?.sole_drives_consumption);
+        // Tamanho SEM spec no solado cai no ESCALAR da ficha (contrato SQL
+        // by_grade / fallback_average — F2-02), NÃO mais na média×multiplicador.
+        const liningDm2 = calculateGradeBasedDm2(item, liningMatch.consumption, null, liningSolePerSize, soleProductId);
         liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
+        const missing = sizesMissingFromSpec(item, liningSolePerSize);
+        if (missing.length > 0 && liningMatch.consumption > 0) liningWarning = fallbackAverageWarning(missing);
       } else {
-        liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId, sheet?.sole_drives_consumption).total;
+        liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId).total;
       }
-      const liningPin = liningVariant.pin
-        || (isPrincipalLining && (sheet as any)?.lining_material_product_id
-          ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
-          : null);
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração',
         groupName: liningMatch.group,
@@ -966,6 +1091,7 @@ export function computeConsumptionForItems(
         color: mappedLiningColor,
         totalQuantity: liningTotal,
         widthMissing: liningWidthMissing,
+        warning: liningWarning,
       });
     }
 
@@ -1006,11 +1132,27 @@ export function computeConsumptionForItems(
       const pinnedPalmProduct = palmProductId
         ? (allProducts || []).find((p: any) => p.id === palmProductId)
         : null;
-      const insoleSheet = getPreferredGroupSheet(insoleGroupName, { mode: 'plate', preferYield: true });
+      // Produto de palmilha RESOLVIDO como no SQL (F2-03): pin do mapping/
+      // variante > resolve_material_product (cor exata > cor no nome > maior
+      // estoque do grupo). A cor de resolução espelha v_palmilha_color do
+      // by_grade: cor do pedido, exceto quando insole_has_lining=false (aí o
+      // mapping de cor da palmilha dirige). Antes o TS escolhia só a FICHA de
+      // componente "plate" do grupo e podia apontar produto/unidade diferentes
+      // do que débito/reserva/custeio (SQL) baixam.
+      const palmResolveColor = sheet?.insole_has_lining === false
+        ? (palmMapping?.color || orderColor)
+        : orderColor;
+      const resolvedPalmProduct = pinnedPalmProduct
+        || resolveMaterialProductCanonical(insoleGroupName, palmResolveColor, allProducts || [], productGroups || []);
+      // Ficha de conversão: cs do produto resolvido primeiro (F2-04), senão a
+      // preferida do grupo em modo placa (comportamento anterior).
+      const insoleSheet = getConversionSheetForProduct(resolvedPalmProduct?.id, insoleGroupName, { mode: 'plate', preferYield: true });
       // PALMILHA PLACA por numeração vinda do SOLADO (sole_technical_specs.insole_consumption_dm2),
       // espelhando o Forro e a produção/ondas: quando o solado tem valores, o consumo (dm²) vem
-      // deles por número (escalar como fallback) e a ficha de componente é usada SÓ pra conversão
-      // dm²→placa. Sem valores no solado → caminho antigo (yield da ficha de componente).
+      // deles por número (ESCALAR da ficha como fallback POR TAMANHO — contrato
+      // SQL/fallback_average, F2-02) e a ficha de componente é usada SÓ pra
+      // conversão dm²→placa. Sem valores no solado → caminho antigo (yield da
+      // ficha de componente, fallback escalar FLAT — sem multiplicador).
       // Override LEGADO da variante (consumo explícito) suprime o per-size do
       // solado e substitui o escalar da ficha.
       const hasLegacyInsoleOverride = insoleVariantDriven && variant?.insole_consumption_override != null;
@@ -1020,35 +1162,59 @@ export function computeConsumptionForItems(
       const insoleSolePerSize = hasLegacyInsoleOverride ? {} : (insoleSpecBySole.get(soleProductIdForInsole || '') || {});
       const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
       const computeInsoleDm2 = () => insoleSoleVals.length > 0
-        ? calculateGradeBasedDm2(item, insoleSoleVals.reduce((a, b) => a + b, 0) / insoleSoleVals.length, null, insoleSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption)
-        : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole, sheet?.sole_drives_consumption);
-      const insoleGroupProducts = insoleGroup
-        ? (allProducts || []).filter((p: any) => p.group_id === insoleGroup.id)
-        : [];
-      // Unidade de estoque "conhecida": produto pinado do mapping > produto da
-      // ficha de componente preferida do grupo (mode 'plate') > produto do
-      // grupo que casa na cor da palmilha > produto único do grupo. null =
-      // desconhecida → preserva o caminho legado.
-      const palmStockUnit: string | null = palmProductId
-        ? (pinnedPalmProduct?.unit || null)
-        : (((insoleSheet?.products as any)?.unit as string | undefined)
-          || insoleGroupProducts.find((p: any) => normColor(p.color) === normColor(palmColor))?.unit
-          || (insoleGroupProducts.length === 1 ? insoleGroupProducts[0]?.unit : null)
-          || null);
+        ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
+        : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole);
+      // Aviso de fallback (tamanho sem spec → escalar), espelho do
+      // consumption_warning/fallback_average do SQL. Mantido visível na UI.
+      const insoleMissing = insoleSoleVals.length > 0 ? sizesMissingFromSpec(item, insoleSolePerSize) : [];
+      const insoleWarning = (insoleMissing.length > 0 && insoleScalarConsumption > 0)
+        ? fallbackAverageWarning(insoleMissing)
+        : undefined;
+      // Unidade de estoque = a do produto RESOLVIDO (pin > resolve canônico);
+      // fallback: unidade do produto da ficha de componente. null = desconhecida
+      // → preserva o caminho legado (placa).
+      const palmStockUnit: string | null = (resolvedPalmProduct?.unit as string | undefined)
+        || (((insoleSheet as any)?.products as any)?.unit as string | undefined)
+        || null;
+      const palmRowColor = resolvedPalmProduct?.color || palmColor;
 
       if (isAreaStockUnit(palmStockUnit)) {
-        // Estoque em ÁREA: emite o consumo em dm² CRU (sem perda) — é o que o
-        // débito baixa do estoque. A perda de corte (waste_pct) só entra quando
-        // há CONVERSÃO dm²→física (regra canônica do CLAUDE.md), como no ramo
-        // de placas abaixo.
+        // Estoque em ÁREA: emite em dm² COM a perda de corte (waste_pct) da
+        // ficha de conversão — contrato do SQL (que aplica ×(1+waste) na linha
+        // Palmilha incondicionalmente) e da Lista de Separação. Antes o modal
+        // emitia CRU e divergia dos dois na primeira ficha com waste>0 (F2-08).
         const insoleDm2 = computeInsoleDm2();
+        const insoleWastePct = Number((insoleSheet as any)?.waste_pct) || 0;
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
           groupName: insoleGroupName,
-          materialName: pinnedPalmProduct?.name || 'Palmilha',
+          materialName: resolvedPalmProduct?.name || 'Palmilha',
           productUnit: 'dm2',
-          color: pinnedPalmProduct?.color || palmColor,
-          totalQuantity: insoleDm2,
+          color: palmRowColor,
+          totalQuantity: insoleDm2 * (1 + insoleWastePct / 100),
+          warning: insoleWarning,
+        });
+      } else if (palmStockUnit && LINEAR_UNITS.has(palmStockUnit.toLowerCase().trim())) {
+        // Estoque LINEAR (ex.: rolo EVA 3MM em metros): converte dm²→m pela
+        // largura da cs do produto resolvido (grupo como fallback) — espelha o
+        // SQL (resolve produto → get_material_conversion_info). Antes o TS
+        // emitia dm² da placa enquanto o débito baixava metros do rolo (F2-03).
+        const insoleDm2 = computeInsoleDm2();
+        const linSheet = getConversionSheetForProduct(resolvedPalmProduct?.id, insoleGroupName, {
+          color: palmRowColor !== '—' ? palmRowColor : undefined,
+          mode: 'linear',
+          preferYield: true,
+        });
+        const linWidthMissing = isLinearWidthMissing(linSheet as any, 'm');
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Palmilha',
+          groupName: insoleGroupName,
+          materialName: resolvedPalmProduct?.name || 'Palmilha',
+          productUnit: linWidthMissing ? 'dm2' : 'metro',
+          color: palmRowColor,
+          totalQuantity: linWidthMissing ? insoleDm2 : convertDm2ToLinearMeters(insoleDm2, linSheet as any),
+          widthMissing: linWidthMissing,
+          warning: insoleWarning,
         });
       } else if (palmProductId) {
         // Palmilha pronta comprada por PAR (produto pinado no mapping de cor).
@@ -1079,6 +1245,7 @@ export function computeConsumptionForItems(
           productUnit: 'placa',
           color: palmColor,
           totalQuantity: insolePlates,
+          warning: insoleWarning,
         });
       }
 
@@ -1086,12 +1253,15 @@ export function computeConsumptionForItems(
       // Linha linear ADICIONAL (mesma napa do Forro do cabedal). Só quando há
       // forro (insole_has_lining) e área de forração da palmilha > 0.
       const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
-      // Forração da palmilha usa a MESMA napa do forro — se a variante troca o
-      // grupo do forro, a forração da palmilha sai do grupo da variante (o SQL
-      // resolve as duas pelo mesmo resolve_lining_material_for_variant).
+      // Forração da palmilha usa a MESMA napa do forro RESOLVIDO (pick-one):
+      // variante > grupo eleito pelo resolveOption (alternativa quando a
+      // principal não tem a cor) > lining_material cru. O SQL resolve as duas
+      // linhas pelo MESMO v_lining_pid (grupo alternativo incluso) — usar o
+      // lining_material cru aqui mandava cortar a napa ERRADA quando o forro
+      // era alternativo (F2-09).
       const liningGroupForPalm = liningVariantDriven
         ? (liningVariant.groupName || sheet?.lining_material || '')
-        : (sheet?.lining_material || '');
+        : (liningMatch?.group || sheet?.lining_material || '');
       // FORRAÇÃO da palmilha por numeração vinda do SOLADO
       // (sole_technical_specs.insole_lining_consumption_dm2), espelhando o Forro e a
       // produção/ondas (SQL by_grade).
@@ -1101,22 +1271,28 @@ export function computeConsumptionForItems(
       // forração-de-palmilha dirigida pelo solado nunca sairia se o escalar fosse 0.
       if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
         const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
-        const forrSheet = getPreferredGroupSheet(liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
+        // Mesma ficha de conversão do Forro do cabedal: cs do pin primeiro
+        // (F2-04), grupo por cor como fallback — o SQL converte as duas linhas
+        // pela MESMA get_material_conversion_info(v_lining_pid).
+        const forrSheet = getConversionSheetForProduct(liningPin?.id, liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
         const forrWidthMissing = isLinearWidthMissing(forrSheet, 'm');
-        // Solado com valores: dm² por número dele (escalar como fallback), e a ficha do
-        // material só converte dm²→metro (igual ao Forro do cabedal). Sem valores → antigo.
+        // Solado com valores: dm² por número dele; tamanho SEM spec cai no
+        // ESCALAR da ficha (contrato SQL/fallback_average — F2-02) com aviso.
+        // Sem valores → caminho antigo (escalar flat).
         let forrTotal: number;
+        let forrWarning: string | undefined;
         if (insoleLiningSoleVals.length > 0) {
-          const avgInsoleLiningSole = insoleLiningSoleVals.reduce((a, b) => a + b, 0) / insoleLiningSoleVals.length;
-          const forrDm2 = calculateGradeBasedDm2(item, avgInsoleLiningSole, null, insoleLiningSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption);
+          const forrDm2 = calculateGradeBasedDm2(item, insoleLiningCons, null, insoleLiningSolePerSize, soleProductIdForInsole);
           forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
+          const missing = sizesMissingFromSpec(item, insoleLiningSolePerSize);
+          if (missing.length > 0 && insoleLiningCons > 0) forrWarning = fallbackAverageWarning(missing);
         } else {
-          forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole, sheet?.sole_drives_consumption).total;
+          forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole).total;
         }
         // componentType DISTINTO 'Forração Palmilha' (não 'Palmilha'): é FORRO
         // cortado no setor Corte Forração, não placa do Corte Palmilha. O
         // roteamento por setor (filterConsumptionForSector) depende disso.
-        addConsumptionRow(consumptionMap, {
+        if (forrTotal > 0 || forrWarning) addConsumptionRow(consumptionMap, {
           componentType: 'Forração Palmilha',
           groupName: liningGroupForPalm,
           materialName: 'Forração Palmilha',
@@ -1124,6 +1300,7 @@ export function computeConsumptionForItems(
           color: mappedLiningColor,
           totalQuantity: forrTotal,
           widthMissing: forrWidthMissing,
+          warning: forrWarning,
         });
       }
     }
@@ -1214,11 +1391,25 @@ export function computeConsumptionForItems(
       const facheteVals = Object.values(fachetePerSize).filter((v) => Number(v) > 0) as number[];
       if (facheteMaterialName && facheteVals.length > 0) {
         const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
-        const facheteSheet = getPreferredGroupSheet(facheteMaterialName, { color: mappedLiningColor, mode: 'linear', preferYield: true });
+        // Produto do fachete resolvido como no SQL (resolve_material_product do
+        // grupo do fachete) e conversão pela cs DELE quando houver (F2-04).
+        const facheteProd = resolveMaterialProductCanonical(facheteMaterialName, mappedLiningColor, allProducts || [], productGroups || []);
+        const facheteSheet = getConversionSheetForProduct(facheteProd?.id, facheteMaterialName, { color: mappedLiningColor, mode: 'linear', preferYield: true });
         const avgFachete = facheteVals.reduce((a, b) => a + b, 0) / facheteVals.length;
         // sheet null força o uso PURO do override (valores em dm²/par); não usa o
         // yield linear da napa — senão trataria dm² como metros (~100× errado).
-        const facheteDm2 = calculateGradeBasedDm2(item, avgFachete, null, fachetePerSize, soleProductIdResolved, sheet?.sole_drives_consumption);
+        // Tamanho SEM spec de fachete contribui ZERO + aviso (contrato SQL:
+        // v_warn_fachete_sizes — F2-02), não mais média×multiplicador. Item sem
+        // grade preserva o legado (média × quantidade).
+        const facheteGradeEntries = Object.entries(((item as any).grade || {}) as Record<string, number>)
+          .filter(([k, v]) => !k.startsWith('_') && (Number(v) || 0) > 0);
+        const facheteDm2 = facheteGradeEntries.length > 0
+          ? calculateGradeBasedDm2(item, 0, null, fachetePerSize, soleProductIdResolved)
+          : calculateGradeBasedDm2(item, avgFachete, null, fachetePerSize, soleProductIdResolved);
+        const facheteMissing = facheteGradeEntries.length > 0 ? sizesMissingFromSpec(item, fachetePerSize) : [];
+        const facheteWarning = facheteMissing.length > 0
+          ? `Tamanhos sem consumo de fachete: ${facheteMissing.join(', ')}`
+          : undefined;
         const widthMissing = isLinearWidthMissing(facheteSheet, 'm');
         const facheteTotal = widthMissing ? facheteDm2 : convertDm2ToLinearMeters(facheteDm2, facheteSheet);
         addConsumptionRow(consumptionMap, {
@@ -1229,6 +1420,7 @@ export function computeConsumptionForItems(
           color: mappedLiningColor,
           totalQuantity: facheteTotal,
           widthMissing,
+          warning: facheteWarning,
         });
       } else {
         // Solado fachetado SEM consumo de fachete cadastrado. Espelha o
@@ -1247,6 +1439,60 @@ export function computeConsumptionForItems(
           totalQuantity: 0,
           warning: 'Solado fachetado sem consumo de fachete cadastrado — a forração extra do salto NÃO entrou no cálculo. Cadastre o consumo por numeração em Materiais → Solado (fachete_lining_consumption_dm2).',
         });
+      }
+    }
+
+    // ── ITENS-PADRÃO do solado (sole_standard_items_consumption) — F2-01 ─────
+    // Espelha o ramo "Item padrão (solado)" do SQL by_grade: químicos/colas com
+    // consumo POR NUMERAÇÃO na unidade cadastrada (ex.: g/par), convertidos pra
+    // unidade de ESTOQUE do produto (convert_to_product_unit) e com o MESMO
+    // dedup anti-BOM (produto coberto sai do BOM/direct — v_covered_product_ids).
+    // Antes o motor TS só enxergava o BOM da ficha: picking/modal e custeio/
+    // débito (SQL) descreviam consumos contraditórios do mesmo pedido (HOTMELT
+    // 1000× na OP-2026-01142). A taxonomia de exibição segue a do motor
+    // (classifyBomMaterial → cola vira 'Químicos'), preservando o roteamento
+    // por setor das fichas de operador.
+    const stdCoveredProductIds = new Set<string>();
+    {
+      const stdItemsForSole = soleProductIdResolved
+        ? (soleStandardItemsBySole.get(soleProductIdResolved) || [])
+        : [];
+      if (stdItemsForSole.length > 0 && Object.keys(scaledBreakdown).length > 0) {
+        const stdAcc = new Map<string, { required: number; unit: string | null }>();
+        for (const [sizeKey, pairs] of Object.entries(scaledBreakdown)) {
+          // Numeração conjugada ("33/34") casa pelo primeiro número — mesmo
+          // split_part(key,'/',1)::int do SQL.
+          const sizeInt = parseInt(String(sizeKey).split('/')[0], 10);
+          if (!Number.isFinite(sizeInt) || !(pairs > 0)) continue;
+          for (const std of stdItemsForSole) {
+            if (std.size !== sizeInt) continue;
+            const a = stdAcc.get(std.standardItemId) || { required: 0, unit: std.unit };
+            a.required += std.consumption * pairs;
+            stdAcc.set(std.standardItemId, a);
+          }
+        }
+        for (const [pid, a] of stdAcc.entries()) {
+          if (!(a.required > 0)) continue;
+          const prod = (allProducts || []).find((p: any) => p.id === pid);
+          if (!prod) continue;
+          const stdGroupName = (productGroups || []).find((g: any) => g.id === prod.group_id)?.name
+            || prod.category || prod.name || 'Outros';
+          const converted = convertToProductUnit(a.required, a.unit, prod.unit);
+          addConsumptionRow(consumptionMap, {
+            componentType: classifyBomMaterial(stdGroupName, prod.name || '', prod.category || ''),
+            groupName: stdGroupName,
+            materialName: prod.name || stdGroupName,
+            productUnit: converted != null ? (prod.unit || a.unit || 'un') : (a.unit || prod.unit || 'un'),
+            color: prod.color || '—',
+            totalQuantity: converted != null ? converted : a.required,
+            // Unidades incompatíveis (ex.: g→m): mantém a qtd crua + aviso,
+            // igual ao conversion_warning do SQL.
+            warning: converted == null
+              ? `Unidade do item-padrão (${a.unit || '?'}) incompatível com a unidade do produto (${prod.unit || '?'}) — quantidade NÃO convertida; cadastre a unidade correta`
+              : undefined,
+          });
+          stdCoveredProductIds.add(pid);
+        }
       }
     }
 
@@ -1293,6 +1539,9 @@ export function computeConsumptionForItems(
       const pid = (dc as any)?.product_id;
       const qtyPerPair = Number((dc as any)?.quantity) || 0;
       if (!pid || qtyPerPair <= 0) continue;
+      // Produto já coberto pelo item-padrão do solado → dedup (F2-01, espelha
+      // o v_covered_product_ids do SQL — o item-padrão é a fonte).
+      if (stdCoveredProductIds.has(pid)) continue;
       const prod = (allProducts || []).find((p: any) => p.id === pid);
       if (!prod) continue;
       directProductIds.add(pid);
@@ -1368,6 +1617,9 @@ export function computeConsumptionForItems(
       // somando com BINÓCULO 6MM do BOM da DS12, gerando duplicação. Direct
       // tem prioridade — BOM é fallback pra materiais não declarados direto.
       if (directProductIds.has(material.product_id)) continue;
+      // Skip se o produto veio do ITEM-PADRÃO do solado (F2-01) — mesmo dedup
+      // do SQL (v_covered_product_ids): o BOM homônimo NÃO soma por cima.
+      if (stdCoveredProductIds.has(material.product_id)) continue;
 
       // Solado NUNCA vem do BOM por área: o caminho da ficha (sole_consumption
       // por par, com numeração/conjugação/estoque) é a fonte única do solado.

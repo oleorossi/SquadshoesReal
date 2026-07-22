@@ -397,7 +397,9 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         const upperMatch = resolveOption(sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0, upperAlts, orderColor);
         if (upperMatch) {
           const upperSheet = getPreferredGroupSheet(upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
-          const { total: upperTotal } = calculateConsumptionWithUnit(gradeItem, upperMatch.consumption, upperSheet, 'metro', undefined, undefined, sheet?.sole_drives_consumption);
+          // Tamanho sem valor por numeração cai no ESCALAR FLAT da ficha
+          // (contrato SQL — F2-02); multiplicador por tamanho saiu.
+          const { total: upperTotal } = calculateConsumptionWithUnit(gradeItem, upperMatch.consumption, upperSheet, 'metro', undefined, undefined);
           addConsumptionRow(consumptionMap, { componentType: 'Cabedal', groupName: upperMatch.group, materialName: 'Cabedal', productUnit: 'metro', color: orderColor, totalQuantity: upperTotal });
         }
 
@@ -415,11 +417,12 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
           const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
           let liningTotal: number;
           if (isPrincipalLining && liningSoleVals.length > 0) {
-            const avgLiningSole = liningSoleVals.reduce((a, b) => a + b, 0) / liningSoleVals.length;
-            const liningDm2 = calculateGradeBasedDm2(gradeItem, avgLiningSole, null, liningSolePerSize, soleProductId, sheet?.sole_drives_consumption);
+            // Tamanho SEM spec no solado cai no ESCALAR da ficha (contrato SQL
+            // by_grade / fallback_average — F2-02), não mais média×multiplicador.
+            const liningDm2 = calculateGradeBasedDm2(gradeItem, liningMatch.consumption, null, liningSolePerSize, soleProductId);
             liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
           } else {
-            liningTotal = calculateConsumptionWithUnit(gradeItem, liningMatch.consumption, liningSheet, 'metro', sheet?.lining_consumption_per_size, soleProductId, sheet?.sole_drives_consumption).total;
+            liningTotal = calculateConsumptionWithUnit(gradeItem, liningMatch.consumption, liningSheet, 'metro', sheet?.lining_consumption_per_size, soleProductId).total;
           }
           addConsumptionRow(consumptionMap, { componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração', productUnit: 'metro', color: orderColor, totalQuantity: liningTotal });
         }
@@ -433,9 +436,11 @@ export default function SummaryConsumptionPanel({ saleOrderIds }: Props) {
         // a ficha de componente fica só p/ conversão dm²→placa. Sem valores → caminho antigo.
         const insoleSolePerSize = insoleSpecBySole.get(soleProductIdForInsole || '') || {};
         const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
+        // Tamanho SEM spec no solado cai no ESCALAR da ficha (contrato SQL —
+        // F2-02), não mais média×multiplicador.
         const insoleDm2 = insoleSoleVals.length > 0
-          ? calculateGradeBasedDm2(gradeItem, insoleSoleVals.reduce((a, b) => a + b, 0) / insoleSoleVals.length, null, insoleSolePerSize, soleProductIdForInsole, sheet?.sole_drives_consumption)
-          : calculateGradeBasedDm2(gradeItem, Number(sheet?.insole_consumption) || 0, insoleSheet, sheet?.insole_consumption_per_size, soleProductIdForInsole, sheet?.sole_drives_consumption);
+          ? calculateGradeBasedDm2(gradeItem, Number(sheet?.insole_consumption) || 0, null, insoleSolePerSize, soleProductIdForInsole)
+          : calculateGradeBasedDm2(gradeItem, Number(sheet?.insole_consumption) || 0, insoleSheet, sheet?.insole_consumption_per_size, soleProductIdForInsole);
         // Use group plate area (same source as YieldFromPlate in tech sheets)
         const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
         const insolePlates = groupPlateArea > 0

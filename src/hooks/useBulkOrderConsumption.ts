@@ -156,9 +156,10 @@ export const useBulkOrderConsumption = (inputs: BulkOrderConsumptionInput[]) => 
           const rows = computeConsumptionForItems([item], ctx);
           // Linhas SÓ de aviso (ex.: fachete sem specs, qtd 0) existem pro modal
           // do PV alertar o cadastro — não vão pra ficha do operador, senão
-          // imprimiriam "0,00" sem quantidade real. Toda linha com consumo real
-          // (inclusive widthMissing, que tem qtd > 0) continua passando.
-          byKey.set(key, rows.filter(r => !r.warning).map(toBulkConsumptionRow));
+          // imprimiriam "0,00" sem quantidade real. Linha com consumo real E
+          // aviso (ex.: fallback_average de tamanho sem spec — F2-02) CONTINUA
+          // passando: a quantidade é válida, o warning é só contexto do modal.
+          byKey.set(key, rows.filter(r => !(r.warning && !(r.totalQuantity > 0))).map(toBulkConsumptionRow));
         } catch (e) {
           console.warn(`[useBulkOrderConsumption] erro ao calcular ${key}:`, e);
           byKey.set(key, []);

@@ -113,8 +113,11 @@ const soleRowShort = (r: ConsumptionRow): boolean => {
 };
 // "Em falta" = largura conhecida E (solado: algum número descoberto; demais:
 // disponível < necessário). Espelha o status visível no render.
+// Linha de AVISO sem quantidade (ex.: fachete sem specs) é neutra; linha com
+// quantidade REAL + aviso (fallback_average — F2-02) COMPARA normalmente, como
+// o SQL (stock_ok é calculado nas linhas fallback_average).
 const rowIsShort = (r: ConsumptionRow): boolean => {
-  if (r.widthMissing || r.warning) return false;
+  if (r.widthMissing || (r.warning && !(r.totalQuantity > 0))) return false;
   if (r.componentType === 'Solado') return soleRowShort(r);
   return rowAvailable(r) < r.totalQuantity;
 };
@@ -167,7 +170,9 @@ const aggregateItems = (rows: ConsumptionRow[]): ItemGroup[] => {
     }
     it.rows.push(r);
     it.total += Number(r.totalQuantity) || 0;
-    if (r.widthMissing || r.warning) it.known = false;
+    // Aviso SEM quantidade = cadastro incompleto → item vira "desconhecido".
+    // Aviso COM quantidade (fallback_average) mantém a comparação com estoque.
+    if (r.widthMissing || (r.warning && !(r.totalQuantity > 0))) it.known = false;
   }
   return Array.from(map.values());
 };
@@ -1109,13 +1114,27 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                 </div>
               </div>
             )}
-            {rows.some(r => r.warning) && (
+            {rows.some(r => r.warning && !(r.totalQuantity > 0)) && (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
                 <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo não calculado por falta de cadastro</p>
                   <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
                     Linhas marcadas com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> aparecem <strong>sem quantidade</strong> porque falta cadastro (ex.: solado fachetado sem consumo de fachete). O consumo desses itens <strong>não entrou no total</strong> até você completar o cadastro em <strong>Materiais → Solado</strong>.
+                  </p>
+                </div>
+              </div>
+            )}
+            {/* Fallback de tamanho sem spec (F2-02): a linha TEM quantidade —
+                estimada pelo escalar da ficha nos números sem consumo por
+                numeração (mesmo contrato do SQL, source=fallback_average). */}
+            {rows.some(r => r.warning && r.totalQuantity > 0) && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
+                <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo estimado pelo escalar da ficha</p>
+                  <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
+                    Algumas numerações da grade <strong>não têm consumo por número</strong> cadastrado no solado — nesses números o cálculo usou o <strong>escalar da ficha técnica</strong> (mesma regra do custeio/débito). Cadastre as numerações que faltam em <strong>Materiais → Solado</strong> pra ter o valor exato.
                   </p>
                 </div>
               </div>
@@ -1245,10 +1264,12 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                         // vive na FAIXA do item (multi-aplicação) → a célula Em estoque da
                         // linha fica neutra, pra não repetir/duplicar o mesmo balde.
                         const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean) => {
-                          // widthMissing infla o consumo ~100× e warning = consumo não
-                          // calculado (fachete sem specs): comparar com estoque seria
-                          // enganoso, então a linha fica neutra (o aviso âmbar permanece).
-                          const known = !row.widthMissing && !row.warning;
+                          // widthMissing infla o consumo ~100× e aviso SEM quantidade =
+                          // consumo não calculado (fachete sem specs): comparar com estoque
+                          // seria enganoso → linha neutra (o aviso âmbar permanece). Aviso
+                          // COM quantidade (fallback_average — F2-02) compara normalmente,
+                          // como o SQL.
+                          const known = !row.widthMissing && !(row.warning && !(row.totalQuantity > 0));
                           const avail = rowAvailable(row);
                           const ok = avail >= row.totalQuantity;
                           return (
@@ -1288,7 +1309,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                           <TableCell>{row.materialName}</TableCell>
                           <TableCell>{row.color}</TableCell>
                           <TableCell className="text-right font-mono font-bold tabular-nums">
-                            {row.warning
+                            {row.warning && !(row.totalQuantity > 0)
                               ? <span className="text-muted-foreground font-normal">—</span>
                               : formatQty(row.totalQuantity, row.productUnit)}
                             {row.artisanal && (

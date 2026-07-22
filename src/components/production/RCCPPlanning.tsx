@@ -11,23 +11,34 @@ import { ChartBar as BarChart3, Warning as AlertTriangle, CheckCircle as CheckCi
 import { Button } from "@/components/ui/button";
 import { useHolidays } from "@/hooks/useTimesheet";
 
-// Sector keys mapped to v_capacity_driven_lead_times columns
+// Sector keys mapped to v_capacity_driven_lead_times columns.
+// F1-03 (auditoria de motores 2026-07): a view ganhou aliases CANÔNICOS —
+// o antigo "forracao_capacity_per_day" era dlt.sewing_... (capacidade do CORTE
+// PALMILHA com rótulo de Forração) e "cutting" aparecia como "Corte" genérico.
+// Agora cada coluna carrega o setor certo e o modelo cobre também Costura,
+// Aviamento e Solagem.
 const SECTORS = [
-  { key: "cutting", label: "Corte", capacityCol: "cutting_capacity_per_day" },
-  { key: "forracao", label: "Forração", capacityCol: "forracao_capacity_per_day" },
+  { key: "corte_palmilha", label: "Corte Palmilha", capacityCol: "corte_palmilha_capacity_per_day" },
+  { key: "corte_forracao", label: "Corte Forração", capacityCol: "corte_forracao_capacity_per_day" },
+  { key: "costura", label: "Costura", capacityCol: "costura_capacity_per_day" },
+  { key: "aviamento", label: "Aviamento", capacityCol: "aviamento_capacity_per_day" },
   { key: "silk", label: "Silk", capacityCol: "silk_capacity_per_day" },
   { key: "gluing", label: "Colagem", capacityCol: "gluing_capacity_per_day" },
   { key: "assembly", label: "Montagem", capacityCol: "assembly_capacity_per_day" },
+  { key: "soling", label: "Solagem", capacityCol: "soling_capacity_per_day" },
   { key: "finishing", label: "Acabamento", capacityCol: "finishing_capacity_per_day" },
 ] as const;
 
 interface CapacityRow {
   shoe_category: string;
-  cutting_capacity_per_day: number;
-  forracao_capacity_per_day: number;
+  corte_palmilha_capacity_per_day: number;
+  corte_forracao_capacity_per_day: number;
+  costura_capacity_per_day: number;
+  aviamento_capacity_per_day: number;
   silk_capacity_per_day: number;
   gluing_capacity_per_day: number;
   assembly_capacity_per_day: number;
+  soling_capacity_per_day: number;
   finishing_capacity_per_day: number;
 }
 
@@ -58,16 +69,18 @@ function useRCCPData() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("v_capacity_driven_lead_times" as any)
-        .select("shoe_category, cutting_capacity_per_day, forracao_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day");
+        .select("shoe_category, corte_palmilha_capacity_per_day, corte_forracao_capacity_per_day, costura_capacity_per_day, aviamento_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, assembly_capacity_per_day, soling_capacity_per_day, finishing_capacity_per_day");
       if (error) throw error;
       return (data ?? []) as unknown as CapacityRow[];
     },
     staleTime: 5 * 60_000,
   });
 
-  // Orders with shoe_category via product_references
+  // Orders with shoe_category via technical_sheets — orders.reference_id aponta
+  // pra technical_sheets, NÃO pra product_references (o join antigo casava 0/244
+  // e toda demanda caía em "generico", zerando a ponderação por categoria).
   const orders = useQuery<OrderDemand[]>({
-    queryKey: ["rccp-orders-v2"],
+    queryKey: ["rccp-orders-v3"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
@@ -76,12 +89,12 @@ function useRCCPData() {
         .not("planned_delivery", "is", null);
       if (error) throw error;
 
-      // Fetch shoe_category for each reference
+      // Fetch shoe_category for each reference (technical_sheets)
       const refIds = [...new Set((data || []).map(o => o.reference_id).filter(Boolean))];
       let refMap: Record<string, string> = {};
       if (refIds.length > 0) {
         const { data: refs } = await supabase
-          .from("product_references")
+          .from("technical_sheets")
           .select("id, shoe_category")
           .in("id", refIds);
         if (refs) refMap = Object.fromEntries(refs.map(r => [r.id, r.shoe_category || "generico"]));
