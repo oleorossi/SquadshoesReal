@@ -85,6 +85,7 @@ export default function InvoicesEntradaTab() {
   const [xmlDialog, setXmlDialog] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [stockDialogItems, setStockDialogItems] = useState<InvoiceItem[]>([]);
+  const [stockDialogSupplierId, setStockDialogSupplierId] = useState<string | null>(null);
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
 
   const handleSupplierAutoCreate = async (data: any) => {
@@ -122,6 +123,10 @@ export default function InvoicesEntradaTab() {
   };
 
   const handleLaunchStock = (items: InvoiceItem[]) => {
+    // Fornecedor da NF (resolvido no import) → default do campo Fornecedor
+    // no "Criar novo produto".
+    const inv = invoices.find(i => i.id === items[0]?.invoice_id);
+    setStockDialogSupplierId(inv?.supplier_id ?? null);
     setStockDialogItems(items);
     setStockDialogOpen(true);
   };
@@ -227,6 +232,7 @@ export default function InvoicesEntradaTab() {
         open={stockDialogOpen}
         onOpenChange={setStockDialogOpen}
         items={stockDialogItems}
+        invoiceSupplierId={stockDialogSupplierId}
       />
     </Card>
   );

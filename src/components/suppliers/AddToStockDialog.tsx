@@ -9,21 +9,30 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useProducts, findGroupForProduct } from '@/hooks/useProducts';
 import { useGroups } from '@/hooks/useGroups';
-import { convertNfToStockUnit, toNfConversionProduct, NF_CONVERSION_PRODUCT_SELECT } from '@/lib/nfUnitConversion';
+import { convertNfToStockUnit, toNfConversionProduct, NF_CONVERSION_PRODUCT_SELECT, canonicalUnit } from '@/lib/nfUnitConversion';
 import { normalizeUnit } from '@/lib/productUnits';
-import { useUpdateInvoiceItem, type InvoiceItem } from '@/hooks/useSuppliers';
+import { useUpdateInvoiceItem, useSuppliers, useAddSupplier, type InvoiceItem } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
 import { SearchInput } from '@/components/ui/search-input';
+import { NumberInput } from '@/components/ui/number-input';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: InvoiceItem[];
+  /** Fornecedor da NF que originou estes itens (default do campo Fornecedor no
+   *  "Criar novo produto"). Resolvido no import por CNPJ / auto-criação. */
+  invoiceSupplierId?: string | null;
 };
+
+/** Só dígitos — pra comparar CNPJ ignorando pontuação. */
+function normalizeCnpj(cnpj?: string | null): string {
+  return (cnpj || '').replace(/\D/g, '');
+}
 
 /** Normalize name for comparison: uppercase, remove accents, remove extra spaces */
 function normalizeName(name: string): string {
@@ -85,10 +94,12 @@ function findMatchesByNameAndColor<T extends { id: string; name: string; color?:
   return matches;
 }
 
-export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
+export default function AddToStockDialog({ open, onOpenChange, items, invoiceSupplierId }: Props) {
   const { data: products = [] } = useProducts();
   const { data: groups = [] } = useGroups();
+  const { data: suppliers = [] } = useSuppliers();
   const updateItem = useUpdateInvoiceItem();
+  const addSupplier = useAddSupplier();
   const [mode, setMode] = useState<'link' | 'create'>('link');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -102,6 +113,16 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
   const [newUnit, setNewUnit] = useState('un');
   const [newLocation, setNewLocation] = useState('');
   const [newGroupId, setNewGroupId] = useState<string | null>(null);
+  const [newColor, setNewColor] = useState('');
+  const [newSupplierId, setNewSupplierId] = useState<string | null>(null);
+  // Conversão: só usada quando a unidade da NF ≠ unidade de estoque escolhida.
+  const [newPurchaseUnit, setNewPurchaseUnit] = useState('');
+  const [newConversionRate, setNewConversionRate] = useState<number>(0);
+
+  // Cadastro inline de fornecedor (quando o da NF não existe / operador quer outro)
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [supplierFormName, setSupplierFormName] = useState('');
+  const [supplierFormCnpj, setSupplierFormCnpj] = useState('');
 
   // Similar product detection
   const [similarProduct, setSimilarProduct] = useState<typeof products[0] | null>(null);
@@ -125,6 +146,7 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
 
   useEffect(() => {
     if (open && currentItem) {
+      const parsed = parseNameAndColor(currentItem.product_name);
       setNewName(currentItem.product_name);
       setNewSku(currentItem.product_code || '');
       // F5-09: a NF vem com grafia própria ('KG', 'UN', 'MTL', 'CN'…) — sem
@@ -132,6 +154,16 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
       // não tocasse no Select. Canoniza e valida contra UNITS (senão 'un').
       const canonUnit = normalizeUnit(currentItem.unit);
       setNewUnit((UNITS as readonly string[]).includes(canonUnit) ? canonUnit : 'un');
+      // Cor: se o nome da NF vier "MATERIAL : COR" aproveita; senão vazio.
+      setNewColor(parsed.color || '');
+      // Fornecedor default = o da NF (resolvido no import).
+      setNewSupplierId(invoiceSupplierId ?? null);
+      // Unidade de compra default = grafia crua da NF (ex.: 'CX', 'RL', 'FD').
+      setNewPurchaseUnit(currentItem.unit || '');
+      setNewConversionRate(0);
+      setShowSupplierForm(false);
+      setSupplierFormName('');
+      setSupplierFormCnpj('');
       setSelectedProductId('');
       setProductSearch('');
       setSimilarProduct(null);
@@ -149,9 +181,16 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
         });
       }
     }
-  }, [open, currentIdx, currentItem, products]);
+  }, [open, currentIdx, currentItem, products, invoiceSupplierId]);
 
   if (!currentItem) return null;
+
+  // A unidade da NF é diferente (canônica) da unidade de estoque escolhida?
+  // Ex.: NF em 'CX'/'RL'/'FD' e estoque em 'un'/'m'/'dm²' → precisa de
+  // purchase_unit + conversion_rate pra próxima NF converter sozinha.
+  const nfUnitCanon = canonicalUnit(currentItem.unit);
+  const stockUnitCanon = canonicalUnit(newUnit);
+  const needsConversion = !!currentItem.unit && nfUnitCanon !== stockUnitCanon;
 
   const filteredProducts = products.filter(p =>
     searchMatchesAllTerms(productSearch, p.name, p.sku)
@@ -244,21 +283,59 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
             setSaving(false);
             return;
           }
+
+          // Quantidade/preço iniciais na unidade de ESTOQUE. Quando a NF vem em
+          // embalagem (unidade ≠ estoque), converte pelo fator informado e grava
+          // purchase_unit + conversion_rate — assim a PRÓXIMA NF do mesmo item
+          // bate por SKU e converte sozinha (em vez de bloquear em needsConfig).
+          let createQty = currentItem.quantity;
+          let createPrice = initialPrice;
+          let pPurchaseUnit: string = newUnit;
+          let pConversionRate = 1;
+
+          if (needsConversion) {
+            if (!(newConversionRate > 0)) {
+              toast.error(`Informe o fator de conversão: 1 ${newPurchaseUnit || currentItem.unit} = ? ${newUnit}.`);
+              setSaving(false);
+              return;
+            }
+            const conv = convertNfToStockUnit(
+              currentItem.quantity,
+              currentItem.unit,
+              initialPrice,
+              { unit: newUnit, purchase_unit: newPurchaseUnit || currentItem.unit, conversion_rate: newConversionRate },
+            );
+            if (conv.needsConfig) {
+              toast.error(`Não foi possível converter: ${conv.reason}`, { duration: 12000 });
+              setSaving(false);
+              return;
+            }
+            createQty = conv.qty;
+            createPrice = conv.unitPrice;
+            pPurchaseUnit = newPurchaseUnit || currentItem.unit;
+            pConversionRate = newConversionRate;
+          }
+
           const { data: newProdId, error } = await supabase.rpc('create_product_with_initial_stock', {
             p_name: newName,
             p_sku: newSku,
             p_category: newCategory,
             p_unit: newUnit,
             p_location: newLocation || 'Almoxarifado A',
-            p_quantity: currentItem.quantity,
-            p_unit_price: initialPrice,
+            p_quantity: createQty,
+            p_unit_price: createPrice,
             p_min_stock: 0,
             p_max_stock: 0,
             p_group_id: newGroupId || null,
             p_description: null,
-            p_supplier_id: null,
+            p_supplier_id: newSupplierId || null,
             p_reason: `Entrada via NF (novo produto) - ${currentItem.product_name}`,
-          });
+            p_color: newColor.trim() || null,
+            p_purchase_unit: pPurchaseUnit,
+            p_conversion_rate: pConversionRate,
+            // types.ts (gerado) ainda descreve a assinatura de 13 params —
+            // cast pra não regenerar o arquivo e arrastar drift de schema.
+          } as any);
           if (error) throw error;
           productId = newProdId as string;
 
@@ -398,6 +475,30 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
     } finally {
       setSaving(false);
       setSkuDuplicateProduct(null);
+    }
+  };
+
+  /** Cadastra o fornecedor da NF inline (ou seleciona o existente por CNPJ). */
+  const handleCreateSupplier = async () => {
+    const name = supplierFormName.trim();
+    if (!name) { toast.error('Informe o nome do fornecedor.'); return; }
+    const cnpjDigits = normalizeCnpj(supplierFormCnpj);
+    // Dedup por CNPJ normalizado — não duplica fornecedor já cadastrado.
+    if (cnpjDigits) {
+      const existing = suppliers.find(s => normalizeCnpj(s.cnpj) === cnpjDigits);
+      if (existing) {
+        setNewSupplierId(existing.id);
+        setShowSupplierForm(false);
+        toast.info(`Fornecedor "${existing.name}" já cadastrado — selecionado.`);
+        return;
+      }
+    }
+    try {
+      const created = await addSupplier.mutateAsync({ name, cnpj: supplierFormCnpj.trim() });
+      setNewSupplierId((created as { id: string }).id);
+      setShowSupplierForm(false);
+    } catch {
+      /* toast de erro já vem do hook useAddSupplier */
     }
   };
 
@@ -545,6 +646,67 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
                     </p>
                   )}
                 </div>
+
+                <div className="col-span-2">
+                  <Label className="text-xs">Cor</Label>
+                  <Input value={newColor} onChange={e => setNewColor(e.target.value)} placeholder="Ex.: PRETO, MARROM (opcional)" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Ajuda o sistema a desempatar o material na próxima NF do mesmo item.
+                  </p>
+                </div>
+
+                <div className="col-span-2">
+                  <Label className="text-xs">Fornecedor</Label>
+                  {showSupplierForm ? (
+                    <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+                      <Input value={supplierFormName} onChange={e => setSupplierFormName(e.target.value)} placeholder="Nome / Razão social" />
+                      <Input value={supplierFormCnpj} onChange={e => setSupplierFormCnpj(e.target.value)} placeholder="CNPJ (opcional)" />
+                      <div className="flex gap-2">
+                        <Button size="sm" className="h-8 text-xs" onClick={handleCreateSupplier} disabled={addSupplier.isPending}>
+                          Salvar fornecedor
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setShowSupplierForm(false)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Select value={newSupplierId || '_none'} onValueChange={(v) => setNewSupplierId(v === '_none' ? null : v)}>
+                        <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione o fornecedor" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">— Sem fornecedor —</SelectItem>
+                          {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="sm" className="h-9 text-xs shrink-0" onClick={() => { setShowSupplierForm(true); setSupplierFormName(''); setSupplierFormCnpj(''); }}>
+                        Cadastrar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {needsConversion && (
+                  <div className="col-span-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 space-y-2">
+                    <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      A NF veio em "{currentItem.unit}" mas o estoque é em "{newUnit}". Informe a conversão pra dar entrada certa — e a próxima NF converte sozinha.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Unidade de compra</Label>
+                        <Input value={newPurchaseUnit} onChange={e => setNewPurchaseUnit(e.target.value)} placeholder={currentItem.unit} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Fator de conversão</Label>
+                        <NumberInput value={newConversionRate} onChange={setNewConversionRate} unit={newUnit} placeholder="0" min={0} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      1 {newPurchaseUnit || currentItem.unit} = {newConversionRate > 0 ? newConversionRate : '?'} {newUnit}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -45,6 +45,16 @@ function toCanonical(u: string): string {
   }
 }
 
+/**
+ * Unidade canônica de uma grafia qualquer de NF-e/estoque (KG→kg, MT/METRO→m,
+ * CHAPA→placa, CX/CAIXA→cx…). Usa o MESMO mapa interno de `convertNfToStockUnit`,
+ * pra que "unidade da NF ≠ unidade de estoque" seja decidido do jeito exato que
+ * o conversor decide (ex.: 'MT' e 'm' são a MESMA unidade canônica).
+ */
+export function canonicalUnit(u?: string | null): string {
+  return toCanonical(normUnit(u));
+}
+
 export type NfConversionResult = {
   qty: number;
   unitPrice: number;
