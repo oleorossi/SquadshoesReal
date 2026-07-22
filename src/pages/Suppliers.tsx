@@ -29,7 +29,7 @@ import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
+import { convertNfToStockUnit, toNfConversionProduct } from '@/lib/nfUnitConversion';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { useCan } from '@/hooks/useAccessControl';
@@ -71,17 +71,14 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
             // no XmlImportDialog e AddToStockDialog (modo link). Bloqueia
             // item específico se a conversão exige config faltante, sem
             // abortar o lote inteiro.
+            // F5-03: builder único — garante o MESMO conjunto de campos do
+            // XmlImportDialog/AddToStockDialog (incl. package_weight_kg vindo
+            // do join de grupo do useProducts).
             const conv = convertNfToStockUnit(
               item.quantity,
               item.unit,
               item.unit_price,
-              {
-                unit: match.unit,
-                name: match.name,
-                conversion_rate: (match as any).conversion_rate,
-                purchase_unit: (match as any).purchase_unit,
-                purchase_order_unit: (match as any).purchase_order_unit,
-              },
+              toNfConversionProduct(match),
             );
             if (conv.needsConfig) {
               skippedItems.push(`${item.product_name}: ${conv.reason || 'conversão necessária'}`);

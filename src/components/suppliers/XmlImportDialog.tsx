@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { parseNFeXML, type ParsedNFe } from '@/lib/nfeParser';
-import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
+import { convertNfToStockUnit, toNfConversionProduct, NF_CONVERSION_PRODUCT_SELECT } from '@/lib/nfUnitConversion';
+import { weightedAverageUnitPrice } from '@/lib/purchaseConversion';
 import { useAddInvoice, useAddInvoiceItems } from '@/hooks/useSuppliers';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +27,113 @@ type Props = {
   onImportComplete?: (invoiceId: string) => void;
 };
 
+// ── Matching NF-item → produto (níveis 1–5) ─────────────────────────────────
+// Extraído do loop de importação pra ser reusado pelo guard NF↔OC (F5-06) sem
+// duplicar a pipeline de fuzzy matching.
+
+/** Normalize for comparison */
+const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** Remove common NF-e noise prefixes like "ONU 1133 ADESIVO CONTENDO..." */
+const stripNoise = (s: string) => {
+  let n = norm(s);
+  n = n.replace(/^ONU\s+[\d]+[\s,]*/, '');
+  n = n.replace(/\b(CONTENDO|LIQUIDO|INFLAMAVEL|CLASSE|SUBCLASSE|RISCO|SUBSIDIARIO)\b/g, '').replace(/\b\d+\s+\d+\s+(I{1,3}|IV|V)\b/g, '');
+  n = n.replace(/\b(SACO|BALDE|LATA|FRASCO|GALAO|BISNAGA|TUBO|AMOSTRA)\b/g, '');
+  n = n.replace(/\b\d+\s*(KG|GR|G|ML|L|LT|UN|PC|MT|M)\b/gi, '');
+  return n.replace(/\s+/g, ' ').trim();
+};
+
+type MatchableProduct = {
+  id: string;
+  name: string;
+  sku: string | null;
+  color?: string | null;
+  [k: string]: any;
+};
+
+/**
+ * Desambigua por COR quando vários produtos casam o mesmo nome-base (ex.:
+ * "NAPA TITANIUM" existe em OFF WHITE, ROSADO, PRETO — diferindo SÓ na coluna
+ * `color`). O fuzzy por nome ignora cor, e o products.find() pegava o PRIMEIRO
+ * → creditava a cor errada (bug NF 21686: AMENDOA caiu na OFF WHITE).
+ * Regra: 1 candidato → usa; vários → exige a COR do produto presente no nome
+ * da NF; se nenhum/ambíguo → SEM match (cai pra vínculo manual no "Lançar no
+ * Estoque" — NUNCA chuta a cor).
+ */
+function disambiguateByColor<T extends MatchableProduct>(candidates: T[], nfName: string): T | undefined {
+  if (candidates.length <= 1) return candidates[0] ?? undefined;
+  const nfNorm = norm(nfName);
+  const byColor = candidates.filter(p => p.color && nfNorm.includes(norm(p.color)));
+  return byColor.length === 1 ? byColor[0] : undefined;
+}
+
+/** Pipeline de matching NF→produto (SKU exato → nome exato → "NOME: COR" →
+ *  stripped noise → contains), sempre desambiguado por cor. */
+function matchNfItemToProduct<T extends MatchableProduct>(
+  products: T[],
+  productName: string,
+  productCode: string | null | undefined,
+): T | undefined {
+  // 1) Exact SKU match (case-insensitive)
+  let match = products.find(p =>
+    p.sku && productCode &&
+    p.sku.trim().toLowerCase() === productCode.trim().toLowerCase()
+  );
+
+  // 2) Exact normalized name match (desambiguado por cor)
+  if (!match) {
+    const normName = norm(productName);
+    match = disambiguateByColor(products.filter(p => norm(p.name) === normName), productName);
+  }
+
+  // 3) Match with "NAME: COLOR" pattern
+  if (!match) {
+    const normName = norm(productName);
+    match = products.find(p => {
+      const pName = norm(p.name);
+      const colonIdx = pName.indexOf(':');
+      if (colonIdx > 0) {
+        const baseName = pName.slice(0, colonIdx).trim();
+        const colorName = pName.slice(colonIdx + 1).trim();
+        return normName === `${baseName} ${colorName}`;
+      }
+      return false;
+    });
+  }
+
+  // 4) Stripped noise matching — product name is short, NF name is long/verbose.
+  //    Desambiguado por COR: vários produtos do mesmo nome-base (napa em N
+  //    cores) não podem cair no primeiro — exige a cor do produto no nome da NF.
+  if (!match) {
+    const stripped = stripNoise(productName);
+    if (stripped.length >= 3) {
+      const cands = products.filter(p => {
+        const pStripped = stripNoise(p.name);
+        return pStripped.length >= 3 && (
+          stripped.includes(pStripped) || pStripped.includes(stripped)
+        );
+      });
+      match = disambiguateByColor(cands, productName);
+    }
+  }
+
+  // 5) Contains-based matching — NF name contains product name or vice-versa
+  //    (também desambiguado por cor).
+  if (!match) {
+    const normName = norm(productName);
+    const cands = products.filter(p => {
+      const pName = norm(p.name);
+      return pName.length >= 4 && normName.length >= 4 && (
+        normName.includes(pName) || pName.includes(normName)
+      );
+    });
+    match = disambiguateByColor(cands, productName);
+  }
+
+  return match;
+}
+
 export default function XmlImportDialog({ open, onOpenChange, suppliers, onSupplierAutoCreate, onPayablesCreate, onImportComplete }: Props) {
   const [parsed, setParsed] = useState<ParsedNFe | null>(null);
   const [xmlRaw, setXmlRaw] = useState('');
@@ -34,6 +142,9 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
   const [matchedSupplierId, setMatchedSupplierId] = useState<string | null>(null);
   const [excludedItems, setExcludedItems] = useState<Set<number>>(new Set());
   const [duplicateWarning, setDuplicateWarning] = useState<{ invoiceNumber: string; series: string; issueDate: string | null } | null>(null);
+  // F5-06: aviso NF↔OC — OCs abertas do MESMO fornecedor com itens desta NF
+  // ainda não recebidos. Importar a NF e depois receber a OC credita 2×.
+  const [poOverlapWarning, setPoOverlapWarning] = useState<{ orders: { order_number: string; status: string }[] } | null>(null);
   const addInvoice = useAddInvoice();
   const addItems = useAddInvoiceItems();
   const queryClient = useQueryClient();
@@ -54,12 +165,18 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       supplier_id?: string | null;
       package_weight_kg?: number | null;
       conversion_rate?: number | null;
+      purchase_unit?: string | null;
+      purchase_order_unit?: string | null;
     }> = [];
 
     for (let from = 0; ; from += pageSize) {
+      // F5-03: campos de conversão vêm do fragmento compartilhado — TODOS os
+      // caminhos de NF (auto, manual, lote) leem o MESMO conjunto de colunas.
+      // Antes este select não trazia purchase_unit → a Prioridade 2 do
+      // conversor (NF unit == purchase_unit → conversion_rate) nunca disparava.
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, quantity, unit_price, unit, color, group_id, supplier_id, conversion_rate, product_groups!products_group_id_fkey(package_weight_kg)')
+        .select(`id, name, sku, quantity, unit_price, color, group_id, supplier_id, ${NF_CONVERSION_PRODUCT_SELECT}`)
         .order('id', { ascending: true })
         .range(from, from + pageSize - 1);
 
@@ -152,6 +269,47 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       return;
     }
 
+    await checkOpenPoAndImport();
+  };
+
+  /**
+   * F5-06 (dedupe NF↔OC): antes de creditar, procura OC ABERTA do mesmo
+   * fornecedor cujos itens casam com os desta NF (mesma pipeline de matching
+   * do auto-lançamento). Se achar, AVISA — importar a NF credita o estoque
+   * agora e receber a OC depois creditaria o MESMO fornecimento 2×.
+   * Guard best-effort: falha na checagem não impede a importação.
+   */
+  const checkOpenPoAndImport = async () => {
+    if (!parsed) return;
+    try {
+      if (matchedSupplierId) {
+        const products = await loadProductsForMatching();
+        const included = parsed.items.filter((_, i) => !excludedItems.has(i));
+        const matchedIds = new Set(
+          included
+            .map((it) => matchNfItemToProduct(products, it.productName, it.productCode)?.id)
+            .filter(Boolean) as string[],
+        );
+        if (matchedIds.size > 0) {
+          const { data: openPos } = await supabase
+            .from('purchase_orders')
+            .select('id, order_number, status, purchase_order_items(product_id, received_at)')
+            .eq('supplier_id', matchedSupplierId)
+            .in('status', ['pending', 'approved', 'sent', 'parcial']);
+          const overlapping = (openPos || []).filter((po: any) =>
+            (po.purchase_order_items || []).some((i: any) => !i.received_at && matchedIds.has(i.product_id)),
+          );
+          if (overlapping.length > 0) {
+            setPoOverlapWarning({
+              orders: overlapping.map((po: any) => ({ order_number: po.order_number, status: po.status })),
+            });
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[NFe Import] Falha na checagem NF↔OC (seguindo com a importação):', err);
+    }
     await doImport();
   };
 
@@ -256,100 +414,20 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       const failedItems: string[] = [];
       const conversionWarnings: string[] = [];
 
-      /** Normalize for comparison */
-      const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-
-      /** Remove common NF-e noise prefixes like "ONU 1133 ADESIVO CONTENDO..." */
-      const stripNoise = (s: string) => {
-        let n = norm(s);
-        n = n.replace(/^ONU\s+[\d]+[\s,]*/, '');
-        n = n.replace(/\b(CONTENDO|LIQUIDO|INFLAMAVEL|CLASSE|SUBCLASSE|RISCO|SUBSIDIARIO)\b/g, '').replace(/\b\d+\s+\d+\s+(I{1,3}|IV|V)\b/g, '');
-        n = n.replace(/\b(SACO|BALDE|LATA|FRASCO|GALAO|BISNAGA|TUBO|AMOSTRA)\b/g, '');
-        n = n.replace(/\b\d+\s*(KG|GR|G|ML|L|LT|UN|PC|MT|M)\b/gi, '');
-        return n.replace(/\s+/g, ' ').trim();
-      };
-
-      /**
-       * Desambigua por COR quando vários produtos casam o mesmo nome-base (ex.:
-       * "NAPA TITANIUM" existe em OFF WHITE, ROSADO, PRETO — diferindo SÓ na coluna
-       * `color`). O fuzzy por nome ignora cor, e o products.find() pegava o PRIMEIRO
-       * → creditava a cor errada (bug NF 21686: AMENDOA caiu na OFF WHITE).
-       * Regra: 1 candidato → usa; vários → exige a COR do produto presente no nome
-       * da NF; se nenhum/ambíguo → SEM match (cai pra vínculo manual no "Lançar no
-       * Estoque" — NUNCA chuta a cor).
-       */
-      const disambiguateByColor = (candidates: typeof products, nfName: string) => {
-        if (candidates.length <= 1) return candidates[0] ?? undefined;
-        const nfNorm = norm(nfName);
-        const byColor = candidates.filter(p => p.color && nfNorm.includes(norm(p.color)));
-        return byColor.length === 1 ? byColor[0] : undefined;
-      };
-
       for (const invItem of pendingItems) {
         try {
-          // 1) Exact SKU match (case-insensitive)
-          let match = products.find(p =>
-            p.sku && invItem.product_code &&
-            p.sku.trim().toLowerCase() === invItem.product_code.trim().toLowerCase()
-          );
-
-          // 2) Exact normalized name match (desambiguado por cor)
-          if (!match) {
-            const normName = norm(invItem.product_name);
-            match = disambiguateByColor(products.filter(p => norm(p.name) === normName), invItem.product_name);
-          }
-
-          // 3) Match with "NAME: COLOR" pattern
-          if (!match) {
-            const normName = norm(invItem.product_name);
-            match = products.find(p => {
-              const pName = norm(p.name);
-              const colonIdx = pName.indexOf(':');
-              if (colonIdx > 0) {
-                const baseName = pName.slice(0, colonIdx).trim();
-                const colorName = pName.slice(colonIdx + 1).trim();
-                return normName === `${baseName} ${colorName}`;
-              }
-              return false;
-            });
-          }
-
-          // 4) Stripped noise matching — product name is short, NF name is long/verbose.
-          //    Desambiguado por COR: vários produtos do mesmo nome-base (napa em N
-          //    cores) não podem cair no primeiro — exige a cor do produto no nome da NF.
-          if (!match) {
-            const stripped = stripNoise(invItem.product_name);
-            if (stripped.length >= 3) {
-              const cands = products.filter(p => {
-                const pStripped = stripNoise(p.name);
-                return pStripped.length >= 3 && (
-                  stripped.includes(pStripped) || pStripped.includes(stripped)
-                );
-              });
-              match = disambiguateByColor(cands, invItem.product_name);
-            }
-          }
-
-          // 5) Contains-based matching — NF name contains product name or vice-versa
-          //    (também desambiguado por cor).
-          if (!match) {
-            const normName = norm(invItem.product_name);
-            const cands = products.filter(p => {
-              const pName = norm(p.name);
-              return pName.length >= 4 && normName.length >= 4 && (
-                normName.includes(pName) || pName.includes(normName)
-              );
-            });
-            match = disambiguateByColor(cands, invItem.product_name);
-          }
+          // Matching NF→produto (níveis 1–5, extraído pra matchNfItemToProduct)
+          const match = matchNfItemToProduct(products, invItem.product_name, invItem.product_code);
 
           if (match) {
-            // Convert NF qty/price to product's stock unit (handles metric and package conversions)
+            // Convert NF qty/price to product's stock unit (handles metric and
+            // package conversions). toNfConversionProduct garante o MESMO
+            // conjunto de campos nos 3 caminhos de NF (F5-03).
             const conv = convertNfToStockUnit(
               invItem.quantity,
               invItem.unit,
               invItem.unit_price,
-              { ...match, name: match.name },
+              toNfConversionProduct(match),
             );
 
             // CRITICAL: if conversion is required but package_weight_kg is missing, skip
@@ -366,9 +444,9 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
             const oldQty = match.quantity ?? 0;
             const oldPrice = match.unit_price ?? 0;
             const newQty = oldQty + addQty;
-            // Weighted average price (in the product's stock unit)
-            const totalValue = (oldQty * oldPrice) + (addQty * addPrice);
-            const newPrice = newQty > 0 ? totalValue / newQty : addPrice;
+            // Weighted average price (in the product's stock unit) — fonte
+            // única compartilhada com o recebimento de OC (F5-05).
+            const newPrice = weightedAverageUnitPrice(oldQty, oldPrice, addQty, addPrice);
 
             // M13 (auditoria 2026-06-09): crédito via RPC adjust_stock
             // (adjustStockSafe) — atômico (SELECT FOR UPDATE + optimistic check
@@ -482,7 +560,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
     }
   };
 
-  const reset = () => { setParsed(null); setXmlRaw(''); setMatchedSupplierId(null); setExcludedItems(new Set()); setDuplicateWarning(null); };
+  const reset = () => { setParsed(null); setXmlRaw(''); setMatchedSupplierId(null); setExcludedItems(new Set()); setDuplicateWarning(null); setPoOverlapWarning(null); };
 
   const toggleItem = (idx: number) => {
     setExcludedItems(prev => {
@@ -655,7 +733,42 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={doImport} className="bg-warning text-warning-foreground hover:bg-warning/90">
+            <AlertDialogAction onClick={() => { setDuplicateWarning(null); void checkOpenPoAndImport(); }} className="bg-warning text-warning-foreground hover:bg-warning/90">
+              Importar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* F5-06: aviso NF↔OC — evita crédito duplo silencioso quando o mesmo
+          fornecimento existe como OC aberta E chega como XML de NF. */}
+      <AlertDialog open={!!poOverlapWarning} onOpenChange={(v) => { if (!v) setPoOverlapWarning(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-warning">
+              <AlertCircle className="h-5 w-5" />
+              OC aberta deste fornecedor com os mesmos itens
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  {(poOverlapWarning?.orders.length ?? 0) === 1 ? 'A ordem de compra' : 'As ordens de compra'}{' '}
+                  <strong>{poOverlapWarning?.orders.map(o => o.order_number).join(', ')}</strong>{' '}
+                  {(poOverlapWarning?.orders.length ?? 0) === 1 ? 'está aberta' : 'estão abertas'} para este fornecedor
+                  com itens desta NF ainda não recebidos.
+                </p>
+                <p>
+                  Importar a NF credita o estoque <strong>agora</strong> — se depois a OC for marcada como
+                  recebida, o mesmo material entra <strong>duas vezes</strong>. Se esta NF é a entrega da OC,
+                  importe aqui e depois <strong>cancele ou ajuste a OC</strong> (não a receba de novo), ou
+                  receba pela tela de OCs e não importe esta NF pro estoque.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setPoOverlapWarning(null); void doImport(); }} className="bg-warning text-warning-foreground hover:bg-warning/90">
               Importar mesmo assim
             </AlertDialogAction>
           </AlertDialogFooter>

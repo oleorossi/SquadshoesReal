@@ -69,7 +69,12 @@ export const CATEGORIES = [
   'Fôrma',
 ] as const;
 
-export const UNITS = ['g', 'kg', 'ml', 'L', 'mm', 'cm', 'm', 'dm²', 'm²', 'un', 'par', 'pc', 'cx', 'rolo', 'chapa', 'placa'] as const;
+// Lista CANÔNICA de unidades-base de ESTOQUE (ver CLAUDE.md "Unidades de
+// medida"). F5-09 (auditoria 2026-07): removidos 'pc'/'cx'/'rolo' (unidades de
+// EMBALAGEM — válidas só como purchase_unit, ver PURCHASE_UNITS em
+// lib/productUnits.ts) e 'chapa' (sinônimo proibido de 'placa') — oferecê-los
+// aqui era uma porta de entrada de grafia fora do canônico em products.unit.
+export const UNITS = ['g', 'kg', 'ml', 'L', 'mm', 'cm', 'm', 'dm²', 'm²', 'un', 'par', 'placa'] as const;
 
 export const UNIT_LABELS: Record<string, string> = {
   g: 'Grama (g)',
@@ -83,10 +88,6 @@ export const UNIT_LABELS: Record<string, string> = {
   'm²': 'Metro² (m²)',
   un: 'Unidade (un)',
   par: 'Par',
-  pc: 'Pacote (pc)',
-  cx: 'Caixa (cx)',
-  rolo: 'Rolo',
-  chapa: 'Chapa / Folha',
   placa: 'Placa',
 };
 

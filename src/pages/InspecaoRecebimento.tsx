@@ -17,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ClipboardText, Info } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { receiptConversionFactor } from '@/lib/purchaseConversion';
 import {
   useReceivedPOs, usePoItems, useInspectionHistory, useRecordInspection, type POItem,
 } from '@/hooks/useReceiptInspection';
@@ -40,8 +42,24 @@ function ItemRow({ poId, item, inspector }: { poId: string; item: POItem; inspec
   const r = parseFloat(rejected.replace(',', '.')) || 0;
 
   function submit() {
+    // F5-04: o inspetor digita na unidade da LINHA da OC (a mesma exibida em
+    // "Qtd OC"), mas record_receipt_inspection → move_stock_status opera em
+    // unidade de ESTOQUE (products.quantity/quarantine_qty). Converte pelo
+    // MESMO fator do recebimento (ciente da unidade da linha) — sem regra
+    // segura, bloqueia em vez de mover quantidade na unidade errada (ex.:
+    // rejeitar 2 placas movia 2 dm² pra quarentena em vez de 300 dm²).
+    const prod = item.products;
+    const rc = receiptConversionFactor(item.unit, {
+      name: prod?.name,
+      unit: prod?.unit || 'un',
+      purchase_unit: prod?.purchase_unit,
+      conversion_rate: prod?.conversion_rate,
+      dimensions_width: prod?.dimensions_width,
+      dimensions_unit: prod?.dimensions_unit,
+    });
+    if (!rc.ok) { toast.error(rc.reason); return; }
     record.mutate(
-      { poId, productId: item.product_id, approved: a, rejected: r, ncReason: reason, inspector },
+      { poId, productId: item.product_id, approved: a * rc.factor, rejected: r * rc.factor, ncReason: reason, inspector },
       { onSuccess: () => { setApproved(''); setRejected(''); setReason(''); } },
     );
   }

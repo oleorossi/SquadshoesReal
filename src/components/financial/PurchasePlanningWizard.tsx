@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
-import { resolveConversionFactors, areSameUnit } from '@/lib/unitConversion';
-import { areaToStockDivisor } from '@/lib/materialConsumption';
+import { resolveConversionFactors } from '@/lib/unitConversion';
+import { calculateConsumption, validateConsumptionPayload, type ConsumptionLine } from '@/services/consumptionService';
+import { classifyBomMaterial } from '@/lib/orderConsumption';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,11 +41,11 @@ interface OrderMaterialNeed {
 interface MaterialLine {
   product_id: string | null;
   name: string;
-  type: string; // cabedal, forro, palmilha, solado, componente
+  type: string; // component da linha canônica (Cabedal, Forração, Palmilha, Solado, …)
   consumption_per_pair: number;
-  total_needed: number; // in consumption unit (dm²)
-  total_needed_converted: number; // converted to purchase_order_unit
-  unit: string; // consumption unit
+  total_needed: number; // na unidade de CONSUMO da linha canônica (dm² p/ área)
+  total_needed_converted: number; // convertido pra purchase_order_unit
+  unit: string; // unidade de consumo
   purchase_unit: string; // purchase_order_unit for display
   conversion_rate: number;
   width_missing?: boolean; // área sem largura na ficha → conversão dm²→física indefinida
@@ -106,7 +108,7 @@ export default function PurchasePlanningWizard() {
   const [selectedMaterials, setSelectedMaterials] = useState<AggregatedMaterial[]>([]);
   const [creating, setCreating] = useState(false);
 
-  // Fetch orders and their material needs from technical sheets
+  // Consumo por OP via motor CANÔNICO (RPC calculate_order_consumption_by_grade)
   useEffect(() => {
     fetchOrderConsumption();
   }, []);
@@ -121,22 +123,22 @@ export default function PurchasePlanningWizard() {
         return Number.isNaN(parsed.getTime()) ? null : parsed;
       };
 
-      // 1. Fetch active orders with their sale_order info
+      // 1. OPs ativas + PV. grade/color/sale_order_item_id alimentam o motor
+      // canônico; packaging_mode filtra caixas alternativas do BOM.
       const { data: orders = [], error: ordersError } = await supabase
         .from('orders')
         .select(`
           id, order_number, quantity, status, planned_delivery, reference_id,
-          sale_order_id,
-          sale_orders!orders_sale_order_id_fkey(order_number, delivery_deadline, delivery_week, delivery_month, client_name)
+          color, grade, sale_order_id, sale_order_item_id,
+          sale_orders!orders_sale_order_id_fkey(order_number, delivery_deadline, delivery_week, delivery_month, client_name, packaging_mode)
         `)
         // Status REAIS de orders no backend (audit 2026-05): 'Pronto' não existe.
         .in('status', ['Reservado', 'Em Produção'])
         .order('planned_delivery', { ascending: true });
       if (ordersError) throw ordersError;
 
-      // 2. Get unique reference_ids
-      const refIds = Array.from(new Set((orders as any[]).map(o => o.reference_id).filter(Boolean)));
-      if (refIds.length === 0) {
+      const activeOrders = (orders as any[]).filter(o => o.reference_id);
+      if (activeOrders.length === 0) {
         setOrderNeeds([]);
         setLoading(false);
         return;
@@ -149,7 +151,7 @@ export default function PurchasePlanningWizard() {
       // (cadeia de lead time produção + buffer fornecedor, server-side). Usamos a
       // data-limite MAIS CEDO entre os materiais da OP (deadline vinculante);
       // fallback pra entrega quando a view não cobre o material.
-      const orderIds = Array.from(new Set((orders as any[]).map(o => o.id).filter(Boolean)));
+      const orderIds = Array.from(new Set(activeOrders.map(o => o.id).filter(Boolean)));
       const purchaseDeadlineByOrder = new Map<string, string>();
       if (orderIds.length > 0) {
         const { data: timelineRows } = await (supabase as any)
@@ -165,20 +167,12 @@ export default function PurchasePlanningWizard() {
         }
       }
 
-      // 3. Fetch technical sheets, products, groups, recent PO items, component sheets
-      const [sheetsRes, productsRes, groupsRes, poItemsRes, compSheetsRes] = await Promise.all([
-        supabase
-          .from('technical_sheets')
-          .select(`
-            id, name, 
-            upper_material, upper_consumption, 
-            lining_material, lining_consumption, 
-            insole_material, insole_consumption,
-            sole_material, sole_consumption, sole_type,
-            direct_components,
-            consumption_loss_pct
-          `)
-          .in('id', refIds),
+      // 3. Cadastros: produtos (estoque líquido, fornecedor, unidade de compra),
+      // variante de material dos itens do PV (orders.sale_order_item_id →
+      // sale_order_items.material_variant_id) e reservas ATIVAS das PRÓPRIAS OPs.
+      const soiIds = Array.from(new Set(activeOrders.map(o => o.sale_order_item_id).filter(Boolean)));
+      const refIds = Array.from(new Set(activeOrders.map(o => o.reference_id).filter(Boolean)));
+      const [productsRes, soiRes, resvRes, sheetsRes] = await Promise.all([
         supabase
           .from('products')
           .select(`
@@ -197,182 +191,139 @@ export default function PurchasePlanningWizard() {
             purchase_order_unit,
             conversion_rate,
             purchase_multiple,
+            is_artisanal,
             supplier_ref:suppliers!products_supplier_id_fkey(name, trade_name)
           `),
+        soiIds.length > 0
+          ? supabase.from('sale_order_items').select('id, material_variant_id').in('id', soiIds)
+          : Promise.resolve({ data: [], error: null } as any),
         supabase
-          .from('product_groups')
-          .select('id, name'),
-        // Get the most recent PO item unit per product
-        supabase
-          .from('purchase_order_items')
-          .select('product_id, unit, created_at')
-          .order('created_at', { ascending: false }),
-        // Component sheets — largura/área da ficha p/ converter material de área
-        // (dm²/par) → unidade física (m/placa). A conversão dm²→m NÃO mora em
-        // conversion_rate (mora aqui). Sem isto o Wizard inflava ~100×.
-        supabase
-          .from('component_sheets')
-          .select('product_id, group_id, dimensions_width, dimensions_length, dimensions_unit, waste_pct'),
+          .from('material_reservations')
+          .select('product_id, quantity_reserved, quantity_consumed')
+          .in('order_id', orderIds)
+          .in('status', ['reserved', 'partially_consumed']),
+        supabase.from('technical_sheets').select('id, name').in('id', refIds),
       ]);
 
-      if (sheetsRes.error) throw sheetsRes.error;
       if (productsRes.error) {
         console.error('[PurchasePlanning] Products query error:', productsRes.error);
       }
-      if (groupsRes.error) {
-        console.error('[PurchasePlanning] Product groups query error:', groupsRes.error);
-      }
 
-      const sheetsMap = new Map(((sheetsRes.data ?? []) as any[]).map(s => [s.id, s]));
       const productRows = (productsRes.data ?? []) as any[];
       const getSupplierName = (product: any) =>
         product?.supplier_ref?.trade_name || product?.supplier_ref?.name || '';
 
-      // Build product_id → last PO unit lookup (most recent PO item unit per product)
-      const poUnitMap = new Map<string, string>();
-      for (const poi of (poItemsRes.data ?? []) as any[]) {
-        if (poi.product_id && poi.unit && !poUnitMap.has(poi.product_id)) {
-          poUnitMap.set(poi.product_id, poi.unit);
-        }
-      }
-
-      // Helper: get the best display unit for a product (PO unit > product.unit)
-      const getDisplayUnit = (product: any): string => {
-        if (!product) return 'un';
-        const poUnit = poUnitMap.get(product.id);
-        if (poUnit) return poUnit;
-        return product.unit || 'un';
-      };
-
       const pMap = new Map(productRows.map(p => [p.id, p]));
       setProductsMap(pMap);
 
-      // Ficha de componente por produto e por grupo (pra converter dm²→unidade
-      // física pela largura/área — mesma fonte do modal de consumo e da view).
-      const csByProduct = new Map<string, any>();
-      const csByGroup = new Map<string, any>();
-      for (const cs of (compSheetsRes.data ?? []) as any[]) {
-        if (cs.product_id && !csByProduct.has(cs.product_id)) csByProduct.set(cs.product_id, cs);
-        if (cs.group_id && !csByGroup.has(cs.group_id)) csByGroup.set(cs.group_id, cs);
-      }
-      const componentSheetFor = (productId?: string | null, groupId?: string | null): any =>
-        (productId && csByProduct.get(productId)) || (groupId && csByGroup.get(groupId)) || null;
+      const sheetNameById = new Map<string, string>();
+      for (const s of (sheetsRes.data ?? []) as any[]) sheetNameById.set(s.id, s.name || '');
 
-      // Build group name → group id lookup
-      const groupNameMap = new Map<string, string>();
-      const groupIdMap = new Map<string, string>();
-      for (const g of (groupsRes.data ?? []) as any[]) {
-        groupNameMap.set(g.name?.toLowerCase(), g.id);
-        groupIdMap.set(g.id, g.name);
+      const variantBySoi = new Map<string, string | null>();
+      for (const r of (soiRes.data ?? []) as any[]) {
+        variantBySoi.set(r.id, r.material_variant_id ?? null);
       }
 
-      // Disponível líquido = quantity − reserved_stock (fix A3.1 — reservas de OPs
-      // ativas não podem contar como estoque livre pro plano de compras)
+      // Devolução das reservas PRÓPRIAS (F3-6, espelho do CTE own_res do
+      // compute_materials_per_pv): a demanda do Wizard é BRUTA (consumo total
+      // das OPs Reservado/Em Produção) — netar contra estoque já descontado das
+      // reservas DESSAS MESMAS OPs contava o material 2× (demanda + reserva) e
+      // recomendava recomprar o que a própria OP já reservou.
+      const ownReservedByProduct = new Map<string, number>();
+      for (const r of (resvRes.data ?? []) as any[]) {
+        if (!r.product_id) continue;
+        const give = Math.max(0, (Number(r.quantity_reserved) || 0) - (Number(r.quantity_consumed) || 0));
+        ownReservedByProduct.set(r.product_id, (ownReservedByProduct.get(r.product_id) || 0) + give);
+      }
+      // Disponível pro plano = líquido (quantity − reserved_stock) + reservas
+      // das próprias OPs analisadas.
       const availableStock = (p: any) =>
-        Math.max(0, (Number(p?.quantity) || 0) - (Number(p?.reserved_stock) || 0));
+        Math.max(
+          0,
+          (Number(p?.quantity) || 0) - (Number(p?.reserved_stock) || 0) + (ownReservedByProduct.get(p?.id) || 0),
+        );
 
-      // Build group_id → aggregated stock/price from all products in that group
-      const groupStockMap = new Map<string, { total_stock: number; avg_price: number; supplier: string; supplier_id: string | null; product_count: number; purchase_unit: string; conversion_rate: number; stock_unit: string }>();
-      for (const p of productRows) {
-        if (!p.group_id) continue;
-        const existing = groupStockMap.get(p.group_id) || { total_stock: 0, avg_price: 0, supplier: '', supplier_id: null, product_count: 0, purchase_unit: '', conversion_rate: 0, stock_unit: '' };
-        existing.total_stock += availableStock(p);
-        existing.avg_price += Number(p.unit_price) || 0;
-        existing.product_count++;
-        const supplierName = getSupplierName(p);
-        if (!existing.supplier && supplierName) existing.supplier = supplierName;
-        if (!existing.supplier_id && p.supplier_id) existing.supplier_id = p.supplier_id;
-        // Prefer PO unit from actual purchase orders, fallback to product.unit
-        const displayUnit = getDisplayUnit(p);
-        if (!existing.purchase_unit && displayUnit) existing.purchase_unit = displayUnit;
-        // Use the highest conversion_rate in the group (e.g. 137 dm²/m vs 1)
-        // to ensure proper unit conversion from production to purchase unit
-        const pConvRate = Number(p.conversion_rate) || 0;
-        if (pConvRate > existing.conversion_rate) existing.conversion_rate = pConvRate;
-        if (!existing.stock_unit && p.unit) existing.stock_unit = p.unit;
-        groupStockMap.set(p.group_id, existing);
-      }
-      // Finalize avg_price
-      for (const [, info] of groupStockMap) {
-        if (info.product_count > 0) info.avg_price = info.avg_price / info.product_count;
-      }
-
-      // Helper: resolve a material name to stock info (try group first, then direct product match)
-      function resolveMaterial(materialName: string): { stock: number; price: number; supplier: string; supplier_id?: string; purchase_unit: string; conversion_rate: number; stock_unit: string; product_id?: string } {
-        if (!materialName) return { stock: 0, price: 0, supplier: '', purchase_unit: 'un', conversion_rate: 1, stock_unit: 'un' };
-        const nameLower = materialName.toLowerCase().trim();
-
-        // Helper to extract purchase info from a product (prefer PO history unit)
-        const getProductPurchaseInfo = (p: any) => ({
-          purchase_unit: getDisplayUnit(p),
-          conversion_rate: Number(p?.conversion_rate) || 1,
-          stock_unit: p?.unit || 'un',
-        });
-
-        // Helper: find a representative product_id from a group
-        const findProductIdForGroup = (gId: string): string | undefined => {
-          for (const p of productRows) {
-            if (p.group_id === gId && p.id) return p.id;
-          }
-          return undefined;
-        };
-
-        // 1. Try exact group name match
-        const groupId = groupNameMap.get(nameLower);
-        if (groupId) {
-          const info = groupStockMap.get(groupId);
-          if (info) {
-            return { stock: info.total_stock, price: info.avg_price, supplier: info.supplier, supplier_id: info.supplier_id || undefined, purchase_unit: info.purchase_unit || 'un', conversion_rate: info.conversion_rate || 1, stock_unit: info.stock_unit || 'un', product_id: findProductIdForGroup(groupId) };
-          }
-        }
-
-        // 2. Try finding products whose group name matches
-        for (const [gName, gId] of groupNameMap) {
-          if (gName.includes(nameLower) || nameLower.includes(gName)) {
-            const info = groupStockMap.get(gId);
-            if (info) {
-              return { stock: info.total_stock, price: info.avg_price, supplier: info.supplier, supplier_id: info.supplier_id || undefined, purchase_unit: info.purchase_unit || 'un', conversion_rate: info.conversion_rate || 1, stock_unit: info.stock_unit || 'un', product_id: findProductIdForGroup(gId) };
+      // 4. Consumo CANÔNICO por OP — mesma RPC dos motores SQL de compra
+      // (calculate_order_consumption_by_grade: variante do PV, cor, per-size,
+      // fonte solado e supressão forro-cabedal do lado do servidor). Substitui
+      // a explosão própria por campos escalares + match por NOME que fazia o
+      // Wizard ser o 4º motor de consumo (F3-6): sem loss própria, sem somar
+      // estoque de todas as cores do grupo. OP sem grade cai no wrapper escalar
+      // (calculate_order_consumption — paridade garantida com o by_grade).
+      let failedOrders = 0;
+      const consumptionByOrder = await Promise.all(
+        activeOrders.map(async (order): Promise<ConsumptionLine[] | null> => {
+          try {
+            const variantId = order.sale_order_item_id
+              ? variantBySoi.get(order.sale_order_item_id) ?? null
+              : null;
+            const grade =
+              order.grade && typeof order.grade === 'object' && !Array.isArray(order.grade) &&
+              Object.keys(order.grade).length > 0
+                ? order.grade
+                : null;
+            if (grade) {
+              const { data, error } = await supabase.rpc('calculate_order_consumption_by_grade', {
+                p_reference_id: order.reference_id,
+                p_grade: grade,
+                p_color: order.color ?? '',
+                ...(variantId ? { p_material_variant_id: variantId } : {}),
+              });
+              if (error) throw error;
+              return validateConsumptionPayload((data as unknown) ?? []);
             }
+            const summary = await calculateConsumption({
+              referenceId: order.reference_id,
+              quantity: Number(order.quantity) || 0,
+              color: order.color,
+              materialVariantId: variantId,
+            });
+            return summary.lines;
+          } catch (err) {
+            failedOrders++;
+            console.error('[PurchasePlanning] Falha no consumo canônico da OP', order.order_number, err);
+            return null;
           }
-        }
-
-        // 3. Try direct product name match (startsWith for variants like "NAPA SOFT: BLUE")
-        let totalStock = 0;
-        let totalPrice = 0;
-        let count = 0;
-        let supplier = '';
-        let supplierId: string | undefined;
-        let purchaseInfo = { purchase_unit: 'un', conversion_rate: 1, stock_unit: 'un' };
-        let firstProductId: string | undefined;
-        for (const p of productRows) {
-          const pName = p.name?.toLowerCase() || '';
-          if (pName === nameLower || pName.startsWith(nameLower + ':') || pName.startsWith(nameLower + ' ')) {
-            totalStock += availableStock(p);
-            totalPrice += Number(p.unit_price) || 0;
-            count++;
-            const supplierName = getSupplierName(p);
-            if (!supplier && supplierName) supplier = supplierName;
-            if (!supplierId && p.supplier_id) supplierId = p.supplier_id;
-            const pInfo = getProductPurchaseInfo(p);
-            // Use the highest conversion_rate found across variants
-            if (pInfo.conversion_rate > purchaseInfo.conversion_rate) {
-              purchaseInfo = pInfo;
-            }
-            if (!firstProductId) firstProductId = p.id;
-          }
-        }
-        if (count > 0) return { stock: totalStock, price: totalPrice / count, supplier, supplier_id: supplierId, ...purchaseInfo, product_id: firstProductId };
-
-        return { stock: 0, price: 0, supplier: '', purchase_unit: 'un', conversion_rate: 1, stock_unit: 'un' };
+        }),
+      );
+      if (failedOrders > 0) {
+        toast.warning(
+          `${failedOrders} OP(s) ficaram fora do plano — falha ao calcular o consumo. Veja o console.`,
+        );
       }
 
-      // 6. Build material needs per order
+      // 4b. Conversão dm²→unidade física do produto: mesma fonte dos motores
+      // SQL (get_material_conversion_info — largura da ficha de componente).
+      // No payload da RPC, linha de ÁREA vem com unit null (contrato do motor:
+      // fn_projected_demand / compute_materials_per_pv / get_wave_material_needs
+      // dividem por dm2_per_unit exatamente assim).
+      const areaProductIds = new Set<string>();
+      for (const lines of consumptionByOrder) {
+        for (const l of lines ?? []) {
+          if (l.product_id && l.unit == null) areaProductIds.add(l.product_id);
+        }
+      }
+      const convInfo = new Map<string, { dm2_per_unit: number; conversion_warning: string | null }>();
+      await Promise.all(
+        Array.from(areaProductIds).map(async (pid) => {
+          const { data } = await supabase.rpc('get_material_conversion_info', { p_product_id: pid });
+          const row: any = Array.isArray(data) ? data[0] : data;
+          if (row) {
+            convInfo.set(pid, {
+              dm2_per_unit: Number(row.dm2_per_unit) || 1,
+              conversion_warning: row.conversion_warning ?? null,
+            });
+          }
+        }),
+      );
+
+      // 6. Necessidades por OP a partir das linhas canônicas
       const needs: OrderMaterialNeed[] = [];
       const today = new Date();
 
-      for (const order of orders as any[]) {
-        const sheet = sheetsMap.get(order.reference_id);
-        if (!sheet) continue;
+      activeOrders.forEach((order, idx) => {
+        const lines = consumptionByOrder[idx];
+        if (lines == null) return; // consumo falhou — OP fora do plano (toast acima)
 
         const saleOrder = Array.isArray(order.sale_orders) ? order.sale_orders[0] : order.sale_orders;
         const deliveryDate = order.planned_delivery || saleOrder?.delivery_deadline || null;
@@ -387,122 +338,68 @@ export default function PurchasePlanningWizard() {
         const weekLabel = `${format(weekStart, 'dd/MM', { locale: ptBR })} - ${format(weekEnd, 'dd/MM', { locale: ptBR })}`;
 
         const qty = Number(order.quantity) || 0;
-        const lossPct = Number(sheet.consumption_loss_pct) || 5;
-        const lossFactor = 1 + lossPct / 100;
+        const packagingMode = saleOrder?.packaging_mode || null;
+
+        // Filtro de caixa por packaging_mode — espelho TS do
+        // filter_caixa_by_packaging_mode que os motores SQL aplicam sobre a
+        // mesma RPC. Só age quando a ficha lista ≥2 tipos de caixa alternativos.
+        const caixaTypes = new Set<CollectiveType>();
+        for (const l of lines) {
+          if (classifyBomMaterial('', l.product_name || '', l.category || '') !== 'Embalagem') continue;
+          const t = caixaCollectiveTypeFromName(l.product_name);
+          if (t) caixaTypes.add(t);
+        }
 
         const materials: MaterialLine[] = [];
-
-        // Helper: build a material line with unit conversion
-        function buildMaterialLine(
-          materialName: string,
-          type: string,
-          consumptionPerPair: number,
-          rawUnit: string,
-          applyLoss: boolean,
-          productIdOverride?: string | null,
-          stockOverride?: number,
-          priceOverride?: number,
-          supplierOverride?: string,
-          purchaseUnitOverride?: string,
-          convRateOverride?: number,
-          supplierIdOverride?: string,
-        ): MaterialLine & { _stock: number; _price: number; _supplier: string } {
-          const resolved = productIdOverride === undefined
-            ? resolveMaterial(materialName)
-            : { stock: stockOverride ?? 0, price: priceOverride ?? 0, supplier: supplierOverride ?? '', supplier_id: supplierIdOverride, purchase_unit: purchaseUnitOverride ?? rawUnit, conversion_rate: convRateOverride ?? 1, stock_unit: rawUnit, product_id: productIdOverride ?? undefined };
-
-          const totalNeededRaw = consumptionPerPair * qty * (applyLoss ? lossFactor : 1);
-          const convRate = resolved.conversion_rate || 1;
-          const purchaseUnit = resolved.purchase_unit || rawUnit;
-          // Use unified conversion logic to handle both area→linear and stock→package cases
-          let { needToStockDivisor } = resolveConversionFactors(
-            rawUnit,                    // consumption unit (e.g. dm², kg, par)
-            resolved.stock_unit,        // stock unit (e.g. m, kg, par)
-            purchaseUnit,               // purchase unit (e.g. metro, un, par)
-            convRate,
-          );
-          const { stockToPurchaseDivisor } = resolveConversionFactors(rawUnit, resolved.stock_unit, purchaseUnit, convRate);
-          // CORREÇÃO dm² (auditoria 2026-06-14): material de ÁREA (dm²/par) com produto
-          // em unidade física (m/cm/placa) converte pela LARGURA da ficha de componente,
-          // NÃO pelo conversion_rate (que costuma ser 1 nesses casos → resolveConversionFactors
-          // devolvia 1:1 e inflava a quantidade ~100×). Ver areaToStockDivisor / CLAUDE.md.
-          let widthMissing = false;
-          const rawIsArea = ['dm²', 'dm2', 'cm²', 'cm2', 'm²', 'm2'].includes((rawUnit || '').toLowerCase().trim());
-          if (rawIsArea && !areSameUnit(rawUnit, resolved.stock_unit)) {
-            const prodRow = resolved.product_id ? pMap.get(resolved.product_id) : null;
-            const cs = componentSheetFor(resolved.product_id, prodRow?.group_id);
-            const div = areaToStockDivisor(resolved.stock_unit, cs);
-            if (div && div > 0) needToStockDivisor = div;      // dm² → m/placa pela ficha
-            else widthMissing = true;                          // sem largura: não dá pra converter
+        for (const line of lines) {
+          if (!line.product_id) continue; // linha de AVISO puro (required 0 + warning)
+          const prod = pMap.get(line.product_id);
+          if (prod?.is_artisanal) continue; // artesanal = OS interna, não OC (F3-2)
+          if (
+            packagingMode &&
+            classifyBomMaterial('', line.product_name || '', line.category || '') === 'Embalagem' &&
+            !shouldShowCaixaForMode(line.product_name, packagingMode, caixaTypes)
+          ) {
+            continue; // caixa alternativa que o packaging_mode do PV não usa
           }
-          const needInStock = totalNeededRaw / needToStockDivisor;
-          const totalNeededConverted = needInStock / stockToPurchaseDivisor;
-          const stockInPurchaseUnit = resolved.stock / stockToPurchaseDivisor;
-          // unit_price em products é R$/unidade de ESTOQUE; déficit/qty estão em
-          // unidade de COMPRA → converte o preço pelo MESMO fator estoque→compra
-          // usado nas quantidades (fix A3.2 — antes investimento e unit_price da
-          // OC ficavam errados pelo fator de conversão, ex.: R$ 8 em vez de R$ 800).
-          const priceInPurchaseUnit = resolved.price * stockToPurchaseDivisor;
 
-          return {
-            product_id: resolved.product_id ?? productIdOverride ?? null,
-            name: materialName,
-            type,
-            consumption_per_pair: consumptionPerPair,
-            total_needed: totalNeededRaw,
-            total_needed_converted: totalNeededConverted,
-            unit: rawUnit,
+          const stockUnit = prod?.unit || line.unit || 'un';
+          const required = Number(line.required) || 0;
+          const isAreaLine = line.unit == null;
+          const conv = isAreaLine && line.product_id ? convInfo.get(line.product_id) : undefined;
+          // Área sem largura na ficha de componente → conversão indefinida
+          // (valor ~100× em dm² cru): marca e deixa FORA da OC, como antes.
+          const widthMissing = !!line.conversion_warning || (isAreaLine && !!conv?.conversion_warning);
+          const needInStock = isAreaLine && !widthMissing
+            ? required / Math.max(conv?.dm2_per_unit || 1, 1)
+            : required;
+
+          // estoque→compra pelo conversion_rate (ex.: PLACA EVA dm²→placa ÷150);
+          // preço convertido pelo MESMO fator (convenção de purchase_order_items).
+          const purchaseUnit = prod?.purchase_order_unit || stockUnit;
+          const convRate = Number(prod?.conversion_rate) || 1;
+          const { stockToPurchaseDivisor } = resolveConversionFactors(stockUnit, stockUnit, purchaseUnit, convRate);
+          const totalNeededConverted = needInStock / stockToPurchaseDivisor;
+          const stockInPurchaseUnit = (prod ? availableStock(prod) : 0) / stockToPurchaseDivisor;
+          const priceInPurchaseUnit = (Number(prod?.unit_price) || 0) * stockToPurchaseDivisor;
+
+          materials.push({
+            product_id: line.product_id,
+            name: line.product_name,
+            type: line.component || 'Componente',
+            consumption_per_pair: Number(line.consumption_per_unit) || 0,
+            total_needed: required,
+            total_needed_converted: widthMissing ? required : totalNeededConverted,
+            unit: line.unit || 'dm²',
             purchase_unit: purchaseUnit,
             conversion_rate: convRate,
             width_missing: widthMissing,
             _stock: stockInPurchaseUnit,
             _price: priceInPurchaseUnit,
-            _supplier: resolved.supplier,
-            _supplier_id: resolved.supplier_id ?? undefined,
-            _product_id: resolved.product_id ?? productIdOverride ?? undefined,
-          } as any;
-        }
-
-        // Upper/Cabedal
-        if (sheet.upper_consumption > 0) {
-          materials.push(buildMaterialLine(sheet.upper_material || 'Cabedal', 'Cabedal', sheet.upper_consumption, 'dm²', true));
-        }
-
-        // Lining/Forro
-        if (sheet.lining_consumption > 0) {
-          materials.push(buildMaterialLine(sheet.lining_material || 'Forração', 'Forração', sheet.lining_consumption, 'dm²', true));
-        }
-
-        // Insole/Palmilha
-        if (sheet.insole_consumption > 0) {
-          materials.push(buildMaterialLine(sheet.insole_material || 'Palmilha', 'Palmilha', sheet.insole_consumption, 'dm²', true));
-        }
-
-        // Sole/Solado
-        if (sheet.sole_consumption > 0) {
-          materials.push(buildMaterialLine(sheet.sole_material || sheet.sole_type || 'Solado', 'Solado', sheet.sole_consumption, 'par', false));
-        }
-
-        // Direct components
-        if (Array.isArray(sheet.direct_components)) {
-          for (const comp of sheet.direct_components as any[]) {
-            const product = comp.product_id ? pMap.get(comp.product_id) : null;
-            const compUnit = product?.unit || 'un';
-            materials.push(buildMaterialLine(
-              comp.product_name || 'Componente',
-              'Componente',
-              Number(comp.quantity) || 0,
-              compUnit,
-              false,
-              comp.product_id || null,
-              product ? availableStock(product) : 0,
-              product ? Number(product.unit_price) || 0 : 0,
-              getSupplierName(product),
-              getDisplayUnit(product),
-              Number(product?.conversion_rate) || 1,
-              product?.supplier_id || undefined,
-            ));
-          }
+            _supplier: getSupplierName(prod),
+            _supplier_id: prod?.supplier_id ?? undefined,
+            _product_id: line.product_id,
+          } as any);
         }
 
         needs.push({
@@ -510,7 +407,7 @@ export default function PurchasePlanningWizard() {
           order_number: order.order_number,
           sale_order_number: saleOrder?.order_number || '',
           client_name: saleOrder?.client_name || '',
-          reference_name: sheet.name || '',
+          reference_name: sheetNameById.get(order.reference_id) || '',
           quantity: qty,
           delivery_date: deliveryDate,
           purchase_deadline: purchaseDeadline,
@@ -518,7 +415,7 @@ export default function PurchasePlanningWizard() {
           week_start: weekStart,
           materials,
         });
-      }
+      });
 
       // Sort by week
       needs.sort((a, b) => a.week_start.getTime() - b.week_start.getTime());
@@ -561,8 +458,11 @@ export default function PurchasePlanningWizard() {
       week.total_pairs += order.quantity;
 
       for (const mat of order.materials) {
-        const key = `${mat.name.toLowerCase()}_${mat.type}`;
+        // Chave por PRODUTO (não nome+tipo): o mesmo material usado em 2
+        // componentes (ex.: napa no cabedal E na forração) soma as aplicações
+        // e avalia o estoque UMA vez — regra canônica do modal de consumo.
         const matAny = mat as any;
+        const key = matAny._product_id || `${mat.name.toLowerCase()}_${mat.type}`;
         if (!week.materials.has(key)) {
           week.materials.set(key, {
             material_key: key,
@@ -687,7 +587,7 @@ export default function PurchasePlanningWizard() {
       let count = 0;
       for (const [supplierName, items] of Array.from(bySupplier)) {
         // estimated_cost já está em R$ de unidade de COMPRA (preço convertido
-        // pelo fator estoque→compra em buildMaterialLine) — fix A3.2.
+        // pelo fator estoque→compra na montagem das linhas) — fix A3.2.
         const totalValue = items.reduce((s, i) => s + i.estimated_cost, 0);
         // FK do fornecedor quando algum produto do grupo tem (fix A3.3b) —
         // sem ele a OC caía no default de prazo de pagamento.

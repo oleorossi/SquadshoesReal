@@ -56,9 +56,11 @@ export function MrpNeedsTable() {
 
   // Só linhas de PRODUTO com sugestão > 0 são selecionáveis. Linhas de embalagem
   // (is_packaging) não geram OC aqui — a compra de caixa é feita em /embalagens —,
-  // então ficam com checkbox disabled e fora do "selecionar todos".
-  const isSelectable = (d: { suggested_qty: number; is_packaging?: boolean }) =>
-    d.suggested_qty > 0 && !d.is_packaging;
+  // então ficam com checkbox disabled e fora do "selecionar todos". Linhas
+  // ARTESANAIS (is_artisanal) também não: a reposição é via OS (o writer
+  // generate_purchase_orders_from_mrp pula essas linhas — F3-2).
+  const isSelectable = (d: { suggested_qty: number; is_packaging?: boolean; is_artisanal?: boolean }) =>
+    d.suggested_qty > 0 && !d.is_packaging && !d.is_artisanal;
   const selectableCount = data.filter(isSelectable).length;
 
   const toggleAll = () =>
@@ -144,6 +146,15 @@ export function MrpNeedsTable() {
                     {n.is_packaging && (
                       <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-semibold uppercase tracking-wide">
                         Embalagem
+                      </Badge>
+                    )}
+                    {n.is_artisanal && (
+                      <Badge
+                        variant="outline"
+                        className="h-4 px-1.5 text-[10px] font-semibold uppercase tracking-wide"
+                        title="Produto artesanal — reposição via Ordem de Serviço (OS), não via OC de compra."
+                      >
+                        Artesanal → OS
                       </Badge>
                     )}
                   </div>

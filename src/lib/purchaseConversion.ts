@@ -5,7 +5,8 @@
  *   - `unit`           → unidade de estoque + consumo (a que a ficha técnica usa)
  *   - `purchase_unit`  → unidade da NF do fornecedor / contagem física
  *   - `conversion_rate`→ quanto de `unit` cabe em 1 `purchase_unit`
- *   - `dimensions_width` (em dm) → largura para materiais lineares (m → dm²)
+ *   - `dimensions_width` (+ `dimensions_unit`) → largura para materiais
+ *     lineares (m → dm²). Sem `dimensions_unit`, assume dm (contrato antigo).
  *
  * Use cases (diferente do unitConversion.ts que cuida do MRP):
  *   1. Entrada de compra: usuário digita qtd em purchase_unit → soma em unit
@@ -25,8 +26,35 @@ export type PurchaseConversionContext = {
   unit: string;
   purchase_unit?: string | null;
   conversion_rate?: number | null;
-  dimensions_width?: number | null;  // em dm
+  /** Largura do material. Interpretada junto com `dimensions_unit`; sem a
+   *  unidade, assume-se o contrato histórico (dm). */
+  dimensions_width?: number | null;
+  /** Unidade da largura ('mm' | 'cm' | 'dm' | 'm'). No banco a coluna
+   *  products.dimensions_unit guarda quase sempre 'mm' — SEM normalizar, o
+   *  fator m→dm² saía 100× inflado (F5-08, auditoria 2026-07: 1000 mm lidos
+   *  como 1000 dm ⇒ 10.000 dm²/m em vez de 100). */
+  dimensions_unit?: string | null;
 };
+
+/**
+ * Normaliza a largura pra DM conforme `dimensions_unit` (F5-08). Sem unidade
+ * cadastrada mantém o contrato antigo (valor já em dm) — call-sites que passam
+ * a coluna crua do banco DEVEM passar também `dimensions_unit`.
+ */
+function widthInDm(ctx: PurchaseConversionContext): number | null {
+  const w = Number(ctx.dimensions_width ?? 0);
+  if (!w || w <= 0) return null;
+  const u = (ctx.dimensions_unit || 'dm').trim().toLowerCase();
+  if (u === 'mm') return w / 100;
+  if (u === 'cm') return w / 10;
+  if (u === 'm') return w * 10;
+  return w; // 'dm' (contrato do helper) ou unidade desconhecida — sem mágica
+}
+
+/** Unidades de contagem/embalagem (pós-normalização de `lc`): pra elas o
+ *  conversion_rate=1 (default da coluna) pode significar 1:1 legítimo
+ *  (ex.: solado comprado em 'un', estoque em 'par'). */
+const COUNT_LIKE_UNITS = new Set(['un', 'par', 'cx', 'pc', 'rl', 'fh', 'jg', 'placa', 'chapa']);
 
 /**
  * Resolve a unidade ao CANÔNICO antes de decidir a regra de conversão. Sem
@@ -87,14 +115,16 @@ export function effectiveConversionFactor(ctx: PurchaseConversionContext): numbe
 
   if (pu === su) return 1;
 
+  const wDm = widthInDm(ctx);
+
   // Caso m linear → dm²: 1 m × W dm largura = 10*W dm²
-  if (pu === 'm' && su === 'dm²' && ctx.dimensions_width && ctx.dimensions_width > 0) {
-    return 10 * ctx.dimensions_width;
+  if (pu === 'm' && su === 'dm²' && wDm) {
+    return 10 * wDm;
   }
 
   // Caso m linear → m²: largura em dm / 10
-  if (pu === 'm' && su === 'm²' && ctx.dimensions_width && ctx.dimensions_width > 0) {
-    return ctx.dimensions_width / 10;
+  if (pu === 'm' && su === 'm²' && wDm) {
+    return wDm / 10;
   }
 
   if (ctx.conversion_rate && ctx.conversion_rate > 0) return ctx.conversion_rate;
@@ -114,14 +144,101 @@ export function effectiveConversionFactorStrict(ctx: PurchaseConversionContext):
   const pu = lc(ctx.purchase_unit || ctx.unit);
   const su = lc(ctx.unit);
   if (pu === su) return 1;
-  if (pu === 'm' && su === 'dm²' && ctx.dimensions_width && ctx.dimensions_width > 0) {
-    return 10 * ctx.dimensions_width;
+  const wDm = widthInDm(ctx);
+  if (pu === 'm' && su === 'dm²' && wDm) {
+    return 10 * wDm;
   }
-  if (pu === 'm' && su === 'm²' && ctx.dimensions_width && ctx.dimensions_width > 0) {
-    return ctx.dimensions_width / 10;
+  if (pu === 'm' && su === 'm²' && wDm) {
+    return wDm / 10;
   }
-  if (ctx.conversion_rate && ctx.conversion_rate > 0) return ctx.conversion_rate;
-  return suggestConversionRate(pu, su);
+  const rate = Number(ctx.conversion_rate ?? 0);
+  // rate ≠ 1 é configuração deliberada → vale.
+  if (rate > 0 && rate !== 1) return rate;
+  // Sugestão métrica segura (kg→g, m→cm, m²→dm²…) cobre rate ausente OU rate=1
+  // default — espelho da P4 da NF (CONVERSOES).
+  const suggested = suggestConversionRate(pu, su);
+  if (suggested != null) return suggested;
+  // F5-02: conversion_rate=1 é o DEFAULT da coluna, não uma configuração — a NF
+  // (convertNfToStockUnit, P2) BLOQUEIA esse caso quando o estoque é unidade de
+  // medida. Só aceitamos 1:1 quando compra E estoque são contagem/embalagem
+  // (ex.: solado purchase 'un' → estoque 'par' — os 12 produtos vivos corretos).
+  if (rate === 1 && COUNT_LIKE_UNITS.has(pu) && COUNT_LIKE_UNITS.has(su)) return 1;
+  return null;
+}
+
+/** Resultado do fator de recebimento ciente da unidade da LINHA da OC.
+ *  `ok=false` ⇒ bloquear (reason explica); `factor` só é válido com ok=true. */
+export type ReceiptFactorResult =
+  | { ok: true; factor: number; basis: 'estoque' | 'compra'; reason?: string }
+  | { ok: false; reason: string; factor?: number; basis?: 'estoque' | 'compra' };
+
+/**
+ * Fator de conversão do RECEBIMENTO de OC ciente da unidade gravada na LINHA
+ * do item (F3-1/F5-02, auditoria 2026-07). Itens de OC existem em DUAS
+ * convenções no banco:
+ *  - unidade de COMPRA (MRP / per-PV / Wizard / manual): aplicar o fator
+ *    estrito purchase_unit→unit (conversion_rate / largura);
+ *  - unidade de ESTOQUE (geradores ROP legados `auto_create_purchase_order` /
+ *    `generate_rop_purchase_suggestions` gravam unit=products.unit): fator 1.
+ *    Aplicar o fator de compra cegamente aqui creditava 150× (PLACA EVA:
+ *    item de 160 dm² virava 24.000 dm²).
+ * Se a unidade da linha não casa com NENHUMA das duas, ou casa com a de compra
+ * mas não existe regra segura, BLOQUEIA (espelho do needsConfig da NF) — nunca
+ * aplica fator cego.
+ */
+export function receiptConversionFactor(
+  itemUnit: string | null | undefined,
+  ctx: PurchaseConversionContext & { name?: string | null },
+): ReceiptFactorResult {
+  const name = ctx.name || 'Produto';
+  const su = lc(ctx.unit);
+  const pu = lc(ctx.purchase_unit || ctx.unit);
+  const iu = lc(itemUnit || '');
+
+  // Linha denominada na unidade de ESTOQUE → a quantidade já está na unidade
+  // do produto; fator 1 (mesmo que exista conversion_rate/largura cadastrados).
+  if (itemUnit && iu === su) return { ok: true, factor: 1, basis: 'estoque' };
+
+  // Linha na unidade de COMPRA (ou linha legada sem unidade — assume a
+  // convenção histórica de compra): fator estrito, com bloqueio sem regra.
+  if (!itemUnit || iu === pu) {
+    const f = effectiveConversionFactorStrict(ctx);
+    if (f == null) {
+      return {
+        ok: false,
+        reason: `${name}: unidade de compra "${ctx.purchase_unit || ctx.unit}" sem regra de conversão pra "${ctx.unit}" — configure a Taxa de conversão (≠ 1) ou a largura na Ficha de Componente antes de receber.`,
+      };
+    }
+    return { ok: true, factor: f, basis: 'compra' };
+  }
+
+  // Unidade da linha não casa nem com compra nem com estoque → bloquear em vez
+  // de chutar um fator (nunca creditar quantidade na unidade errada).
+  return {
+    ok: false,
+    reason: `${name}: item da OC em "${itemUnit}" não casa nem com a unidade de compra ("${ctx.purchase_unit || '—'}") nem com a de estoque ("${ctx.unit}") — corrija a unidade do item ou o cadastro do produto antes de receber.`,
+  };
+}
+
+/**
+ * Média ponderada de preço (WAC) — MESMA fórmula do fluxo de NF
+ * (XmlImportDialog/AddToStockDialog): newPrice = (oldQty×oldPrice +
+ * addQty×addPrice) / newQty, com addPrice já em R$/unidade de ESTOQUE.
+ * Fonte única pra NF e recebimento de OC não divergirem (F5-05).
+ */
+export function weightedAverageUnitPrice(
+  oldQty: number,
+  oldPrice: number,
+  addQty: number,
+  addPrice: number,
+): number {
+  const prevQty = Number(oldQty) || 0;
+  const prevPrice = Number(oldPrice) || 0;
+  const inQty = Number(addQty) || 0;
+  const inPrice = Number(addPrice) || 0;
+  const newQty = prevQty + inQty;
+  if (newQty <= 0) return inPrice;
+  return (prevQty * prevPrice + inQty * inPrice) / newQty;
 }
 
 /** Converte qty em purchase_unit → qty em stock unit. */

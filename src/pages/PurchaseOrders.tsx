@@ -2,7 +2,7 @@ import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrder
 import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDialog";
 import { Plus, Receipt } from '@phosphor-icons/react';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
-import { effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
+import { receiptConversionFactor, weightedAverageUnitPrice } from '@/lib/purchaseConversion';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -150,26 +150,27 @@ async function preflightReceive(items: PurchaseOrderItem[]): Promise<void> {
   if (ids.length === 0) return;
   const { data: prods, error } = await supabase
     .from('products')
-    .select('id, name, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width')
+    .select('id, name, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit')
     .in('id', ids);
   if (error) throw new Error(error.message);
   const byId = new Map((prods || []).map((p: any) => [p.id, p]));
   for (const it of pending) {
     const prod: any = byId.get(it.product_id);
     if (!prod) continue;
-    const factor = effectiveConversionFactorStrict({
+    // F3-1/F5-02: fator ciente da unidade da LINHA — item em unidade de estoque
+    // (geradores ROP legados) recebe fator 1; item em unidade de compra usa o
+    // fator estrito; sem regra segura ou unidade não reconhecida → bloqueia.
+    const rc = receiptConversionFactor(it.unit, {
+      name: prod.name,
       unit: prod.unit || 'un',
       purchase_unit: prod.purchase_unit,
       conversion_rate: prod.conversion_rate,
       dimensions_width: prod.dimensions_width,
+      dimensions_unit: prod.dimensions_unit,
     });
-    if (factor == null) {
-      throw new Error(
-        `${prod.name || 'Produto'}: unidade de compra "${prod.purchase_unit}" sem regra de conversão pra "${prod.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
-      );
-    }
+    if (!rc.ok) throw new Error(rc.reason);
     // Mesma condição de mergeReceivedGrade: a grade tem que somar a quantidade.
-    mergeReceivedGrade(it.grade, it.quantity, prod.stock_grade, factor, prod.name || 'Produto');
+    mergeReceivedGrade(it.grade, it.quantity, prod.stock_grade, rc.factor, prod.name || 'Produto');
   }
 }
 
@@ -1037,22 +1038,23 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         if (item.received_at || remainingToReceive <= 0.0001) continue;
         const { data: prod } = await supabase
           .from('products')
-          .select('name, quantity, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
+          .select('name, quantity, unit_price, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const factor = effectiveConversionFactorStrict({
+        // F3-1/F5-02: fator ciente da unidade da LINHA da OC — item denominado
+        // em unidade de ESTOQUE (geradores ROP legados) recebe fator 1; item em
+        // unidade de COMPRA usa o fator estrito; sem regra segura → bloqueia
+        // (igual ao fluxo de NF). Nunca aplica fator cego.
+        const rc = receiptConversionFactor(item.unit, {
+          name: (prod as any)?.name,
           unit: (prod as any)?.unit || 'un',
           purchase_unit: (prod as any)?.purchase_unit,
           conversion_rate: (prod as any)?.conversion_rate,
           dimensions_width: (prod as any)?.dimensions_width,
+          dimensions_unit: (prod as any)?.dimensions_unit,
         });
-        if (factor == null) {
-          // Sem regra de conversão compra→estoque: bloquear em vez de creditar
-          // a quantidade crua na unidade errada (igual ao fluxo de NF).
-          throw new Error(
-            `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
-          );
-        }
+        if (!rc.ok) throw new Error(rc.reason);
+        const factor = rc.factor;
         const receivedQty = remainingToReceive * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedQty;
@@ -1081,8 +1083,24 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           .update({ received_at: new Date().toISOString(), received_quantity: item.quantity })
           .eq('id', item.id);
         if (markErr) console.error(`[PO finalize] Falha ao marcar received_at do item ${item.id}:`, markErr);
+        // F5-05: WAC igual ao caminho da NF — crédito primeiro, preço depois.
+        // item.unit_price está na MESMA unidade da linha; ÷factor traz pra
+        // R$/unidade de estoque (linha em unidade de estoque tem factor=1).
+        const addPrice = (Number(item.unit_price) || 0) / factor;
+        const productPatch: Record<string, any> = {};
+        if (addPrice > 0 && Number.isFinite(addPrice)) {
+          productPatch.unit_price = weightedAverageUnitPrice(
+            prev, Number((prod as any)?.unit_price) || 0, receivedQty, addPrice,
+          );
+        }
         if (order.supplier_id && !(prod as any)?.supplier_id) {
-          await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
+          productPatch.supplier_id = order.supplier_id;
+        }
+        if (Object.keys(productPatch).length > 0) {
+          // Não-crítico pra concorrência de estoque: falha aqui não desfaz o
+          // crédito (mesmo tratamento do XmlImportDialog) — loga e segue.
+          const { error: patchErr } = await supabase.from('products').update(productPatch).eq('id', item.product_id);
+          if (patchErr) console.error(`[PO finalize] Falha ao atualizar preço/fornecedor de "${(prod as any)?.name}":`, patchErr);
         }
       }
 
@@ -1102,7 +1120,6 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
-      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
@@ -1167,22 +1184,21 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         if (item.received_at || remainingToReceive <= 0.0001) continue;
         const { data: prod } = await supabase
           .from('products')
-          .select('name, quantity, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
+          .select('name, quantity, unit_price, stock_grade, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit, supplier_id')
           .eq('id', item.product_id)
           .single();
-        const factor = effectiveConversionFactorStrict({
+        // F3-1/F5-02: fator ciente da unidade da LINHA da OC (estoque → 1,
+        // compra → estrito, sem regra/unidade desconhecida → bloqueia).
+        const rc = receiptConversionFactor(item.unit, {
+          name: (prod as any)?.name,
           unit: (prod as any)?.unit || 'un',
           purchase_unit: (prod as any)?.purchase_unit,
           conversion_rate: (prod as any)?.conversion_rate,
           dimensions_width: (prod as any)?.dimensions_width,
+          dimensions_unit: (prod as any)?.dimensions_unit,
         });
-        if (factor == null) {
-          // Sem regra de conversão compra→estoque: bloquear em vez de creditar
-          // a quantidade crua na unidade errada (igual ao fluxo de NF).
-          throw new Error(
-            `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
-          );
-        }
+        if (!rc.ok) throw new Error(rc.reason);
+        const factor = rc.factor;
         const receivedInStockUnit = remainingToReceive * factor;
         const prev = Number(prod?.quantity ?? 0);
         const newQty = prev + receivedInStockUnit;
@@ -1211,8 +1227,20 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           .update({ received_at: new Date().toISOString(), received_quantity: item.quantity })
           .eq('id', item.id);
         if (markErr) console.error(`[PO receive] Falha ao marcar received_at do item ${item.id}:`, markErr);
+        // F5-05: WAC igual ao caminho da NF — crédito primeiro, preço depois.
+        const addPrice = (Number(item.unit_price) || 0) / factor;
+        const productPatch: Record<string, any> = {};
+        if (addPrice > 0 && Number.isFinite(addPrice)) {
+          productPatch.unit_price = weightedAverageUnitPrice(
+            prev, Number((prod as any)?.unit_price) || 0, receivedInStockUnit, addPrice,
+          );
+        }
         if (order.supplier_id && !(prod as any)?.supplier_id) {
-          await supabase.from('products').update({ supplier_id: order.supplier_id }).eq('id', item.product_id);
+          productPatch.supplier_id = order.supplier_id;
+        }
+        if (Object.keys(productPatch).length > 0) {
+          const { error: patchErr } = await supabase.from('products').update(productPatch).eq('id', item.product_id);
+          if (patchErr) console.error(`[PO receive] Falha ao atualizar preço/fornecedor de "${(prod as any)?.name}":`, patchErr);
         }
       }
       // Update direto: o guard de useUpdatePurchaseOrder rejeita rows em
@@ -1231,7 +1259,6 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
-      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       toast.success('OC marcada como recebida — estoque atualizado!');
@@ -1272,22 +1299,24 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
     try {
       const { data: prod } = await supabase
         .from('products')
-        .select('name, quantity, conversion_rate, unit, purchase_unit, dimensions_width, supplier_id')
+        .select('name, quantity, unit_price, conversion_rate, unit, purchase_unit, dimensions_width, dimensions_unit, supplier_id')
         .eq('id', item.product_id)
         .single();
-      const factor = effectiveConversionFactorStrict({
+      // F3-1/F5-02: fator ciente da unidade da LINHA da OC (estoque → 1,
+      // compra → estrito, sem regra/unidade desconhecida → bloqueia).
+      const rc = receiptConversionFactor(item.unit, {
+        name: (prod as any)?.name,
         unit: (prod as any)?.unit || 'un',
         purchase_unit: (prod as any)?.purchase_unit,
         conversion_rate: (prod as any)?.conversion_rate,
         dimensions_width: (prod as any)?.dimensions_width,
+        dimensions_unit: (prod as any)?.dimensions_unit,
       });
-      if (factor == null) {
-        throw new Error(
-          `${(prod as any)?.name || 'Produto'}: unidade de compra "${(prod as any)?.purchase_unit}" sem regra de conversão pra "${(prod as any)?.unit}" — configure conversion_rate ou a largura na Ficha de Componente antes de receber.`,
-        );
-      }
+      if (!rc.ok) throw new Error(rc.reason);
+      const factor = rc.factor;
       const prev = Number(prod?.quantity ?? 0);
-      const newQty = prev + qty * factor;
+      const receivedInStockUnit = qty * factor;
+      const newQty = prev + receivedInStockUnit;
       // Concorrência: adjustStockSafe valida expectedPrevious — dois recebimentos
       // simultâneos do mesmo produto fazem o 2º falhar com erro de concorrência.
       const result = await adjustStockSafe({
@@ -1298,6 +1327,15 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         newGrade: null,
       });
       if (!result.success) throw new Error(result.errorMessage);
+      // F5-05: WAC igual ao caminho da NF — crédito primeiro, preço depois.
+      const addPrice = (Number(item.unit_price) || 0) / factor;
+      if (addPrice > 0 && Number.isFinite(addPrice)) {
+        const newPrice = weightedAverageUnitPrice(
+          prev, Number((prod as any)?.unit_price) || 0, receivedInStockUnit, addPrice,
+        );
+        const { error: priceErr } = await supabase.from('products').update({ unit_price: newPrice }).eq('id', item.product_id);
+        if (priceErr) console.error(`[PO parcial] Falha ao atualizar WAC de "${(prod as any)?.name}":`, priceErr);
+      }
       const newReceived = already + qty;
       const fullyReceived = newReceived >= Number(item.quantity) - 0.0001;
       const { error: itemErr } = await supabase
@@ -1325,7 +1363,6 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
-      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       const restante = remaining - qty;

@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { computeSectorLeadTimeDays } from './leadTime';
+import { computeSectorLeadTimeDays, getEffectiveCapacityPerDay } from './leadTime';
 import { sheetHasSector, SECTOR_LABELS, DISPLAY_SECTORS, type SectorKey } from './sectors';
 
 // Re-exporta a taxonomia da fonte única (./sectors) pra não quebrar imports
@@ -110,6 +110,41 @@ export function businessDaysBetween(start: Date, end: Date, holidays?: Set<strin
   return Math.max(1, count);
 }
 
+// ── default_lead_times: fallback de capacidade por CATEGORIA (F1-05) ──────────
+// O SQL compute_wave_timeline resolve capacidade na cadeia
+// COALESCE(NULLIF(ficha,0), dlt_da_categoria) pra TODOS os setores. Toda
+// superfície TS que calcula janela (computeParallelWindows /
+// computeForwardSchedule / computeSectorDailyLoad) precisa carregar esses
+// defaults e repassar — senão a ficha sem capacidade própria cai no lead
+// legado/constante fixa e a tela diverge do motor de ondas (F1-05).
+// Fonte única das colunas + do fetch, pra nenhuma tela selecionar um subset
+// diferente e reintroduzir a divergência.
+
+export const DEFAULT_LEAD_TIME_COLUMNS =
+  'shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_expedicao_dias';
+
+/**
+ * Carrega default_lead_times e devolve Map<shoe_category, row>.
+ * Sem `categories` carrega todas (a tabela tem ~1 linha por categoria).
+ */
+export async function fetchCategoryDefaultsMap(categories?: string[]): Promise<Map<string, any>> {
+  const map = new Map<string, any>();
+  const cats = (categories || []).filter(Boolean);
+  let query = supabase.from('default_lead_times').select(DEFAULT_LEAD_TIME_COLUMNS);
+  if (cats.length > 0) query = query.in('shoe_category', cats);
+  const { data } = await query;
+  (data || []).forEach((d: any) => map.set(d.shoe_category, d));
+  return map;
+}
+
+/** Resolve os defaults da categoria da ficha (null quando não há). */
+export function categoryDefaultsFor(
+  sheet: any,
+  map: Map<string, any> | null | undefined,
+): any | null {
+  return sheet?.shoe_category ? map?.get(sheet.shoe_category) ?? null : null;
+}
+
 /**
  * Verifica capacidade dos setores Corte/Costura/Montagem para um conjunto de itens
  * a serem faturados em uma data específica.
@@ -145,23 +180,13 @@ export async function checkSectorCapacity(
   const sheetMap = new Map<string, any>();
   (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
 
-  // Carrega defaults por categoria (fallback quando ficha não tem capacidade nem lead time)
+  // Carrega defaults por categoria (fallback quando ficha não tem capacidade nem
+  // lead time) — fonte única fetchCategoryDefaultsMap (F1-05).
   const categories = Array.from(
     new Set((sheets || []).map((s: any) => s.shoe_category).filter(Boolean)),
   );
-  const categoryDefaultsMap = new Map<string, any>();
-  if (categories.length > 0) {
-    const { data: defaults } = await supabase
-      .from('default_lead_times')
-      // costura_capacity_per_day adicionado a default_lead_times em
-      // 20260525120000_add-costura-to-default-lead-times — segura mas selecionado
-      // condicionalmente via try-catch caso ambiente esteja em estado pré-migration.
-      .select('shoe_category, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias')
-      .in('shoe_category', categories as string[]);
-    (defaults || []).forEach((d: any) => categoryDefaultsMap.set(d.shoe_category, d));
-  }
-  const getDefaults = (sheet: any) =>
-    sheet?.shoe_category ? categoryDefaultsMap.get(sheet.shoe_category) || null : null;
+  const categoryDefaultsMap = await fetchCategoryDefaultsMap(categories as string[]);
+  const getDefaults = (sheet: any) => categoryDefaultsFor(sheet, categoryDefaultsMap);
 
   // Carrega carga já comprometida — pedidos ativos com data de faturamento futura
   const today = new Date();
@@ -204,61 +229,11 @@ export async function checkSectorCapacity(
     }
   }
 
-  // Normalização display→enum e hasSector vivem na fonte única (./sectors).
-  const hasSector = (sheet: any, canonical: string) => sheetHasSector(sheet, canonical);
-
-  function computeWindows(sheet: any, qty: number, deadline: Date) {
-    const defaults = getDefaults(sheet);
-    const ltAcab     = computeSectorLeadTimeDays('acabamento',     qty, sheet, defaults);
-    const ltSolagem  = computeSectorLeadTimeDays('solagem',        qty, sheet, defaults);
-    const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, defaults);
-    const ltColagem  = hasSector(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, defaults) : 0;
-    const ltSilk     = hasSector(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, defaults) : 0;
-    const ltCostura  = hasSector(sheet, 'Costura') ? computeSectorLeadTimeDays('costura', qty, sheet, defaults) : 0;
-    const ltMesa     = hasSector(sheet, 'Mesa') || hasSector(sheet, 'Aviamento')
-                        ? computeSectorLeadTimeDays('mesa', qty, sheet, defaults) : 0;
-    const ltForracao = hasSector(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, defaults) : 0;
-    const ltPalmilha = hasSector(sheet, 'Corte Palmilha') ? computeSectorLeadTimeDays('corte_palmilha', qty, sheet, defaults) : 0;
-
-    // ── Cascata espelha compute_wave_timeline (alinhada a computeParallelWindows) ──
-    // Sequencial pós-prep: acabamento ← solagem ← montagem ← colagem ← silk
-    // Prep PARALELO que converge em silkStart: Corte Palmilha ‖ Corte Forração ‖
-    //   Mesa(Aviamento) ‖ Costura — todos terminam em silkStart, cada um com SEU lead.
-    //   (Costura NÃO é sequencial entre prep e Silk — corrigido 2026-06-29 p/ casar
-    //    o SQL e o irmão computeParallelWindows, que já convergiam em silkStart.)
-    const acabEnd    = deadline;
-    const acabStart  = addBusinessDays(acabEnd,    -ltAcab);
-    const solaEnd    = acabStart;
-    const solaStart  = addBusinessDays(solaEnd,    -ltSolagem);
-    const montEnd    = solaStart;
-    const montStart  = addBusinessDays(montEnd,    -ltMont);
-    const colaEnd    = montStart;
-    const colaStart  = addBusinessDays(colaEnd,    -ltColagem);
-    const silkEnd    = colaStart;
-    const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
-    // Costura + os 3 cortes rodam em PARALELO no bloco de prep — todos terminam
-    // em silkStart (convergência), cada um com SEU lead (back-calculated).
-    const costuraEnd   = silkStart;
-    const costuraStart = addBusinessDays(costuraEnd, -ltCostura);
-    const palmEnd    = silkStart;
-    const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
-    const forrEnd    = silkStart;
-    const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
-    const mesaEnd    = silkStart;
-    const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
-
-    return {
-      corte_palmilha: { start: palmStart,    end: palmEnd,    cap: Number(sheet.sewing_capacity_per_day   || 0), required: hasSector(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
-      corte_forracao: { start: forrStart,    end: forrEnd,    cap: Number(sheet.cutting_capacity_per_day  || 0), required: hasSector(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
-      costura:        { start: costuraStart, end: costuraEnd, cap: Number(sheet.costura_capacity_per_day  || 0), required: hasSector(sheet, 'Costura') },
-      mesa:           { start: mesaStart,    end: mesaEnd,    cap: Number(sheet.mesa_daily_capacity       || 0), required: (hasSector(sheet, 'Mesa') || hasSector(sheet, 'Aviamento')) && Number(sheet.mesa_daily_capacity) > 0 },
-      silk:           { start: silkStart,    end: silkEnd,    cap: Number(sheet.silk_capacity_per_day     || 0), required: hasSector(sheet, 'Silk') && Number(sheet.silk_capacity_per_day) > 0 },
-      colagem:        { start: colaStart,    end: colaEnd,    cap: Number(sheet.gluing_capacity_per_day   || 0), required: hasSector(sheet, 'Colagem') && Number(sheet.gluing_capacity_per_day) > 0 },
-      montagem:       { start: montStart,    end: montEnd,    cap: Number(sheet.assembly_capacity_per_day || 0), required: true },
-      solagem:        { start: solaStart,    end: solaEnd,    cap: Number(sheet.soling_capacity_per_day   || 0), required: Number(sheet.soling_capacity_per_day) > 0 },
-      acabamento:     { start: acabStart,    end: acabEnd,    cap: Number(sheet.finishing_capacity_per_day|| 0), required: true },
-    };
-  }
+  // Cascata única: computeParallelWindows COM os defaults da categoria (F1-05).
+  // Antes havia uma cópia local desta cascata — mesma topologia, mas com cap/
+  // required lendo só a ficha crua. Delegar elimina o risco das duas divergirem.
+  const computeWindows = (sheet: any, qty: number, deadline: Date) =>
+    computeParallelWindows(sheet, qty, deadline, getDefaults(sheet));
 
   // Computa janelas de carga já existentes
   for (const ord of activeOrders || []) {
@@ -349,11 +324,18 @@ export async function checkSectorCapacity(
 // SEQUENCIAL e ignoravam o setor Costura, divergindo do SQL compute_wave_timeline
 // (PR 3 + PR 2 paralelos).
 //
-// Esta função espelha exatamente o que checkSectorCapacity.computeWindows faz
-// internamente (e o que update_wave_timeline grava no banco):
+// Esta função É a cascata que checkSectorCapacity usa internamente (e espelha o
+// que update_wave_timeline grava no banco):
 //   - Corte Palmilha ‖ Corte Forração ‖ Aviamento (Mesa) — paralelos prep
 //   - Costura é sequencial entre prep e Silk
 //   - Pós-prep: Silk → Colagem → Montagem → Solagem → Acabamento (Costura é prep paralela)
+//
+// F1-05: `categoryDefaults` (linha de default_lead_times da categoria da ficha)
+// entra na MESMA cadeia do SQL — COALESCE(NULLIF(ficha,0), dlt) — tanto no lead
+// (ceil(qty/cap)) quanto no cap/required. Sem ele (null), ficha sem capacidade
+// própria caía no lead legado/constante fixa e as telas de janela (Setores por
+// Dia, Cronograma Direto, Capacidade) divergiam do motor de ondas. Carregue via
+// fetchCategoryDefaultsMap + categoryDefaultsFor e repasse SEMPRE.
 // =============================================================================
 
 // normalização e hasSector vêm da fonte única (./sectors).
@@ -376,17 +358,33 @@ export function computeParallelWindows(
   sheet: any,
   qty: number,
   deadline: Date,
+  categoryDefaults: any = null,
 ): ParallelWindows {
-  const ltAcab     = computeSectorLeadTimeDays('acabamento',     qty, sheet, null);
-  const ltSolagem  = computeSectorLeadTimeDays('solagem',        qty, sheet, null);
-  const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, null);
-  const ltColagem  = hasSectorPub(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, null) : 0;
-  const ltSilk     = hasSectorPub(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, null) : 0;
-  const ltCostura  = hasSectorPub(sheet, 'Costura') ? computeSectorLeadTimeDays('costura', qty, sheet, null) : 0;
+  const ltAcab     = computeSectorLeadTimeDays('acabamento',     qty, sheet, categoryDefaults);
+  const ltSolagem  = computeSectorLeadTimeDays('solagem',        qty, sheet, categoryDefaults);
+  const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, categoryDefaults);
+  const ltColagem  = hasSectorPub(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, categoryDefaults) : 0;
+  const ltSilk     = hasSectorPub(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, categoryDefaults) : 0;
+  const ltCostura  = hasSectorPub(sheet, 'Costura') ? computeSectorLeadTimeDays('costura', qty, sheet, categoryDefaults) : 0;
   const ltMesa     = (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento'))
-    ? computeSectorLeadTimeDays('mesa', qty, sheet, null) : 0;
-  const ltForracao = hasSectorPub(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, null) : 0;
-  const ltPalmilha = hasSectorPub(sheet, 'Corte Palmilha') ? computeSectorLeadTimeDays('corte_palmilha', qty, sheet, null) : 0;
+    ? computeSectorLeadTimeDays('mesa', qty, sheet, categoryDefaults) : 0;
+  const ltForracao = hasSectorPub(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, categoryDefaults) : 0;
+  const ltPalmilha = hasSectorPub(sheet, 'Corte Palmilha') ? computeSectorLeadTimeDays('corte_palmilha', qty, sheet, categoryDefaults) : 0;
+
+  // Capacidade EFETIVA (ficha > default da categoria) — mesma cadeia dos leads.
+  // O gating `required` de mesa/silk/colagem/solagem usa a efetiva: antes usava a
+  // cap CRUA da ficha, então a janela sumia da tela mesmo com a categoria tendo
+  // capacidade (e o motor de ondas agendando o setor). Com defaults=null o valor
+  // é idêntico ao antigo (só a ficha).
+  const capPalmilha = getEffectiveCapacityPerDay('corte_palmilha', sheet, categoryDefaults);
+  const capForracao = getEffectiveCapacityPerDay('corte_forracao', sheet, categoryDefaults);
+  const capCostura  = getEffectiveCapacityPerDay('costura',        sheet, categoryDefaults);
+  const capMesa     = getEffectiveCapacityPerDay('mesa',           sheet, categoryDefaults);
+  const capSilk     = getEffectiveCapacityPerDay('silk',           sheet, categoryDefaults);
+  const capColagem  = getEffectiveCapacityPerDay('colagem',        sheet, categoryDefaults);
+  const capMont     = getEffectiveCapacityPerDay('montagem',       sheet, categoryDefaults);
+  const capSolagem  = getEffectiveCapacityPerDay('solagem',        sheet, categoryDefaults);
+  const capAcab     = getEffectiveCapacityPerDay('acabamento',     sheet, categoryDefaults);
 
   const acabEnd    = deadline;
   const acabStart  = addBusinessDays(acabEnd,    -ltAcab);
@@ -412,15 +410,15 @@ export function computeParallelWindows(
   const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
 
   return {
-    corte_palmilha: { start: palmStart,    end: palmEnd,    cap: Number(sheet.sewing_capacity_per_day   || 0), required: hasSectorPub(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
-    corte_forracao: { start: forrStart,    end: forrEnd,    cap: Number(sheet.cutting_capacity_per_day  || 0), required: hasSectorPub(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
-    costura:        { start: costuraStart, end: costuraEnd, cap: Number(sheet.costura_capacity_per_day  || 0), required: hasSectorPub(sheet, 'Costura') },
-    mesa:           { start: mesaStart,    end: mesaEnd,    cap: Number(sheet.mesa_daily_capacity       || 0), required: (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento')) && Number(sheet.mesa_daily_capacity) > 0 },
-    silk:           { start: silkStart,    end: silkEnd,    cap: Number(sheet.silk_capacity_per_day     || 0), required: hasSectorPub(sheet, 'Silk') && Number(sheet.silk_capacity_per_day) > 0 },
-    colagem:        { start: colaStart,    end: colaEnd,    cap: Number(sheet.gluing_capacity_per_day   || 0), required: hasSectorPub(sheet, 'Colagem') && Number(sheet.gluing_capacity_per_day) > 0 },
-    montagem:       { start: montStart,    end: montEnd,    cap: Number(sheet.assembly_capacity_per_day || 0), required: true },
-    solagem:        { start: solaStart,    end: solaEnd,    cap: Number(sheet.soling_capacity_per_day   || 0), required: Number(sheet.soling_capacity_per_day) > 0 },
-    acabamento:     { start: acabStart,    end: acabEnd,    cap: Number(sheet.finishing_capacity_per_day|| 0), required: true },
+    corte_palmilha: { start: palmStart,    end: palmEnd,    cap: capPalmilha, required: hasSectorPub(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
+    corte_forracao: { start: forrStart,    end: forrEnd,    cap: capForracao, required: hasSectorPub(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
+    costura:        { start: costuraStart, end: costuraEnd, cap: capCostura,  required: hasSectorPub(sheet, 'Costura') },
+    mesa:           { start: mesaStart,    end: mesaEnd,    cap: capMesa,     required: (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento')) && capMesa > 0 },
+    silk:           { start: silkStart,    end: silkEnd,    cap: capSilk,     required: hasSectorPub(sheet, 'Silk') && capSilk > 0 },
+    colagem:        { start: colaStart,    end: colaEnd,    cap: capColagem,  required: hasSectorPub(sheet, 'Colagem') && capColagem > 0 },
+    montagem:       { start: montStart,    end: montEnd,    cap: capMont,     required: true },
+    solagem:        { start: solaStart,    end: solaEnd,    cap: capSolagem,  required: capSolagem > 0 },
+    acabamento:     { start: acabStart,    end: acabEnd,    cap: capAcab,     required: true },
   };
 }
 
@@ -439,6 +437,9 @@ export function computeParallelWindows(
 //
 // `setupDaysBySector` (opcional, B3): dias extras de setup/troca somados ao lead
 // daquele setor (advisory — não altera a cascata persistida). Default vazio.
+// `categoryDefaults` (F1-05): linha de default_lead_times da categoria — mesma
+// cadeia ficha > categoria da cascata reversa/SQL. Repasse SEMPRE (ver
+// computeParallelWindows).
 // =============================================================================
 
 export interface ForwardSectorStep {
@@ -468,17 +469,18 @@ export function computeForwardSchedule(
   qty: number,
   startDate: Date,
   setupDaysBySector: Partial<Record<SectorKey, number>> = {},
+  categoryDefaults: any = null,
 ): ForwardSchedule {
   const setup = (k: SectorKey) => Math.max(0, Number(setupDaysBySector[k] || 0));
   // required espelha computeParallelWindows (mesma lógica de hasSector + caps).
-  const w = computeParallelWindows(sheet, qty, startDate); // só pra reaproveitar `required`/`cap`
+  const w = computeParallelWindows(sheet, qty, startDate, categoryDefaults); // só pra reaproveitar `required`/`cap`
   const required = (k: SectorKey): boolean => {
     if (k === 'expedicao') return sheetHasSector(sheet, 'Expedição');
     const pw = (w as any)[k];
     return pw ? !!pw.required : false;
   };
   const lead = (k: SectorKey): number =>
-    required(k) ? computeSectorLeadTimeDays(k, qty, sheet, null) + setup(k) : 0;
+    required(k) ? computeSectorLeadTimeDays(k, qty, sheet, categoryDefaults) + setup(k) : 0;
 
   const steps: ForwardSectorStep[] = [];
   const pushStep = (k: SectorKey, start: Date, end: Date, ld: number) => {
@@ -530,7 +532,8 @@ export function computeForwardSchedule(
 // Usado pela tela "Setores por Dia" (PCP).
 //
 // É pura: recebe OPs + fichas já carregadas + o cache de feriados já populado
-// (loadHolidayCache no hook). Não toca rede.
+// (loadHolidayCache no hook) + o map de default_lead_times por categoria
+// (fetchCategoryDefaultsMap no hook — F1-05). Não toca rede.
 // =============================================================================
 
 export type DailySeverity = 'idle' | 'ok' | 'warning' | 'critical' | 'unknown';
@@ -603,6 +606,7 @@ export function computeSectorDailyLoad(
   dateISO: string,
   ops: DailyOpInput[],
   sheetMap: Map<string, any>,
+  categoryDefaultsMap?: Map<string, any> | null,
 ): SectorDayLoad[] {
   const day = new Date(dateISO + 'T00:00:00');
 
@@ -619,7 +623,7 @@ export function computeSectorDailyLoad(
       const deadline = new Date(op.planned_delivery + 'T00:00:00');
       if (isNaN(deadline.getTime())) continue;
 
-      const windows = computeParallelWindows(sheet, qty, deadline);
+      const windows = computeParallelWindows(sheet, qty, deadline, categoryDefaultsFor(sheet, categoryDefaultsMap));
       for (const { key } of DISPLAY_SECTORS) {
         const w = windows[key as keyof ParallelWindows];
         if (!w || !w.required) continue;

@@ -9,7 +9,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useProducts, findGroupForProduct } from '@/hooks/useProducts';
 import { useGroups } from '@/hooks/useGroups';
-import { convertNfToStockUnit } from '@/lib/nfUnitConversion';
+import { convertNfToStockUnit, toNfConversionProduct, NF_CONVERSION_PRODUCT_SELECT } from '@/lib/nfUnitConversion';
+import { normalizeUnit } from '@/lib/productUnits';
 import { useUpdateInvoiceItem, type InvoiceItem } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -126,7 +127,11 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
     if (open && currentItem) {
       setNewName(currentItem.product_name);
       setNewSku(currentItem.product_code || '');
-      setNewUnit(currentItem.unit || 'un');
+      // F5-09: a NF vem com grafia própria ('KG', 'UN', 'MTL', 'CN'…) — sem
+      // normalizar, o produto nascia com unit fora do canônico se o operador
+      // não tocasse no Select. Canoniza e valida contra UNITS (senão 'un').
+      const canonUnit = normalizeUnit(currentItem.unit);
+      setNewUnit((UNITS as readonly string[]).includes(canonUnit) ? canonUnit : 'un');
       setSelectedProductId('');
       setProductSearch('');
       setSimilarProduct(null);
@@ -173,17 +178,14 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
         // Update stock quantity and price with unit conversion
         const product = products.find(p => p.id === productId);
         if (product) {
+          // F5-03: toNfConversionProduct entrega o MESMO conjunto de campos do
+          // auto-import (incluindo package_weight_kg do grupo — a Prioridade 5
+          // do conversor era no-op aqui porque o campo nunca chegava).
           const conv = convertNfToStockUnit(
             currentItem.quantity,
             currentItem.unit,
             currentItem.unit_price,
-            {
-              unit: product.unit,
-              name: product.name,
-              conversion_rate: (product as any).conversion_rate,
-              purchase_unit: (product as any).purchase_unit,
-              purchase_order_unit: (product as any).purchase_order_unit,
-            },
+            toNfConversionProduct(product),
           );
 
           if (conv.needsConfig) {
@@ -223,8 +225,11 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
       } else {
         if (!newName || !newSku || !newCategory) { toast.error('Preencha nome, SKU e categoria'); setSaving(false); return; }
         
-        // Check if SKU already exists - ask user before unifying
-        const { data: existingProduct } = await supabase.from('products').select('id, name, sku, quantity, unit_price, unit').eq('sku', newSku).maybeSingle();
+        // Check if SKU already exists - ask user before unifying.
+        // F5-03: inclui o fragmento compartilhado de conversão — antes este
+        // select não trazia purchase_unit/conversion_rate/package_weight_kg e
+        // o "unificar por SKU" convertia com um produto capado.
+        const { data: existingProduct } = await supabase.from('products').select(`id, name, sku, quantity, unit_price, ${NF_CONVERSION_PRODUCT_SELECT}`).eq('sku', newSku).maybeSingle();
         
         if (existingProduct) {
           // SKU already exists - show confirmation dialog
@@ -289,17 +294,12 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
     setSaving(true);
 
     try {
+      // F5-03: mesmo conjunto de campos do auto-import (via builder único).
       const conv = convertNfToStockUnit(
         currentItem.quantity,
         currentItem.unit,
         currentItem.unit_price,
-        {
-          unit: similarProduct.unit,
-          name: similarProduct.name,
-          conversion_rate: (similarProduct as any).conversion_rate,
-          purchase_unit: (similarProduct as any).purchase_unit,
-          purchase_order_unit: (similarProduct as any).purchase_order_unit,
-        },
+        toNfConversionProduct(similarProduct),
       );
       if (conv.needsConfig) {
         toast.error(`Não foi possível lançar: ${conv.reason}`, { duration: 12000 });
@@ -351,17 +351,12 @@ export default function AddToStockDialog({ open, onOpenChange, items }: Props) {
     setSaving(true);
 
     try {
+      // F5-03: mesmo conjunto de campos do auto-import (via builder único).
       const conv = convertNfToStockUnit(
         currentItem.quantity,
         currentItem.unit,
         currentItem.unit_price,
-        {
-          unit: skuDuplicateProduct.unit,
-          name: skuDuplicateProduct.name,
-          conversion_rate: (skuDuplicateProduct as any).conversion_rate,
-          purchase_unit: (skuDuplicateProduct as any).purchase_unit,
-          purchase_order_unit: (skuDuplicateProduct as any).purchase_order_unit,
-        },
+        toNfConversionProduct(skuDuplicateProduct),
       );
       if (conv.needsConfig) {
         toast.error(`Não foi possível lançar: ${conv.reason}`, { duration: 12000 });

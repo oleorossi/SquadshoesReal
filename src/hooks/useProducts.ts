@@ -52,7 +52,11 @@ export function useProducts() {
             // lê product.product_groups?.consumption_unit ao adicionar material
             // ao BOM. Sem ele cai pro fallback product.unit (estoque, ex: 'un'/
             // 'rolo'), gerando consumo na unidade errada.
-            .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple)')
+            // package_weight_kg incluído (F5-03, 2026-07): AddToStockDialog e
+            // o lançamento em lote do Suppliers convertem NF→estoque via
+            // convertNfToStockUnit; sem o peso da embalagem do grupo a
+            // Prioridade 5 (pacote→massa) bloqueava mesmo com peso cadastrado.
+            .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)')
             .order('updated_at', { ascending: false })
             .range(i * PAGE, (i + 1) * PAGE - 1),
         ));

@@ -29,6 +29,11 @@ export interface MrpNeed {
    *  compra de embalagem é feita no módulo /embalagens — o MRP só mostra a
    *  necessidade; "Gerar OC" não gera PO pra estas linhas. */
   is_packaging?: boolean;
+  /** true quando o produto é ARTESANAL (tira produzida internamente via OS a
+   *  partir da base napa). O MRP só mostra a necessidade; a reposição correta é
+   *  Ordem de Serviço (branch artesanal do trigger de estoque-mínimo) —
+   *  generate_purchase_orders_from_mrp e o cron ROP pulam estas linhas (F3-2). */
+  is_artisanal?: boolean;
 }
 
 export async function listMrpNeeds(): Promise<MrpNeed[]> {

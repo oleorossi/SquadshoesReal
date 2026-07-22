@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  loadHolidayCache, isBusinessDay, computeSectorDailyLoad,
+  loadHolidayCache, isBusinessDay, computeSectorDailyLoad, fetchCategoryDefaultsMap,
   type DailyOpInput, type DailySeverity,
 } from '@/lib/sectorCapacity';
 import { normalizeSector, DISPLAY_SECTORS, type SectorKey } from '@/lib/sectors';
@@ -103,6 +103,12 @@ export function useSectorPeriodLoad(startISO: string, endISO: string) {
           .in('id', refIds as string[]);
         (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
       }
+      // F1-05: fallback de capacidade por categoria (default_lead_times) —
+      // mesma cadeia ficha > categoria do SQL compute_wave_timeline.
+      const categories = Array.from(new Set(
+        Array.from(sheetMap.values()).map((s: any) => s.shoe_category).filter(Boolean),
+      ));
+      const categoryDefaultsMap = await fetchCategoryDefaultsMap(categories as string[]);
       const orderMap = new Map<string, any>();
       orders.forEach((o: any) => orderMap.set(o.id, o));
       const ops: DailyOpInput[] = orders.map((o: any) => ({
@@ -116,7 +122,7 @@ export function useSectorPeriodLoad(startISO: string, endISO: string) {
       const agg = new Map<SectorKey, Agg>();
       for (const s of DISPLAY_SECTORS) agg.set(s.key, { demand: 0, cap: 0, ops: new Map() });
       for (const dayISO of days) {
-        for (const sd of computeSectorDailyLoad(dayISO, ops, sheetMap)) {
+        for (const sd of computeSectorDailyLoad(dayISO, ops, sheetMap, categoryDefaultsMap)) {
           const a = agg.get(sd.sector); if (!a) continue;
           a.demand += sd.plannedPairs;
           a.cap = Math.max(a.cap, sd.capacityPerDay); // capacidade/dia efetiva do setor

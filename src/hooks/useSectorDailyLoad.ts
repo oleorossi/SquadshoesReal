@@ -4,6 +4,7 @@ import { EXCLUDED_ORDER_STATUSES } from '@/lib/orderStatus';
 import {
   loadHolidayCache,
   computeSectorDailyLoad,
+  fetchCategoryDefaultsMap,
   type DailyOpInput,
   type SectorDayLoad,
 } from '@/lib/sectorCapacity';
@@ -107,6 +108,15 @@ export function useSectorDailyLoad(dateISO: string) {
         (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
       }
 
+      // F1-05: fallback de capacidade por categoria (default_lead_times), mesma
+      // cadeia ficha > categoria do checkSectorCapacity e do SQL compute_wave_timeline.
+      // Sem isso, ficha sem capacidade própria caía no lead legado (1–3 dias fixos)
+      // e a carga diária divergia do motor de ondas.
+      const categories = Array.from(new Set(
+        Array.from(sheetMap.values()).map((s: any) => s.shoe_category).filter(Boolean),
+      ));
+      const categoryDefaultsMap = await fetchCategoryDefaultsMap(categories as string[]);
+
       const orderMap = new Map<string, any>();
       orders.forEach((o: any) => orderMap.set(o.id, o));
 
@@ -120,7 +130,7 @@ export function useSectorDailyLoad(dateISO: string) {
         planned_delivery: o.planned_delivery,
         sheet_name: sheetMap.get(o.reference_id)?.name ?? null,
       }));
-      const planned = computeSectorDailyLoad(dateISO, ops, sheetMap);
+      const planned = computeSectorDailyLoad(dateISO, ops, sheetMap, categoryDefaultsMap);
 
       // ── 4. REAL (WIP atual: etapa CORRENTE de cada OP) ──────────────────────
       // Neste schema as etapas abertas de order_stages NÃO têm started_at e não

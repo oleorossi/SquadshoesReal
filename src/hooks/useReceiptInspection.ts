@@ -9,7 +9,23 @@ import { toast } from 'sonner';
  */
 
 export interface ReceivedPO { id: string; order_number: string; supplier_name: string | null; received_date: string | null; }
-export interface POItem { id: string; product_id: string; quantity: number; unit: string | null; products?: { name: string; sku: string | null } | null; }
+export interface POItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+  unit: string | null;
+  products?: {
+    name: string;
+    sku: string | null;
+    // F5-04: campos de conversão compra→estoque — o inspetor digita na unidade
+    // da LINHA da OC, mas move_stock_status opera em unidade de ESTOQUE.
+    unit?: string | null;
+    purchase_unit?: string | null;
+    conversion_rate?: number | null;
+    dimensions_width?: number | null;
+    dimensions_unit?: string | null;
+  } | null;
+}
 export interface Inspection {
   id: string; purchase_order_id: string; product_id: string; qty_received: number;
   qty_approved: number; qty_rejected: number; nc_reason: string; inspector: string; status: string; created_at: string;
@@ -39,7 +55,7 @@ export function usePoItems(poId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('id, product_id, quantity, unit, products(name, sku)')
+        .select('id, product_id, quantity, unit, products(name, sku, unit, purchase_unit, conversion_rate, dimensions_width, dimensions_unit)')
         .eq('purchase_order_id', poId!);
       if (error) throw error;
       return (data ?? []) as unknown as POItem[];

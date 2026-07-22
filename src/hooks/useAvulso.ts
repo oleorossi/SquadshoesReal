@@ -146,7 +146,6 @@ export function useCreateAvulsoPurchaseOrder() {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['mrp-needs'] });
-      qc.invalidateQueries({ queryKey: ['material-needs-report'] });
       if (res?.stockWarning) {
         toast.warning(`OC e conta a pagar criadas, mas o estoque não foi creditado: ${res.stockWarning} Use "Receber" na OC depois.`, { duration: 9000 });
       } else {

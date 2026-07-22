@@ -54,13 +54,54 @@ export type NfConversionResult = {
 };
 
 /**
+ * Campos de `products` que `convertNfToStockUnit` LÊ (F5-03, auditoria
+ * 2026-07). Os 3 caminhos de NF (auto-import do XmlImportDialog, revisão/
+ * manual do AddToStockDialog e lote do Suppliers) montavam o objeto `product`
+ * com selects DIFERENTES: o auto-import não trazia purchase_unit (Prioridade 2
+ * morta) e o manual não trazia package_weight_kg (Prioridade 5 morta) — mesmo
+ * padrão do bug TECHNICAL_SHEET_CONSUMPTION_COLUMNS no consumo. TODO caminho
+ * que chama o conversor tem que buscar este fragmento e passar o objeto por
+ * `toNfConversionProduct`.
+ *
+ * `package_weight_kg` mora em product_groups — o fragmento inclui o join;
+ * `toNfConversionProduct` achata (aceita também o valor já achatado).
+ */
+export const NF_CONVERSION_PRODUCT_SELECT =
+  'unit, purchase_unit, purchase_order_unit, conversion_rate, product_groups!products_group_id_fkey(package_weight_kg)';
+
+type NfConversionProduct = {
+  unit?: string | null;
+  name?: string;
+  conversion_rate?: number | null;
+  purchase_unit?: string | null;
+  purchase_order_unit?: string | null;
+  package_weight_kg?: number | null;
+};
+
+/** Normaliza uma row de `products` (com ou sem join de grupo) pro conjunto
+ *  EXATO de campos que o conversor lê — fonte única dos 3 caminhos de NF. */
+export function toNfConversionProduct(p: any): NfConversionProduct {
+  const group = Array.isArray(p?.product_groups) ? p.product_groups[0] : p?.product_groups;
+  return {
+    unit: p?.unit ?? null,
+    name: p?.name ?? undefined,
+    conversion_rate: p?.conversion_rate ?? null,
+    purchase_unit: p?.purchase_unit ?? null,
+    purchase_order_unit: p?.purchase_order_unit ?? null,
+    package_weight_kg: p?.package_weight_kg ?? group?.package_weight_kg ?? null,
+  };
+}
+
+/**
  * Convert NF-e quantity and unit price to the product's stock unit.
  *
  * Priority:
  * 1. Identical unit (or synonym) → no conversion
  * 2. NF unit matches purchase_unit AND stock unit differs → use conversion_rate
  *    (primary path for "purchased in UN, tracked in g")
- * 3. Any pkg-like NF unit with a configured conversion_rate → apply it
+ * 3. Pkg-like NF unit with a configured conversion_rate → apply it, only when
+ *    the NF unit matches the registered purchase_unit (or none is set, or the
+ *    NF bills generic 'UN' for a packaged purchase_unit)
  * 4. Metric conversion via CONVERSOES table (g↔kg, ml↔l, cm↔m, etc.)
  * 5. Package unit → MASS unit (kg/g/mg) via package_weight_kg on product group
  * 6. Package → comprimento/área/volume sem rate → BLOQUEIA (needsConfig)
@@ -132,8 +173,18 @@ export function convertNfToStockUnit(
     }
   }
 
-  // Priority 3 — Any pkg-like NF unit with a non-trivial conversion_rate
-  if (pkgLike.has(nfCan) && product.conversion_rate && product.conversion_rate !== 1) {
+  // Priority 3 — pkg-like NF unit with a non-trivial conversion_rate, SÓ quando
+  // a unidade da NF casa com a purchase_unit cadastrada (F5-07). Antes aplicava
+  // o rate a QUALQUER pkg-like: NF em 'CX' num produto purchase_unit='rolo'
+  // (rate=500 m/rolo) tratava caixa como rolo em silêncio. Casos aceitos:
+  //  - produto SEM purchase_unit (fallback legado — o rate é a única pista);
+  //  - nfCan === purchaseCan (mesma embalagem — P2 pode ter caído aqui quando
+  //    prodCan === purchaseCan não, mas rate=1);
+  //  - NF em 'UN' genérico com purchase_unit de embalagem (fornecedores faturam
+  //    'UN' pra placa/rolo/caixa — ex.: PLACA EVA faturada como '2 UN').
+  const p3PurchaseMatches =
+    !purchaseCan || nfCan === purchaseCan || (nfCan === 'un' && pkgLike.has(purchaseCan));
+  if (pkgLike.has(nfCan) && product.conversion_rate && product.conversion_rate !== 1 && p3PurchaseMatches) {
     const factor = Number(product.conversion_rate);
     return {
       qty: nfQty * factor,

@@ -1,28 +1,38 @@
 /**
  * PricingByTechnicalSheetPanel — calculadora de markup automática.
  *
- * Auto-preenche o custo de matéria-prima a partir do BOM da ficha técnica
- * selecionada (sheet_materials × products.unit_price × (1 + waste_pct)).
+ * Auto-preenche o custo de matéria-prima a partir do MOTOR CANÔNICO de consumo
+ * (`calculate_order_consumption`, o mesmo do custeio `calculate_order_cost_item`),
+ * precificando as linhas a `products.unit_price` — F6-1 da auditoria de motores.
+ * A soma crua de `sheet_materials` (antiga fonte) inflava ~5× em fichas com
+ * solados alternativos + 2 caixas na BOM e IGNORAVA materiais resolvidos por
+ * grupo (napa/EVA), que estruturalmente nunca entram em `sheet_materials`.
  *
  * Diferente do PricingCalculatorPanel (todo manual), aqui:
  *   • Select de ficha técnica (busca em useTechnicalSheets)
- *   • Custo MP é READ-ONLY — vem do BOM
+ *   • Custo MP é READ-ONLY — vem do motor de explosão (grade base de 12 pares)
+ *   • Filtro de caixa por modo de embalagem (espelho de filter_caixa_by_packaging_mode)
  *   • Breakdown de materiais visível pra auditoria
+ *   • MOD default vem das bom_operations da ficha (mesma fonte do custeio — F6-4);
+ *     labor_costs (tabela global legada) só como fallback de ficha sem operações
  *   • Overhead vem de cost_policies (mesma fonte do panel manual)
  *   • Inputs MANUAIS: impostos, factoring, dias, comissão, margem, frete
  *   • Mesma fórmula de markup divisor → preço sugerido + margem real
  */
 import { useState, useMemo, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calculator, CurrencyDollar as DollarSign, FileText, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, UserCheck, Cube as Box, Percent, FloppyDisk as Save, ClockCounterClockwise as History, Trash as Trash2 } from '@phosphor-icons/react';
+import { supabase } from '@/integrations/supabase/client';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useLaborCosts } from '@/hooks/useFinanceAdvanced';
-import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
-import { useComponentSheets } from '@/hooks/useComponentSheets';
-import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
+import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
+import { useBomOperations } from '@/hooks/useBomOperations';
+import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode } from '@/hooks/useSaleOrders';
 import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { usePricingSimulations, useCreatePricingSimulation, useDeletePricingSimulation } from '@/hooks/usePricingSimulations';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -34,6 +44,11 @@ import { parseDaysInput, computeMarkupPrice, deriveMarginFromTargetProfit } from
 
 const STORAGE_KEY = 'pricing-by-sheet-state';
 
+/** Grade base (~1 ficha fechada). O motor é chamado com esta quantidade e o
+ *  resultado é dividido de volta pra R$/par — evita distorção de itens com
+ *  arredondamento por ficha (caixa colmeia, tiras via CEIL de fichas). */
+const GRADE_BASE_QTY = 12;
+
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -44,6 +59,7 @@ function fmtBRL(v: number) {
 
 type SavedState = {
   sheetId?: string;
+  packagingMode?: string;
   factoringConfigId?: string;
   taxPct?: string;
   factoringRatePct?: string;
@@ -73,25 +89,50 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   const saved = useMemo(() => loadSaved(), []);
   const { data: costPolicy } = useCostPolicies();
   const { data: sheets = [], isLoading: loadingSheets } = useTechnicalSheets();
-  const { data: componentSheets = [] } = useComponentSheets();
   const { data: laborCosts = [] } = useLaborCosts();
   const { data: factoringConfigs = [] } = useFactoringConfigs();
   const { data: simulations = [] } = usePricingSimulations(null);
   const createSim = useCreatePricingSimulation();
   const deleteSim = useDeletePricingSimulation();
 
-  // Overhead derivado de cost_policies (mesma fórmula do panel manual)
+  // Overhead de cost_policies — F6-3: cadeia ÚNICA, idêntica ao motor SQL
+  // (calculate_order_cost_item): overhead_rate_per_pair direto; quando 0/nulo,
+  // deriva de overhead_monthly_total ÷ monthly_production_target (meta 0 → 0,
+  // espelhando o NULLIF do SQL — antes dividia por 1 e mostrava o total mensal).
   const policyOverhead = useMemo(() => {
     if (!costPolicy) return 0;
-    const target = costPolicy.monthly_production_target || 1;
-    return (costPolicy.overhead_monthly_total || 0) / target;
+    const rate = Number(costPolicy.overhead_rate_per_pair) || 0;
+    if (rate > 0) return rate;
+    const target = Number(costPolicy.monthly_production_target) || 0;
+    return target > 0 ? (Number(costPolicy.overhead_monthly_total) || 0) / target : 0;
   }, [costPolicy]);
 
-  // Mão de obra: Σ (hour_cost × time_per_unit_minutes / 60) das operações ATIVAS
-  // Convenção: pricing por par usa o conjunto completo de operações (todas as
-  // etapas que um par passa). Operadores podem cadastrar uma operação por
-  // setor (Corte, Costura, Montagem, Acabamento etc.) em /finance.
-  const laborBreakdown = useMemo(
+  const [sheetId, setSheetId] = useState<string>(initialSheetId || saved.sheetId || '');
+
+  // Mão de obra — F6-4: a fonte canônica de MOD é `bom_operations` da FICHA
+  // selecionada (Σ minutos/60 × cost_per_hour das operações ativas), a MESMA
+  // query do custeio `calculate_order_cost_item` e da aba de margem da ficha.
+  // A tabela global `labor_costs` (Financeiro · Comissões & MO) fica só como
+  // FALLBACK documentado pra ficha sem NENHUMA operação cadastrada — ela não
+  // tem coluna de ficha, então nunca reproduz o MOD por modelo do custeio.
+  const { data: bomOperations = [] } = useBomOperations(sheetId || null);
+
+  const bomLaborBreakdown = useMemo(
+    () =>
+      (bomOperations || [])
+        // Espelho do filtro do custeio: active IS NOT FALSE + tempo/custo não-nulos.
+        .filter((op: any) => op.active !== false && op.standard_time_minutes != null && op.cost_per_hour != null)
+        .map((op: any) => ({
+          id: op.id as string,
+          operation: (op.operation_name as string) || '—',
+          hourCost: Number(op.cost_per_hour) || 0,
+          minutesPerUnit: Number(op.standard_time_minutes) || 0,
+          costPerUnit: ((Number(op.cost_per_hour) || 0) * (Number(op.standard_time_minutes) || 0)) / 60,
+        })),
+    [bomOperations]
+  );
+
+  const legacyLaborBreakdown = useMemo(
     () =>
       (laborCosts || [])
         .filter((l: any) => l.active)
@@ -104,18 +145,25 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
         })),
     [laborCosts]
   );
+
+  const laborSource: 'ficha' | 'labor_costs' =
+    (bomOperations || []).length > 0 ? 'ficha' : 'labor_costs';
+  const laborBreakdown = laborSource === 'ficha' ? bomLaborBreakdown : legacyLaborBreakdown;
   const policyLaborCost = useMemo(
     () => laborBreakdown.reduce((sum, l) => sum + l.costPerUnit, 0),
     [laborBreakdown]
   );
-
-  const [sheetId, setSheetId] = useState<string>(initialSheetId || saved.sheetId || '');
 
   // Se o deep-link mudar (ex: navegação interna sem unmount), troca a ficha
   useEffect(() => {
     if (initialSheetId && initialSheetId !== sheetId) setSheetId(initialSheetId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSheetId]);
+  // Modo de embalagem simulado — decide QUAL caixa da BOM entra no custo
+  // (espelho do filter_caixa_by_packaging_mode aplicado pelo custeio ao PV).
+  const [packagingMode, setPackagingMode] = useState<PackagingMode>(
+    (saved.packagingMode as PackagingMode) || 'colmeia'
+  );
   const [factoringConfigId, setFactoringConfigId] = useState(saved.factoringConfigId ?? '');
   const [taxPct, setTaxPct] = useState(saved.taxPct ?? '');
   const [factoringRatePct, setFactoringRatePct] = useState(saved.factoringRatePct ?? '');
@@ -132,11 +180,11 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   // Persiste a cada mudança
   useEffect(() => {
     const state: SavedState = {
-      sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl,
+      sheetId, packagingMode, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl,
       commissionPct, freightValue, overheadManual, laborManual, packagingManual,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [sheetId, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, laborManual, packagingManual]);
+  }, [sheetId, packagingMode, factoringConfigId, taxPct, factoringRatePct, days, profitMarginPct, targetProfitBrl, commissionPct, freightValue, overheadManual, laborManual, packagingManual]);
 
   // Auto-preenche factoring quando o usuário escolhe uma config
   useEffect(() => {
@@ -147,52 +195,89 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
     setDays(String(cfg.receiving_days || ''));
   }, [factoringConfigId, factoringConfigs]);
 
-  const { data: materials = [], isLoading: loadingMaterials } = useSheetMaterials(sheetId || null);
+  // F6-1: custo MP vem do MOTOR CANÔNICO de consumo (calculate_order_consumption,
+  // wrapper do by_grade — o mesmo que alimenta calculate_order_cost_item), NÃO da
+  // soma crua de sheet_materials. O motor resolve 1 solado (não soma alternativas),
+  // usa sole_standard_items pras colas e inclui os materiais resolvidos por grupo
+  // (napa/EVA/placa) que nunca entram na BOM. Chamado com a grade base (12 pares)
+  // e dividido de volta pra R$/par. Cor vazia → resolução default do grupo.
+  const { data: engineData, isLoading: loadingMaterials } = useQuery({
+    queryKey: ['pricing-sheet-engine-consumption', sheetId],
+    enabled: !!sheetId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('calculate_order_consumption', {
+        p_reference_id: sheetId,
+        p_order_quantity: GRADE_BASE_QTY,
+        p_color: '',
+      });
+      if (error) throw error;
+      const lines = (Array.isArray(data) ? data : []) as any[];
+      const ids = Array.from(new Set(lines.map((l: any) => l?.product_id).filter(Boolean))) as string[];
+      let products: any[] = [];
+      if (ids.length > 0) {
+        const { data: prods, error: prodErr } = await supabase
+          .from('products')
+          .select('id, name, unit, unit_price')
+          .in('id', ids);
+        if (prodErr) throw prodErr;
+        products = prods || [];
+      }
+      return { lines, products };
+    },
+  });
 
-  // Mapa product_id → component_sheet (pra waste_pct)
-  const componentSheetMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    componentSheets.forEach((cs: any) => { map[cs.product_id] = cs; });
-    return map;
-  }, [componentSheets]);
-
-  // Custo MP vindo do BOM (replica getCostPerPair de TechnicalSheets.tsx:4301)
-  const bomBreakdown = useMemo(() => {
-    return materials
-      .map((m: any) => {
-        const prod = m.products;
-        if (!prod) return null;
-        const unitPrice = Number(prod.unit_price || 0);
-        const cs = componentSheetMap[m.product_id] || null;
-        const wastePct = cs ? (cs.waste_pct || 0) : 0;
-        const qty = Number(m.quantity_per_unit) || 0;
-        // Regra canônica: material de área (dm²/par) com produto em unidade física
-        // (m/cm/placa) é convertido pela largura/área da ficha ANTES de × preço.
-        const { cost: finalCost, converted, widthMissing } = bomMaterialCostPerPair(qty, unitPrice, prod.unit, cs);
-        const rawCost = qty * unitPrice; // referência crua (sem perda/conversão), só p/ exibição
-        return {
-          id: m.id,
-          name: prod.name || '—',
-          unit: prod.unit || 'un',
-          quantity: qty,
-          unitPrice,
-          wastePct,
-          rawCost,
-          finalCost,
-          converted,
-          widthMissing,
-        };
+  // Precifica as linhas do motor. Filtro de caixa por modo de embalagem é o
+  // espelho TS de filter_caixa_by_packaging_mode (só age quando a ficha tem
+  // ≥ 2 tipos de caixa E o modo escolhido existe entre eles).
+  const engineBreakdown = useMemo(() => {
+    if (!engineData) return [] as Array<{
+      key: string; component: string; name: string; unit: string;
+      qtyPerPair: number; unitPrice: number; costPerPair: number;
+      resolved: boolean; unitMismatch: boolean; warning: string | null;
+    }>;
+    const productMap = new Map<string, any>(engineData.products.map((p: any) => [p.id, p]));
+    const presentCaixaTypes = new Set<CollectiveType>();
+    engineData.lines.forEach((l: any) => {
+      const prod = productMap.get(l?.product_id);
+      const t = caixaCollectiveTypeFromName(prod?.name ?? l?.product_name);
+      if (t) presentCaixaTypes.add(t);
+    });
+    return engineData.lines
+      .filter((l: any) => {
+        const prod = productMap.get(l?.product_id);
+        return shouldShowCaixaForMode(prod?.name ?? l?.product_name, packagingMode, presentCaixaTypes);
       })
-      .filter(Boolean) as Array<{
-        id: string; name: string; unit: string; quantity: number;
-        unitPrice: number; wastePct: number; rawCost: number; finalCost: number;
-        converted: boolean; widthMissing: boolean;
-      }>;
-  }, [materials, componentSheetMap]);
+      .map((l: any, idx: number) => {
+        const prod = productMap.get(l?.product_id);
+        const resolved = !!l?.product_id && !!prod;
+        const unitPrice = Number(prod?.unit_price) || 0;
+        const required = Number(l?.required) || 0;
+        const lineUnit = String(l?.unit ?? prod?.unit ?? '').trim();
+        const productUnit = String(prod?.unit ?? '').trim();
+        // Guard de unidade (espírito do convert_to_product_unit do custeio): o
+        // motor já emite na unidade do produto; se divergir, NÃO precifica —
+        // linha entra zerada com aviso visível em vez de custo errado calado.
+        const unitMismatch = !!(lineUnit && productUnit && lineUnit.toLowerCase() !== productUnit.toLowerCase());
+        const costPerPair = resolved && !unitMismatch ? (unitPrice * required) / GRADE_BASE_QTY : 0;
+        return {
+          key: `${l?.product_id ?? 'sem-produto'}-${l?.component ?? ''}-${idx}`,
+          component: String(l?.component ?? '—'),
+          name: String(prod?.name ?? l?.product_name ?? l?.material ?? '—'),
+          unit: lineUnit || productUnit || 'un',
+          qtyPerPair: required / GRADE_BASE_QTY,
+          unitPrice,
+          costPerPair,
+          resolved,
+          unitMismatch,
+          warning: (l?.consumption_warning || l?.conversion_warning || null) as string | null,
+        };
+      });
+  }, [engineData, packagingMode]);
 
   const totalMaterialCost = useMemo(
-    () => bomBreakdown.reduce((sum, b) => sum + b.finalCost, 0),
-    [bomBreakdown]
+    () => engineBreakdown.reduce((sum, b) => sum + b.costPerPair, 0),
+    [engineBreakdown]
   );
 
   const selectedSheet = useMemo(
@@ -285,7 +370,8 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
             Ficha técnica de origem
           </CardTitle>
           <CardDescription className="text-xs">
-            Custo de matéria-prima é calculado automaticamente pelo BOM da ficha selecionada.
+            Custo de matéria-prima é calculado automaticamente pelo motor de consumo da ficha
+            selecionada — a mesma explosão usada no custeio do pedido.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -325,16 +411,36 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               {loadingMaterials && <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {/* Modo de embalagem simulado — mesmo filtro de caixa do custeio do PV */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <Label className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
+                <Box className="h-3 w-3" /> Modo de embalagem simulado
+              </Label>
+              <Select value={packagingMode} onValueChange={(v) => setPackagingMode(v as PackagingMode)}>
+                <SelectTrigger className="h-8 text-xs sm:max-w-[260px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PACKAGING_MODE_CANONICAL.map(m => (
+                    <SelectItem key={m} value={m} className="text-xs">
+                      {PACKAGING_MODE_LABELS[m]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {loadingMaterials ? (
               <Skeleton className="h-32" />
-            ) : bomBreakdown.length === 0 ? (
+            ) : engineBreakdown.length === 0 ? (
               <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 flex items-start gap-2 text-xs">
                 <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold">Ficha sem materiais no BOM</p>
+                  <p className="font-semibold">Motor de consumo não retornou materiais</p>
                   <p className="text-muted-foreground mt-0.5">
-                    Cadastre os materiais na aba BOM da ficha técnica antes de simular preço.
+                    Preencha as Especificações (solado/forração/palmilha) e o BOM da ficha técnica
+                    antes de simular preço.
                   </p>
                 </div>
               </div>
@@ -344,25 +450,34 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-muted/50 border-b">
+                        <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Componente</th>
                         <th className="text-left py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Material</th>
                         <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Consumo/par</th>
                         <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">R$/un</th>
-                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Perda</th>
-                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Custo</th>
+                        <th className="text-right py-2 px-3 font-semibold uppercase tracking-wider text-xs text-muted-foreground">Custo/par</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {bomBreakdown.map(b => (
-                        <tr key={b.id}>
-                          <td className="py-1.5 px-3 font-medium">{b.name}</td>
+                      {engineBreakdown.map(b => (
+                        <tr key={b.key}>
+                          <td className="py-1.5 px-3 text-muted-foreground">{b.component}</td>
+                          <td className="py-1.5 px-3 font-medium">
+                            {b.name}
+                            {!b.resolved && (
+                              <Badge variant="outline" className="ml-1.5 text-[10px] border-warning/50 text-warning">não resolvido</Badge>
+                            )}
+                            {b.unitMismatch && (
+                              <Badge variant="outline" className="ml-1.5 text-[10px] border-warning/50 text-warning">unidade divergente</Badge>
+                            )}
+                            {b.warning && (
+                              <Badge variant="outline" className="ml-1.5 text-[10px] border-warning/50 text-warning" title={b.warning}>aviso</Badge>
+                            )}
+                          </td>
                           <td className="py-1.5 px-3 text-right font-mono tabular-nums">
-                            {b.quantity.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {b.unit}
+                            {b.qtyPerPair.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {b.unit}
                           </td>
                           <td className="py-1.5 px-3 text-right font-mono tabular-nums">{fmtBRL(b.unitPrice)}</td>
-                          <td className="py-1.5 px-3 text-right font-mono tabular-nums text-muted-foreground">
-                            {b.wastePct > 0 ? `+${b.wastePct}%` : '—'}
-                          </td>
-                          <td className="py-1.5 px-3 text-right font-mono tabular-nums font-bold">{fmtBRL(b.finalCost)}</td>
+                          <td className="py-1.5 px-3 text-right font-mono tabular-nums font-bold">{fmtBRL(b.costPerPair)}</td>
                         </tr>
                       ))}
                       <tr className="bg-muted/30 font-bold">
@@ -372,9 +487,24 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                     </tbody>
                   </table>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Fórmula: Σ (consumo/par × preço unitário × (1 + perda %)) por material do BOM.
+                <p className="text-xs text-muted-foreground">
+                  Linhas do motor canônico de consumo (grade base de {GRADE_BASE_QTY} pares,
+                  1 solado resolvido, caixa filtrada pelo modo de embalagem) × preço unitário
+                  de estoque — mesma composição do custeio do pedido.
                 </p>
+                {(selectedSheet as any)?.has_straps && (
+                  <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 flex items-start gap-2 text-xs">
+                    <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Tiras não incluídas no custo MP</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        O consumo de tiras depende das cores escolhidas no PV — entra no custeio do
+                        pedido (calculate_order_cost), não nesta simulação por ficha. Considere uma
+                        folga na margem ou some manualmente.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </CardContent>
@@ -393,8 +523,18 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               </Badge>
             </CardTitle>
             <CardDescription className="text-xs">
-              Soma das operações ativas em <code>labor_costs</code>: hora × tempo/par ÷ 60.
-              Cadastre as operações em <strong>Financeiro · Operacional · Comissões & MO</strong>.
+              {laborSource === 'ficha' ? (
+                <>
+                  Operações da <strong>ficha selecionada</strong> (aba Operações — mesma fonte do
+                  custeio do pedido): hora × tempo/par ÷ 60, só ativas.
+                </>
+              ) : (
+                <>
+                  Ficha sem operações próprias — usando o fallback global de{' '}
+                  <code>labor_costs</code> (Financeiro · Operacional · Comissões & MO). Cadastre as
+                  operações na aba <strong>Operações da ficha técnica</strong> pra MOD por modelo.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -404,8 +544,9 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
                 <div>
                   <p className="font-semibold">Nenhuma operação cadastrada</p>
                   <p className="text-muted-foreground mt-0.5">
-                    O custo de mão de obra ficará zero. Use o campo manual abaixo
-                    pra simular um valor, ou cadastre operações reais no módulo financeiro.
+                    O custo de mão de obra ficará zero. Cadastre as operações na aba
+                    <strong> Operações da ficha técnica</strong> (fonte do custeio), ou use o
+                    campo manual abaixo pra simular um valor.
                   </p>
                 </div>
               </div>
