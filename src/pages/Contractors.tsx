@@ -13,6 +13,7 @@ import { ReceivePiecesDialog } from '@/components/bottlenecks/ReceivePiecesDialo
 import { SECTOR_LABEL, SectorKey } from '@/hooks/useSectorBottlenecks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -2160,14 +2161,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Rendimento (m saída / 1m base) *</Label>
-                  <Input type="number" step="0.01" min={0.01} value={editingRecipe.yield_per_meter || ''} onChange={e => setEditingRecipe(p => ({ ...p, yield_per_meter: Number(e.target.value) }))} className="h-9 font-mono" placeholder="Ex: 88" />
+                  <NumberInput min={0.01} value={editingRecipe.yield_per_meter} onChange={n => setEditingRecipe(p => ({ ...p, yield_per_meter: n }))} className="h-9" placeholder="Ex: 88" />
                   {(editingRecipe.yield_per_meter || 0) > 0 && (
                     <p className="text-xs text-muted-foreground">1m base → {editingRecipe.yield_per_meter}m saída</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">MO por metro saída (R$)</Label>
-                  <Input type="number" step="0.01" min={0} value={editingRecipe.labor_cost_per_meter || ''} onChange={e => setEditingRecipe(p => ({ ...p, labor_cost_per_meter: Number(e.target.value) }))} className="h-9 font-mono" placeholder="0.00" />
+                  <NumberInput min={0} value={editingRecipe.labor_cost_per_meter} onChange={n => setEditingRecipe(p => ({ ...p, labor_cost_per_meter: n }))} className="h-9" placeholder="0.00" />
                 </div>
               </div>
             </div>
@@ -2231,7 +2232,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Prazo de Pagamento (dias)</Label>
-              <Input type="number" min={1} value={editingContractor.payment_days ?? 15} onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }} onChange={e => setEditingContractor(p => ({ ...p, payment_days: Number(e.target.value) || 15 }))} className="h-9 font-mono" />
+              <NumberInput min={1} decimals={0} value={editingContractor.payment_days ?? 15} onChange={n => setEditingContractor(p => ({ ...p, payment_days: n || 15 }))} className="h-9" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">Status</Label>
@@ -2478,7 +2479,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </div>
                             <div className="sm:col-span-2 space-y-1.5">
                               <Label className="text-xs text-muted-foreground">Metros necessários para o pedido (m)</Label>
-                              <Input type="number" step="0.01" min={0} value={artNeededForOrder || ''} onChange={e => setArtNeededForOrder(Number(e.target.value))} className="h-9 font-mono" placeholder="0.00" />
+                              <NumberInput min={0} value={artNeededForOrder} onChange={n => setArtNeededForOrder(n)} className="h-9" placeholder="0.00" />
                             </div>
                           </div>
                         );
@@ -2599,7 +2600,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       </div>
                       <div className={cn("w-24 space-y-1.5", mat.completed && "opacity-60")}>
                         <Label className="text-xs text-muted-foreground">Metros</Label>
-                        <Input type="number" step="0.01" min={0} placeholder="0.00" value={mat.meters || ''} onChange={e => updateMaterial(idx, 'meters', Number(e.target.value))} className="h-8 text-sm font-mono" />
+                        <NumberInput min={0} placeholder="0.00" value={mat.meters} onChange={n => updateMaterial(idx, 'meters', n)} className="h-8 text-sm" />
                       </div>
                       <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Remover material" onClick={() => removeMaterial(idx)} disabled={(editingOrder.materials_sent || []).length <= 1}><X className="h-3.5 w-3.5 text-destructive" /></Button>
                     </div>
@@ -2643,18 +2644,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                   <Label className="text-xs font-medium text-muted-foreground">
                     Quantidade (pares) {isArtisanal && <span className="text-muted-foreground/70 font-normal">(não aplicável)</span>}
                   </Label>
-                  <Input
-                    type="number"
-                    step="1"
+                  <NumberInput
                     min={1}
+                    decimals={0}
                     value={editingOrder.quantity ?? 1}
                     disabled={isArtisanal}
-                    onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                    onChange={e => {
-                      const v = e.target.value === '' ? 1 : Math.max(1, Math.floor(Number(e.target.value)));
-                      setEditingOrder(p => ({ ...p, quantity: v }));
-                    }}
-                    className="h-9 font-mono"
+                    onChange={n => setEditingOrder(p => ({ ...p, quantity: Math.max(1, Math.floor(n)) }))}
+                    className="h-9"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -2662,17 +2658,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     {isArtisanal ? 'Valor Total (R$)' : 'Valor por par (R$)'}
                     {isArtisanal && artisanalCalc && <span className="text-primary font-normal"> (calculado pela receita)</span>}
                   </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
+                  <NumberInput
                     min={0}
                     value={editingOrder.unit_price ?? ''}
-                    onFocus={e => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                    onChange={e => {
-                      const v = e.target.value === '' ? 0 : Number(e.target.value);
-                      setEditingOrder(p => ({ ...p, unit_price: v }));
-                    }}
-                    className="h-9 font-mono"
+                    onChange={n => setEditingOrder(p => ({ ...p, unit_price: n }))}
+                    className="h-9"
                   />
                 </div>
                 <div className="sm:col-span-2 flex items-end justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3.5 py-3">

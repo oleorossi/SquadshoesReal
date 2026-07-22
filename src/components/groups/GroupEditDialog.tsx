@@ -321,15 +321,15 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <Label className="text-xs">Comprimento</Label>
-              <Input type="number" value={dimLength || ''} onChange={e => setDimLength(Number(e.target.value))} className="h-8 text-xs mt-1" />
+              <NumberInput value={dimLength} onChange={n => setDimLength(n)} className="h-8 text-xs mt-1" />
             </div>
             <div>
               <Label className="text-xs">Largura</Label>
-              <Input type="number" value={dimWidth || ''} onChange={e => setDimWidth(Number(e.target.value))} className="h-8 text-xs mt-1" />
+              <NumberInput value={dimWidth} onChange={n => setDimWidth(n)} className="h-8 text-xs mt-1" />
             </div>
             <div>
               <Label className="text-xs">Espessura</Label>
-              <Input type="number" value={dimThickness || ''} onChange={e => setDimThickness(Number(e.target.value))} className="h-8 text-xs mt-1" />
+              <NumberInput value={dimThickness} onChange={n => setDimThickness(n)} className="h-8 text-xs mt-1" />
             </div>
             <div>
               <Label className="text-xs">Unidade</Label>
@@ -344,7 +344,7 @@ function GroupDimensionsEditor({ groupId }: { groupId: string }) {
             </div>
             <div>
               <Label className="text-xs">Perda (%)</Label>
-              <Input type="number" min="0" step="0.1" value={String(wastePct)} onChange={e => { const v = parseFloat(e.target.value); setWastePct(Number.isFinite(v) ? v : 0); }} className="h-8 text-xs mt-1" />
+              <NumberInput min={0} value={wastePct} onChange={n => setWastePct(n)} className="h-8 text-xs mt-1" />
             </div>
           </div>
           <div className="flex justify-end mt-3">
@@ -1012,24 +1012,20 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">Rendimento (m² saída / m base)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          value={artYieldPerMeter || ''}
-                          onChange={e => setArtYieldPerMeter(parseFloat(e.target.value) || 1)}
+                        <NumberInput
+                          min={0.01}
+                          value={artYieldPerMeter}
+                          onChange={n => setArtYieldPerMeter(n)}
                           className="mt-1 h-9"
                           placeholder="Ex: 0.85"
                         />
                       </div>
                       <div>
                         <Label className="text-xs">Custo MO (R$/m)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={artLaborCost || ''}
-                          onChange={e => setArtLaborCost(parseFloat(e.target.value) || 0)}
+                        <NumberInput
+                          min={0}
+                          value={artLaborCost}
+                          onChange={n => setArtLaborCost(n)}
                           className="mt-1 h-9"
                           placeholder="Ex: 2.50"
                         />
@@ -1084,12 +1080,10 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                 {show.unitWeight && (
                 <div>
                   <Label htmlFor="edit-group-weight">Peso Unitário (kg)</Label>
-                  <Input
+                  <NumberInput
                     id="edit-group-weight"
-                    type="number"
-                    step="0.001"
-                    value={unitWeightKg || ''}
-                    onChange={e => setUnitWeightKg(parseFloat(e.target.value) || 0)}
+                    value={unitWeightKg}
+                    onChange={n => setUnitWeightKg(n)}
                     className="mt-1"
                     placeholder="Ex: 0.250"
                   />

@@ -7,7 +7,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -357,11 +357,11 @@ export default function LeadTime() {
                          />
                           <div className="space-y-1.5">
                             <Label className="text-xs uppercase font-bold text-muted-foreground tracking-wider">Expedição</Label>
-                            <Input
-                              type="number"
+                            <NumberInput
+                              decimals={0}
                               className="h-8 text-xs font-semibold"
                               value={form.expedition_capacity_per_day}
-                              onChange={(e) => setForm({ ...form, expedition_capacity_per_day: parseInt(e.target.value) || 0 })}
+                              onChange={n => setForm({ ...form, expedition_capacity_per_day: n })}
                             />
                             <span className="text-xs text-muted-foreground/70">prs/dia</span>
                           </div>
@@ -578,12 +578,12 @@ function NumField({
     <div className="space-y-1.5">
       <Label className="text-xs font-medium leading-none text-muted-foreground uppercase tracking-wider">{label}</Label>
       <div className="relative">
-        <Input
-          type="number"
+        <NumberInput
           min={0}
+          decimals={0}
           className="pr-12 h-9 text-sm"
           value={value}
-          onChange={(e) => onChange(Math.max(0, Number(e.target.value || 0)))}
+          onChange={n => onChange(Math.max(0, n))}
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
           {unit}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CalendarBlank as CalendarDays, TrendUp as TrendingUp } from '@phosphor-icons/react';
@@ -108,12 +108,12 @@ export function MesaCapacityDialog({
             <p className="text-xs text-muted-foreground">
               Remanejando pessoas você pode aumentar o ritmo. Informe a nova capacidade diária.
             </p>
-            <Input
+            <NumberInput
               id="new-cap"
-              type="number"
               min={1}
+              decimals={0}
               value={newCapacity}
-              onChange={e => setNewCapacity(Math.max(1, Number(e.target.value) || 1))}
+              onChange={n => setNewCapacity(Math.max(1, n))}
               className="font-mono"
             />
           </div>

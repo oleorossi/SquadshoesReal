@@ -10,6 +10,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,7 +31,7 @@ function NumField({ label, unit = '%', value, onChange }: { label: string; unit?
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">{label} <span className="text-muted-foreground font-normal">({unit})</span></Label>
-      <Input type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : (parseFloat(e.target.value) || 0))} className="h-8" />
+      <NumberInput value={value} onChange={(n) => onChange(n === 0 ? null : n)} className="h-8" />
     </div>
   );
 }

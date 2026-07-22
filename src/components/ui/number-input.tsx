@@ -20,9 +20,12 @@ interface NumberInputProps {
    * estava em kg.
    */
   unit?: string;
+  /** Foca o campo automaticamente ao montar (ex.: input de quantidade que abre
+   *  em dialog). Opcional — sem efeito nos demais usos. */
+  autoFocus?: boolean;
 }
 
-export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit }: NumberInputProps) {
+export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit, autoFocus }: NumberInputProps) {
   const [displayValue, setDisplayValue] = React.useState("");
 
   const formatValue = (num: number | string | null | undefined): string => {
@@ -87,6 +90,7 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
       onBlur={handleBlur}
       required={required}
       disabled={disabled}
+      autoFocus={autoFocus}
       placeholder={placeholder || "0"}
       className={cn(
         "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm font-mono",

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -133,17 +133,16 @@ export function OrderMatrixForm({
                   </Tooltip>
                 )}
               </div>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
-                inputMode="numeric"
+                decimals={0}
                 className={cn(
                   'text-center font-mono w-14 h-9',
                   conjugated && 'border-blue-500/40 focus-visible:ring-blue-500',
                 )}
-                value={grid[size] || ''}
-                onChange={(e) =>
-                  setGrid((prev) => ({ ...prev, [size]: parseInt(e.target.value) || 0 }))
+                value={grid[size]}
+                onChange={(n) =>
+                  setGrid((prev) => ({ ...prev, [size]: n }))
                 }
               />
             </div>

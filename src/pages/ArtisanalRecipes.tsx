@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -544,25 +545,18 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-[11px] text-muted-foreground">Rendimento (m/m base) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <NumberInput
                         min={0.01}
                         value={row.yield_per_meter ?? 1}
-                        onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                        onChange={(e) => setBaseRow(i, { yield_per_meter: Number(e.target.value) || 0 })}
+                        onChange={(n) => setBaseRow(i, { yield_per_meter: n })}
                         className="h-9 font-mono"
                       />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[11px] text-muted-foreground">MO / metro (R$)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min={0}
+                      <NumberInput
                         value={row.labor_cost_per_meter ?? 0}
-                        onFocus={(e) => { if (Number(e.target.value) === 0) e.target.value = ''; }}
-                        onChange={(e) => setBaseRow(i, { labor_cost_per_meter: Number(e.target.value) || 0 })}
+                        onChange={(n) => setBaseRow(i, { labor_cost_per_meter: n })}
                         className="h-9 font-mono"
                       />
                     </div>
@@ -580,26 +574,20 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
               <Label className="text-xs font-medium text-muted-foreground">
                 Largura de corte da tira (mm)
               </Label>
-              <div className="relative">
-                <Input
-                  type="number"
-                  step="1"
-                  min={1}
-                  placeholder="Ex: 150"
-                  value={editing.cut_width_mm ?? ''}
-                  onChange={(e) =>
-                    setEditing((p) => ({
-                      ...p,
-                      cut_width_mm:
-                        e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
-                    }))
-                  }
-                  className="h-9 font-mono pr-10"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  mm
-                </span>
-              </div>
+              <NumberInput
+                min={1}
+                decimals={0}
+                placeholder="Ex: 150"
+                unit="mm"
+                value={editing.cut_width_mm}
+                onChange={(n) =>
+                  setEditing((p) => ({
+                    ...p,
+                    cut_width_mm: n === 0 ? null : n,
+                  }))
+                }
+                className="h-9 font-mono"
+              />
               <p className="text-xs text-muted-foreground">
                 Largura da tira para o cálculo de <strong>corte do rolo</strong> no PV
                 (rolo padrão 40 m × 1370 mm). Deixe vazio se a tira não é cortada de rolo.
@@ -610,18 +598,13 @@ export default function ArtisanalRecipes({ embedded = false }: { embedded?: bool
               <Label className="text-xs font-medium text-muted-foreground">
                 Tempo base por metro (min/m)
               </Label>
-              <Input
-                type="number"
-                step="1"
-                min={0}
+              <NumberInput
+                decimals={0}
                 value={editing.base_time_minutes ?? 0}
-                onFocus={(e) => {
-                  if (Number(e.target.value) === 0) e.target.value = '';
-                }}
-                onChange={(e) =>
+                onChange={(n) =>
                   setEditing((p) => ({
                     ...p,
-                    base_time_minutes: Math.max(0, Number(e.target.value) || 0),
+                    base_time_minutes: n,
                   }))
                 }
                 className="h-9 font-mono"

@@ -11,6 +11,7 @@ import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { NumberInput } from '@/components/ui/number-input';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 
@@ -415,11 +416,9 @@ export default function MobileNewOrder() {
                 />
                 <div className="mt-2 flex items-center gap-2">
                   <label className="text-xs text-muted-foreground">Preço/par:</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
+                  <NumberInput
                     value={it.unit_price}
-                    onChange={e => setItems(items.map((x, i) => i === idx ? { ...x, unit_price: Number(e.target.value) || 0 } : x))}
+                    onChange={n => setItems(items.map((x, i) => i === idx ? { ...x, unit_price: n } : x))}
                     className="w-24 px-2 py-1 text-sm border rounded font-mono"
                   />
                 </div>
@@ -694,12 +693,11 @@ function GradeEditor({ grade, onChange }: { grade: Record<string, number>; onCha
       {SIZE_RANGE_ADULT.map(sz => (
         <div key={sz} className="border rounded p-1 text-center">
           <p className="text-[10px] font-mono uppercase">{sz}</p>
-          <input
-            type="number"
-            inputMode="numeric"
+          <NumberInput
             min={0}
-            value={grade[sz] || ''}
-            onChange={e => onChange({ ...grade, [sz]: Number(e.target.value) || 0 })}
+            decimals={0}
+            value={grade[sz]}
+            onChange={n => onChange({ ...grade, [sz]: n })}
             className="w-full text-center text-sm font-mono py-1"
           />
         </div>

@@ -12,6 +12,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -270,15 +271,15 @@ export default function Patrimonio() {
               <div className="space-y-1.5"><Label>Data aquisição</Label><Input type="date" value={form.acquisition_date} onChange={(e) => setForm((f) => ({ ...f, acquisition_date: e.target.value }))} /></div>
               <div className="space-y-1.5">
                 <Label>Custo <span className="text-muted-foreground font-normal">(R$)</span></Label>
-                <Input type="number" value={form.acquisition_cost} onChange={(e) => setForm((f) => ({ ...f, acquisition_cost: parseFloat(e.target.value) || 0 }))} />
+                <NumberInput value={form.acquisition_cost} onChange={(n) => setForm((f) => ({ ...f, acquisition_cost: n }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>Residual <span className="text-muted-foreground font-normal">(R$)</span></Label>
-                <Input type="number" value={form.residual_value} onChange={(e) => setForm((f) => ({ ...f, residual_value: parseFloat(e.target.value) || 0 }))} />
+                <NumberInput value={form.residual_value} onChange={(n) => setForm((f) => ({ ...f, residual_value: n }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>Vida útil <span className="text-muted-foreground font-normal">(meses)</span></Label>
-                <Input type="number" value={form.useful_life_months} onChange={(e) => setForm((f) => ({ ...f, useful_life_months: parseInt(e.target.value) || 0 }))} />
+                <NumberInput value={form.useful_life_months} onChange={(n) => setForm((f) => ({ ...f, useful_life_months: n }))} decimals={0} />
               </div>
             </div>
             <div className="space-y-1.5"><Label>Observações</Label><Textarea value={form.notes ?? ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={1} /></div>

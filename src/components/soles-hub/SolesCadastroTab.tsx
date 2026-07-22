@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -634,21 +635,19 @@ export default function SolesCadastroTab({ sole }: Props) {
               {groupId && <span className="text-xs text-primary uppercase tracking-wider font-bold">· compartilhado</span>}
             </Label>
             <div className="flex gap-2 items-center">
-              <Input
-                type="number"
+              <NumberInput
                 min={20}
-                max={50}
+                decimals={0}
                 value={form.size_from}
-                onChange={e => setForm(f => ({ ...f, size_from: Number(e.target.value) }))}
+                onChange={n => setForm(f => ({ ...f, size_from: n }))}
                 className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
               <span className="text-muted-foreground text-xs">até</span>
-              <Input
-                type="number"
+              <NumberInput
                 min={20}
-                max={50}
+                decimals={0}
                 value={form.size_to}
-                onChange={e => setForm(f => ({ ...f, size_to: Number(e.target.value) }))}
+                onChange={n => setForm(f => ({ ...f, size_to: n }))}
                 className={`w-20 ${rangeInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
               {rangeInvalid && (
@@ -875,17 +874,15 @@ export default function SolesCadastroTab({ sole }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div onBlur={() => updateSupplier.mutate(supplierForm)}>
               <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">
                 Lead time <span className="font-mono">(dias úteis)</span>
               </Label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
-                step={1}
+                decimals={0}
                 value={supplierForm.lead_time_days}
-                onChange={(e) => setSupplierForm(prev => ({ ...prev, lead_time_days: Number(e.target.value) || 0 }))}
-                onBlur={() => updateSupplier.mutate(supplierForm)}
+                onChange={n => setSupplierForm(prev => ({ ...prev, lead_time_days: n }))}
                 className="mt-1 h-9 font-mono text-right"
               />
             </div>

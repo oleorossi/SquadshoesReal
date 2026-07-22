@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Clock } from '@phosphor-icons/react';
 import { calculateProductionHours, hoursToWorkingDays } from '@/lib/productionTime';
 
@@ -64,13 +64,13 @@ export function TimeEstimationCard({
               <p className="text-lg font-bold font-mono text-foreground">{s.hours}h</p>
               <div className="flex items-center justify-center gap-1">
                 <span className="text-xs text-muted-foreground">Op:</span>
-                <Input
-                  type="number"
+                <NumberInput
                   min={1}
+                  decimals={0}
                   className="h-6 w-12 text-center text-xs p-0"
                   value={workers[s.key]}
-                  onChange={(e) =>
-                    setWorkers((prev) => ({ ...prev, [s.key]: Math.max(1, Number(e.target.value) || 1) }))
+                  onChange={(n) =>
+                    setWorkers((prev) => ({ ...prev, [s.key]: Math.max(1, n) }))
                   }
                 />
               </div>

@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -277,14 +278,14 @@ export default function TimeStudyDialog({ open, onOpenChange, study, prefill, sh
             <div className="space-y-1.5">
               <Label>Ritmo / avaliação <span className="text-muted-foreground font-normal">(%)</span></Label>
               <div className="flex items-center gap-1">
-                <Input type="number" value={form.rating_pct} onChange={(e) => setForm((f) => ({ ...f, rating_pct: parseFloat(e.target.value) || 0 }))} />
+                <NumberInput value={form.rating_pct} onChange={(n) => setForm((f) => ({ ...f, rating_pct: n }))} />
                 <span className="text-sm text-muted-foreground">%</span>
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>Tolerância PF&D <span className="text-muted-foreground font-normal">(%)</span></Label>
               <div className="flex items-center gap-1">
-                <Input type="number" value={form.allowance_pct} onChange={(e) => setForm((f) => ({ ...f, allowance_pct: parseFloat(e.target.value) || 0 }))} />
+                <NumberInput value={form.allowance_pct} onChange={(n) => setForm((f) => ({ ...f, allowance_pct: n }))} />
                 <span className="text-sm text-muted-foreground">%</span>
               </div>
             </div>
@@ -292,7 +293,7 @@ export default function TimeStudyDialog({ open, onOpenChange, study, prefill, sh
               <Label>Custo do recurso <span className="text-muted-foreground font-normal">(R$/h)</span></Label>
               <div className="flex items-center gap-1">
                 <span className="text-sm text-muted-foreground">R$</span>
-                <Input type="number" value={form.cost_per_hour} onChange={(e) => setForm((f) => ({ ...f, cost_per_hour: parseFloat(e.target.value) || 0 }))} />
+                <NumberInput value={form.cost_per_hour} onChange={(n) => setForm((f) => ({ ...f, cost_per_hour: n }))} />
                 <span className="text-sm text-muted-foreground">/h</span>
               </div>
             </div>

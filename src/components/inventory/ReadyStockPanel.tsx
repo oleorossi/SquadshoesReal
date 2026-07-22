@@ -727,11 +727,11 @@ ${cardsHtml}
                   {availableSizes.map(size => (
                     <div key={size} className="text-center">
                       <p className="text-xs font-semibold text-muted-foreground mb-1">Nº {size}</p>
-                      <Input
-                        type="number"
+                      <NumberInput
                         min={0}
-                        value={gradeQty[size] || ''}
-                        onChange={e => setGradeQty(prev => ({ ...prev, [size]: parseInt(e.target.value) || 0 }))}
+                        decimals={0}
+                        value={gradeQty[size]}
+                        onChange={n => setGradeQty(prev => ({ ...prev, [size]: n }))}
                         className="text-center h-9 text-sm font-mono"
                         placeholder="0"
                       />

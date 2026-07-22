@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CreditCard, Plus, Trash as Trash2, CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -176,12 +177,10 @@ export default function AddBoletoFinanceDialog({
                   onChange={e => updateInstallment(idx, 'dueDate', e.target.value)}
                   className="text-xs h-8"
                 />
-                <Input
-                  type="number"
-                  step="0.01"
+                <NumberInput
                   value={inst.amount}
-                  onChange={e => updateInstallment(idx, 'amount', parseFloat(e.target.value) || 0)}
-                  className="text-xs h-8 w-28 font-mono"
+                  onChange={n => updateInstallment(idx, 'amount', n)}
+                  className="text-xs h-8 w-28"
                 />
                 {installments.length > 1 && (
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeInstallment(idx)}>

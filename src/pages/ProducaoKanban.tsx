@@ -5,7 +5,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchInput } from '@/components/ui/search-input';
@@ -459,14 +459,13 @@ function DropApontarDialog({
                 {isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
               </Label>
               <div className="flex items-center gap-2 mt-1">
-                <Input
-                  type="number"
-                  min={0}
-                  value={qty}
-                  onChange={e => setQty(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                  className="font-mono w-28 h-9"
+                <NumberInput
                   autoFocus
-                  onFocus={e => e.target.select()}
+                  min={0}
+                  decimals={0}
+                  value={qty}
+                  onChange={n => setQty(Math.max(0, Math.round(n)))}
+                  className="font-mono w-28 h-9"
                 />
                 <span className="text-xs text-muted-foreground">
                   {isBackward

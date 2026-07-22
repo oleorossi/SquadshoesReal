@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -247,8 +248,8 @@ export function EmployeeScheduleEditor({ employeeId, compact = false }: Props) {
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/40">
             <div>
               <Label className="text-xs">Tolerância (min)</Label>
-              <Input type="number" min="0" max="60" value={form.tolerance_minutes}
-                onChange={e => setForm(f => f && { ...f, tolerance_minutes: Number(e.target.value) || 0 })} />
+              <NumberInput min={0} decimals={0} value={form.tolerance_minutes}
+                onChange={n => setForm(f => f && { ...f, tolerance_minutes: n })} />
               <p className="text-[11px] text-muted-foreground mt-1">
                 Variação ≤ esta zera no cálculo do saldo. Padrão CLT: 10min.
               </p>

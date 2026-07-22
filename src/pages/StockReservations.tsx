@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -348,13 +348,12 @@ export default function StockReservations() {
               <Label htmlFor="threshold" className="text-xs whitespace-nowrap text-muted-foreground">
                 Limite alerta:
               </Label>
-              <Input
+              <NumberInput
                 id="threshold"
-                type="number"
                 min={0}
-                step={1}
+                decimals={0}
                 value={threshold}
-                onChange={(e) => setThreshold(Math.max(0, Number(e.target.value) || 0))}
+                onChange={(n) => setThreshold(Math.max(0, n))}
                 className="h-9"
               />
             </div>

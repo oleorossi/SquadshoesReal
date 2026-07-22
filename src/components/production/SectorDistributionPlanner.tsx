@@ -13,7 +13,7 @@
 import { useMemo, useState } from 'react';
 import { Lock, LockOpen, MagicWand as Wand, ChartBar, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -297,17 +297,16 @@ function SectorDayEditor({
                   return (
                     <td key={d} className="px-1 py-1 text-center">
                       <div className="flex items-center gap-0.5 justify-center">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={ref.cap}
-                          value={val || ''}
+                        <NumberInput
+                          min={0}
+                          decimals={0}
+                          value={val}
                           disabled={isSaving}
-                          onChange={(e) => {
-                            const n = Math.max(0, Math.min(ref.cap, Number(e.target.value) || 0));
+                          onChange={(n) => {
+                            const clamped = Math.max(0, Math.min(ref.cap, n));
                             onUpsert({
                               week_start: weekStart, sector, tech_sheet_id: ref.tech_sheet_id,
-                              day_of_week: d, pairs_planned: n, is_locked: locked,
+                              day_of_week: d, pairs_planned: clamped, is_locked: locked,
                             });
                           }}
                           className="h-7 w-14 text-center text-xs font-mono px-1"

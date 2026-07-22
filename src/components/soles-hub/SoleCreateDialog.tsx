@@ -5,6 +5,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
@@ -276,17 +277,17 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
           <div className="space-y-1.5">
             <Label>Numeração</Label>
             <div className="flex items-center gap-2">
-              <Input
-                type="number" min={10} max={60}
+              <NumberInput
+                min={10} decimals={0}
                 value={sizeFrom}
-                onChange={(e) => setSizeFrom(Number(e.target.value) || 33)}
+                onChange={n => setSizeFrom(n)}
                 className="w-20 font-mono"
               />
               <span className="text-sm text-muted-foreground">até</span>
-              <Input
-                type="number" min={10} max={60}
+              <NumberInput
+                min={10} decimals={0}
                 value={sizeTo}
-                onChange={(e) => setSizeTo(Number(e.target.value) || 40)}
+                onChange={n => setSizeTo(n)}
                 className="w-20 font-mono"
               />
               <span className="text-xs text-muted-foreground ml-2">
@@ -339,11 +340,11 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="sole-min-stock">Estoque mínimo</Label>
-              <Input
+              <NumberInput
                 id="sole-min-stock"
-                type="number" min={0}
+                min={0} decimals={0}
                 value={minStock}
-                onChange={(e) => setMinStock(Number(e.target.value) || 0)}
+                onChange={n => setMinStock(n)}
                 className="font-mono"
               />
             </div>

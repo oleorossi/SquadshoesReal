@@ -3,6 +3,7 @@ import { Plus, PencilSimple as Pencil, Trash as Trash2, GasPump as Fuel, Truck, 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -270,18 +271,18 @@ function VehiclesPanel() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Consumo (km/L) *</Label>
-                <Input
-                  type="number" min={0.1} step={0.1} className="h-9 mt-1 font-mono"
+                <NumberInput
+                  min={0.1} className="h-9 mt-1 font-mono"
                   value={form.fuel_consumption_km_l}
-                  onChange={(e) => setForm((f) => ({ ...f, fuel_consumption_km_l: Number(e.target.value) || 0 }))}
+                  onChange={n => setForm((f) => ({ ...f, fuel_consumption_km_l: n }))}
                 />
               </div>
               <div>
                 <Label className="text-xs">Desgaste (R$/km)</Label>
-                <Input
-                  type="number" min={0} step={0.01} className="h-9 mt-1 font-mono"
+                <NumberInput
+                  min={0} className="h-9 mt-1 font-mono"
                   value={form.wear_cost_per_km}
-                  onChange={(e) => setForm((f) => ({ ...f, wear_cost_per_km: Number(e.target.value) || 0 }))}
+                  onChange={n => setForm((f) => ({ ...f, wear_cost_per_km: n }))}
                 />
                 <p className="text-xs text-muted-foreground mt-0.5">Pneus, manutenção e depreciação amortizadas.</p>
               </div>
@@ -289,18 +290,18 @@ function VehiclesPanel() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Capacidade (kg)</Label>
-                <Input
-                  type="number" min={0} step={1} className="h-9 mt-1 font-mono"
-                  value={form.capacity_kg ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, capacity_kg: e.target.value ? Number(e.target.value) : null }))}
+                <NumberInput
+                  min={0} decimals={0} className="h-9 mt-1 font-mono"
+                  value={form.capacity_kg}
+                  onChange={n => setForm((f) => ({ ...f, capacity_kg: n || null }))}
                 />
               </div>
               <div>
                 <Label className="text-xs">Capacidade (m³)</Label>
-                <Input
-                  type="number" min={0} step={0.1} className="h-9 mt-1 font-mono"
-                  value={form.capacity_m3 ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, capacity_m3: e.target.value ? Number(e.target.value) : null }))}
+                <NumberInput
+                  min={0} className="h-9 mt-1 font-mono"
+                  value={form.capacity_m3}
+                  onChange={n => setForm((f) => ({ ...f, capacity_m3: n || null }))}
                 />
               </div>
             </div>

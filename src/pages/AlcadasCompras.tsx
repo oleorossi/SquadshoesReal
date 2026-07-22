@@ -11,6 +11,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -135,11 +136,11 @@ export default function AlcadasCompras() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Início <span className="text-muted-foreground font-normal">(R$)</span></Label>
-                <Input type="number" value={form.min_value} onChange={(e) => set({ min_value: parseFloat(e.target.value) || 0 })} />
+                <NumberInput value={form.min_value} onChange={(n) => set({ min_value: n })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Fim <span className="text-muted-foreground font-normal">(R$, vazio = sem teto)</span></Label>
-                <Input type="number" value={form.max_value ?? ''} onChange={(e) => set({ max_value: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) })} />
+                <NumberInput value={form.max_value} onChange={(n) => set({ max_value: n === 0 ? null : n })} />
               </div>
             </div>
             <div className="space-y-1.5">

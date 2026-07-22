@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CircleNotch as Loader2, MagnifyingGlass as Search, Buildings as Building2, MapPin, Phone, CurrencyDollar as DollarSign } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -390,13 +391,11 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
                     </div>
                     <div>
                       <Label className="text-xs">Limite de Crédito (R$)</Label>
-                      <Input
-                        type="number"
+                      <NumberInput
                         min={0}
-                        step={100}
-                        value={form.credit_limit || ''}
-                        onChange={e => setForm(f => ({ ...f, credit_limit: parseFloat(e.target.value) || 0 }))}
-                        className="mt-1 h-9 font-mono"
+                        value={form.credit_limit}
+                        onChange={n => setForm(f => ({ ...f, credit_limit: n }))}
+                        className="mt-1 h-9"
                         placeholder="0,00"
                       />
                     </div>
