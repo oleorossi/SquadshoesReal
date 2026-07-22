@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -303,11 +304,11 @@ export default function FactoringTab() {
             </div>
             <div>
               <Label>Taxa de Juros Mensal (%)</Label>
-              <Input type="number" step="0.01" min={0} value={form.monthly_interest_rate} onChange={e => setForm(f => ({ ...f, monthly_interest_rate: parseFloat(e.target.value) || 0 }))} />
+              <NumberInput value={form.monthly_interest_rate} onChange={n => setForm(f => ({ ...f, monthly_interest_rate: n }))} min={0} decimals={2} placeholder="0" />
             </div>
             <div>
               <Label>Prazo de Recebimento (dias)</Label>
-              <Input type="number" min={1} value={form.receiving_days} onChange={e => setForm(f => ({ ...f, receiving_days: parseInt(e.target.value) || 1 }))} />
+              <NumberInput value={form.receiving_days} onChange={n => setForm(f => ({ ...f, receiving_days: n }))} min={1} decimals={0} placeholder="1" />
               <p className="text-xs text-muted-foreground mt-1">Quantos dias após a emissão o valor será recebido pela factoring</p>
             </div>
             <div>
