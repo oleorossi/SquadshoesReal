@@ -979,4 +979,50 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
     const dialogSrc = readFileSync(resolve(process.cwd(), 'src/components/orders/OrderConsumptionDialog.tsx'), 'utf8');
     expect(dialogSrc).not.toMatch(/fichas:\s*1[,\s]/);
   });
+
+  // Segmentação por cor × família de napa (2026-07-22, specs/tira-base-napa-por-
+  // ficha-tecnica.md): a base de uma TIRA segue a napa da FICHA da referência
+  // (upper/lining). Mesma tira+cor cortada de napas diferentes NÃO colapsa —
+  // senão a napa da minoria some (PV-00148: 111,36 m de tira CAPUCCINO puxam
+  // NAPA MADRID, não NAPA SOFT).
+  it('tira herda a família da ficha (napa) e NÃO colapsa entre napas diferentes', () => {
+    const ctx = buildContext();
+    const strap = [{
+      id: '1', label: 'FRENTE', color: 'CAPUCCINO',
+      group_id: 'g-tira', group_name: 'Tira chata 8mm',
+      consumption: 58,
+      consumption_per_size: { '34': 58, '35': 58, '36': 58, '37': 58, '38': 58, '39': 58 },
+    }];
+    const soft = buildItem({
+      reference_id: 'r-soft', color: 'CAPUCCINO', strap_colors: strap,
+      technical_sheets: buildSheet({ upper_material: 'NAPA SOFT' }),
+    });
+    const madrid = buildItem({
+      reference_id: 'r-madrid', color: 'CAPUCCINO', strap_colors: strap,
+      technical_sheets: buildSheet({ upper_material: 'NAPA MADRID' }),
+    });
+    const tiras = computeConsumptionForItems([soft, madrid], ctx)
+      .filter(r => r.componentType === 'Tiras' && r.groupName === 'Tira chata 8mm' && r.color === 'CAPUCCINO');
+    // Duas linhas — uma por família; sem o gate de família colapsariam em uma só.
+    expect(tiras).toHaveLength(2);
+    expect(tiras.map(t => t.materialFamily).sort()).toEqual(['NAPA MADRID', 'NAPA SOFT']);
+    // Cada linha carrega a mesma metragem (mesma tira/qtd), só muda a napa-base.
+    expect(tiras[0].totalQuantity).toBeCloseTo(tiras[1].totalQuantity, 5);
+  });
+
+  // Fallback: sem napa na ficha, a tira segue como antes (uma linha, sem família).
+  it('tira sem napa na ficha não ganha família (uma linha só)', () => {
+    const ctx = buildContext();
+    const strap = [{
+      id: '1', label: 'FRENTE', color: 'CAPUCCINO',
+      group_id: 'g-tira', group_name: 'Tira chata 8mm',
+      consumption: 58, consumption_per_size: { '34': 58, '35': 58, '36': 58, '37': 58, '38': 58, '39': 58 },
+    }];
+    const a = buildItem({ reference_id: 'a', color: 'CAPUCCINO', strap_colors: strap, technical_sheets: buildSheet({ upper_material: '', lining_material: '' }) });
+    const b = buildItem({ reference_id: 'b', color: 'CAPUCCINO', strap_colors: strap, technical_sheets: buildSheet({ upper_material: '', lining_material: '' }) });
+    const tiras = computeConsumptionForItems([a, b], ctx)
+      .filter(r => r.componentType === 'Tiras' && r.groupName === 'Tira chata 8mm' && r.color === 'CAPUCCINO');
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].materialFamily ?? null).toBeNull();
+  });
 });

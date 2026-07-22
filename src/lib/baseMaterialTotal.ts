@@ -35,8 +35,11 @@ export type BaseMaterialInput = {
   widthMissing?: boolean;
   /** Consumo não calculado (ex.: solado fachetado sem specs). */
   warning?: string;
-  /** Equivalente em material base quando a linha é tira artesanal. */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number };
+  /** Equivalente em material base quando a linha é tira artesanal.
+   *  `pending` = a napa-base (família da ficha da referência) é conhecida mas
+   *  não há rendimento cadastrado pra ela (ex.: tira em NAPA MADRID sem receita)
+   *  → fica FORA do total e conta como "a cadastrar". */
+  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
 };
 
 export type BaseMaterialTotal = {
@@ -139,6 +142,10 @@ export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMateria
   let skipped = 0;
 
   for (const r of rows) {
+    // Tira com família conhecida (napa da ficha) mas SEM rendimento cadastrado
+    // pra essa base → fora do total, conta como "a cadastrar" (não converte às
+    // cegas pela base errada). Ex.: tira em NAPA MADRID sem receita.
+    if (r.artisanal?.pending) { skipped++; continue; }
     // Tira artesanal: conta o equivalente em napa, NUNCA os metros de tira
     // (169,20 m de tira = 2,82 m de napa; somar os 169,20 inflaria 60×).
     if (r.artisanal && r.artisanal.baseQty > 0) {

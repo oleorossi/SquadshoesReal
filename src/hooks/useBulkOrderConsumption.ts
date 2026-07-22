@@ -37,6 +37,10 @@ export interface ConsumptionRow {
   matched_by?: string;
   unit?: string;
   category?: string;
+  /** Família de napa (materialFamily do motor): a base de uma tira segue a napa
+   *  da ficha da referência. Mantém tiras de napas diferentes separadas ao
+   *  agregar OPs de referências distintas numa mesma ficha. */
+  materialFamily?: string | null;
 }
 
 export interface BulkOrderConsumptionInput {
@@ -80,7 +84,9 @@ const COMPONENT_TYPE_TO_BULK: Record<string, ConsumptionComponent> = {
  */
 export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow => ({
   component: COMPONENT_TYPE_TO_BULK[r.componentType] ?? 'Outros',
-  product_id: `${r.componentType}::${r.groupName}::${r.color}::${r.productUnit}`,
+  // Família entra na chave sintética: tiras de napas diferentes (NAPA SOFT ×
+  // NAPA MADRID, por ficha da referência) não colapsam ao agregar OPs.
+  product_id: `${r.componentType}::${r.groupName}::${r.color}::${r.productUnit}::${(r.materialFamily || '').trim()}`,
   product_name: r.groupName || r.materialName,
   color: r.color,
   consumption_per_unit: 0,
@@ -91,6 +97,7 @@ export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow 
   unit: r.productUnit,
   category: r.groupName,
   source: r.widthMissing ? 'width_missing' : 'canonical',
+  materialFamily: r.materialFamily || null,
 });
 
 /**

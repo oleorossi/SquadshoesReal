@@ -68,6 +68,16 @@ export type MaterialConsumptionRow = {
    *  cujo nome difere do nome do produto (ex.: grupo "SOLADO 204" × produto
    *  "204 - CARAMELO"). Mesma cor sempre cai no mesmo produto dentro do grupo. */
   soleProductId?: string | null;
+  /**
+   * Família de material-base (napa) da linha, pra segmentar consumo por
+   * cor × família — NAPA SOFT e NAPA MADRID não se juntam na mesma cor.
+   * Regra de negócio: a base de uma TIRA artesanal segue a napa da FICHA
+   * TÉCNICA da referência (cabedal/forro), não a base fixa da receita
+   * (sem mistura dentro de uma referência). Só é preenchido em linha de
+   * TIRA (`componentType === 'Tiras'`); nas linhas de napa DIRETA
+   * (cabedal/forração) a própria `groupName` já é a família. Ver
+   * `specs/tira-base-napa-por-ficha-tecnica.md`. */
+  materialFamily?: string | null;
 };
 
 /**
@@ -396,7 +406,12 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   // colapsavam numa linha só — somava 4+4 un/par e rotulava com o primeiro nome,
   // escondendo o segundo binóculo do modal e da ficha de operador). O mesmo
   // produto vindo de items/refs diferentes continua somando (nome idêntico).
-  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}`;
+  // A família entra na chave: mesma TIRA+cor cortada de napas diferentes
+  // (NAPA SOFT × NAPA MADRID, conforme a ficha de cada referência) são linhas
+  // distintas — sem isso colapsariam e a napa da minoria sumiria. Vazio nas
+  // linhas de napa direta (a groupName já é a família) → chave inalterada.
+  const materialFamily = (row.materialFamily || '').trim();
+  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}||${materialFamily}`;
   const existing = map.get(key);
 
   if (existing) {
@@ -426,6 +441,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     warning: row.warning,
     sizeBreakdown: row.sizeBreakdown,
     soleProductId: row.soleProductId,
+    materialFamily: row.materialFamily || null,
   });
 };
 
@@ -1496,6 +1512,15 @@ export function computeConsumptionForItems(
       }
     }
 
+    // Família de napa da tira = napa da FICHA TÉCNICA da referência (cabedal
+    // primeiro, forro como fallback — nas fichas de sandália o cabedal costuma
+    // ficar vazio e a napa vive em lining_material). Regra do usuário: a tira
+    // segue o material da referência, sem mistura. NÃO é variant-aware ainda
+    // (igual ao split do Corte Forração) — variante de napa por cor fica pra
+    // depois. Ver specs/tira-base-napa-por-ficha-tecnica.md.
+    const refNapaFamily = ((sheet?.upper_material || '').toString().trim())
+      || ((sheet?.lining_material || '').toString().trim())
+      || null;
     const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
     const sheetStraps: any[] = sheetStrapsMap.get(item.reference_id) || [];
     const resolvedStraps = resolveOrderStraps(itemStraps, sheetStraps);
@@ -1513,6 +1538,7 @@ export function computeConsumptionForItems(
         productUnit: 'metro',
         color: strap.color || orderColor,
         totalQuantity: strapConsumptionCm / 100,
+        materialFamily: refNapaFamily,
       });
     }
 

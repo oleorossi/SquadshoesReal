@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { escapeHtml } from '@/lib/htmlUtils';
-import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
 import { soleMatrixHtml, buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import {
   fetchConsumptionContext,
@@ -50,9 +50,29 @@ type ConsumptionRow = MaterialConsumptionRow & {
   soleSizeStock?: Record<string, number>;
   /** Equivalente em material-base SE produzido artesanalmente (Materiais
    *  Artesanais → artisanal_recipes). Ex.: tira overlock que rende 88 m por 1 m
-   *  de NAPA SOFT → base = metros_de_tira / yield_per_meter, na mesma cor. */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number };
+   *  de NAPA SOFT → base = metros_de_tira / yield_per_meter, na mesma cor.
+   *  `baseName` é a napa da FICHA da referência (materialFamily), não a base fixa
+   *  da receita. `pending` = a família é conhecida mas NÃO há receita/rendimento
+   *  cadastrado pra essa base (ex.: tira em NAPA MADRID sem receita) → não
+   *  converte às cegas; a UI mostra "a cadastrar". */
+  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
 };
+
+// Família de napa de uma linha, pra segmentar por cor × família. Tira: a napa
+// da ficha da referência (materialFamily, vindo do motor). Napa direta
+// (cabedal/forração/palmilha/fachete): a própria groupName quando é napa/couro.
+// Demais (solado, cola, embalagem): sem família (null) → ficam num bloco neutro.
+const rowFamily = (r: ConsumptionRow): string | null => {
+  if (r.componentType === 'Tiras') return (r.materialFamily || '').trim() || null;
+  if (BASE_MATERIAL_COMPONENTS.has(r.componentType)) {
+    const g = (r.groupName || '').trim();
+    return g && BASE_GROUP_PATTERN.test(g) ? g : null;
+  }
+  return null;
+};
+// Separador interno da chave de seção composta cor|família (visão por Cor).
+// Char de controle (unit separator) — não aparece em nome de cor/napa.
+const SECTION_SEP = String.fromCharCode(31);
 
 const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forração Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
 
@@ -616,10 +636,22 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       // da receita usa grafia variada (ex.: "Tira Overlock 5mm") e o grupo da
       // tira vem em CAIXA ALTA ("TIRA OVERLOCK 5MM") — normTxt resolve isso.
       const recipeMap = new Map<string, { base: string; yieldPerMeter: number }>();
+      // Rendimento por (TIRA, BASE): a base de uma tira é a napa da ficha da
+      // referência (materialFamily), não a base fixa da receita. A mesma tira
+      // em NAPA SOFT e em NAPA MADRID são receitas distintas (rendimento muda
+      // com a largura do rolo). Chave `${nomeNorm}::${baseNorm}`.
+      const recipeYieldByNameBase = new Map<string, number>();
       for (const r of (recipesData || []) as any[]) {
         const y = Number(r.yield_per_meter) || 0;
         if (y > 0 && r.artisanal_product_name) {
-          recipeMap.set(normTxt(r.artisanal_product_name), { base: r.base_product_name, yieldPerMeter: y });
+          // recipeMap = compat legado (1ª receita por nome), usado só de fallback
+          // quando a linha não tem família (tira sem ficha/napa resolvida).
+          if (!recipeMap.has(normTxt(r.artisanal_product_name))) {
+            recipeMap.set(normTxt(r.artisanal_product_name), { base: r.base_product_name, yieldPerMeter: y });
+          }
+          if (r.base_product_name) {
+            recipeYieldByNameBase.set(`${normTxt(r.artisanal_product_name)}::${normTxt(r.base_product_name)}`, y);
+          }
         }
       }
       const LINEAR = new Set(['m', 'metro', 'metros', 'mt']);
@@ -690,15 +722,26 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         // a NAPA MADRID da forração de palmilha (2,43 m diretos) aparecia como
         // "= 0,06 m NAPA SOFT · artesanal" e sumia do total de material base
         // (contava 0,06 m de NAPA SOFT no lugar de 2,43 m de NAPA MADRID).
-        const recipe = row.componentType === 'Tiras'
-          ? (recipeMap.get(normTxt(row.groupName)) || recipeMap.get(normTxt(row.materialName)))
-          : undefined;
-        if (recipe && LINEAR.has((row.productUnit || '').toLowerCase()) && row.totalQuantity > 0) {
-          row.artisanal = {
-            baseName: recipe.base,
-            baseQty: row.totalQuantity / recipe.yieldPerMeter,
-            yieldPerMeter: recipe.yieldPerMeter,
-          };
+        //
+        // Base = napa da FICHA da referência (`materialFamily`), NÃO a base fixa
+        // da receita. A mesma tira em NAPA SOFT × NAPA MADRID vira base diferente
+        // (rendimento por `(tira, base)`). Sem família resolvida (tira sem ficha),
+        // cai na 1ª receita por nome (compat legado). Família conhecida SEM receita
+        // pra essa base (ex.: tira em NAPA MADRID ainda sem rendimento cadastrado)
+        // → `pending`: não converte às cegas; a UI mostra "a cadastrar".
+        if (row.componentType === 'Tiras'
+            && LINEAR.has((row.productUnit || '').toLowerCase())
+            && row.totalQuantity > 0) {
+          const nameNorm = normTxt(row.groupName);
+          const legacy = recipeMap.get(nameNorm) || recipeMap.get(normTxt(row.materialName));
+          const baseName = (row.materialFamily || '').trim() || legacy?.base || '';
+          if (baseName) {
+            const yld = recipeYieldByNameBase.get(`${nameNorm}::${normTxt(baseName)}`)
+              || (legacy && normTxt(legacy.base) === normTxt(baseName) ? legacy.yieldPerMeter : 0);
+            row.artisanal = yld > 0
+              ? { baseName, baseQty: row.totalQuantity / yld, yieldPerMeter: yld }
+              : { baseName, baseQty: 0, yieldPerMeter: 0, pending: true };
+          }
         }
       }
 
@@ -877,8 +920,28 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       const dir = sortDir === 'asc' ? 1 : -1;
       const keys = Array.from(byVal.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR') * dir);
       const out = new Map<string, ConsumptionRow[]>();
-      if (empties.length) out.set(emptyLabel, sortWithin(empties)); // sempre no topo
-      for (const k of keys) out.set(k, sortWithin(byVal.get(k)!));
+      // Na visão por COR, quebra cada cor por FAMÍLIA de napa: NAPA SOFT e NAPA
+      // MADRID da mesma cor viram seções separadas ("CAPUCCINO · NAPA SOFT" …),
+      // cada uma com sua própria faixa MATERIAL BASE. Linhas sem napa (solado,
+      // cola) ficam num bloco neutro só com a cor. SECTION_SEP separa cor|família
+      // na chave; o render desmonta pra montar o cabeçalho. (Pedido user 2026-07-22.)
+      const emitSection = (label: string, secRows: ConsumptionRow[]) => {
+        if (key !== 'color') { out.set(label, sortWithin(secRows)); return; }
+        const fams = new Map<string, ConsumptionRow[]>();
+        const neutral: ConsumptionRow[] = [];
+        for (const r of secRows) {
+          const f = rowFamily(r);
+          if (f) { if (!fams.has(f)) fams.set(f, []); fams.get(f)!.push(r); }
+          else neutral.push(r);
+        }
+        if (fams.size === 0) { out.set(label, sortWithin(secRows)); return; }
+        for (const f of Array.from(fams.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'))) {
+          out.set(`${label}${SECTION_SEP}${f}`, sortWithin(fams.get(f)!));
+        }
+        if (neutral.length) out.set(label, sortWithin(neutral));
+      };
+      if (empties.length) emitSection(emptyLabel, empties); // sempre no topo
+      for (const k of keys) emitSection(k, byVal.get(k)!);
       return out;
     }
     if (sortKey === 'totalQuantity') {
@@ -939,7 +1002,10 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     const cards: string[] = [];
     for (const [componentType, componentRows] of grouped.entries()) {
       if (componentType === 'Todos') continue;
-      const colors = componentColors[componentType] || componentColors['Outros'];
+      // Chave composta cor|família (visão por Cor) → título "CAPUCCINO · NAPA SOFT".
+      const [secLabel, secFamily] = String(componentType).split(SECTION_SEP);
+      const secTitle = secFamily ? `${secLabel} · ${secFamily}` : secLabel;
+      const colors = componentColors[secLabel] || componentColors['Outros'];
       // Calcula total do componente (agrupa por unidade)
       const totalsThisComp = new Map<string, number>();
       for (const r of componentRows) {
@@ -955,7 +1021,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
         cards.push(`
         <div class="card" style="grid-column:1 / -1;border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
           <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
-            <span>▌${escapeHtml(componentType)}</span>
+            <span>▌${escapeHtml(secTitle)}</span>
             <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
           </div>
           <div style="background:white;padding:0 6px 6px">${soleMatrixHtml(componentRows)}</div>
@@ -979,7 +1045,9 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
           </td>
           <td style="padding:3px 6px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:monospace;font-weight:700;font-size:10pt">
             ${row.totalQuantity.toFixed(2)} <span style="color:#6b7280;font-weight:400;font-size:8.5pt">${formatUnit(row.productUnit)}</span>
-            ${row.artisanal ? `<div style="color:#6b7280;font-weight:400;font-size:7.5pt;white-space:nowrap">≈ ${row.artisanal.baseQty.toFixed(2)} m ${escapeHtml(row.artisanal.baseName)} · artesanal (1 m → ${row.artisanal.yieldPerMeter} m)</div>` : ''}
+            ${row.artisanal ? (row.artisanal.pending
+              ? `<div style="color:#b45309;font-weight:400;font-size:7.5pt;white-space:nowrap">base ${escapeHtml(row.artisanal.baseName)} · rendimento a cadastrar</div>`
+              : `<div style="color:#6b7280;font-weight:400;font-size:7.5pt;white-space:nowrap">≈ ${row.artisanal.baseQty.toFixed(2)} m ${escapeHtml(row.artisanal.baseName)} · artesanal (1 m → ${row.artisanal.yieldPerMeter} m)</div>`) : ''}
           </td>
         </tr>
       `;
@@ -1020,7 +1088,7 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       cards.push(`
         <div class="card" style="border:2px solid ${colors.border};border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px">
           <div style="background:${colors.bg};color:${colors.text};padding:4px 8px;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center">
-            <span>▌${escapeHtml(componentType)}</span>
+            <span>▌${escapeHtml(secTitle)}</span>
             <span style="font-size:8.5pt;font-weight:600;opacity:.8">${totalSummary}</span>
           </div>
           ${baseTotalPdfHtml(componentRows)}
@@ -1206,11 +1274,19 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                   for (const r of componentRows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
                   const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
                   const short = countShort(componentRows);
+                  // Chave composta cor|família (visão por Cor): cabeçalho mostra a
+                  // cor + chip da napa (NAPA SOFT / NAPA MADRID não se misturam).
+                  const [secLabel, secFamily] = String(componentType).split(SECTION_SEP);
                   return (
                     <div className="flex items-baseline justify-between gap-3 border-b-2 border-foreground/60 pb-1.5">
                       <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
                         <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
-                        {componentType}
+                        {secLabel}
+                        {secFamily && (
+                          <span className="inline-flex items-center rounded-sm border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground">
+                            {secFamily}
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {subtotal}
@@ -1334,10 +1410,16 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
                               ? <span className="text-muted-foreground font-normal">—</span>
                               : formatQty(row.totalQuantity, row.productUnit)}
                             {row.artisanal && (
-                              <div className="text-[10px] font-normal text-muted-foreground mt-0.5 whitespace-nowrap">
-                                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
-                                <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
-                              </div>
+                              row.artisanal.pending ? (
+                                <div className="text-[10px] font-normal text-amber-600 dark:text-amber-400 mt-0.5 whitespace-nowrap">
+                                  base {row.artisanal.baseName} · rendimento a cadastrar
+                                </div>
+                              ) : (
+                                <div className="text-[10px] font-normal text-muted-foreground mt-0.5 whitespace-nowrap">
+                                  ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
+                                  <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
+                                </div>
+                              )
                             )}
                           </TableCell>
                           <TableCell className="text-right" aria-label={neutralStock ? 'total do item na faixa acima' : !known ? 'largura não cadastrada' : ok ? 'em estoque' : 'em falta'}>
