@@ -2157,6 +2157,34 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         }
       }
       cg.totalPairs = Object.values(cg.combinedGrid).reduce((s, v) => s + v, 0);
+
+      // ── Quebra por MATERIAL DE FORRAÇÃO (2026-07-22) ──────────────────────
+      // Consumido SÓ pelo Corte Forração (mergeForracaoWithinSole). Mesma cor
+      // de cabedal + napa de forração diferente NÃO pode virar 1 card só — o
+      // cortador puxaria um rolo achando que é tudo igual (bug PV-00148:
+      // CAPUCCINO tinha Napa Soft + Napa Madrid no mesmo card). Captura aqui,
+      // onde a grade escalada por OP (scaledGrade) e a ficha ainda existem;
+      // Silk/Costura/Corte Cabedal ignoram este campo (agrupam como antes).
+      {
+        const liningMat = (sheetMaterialsByRef.get(sheetId)?.lining || '').trim();
+        const liningKey = liningMat.toUpperCase() || '∅';
+        cg.liningBreakdown = cg.liningBreakdown || new Map();
+        let lb = cg.liningBreakdown.get(liningKey);
+        if (!lb) {
+          lb = { material: liningMat, combinedGrid: {}, totalPairs: 0, fichas: 0, baseGrid: {}, mixedGrades: false, opNumbers: [], pvNumbers: [] };
+          cg.liningBreakdown.set(liningKey, lb);
+        }
+        for (const [size, scaled] of Object.entries(scaledGrade)) {
+          if (scaled > 0) lb.combinedGrid[size] = (lb.combinedGrid[size] ?? 0) + scaled;
+        }
+        lb.totalPairs = Object.values(lb.combinedGrid).reduce((s, v) => s + v, 0);
+        // Mesma folding de ficha/corrugado do grupo (baseGradeSum/fichas/mixed).
+        lb.baseGrid = foldFichaIntoGroup(lb, ficha, ficha.baseCurve, lb.baseGrid);
+        if (order.op_number) lb.opNumbers.push(order.op_number);
+        if (order.sale_order_number && !lb.pvNumbers.includes(order.sale_order_number)) {
+          lb.pvNumbers.push(order.sale_order_number);
+        }
+      }
     }
 
     // Posteriori check em TODOS os colorMaps: baseGradeSum × fichas deve
@@ -2198,7 +2226,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
   // knifeDefaultBoundaries vem de query SEPARADA (useKnifeFacasDefault) — sem ele
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
   // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
   // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
@@ -3081,12 +3109,47 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             const filtered = group.colorGroups.filter(cg =>
               cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração'));
             if (filtered.length === 0) return null;
-            const byColor = new Map<string, SilkColorGroup>();
+            // Expande cada cor em 1 pseudo-grupo POR MATERIAL de forração
+            // (2026-07-22). Cor com napa única → 1 entrada (idêntico ao
+            // anterior). Cor com >1 napa (PV-00148 CAPUCCINO = Napa Soft +
+            // Napa Madrid) → N entradas, pra o operador não cortar 2 napas
+            // achando que é 1. A napa vira parte da chave de agrupamento e é
+            // mostrada como chip no card.
+            const expanded: SilkColorGroup[] = [];
             for (const cg of filtered) {
+              const bd = cg.liningBreakdown;
+              if (bd && bd.size > 1) {
+                for (const lb of bd.values()) {
+                  expanded.push({
+                    ...cg,
+                    liningMaterial: lb.material || undefined,
+                    combinedGrid: { ...lb.combinedGrid },
+                    knifeGrid: undefined,
+                    aviamentoGrid: undefined,
+                    baseGrid: lb.baseGrid ? { ...lb.baseGrid } : undefined,
+                    baseGradeSum: lb.baseGradeSum,
+                    fichas: lb.fichas,
+                    mixedGrades: lb.mixedGrades,
+                    corrugadosMistos: lb.corrugadosMistos,
+                    fichasAproximadas: lb.fichasAproximadas,
+                    totalPairs: lb.totalPairs,
+                    opNumbers: [...lb.opNumbers],
+                    pvNumbers: [...lb.pvNumbers],
+                  });
+                }
+              } else {
+                const only = bd && bd.size === 1 ? Array.from(bd.values())[0] : null;
+                expanded.push(only ? { ...cg, liningMaterial: only.material || undefined } : cg);
+              }
+            }
+            const byColor = new Map<string, SilkColorGroup>();
+            for (const cg of expanded) {
               const colorKey = (cg.color || '').trim().toUpperCase() || '∅';
-              const existing = byColor.get(colorKey);
+              const matKey = (cg.liningMaterial || '').trim().toUpperCase();
+              const groupKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const existing = byColor.get(groupKey);
               if (!existing) {
-                byColor.set(colorKey, {
+                byColor.set(groupKey, {
                   ...cg,
                   combinedGrid: { ...cg.combinedGrid },
                   knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
@@ -3146,7 +3209,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             }
             const sizes = Object.keys(grade).sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
             const img = group.colorGroups.flatMap(cg => cg.alternateVariants || []).find(v => v.image_url)?.image_url || null;
-            const colors = group.colorGroups.map(cg => ({ name: cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
+            // Corte Forração: cor + napa (liningMaterial só é setado lá) pra a
+            // ficha reduzida também não confundir 2 napas de mesma cor (PV-00148).
+            const colors = group.colorGroups.map(cg => ({ name: cg.liningMaterial ? `${cg.color} · ${cg.liningMaterial}` : cg.color, qty: cg.totalPairs, grade: cg.combinedGrid }));
             // Agrega OPs do grupo inteiro pra puxar o consumo filtrado pelo setor.
             const allOpNumbers = group.colorGroups.flatMap(cg => cg.opNumbers);
             // Tally do grupo (7º passe): fichas = soma dos corrugados de TODAS

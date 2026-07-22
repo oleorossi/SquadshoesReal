@@ -41,6 +41,27 @@ export interface SilkColorGroup {
    *  Corte Forração, é o que o operador vê no card "Cor". */
   color: string;
   colorHex?: string;
+  /** Material da FORRAÇÃO (napa) a cortar — ex.: "NAPA SOFT". Só populado e
+   *  renderizado no Corte Forração: mesma cor de cabedal com napa DIFERENTE
+   *  não se agrupa (o cortador puxa rolos distintos — confundiria; PV-00148). */
+  liningMaterial?: string;
+  /** Interno (build → Corte Forração): quebra da cor por material de forração.
+   *  Capturada no build (onde a grade escalada por OP existe) e consumida só
+   *  por mergeForracaoWithinSole pra emitir 1 card por napa. Não renderizado
+   *  diretamente — os demais setores ignoram. */
+  liningBreakdown?: Map<string, {
+    material: string;
+    combinedGrid: Record<string, number>;
+    totalPairs: number;
+    fichas?: number;
+    baseGradeSum?: number;
+    baseGrid?: Record<string, number>;
+    mixedGrades?: boolean;
+    corrugadosMistos?: boolean;
+    fichasAproximadas?: boolean;
+    opNumbers: string[];
+    pvNumbers: string[];
+  }>;
   combinedGrid: Record<string, number>;
   /** Grade agregada por FACA de Corte Cabedal (P/M/G/...). Populada quando a
    *  ref da ficha tem knife_size_ranges cadastrado. Em Corte Cabedal, a
@@ -967,6 +988,17 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     >
                       {cg.color}
                     </span>
+                    {/* Material da forração (napa) — SÓ no Corte Forração. Duas
+                        napas de mesma cor viram cards separados (não se agrupam),
+                        e o chip diz ao cortador qual rolo puxar (PV-00148). */}
+                    {sector === 'Corte Forração' && cg.liningMaterial && (
+                      <span
+                        className="inline-block shrink-0 uppercase whitespace-nowrap"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '0.02em', color: '#000', border: '1.5px solid #000', padding: '0 5px', lineHeight: '18px' }}
+                      >
+                        {cg.liningMaterial}
+                      </span>
+                    )}
                     {/* Referência(s) ao lado da cor — o operador identifica a
                         qual modelo aquela cor pertence (pedido user 2026-06-25).
                         Some quando a ficha inteira já é de uma referência
