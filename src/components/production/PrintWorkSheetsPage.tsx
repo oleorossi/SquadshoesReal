@@ -883,7 +883,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // do Supabase quebrava o print de toda OP em produção.
       const { data, error } = await (supabase as any)
         .from('sale_orders')
-        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode');
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, representative, payment_condition, valor_frete');
       if (error) throw error;
       return data;
     },
@@ -2628,6 +2628,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             delivery_deadline: so.delivery_deadline,
             status: so.status,
             total_value: (so as any).total ?? (so as any).total_value ?? null,
+            packaging_mode: (so as any).packaging_mode || null,
+            freight_value: (so as any).valor_frete ?? null,
             notes: (so as any).notes || (so as any).observacoes || null,
           },
           reportOrders: [],
@@ -2696,6 +2698,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
         silk_url: silkInfo?.silk_url || null,
         silk_name: silkInfo?.silk_name || null,
         grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
+        // Fichas (lógica Corte de Forração): pares ÷ corrugado base. baseSum é o
+        // corrugado (soma da grade base); mult = orderTotal/baseSum = nº fichas.
+        fichas: baseSum > 0 ? Math.round(orderTotal / baseSum) : null,
         straps,
         upper_material: mats.upper,
         lining_material: mats.lining,
