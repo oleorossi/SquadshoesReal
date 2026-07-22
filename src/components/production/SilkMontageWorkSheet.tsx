@@ -47,6 +47,9 @@ export interface RefImageEntry {
   /** Nome/código da referência pra legenda embaixo da miniatura. */
   refName?: string;
   refCode?: string;
+  /** Total de pares DESTE modelo (soma da grade da ref) dentro do card. Mostrado
+   *  em vermelho na foto quando o card agrupa >1 modelo (2026-07-22). */
+  pairs?: number;
   variantImageUrl?: string | null;
   alternateVariants?: Array<{ color?: string; image_url?: string | null }>;
   technicalSheetImageUrl?: string | null;
@@ -1086,22 +1089,37 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   const thumbs = collectCompactThumbs(cg);
                   if (thumbs.length === 0) return null;
                   const withCaption = thumbs.length > 1;
+                  const IMG = 54; // reduzido de 64 (pedido user 2026-07-22)
                   return (
                     <div className="keep-together keep-with-next flex flex-wrap gap-2 mt-1 mb-1">
                       {thumbs.map((t, ti) => (
                         <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5 shrink-0">
-                          <ProductImageBlock
-                            variantImageUrl={t.variantImageUrl}
-                            alternateVariants={t.alternateVariants}
-                            technicalSheetImageUrl={t.technicalSheetImageUrl}
-                            orderColor={cg.color}
-                            size={64}
-                            alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
-                          />
+                          <div style={{ position: 'relative', width: IMG, height: IMG }}>
+                            <ProductImageBlock
+                              variantImageUrl={t.variantImageUrl}
+                              alternateVariants={t.alternateVariants}
+                              technicalSheetImageUrl={t.technicalSheetImageUrl}
+                              orderColor={cg.color}
+                              size={IMG}
+                              alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
+                            />
+                            {/* Total de pares DESTE modelo dentro da foto — só
+                                quando o card agrupa >1 modelo. Vermelho pra o
+                                cortador achar rápido (pedido user 2026-07-22). */}
+                            {withCaption && t.pairs != null && t.pairs > 0 && (
+                              <div
+                                style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.86)', borderTop: '1.5px solid #C00000', textAlign: 'center', lineHeight: 1, printColorAdjust: 'exact' }}
+                              >
+                                <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '15px', color: '#C00000', letterSpacing: '-0.02em' }}>
+                                  {t.pairs}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                           {withCaption && t.refName && (
                             <span
                               className="block truncate text-center uppercase font-bold"
-                              style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#000', maxWidth: 64 }}
+                              style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
                               title={t.refName}
                             >
                               {t.refName}

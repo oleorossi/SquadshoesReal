@@ -2110,15 +2110,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       // Foto POR REFERÊNCIA (2026-07-22): uma entrada por ficha técnica distinta
       // que compartilha esta cor, pra a faixa de miniaturas do Corte Forração
       // mostrar TODAS as refs da cor. Dedup por sheetId.
-      if (sheetId && !cg.refImages!.some((ri: any) => ri.sheetId === sheetId)) {
-        cg.refImages!.push({
-          sheetId,
-          refName: order.reference_name || order.reference_code || undefined,
-          refCode: order.reference_code || undefined,
-          variantImageUrl: exactVariant?.image_url || null,
-          alternateVariants: variants,
-          technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
-        });
+      if (sheetId) {
+        // Acumula os PARES por referência (soma das OPs dessa ref na cor) —
+        // usado pra mostrar o total do modelo dentro da foto quando o card
+        // agrupa >1 modelo. Dedup por sheetId; soma se a ref repetir.
+        const existingRi = cg.refImages!.find((ri: any) => ri.sheetId === sheetId);
+        if (existingRi) {
+          (existingRi as any).pairs = ((existingRi as any).pairs || 0) + Number(order.total_pairs ?? 0);
+        } else {
+          cg.refImages!.push({
+            sheetId,
+            refName: order.reference_name || order.reference_code || undefined,
+            refCode: order.reference_code || undefined,
+            pairs: Number(order.total_pairs ?? 0),
+            variantImageUrl: exactVariant?.image_url || null,
+            alternateVariants: variants,
+            technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
+          });
+        }
       }
       // Mantém combinedGrid (escalado) pra exibir "Pares" total. O corrugado
       // (12/15/18) + fichas + curva de 1 ficha pro "Por Ficha (Np)" vêm do
@@ -3145,9 +3154,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
               const bd = cg.liningBreakdown;
               if (bd && bd.size > 1) {
                 for (const lb of bd.values()) {
+                  // Escopa as fotos/pares por MODELO à napa desta divisão — uma
+                  // ref pertence a uma única napa (lining_material da ficha), então
+                  // o card de cada napa só mostra os modelos dela.
+                  const lbMatKey = (lb.material || '').trim().toUpperCase();
+                  const matRefImages = (cg.refImages || []).filter((ri: any) =>
+                    (sheetMaterialsByRef.get(ri.sheetId || '')?.lining || '').trim().toUpperCase() === lbMatKey);
                   expanded.push({
                     ...cg,
                     liningMaterial: lb.material || undefined,
+                    refImages: matRefImages,
                     combinedGrid: { ...lb.combinedGrid },
                     knifeGrid: undefined,
                     aviamentoGrid: undefined,
@@ -3181,9 +3197,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   opNumbers: [...cg.opNumbers],
                   pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
                   refs: [],
-                  // Cópia fresca — refs de outras fichas (mesma cor+napa) são
-                  // acumuladas via dedup abaixo, sem mutar o array de origem.
-                  refImages: [...(cg.refImages || [])],
+                  // Cópia PROFUNDA — as entradas de foto são mutadas (soma de
+                  // pares no dedup abaixo); copiar os objetos evita corromper o
+                  // array de origem (compartilhado com outros setores/renders).
+                  refImages: (cg.refImages || []).map((ri: any) => ({ ...ri })),
                 });
               } else {
                 existing.totalPairs += cg.totalPairs;
@@ -3203,7 +3220,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 // sheetId) — a faixa mostra 1 foto por ref da cor no card.
                 existing.refImages = existing.refImages || [];
                 for (const ri of (cg.refImages || [])) {
-                  if (!existing.refImages.some((x: any) => x.sheetId === ri.sheetId)) existing.refImages.push(ri);
+                  const found = existing.refImages.find((x: any) => x.sheetId === ri.sheetId);
+                  if (found) (found as any).pairs = ((found as any).pairs || 0) + ((ri as any).pairs || 0);
+                  else existing.refImages.push({ ...ri });
                 }
                 // Ao fundir refs/tiras distintas numa mesma cor base, a grade
                 // "por ficha" deixa de ter sentido único → marca mixed (a
