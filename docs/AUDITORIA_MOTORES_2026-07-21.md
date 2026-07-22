@@ -1116,6 +1116,13 @@ byte-a-byte contra as definições vivas (md5 6/6). Os arquivos `20260920160000`
 `20260920160001` viraram marcadores no-op no repo para manter o replay de `db push`
 consistente com o histórico aplicado em produção.
 
+**Efeito verificado na amostra (PV-00146, pós-v2):** `purchase_deadline` 2026-05-04 →
+**2026-05-12** (6 dias úteis a menos de recuo falso) e `compute_min_billing_date`
+2026-09-25 → **2026-09-15**; o gate agora dispara só pelos shortages REAIS do motor
+canônico (ABS/PLACA EVA/solado 01, todos lead 7d; artesanal via falta da BASE; rateio
+por cor do F3-10 somando ao shortage do produto). Wrapper=18 linhas, core=18,
+`v_mrp_needs`=112, guards 22/22 e paridade 20/20 — tudo verde. **F3-5: CORRIGIDO.**
+
 ## Pendências deixadas de propósito (reparo de dados — proibido nesta frente)
 
 1. **45 sugestões de OC + 6 itens pendentes (OC-00160) de tiras artesanais** — o motor não
