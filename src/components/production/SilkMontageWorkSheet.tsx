@@ -1089,12 +1089,15 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   const thumbs = collectCompactThumbs(cg);
                   if (thumbs.length === 0) return null;
                   const withCaption = thumbs.length > 1;
-                  const IMG = 54; // reduzido de 64 (pedido user 2026-07-22)
+                  // Imagem MAIOR (pedido user 2026-07-22): o total do modelo saiu
+                  // de cima da foto (cobria a sandália) pra uma faixa ABAIXO da
+                  // imagem — o operador vê o modelo inteiro. 92px (era 54).
+                  const IMG = 92;
                   return (
                     <div className="keep-together keep-with-next flex flex-wrap gap-2 mt-1 mb-1">
                       {thumbs.map((t, ti) => (
                         <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5 shrink-0">
-                          <div style={{ position: 'relative', width: IMG, height: IMG }}>
+                          <div className="flex flex-col items-center">
                             <ProductImageBlock
                               variantImageUrl={t.variantImageUrl}
                               alternateVariants={t.alternateVariants}
@@ -1103,15 +1106,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                               size={IMG}
                               alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
                             />
-                            {/* Total de pares DESTE modelo dentro da foto — só
-                                quando o card agrupa >1 modelo. Vermelho pra o
-                                cortador achar rápido (pedido user 2026-07-22). */}
+                            {/* Total de pares DESTE modelo — faixa vermelha ABAIXO
+                                da foto (não cobre a sandália). Só quando o card
+                                agrupa >1 modelo (2026-07-22). */}
                             {withCaption && t.pairs != null && t.pairs > 0 && (
                               <div
-                                style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.86)', borderTop: '1.5px solid #C00000', textAlign: 'center', lineHeight: 1, printColorAdjust: 'exact' }}
+                                style={{ width: IMG, border: '1.5px solid #C00000', borderTop: 0, background: '#fff', textAlign: 'center', lineHeight: 1, padding: '2px 0', printColorAdjust: 'exact' }}
                               >
-                                <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '15px', color: '#C00000', letterSpacing: '-0.02em' }}>
+                                <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', color: '#C00000', letterSpacing: '-0.02em' }}>
                                   {t.pairs}
+                                </span>
+                                <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '7px', letterSpacing: '0.12em', color: '#C00000', textTransform: 'uppercase', marginLeft: 2 }}>
+                                  pares
                                 </span>
                               </div>
                             )}
