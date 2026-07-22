@@ -1970,13 +1970,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const requiresUpperSewing = requiresUpperCut
         && sheetById.get(sheetId)?.upper_corte_a_fio !== true;
 
+      // Variantes/foto da cor exata desta OP — hoisted (2026-07-22) pra
+      // alimentar refImages tanto na criação do grupo quanto na agregação das
+      // refs subsequentes que compartilham a mesma cor (faixa de fotos do
+      // Corte Forração).
+      const variants = variantsByRef.get(sheetId) || [];
+      const exactVariant = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower);
+
       if (!colorMap.has(colorKey)) {
         // Sempre calcula silk + alerts (independente do sector). O componente
         // decide via theme se renderiza. Permite reutilizar o mesmo memo em
         // modo printAll (todos os setores no mesmo arquivo).
         const silk = getOrderSilk(order);
-        const variants = variantsByRef.get(sheetId) || [];
-        const exactVariant = variants.find(v => (v.color || '').toLowerCase() === cabedelColorLower);
         const alerts: SectorAlert[] = [];
         // Fachete: só dispara alerta se o SOLADO RESOLVIDO (A1) pra esse
         // cabedal+cor tem is_fachetado=true (definido no cadastro de Solados).
@@ -2060,6 +2065,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           variantImageUrl: exactVariant?.image_url || null,
           alternateVariants: variants,
           technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
+          // Fotos POR REFERÊNCIA (preenchido logo abaixo, uma vez por sheetId).
+          refImages: [],
           alerts: alerts.length > 0 ? alerts : undefined,
           opNumbers: [],
           pvNumbers: [],
@@ -2099,6 +2106,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const refCode = order.reference_code || '';
       if (refCode && !cg.refs!.some((r: any) => r.code === refCode)) {
         cg.refs!.push({ code: refCode, name: order.reference_name || '' });
+      }
+      // Foto POR REFERÊNCIA (2026-07-22): uma entrada por ficha técnica distinta
+      // que compartilha esta cor, pra a faixa de miniaturas do Corte Forração
+      // mostrar TODAS as refs da cor. Dedup por sheetId.
+      if (sheetId && !cg.refImages!.some((ri: any) => ri.sheetId === sheetId)) {
+        cg.refImages!.push({
+          sheetId,
+          refName: order.reference_name || order.reference_code || undefined,
+          refCode: order.reference_code || undefined,
+          variantImageUrl: exactVariant?.image_url || null,
+          alternateVariants: variants,
+          technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
+        });
       }
       // Mantém combinedGrid (escalado) pra exibir "Pares" total. O corrugado
       // (12/15/18) + fichas + curva de 1 ficha pro "Por Ficha (Np)" vêm do
@@ -3161,6 +3181,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                   opNumbers: [...cg.opNumbers],
                   pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
                   refs: [],
+                  // Cópia fresca — refs de outras fichas (mesma cor+napa) são
+                  // acumuladas via dedup abaixo, sem mutar o array de origem.
+                  refImages: [...(cg.refImages || [])],
                 });
               } else {
                 existing.totalPairs += cg.totalPairs;
@@ -3175,6 +3198,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 for (const op of cg.opNumbers) if (!existing.opNumbers.includes(op)) existing.opNumbers.push(op);
                 if (cg.pvNumbers && existing.pvNumbers) {
                   for (const pv of cg.pvNumbers) if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
+                }
+                // Junta as fotos por referência das cores fundidas (dedup por
+                // sheetId) — a faixa mostra 1 foto por ref da cor no card.
+                existing.refImages = existing.refImages || [];
+                for (const ri of (cg.refImages || [])) {
+                  if (!existing.refImages.some((x: any) => x.sheetId === ri.sheetId)) existing.refImages.push(ri);
                 }
                 // Ao fundir refs/tiras distintas numa mesma cor base, a grade
                 // "por ficha" deixa de ter sentido único → marca mixed (a

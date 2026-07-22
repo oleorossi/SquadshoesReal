@@ -6,7 +6,7 @@ import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
-import { ProductImageBlock } from './worksheet/ProductImageBlock';
+import { ProductImageBlock, resolveImage } from './worksheet/ProductImageBlock';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
@@ -35,6 +35,22 @@ const CONSUMO_COMPONENTS_BY_SECTOR: Partial<Record<GroupedSector, string[]>> = {
   'Corte Forração': ['Forração', 'Forração Palmilha'],
   'Corte Cabedal': ['Cabedal'],
 };
+
+/** Uma foto por REFERÊNCIA distinta que compartilha a mesma cor num card do
+ *  Corte Forração. Coletada no build (PrintWorkSheetsPage) e preservada pela
+ *  fusão por cor+napa (mergeForracaoWithinSole), dedup por sheetId. Permite a
+ *  faixa de miniaturas mostrar TODAS as refs da cor (pedido user 2026-07-22:
+ *  "mais de uma referência da mesma cor → todas as imagens"). */
+export interface RefImageEntry {
+  /** id da ficha técnica (reference_id) — chave de dedup entre refs. */
+  sheetId?: string;
+  /** Nome/código da referência pra legenda embaixo da miniatura. */
+  refName?: string;
+  refCode?: string;
+  variantImageUrl?: string | null;
+  alternateVariants?: Array<{ color?: string; image_url?: string | null }>;
+  technicalSheetImageUrl?: string | null;
+}
 
 export interface SilkColorGroup {
   /** Cor do CABEDAL (chave de agrupamento). Em todos os setores exceto
@@ -102,6 +118,11 @@ export interface SilkColorGroup {
   alternateVariants?: Array<{ color?: string; image_url?: string | null }>;
   /** Imagem mestre da ficha técnica (último fallback). */
   technicalSheetImageUrl?: string | null;
+  /** Uma entrada de imagem por REFERÊNCIA distinta desta cor (dedup por
+   *  sheetId). Renderizada como faixa de miniaturas no card compacto do Corte
+   *  Forração (theme.showCompactImages). Ausente ⇒ cai nos campos escalares
+   *  acima (1 foto representativa). */
+  refImages?: RefImageEntry[];
   /** TRUE quando o modelo tem tiras (has_straps). Usado no Corte Forração pra
    *  esconder QUALQUER referência ao cabedal — modelo de tira não tem cabedal,
    *  o cortador só corta a forração na cor da palmilha. */
@@ -213,6 +234,10 @@ const SECTOR_THEME: Record<GroupedSector, {
   showAlerts: boolean;
   /** Linha "PEÇAS A COSTURAR: N (2 peças/par)" — só Costura Cabedal. */
   showPiecesToSew: boolean;
+  /** Faixa de miniaturas do produto DENTRO do layout compacto (Corte Forração).
+   *  Diferente de showProductImage (layout completo): mostra 1 foto por
+   *  referência da cor, com legenda (pedido user 2026-07-22). */
+  showCompactImages?: boolean;
 }> = {
   // Silk (2026-06-12, pedido do dono): layout COMPACTO igual Corte Forração
   // (agrupamento solado+cor) mostrando APENAS a logomarca a estampar (cliente
@@ -225,7 +250,7 @@ const SECTOR_THEME: Record<GroupedSector, {
   // Corte Forração: layout COMPACTO (pedido user 2026-06-12) — por cor, só
   // nome da cor + grade por ficha + total por numeração + alerta fachetado
   // (audit E2 10/06/2026: o alerta é EXECUTADO por este setor).
-  'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false },
+  'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false, showCompactImages: true },
   // Corte Cabedal — só em modelos has_straps=false. Sem silk; foto do produto
   // pra identificação do cabedal por cor.
   'Corte Cabedal':    { icon: Scissors,   compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showPiecesToSew: false },
@@ -276,6 +301,27 @@ const sortSizes = (sizes: string[]): string[] =>
  * numeração + alerta fachetado em 1 linha + tally. Silk adiciona o bloco
  * da LOGOMARCA a estampar (única por grupo, ou por cor quando divergem).
  */
+/** Miniaturas a exibir na faixa compacta do Corte Forração: uma por referência
+ *  distinta da cor, resolvendo a melhor foto (variante da cor exata → fallback
+ *  Preto → ficha técnica) e descartando placeholder e duplicatas (2+ refs que
+ *  caem na mesma foto). Cai nos campos escalares quando refImages não foi
+ *  populado (retrocompat com fontes que não coletam por referência). */
+export function collectCompactThumbs(cg: SilkColorGroup): Array<RefImageEntry & { resolvedUrl: string }> {
+  const source: RefImageEntry[] = (cg.refImages && cg.refImages.length > 0)
+    ? cg.refImages
+    : [{ variantImageUrl: cg.variantImageUrl, alternateVariants: cg.alternateVariants, technicalSheetImageUrl: cg.technicalSheetImageUrl }];
+  const seen = new Set<string>();
+  const out: Array<RefImageEntry & { resolvedUrl: string }> = [];
+  for (const ri of source) {
+    const { url } = resolveImage(ri.variantImageUrl, ri.alternateVariants, ri.technicalSheetImageUrl);
+    if (!url || url === '/placeholder.svg') continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({ ...ri, resolvedUrl: url });
+  }
+  return out;
+}
+
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
@@ -1031,6 +1077,41 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </span>
                   </div>
                 </div>
+                {/* Faixa de fotos do produto (Corte Forração, 2026-07-22):
+                    1 miniatura por REFERÊNCIA da cor, com legenda. Placeholder
+                    e refs que caem na mesma foto são descartados. Legenda só
+                    quando há >1 foto (com 1, a badge de ref no cabeçalho já
+                    identifica). */}
+                {theme.showCompactImages && (() => {
+                  const thumbs = collectCompactThumbs(cg);
+                  if (thumbs.length === 0) return null;
+                  const withCaption = thumbs.length > 1;
+                  return (
+                    <div className="keep-together keep-with-next flex flex-wrap gap-2 mt-1 mb-1">
+                      {thumbs.map((t, ti) => (
+                        <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5 shrink-0">
+                          <ProductImageBlock
+                            variantImageUrl={t.variantImageUrl}
+                            alternateVariants={t.alternateVariants}
+                            technicalSheetImageUrl={t.technicalSheetImageUrl}
+                            orderColor={cg.color}
+                            size={64}
+                            alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
+                          />
+                          {withCaption && t.refName && (
+                            <span
+                              className="block truncate text-center uppercase font-bold"
+                              style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#000', maxWidth: 64 }}
+                              title={t.refName}
+                            >
+                              {t.refName}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {/* Logomarca POR COR — só quando as cores da ficha resolvem
                     silks DIFERENTES (senão o bloco único acima cobre tudo). */}
                 {theme.showSilkImage && uniqueSilks.length > 1 && cg.silk && (
