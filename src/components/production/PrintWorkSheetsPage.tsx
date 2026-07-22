@@ -2137,6 +2137,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       const orderTotal = Number(order.total_pairs ?? 0);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
+      // Fichas (corrugados) por REFERÊNCIA — mesma conta do rodapé da grade.
+      // Soma na entrada de foto criada acima; a faixa vermelha do card mostra
+      // fichas por modelo (não pares) quando agrupa >1 modelo (2026-07-22).
+      if (sheetId) {
+        const riForFichas = cg.refImages!.find((ri: any) => ri.sheetId === sheetId);
+        if (riForFichas) (riForFichas as any).fichas = ((riForFichas as any).fichas || 0) + ficha.fichas;
+      }
       cg.baseGrid = foldFichaIntoGroup(cg, ficha, ficha.baseCurve, cg.baseGrid);
       // Knife mapping da ficha técnica desta OP (P/M/G/...). NULL se não
       // cadastrado — neste caso o knifeGrid recebe a numeração literal como
@@ -3221,8 +3228,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
                 existing.refImages = existing.refImages || [];
                 for (const ri of (cg.refImages || [])) {
                   const found = existing.refImages.find((x: any) => x.sheetId === ri.sheetId);
-                  if (found) (found as any).pairs = ((found as any).pairs || 0) + ((ri as any).pairs || 0);
-                  else existing.refImages.push({ ...ri });
+                  if (found) {
+                    (found as any).pairs = ((found as any).pairs || 0) + ((ri as any).pairs || 0);
+                    (found as any).fichas = ((found as any).fichas || 0) + ((ri as any).fichas || 0);
+                  } else existing.refImages.push({ ...ri });
                 }
                 // Ao fundir refs/tiras distintas numa mesma cor base, a grade
                 // "por ficha" deixa de ter sentido único → marca mixed (a

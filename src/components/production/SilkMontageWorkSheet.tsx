@@ -47,9 +47,12 @@ export interface RefImageEntry {
   /** Nome/código da referência pra legenda embaixo da miniatura. */
   refName?: string;
   refCode?: string;
-  /** Total de pares DESTE modelo (soma da grade da ref) dentro do card. Mostrado
-   *  em vermelho na foto quando o card agrupa >1 modelo (2026-07-22). */
+  /** Total de pares DESTE modelo (soma da grade da ref) dentro do card. */
   pairs?: number;
+  /** Nº de FICHAS (corrugados) DESTE modelo = pares ÷ corrugado. Mostrado em
+   *  vermelho na faixa abaixo da foto quando o card agrupa >1 modelo — é o que
+   *  o cortador conta (2026-07-22). */
+  fichas?: number;
   variantImageUrl?: string | null;
   alternateVariants?: Array<{ color?: string; image_url?: string | null }>;
   technicalSheetImageUrl?: string | null;
@@ -1106,18 +1109,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                               size={IMG}
                               alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
                             />
-                            {/* Total de pares DESTE modelo — faixa vermelha ABAIXO
-                                da foto (não cobre a sandália). Só quando o card
-                                agrupa >1 modelo (2026-07-22). */}
-                            {withCaption && t.pairs != null && t.pairs > 0 && (
+                            {/* Fichas (corrugados) DESTE modelo — faixa vermelha
+                                ABAIXO da foto (não cobre a sandália). É o que o
+                                cortador conta. Só quando agrupa >1 modelo (2026-07-22). */}
+                            {withCaption && t.fichas != null && t.fichas > 0 && (
                               <div
                                 style={{ width: IMG, border: '1.5px solid #C00000', borderTop: 0, background: '#fff', textAlign: 'center', lineHeight: 1, padding: '2px 0', printColorAdjust: 'exact' }}
                               >
                                 <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', color: '#C00000', letterSpacing: '-0.02em' }}>
-                                  {t.pairs}
+                                  {t.fichas}
                                 </span>
                                 <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '7px', letterSpacing: '0.12em', color: '#C00000', textTransform: 'uppercase', marginLeft: 2 }}>
-                                  pares
+                                  fichas
                                 </span>
                               </div>
                             )}
