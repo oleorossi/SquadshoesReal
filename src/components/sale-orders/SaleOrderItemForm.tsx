@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { useReferenceMaterialVariants, useAllActiveReferenceMaterialVariants, VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { shouldSyncStrapColorsToMain } from '@/lib/strapColorSync';
 import { SearchInput } from '@/components/ui/search-input';
 interface ReferenceOption {
   id: string;
@@ -142,6 +143,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // re-running the sync whenever the query cache refreshes strap_colors for the
   // same reference (which would restore straps the user intentionally removed).
   const strapSyncedForRef = useRef<string>('');
+  // Última cor principal OBSERVADA pelo auto-sync de tiras. `null` = ainda não
+  // observada (primeira renderização / reabertura de PV salvo). Distinguir
+  // "principal mudou de fato" de "principal recém-hidratada" é o que impede o
+  // auto-sync de sobrescrever a cor de tira escolhida ao reabrir (ver effect).
+  const prevMainColorRef = useRef<string | null>(null);
   // Latest-ref pattern: avoids stale closures when items are reordered (sortedIndices
   // in the parent shifts `index` between renders) without triggering effect re-runs.
   const latestRef = useRef({ index, onUpdate });
@@ -891,21 +897,32 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // precisava clicar "Igualar à principal" toda vez ou setar manualmente cor
   // a cor — fonte recorrente de erro no débito (debit_strap_stock falhava
   // quando esquecia de igualar).
-  // Só auto-sync quando:
-  //  - item.color foi escolhida (não vazio)
-  //  - tiras existem
-  //  - tira ainda não tem cor OU todas as tiras estão com a mesma cor antiga
-  //    (preserva override manual do operador se ele variou as tiras)
+  //
+  // Dois gatilhos DISTINTOS:
+  //  1) `allBlank` — tiras sem cor: sempre seguro preencher com a principal
+  //     (não há escolha do usuário a perder). Cobre item novo e tiras recém-
+  //     adicionadas pela ficha.
+  //  2) `followedOldMain` — "seguir a principal" quando ela REALMENTE mudou de
+  //     um valor anterior não-vazio E todas as tiras estavam iguais a esse valor
+  //     antigo (i.e., estavam de fato acompanhando a principal). Só assim
+  //     sabemos que a intenção é acompanhar, e não uma cor de tira escolhida de
+  //     propósito diferente do calçado.
+  //
+  // BUG CORRIGIDO 2026-07-22 ("a seleção de tiras some ao reabrir o PV"): o ramo
+  // antigo (`allSameOldColor`) sobrescrevia a cor da tira sempre que TODAS as
+  // tiras tivessem a mesma cor ≠ da principal — condição TRIVIALMENTE verdadeira
+  // p/ modelo de tira única (o `every` interno é vácuo p/ 1 item). Ao reabrir um
+  // PV salvo (ex.: NL02 PRETO com tira "PRETO COM FUNDO PRETO"), a principal
+  // hidratava como "PRETO" e a tira era reescrita p/ "PRETO" — cor inexistente no
+  // grupo STRASS → aviso "sem produto" + guard barrando o save. `prevMainColorRef`
+  // começa `null` (não observada); na 1ª hidratação nenhuma mudança é detectada
+  // → a cor escolhida é preservada. A regra vive em lib/strapColorSync.ts (testada).
   useEffect(() => {
-    if (!item.color) return;
     const straps = (item.strap_colors as any[]) || [];
-    if (straps.length === 0) return;
+    const prevMain = prevMainColorRef.current;
+    prevMainColorRef.current = item.color || '';
 
-    const allBlank = straps.every(s => !s?.color);
-    const allSameOldColor = straps.every(s => s?.color && s.color !== item.color &&
-      straps.every(other => other?.color === s.color));
-
-    if (allBlank || allSameOldColor) {
+    if (shouldSyncStrapColorsToMain(prevMain, item.color || '', straps)) {
       const updated = straps.map(s => ({ ...s, color: item.color }));
       const { index: idx, onUpdate: update } = latestRef.current;
       update(idx, 'strap_colors', updated);
