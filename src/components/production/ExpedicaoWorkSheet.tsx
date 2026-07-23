@@ -3,6 +3,7 @@ import { Truck, Package, MapPin, Phone, Receipt } from '@phosphor-icons/react';
 import { adaptiveTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
+import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
@@ -249,7 +250,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
 
   // Tally de caixas conferidas
   const tallyBlock = (
-    <TallyBox count={totalBoxes} pairsPerCard={1} unit="caixas" title="Caixas conferidas · marcar cada caixa coletiva" />
+    <TallyBox count={totalBoxes} pairsPerCard={1} unit="caixas" title="Caixas conferidas · marcar cada caixa coletiva" size={TALLY_SIZE} />
   );
 
   // ── Itens · Conferência — tabela longa quebrada em CHUNKS de linhas ──

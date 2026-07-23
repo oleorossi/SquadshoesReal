@@ -1,6 +1,7 @@
 import { SignedImage } from '@/components/ui/signed-image';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
+import { TALLY_SIZE } from './worksheet/density';
 
 /**
  * ReducedWorkSheet — ficha de operador REDUZIDA.
@@ -243,7 +244,7 @@ export function ReducedWorkSheet({
       {/* Controle de Fichas — caixinhas sm (16px) para compactar */}
       {totalPairs > 0 && (
         <div className="keep-together" style={{ marginTop: 5 }}>
-          <TallyBox count={tallyCount} pairsPerCard={tallyPerCard} totalUnits={totalPairs} title={tallyTitle} size="sm" />
+          <TallyBox count={tallyCount} pairsPerCard={tallyPerCard} totalUnits={totalPairs} title={tallyTitle} size={TALLY_SIZE} />
         </div>
       )}
     </div>

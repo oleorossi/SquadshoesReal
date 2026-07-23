@@ -8,6 +8,7 @@ import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import { ProductImageBlock, resolveImage } from './worksheet/ProductImageBlock';
 import { CompletionFooter } from './worksheet/CompletionFooter';
+import { TALLY_SIZE, HEADER_THUMB_PX, STEP_CHECKBOX_PX, canUseSlimConsumo } from './worksheet/density';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -556,14 +557,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               : ['Frente', 'Traseira'];
             return steps.map((step, sIdx) => (
               <tr key={`avi-${step}`} style={{ borderBottom: sIdx < steps.length - 1 ? '1px solid #000' : 'none' }}>
-                <td className="py-1 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>{step}</td>
+                <td className="py-0.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>{step}</td>
                 {activeSizes.map(s => (
-                  <td key={s} className="py-1" style={{ borderRight: '1px solid #000' }}>
-                    <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
+                  <td key={s} className="py-0.5" style={{ borderRight: '1px solid #000' }}>
+                    <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                   </td>
                 ))}
-                <td className="py-1">
-                  <span className="inline-block w-5 h-5" style={{ border: '1.5px solid #000' }} />
+                <td className="py-0.5">
+                  <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                 </td>
               </tr>
             ));
@@ -619,6 +620,39 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     const rows = (cg.consumption || []).filter(r => comps.includes(r.component) && (Number(r.required) || 0) > 0);
     if (rows.length === 0) return null;
     const colLabel = sector === 'Corte Forração' ? 'Forro a cortar' : 'Cabedal a cortar';
+
+    // Faixa ÚNICA (densidade 2026-07-23): com um material só, a barra preta +
+    // o thead custam ~36px pra rotular uma linha que já se explica. Com 2+
+    // materiais a tabela volta — o operador compara as linhas, e a comparação
+    // precisa das colunas alinhadas.
+    if (canUseSlimConsumo(rows)) {
+      const r = rows[0];
+      const colorStr = (r.color || '').trim();
+      const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
+      return (
+        <div className="keep-together mt-1 bg-white flex items-center justify-between gap-2 px-2 py-1" style={{ border: '1.5px solid #000' }}>
+          <span className="flex items-baseline gap-1.5 min-w-0">
+            <Scissors className="h-3 w-3 shrink-0 self-center" weight="bold" />
+            <span className="uppercase leading-none truncate" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
+              {r.product_name}
+            </span>
+            {showColor && (
+              <span className="font-mono shrink-0" style={{ fontSize: '9px', color: '#333' }}>· {colorStr}</span>
+            )}
+          </span>
+          <span className="shrink-0" style={{ whiteSpace: 'nowrap' }}>
+            <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', marginRight: 5 }}>{colLabel}</span>
+            <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.02em', color: '#C00000', lineHeight: 1 }}>
+              {fmtConsumoQty(Number(r.required))}
+            </span>
+            <span className="font-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#000', marginLeft: 3 }}>
+              {consumoUnitLabel(r.unit)}
+            </span>
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div className="keep-together mt-1 bg-white" style={{ border: '1.5px solid #000' }}>
         <div className="flex items-baseline justify-between gap-2 px-2 py-1" style={{ background: '#000' }}>
@@ -705,6 +739,43 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         <span className="font-mono" style={{ fontSize: '9px', fontWeight: 700, color: '#000', marginLeft: 3 }}>m</span>
       </>
     );
+
+    // Faixa ÚNICA (densidade 2026-07-23): uma tira só não justifica barra
+    // preta + thead. As DUAS medidas continuam no papel — "por ficha" é o que
+    // a operadora usa pra montar o corrugado, "total" é o que ela puxa do rolo.
+    if (canUseSlimConsumo(rows)) {
+      const r = rows[0];
+      const req = Number(r.required) || 0;
+      const colorStr = (r.color || '').trim();
+      const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
+      return (
+        <div className="keep-together mt-1 bg-white flex items-center justify-between gap-2 px-2 py-1" style={{ border: '1.5px solid #000' }}>
+          <span className="flex items-baseline gap-1.5 min-w-0">
+            <Paperclip className="h-3 w-3 shrink-0 self-center" weight="bold" />
+            <span className="uppercase leading-none truncate" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
+              {r.product_name}
+            </span>
+            {showColor && (
+              <span className="font-mono shrink-0" style={{ fontSize: '9px', color: '#333' }}>· {colorStr}</span>
+            )}
+          </span>
+          <span className="shrink-0" style={{ whiteSpace: 'nowrap' }}>
+            {showPerFicha && (
+              <>
+                <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', marginRight: 4 }}>por ficha</span>
+                {meterCell(req / (nFichas || 1), 15)}
+                <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', margin: '0 4px 0 10px' }}>total</span>
+              </>
+            )}
+            {!showPerFicha && (
+              <span className="font-mono uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em', color: '#333', marginRight: 4 }}>total</span>
+            )}
+            {meterCell(req, 18)}
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div className="keep-together mt-1 bg-white" style={{ border: '1.5px solid #000' }}>
         <div className="flex items-baseline justify-between gap-2 px-2 py-1" style={{ background: '#000' }}>
@@ -1174,7 +1245,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 </div>
                 {renderCompactAlerts(cg)}
                 {renderConsumoCorte(cg)}
-                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size="sm" />
+                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
               </div>
             );
           }
@@ -1188,8 +1259,23 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
               {/* Color header — editorial, no fill. Atômico + colado na
                   seção seguinte (nunca órfão no fim da página). */}
-              <div className="keep-together keep-with-next px-3 py-1.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+              <div className="keep-together keep-with-next px-3 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
+                  {/* Foto do produto como MINIATURA no cabeçalho (densidade
+                      2026-07-23): era uma faixa própria de 140px que usava só
+                      27% da largura — o resto saía em branco em toda cor. Aqui
+                      ela cabe na altura que o cabeçalho já ocupava. */}
+                  {theme.showProductImage && (
+                    <ProductImageBlock
+                      variantImageUrl={cg.variantImageUrl}
+                      alternateVariants={cg.alternateVariants}
+                      technicalSheetImageUrl={cg.technicalSheetImageUrl}
+                      orderColor={cg.color}
+                      size={HEADER_THUMB_PX}
+                      showRefBadge={false}
+                      alt={`${group.soleName} ${cg.color}`}
+                    />
+                  )}
                   {cg.colorHex && (
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                   )}
@@ -1262,32 +1348,21 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 </div>
               </div>
 
-              <div className="p-2 bg-white">
-                {/* Foto do produto (máx. 1 por card — pedido user 2026-06-12).
-                    Costura Cabedal usa 48×48 (identificação rápida); demais
-                    setores mantêm 140 pra leitura a distância. */}
-                {theme.showProductImage && (
-                  <div className="flex gap-2 mb-1.5 keep-together">
-                    <ProductImageBlock
-                      variantImageUrl={cg.variantImageUrl}
-                      alternateVariants={cg.alternateVariants}
-                      technicalSheetImageUrl={cg.technicalSheetImageUrl}
-                      orderColor={cg.color}
-                      size={sector === 'Costura Cabedal' ? 48 : 140}
-                      alt={`${group.soleName} ${cg.color}`}
-                    />
-                    {theme.showPiecesToSew && (
-                      <div className="flex-1 flex flex-col justify-center pl-2" style={{ borderLeft: '1px solid #000' }}>
-                        <span className="section-label block" style={{ color: '#000' }}>Peças a Costurar</span>
-                        <span
-                          className="text-black leading-none mt-0.5 block"
-                          style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.02em' }}
-                        >
-                          {cg.totalPairs * 2}
-                          <span className="text-[11px] font-mono tracking-widest uppercase"> peças (2 peças/par)</span>
-                        </span>
-                      </div>
-                    )}
+              <div className="p-1.5 bg-white">
+                {/* A foto do produto subiu pro CABEÇALHO da cor como miniatura
+                    (densidade 2026-07-23) — a faixa própria de 140px sumiu.
+                    "Peças a Costurar" (Costura Cabedal) fica: agora é uma faixa
+                    de largura inteira, que é o que aquele número merece. */}
+                {theme.showPiecesToSew && (
+                  <div className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
+                    <span className="section-label" style={{ color: '#000' }}>Peças a Costurar</span>
+                    <span
+                      className="text-black leading-none"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    >
+                      {cg.totalPairs * 2}
+                      <span className="text-[10px] font-mono tracking-widest uppercase"> peças (2 peças/par)</span>
+                    </span>
                   </div>
                 )}
 
@@ -1307,7 +1382,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   // linha (tr é atômico, thead repete) pra não pular página
                   // inteira deixando branco.
                   return (
-                    <div className={`mb-1.5 ${cg.components.length <= 8 ? 'keep-together' : ''}`}>
+                    <div className={`mb-1 ${cg.components.length <= 8 ? 'keep-together' : ''}`}>
                       <div className="flex items-baseline justify-between mb-1 keep-with-next">
                         <span className="section-label" style={{ color: '#000' }}>
                           {isAllStraps ? `Sequência de Tiras · ${cg.components.length}` : 'Componentes'}
@@ -1389,11 +1464,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     simplificação 2026-06-12. */}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
 
-                {/* Grade de números — editorial hairline. Atômica: label +
-                    tabela inteira na mesma página (linhas "Por Ficha"/"Total"
-                    nunca se separam). */}
-                <div className="mb-1.5 keep-together">
-                  <span className="section-label block mb-1" style={{ color: '#000' }}>Grade · Pares por Numeração</span>
+                {/* Grade de números — editorial hairline. Atômica: as linhas
+                    "Por Ficha"/"Total" nunca se separam.
+                    O rótulo "Grade · Pares por Numeração" saiu na densidade
+                    2026-07-23: o thead da própria tabela já abre com "Nº". */}
+                <div className="mb-1 keep-together">
                   {renderGradeTable(cg)}
                 </div>
 
@@ -1404,7 +1479,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 {renderConsumoTiras(cg)}
 
                 {/* Tally Box */}
-                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} />
+                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
               </div>
             </div>
           );

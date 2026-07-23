@@ -4,6 +4,7 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
+import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { CompletionFooter } from './worksheet/CompletionFooter';
@@ -286,7 +287,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             planejamento, não pertence à ficha de operador. */}
 
         <div className="px-2 py-1.5 border-t border-black">
-          <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} title={tallyTitle} />
+          <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
         </div>
       </div>
     );

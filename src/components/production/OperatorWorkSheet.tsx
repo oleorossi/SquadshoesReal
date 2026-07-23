@@ -8,6 +8,7 @@ import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont } from './worksheet/adaptiveFont';
 import { resolveFicha } from './worksheet/fichaSize';
 import { TallyBox } from './worksheet/TallyBox';
+import { TALLY_SIZE } from './worksheet/density';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
@@ -637,12 +638,12 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
             Solagem); Acabamento mantém o tally próprio de caixas abaixo. */}
         {!isAcabamento && (
           <div className="keep-with-next">
-            <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} title={tallyTitle} />
+            <TallyBox count={tallyCards} pairsPerCard={tallyPairsPerCard} totalUnits={totalPairs} title={tallyTitle} size={TALLY_SIZE} />
           </div>
         )}
         {isAcabamento && (
           <div className="keep-with-next">
-            <TallyBox count={boxes} pairsPerCard={pairsPerBox} totalUnits={totalPairs} title={`Caixas · ${boxes} × ${pairsPerBox} pares`} />
+            <TallyBox count={boxes} pairsPerCard={pairsPerBox} totalUnits={totalPairs} title={`Caixas · ${boxes} × ${pairsPerBox} pares`} size={TALLY_SIZE} />
           </div>
         )}
         </div>

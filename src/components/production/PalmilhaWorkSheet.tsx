@@ -4,6 +4,7 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
+import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
@@ -395,7 +396,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     quando readyMade, mas o dono exige Controle de Fichas em
                     todos os setores (o alerta "Palmilha PRONTA" permanece). */}
                 <div className="px-2 pb-2 pt-2 border-t border-black">
-                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} />
+                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
                 </div>
               </div>
             );
