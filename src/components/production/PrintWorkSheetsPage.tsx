@@ -3431,47 +3431,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           </div>
         ))}
 
-        {/* ── Solagem ── */}
-        {includesSector('Solagem') && (() => {
-          const data = solagemData?.solagem;
-          if (!data || data.bands.length === 0) return null;
-          return reduced ? (
-            data.bands.map((b, i) => (
-              <div key={`sol-red-${b.soleColor}-${i}`} className="reduced-card">
-                <ReducedWorkSheet
-                  sectorLabel="Solagem"
-                  // Referência do solado (modelo) + cor, ambos no título vermelho.
-                  // Operador da Solagem precisa identificar QUAL solado, não só a cor.
-                  title={b.soleType ? `${b.soleType} · ${b.soleColor}` : (b.soleColor || 'Solagem')}
-                  imageUrl={b.refs?.[0]?.image_url}
-                  grade={b.grade}
-                  allSizes={data.allSizes}
-                  totalPairs={b.totalPairs}
-                  totalNote={b.fichas
-                    ? b.corrugadosMistos
-                      ? `${b.fichas} fichas · corrugados mistos`
-                      : `${b.fichasAproximadas ? '≈ ' : ''}${b.fichas} ficha(s) de ${b.baseGradeSum}`
-                    : undefined}
-                  fichas={b.fichas || undefined}
-                  pairsPerFicha={!b.corrugadosMistos && b.baseGradeSum ? b.baseGradeSum : undefined}
-                  consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
-                  consumptionSector="Solagem"
-                />
-              </div>
-            ))
-          ) : (
-            <div className="page-break">
-              <SolagemWorkSheet
-                bands={data.bands}
-                allSizes={data.allSizes}
-                grandTotal={data.grandTotal}
-                sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
-                clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
-              />
-            </div>
-          );
-        })()}
-
         {/* ── Colagem: consolidada por TIPO + COR do solado (igual à Solagem) ──
             Pedido user 2026-06-08: a ficha de operador de solado da Colagem deve
             SOMAR as cores de cabedal que compartilham o mesmo solado+cor do solado
@@ -3643,6 +3602,53 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             </div>,
           ];
         })}
+
+        {/* ── Solagem ──
+            Renderizada DEPOIS de Colagem e Montagem (2026-07-24): a sequência
+            de fábrica é Colagem (6) → Montagem (7) → Solagem (8), então a ficha
+            do operador tem que sair nessa ordem. Antes a Solagem vinha ANTES de
+            Colagem/Montagem — o maço saía com o último passo do solado na
+            frente ("de trás pra frente"). Ordem canônica: SECTORS /
+            CANONICAL_STAGE_ORDER / DISPLAY_SECTORS. */}
+        {includesSector('Solagem') && (() => {
+          const data = solagemData?.solagem;
+          if (!data || data.bands.length === 0) return null;
+          return reduced ? (
+            data.bands.map((b, i) => (
+              <div key={`sol-red-${b.soleColor}-${i}`} className="reduced-card">
+                <ReducedWorkSheet
+                  sectorLabel="Solagem"
+                  // Referência do solado (modelo) + cor, ambos no título vermelho.
+                  // Operador da Solagem precisa identificar QUAL solado, não só a cor.
+                  title={b.soleType ? `${b.soleType} · ${b.soleColor}` : (b.soleColor || 'Solagem')}
+                  imageUrl={b.refs?.[0]?.image_url}
+                  grade={b.grade}
+                  allSizes={data.allSizes}
+                  totalPairs={b.totalPairs}
+                  totalNote={b.fichas
+                    ? b.corrugadosMistos
+                      ? `${b.fichas} fichas · corrugados mistos`
+                      : `${b.fichasAproximadas ? '≈ ' : ''}${b.fichas} ficha(s) de ${b.baseGradeSum}`
+                    : undefined}
+                  fichas={b.fichas || undefined}
+                  pairsPerFicha={!b.corrugadosMistos && b.baseGradeSum ? b.baseGradeSum : undefined}
+                  consumption={consumptionForOpNumbers(b.opNumbers, b.totalPairs)}
+                  consumptionSector="Solagem"
+                />
+              </div>
+            ))
+          ) : (
+            <div className="page-break">
+              <SolagemWorkSheet
+                bands={data.bands}
+                allSizes={data.allSizes}
+                grandTotal={data.grandTotal}
+                sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
+                clientNames={clientNamesForPvs(data.bands.flatMap(b => b.pvNumbers || []))}
+              />
+            </div>
+          );
+        })()}
 
         {/* ── Acabamento: pedido individual cliente-a-cliente, em maço único ──
             User pediu em 2026-05: 'Setor de acabamento não tem agrupamento
