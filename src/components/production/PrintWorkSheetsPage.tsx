@@ -2895,8 +2895,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             </button>
             {/* Saída invertida: emite as páginas da última pra primeira SÓ no
                 print (preview em tela não muda) — compensa impressora que
-                empilha face pra cima. Não se aplica ao Relatório simplificado
-                (fichas recortadas, ordem de folha irrelevante). */}
+                empilha face pra cima. Vale também no Relatório simplificado:
+                Expedição/Relatório Gerencial imprimem a ficha completa lá e
+                precisam inverter; os cards recortáveis reordenados não fazem
+                diferença (vão pra tesoura). */}
             <button
               type="button"
               onClick={toggleReverseOutput}
@@ -3018,11 +3020,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
           inverte a ordem dos maços de setor — juntos, reversão completa do
-          documento página a página. `!reduced` porque o layout reduzido é
-          recortado na tesoura (ordem de folha irrelevante) e o empacotamento
-          de cards por A4 é do browser (não dá pra inverter por página). */}
-      <ReversePrintContext.Provider value={printReversing && !reduced}>
-      <ReversibleStack reverse={printReversing && !reduced}>
+          documento página a página.
+          SEM gate `!reduced` (fix da revisão 2026-07-24): Expedição e
+          Relatório Gerencial NÃO têm variante reduzida — no "Relatório
+          simplificado" imprimem a ficha COMPLETA (PaginatedSheet multi-página,
+          grampeada/entregue inteira) e precisam inverter também, senão esse
+          trecho do maço sai de trás pra frente com o toggle ligado. Os
+          .reduced-card invertidos são inofensivos: as fichas são recortadas
+          na tesoura (ordem de folha irrelevante). */}
+      <ReversePrintContext.Provider value={printReversing}>
+      <ReversibleStack reverse={printReversing}>
 
         {/* ── Corte Palmilha ──
             Decisão 24/05/2026 (v3): user prefere ficha em múltiplas A4 a
@@ -3490,21 +3497,29 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
         {/* ── Guarda de reconciliação: bandas de solado vs pares do pedido ──
             B1: bandas agora são POR SETOR (roteiro pode divergir entre Solagem
-            e Colagem), então a guarda também roda por setor. */}
+            e Colagem), então a guarda também roda por setor.
+            .page-break próprio (fix da revisão 2026-07-24): sem folha
+            dedicada o aviso colava na folha do sibling SEGUINTE na emissão —
+            com a Saída invertida esse sibling é a ÚLTIMA página do maço
+            ANTERIOR (aviso impresso no topo da folha do setor errado, e a
+            soma aviso+página cheia podia fragmentar com as metades trocadas
+            na pilha). Folha própria = unidade página-alinhada que a inversão
+            posiciona corretamente; custa 1 folha só quando há divergência. */}
         {solagemData && ([['Solagem', solagemData.solagem], ['Colagem', solagemData.colagem]] as const)
           .filter((entry): entry is ['Solagem' | 'Colagem', NonNullable<typeof solagemData.solagem>] =>
             !!entry[1] && entry[1].grandTotal !== entry[1].expectedTotal)
           .map(([sec, d]) => (
-          <div
-            key={`reconc-${sec}`}
-            className="keep-together"
-            style={{ border: '2px solid #C00000', background: '#fff', padding: '8px 12px', margin: '8px 0',
-              color: '#C00000', fontFamily: "'Fira Sans', sans-serif", fontSize: '13px', fontWeight: 700,
-              WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-          >
-            ⚠ RECONCILIAÇÃO ({sec}): as bandas de solado somam {d.grandTotal} pares, mas as OPs do
-            pedido somam {d.expectedTotal} (diferença de {Math.abs(d.grandTotal - d.expectedTotal)}).
-            Verifique se alguma OP ficou fora de banda ou foi duplicada (lote).
+          <div key={`reconc-${sec}`} className="page-break">
+            <div
+              className="keep-together"
+              style={{ border: '2px solid #C00000', background: '#fff', padding: '8px 12px', margin: '8px 0',
+                color: '#C00000', fontFamily: "'Fira Sans', sans-serif", fontSize: '13px', fontWeight: 700,
+                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+            >
+              ⚠ RECONCILIAÇÃO ({sec}): as bandas de solado somam {d.grandTotal} pares, mas as OPs do
+              pedido somam {d.expectedTotal} (diferença de {Math.abs(d.grandTotal - d.expectedTotal)}).
+              Verifique se alguma OP ficou fora de banda ou foi duplicada (lote).
+            </div>
           </div>
         ))}
 

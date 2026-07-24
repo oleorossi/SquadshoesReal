@@ -19,10 +19,19 @@ import React, { createContext } from 'react';
  * Combinadas, a emissão é a reversão completa do documento página a página.
  *
  * Limite conhecido: bloco maior que 1 página (pagi-page--flow) é fragmentado
- * pelo browser em ordem de leitura — as páginas INTERNAS desse bloco não
- * invertem (edge case aceito, mesmo status do cabeçalho ausente nessas
- * páginas). O layout reduzido (.reduced-card) fica FORA da inversão: as
- * fichas são recortadas na tesoura, ordem de folha não importa.
+ * pelo browser em ordem de LEITURA (fragmentação CSS não inverte) dentro de
+ * uma emissão globalmente invertida — na PILHA final, as folhas internas
+ * desse bloco saem em ordem reversa de leitura (igual ao baseline sem
+ * compensação; são as mesmas folhas sem faixa N/TOTAL). Edge case aceito
+ * porque quase todo conteúdo longo já é fatiado em chunks < 1 página;
+ * mitigação real é fatiar o bloco que estourar (ex.: Resumo embalagem da
+ * Expedição), não aceitar o flow.
+ *
+ * O layout reduzido (.reduced-card) TAMBÉM inverte (fix da revisão
+ * 2026-07-24): Expedição e Relatório Gerencial não têm variante reduzida —
+ * no "Relatório simplificado" imprimem a ficha completa e precisam da
+ * compensação. Os cards recortáveis reordenados são inofensivos (vão pra
+ * tesoura; o empacotamento por A4 é do browser de qualquer forma).
  */
 export const ReversePrintContext = createContext(false);
 
