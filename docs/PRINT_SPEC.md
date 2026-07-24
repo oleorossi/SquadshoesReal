@@ -307,6 +307,20 @@ fragmentação por um paginador determinístico.
    de um `.page-break` próprio; a última página explícita da ficha tem
    `break-after: auto` e o `.page-break` pai força a quebra (evita breaks
    duplos virarem folha em branco).
+7. **Saída invertida (2026-07-24, `worksheet/printOrder.tsx`)**: a impressora
+   da fábrica empilha face pra cima (1ª página emitida fica no fundo → maço
+   sai de trás pra frente). Com o toggle **"Saída invertida"** da toolbar
+   LIGADO (default, persistido em `localStorage['print_reverse_output']`),
+   o print emite o documento da última página física pra primeira: o
+   `ReversibleStack` inverte a ordem dos maços de setor na print-area e o
+   `ReversePrintContext` faz cada `PaginatedSheet` emitir as próprias páginas
+   ao contrário (numeração "N/TOTAL" é lógica — não muda). O flip é
+   TRANSITÓRIO: liga em `beforeprint` (flushSync, snapshot pega o DOM
+   invertido — cobre botão Imprimir E Ctrl+P) e desliga em `afterprint` —
+   a pré-visualização em tela NUNCA inverte. Fora da inversão: layout
+   reduzido (fichas recortadas, empacotamento de cards é do browser) e as
+   páginas INTERNAS de bloco `--flow` maior que 1 página (fragmentação do
+   browser, edge case aceito).
 
 ### Fluxo contínuo por setor (2026-06-12, 4º passe)
 
