@@ -94,16 +94,36 @@ export async function annotateConsumptionAvailability(
     if (pColor.length > 3 && c.length > 3 && (c.includes(pColor) || pColor.includes(c))) return true;
     return false;
   };
-  const groupAvailable = (groupName: string, color: string): number => {
+  /** Estoque LÍQUIDO do produto (nunca negativo). */
+  const netStock = (p: { quantity?: number | null; reserved_stock?: number | null } | undefined): number =>
+    Math.max(0, (Number(p?.quantity) || 0) - (Number(p?.reserved_stock) || 0));
+
+  /**
+   * Disponibilidade da linha. Quando o motor sabe de QUAIS produtos a linha veio
+   * (`productIds`: componentes diretos, BOM, itens-padrão do solado), mede o
+   * estoque SÓ deles. Só cai no match por grupo+cor quando a linha é derivada de
+   * grupo (cabedal/forro/palmilha), onde o produto exato depende da cor.
+   *
+   * Sem isso, uma linha sem cor (`'—'`) fazia `colorMatchesProduct` devolver true
+   * pra QUALQUER produto do grupo e somava o grupo inteiro: no PV-00147 a Fivela
+   * 12mm (estoque 1, reservado 1728 → disponível 0) aparecia com "em estoque
+   * 4.241" e check VERDE, que era o estoque do Binóculo 10mm Strass, vizinho de
+   * grupo em COMPONENTES DIVERSOS. O modal afirmava cobertura de um material que
+   * está zerado.
+   */
+  const rowAvailable = (groupName: string, color: string, productIds?: string[]): number => {
+    if (productIds && productIds.length > 0) {
+      const wanted = new Set(productIds);
+      return (ctx.allProducts || [])
+        .filter((p) => wanted.has(p.id))
+        .reduce((s: number, p) => s + netStock(p), 0);
+    }
     const group = (ctx.productGroups || []).find((g: any) => normTxt(g.name) === normTxt(groupName));
     return (ctx.allProducts || []).filter((p: any) => {
       const ok = group ? p.group_id === group.id : normTxt(p.name) === normTxt(groupName);
       if (!ok) return false;
       return colorMatchesProduct(p, color);
-    }).reduce((s: number, p: any) => {
-      const avail = (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0);
-      return s + Math.max(0, avail);
-    }, 0);
+    }).reduce((s: number, p: any) => s + netStock(p), 0);
   };
   const extractStockGrade = (prod: any): Record<string, number> => {
     const res: Record<string, number> = {};
@@ -193,7 +213,7 @@ export async function annotateConsumptionAvailability(
         ? soleStockById(row.soleProductId)
         : soleStockGrade(row.groupName, row.color);
     } else {
-      row.available = groupAvailable(row.groupName, row.color);
+      row.available = rowAvailable(row.groupName, row.color, row.productIds);
     }
     // Equivalente em material-base se feita artesanalmente. GATE por componentType
     // 'Tiras' — a conversão artesanal só vale pra linha de TIRA (sem isso, uma napa

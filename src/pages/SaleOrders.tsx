@@ -3114,7 +3114,15 @@ export default function SaleOrders() {
       <Dialog open={summaryDialogOpen} onOpenChange={setSummaryDialogOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Consumo de Materiais — {summaryData.orders.length} pedido(s)</DialogTitle>
+            {/* Nomeia os PVs do escopo: "N pedido(s)" era quase idêntico ao título
+                do modal por-PV e escondia de QUAIS pedidos era o consumo somado. */}
+            <DialogTitle>
+              Consumo de Materiais — {(() => {
+                const nums = summaryData.orders.map((o: any) => o.order_number).filter(Boolean);
+                if (nums.length === 0) return `${summaryData.orders.length} pedido(s)`;
+                return nums.length <= 4 ? nums.join(', ') : `${nums.slice(0, 4).join(', ')} +${nums.length - 4}`;
+              })()}
+            </DialogTitle>
           </DialogHeader>
           {loadingSummary ? (
             <div className="flex items-center justify-center py-12">

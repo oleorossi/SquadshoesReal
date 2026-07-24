@@ -140,22 +140,32 @@ export default function SaldoFinalTab() {
 
         const addMaterial = (materialName: string, type: string, consumptionPerPair: number, applyLoss: boolean, productId?: string | null) => {
           if (!materialName || consumptionPerPair <= 0) return;
-          const key = `${materialName.toLowerCase()}_${type}`;
 
           let resolved: { stock: number; unit: string };
+          // Nome EXIBIDO: quando há product_id, vale o cadastro atual de `products`,
+          // não o rótulo congelado no JSON da ficha. `direct_components` guarda uma
+          // cópia do nome na hora do cadastro e ela envelhece: o product_id
+          // 672fcd3d está gravado como "Binóculo SANSIN" no S-039 e "Binóculo 10mm"
+          // nas outras fichas — o MESMO produto virava DUAS linhas no Saldo Final
+          // (3.456 + 2.304), como se fossem materiais diferentes.
+          let displayName = materialName;
           if (productId) {
             const p = pMap.get(productId);
             resolved = { stock: Number(p?.quantity) || 0, unit: p?.unit || 'un' };
+            if (p?.name) displayName = p.name;
           } else {
             resolved = resolveMaterial(materialName);
           }
+          // Chave por product_id quando existe — rótulo stale não fragmenta mais a
+          // linha. Sem product_id (materiais por GRUPO da ficha) segue por nome.
+          const key = productId ? `pid:${productId}_${type}` : `${materialName.toLowerCase()}_${type}`;
 
           // Consumption in same unit as stock (technical sheet unit = stock unit)
           const totalConsumption = consumptionPerPair * qty * (applyLoss ? lossFactor : 1);
 
           if (!materialWeeklyMap.has(key)) {
             materialWeeklyMap.set(key, {
-              name: materialName, type, unit: resolved.unit,
+              name: displayName, type, unit: resolved.unit,
               current_stock: resolved.stock,
               weeks: new Map(),
             });

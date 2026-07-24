@@ -341,8 +341,13 @@ export default function PickingListPage() {
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
+  // Espelha a chave de AGREGAÇÃO do motor (`bomConsumption.addConsumptionRow`),
+  // que inclui `materialName`. Sem ele, dois produtos distintos do mesmo grupo,
+  // cor e unidade (ex.: "Binóculo 10mm" e "Binóculo 10mm Strass", ambos
+  // COMPONENTES DIVERSOS/OURO LIGHT/un) compartilhavam a MESMA chave: marcar um
+  // como separado riscava o outro, e a barra de progresso contava errado.
   const rowKey = (row: ConsumptionRow) =>
-    `${row.componentType}||${row.groupName}||${row.color}||${row.productUnit}`;
+    `${row.componentType}||${row.groupName}||${row.materialName}||${row.color}||${row.productUnit}`;
 
   const grouped = useMemo(() => {
     const map = new Map<string, ConsumptionRow[]>();

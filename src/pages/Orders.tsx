@@ -1240,9 +1240,22 @@ function getWeekOptions() {
 
               <DropdownMenuItem
                 onClick={() => {
-                  const ids = selectedOrderIds.size > 0 ? Array.from(selectedOrderIds) : effectiveOrders.map(o => o.id);
+                  const picked = selectedOrderIds.size > 0
+                    ? effectiveOrders.filter(o => selectedOrderIds.has(o.id))
+                    : effectiveOrders;
+                  const ids = picked.map(o => o.id);
                   setConsumptionOrderIds(ids);
-                  setConsumptionTitle(selectedOrderIds.size > 0 ? `${selectedOrderIds.size} OP(s) selecionadas` : `${effectiveOrders.length} OP(s)`);
+                  // Título NOMEIA as OPs. "N OP(s) selecionadas" não dizia quais —
+                  // marcar OPs de um PV já finalizado mostrava o consumo dele sob um
+                  // título genérico, e o número saía atribuído ao PV errado.
+                  const nums = picked.map(o => o.order_number).filter(Boolean);
+                  setConsumptionTitle(
+                    nums.length === 0
+                      ? `${picked.length} OP(s)`
+                      : nums.length <= 4
+                        ? nums.join(', ')
+                        : `${nums.slice(0, 4).join(', ')} +${nums.length - 4} OP(s)`,
+                  );
                 }}
                 className="gap-2 cursor-pointer"
               >
