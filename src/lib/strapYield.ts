@@ -115,6 +115,116 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
   return result;
 }
 
+/* ─────────────────────────── Cálculo inverso ─────────────────────────────────
+ * "Quanto preciso": dada a METRAGEM DE TIRA PRONTA desejada, quantos metros
+ * lineares de material são necessários — mesma geometria (largura do material,
+ * largura da tira, perda), só que resolvida ao contrário.
+ *
+ *   material_necessario = tira_desejada ÷ [(Lm / Lt) × (1 − perda%)]
+ *
+ * Ex.: preciso de 1000 m de tira 18 mm de um material de 1370 mm com 15% de
+ * perda → taxa 64,694 m/m → 1000 ÷ 64,694 = 15,458 m de material. Com rolo de
+ * 40 m: 0,39 rolo (1 rolo inteiro). A perda já entra na conta (divide pela taxa
+ * LÍQUIDA), então quanto maior a perda, mais material é preciso — como esperado.
+ */
+
+export interface StrapMaterialNeededInput extends StrapYieldInput {
+  /** `T` — metros de tira pronta que se precisa produzir. */
+  tiraDesejadaM: number;
+}
+
+export interface StrapMaterialNeededResult {
+  /** `false` quando a entrada é inválida — `error` explica; os números ficam 0. */
+  valid: boolean;
+  /** Mensagem de validação (pt-BR) quando `valid` é `false`. */
+  error?: string;
+  /** `Lm/Lt` — metragem de tira por metro linear, SEM perda (bruto). */
+  metragemPorMetroBruto: number;
+  /** `(Lm/Lt)×(1−P/100)` — taxa líquida usada na conta (m de tira / m linear). */
+  metragemPorMetroLiq: number;
+  /** Perda aplicada (%), ecoada pra exibição. */
+  perdaPct: number;
+  /** Metragem de tira pronta desejada (m), ecoada. */
+  tiraDesejadaM: number;
+  /** `T ÷ taxa líquida` — metros lineares de material necessários. NÚMERO-HERÓI. */
+  materialNecessarioM: number;
+  /** `material ÷ comprimento do rolo` — rolos necessários (fracionário). `null` se Cr ≤ 0. */
+  rolosNecessarios: number | null;
+  /** `ceil(rolosNecessarios)` — rolos inteiros a abrir. `null` se Cr ≤ 0. */
+  rolosInteiros: number | null;
+  /** `Cml × material` — custo total do material necessário. `null` sem custo informado. */
+  custoMaterialNecessario: number | null;
+  /** `Cml ÷ taxa líquida` — custo de material por metro de tira (R$/m). `null` sem custo. */
+  custoPorMetroTira: number | null;
+}
+
+const EMPTY_NEEDED: Omit<StrapMaterialNeededResult, 'valid' | 'error'> = {
+  metragemPorMetroBruto: 0,
+  metragemPorMetroLiq: 0,
+  perdaPct: 0,
+  tiraDesejadaM: 0,
+  materialNecessarioM: 0,
+  rolosNecessarios: null,
+  rolosInteiros: null,
+  custoMaterialNecessario: null,
+  custoPorMetroTira: null,
+};
+
+function failNeeded(error: string): StrapMaterialNeededResult {
+  return { valid: false, error, ...EMPTY_NEEDED };
+}
+
+/**
+ * Calcula quanto material linear é preciso pra produzir `tiraDesejadaM` metros de
+ * tira pronta, dadas as mesmas larguras/perda. Inverso de `computeStrapYield`.
+ * Degrada com elegância: entrada inválida → `valid:false` + `error` (não lança).
+ * O comprimento do rolo é OPCIONAL aqui — só serve pra estimar quantos rolos abrir;
+ * quando `Cr ≤ 0`, os campos de rolo ficam `null` (a conta principal não depende dele).
+ */
+export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): StrapMaterialNeededResult {
+  const Lm = Number(input.larguraMaterialMm) || 0;
+  const Lt = Number(input.larguraTiraMm) || 0;
+  const P = Number(input.perdaPct) || 0;
+  const Cr = Number(input.comprimentoRoloM) || 0;
+  const T = Number(input.tiraDesejadaM) || 0;
+
+  if (!(Lm > 0)) return failNeeded('Informe a largura útil do material.');
+  if (!(Lt > 0)) return failNeeded('Informe a largura da tira.');
+  if (!(T > 0)) return failNeeded('Informe quantos metros de tira você precisa.');
+  if (Lt >= Lm) return failNeeded('A largura da tira é maior que a largura do material.');
+  if (P < 0 || P >= 100) return failNeeded('A perda deve estar entre 0 e 100%.');
+
+  const fator = 1 - P / 100;
+  const metragemPorMetroBruto = Lm / Lt; // razão de larguras, sem piso
+  const metragemPorMetroLiq = metragemPorMetroBruto * fator;
+  const materialNecessarioM = metragemPorMetroLiq > 0 ? T / metragemPorMetroLiq : 0;
+
+  const rolosNecessarios = Cr > 0 ? materialNecessarioM / Cr : null;
+  const rolosInteiros = rolosNecessarios != null ? Math.ceil(rolosNecessarios) : null;
+
+  const result: StrapMaterialNeededResult = {
+    valid: true,
+    metragemPorMetroBruto,
+    metragemPorMetroLiq,
+    perdaPct: P,
+    tiraDesejadaM: T,
+    materialNecessarioM,
+    rolosNecessarios,
+    rolosInteiros,
+    custoMaterialNecessario: null,
+    custoPorMetroTira: null,
+  };
+
+  // Custo do material: quanto se gasta no material necessário + custo por metro de tira.
+  const Cml = input.custoMetroLinear;
+  if (Cml != null && Number.isFinite(Number(Cml)) && Number(Cml) >= 0) {
+    result.custoMaterialNecessario = Number(Cml) * materialNecessarioM;
+    if (metragemPorMetroLiq > 0) result.custoPorMetroTira = Number(Cml) / metragemPorMetroLiq;
+  }
+
+  return result;
+}
+
 /* ───────────────────────────── Cortes parciais ──────────────────────────────
  * Rendimento de um TRECHO parcial do rolo (não o rolo inteiro). Reaproveita a taxa
  * líquida (m de tira / m linear) já validada acima e só varia o comprimento — é a

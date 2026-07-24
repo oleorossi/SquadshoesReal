@@ -1,13 +1,27 @@
 /**
  * Calculadora de Tiras — rendimento de corte (metragem de tira por metro linear).
  *
- * Ferramenta avulsa. O usuário preenche largura do material, largura da tira, perda e
- * comprimento do rolo (+ custo opcional) e clica em CALCULAR. Devolve: quantos metros
- * de tira saem por metro linear (número-herói), o total do rolo, e quanto se gasta em
- * material. Modelo contínuo (sem piso) — ver `@/lib/strapYield`.
+ * Ferramenta avulsa com DOIS sentidos, alternados por um seletor no topo das entradas:
+ *  • "Quanto rende" (direto): largura do material, largura da tira, perda e comprimento
+ *    do rolo → quantos metros de tira saem por metro linear (número-herói), total do
+ *    rolo, custo e a tabela de cortes parciais. Modelo contínuo (sem piso).
+ *  • "Quanto preciso" (inverso): a mesma geometria, mas partindo dos metros de TIRA
+ *    PRONTA desejados → quantos metros de material (e quantos rolos / quanto custa) são
+ *    necessários. Ver `computeStrapMaterialNeeded` em `@/lib/strapYield`.
  */
 import { useMemo, useRef, useState } from 'react';
-import { Scissors, ArrowRight, Info, Ruler, Warning, Plus, Trash, ArrowCounterClockwise } from '@phosphor-icons/react';
+import {
+  Scissors,
+  ArrowRight,
+  ArrowsLeftRight,
+  Info,
+  Ruler,
+  Warning,
+  Plus,
+  Trash,
+  Package,
+  ArrowCounterClockwise,
+} from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -15,14 +29,16 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { cn, formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import {
   computeStrapYield,
+  computeStrapMaterialNeeded,
   partialCutYield,
   PARTIAL_CUT_UNIT_TO_M,
   STRAP_YIELD_DEFAULTS,
   type PartialCutUnit,
   type StrapYieldInput,
+  type StrapMaterialNeededInput,
 } from '@/lib/strapYield';
 
 /** Número pt-BR com até `dec` casas, sem zeros à direita. '—' se não-finito. */
@@ -35,27 +51,46 @@ const PARTIAL_PRESETS_MM = [30, 50, 100, 300, 500, 1000];
 /** Uma linha da tabela de cortes parciais (comprimento na unidade selecionada). */
 type LinhaParcial = { id: number; comprimento: number };
 
+/** Sentido do cálculo: rendimento (direto) ou necessidade de material (inverso). */
+type Modo = 'rendimento' | 'necessidade';
+
+/** Snapshot submetido no clique de Calcular — inclui o modo e a tira desejada. */
+type Snapshot = StrapYieldInput & { modo: Modo; tiraDesejadaM?: number };
+
 export default function StrapCalculator() {
+  const [modo, setModo] = useState<Modo>('rendimento');
   const [larguraMaterialMm, setLarguraMaterialMm] = useState<number>(STRAP_YIELD_DEFAULTS.larguraMaterialMm);
   const [larguraTiraMm, setLarguraTiraMm] = useState<number>(0);
   const [perdaPct, setPerdaPct] = useState<number>(STRAP_YIELD_DEFAULTS.perdaPct);
   const [comprimentoRoloM, setComprimentoRoloM] = useState<number>(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
   const [custoMetroLinear, setCustoMetroLinear] = useState<number>(0);
+  // Modo inverso: quantos metros de tira pronta o usuário precisa produzir.
+  const [tiraDesejadaM, setTiraDesejadaM] = useState<number>(0);
 
   // Cálculo é disparado pelo botão CALCULAR (não reativo ao digitar): guarda um
   // snapshot das entradas no clique e calcula em cima dele.
-  const [submitted, setSubmitted] = useState<StrapYieldInput | null>(null);
+  const [submitted, setSubmitted] = useState<Snapshot | null>(null);
   const [runId, setRunId] = useState(0);
 
-  const current: StrapYieldInput = {
+  const baseInput: StrapYieldInput = {
     larguraMaterialMm,
     larguraTiraMm,
     perdaPct,
     comprimentoRoloM,
     custoMetroLinear: custoMetroLinear > 0 ? custoMetroLinear : null,
   };
+  const current: Snapshot =
+    modo === 'necessidade' ? { ...baseInput, modo, tiraDesejadaM } : { ...baseInput, modo };
 
-  const result = useMemo(() => (submitted ? computeStrapYield(submitted) : null), [submitted]);
+  const rendResult = useMemo(
+    () => (submitted?.modo === 'rendimento' ? computeStrapYield(submitted) : null),
+    [submitted],
+  );
+  const needResult = useMemo(
+    () => (submitted?.modo === 'necessidade' ? computeStrapMaterialNeeded(submitted as StrapMaterialNeededInput) : null),
+    [submitted],
+  );
+  const active = submitted?.modo === 'necessidade' ? needResult : rendResult;
   const dirty = submitted != null && JSON.stringify(current) !== JSON.stringify(submitted);
 
   // ── Cortes parciais: tabela de trechos do rolo (só o comprimento varia) ──────
@@ -87,18 +122,21 @@ export default function StrapCalculator() {
     setPerdaPct(STRAP_YIELD_DEFAULTS.perdaPct);
     setComprimentoRoloM(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
     setCustoMetroLinear(0);
+    setTiraDesejadaM(0);
     setSubmitted(null);
     restaurarPresetsParciais();
   };
 
-  const showCost = result?.valid && result.custoMaterialRolo != null;
+  const showCostRend = rendResult?.valid && rendResult.custoMaterialRolo != null;
+  const showCostNeed = needResult?.valid && needResult.custoMaterialNecessario != null;
+  const inverso = modo === 'necessidade';
 
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · CORTE"
         title="Calculadora de Tiras"
-        description="Quantos metros de tira saem por metro linear de material — e quanto você gasta. Preencha os dados e clique em Calcular. Defaults do rolo padrão (1370 mm × 40 m, 15%), todos editáveis."
+        description="Nos dois sentidos: quanto de tira sai de um material — ou quanto de material você precisa pra uma metragem de tira. Preencha os dados e clique em Calcular. Defaults do rolo padrão (1370 mm × 40 m, 15%), todos editáveis."
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_1fr]">
@@ -109,6 +147,42 @@ export default function StrapCalculator() {
               <Ruler className="h-4 w-4 text-muted-foreground" weight="bold" />
               Entradas
             </div>
+
+            {/* Seletor de sentido do cálculo */}
+            <ToggleGroup
+              type="single"
+              value={modo}
+              onValueChange={(v) => v && setModo(v as Modo)}
+              variant="outline"
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/30 p-1"
+              aria-label="Sentido do cálculo"
+            >
+              <ToggleGroupItem
+                value="rendimento"
+                className="h-9 gap-1.5 rounded-md border-0 text-xs font-semibold text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <Scissors className="h-3.5 w-3.5" weight="fill" />
+                Quanto rende
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="necessidade"
+                className="h-9 gap-1.5 rounded-md border-0 text-xs font-semibold text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <ArrowsLeftRight className="h-3.5 w-3.5" weight="bold" />
+                Quanto preciso
+              </ToggleGroupItem>
+            </ToggleGroup>
+
+            {/* Modo inverso: metragem de tira pronta desejada (entrada-chave) */}
+            {inverso && (
+              <div className="space-y-1.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+                <Label htmlFor="td" className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+                  Tira pronta que preciso
+                </Label>
+                <NumberInput id="td" value={tiraDesejadaM} onChange={setTiraDesejadaM} unit="m" decimals={2} placeholder="1000" />
+                <p className="text-xs text-muted-foreground">Metros de tira já cortada que o pedido exige.</p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="lm">Largura útil do material</Label>
@@ -128,6 +202,7 @@ export default function StrapCalculator() {
               <div className="space-y-1.5">
                 <Label htmlFor="cr">Comprimento do rolo</Label>
                 <NumberInput id="cr" value={comprimentoRoloM} onChange={setComprimentoRoloM} unit="m" decimals={2} placeholder="40" />
+                {inverso && <p className="text-[11px] text-muted-foreground">Opcional — só pra estimar quantos rolos abrir.</p>}
               </div>
             </div>
 
@@ -165,7 +240,7 @@ export default function StrapCalculator() {
 
         {/* ── RESULTADO ─────────────────────────────────────────────── */}
         <div className="space-y-4">
-          {!result ? (
+          {!submitted || !active ? (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
                 <Scissors className="h-8 w-8 text-muted-foreground/50" weight="light" />
@@ -174,14 +249,99 @@ export default function StrapCalculator() {
                 </p>
               </CardContent>
             </Card>
-          ) : !result.valid ? (
+          ) : !active.valid ? (
             <Card className="border-amber-500/30 bg-amber-500/5">
               <CardContent className="flex items-center gap-3 py-8">
                 <Warning className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" weight="fill" />
-                <p className="text-sm text-amber-700 dark:text-amber-300">{result.error}</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">{active.error}</p>
               </CardContent>
             </Card>
-          ) : (
+          ) : submitted.modo === 'necessidade' && needResult?.valid ? (
+            /* ── MODO INVERSO: quanto material preciso ─────────────────── */
+            <div key={runId} className="space-y-4 duration-300 animate-in fade-in-50 slide-in-from-bottom-2">
+              {/* Número-herói: material necessário */}
+              <Card className="overflow-hidden border-red-500/30 bg-red-500/10">
+                <CardContent className="py-6">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-red-600/80 dark:text-red-400/80">
+                    <ArrowsLeftRight className="h-3.5 w-3.5" weight="bold" />
+                    Material necessário
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
+                      {nf(needResult.materialNecessarioM, 3)}
+                    </span>
+                    <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m de material linear</span>
+                  </div>
+                  <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
+                    {nf(needResult.tiraDesejadaM, 2)} m de tira ÷ {nf(needResult.metragemPorMetroLiq, 3)} m/m ={' '}
+                    {nf(needResult.materialNecessarioM, 3)} m
+                    <span className="text-red-600/50 dark:text-red-400/50">
+                      {' '}
+                      · taxa {nf(larguraMaterialMm, 2)} ÷ {nf(larguraTiraMm, 2)} × (1 − {nf(needResult.perdaPct, 2)}%)
+                    </span>
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Rolos necessários */}
+              {needResult.rolosNecessarios != null && (
+                <Card>
+                  <CardContent className="flex items-center justify-between gap-4 py-5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Package className="h-3.5 w-3.5" weight="bold" />
+                        Rolos necessários
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {nf(needResult.materialNecessarioM, 3)} m ÷ {nf(submitted.comprimentoRoloM, 2)} m por rolo
+                        {needResult.rolosInteiros != null && (
+                          <> · abrir <span className="font-semibold text-foreground">{nf(needResult.rolosInteiros, 0)}</span> rolo{needResult.rolosInteiros === 1 ? '' : 's'}</>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="font-mono text-3xl font-bold tabular-nums text-foreground">{nf(needResult.rolosNecessarios, 2)}</span>
+                      <span className="ml-1 text-sm text-muted-foreground">rolo{needResult.rolosNecessarios === 1 ? '' : 's'}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Custo do material necessário */}
+              {showCostNeed ? (
+                <Card className="border-red-500/20">
+                  <CardContent className="divide-y divide-border/60 py-0">
+                    <div className="flex items-center justify-between gap-4 py-4">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">Custo do material necessário</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(submitted.custoMetroLinear)} /m × {nf(needResult.materialNecessarioM, 3)} m
+                        </div>
+                      </div>
+                      <span className="shrink-0 font-mono text-2xl font-bold tabular-nums text-foreground">
+                        {formatCurrency(needResult.custoMaterialNecessario)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 py-3">
+                      <div className="text-sm text-foreground">
+                        Custo por metro de tira
+                        <span className="ml-1 text-xs text-muted-foreground">(material ÷ rendimento)</span>
+                      </div>
+                      <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-foreground">
+                        {formatCurrency(needResult.custoPorMetroTira)} /m
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                  Informe o custo do material para ver quanto você gasta.
+                </div>
+              )}
+            </div>
+          ) : rendResult?.valid ? (
+            /* ── MODO DIRETO: quanto rende ─────────────────────────────── */
             <div key={runId} className="space-y-4 duration-300 animate-in fade-in-50 slide-in-from-bottom-2">
               {/* Número-herói */}
               <Card className="overflow-hidden border-red-500/30 bg-red-500/10">
@@ -192,13 +352,13 @@ export default function StrapCalculator() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
-                      {nf(result.metragemPorMetroLiq, 3)}
+                      {nf(rendResult.metragemPorMetroLiq, 3)}
                     </span>
                     <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m de tira / m linear</span>
                   </div>
                   <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
-                    {nf(larguraMaterialMm, 2)} ÷ {nf(larguraTiraMm, 2)} × (1 − {nf(result.perdaPct, 2)}%) = {nf(result.metragemPorMetroLiq, 3)} m/m
-                    <span className="text-red-600/50 dark:text-red-400/50"> · bruto {nf(result.metragemPorMetroBruto, 3)} m/m</span>
+                    {nf(larguraMaterialMm, 2)} ÷ {nf(larguraTiraMm, 2)} × (1 − {nf(rendResult.perdaPct, 2)}%) = {nf(rendResult.metragemPorMetroLiq, 3)} m/m
+                    <span className="text-red-600/50 dark:text-red-400/50"> · bruto {nf(rendResult.metragemPorMetroBruto, 3)} m/m</span>
                   </p>
                 </CardContent>
               </Card>
@@ -209,29 +369,29 @@ export default function StrapCalculator() {
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total no rolo</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {nf(result.metragemPorMetroLiq, 3)} m/m × {nf(submitted!.comprimentoRoloM, 2)} m de rolo
+                      {nf(rendResult.metragemPorMetroLiq, 3)} m/m × {nf(submitted.comprimentoRoloM, 2)} m de rolo
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className="font-mono text-3xl font-bold tabular-nums text-foreground">{nf(result.totalRoloLiq, 2)}</span>
+                    <span className="font-mono text-3xl font-bold tabular-nums text-foreground">{nf(rendResult.totalRoloLiq, 2)}</span>
                     <span className="ml-1 text-sm text-muted-foreground">m</span>
                   </div>
                 </CardContent>
               </Card>
 
               {/* Custo do material */}
-              {showCost && (
+              {showCostRend && (
                 <Card className="border-red-500/20">
                   <CardContent className="divide-y divide-border/60 py-0">
                     <div className="flex items-center justify-between gap-4 py-4">
                       <div>
                         <div className="text-sm font-medium text-foreground">Custo do material do rolo</div>
                         <div className="text-xs text-muted-foreground">
-                          {formatCurrency(submitted!.custoMetroLinear)} /m × {nf(submitted!.comprimentoRoloM, 2)} m
+                          {formatCurrency(submitted.custoMetroLinear)} /m × {nf(submitted.comprimentoRoloM, 2)} m
                         </div>
                       </div>
                       <span className="shrink-0 font-mono text-2xl font-bold tabular-nums text-foreground">
-                        {formatCurrency(result.custoMaterialRolo)}
+                        {formatCurrency(rendResult.custoMaterialRolo)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-4 py-3">
@@ -240,14 +400,14 @@ export default function StrapCalculator() {
                         <span className="ml-1 text-xs text-muted-foreground">(material ÷ rendimento)</span>
                       </div>
                       <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-foreground">
-                        {formatCurrency(result.custoPorMetroTira)} /m
+                        {formatCurrency(rendResult.custoPorMetroTira)} /m
                       </span>
                     </div>
                   </CardContent>
                 </Card>
               )}
 
-              {!showCost && (
+              {!showCostRend && (
                 <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                   <ArrowRight className="h-3.5 w-3.5 shrink-0" />
                   Informe o custo do material para ver quanto você gasta.
@@ -294,7 +454,7 @@ export default function StrapCalculator() {
                     <span className="flex-1 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       Tira que sai
                     </span>
-                    {showCost && (
+                    {showCostRend && (
                       <span className="w-20 shrink-0 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                         Custo
                       </span>
@@ -306,11 +466,11 @@ export default function StrapCalculator() {
                     const comprimentoM = linha.comprimento * PARTIAL_CUT_UNIT_TO_M[unidadeParcial];
                     const vazio = !(linha.comprimento > 0);
                     const { tiraM, custo } = partialCutYield(
-                      result.metragemPorMetroLiq,
+                      rendResult.metragemPorMetroLiq,
                       comprimentoM,
-                      showCost ? submitted!.custoMetroLinear : null,
+                      showCostRend ? submitted.custoMetroLinear : null,
                     );
-                    const maiorQueRolo = comprimentoM > submitted!.comprimentoRoloM;
+                    const maiorQueRolo = comprimentoM > submitted.comprimentoRoloM;
                     return (
                       <div
                         key={linha.id}
@@ -339,7 +499,7 @@ export default function StrapCalculator() {
                             </>
                           )}
                         </div>
-                        {showCost && (
+                        {showCostRend && (
                           <div className="w-20 shrink-0 text-right font-mono text-[13px] tabular-nums text-muted-foreground">
                             {vazio ? <span className="text-muted-foreground/60">—</span> : formatCurrency(custo)}
                           </div>
@@ -374,7 +534,7 @@ export default function StrapCalculator() {
                 </div>
               </Card>
             </div>
-          )}
+          ) : null}
 
           {/* Aviso de estimativa (fixo) */}
           <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">

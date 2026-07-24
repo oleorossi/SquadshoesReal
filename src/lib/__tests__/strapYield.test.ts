@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeStrapYield,
+  computeStrapMaterialNeeded,
   partialCutYield,
   PARTIAL_CUT_UNIT_TO_M,
   STRAP_YIELD_DEFAULTS,
@@ -105,6 +106,99 @@ describe('defaults', () => {
     expect(STRAP_YIELD_DEFAULTS.larguraMaterialMm).toBe(ROLO_LARGURA_MM);
     expect(STRAP_YIELD_DEFAULTS.comprimentoRoloM).toBe(ROLO_COMPRIMENTO_M);
     expect(STRAP_YIELD_DEFAULTS.perdaPct).toBe(PERDA_PCT * 100);
+  });
+});
+
+describe('computeStrapMaterialNeeded — inverso (quanto material preciso)', () => {
+  it('caso canônico: preciso de 1000 m de tira 18mm → 15,458 m de material', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 1000,
+    });
+    expect(r.valid).toBe(true);
+    // taxa líquida 1370/18 × 0,85 = 64,6944… m/m
+    expect(round(r.metragemPorMetroLiq, 4)).toBe(64.6944);
+    // 1000 ÷ 64,6944 = 15,4573…
+    expect(round(r.materialNecessarioM, 4)).toBe(15.4573);
+    // rolo de 40 m → 0,386 rolo → 1 rolo inteiro
+    expect(round(r.rolosNecessarios ?? -1, 4)).toBe(0.3864);
+    expect(r.rolosInteiros).toBe(1);
+  });
+
+  it('é o inverso exato de computeStrapYield (ida e volta)', () => {
+    const base = { larguraMaterialMm: 1370, larguraTiraMm: 20, perdaPct: 15, comprimentoRoloM: 40 };
+    const fwd = computeStrapYield(base);
+    // rolo cheio rende totalRoloLiq de tira → pra essa tira preciso do rolo cheio (40 m)
+    const inv = computeStrapMaterialNeeded({ ...base, tiraDesejadaM: fwd.totalRoloLiq });
+    expect(round(inv.materialNecessarioM, 4)).toBe(round(base.comprimentoRoloM, 4));
+    expect(round(inv.rolosNecessarios ?? -1, 6)).toBe(1);
+    expect(inv.rolosInteiros).toBe(1);
+  });
+
+  it('custo do material: 1000 m de tira a 19,90 R$/m linear', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 1000,
+      custoMetroLinear: 19.9,
+    });
+    // 15,4573 m × 19,90 = 307,60
+    expect(round(r.custoMaterialNecessario ?? -1, 2)).toBe(307.6);
+    // custo por metro de tira: 19,90 ÷ 64,6944 = 0,3076
+    expect(round(r.custoPorMetroTira ?? -1, 4)).toBe(0.3076);
+  });
+
+  it('sem comprimento de rolo → rolos ficam null, material segue calculado', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1000,
+      larguraTiraMm: 20,
+      perdaPct: 10,
+      comprimentoRoloM: 0,
+      tiraDesejadaM: 450,
+    });
+    expect(r.valid).toBe(true);
+    // taxa 1000/20 × 0,9 = 45 m/m → 450 ÷ 45 = 10 m
+    expect(round(r.materialNecessarioM, 4)).toBe(10);
+    expect(r.rolosNecessarios).toBeNull();
+    expect(r.rolosInteiros).toBeNull();
+  });
+
+  it('sem custo → blocos de custo ficam null', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 500,
+    });
+    expect(r.custoMaterialNecessario).toBeNull();
+    expect(r.custoPorMetroTira).toBeNull();
+  });
+
+  describe('validação', () => {
+    const base = { larguraMaterialMm: 1370, larguraTiraMm: 20, perdaPct: 15, comprimentoRoloM: 40, tiraDesejadaM: 500 };
+    it('tira desejada ≤ 0 → inválido', () => {
+      const r = computeStrapMaterialNeeded({ ...base, tiraDesejadaM: 0 });
+      expect(r.valid).toBe(false);
+      expect(r.error).toMatch(/quantos metros de tira/i);
+    });
+    it('tira mais larga que o material → inválido', () => {
+      expect(computeStrapMaterialNeeded({ ...base, larguraMaterialMm: 100, larguraTiraMm: 120 }).valid).toBe(false);
+    });
+    it('largura do material ≤ 0 → inválido', () => {
+      expect(computeStrapMaterialNeeded({ ...base, larguraMaterialMm: 0 }).valid).toBe(false);
+    });
+    it('largura da tira ≤ 0 → inválido', () => {
+      expect(computeStrapMaterialNeeded({ ...base, larguraTiraMm: 0 }).valid).toBe(false);
+    });
+    it('perda ≥ 100 → inválido', () => {
+      expect(computeStrapMaterialNeeded({ ...base, perdaPct: 100 }).valid).toBe(false);
+    });
   });
 });
 
