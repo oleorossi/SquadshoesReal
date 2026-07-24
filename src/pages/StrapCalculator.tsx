@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import {
   computeStrapYield,
   computeStrapMaterialNeeded,
@@ -59,6 +59,25 @@ const PARTIAL_PRESETS_MM = [30, 50, 100, 300, 500, 1000];
 
 /** Uma linha da tabela de cortes parciais (comprimento na unidade selecionada). */
 type LinhaParcial = { id: number; comprimento: number };
+
+/**
+ * Selo da unidade de preenchimento, ao lado do rótulo do campo. A unidade que o
+ * `NumberInput` desenha dentro do campo é `aria-hidden` e discreta — este selo
+ * deixa explícito em QUE unidade digitar (evita, ex., digitar 1370 num campo
+ * que agora é cm).
+ */
+function UnitTag({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span
+      className={cn(
+        'rounded border border-border/60 bg-muted px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase leading-none tracking-wider text-muted-foreground',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 /** Sentido do cálculo: rendimento (direto) ou necessidade de material (inverso). */
 type Modo = 'rendimento' | 'necessidade';
@@ -188,40 +207,58 @@ export default function StrapCalculator() {
             {/* Modo inverso: metragem de tira pronta desejada (entrada-chave) */}
             {inverso && (
               <div className="space-y-1.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
-                <Label htmlFor="td" className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-                  Tira pronta que preciso
-                </Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="td" className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+                    Tira pronta que preciso
+                  </Label>
+                  <UnitTag className="border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400">m</UnitTag>
+                </div>
                 <NumberInput id="td" value={tiraDesejadaM} onChange={setTiraDesejadaM} unit="m" decimals={2} placeholder="1000" />
                 <p className="text-xs text-muted-foreground">Metros de tira já cortada que o pedido exige.</p>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label htmlFor="lm">Largura útil do material</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="lm">Largura útil do material</Label>
+                <UnitTag>cm</UnitTag>
+              </div>
               <NumberInput id="lm" value={larguraMaterialCm} onChange={setLarguraMaterialCm} unit="cm" decimals={2} placeholder="137" />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="lt">Largura da tira</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="lt">Largura da tira</Label>
+                <UnitTag>mm</UnitTag>
+              </div>
               <NumberInput id="lt" value={larguraTiraMm} onChange={setLarguraTiraMm} unit="mm" decimals={2} placeholder="20" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="p">Perda de processo</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="p">Perda de processo</Label>
+                  <UnitTag>%</UnitTag>
+                </div>
                 <NumberInput id="p" value={perdaPct} onChange={setPerdaPct} unit="%" decimals={2} placeholder="15" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cr">Comprimento do rolo</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="cr">Comprimento do rolo</Label>
+                  <UnitTag>m</UnitTag>
+                </div>
                 <NumberInput id="cr" value={comprimentoRoloM} onChange={setComprimentoRoloM} unit="m" decimals={2} placeholder="40" />
                 {inverso && <p className="text-[11px] text-muted-foreground">Comprimento em que a faixa é cortada.</p>}
               </div>
             </div>
 
             <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-3">
-              <Label htmlFor="cml" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Custo do material (opcional)
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="cml" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Custo do material (opcional)
+                </Label>
+                <UnitTag>R$/m</UnitTag>
+              </div>
               <CurrencyInput id="cml" value={custoMetroLinear} onChange={setCustoMetroLinear} />
               <p className="text-xs text-muted-foreground">R$ por metro linear do material comprado.</p>
             </div>
