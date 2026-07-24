@@ -869,9 +869,21 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const perColorComponents = (hasOrderColor && sheet?.component_colors_enabled)
       ? componentColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`)
       : undefined;
-    const directComponents = (perColorComponents && perColorComponents.length > 0)
+    const usedPerColorComponents = !!(perColorComponents && perColorComponents.length > 0);
+    const directComponents = usedPerColorComponents
       ? perColorComponents.map((r) => ({ product_id: r.productId, quantity: r.quantityPerUnit }))
       : (Array.isArray(sheet?.direct_components) ? sheet.direct_components : []);
+    // Cor sem mapeamento com "componentes por cor" LIGADO → fallback pra lista
+    // geral, que costuma listar TODAS as variantes de cor do ornamento (o par
+    // acaba consumindo uma de cada). Espelha o aviso do motor canônico
+    // (orderConsumption.ts) — caso PV-00147/DS22, cor CAPUCCINO não mapeada.
+    const unmappedColorWarning = (hasOrderColor
+      && !!sheet?.component_colors_enabled
+      && !usedPerColorComponents
+      && Array.isArray(sheet?.direct_components)
+      && sheet.direct_components.length > 0)
+      ? `Cor "${orderColor}" sem mapeamento em Componentes por Cor — separação pode incluir variantes de cor que não vão neste par.`
+      : undefined;
     const directProductIds = new Set<string>();
     for (const dc of directComponents) {
       const pid = (dc as any)?.product_id;
@@ -891,6 +903,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         productUnit: (prod as any).unit || (dc as any)?.unit || 'un',
         color: (prod as any).color || '—',
         totalQuantity: qtyPerPair * itemQuantity,
+        warning: unmappedColorWarning,
       });
     }
 

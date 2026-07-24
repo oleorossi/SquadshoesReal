@@ -561,6 +561,42 @@ describe('orderConsumption — motor canônico', () => {
       expect(compNames(rows).some(n => n.includes('TURQUEZA') || n.includes('PEROLA'))).toBe(false);
     });
 
+    it('cor sem mapeamento MARCA aviso na linha (PV-00147/DS22 — CAPUCCINO)', () => {
+      // Regressão PV-00147: DS22 tinha a flag ligada e só OFF WHITE mapeado; o
+      // item CAPUCCINO caiu no fallback e puxou ABS MARROM + ABS TURQUEZA (as
+      // DUAS cores do mesmo ornamento) = 16/par em vez de 8/par. A quantidade
+      // continua a do fallback (paridade com o SQL, que já gravou as reservas),
+      // mas a linha precisa vir MARCADA pra a tela não exibir consumo inflado
+      // como se fosse normal.
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'AZUL', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
+      expect(comp.length).toBeGreaterThan(0);
+      expect(comp.every(r => !!r.warning)).toBe(true);
+      expect(comp[0].warning).toContain('AZUL');
+      expect(comp[0].warning).toMatch(/sem mapeamento/i);
+    });
+
+    it('cor MAPEADA não emite aviso de mapeamento faltando', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'OFF WHITE', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
+      expect(comp.some(r => /sem mapeamento/i.test(r.warning || ''))).toBe(false);
+    });
+
+    it('ficha SEM a flag ligada não emite aviso de mapeamento (não é o caso do bug)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'AZUL', technical_sheets: sheetC({ component_colors_enabled: false }) })],
+        ctxComponentColors(),
+      );
+      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
+      expect(comp.some(r => /sem mapeamento/i.test(r.warning || ''))).toBe(false);
+    });
+
     it('flag desligada: ignora o mapeamento e usa direct_components (regressão)', () => {
       const rows = computeConsumptionForItems(
         [buildItem({ reference_id: 'sheet-C', color: 'CARAMELO', technical_sheets: sheetC({ component_colors_enabled: false }) })],
@@ -583,6 +619,26 @@ describe('orderConsumption — motor canônico', () => {
       expect(compTotal(rows)).toBe((8 + 8) * 24); // lista da cor, não o fallback
       expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(true);
       expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(false);
+    });
+
+    it('linha de componente carrega productIds dos produtos de ORIGEM', () => {
+      // A disponibilidade (consumptionRows.rowAvailable) mede o estoque SÓ desses
+      // ids. Sem eles, a linha caía no match por grupo+cor e — como a cor é '—' —
+      // somava o grupo INTEIRO: no PV-00147 a Fivela 12mm (disponível 0) exibia
+      // "em estoque 4.241", que era o estoque do Binóculo 10mm Strass, vizinho de
+      // grupo em COMPONENTES DIVERSOS.
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-C', color: 'OFF WHITE', technical_sheets: sheetC() })],
+        ctxComponentColors(),
+      );
+      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
+      expect(comp.length).toBeGreaterThan(0);
+      const ids = comp.flatMap(r => r.productIds || []);
+      expect(ids).toContain('p-perola');
+      expect(ids).toContain('p-marrom');
+      // Só os produtos que ORIGINARAM a linha — nunca os vizinhos de grupo.
+      expect(ids).not.toContain('p-turq');
+      expect(ids).not.toContain('p-fallback');
     });
   });
 

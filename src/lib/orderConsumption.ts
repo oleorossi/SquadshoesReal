@@ -78,6 +78,17 @@ export type MaterialConsumptionRow = {
    * (cabedal/forração) a própria `groupName` já é a família. Ver
    * `specs/tira-base-napa-por-ficha-tecnica.md`. */
   materialFamily?: string | null;
+  /**
+   * Produtos EXATOS que originaram a linha, quando o consumo veio de um cadastro
+   * que já aponta o `product_id` (componentes diretos, BOM, itens-padrão do
+   * solado). Existe pra a DISPONIBILIDADE ser medida no produto certo:
+   * `consumptionRows.groupAvailable` media o estoque do GRUPO inteiro quando a
+   * linha não tem cor, e a Fivela 12mm (estoque 1, reservado 1728) aparecia com
+   * "em estoque 4.241" e check verde no PV-00147 — era o estoque do Binóculo
+   * 10mm Strass, vizinho de grupo (COMPONENTES DIVERSOS). Vazio nas linhas
+   * derivadas de grupo+cor (cabedal/forro/palmilha), que seguem no match por cor.
+   */
+  productIds?: string[];
 };
 
 /**
@@ -427,6 +438,13 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     }
     // Mesma cor → mesma variante de produto; preserva o id já gravado.
     if (row.soleProductId && !existing.soleProductId) existing.soleProductId = row.soleProductId;
+    // União dos produtos de origem (a linha pode somar o mesmo material vindo de
+    // itens/refs diferentes) — a disponibilidade soma o estoque de todos eles.
+    if (row.productIds?.length) {
+      const merged = new Set(existing.productIds || []);
+      for (const id of row.productIds) if (id) merged.add(id);
+      existing.productIds = [...merged];
+    }
     return;
   }
 
@@ -442,6 +460,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     sizeBreakdown: row.sizeBreakdown,
     soleProductId: row.soleProductId,
     materialFamily: row.materialFamily || null,
+    productIds: row.productIds?.length ? [...new Set(row.productIds.filter(Boolean))] : undefined,
   });
 };
 
@@ -1557,9 +1576,28 @@ export function computeConsumptionForItems(
     const perColorComponents = (hasOrderColor && sheet?.component_colors_enabled)
       ? componentColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`)
       : undefined;
-    const directComponents = (perColorComponents && perColorComponents.length > 0)
+    const usedPerColorComponents = !!(perColorComponents && perColorComponents.length > 0);
+    const directComponents = usedPerColorComponents
       ? perColorComponents.map((r) => ({ product_id: r.productId, quantity: r.quantityPerUnit }))
       : (Array.isArray(sheet?.direct_components) ? sheet.direct_components : []);
+    // Ficha com "componentes por cor" LIGADO mas SEM mapeamento pra a cor deste
+    // item: o fallback usa a lista GERAL, que costuma listar TODAS as variantes de
+    // cor do mesmo ornamento — e o par passa a consumir uma de cada. Foi o que
+    // aconteceu no PV-00147/DS22: só OFF WHITE estava mapeado, e o item CAPUCCINO
+    // caiu no fallback puxando ABS MARROM (8/par) + ABS TURQUEZA AZUL (8/par) =
+    // 16 ornamentos/par, inflando o ABS MARROM pra 4.608 (2.304 legítimos do OFF
+    // WHITE + 2.304 indevidos do CAPUCCINO). Não dá pra ADIVINHAR qual variante é
+    // a certa — quem sabe é o cadastro. Então mantemos o número (paridade com o
+    // SQL, que faz o mesmo fallback e já gravou as reservas) e MARCAMOS a linha,
+    // pra o modal parar de mostrar consumo inflado como se fosse normal.
+    const unmappedColorFallback = hasOrderColor
+      && !!sheet?.component_colors_enabled
+      && !usedPerColorComponents
+      && Array.isArray(sheet?.direct_components)
+      && sheet.direct_components.length > 0;
+    const unmappedColorWarning = unmappedColorFallback
+      ? `Cor "${orderColor}" sem mapeamento em Componentes por Cor desta ficha — consumo caiu na lista geral e pode estar somando variantes de cor que não vão neste par. Cadastre a cor em Materiais → Componentes por Cor.`
+      : undefined;
     const directProductIds = new Set<string>();
     for (const dc of directComponents) {
       const pid = (dc as any)?.product_id;
@@ -1581,6 +1619,8 @@ export function computeConsumptionForItems(
         productUnit: prod.unit || (dc as any)?.unit || 'un',
         color: prod.color || '—',
         totalQuantity: totalQty,
+        productIds: [pid],
+        warning: unmappedColorWarning,
       });
     }
 
@@ -1768,6 +1808,7 @@ export function computeConsumptionForItems(
         color: material.color || product.color || '—',
         totalQuantity: totalQty,
         widthMissing,
+        productIds: material.product_id ? [material.product_id] : undefined,
       });
     }
   }

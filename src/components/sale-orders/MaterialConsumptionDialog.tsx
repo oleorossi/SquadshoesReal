@@ -81,6 +81,18 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
     staleTime: 0,
   });
 
+  // Troca de PV zera o quadro ANTES de recarregar. Sem isso o modal continuava
+  // exibindo as linhas do PV anterior enquanto o novo carregava — com o título já
+  // trocado pro novo número, o usuário lia o consumo de um pedido sob o rótulo de
+  // outro (exatamente a confusão do 4.416 do PV-00145 aparecendo "no PV-00147").
+  useEffect(() => {
+    setRows([]);
+    setArtisanalStrapRows([]);
+    setUpperCutGroups([]);
+    setExistingOsByKey({});
+    setContractorByKey({});
+  }, [saleOrderId]);
+
   useEffect(() => {
     if (!open || !saleOrderId) return;
     let cancelled = false;

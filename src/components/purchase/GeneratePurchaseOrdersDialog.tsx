@@ -202,9 +202,17 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
     [drafts, productById, artisanalCountByGroup],
   );
 
-  const titleScope = pvIds.length === 1
-    ? (pvNumbers?.[0] || 'pedido')
-    : `${pvIds.length} pedidos`;
+  // O título SEMPRE nomeia os PVs do escopo. Antes, multi-PV virava "N pedidos"
+  // e a tela mostrava quantidades somadas sem dizer de quais pedidos — dava pra
+  // ler o consumo de um PV achando que era de outro (o 4.416 de fivela do
+  // PV-00145 lido como se fosse do PV-00147). Acima de 4 PVs corta a lista pra
+  // não estourar o cabeçalho, mas mantém os primeiros nomeados.
+  const titleScope = useMemo(() => {
+    const nums = (pvNumbers || []).filter(Boolean);
+    if (nums.length === 0) return pvIds.length === 1 ? 'pedido' : `${pvIds.length} pedidos`;
+    if (nums.length <= 4) return nums.join(', ');
+    return `${nums.slice(0, 4).join(', ')} +${nums.length - 4}`;
+  }, [pvNumbers, pvIds.length]);
 
   const handleGenerate = async () => {
     try {
