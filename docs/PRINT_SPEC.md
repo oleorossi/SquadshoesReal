@@ -317,10 +317,19 @@ fragmentação por um paginador determinístico.
    ao contrário (numeração "N/TOTAL" é lógica — não muda). O flip é
    TRANSITÓRIO: liga em `beforeprint` (flushSync, snapshot pega o DOM
    invertido — cobre botão Imprimir E Ctrl+P) e desliga em `afterprint` —
-   a pré-visualização em tela NUNCA inverte. Fora da inversão: layout
-   reduzido (fichas recortadas, empacotamento de cards é do browser) e as
-   páginas INTERNAS de bloco `--flow` maior que 1 página (fragmentação do
-   browser, edge case aceito).
+   a pré-visualização em tela NUNCA inverte. Vale TAMBÉM no layout reduzido
+   (fix da revisão 2026-07-24): Expedição/Relatório Gerencial não têm
+   variante reduzida e imprimem a ficha completa lá — precisam da
+   compensação; os cards recortáveis reordenados não fazem diferença (vão
+   pra tesoura). Limite conhecido: as páginas INTERNAS de bloco `--flow`
+   maior que 1 página são fragmentadas pelo browser em ordem de leitura
+   dentro da emissão invertida — na PILHA final elas saem em ordem reversa
+   (igual ao baseline sem compensação, e são as folhas sem faixa N/TOTAL).
+   Mitigação real quando incomodar: fatiar o bloco em chunks < 1 página
+   (como a tabela de itens da Expedição já faz), não aceitar o flow. Os
+   avisos de reconciliação têm `.page-break` próprio pra permanecerem
+   página-alinhados sob inversão (sem folha própria, colavam na última
+   folha do maço ANTERIOR na emissão invertida).
 
 ### Fluxo contínuo por setor (2026-06-12, 4º passe)
 
