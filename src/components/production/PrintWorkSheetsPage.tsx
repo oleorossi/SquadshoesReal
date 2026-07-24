@@ -14,6 +14,7 @@ import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } 
 import { collectiveTypeForMode, pairsPerVolumeForMode } from '@/lib/packagingPairsPerBox';
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
+import { ReversePrintContext, ReversibleStack } from '@/components/production/worksheet/printOrder';
 import { resolveFicha, type FichaResolution } from '@/components/production/worksheet/fichaSize';
 import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
@@ -692,6 +693,55 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
   // Layout da ficha: false = completa (padrão), true = reduzida (só foto + grade + qty).
   const [reduced, setReduced] = useState(false);
+
+  // ── Saída invertida (2026-07-24, pedido do dono) ──
+  // A impressora da fábrica empilha com a face pra CIMA: a 1ª página emitida
+  // fica no fundo e o maço sai "de trás pra frente". Com o toggle LIGADO
+  // (default), o print emite tudo da última página pra primeira e a pilha sai
+  // na ordem certa de leitura. Persistido por navegador (localStorage) pra
+  // outra estação com impressora normal poder desligar uma vez só.
+  const [reverseOutput, setReverseOutput] = useState<boolean>(() => {
+    try { return (localStorage.getItem('print_reverse_output') ?? '1') === '1'; }
+    catch { return true; }
+  });
+  const toggleReverseOutput = () => {
+    setReverseOutput(prev => {
+      const next = !prev;
+      try { localStorage.setItem('print_reverse_output', next ? '1' : '0'); } catch { /* private mode */ }
+      return next;
+    });
+  };
+  // Flip TRANSITÓRIO: true só entre beforeprint e afterprint. A inversão nunca
+  // aparece na pré-visualização em tela (senão pareceria o próprio bug). O
+  // beforeprint dispara síncrono dentro de window.print() — tanto no botão
+  // Imprimir quanto num Ctrl+P manual — e o flushSync garante que o snapshot
+  // do diálogo pega o DOM já invertido (mesmo padrão da re-medição do
+  // PaginatedSheet). afterprint (ou cancelamento do diálogo) restaura.
+  const [printReversing, setPrintReversing] = useState(false);
+  useEffect(() => {
+    if (!reverseOutput) return;
+    const flip = (on: boolean) => {
+      try { flushSync(() => setPrintReversing(on)); }
+      catch { setPrintReversing(on); }
+    };
+    const before = () => flip(true);
+    const after = () => flip(false);
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', after);
+    // Fallback matchMedia('print') — mesma cobertura de browsers do
+    // PaginatedSheet (Safari antigo sem beforeprint).
+    const mql = window.matchMedia('print');
+    const onChange = () => flip(mql.matches);
+    if (mql.addEventListener) mql.addEventListener('change', onChange);
+    else mql.addListener?.(onChange);
+    return () => {
+      window.removeEventListener('beforeprint', before);
+      window.removeEventListener('afterprint', after);
+      if (mql.removeEventListener) mql.removeEventListener('change', onChange);
+      else mql.removeListener?.(onChange);
+      setPrintReversing(false);
+    };
+  }, [reverseOutput]);
   // Gate de loading: conta queries em PRIMEIRO carregamento (sem dado ainda).
   // Imprimir com soleMappings/clientsInfo/consumo em voo gera fichas
   // estruturalmente erradas (refs distintas fundidas em soleKey='none',
@@ -2843,6 +2893,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             >
               Limpar
             </button>
+            {/* Saída invertida: emite as páginas da última pra primeira SÓ no
+                print (preview em tela não muda) — compensa impressora que
+                empilha face pra cima. Não se aplica ao Relatório simplificado
+                (fichas recortadas, ordem de folha irrelevante). */}
+            <button
+              type="button"
+              onClick={toggleReverseOutput}
+              aria-pressed={reverseOutput}
+              title={reverseOutput
+                ? 'LIGADO: as páginas saem da última pra primeira, pra pilha da impressora (face pra cima) ler na ordem certa. Clique pra desligar se a sua impressora já empilha na ordem correta.'
+                : 'DESLIGADO: as páginas saem na ordem do documento. Ligue se o maço impresso está saindo de trás pra frente.'}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                reverseOutput
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+              }`}
+            >
+              Saída invertida {reverseOutput ? '✓' : ''}
+            </button>
             {/* failedQueries > 0 também bloqueia: query de technical_sheets em
                 erro zera sheetById e o filtro de roteiro/flags falha ABERTO —
                 OPs entram em setores errados e Corte Forração some. O banner
@@ -2946,6 +3015,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
 
       {/* ── Print area ── */}
       <div className="print-area space-y-0">
+      {/* Saída invertida (2026-07-24): durante o print, o provider liga a
+          inversão nas páginas de cada PaginatedSheet e o ReversibleStack
+          inverte a ordem dos maços de setor — juntos, reversão completa do
+          documento página a página. `!reduced` porque o layout reduzido é
+          recortado na tesoura (ordem de folha irrelevante) e o empacotamento
+          de cards por A4 é do browser (não dá pra inverter por página). */}
+      <ReversePrintContext.Provider value={printReversing && !reduced}>
+      <ReversibleStack reverse={printReversing && !reduced}>
 
         {/* ── Corte Palmilha ──
             Decisão 24/05/2026 (v3): user prefere ficha em múltiplas A4 a
@@ -3808,6 +3885,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
             />
           </div>
         ))}
+      </ReversibleStack>
+      </ReversePrintContext.Provider>
       </div>
     </div>
   );

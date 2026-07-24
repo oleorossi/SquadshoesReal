@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { ReversePrintContext } from './printOrder';
 
 /**
  * PaginatedSheet — paginador determinístico das fichas de impressão.
@@ -331,6 +332,16 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
   scaleRef.current = scale;
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
 
+  // ── Saída invertida (2026-07-24, ver printOrder.tsx) ──
+  // Durante o print (e SÓ durante — o provider liga em beforeprint e desliga
+  // em afterprint), emite as páginas da última pra primeira: impressora que
+  // empilha face pra cima entrega o maço na ordem certa de leitura. A
+  // numeração startPage/totalPages é LÓGICA (calculada no empacotamento) —
+  // não muda com a ordem de emissão. A key é por startPage (identidade da
+  // página lógica), não posicional — remount limpo quando a ordem flipa.
+  const reversePages = useContext(ReversePrintContext);
+  const orderedPages = reversePages ? [...pages].reverse() : pages;
+
   const registerEl = (idx: number) => (el: HTMLDivElement | null) => {
     const prev = wrapperEls.current.get(idx);
     if (prev && prev !== el) roRef.current?.unobserve(prev);
@@ -344,9 +355,9 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle }: PaginatedShee
 
   return (
     <div className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
-      {pages.map((page, pi) => (
+      {orderedPages.map((page) => (
         <div
-          key={`pg-${pi}`}
+          key={`pg-${page.startPage}`}
           className={`pagi-page${page.flow ? ' pagi-page--flow' : ''}`}
           style={{
             width: '210mm',
