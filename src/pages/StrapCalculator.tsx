@@ -288,8 +288,12 @@ export default function StrapCalculator() {
                       />
                     </div>
                     <p className="mt-2 text-xs text-red-700/80 dark:text-red-300/80">
-                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.larguraCortarMm, 1)} mm</span> no
-                      comprimento cheio ({nf(submitted.comprimentoRoloM, 0)} m) → <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasNecessarias, 1)}</span> tiras de {nf(submitted.larguraTiraMm, 0)} mm.
+                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.larguraCortarMm, 1)} mm</span> →{' '}
+                      <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasNecessarias, 1)}</span> tiras de {nf(submitted.larguraTiraMm, 0)} mm,{' '}
+                      <span className="font-semibold">cada uma com {nf(submitted.comprimentoRoloM, 0)} m</span> (o comprimento do rolo).
+                    </p>
+                    <p className="mt-1 font-mono text-[11px] text-red-700/60 dark:text-red-300/60">
+                      {nf(needResult.tirasNecessarias, 1)} × {nf(submitted.comprimentoRoloM, 0)} m = {nf(needResult.tirasNecessarias * submitted.comprimentoRoloM, 1)} m brutos → {nf(needResult.tiraDesejadaM, 2)} m líquidos (perda {nf(needResult.perdaPct, 0)}%)
                     </p>
                   </div>
 
