@@ -159,7 +159,7 @@ export default function StrapCalculator() {
   };
 
   const showCostRend = rendResult?.valid && rendResult.custoMaterialRolo != null;
-  const showCostNeed = needResult?.valid && needResult.custoMaterialNecessario != null;
+  const showCostNeed = needResult?.valid && needResult.custoMaterialReal != null;
   const inverso = modo === 'necessidade';
 
   return (
@@ -317,31 +317,31 @@ export default function StrapCalculator() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
-                      {nfCm(needResult.larguraCortarMm, 2)}
+                      {nfCm(needResult.larguraRealMm, 2)}
                     </span>
                     <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">
                       cm · de {nfCm(submitted.larguraMaterialMm, 1)} cm
                     </span>
                     <span className="rounded-md bg-red-500/15 px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
-                      {nf(needResult.larguraPctDoRolo, 1)}% do rolo
+                      {nf(needResult.larguraRealPctDoRolo, 1)}% do rolo
                     </span>
                   </div>
 
                   {/* Barra: quanto da largura do rolo é cortado */}
                   <div className="mt-5">
                     <div className="mb-1 flex items-baseline justify-between font-mono text-[10px] tracking-wide text-red-700/60 dark:text-red-300/60">
-                      <span>faixa cortada · {nf(needResult.larguraPctDoRolo, 1)}%</span>
+                      <span>faixa cortada · {nf(needResult.larguraRealPctDoRolo, 1)}%</span>
                       <span>{nfCm(submitted.larguraMaterialMm, 1)} cm</span>
                     </div>
                     <div className="h-4 overflow-hidden rounded-md border border-red-500/30 bg-red-500/10">
                       <div
                         className="h-full min-w-[3px] rounded-r-sm bg-red-500 transition-all duration-300 dark:bg-red-400"
-                        style={{ width: `${Math.min(100, needResult.larguraPctDoRolo)}%` }}
+                        style={{ width: `${Math.min(100, needResult.larguraRealPctDoRolo)}%` }}
                       />
                     </div>
                     <p className="mt-2 text-xs text-red-700/80 dark:text-red-300/80">
-                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nfCm(needResult.larguraCortarMm, 2)} cm</span> →{' '}
-                      <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasNecessarias, 1)}</span> tiras de {nf(submitted.larguraTiraMm, 0)} mm,{' '}
+                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nfCm(needResult.larguraRealMm, 2)} cm</span> →{' '}
+                      <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasInteiras, 0)}</span> tiras inteiras de {nf(submitted.larguraTiraMm, 0)} mm,{' '}
                       <span className="font-semibold">cada uma com {nf(submitted.comprimentoRoloM, 0)} m</span> (o comprimento do rolo).
                     </p>
                   </div>
@@ -364,10 +364,24 @@ export default function StrapCalculator() {
                         + {nfCm(needResult.larguraExtraPerdaMm, 2)} cm
                       </span>
                     </div>
-                    <div className="flex items-baseline justify-between gap-3 border-t border-red-500/20 pt-1.5 text-xs">
-                      <span className="font-semibold text-red-700 dark:text-red-300">3. Largura a cortar</span>
-                      <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                    <div className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-red-700/80 dark:text-red-300/80">
+                        3. Cálculo exato{' '}
+                        <span className="text-red-700/50 dark:text-red-300/50">({nf(needResult.tirasNecessarias, 2)} tiras)</span>
+                      </span>
+                      <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
                         {nfCm(needResult.larguraCortarMm, 2)} cm
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3 border-t border-red-500/20 pt-1.5 text-xs">
+                      <span className="font-semibold text-red-700 dark:text-red-300">
+                        4. Tiras inteiras{' '}
+                        <span className="font-normal text-red-700/60 dark:text-red-300/60">
+                          ({nf(needResult.tirasInteiras, 0)} × {nf(submitted.larguraTiraMm, 0)} mm)
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                        {nfCm(needResult.larguraRealMm, 2)} cm
                       </span>
                     </div>
                   </div>
@@ -380,7 +394,7 @@ export default function StrapCalculator() {
                   <Warning className="mt-0.5 h-3.5 w-3.5 shrink-0" weight="fill" />
                   <span>
                     A faixa ({nfCm(needResult.larguraCortarMm, 1)} cm) passa da largura do rolo ({nfCm(submitted.larguraMaterialMm, 1)} cm) —
-                    é preciso de <span className="font-semibold">{nf(needResult.rolosInteiros, 0)}</span> rolos de {nf(submitted.comprimentoRoloM, 0)} m no comprimento cheio.
+                    é preciso de <span className="font-semibold">{nf(needResult.rolosRealInteiros, 0)}</span> rolos de {nf(submitted.comprimentoRoloM, 0)} m no comprimento cheio.
                   </span>
                 </div>
               )}
@@ -395,15 +409,20 @@ export default function StrapCalculator() {
                         Tiras somadas · bruto
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
-                        {nf(needResult.tirasNecessarias, 1)} tiras × {nf(submitted.comprimentoRoloM, 0)} m — total cortado da faixa
+                        {nf(needResult.tirasInteiras, 0)} tiras × {nf(submitted.comprimentoRoloM, 0)} m — total cortado da faixa
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         − perda {nf(needResult.perdaPct, 0)}% →{' '}
-                        <span className="font-mono font-semibold text-foreground">{nf(needResult.tiraDesejadaM, 2)} m</span> aproveitáveis
+                        <span className="font-mono font-semibold text-foreground">{nf(needResult.tiraLiquidaRealM, 2)} m</span> aproveitáveis
+                        {needResult.sobraTiraM > 0.005 && (
+                          <span className="text-muted-foreground">
+                            {' '}(sobra <span className="font-mono">{nf(needResult.sobraTiraM, 2)} m</span> além dos {nf(needResult.tiraDesejadaM, 2)} m pedidos)
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">{nf(needResult.tiraBrutaTotalM, 2)}</span>
+                      <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">{nf(needResult.tiraBrutaRealM, 2)}</span>
                       <span className="ml-1 text-sm text-muted-foreground">m de tira</span>
                     </div>
                   </div>
@@ -416,7 +435,7 @@ export default function StrapCalculator() {
                       <div className="mt-0.5 text-xs text-muted-foreground">comprimento linear a passar (largura cheia)</div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{nf(needResult.materialNecessarioM, 2)}</span>
+                      <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{nf(needResult.materialRealM, 2)}</span>
                       <span className="ml-1 text-sm text-muted-foreground">m</span>
                     </div>
                   </div>
@@ -424,12 +443,12 @@ export default function StrapCalculator() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground">Rolos necessários</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
-                        abrir <span className="font-semibold text-foreground">{nf(needResult.rolosInteiros, 0)}</span> rolo{needResult.rolosInteiros === 1 ? '' : 's'} de {nf(submitted.comprimentoRoloM, 0)} m
+                        abrir <span className="font-semibold text-foreground">{nf(needResult.rolosRealInteiros, 0)}</span> rolo{needResult.rolosRealInteiros === 1 ? '' : 's'} de {nf(submitted.comprimentoRoloM, 0)} m
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{nf(needResult.rolosNecessarios, 2)}</span>
-                      <span className="ml-1 text-sm text-muted-foreground">rolo{needResult.rolosNecessarios === 1 ? '' : 's'}</span>
+                      <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{nf(needResult.rolosRealNecessarios, 2)}</span>
+                      <span className="ml-1 text-sm text-muted-foreground">rolo{needResult.rolosRealNecessarios === 1 ? '' : 's'}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -443,11 +462,11 @@ export default function StrapCalculator() {
                       <div>
                         <div className="text-sm font-medium text-foreground">Custo do material necessário</div>
                         <div className="text-xs text-muted-foreground">
-                          {formatCurrency(submitted.custoMetroLinear)} /m × {nf(needResult.materialNecessarioM, 3)} m
+                          {formatCurrency(submitted.custoMetroLinear)} /m × {nf(needResult.materialRealM, 3)} m
                         </div>
                       </div>
                       <span className="shrink-0 font-mono text-2xl font-bold tabular-nums text-foreground">
-                        {formatCurrency(needResult.custoMaterialNecessario)}
+                        {formatCurrency(needResult.custoMaterialReal)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-4 py-3">

@@ -171,8 +171,31 @@ export interface StrapMaterialNeededResult {
   /** `T ÷ (1−P/100)` = `tirasNecessarias × Cr` — soma de TODAS as tiras cortadas
    *  da faixa, em metros brutos (antes de descontar a perda). */
   tiraBrutaTotalM: number;
-  /** `larguraCortarMm ÷ Lt` — nº de tiras (fracionário) que a faixa rende. */
+  /** `larguraCortarMm ÷ Lt` — nº de tiras (fracionário) do cálculo exato. */
   tirasNecessarias: number;
+
+  /* ── Bloco REAL: no chão de fábrica não existe "2,9 tiras" ──────────────────
+   * Arredonda PRA CIMA ao nº inteiro de tiras (senão falta metragem) e recalcula
+   * tudo em cima disso. É o que a UI mostra como resposta; os campos exatos acima
+   * viram o detalhamento do cálculo. */
+  /** `ceil(tirasNecessarias)` — tiras inteiras a cortar. RESPOSTA REAL. */
+  tirasInteiras: number;
+  /** `tirasInteiras × Lt` — largura real a cortar (mm), múltiplo da largura da tira. */
+  larguraRealMm: number;
+  /** `larguraRealMm ÷ Lm × 100` — % da largura do rolo, na largura real. */
+  larguraRealPctDoRolo: number;
+  /** `tirasInteiras × Cr` — soma de todas as tiras inteiras, em metros brutos. */
+  tiraBrutaRealM: number;
+  /** `tiraBrutaRealM × (1−P/100)` — metros de tira aproveitáveis de fato. */
+  tiraLiquidaRealM: number;
+  /** `tiraLiquidaRealM − T` — sobra além do pedido (≥ 0) por causa do arredondamento. */
+  sobraTiraM: number;
+  /** `larguraRealMm ÷ Lm × Cr` — material linear equivalente (largura cheia), real. */
+  materialRealM: number;
+  /** `larguraRealMm ÷ Lm` — rolos necessários (fracionário) na largura real. */
+  rolosRealNecessarios: number;
+  /** `ceil(rolosRealNecessarios)` — rolos inteiros a abrir, na largura real. */
+  rolosRealInteiros: number;
   /** `larguraCortarMm ÷ Lm × 100` — % da largura do rolo ocupada pela faixa
    *  (= `rolosNecessarios × 100`). Pode passar de 100 quando exige mais de 1 rolo. */
   larguraPctDoRolo: number;
@@ -184,8 +207,10 @@ export interface StrapMaterialNeededResult {
   rolosNecessarios: number;
   /** `ceil(rolosNecessarios)` — rolos inteiros a abrir. */
   rolosInteiros: number;
-  /** `Cml × material` — custo total do material necessário. `null` sem custo informado. */
+  /** `Cml × material` — custo total do material necessário (exato). `null` sem custo. */
   custoMaterialNecessario: number | null;
+  /** `Cml × materialRealM` — custo do material de fato consumido (tiras inteiras). */
+  custoMaterialReal: number | null;
   /** `Cml ÷ taxa líquida` — custo de material por metro de tira (R$/m). `null` sem custo. */
   custoPorMetroTira: number | null;
 }
@@ -200,12 +225,22 @@ const EMPTY_NEEDED: Omit<StrapMaterialNeededResult, 'valid' | 'error'> = {
   larguraExtraPerdaMm: 0,
   tiraBrutaTotalM: 0,
   tirasNecessarias: 0,
+  tirasInteiras: 0,
+  larguraRealMm: 0,
+  larguraRealPctDoRolo: 0,
+  tiraBrutaRealM: 0,
+  tiraLiquidaRealM: 0,
+  sobraTiraM: 0,
+  materialRealM: 0,
+  rolosRealNecessarios: 0,
+  rolosRealInteiros: 0,
   larguraPctDoRolo: 0,
   passaLargura: false,
   materialNecessarioM: 0,
   rolosNecessarios: 0,
   rolosInteiros: 0,
   custoMaterialNecessario: null,
+  custoMaterialReal: null,
   custoPorMetroTira: null,
 };
 
@@ -248,7 +283,20 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   // Soma de todas as tiras cortadas da faixa, em metros brutos (= tiras × Cr).
   const tiraBrutaTotalM = fator > 0 ? T / fator : 0;
   const larguraPctDoRolo = Lm > 0 ? (larguraCortarMm / Lm) * 100 : 0;
-  const passaLargura = larguraCortarMm > Lm;
+
+  // ── Realidade: não se corta fração de tira → arredonda PRA CIMA ────────────
+  const tirasInteiras = Math.ceil(tirasNecessarias);
+  const larguraRealMm = tirasInteiras * Lt;
+  const larguraRealPctDoRolo = Lm > 0 ? (larguraRealMm / Lm) * 100 : 0;
+  const tiraBrutaRealM = tirasInteiras * Cr;
+  const tiraLiquidaRealM = tiraBrutaRealM * fator;
+  const sobraTiraM = Math.max(0, tiraLiquidaRealM - T);
+  const materialRealM = Lm > 0 ? (larguraRealMm / Lm) * Cr : 0;
+  const rolosRealNecessarios = Lm > 0 ? larguraRealMm / Lm : 0;
+  const rolosRealInteiros = Math.ceil(rolosRealNecessarios);
+
+  // Aviso é sobre o que se corta DE FATO (largura real, já arredondada).
+  const passaLargura = larguraRealMm > Lm;
 
   const rolosNecessarios = materialNecessarioM / Cr;
   const rolosInteiros = Math.ceil(rolosNecessarios);
@@ -264,12 +312,22 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
     larguraExtraPerdaMm,
     tiraBrutaTotalM,
     tirasNecessarias,
+    tirasInteiras,
+    larguraRealMm,
+    larguraRealPctDoRolo,
+    tiraBrutaRealM,
+    tiraLiquidaRealM,
+    sobraTiraM,
+    materialRealM,
+    rolosRealNecessarios,
+    rolosRealInteiros,
     larguraPctDoRolo,
     passaLargura,
     materialNecessarioM,
     rolosNecessarios,
     rolosInteiros,
     custoMaterialNecessario: null,
+    custoMaterialReal: null,
     custoPorMetroTira: null,
   };
 
@@ -277,6 +335,7 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   const Cml = input.custoMetroLinear;
   if (Cml != null && Number.isFinite(Number(Cml)) && Number(Cml) >= 0) {
     result.custoMaterialNecessario = Number(Cml) * materialNecessarioM;
+    result.custoMaterialReal = Number(Cml) * materialRealM;
     if (metragemPorMetroLiq > 0) result.custoPorMetroTira = Number(Cml) / metragemPorMetroLiq;
   }
 

@@ -181,6 +181,77 @@ describe('computeStrapMaterialNeeded — inverso (quanto material preciso)', () 
     expect(round(r.tiraBrutaTotalM, 4)).toBe(80); // sem perda, bruto = pedido
   });
 
+  it('REAL: não existe 2,9 tiras → 3 tiras inteiras, 54 mm, 102 m (sobra 2 m)', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 100,
+    });
+    // exato dá 2,9412 tiras — arredonda PRA CIMA (senão falta metragem)
+    expect(round(r.tirasNecessarias, 4)).toBe(2.9412);
+    expect(r.tirasInteiras).toBe(3);
+    // largura real é múltiplo da largura da tira: 3 × 18 = 54 mm
+    expect(round(r.larguraRealMm, 4)).toBe(54);
+    expect(r.larguraRealMm % 18).toBe(0);
+    // 3 × 40 = 120 m brutos → 102 m líquidos → sobra 2 m além dos 100 pedidos
+    expect(round(r.tiraBrutaRealM, 4)).toBe(120);
+    expect(round(r.tiraLiquidaRealM, 4)).toBe(102);
+    expect(round(r.sobraTiraM, 4)).toBe(2);
+    // a largura real nunca é menor que a exata (arredonda pra cima)
+    expect(r.larguraRealMm).toBeGreaterThanOrEqual(r.larguraCortarMm);
+    // e o líquido real cobre o pedido
+    expect(r.tiraLiquidaRealM).toBeGreaterThanOrEqual(r.tiraDesejadaM);
+  });
+
+  it('REAL: material/rolos/% derivam da largura real', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 100,
+    });
+    // 54 ÷ 1370 × 40 = 1,5766 m
+    expect(round(r.materialRealM, 4)).toBe(1.5766);
+    expect(round(r.rolosRealNecessarios, 4)).toBe(0.0394); // 54/1370
+    expect(r.rolosRealInteiros).toBe(1);
+    expect(round(r.larguraRealPctDoRolo, 2)).toBe(3.94);
+    // invariante: materialRealM = rolosRealNecessarios × Cr
+    expect(round(r.materialRealM, 6)).toBe(round(r.rolosRealNecessarios * 40, 6));
+  });
+
+  it('REAL: quando o exato já é inteiro, não há sobra', () => {
+    // 1 tira exata: T tal que T = Cr × fator = 40 × 0,85 = 34 m
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 34,
+    });
+    expect(round(r.tirasNecessarias, 6)).toBe(1);
+    expect(r.tirasInteiras).toBe(1);
+    expect(round(r.larguraRealMm, 4)).toBe(18);
+    expect(round(r.sobraTiraM, 6)).toBe(0);
+    expect(round(r.tiraLiquidaRealM, 4)).toBe(34);
+  });
+
+  it('REAL: custo usa o material de fato consumido', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 100,
+      custoMetroLinear: 19.9,
+    });
+    // 1,57664 m × 19,90 = 31,3752 → 31,38 (real) > 30,76 (exato)
+    expect(round(r.custoMaterialReal ?? -1, 2)).toBe(31.38);
+    expect(r.custoMaterialReal).toBeGreaterThan(r.custoMaterialNecessario as number);
+  });
+
   it('invariante: larguraCortarMm = rolosNecessarios × Lm', () => {
     const r = computeStrapMaterialNeeded({
       larguraMaterialMm: 1370,
@@ -214,9 +285,14 @@ describe('computeStrapMaterialNeeded — inverso (quanto material preciso)', () 
     expect(round(inv.materialNecessarioM, 4)).toBe(round(base.comprimentoRoloM, 4));
     expect(round(inv.rolosNecessarios, 6)).toBe(1);
     expect(inv.rolosInteiros).toBe(1);
-    // rolo cheio ⇒ corta a largura inteira do material
+    // rolo cheio ⇒ corta a largura inteira do material (no cálculo EXATO)
     expect(round(inv.larguraCortarMm, 4)).toBe(round(base.larguraMaterialMm, 4));
-    expect(inv.passaLargura).toBe(false);
+    // Já com tiras INTEIRAS: 1370 ÷ 20 = 68,5 tiras não existe → 69 tiras = 1380 mm,
+    // que não cabe nos 1370 mm do rolo. Logo `passaLargura` é true — correto: pra
+    // essa metragem exata em tiras inteiras não basta um comprimento de rolo.
+    expect(inv.tirasInteiras).toBe(69);
+    expect(round(inv.larguraRealMm, 4)).toBe(1380);
+    expect(inv.passaLargura).toBe(true);
   });
 
   it('custo do material: 1000 m de tira a 19,90 R$/m linear', () => {
