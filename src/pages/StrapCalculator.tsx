@@ -273,18 +273,21 @@ export default function StrapCalculator() {
                     <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">
                       mm · de {nf(submitted.larguraMaterialMm, 0)} mm
                     </span>
+                    <span className="rounded-md bg-red-500/15 px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                      {nf(needResult.larguraPctDoRolo, 1)}% do rolo
+                    </span>
                   </div>
 
                   {/* Barra: quanto da largura do rolo é cortado */}
                   <div className="mt-5">
-                    <div className="mb-1 flex justify-between font-mono text-[10px] tracking-wide text-red-700/60 dark:text-red-300/60">
-                      <span>0</span>
+                    <div className="mb-1 flex items-baseline justify-between font-mono text-[10px] tracking-wide text-red-700/60 dark:text-red-300/60">
+                      <span>faixa cortada · {nf(needResult.larguraPctDoRolo, 1)}%</span>
                       <span>{nf(submitted.larguraMaterialMm, 0)} mm</span>
                     </div>
                     <div className="h-4 overflow-hidden rounded-md border border-red-500/30 bg-red-500/10">
                       <div
-                        className="h-full rounded-r-sm bg-red-500 transition-all duration-300 dark:bg-red-400"
-                        style={{ width: `${Math.min(100, (needResult.larguraCortarMm / (submitted.larguraMaterialMm || 1)) * 100)}%` }}
+                        className="h-full min-w-[3px] rounded-r-sm bg-red-500 transition-all duration-300 dark:bg-red-400"
+                        style={{ width: `${Math.min(100, needResult.larguraPctDoRolo)}%` }}
                       />
                     </div>
                     <p className="mt-2 text-xs text-red-700/80 dark:text-red-300/80">

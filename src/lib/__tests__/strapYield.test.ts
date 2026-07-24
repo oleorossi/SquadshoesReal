@@ -125,6 +125,9 @@ describe('computeStrapMaterialNeeded — inverso (quanto material preciso)', () 
     expect(round(r.larguraCortarMm, 4)).toBe(529.4118);
     // 529,4118 ÷ 18 = 29,4118 tiras
     expect(round(r.tirasNecessarias, 4)).toBe(29.4118);
+    // 529,4118 ÷ 1370 × 100 = 38,6432% da largura do rolo (= rolos × 100)
+    expect(round(r.larguraPctDoRolo, 4)).toBe(38.6432);
+    expect(round(r.larguraPctDoRolo, 6)).toBe(round(r.rolosNecessarios * 100, 6));
     expect(r.passaLargura).toBe(false); // 529 < 1370
     // contexto: 1000 ÷ 64,6944 = 15,4573 m de material
     expect(round(r.materialNecessarioM, 4)).toBe(15.4573);

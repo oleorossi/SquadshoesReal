@@ -160,6 +160,9 @@ export interface StrapMaterialNeededResult {
   larguraCortarMm: number;
   /** `larguraCortarMm ÷ Lt` — nº de tiras (fracionário) que a faixa rende. */
   tirasNecessarias: number;
+  /** `larguraCortarMm ÷ Lm × 100` — % da largura do rolo ocupada pela faixa
+   *  (= `rolosNecessarios × 100`). Pode passar de 100 quando exige mais de 1 rolo. */
+  larguraPctDoRolo: number;
   /** `true` quando a faixa passa da largura do rolo (precisa de mais de 1 rolo). */
   passaLargura: boolean;
   /** `T ÷ taxa líquida` — metros lineares de material necessários (largura cheia). */
@@ -181,6 +184,7 @@ const EMPTY_NEEDED: Omit<StrapMaterialNeededResult, 'valid' | 'error'> = {
   tiraDesejadaM: 0,
   larguraCortarMm: 0,
   tirasNecessarias: 0,
+  larguraPctDoRolo: 0,
   passaLargura: false,
   materialNecessarioM: 0,
   rolosNecessarios: 0,
@@ -222,6 +226,7 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   // Faixa da largura a cortar (comprimento cheio do rolo). Equivale a rolos × Lm.
   const larguraCortarMm = fator > 0 ? (T * Lt) / (Cr * fator) : 0;
   const tirasNecessarias = larguraCortarMm / Lt;
+  const larguraPctDoRolo = Lm > 0 ? (larguraCortarMm / Lm) * 100 : 0;
   const passaLargura = larguraCortarMm > Lm;
 
   const rolosNecessarios = materialNecessarioM / Cr;
@@ -235,6 +240,7 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
     tiraDesejadaM: T,
     larguraCortarMm,
     tirasNecessarias,
+    larguraPctDoRolo,
     passaLargura,
     materialNecessarioM,
     rolosNecessarios,
