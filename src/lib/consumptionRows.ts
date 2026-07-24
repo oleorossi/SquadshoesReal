@@ -204,9 +204,21 @@ export async function annotateConsumptionAvailability(
         && row.totalQuantity > 0) {
       const nameNorm = normTxt(row.groupName);
       const matNorm = normTxt(row.materialName);
+      // GATE 2: a tira precisa ser ARTESANAL (cortada do rolo) pra virar napa.
+      // Tira COMPRADA PRONTA (strass, elástico, fivela, cadarço…) não sai de napa
+      // — mesmo que a ficha da referência aponte uma napa em `materialFamily`, ela
+      // NÃO consome napa. Sem este gate, a strass ganhava uma napa-base e caía em
+      // "pendente de cadastro" (7 TIRA STRASS 6MM no PV-00147/00148) pedindo um
+      // rendimento que nunca vai existir. Mesma detecção do bloco de corte do rolo
+      // (recipe > flag de grupo > heurístico de nome), pros dois nunca divergirem.
+      const isArtisanal = isArtisanalStrap({
+        recipeFlag: recipeOutputNorms.has(nameNorm),
+        groupFlag: groupArtisanalFlag.get(nameNorm),
+        name: `${row.groupName} ${row.materialName || ''}`,
+      });
       const legacy = recipeMap.get(nameNorm) || recipeMap.get(matNorm);
       const baseName = (row.materialFamily || '').trim() || legacy?.base || '';
-      if (baseName) {
+      if (isArtisanal && baseName) {
         // Receitas desta tira (por grupo E por aplicação — mesmo alcance do
         // lookup legado). O resolvedor usa a exata da base ou herda de outra.
         const candidates = [
