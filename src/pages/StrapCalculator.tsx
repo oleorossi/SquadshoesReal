@@ -45,6 +45,15 @@ import {
 const nf = (n: number, dec = 2): string =>
   Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: dec }) : '—';
 
+/**
+ * Larguras na TELA são em cm (decisão do Leonardo 2026-07-24); só a "largura da
+ * tira" é digitada em mm e convertida. O motor (`strapYield`) continua em mm —
+ * a conversão mora só na borda de entrada/exibição.
+ */
+const MM_POR_CM = 10;
+/** Formata uma medida que está em mm para exibição em cm. */
+const nfCm = (mm: number, dec = 2): string => nf(mm / MM_POR_CM, dec);
+
 /** Comprimentos parciais (mm) que a tabela "Cortes Parciais" traz prontos. */
 const PARTIAL_PRESETS_MM = [30, 50, 100, 300, 500, 1000];
 
@@ -59,7 +68,10 @@ type Snapshot = StrapYieldInput & { modo: Modo; tiraDesejadaM?: number };
 
 export default function StrapCalculator() {
   const [modo, setModo] = useState<Modo>('rendimento');
-  const [larguraMaterialMm, setLarguraMaterialMm] = useState<number>(STRAP_YIELD_DEFAULTS.larguraMaterialMm);
+  // Largura do material é digitada em CM na tela; o motor recebe em mm.
+  const [larguraMaterialCm, setLarguraMaterialCm] = useState<number>(
+    STRAP_YIELD_DEFAULTS.larguraMaterialMm / MM_POR_CM,
+  );
   const [larguraTiraMm, setLarguraTiraMm] = useState<number>(0);
   const [perdaPct, setPerdaPct] = useState<number>(STRAP_YIELD_DEFAULTS.perdaPct);
   const [comprimentoRoloM, setComprimentoRoloM] = useState<number>(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
@@ -73,7 +85,7 @@ export default function StrapCalculator() {
   const [runId, setRunId] = useState(0);
 
   const baseInput: StrapYieldInput = {
-    larguraMaterialMm,
+    larguraMaterialMm: larguraMaterialCm * MM_POR_CM,
     larguraTiraMm,
     perdaPct,
     comprimentoRoloM,
@@ -117,7 +129,7 @@ export default function StrapCalculator() {
   };
 
   const restaurar = () => {
-    setLarguraMaterialMm(STRAP_YIELD_DEFAULTS.larguraMaterialMm);
+    setLarguraMaterialCm(STRAP_YIELD_DEFAULTS.larguraMaterialMm / MM_POR_CM);
     setLarguraTiraMm(0);
     setPerdaPct(STRAP_YIELD_DEFAULTS.perdaPct);
     setComprimentoRoloM(STRAP_YIELD_DEFAULTS.comprimentoRoloM);
@@ -136,7 +148,7 @@ export default function StrapCalculator() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · CORTE"
         title="Calculadora de Tiras"
-        description="Nos dois sentidos: quanto de tira sai de um material — ou quanto da largura do rolo cortar pra uma metragem de tira. Preencha os dados e clique em Calcular. Defaults do rolo padrão (1370 mm × 40 m, 15%), todos editáveis."
+        description="Nos dois sentidos: quanto de tira sai de um material — ou quanto da largura do rolo cortar pra uma metragem de tira. Preencha os dados e clique em Calcular. Defaults do rolo padrão (137 cm × 40 m, 15%), todos editáveis. Larguras em cm; só a largura da tira é em mm."
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_1fr]">
@@ -186,7 +198,7 @@ export default function StrapCalculator() {
 
             <div className="space-y-1.5">
               <Label htmlFor="lm">Largura útil do material</Label>
-              <NumberInput id="lm" value={larguraMaterialMm} onChange={setLarguraMaterialMm} unit="mm" decimals={2} placeholder="1370" />
+              <NumberInput id="lm" value={larguraMaterialCm} onChange={setLarguraMaterialCm} unit="cm" decimals={2} placeholder="137" />
             </div>
 
             <div className="space-y-1.5">
@@ -268,10 +280,10 @@ export default function StrapCalculator() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
-                      {nf(needResult.larguraCortarMm, 1)}
+                      {nfCm(needResult.larguraCortarMm, 2)}
                     </span>
                     <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">
-                      mm · de {nf(submitted.larguraMaterialMm, 0)} mm
+                      cm · de {nfCm(submitted.larguraMaterialMm, 1)} cm
                     </span>
                     <span className="rounded-md bg-red-500/15 px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
                       {nf(needResult.larguraPctDoRolo, 1)}% do rolo
@@ -282,7 +294,7 @@ export default function StrapCalculator() {
                   <div className="mt-5">
                     <div className="mb-1 flex items-baseline justify-between font-mono text-[10px] tracking-wide text-red-700/60 dark:text-red-300/60">
                       <span>faixa cortada · {nf(needResult.larguraPctDoRolo, 1)}%</span>
-                      <span>{nf(submitted.larguraMaterialMm, 0)} mm</span>
+                      <span>{nfCm(submitted.larguraMaterialMm, 1)} cm</span>
                     </div>
                     <div className="h-4 overflow-hidden rounded-md border border-red-500/30 bg-red-500/10">
                       <div
@@ -291,7 +303,7 @@ export default function StrapCalculator() {
                       />
                     </div>
                     <p className="mt-2 text-xs text-red-700/80 dark:text-red-300/80">
-                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.larguraCortarMm, 1)} mm</span> →{' '}
+                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nfCm(needResult.larguraCortarMm, 2)} cm</span> →{' '}
                       <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasNecessarias, 1)}</span> tiras de {nf(submitted.larguraTiraMm, 0)} mm,{' '}
                       <span className="font-semibold">cada uma com {nf(submitted.comprimentoRoloM, 0)} m</span> (o comprimento do rolo).
                     </p>
@@ -304,7 +316,7 @@ export default function StrapCalculator() {
                         1. Largura bruta <span className="text-red-700/50 dark:text-red-300/50">(sem perda)</span>
                       </span>
                       <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
-                        {nf(needResult.larguraCortarBrutaMm, 1)} mm
+                        {nfCm(needResult.larguraCortarBrutaMm, 2)} cm
                       </span>
                     </div>
                     <div className="flex items-baseline justify-between gap-3 text-xs">
@@ -312,13 +324,13 @@ export default function StrapCalculator() {
                         2. Perda de {nf(needResult.perdaPct, 0)}% <span className="text-red-700/50 dark:text-red-300/50">(corta mais)</span>
                       </span>
                       <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
-                        + {nf(needResult.larguraExtraPerdaMm, 1)} mm
+                        + {nfCm(needResult.larguraExtraPerdaMm, 2)} cm
                       </span>
                     </div>
                     <div className="flex items-baseline justify-between gap-3 border-t border-red-500/20 pt-1.5 text-xs">
                       <span className="font-semibold text-red-700 dark:text-red-300">3. Largura a cortar</span>
                       <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
-                        {nf(needResult.larguraCortarMm, 1)} mm
+                        {nfCm(needResult.larguraCortarMm, 2)} cm
                       </span>
                     </div>
                   </div>
@@ -330,7 +342,7 @@ export default function StrapCalculator() {
                 <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
                   <Warning className="mt-0.5 h-3.5 w-3.5 shrink-0" weight="fill" />
                   <span>
-                    A faixa ({nf(needResult.larguraCortarMm, 0)} mm) passa da largura do rolo ({nf(submitted.larguraMaterialMm, 0)} mm) —
+                    A faixa ({nfCm(needResult.larguraCortarMm, 1)} cm) passa da largura do rolo ({nfCm(submitted.larguraMaterialMm, 1)} cm) —
                     é preciso de <span className="font-semibold">{nf(needResult.rolosInteiros, 0)}</span> rolos de {nf(submitted.comprimentoRoloM, 0)} m no comprimento cheio.
                   </span>
                 </div>
@@ -436,7 +448,7 @@ export default function StrapCalculator() {
                     <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m de tira / m linear</span>
                   </div>
                   <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
-                    {nf(larguraMaterialMm, 2)} ÷ {nf(larguraTiraMm, 2)} × (1 − {nf(rendResult.perdaPct, 2)}%) = {nf(rendResult.metragemPorMetroLiq, 3)} m/m
+                    {nf(larguraMaterialCm, 2)} cm ÷ {nfCm(larguraTiraMm, 2)} cm × (1 − {nf(rendResult.perdaPct, 2)}%) = {nf(rendResult.metragemPorMetroLiq, 3)} m/m
                     <span className="text-red-600/50 dark:text-red-400/50"> · bruto {nf(rendResult.metragemPorMetroBruto, 3)} m/m</span>
                   </p>
                 </CardContent>
