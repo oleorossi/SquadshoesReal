@@ -96,12 +96,20 @@ export default function SystemDiagnostics() {
   const [linkChecks, setLinkChecks] = useState<
     Array<{ check_name: string; severity: string; qtd: number; detalhe: string }> | null
   >(null);
+  // Reserva defasada (investigação PV-00147): OP ativa cuja reserva NÃO cobre o
+  // que a ficha pede hoje. Nasceu do furo de baixa do PV-00145 — as OPs foram
+  // reservadas contra a ficha antiga, alguém acrescentou componentes depois, e o
+  // resync de ficha não re-reserva material. Como o débito na finalização
+  // converte RESERVA em movimento, o que entrou depois sai da fábrica sem baixa.
+  const [staleResRows, setStaleResRows] = useState<
+    Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number }> | null
+  >(null);
   const [consRunning, setConsRunning] = useState(false);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
@@ -117,6 +125,8 @@ export default function SystemDiagnostics() {
         (supabase as any).rpc('capacity_consistency_report'),
         // broken_sale_order_links_report — identidade do item do PV (mig 20260919120000).
         (supabase as any).rpc('broken_sale_order_links_report'),
+        // list_ops_with_stale_reservations — reserva defasada vs ficha atual.
+        (supabase as any).rpc('list_ops_with_stale_reservations'),
       ]);
       if (consRes.error) throw consRes.error;
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
@@ -137,6 +147,13 @@ export default function SystemDiagnostics() {
         toast.message('Vínculos do pedido indisponíveis', { description: linkRes.error.message });
       } else {
         setLinkChecks(linkRes?.data ?? []);
+      }
+      // Mesma regra do capRes/linkRes: erro NÃO vira lista vazia (verde falso).
+      if (staleResRes?.error) {
+        setStaleResRows(null);
+        toast.message('Reservas defasadas indisponíveis', { description: staleResRes.error.message });
+      } else {
+        setStaleResRows(staleResRes?.data ?? []);
       }
       // Paridade pode depender de flags/dados de integração — tolera falha.
       if (parRes.error) {
@@ -592,6 +609,53 @@ export default function SystemDiagnostics() {
                 </div>
               </div>
             ))}
+          </Panel>
+
+          <Panel
+            eyebrow="ESTOQUE · RESERVA"
+            title="Reserva defasada vs ficha atual"
+            subtitle="Material que a ficha técnica pede HOJE mas que a OP ativa NÃO tem reservado. A reserva é feita na criação da OP; se a ficha ganhar componentes depois, o resync não re-reserva — e como a baixa na finalização converte RESERVA em movimento, esse material sai da fábrica sem débito. Foi o que abriu o furo do PV-00145 (fivela, rebite e binóculo strass consumidos e nunca debitados). Fonte: list_ops_with_stale_reservations()."
+            bodyClassName="space-y-1.5"
+          >
+            {staleResRows === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra checar as reservas das OPs ativas.</p>
+            )}
+            {staleResRows !== null && staleResRows.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Toda OP ativa tem reserva pra o que a ficha pede.</div>
+            )}
+            {staleResRows !== null && staleResRows.length > 0 && (
+              <>
+                <div className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+                  <Badge variant="outline" className="bg-red-500/10 text-red-600 border-transparent text-[10px] shrink-0 tabular-nums">
+                    {staleResRows.length}
+                  </Badge>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">materiais sem reserva em {new Set(staleResRows.map(r => r.order_number)).size} OP(s) ativa(s)</p>
+                    <p className="text-xs text-muted-foreground break-words">
+                      Cancele e refaça a reserva da OP (ou ajuste o estoque na baixa) antes de finalizar, senão vira furo de estoque.
+                    </p>
+                  </div>
+                </div>
+                {staleResRows.slice(0, 40).map((r, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-transparent text-[10px] shrink-0 tabular-nums">
+                      {Number(r.required_qty).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                    </Badge>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{r.product_name}</p>
+                      <p className="text-xs text-muted-foreground break-words">
+                        {r.sale_order_number} · {r.order_number} · {r.reference_name}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {staleResRows.length > 40 && (
+                  <p className="text-xs text-muted-foreground">
+                    Mostrando 40 de {staleResRows.length} — rode list_ops_with_stale_reservations() no SQL pra a lista completa.
+                  </p>
+                )}
+              </>
+            )}
           </Panel>
 
           <Panel
