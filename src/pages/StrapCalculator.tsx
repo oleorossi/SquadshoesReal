@@ -317,9 +317,22 @@ export default function StrapCalculator() {
                 </div>
               )}
 
-              {/* Contexto: material linear + rolos */}
-              <Card>
+              {/* Contexto: tira final + material linear + rolos */}
+              <Card className="overflow-hidden">
                 <CardContent className="divide-y divide-border/60 py-0">
+                  <div className="flex items-center justify-between gap-4 bg-red-500/5 py-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600/80 dark:text-red-400/80">
+                        <Scissors className="h-3.5 w-3.5" weight="fill" />
+                        Tira final produzida
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">total líquido que sai da faixa cortada</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">{nf(needResult.tiraDesejadaM, 2)}</span>
+                      <span className="ml-1 text-sm text-muted-foreground">m de tira</span>
+                    </div>
+                  </div>
                   <div className="flex items-center justify-between gap-4 py-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
