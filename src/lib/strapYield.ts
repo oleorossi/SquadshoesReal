@@ -123,9 +123,14 @@ export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
  *
  * O corte físico fixa o COMPRIMENTO do rolo e fatia uma FAIXA da largura: cada tira
  * de `Lt` mm, cortada no comprimento cheio `Cr`, rende `Cr` m de tira (menos perda).
- * Logo, a faixa da largura a cortar é:
+ * A conta sai em DOIS PASSOS (é assim que a UI exibe, pedido do Leonardo 2026-07-24):
  *
- *   largura_a_cortar (mm) = tira_desejada × Lt ÷ [ Cr × (1 − perda%) ]
+ *   1) largura BRUTA   (mm) = tira_desejada × Lt ÷ Cr          ← sem perda
+ *   2) largura A CORTAR(mm) = largura_bruta ÷ (1 − perda%)     ← a perda AUMENTA
+ *
+ * Ex.: 80 m de tira 18 mm, rolo 40 m → bruto 36 mm → com 15% de perda, corta 42,4 mm.
+ * A soma de TODAS as tiras da faixa é `tiraBrutaTotalM` = T ÷ (1−perda%) (= tiras × Cr),
+ * dos quais `tiraDesejadaM` sobra aproveitável.
  *
  * Ex.: preciso de 1000 m de tira 18 mm, material 1370 mm, perda 15%, rolo 40 m →
  * 1000 × 18 ÷ (40 × 0,85) = 529,4 mm de largura (≈ 29,4 tiras). Isso equivale a
@@ -155,9 +160,17 @@ export interface StrapMaterialNeededResult {
   perdaPct: number;
   /** Metragem de tira pronta desejada (m), ecoada. */
   tiraDesejadaM: number;
+  /** `T × Lt ÷ Cr` — largura BRUTA (mm): a faixa que bastaria se não houvesse
+   *  perda. É o 1º passo da conta; a perda depois AUMENTA esse valor. */
+  larguraCortarBrutaMm: number;
   /** `T × Lt ÷ (Cr × (1−P/100))` — faixa da LARGURA do rolo a cortar (mm), no
-   *  comprimento cheio. NÚMERO-HERÓI do modo inverso. */
+   *  comprimento cheio, JÁ com a perda. NÚMERO-HERÓI do modo inverso. */
   larguraCortarMm: number;
+  /** `larguraCortarMm − larguraCortarBrutaMm` — quanto a perda acrescenta (mm). */
+  larguraExtraPerdaMm: number;
+  /** `T ÷ (1−P/100)` = `tirasNecessarias × Cr` — soma de TODAS as tiras cortadas
+   *  da faixa, em metros brutos (antes de descontar a perda). */
+  tiraBrutaTotalM: number;
   /** `larguraCortarMm ÷ Lt` — nº de tiras (fracionário) que a faixa rende. */
   tirasNecessarias: number;
   /** `larguraCortarMm ÷ Lm × 100` — % da largura do rolo ocupada pela faixa
@@ -182,7 +195,10 @@ const EMPTY_NEEDED: Omit<StrapMaterialNeededResult, 'valid' | 'error'> = {
   metragemPorMetroLiq: 0,
   perdaPct: 0,
   tiraDesejadaM: 0,
+  larguraCortarBrutaMm: 0,
   larguraCortarMm: 0,
+  larguraExtraPerdaMm: 0,
+  tiraBrutaTotalM: 0,
   tirasNecessarias: 0,
   larguraPctDoRolo: 0,
   passaLargura: false,
@@ -224,8 +240,13 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
   const materialNecessarioM = metragemPorMetroLiq > 0 ? T / metragemPorMetroLiq : 0;
 
   // Faixa da largura a cortar (comprimento cheio do rolo). Equivale a rolos × Lm.
-  const larguraCortarMm = fator > 0 ? (T * Lt) / (Cr * fator) : 0;
+  // 1º passo: largura bruta (o que bastaria sem perda). 2º passo: a perda aumenta.
+  const larguraCortarBrutaMm = (T * Lt) / Cr;
+  const larguraCortarMm = fator > 0 ? larguraCortarBrutaMm / fator : 0;
+  const larguraExtraPerdaMm = larguraCortarMm - larguraCortarBrutaMm;
   const tirasNecessarias = larguraCortarMm / Lt;
+  // Soma de todas as tiras cortadas da faixa, em metros brutos (= tiras × Cr).
+  const tiraBrutaTotalM = fator > 0 ? T / fator : 0;
   const larguraPctDoRolo = Lm > 0 ? (larguraCortarMm / Lm) * 100 : 0;
   const passaLargura = larguraCortarMm > Lm;
 
@@ -238,7 +259,10 @@ export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): Str
     metragemPorMetroLiq,
     perdaPct: P,
     tiraDesejadaM: T,
+    larguraCortarBrutaMm,
     larguraCortarMm,
+    larguraExtraPerdaMm,
+    tiraBrutaTotalM,
     tirasNecessarias,
     larguraPctDoRolo,
     passaLargura,

@@ -136,6 +136,51 @@ describe('computeStrapMaterialNeeded — inverso (quanto material preciso)', () 
     expect(r.rolosInteiros).toBe(1);
   });
 
+  it('dois passos (exemplo do Leonardo): 80 m → bruto 36 mm → com perda 42,35 mm', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 80,
+    });
+    // 1º passo (sem perda): 80 × 18 ÷ 40 = 36 mm
+    expect(round(r.larguraCortarBrutaMm, 4)).toBe(36);
+    // 2º passo (perda AUMENTA): 36 ÷ 0,85 = 42,3529 mm
+    expect(round(r.larguraCortarMm, 4)).toBe(42.3529);
+    expect(round(r.larguraExtraPerdaMm, 4)).toBe(6.3529);
+    // a perda sempre aumenta a largura a cortar
+    expect(r.larguraCortarMm).toBeGreaterThan(r.larguraCortarBrutaMm);
+    // soma de todas as tiras: 80 ÷ 0,85 = 94,1176 m brutos → 80 m aproveitáveis
+    expect(round(r.tiraBrutaTotalM, 4)).toBe(94.1176);
+    expect(round(r.tiraBrutaTotalM * 0.85, 4)).toBe(80);
+  });
+
+  it('tiraBrutaTotalM = tirasNecessarias × comprimento do rolo', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 15,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 100,
+    });
+    expect(round(r.tiraBrutaTotalM, 6)).toBe(round(r.tirasNecessarias * 40, 6));
+    expect(round(r.tiraBrutaTotalM, 4)).toBe(117.6471); // 2,9412 × 40
+  });
+
+  it('perda 0 → bruto = final, sem acréscimo', () => {
+    const r = computeStrapMaterialNeeded({
+      larguraMaterialMm: 1370,
+      larguraTiraMm: 18,
+      perdaPct: 0,
+      comprimentoRoloM: 40,
+      tiraDesejadaM: 80,
+    });
+    expect(round(r.larguraCortarBrutaMm, 4)).toBe(round(r.larguraCortarMm, 4));
+    expect(round(r.larguraExtraPerdaMm, 6)).toBe(0);
+    expect(round(r.tiraBrutaTotalM, 4)).toBe(80); // sem perda, bruto = pedido
+  });
+
   it('invariante: larguraCortarMm = rolosNecessarios × Lm', () => {
     const r = computeStrapMaterialNeeded({
       larguraMaterialMm: 1370,

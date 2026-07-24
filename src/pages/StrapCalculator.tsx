@@ -295,14 +295,33 @@ export default function StrapCalculator() {
                       <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasNecessarias, 1)}</span> tiras de {nf(submitted.larguraTiraMm, 0)} mm,{' '}
                       <span className="font-semibold">cada uma com {nf(submitted.comprimentoRoloM, 0)} m</span> (o comprimento do rolo).
                     </p>
-                    <p className="mt-1 font-mono text-[11px] text-red-700/60 dark:text-red-300/60">
-                      {nf(needResult.tirasNecessarias, 1)} × {nf(submitted.comprimentoRoloM, 0)} m = {nf(needResult.tirasNecessarias * submitted.comprimentoRoloM, 1)} m brutos → {nf(needResult.tiraDesejadaM, 2)} m líquidos (perda {nf(needResult.perdaPct, 0)}%)
-                    </p>
                   </div>
 
-                  <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
-                    {nf(needResult.tiraDesejadaM, 2)} m de tira × {nf(submitted.larguraTiraMm, 2)} mm ÷ ({nf(submitted.comprimentoRoloM, 2)} m × (1 − {nf(needResult.perdaPct, 2)}%)) = {nf(needResult.larguraCortarMm, 1)} mm
-                  </p>
+                  {/* Passo a passo: bruto → perda aumenta → largura a cortar */}
+                  <div className="mt-4 space-y-1.5 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                    <div className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-red-700/80 dark:text-red-300/80">
+                        1. Largura bruta <span className="text-red-700/50 dark:text-red-300/50">(sem perda)</span>
+                      </span>
+                      <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
+                        {nf(needResult.larguraCortarBrutaMm, 1)} mm
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-red-700/80 dark:text-red-300/80">
+                        2. Perda de {nf(needResult.perdaPct, 0)}% <span className="text-red-700/50 dark:text-red-300/50">(corta mais)</span>
+                      </span>
+                      <span className="shrink-0 font-mono font-semibold tabular-nums text-red-700 dark:text-red-300">
+                        + {nf(needResult.larguraExtraPerdaMm, 1)} mm
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3 border-t border-red-500/20 pt-1.5 text-xs">
+                      <span className="font-semibold text-red-700 dark:text-red-300">3. Largura a cortar</span>
+                      <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                        {nf(needResult.larguraCortarMm, 1)} mm
+                      </span>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -324,12 +343,18 @@ export default function StrapCalculator() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600/80 dark:text-red-400/80">
                         <Scissors className="h-3.5 w-3.5" weight="fill" />
-                        Tira final produzida
+                        Tiras somadas · bruto
                       </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">total líquido que sai da faixa cortada</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {nf(needResult.tirasNecessarias, 1)} tiras × {nf(submitted.comprimentoRoloM, 0)} m — total cortado da faixa
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        − perda {nf(needResult.perdaPct, 0)}% →{' '}
+                        <span className="font-mono font-semibold text-foreground">{nf(needResult.tiraDesejadaM, 2)} m</span> aproveitáveis
+                      </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">{nf(needResult.tiraDesejadaM, 2)}</span>
+                      <span className="font-mono text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">{nf(needResult.tiraBrutaTotalM, 2)}</span>
                       <span className="ml-1 text-sm text-muted-foreground">m de tira</span>
                     </div>
                   </div>
