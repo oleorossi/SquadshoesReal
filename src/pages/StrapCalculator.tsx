@@ -136,7 +136,7 @@ export default function StrapCalculator() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · CORTE"
         title="Calculadora de Tiras"
-        description="Nos dois sentidos: quanto de tira sai de um material — ou quanto de material você precisa pra uma metragem de tira. Preencha os dados e clique em Calcular. Defaults do rolo padrão (1370 mm × 40 m, 15%), todos editáveis."
+        description="Nos dois sentidos: quanto de tira sai de um material — ou quanto da largura do rolo cortar pra uma metragem de tira. Preencha os dados e clique em Calcular. Defaults do rolo padrão (1370 mm × 40 m, 15%), todos editáveis."
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_1fr]">
@@ -202,7 +202,7 @@ export default function StrapCalculator() {
               <div className="space-y-1.5">
                 <Label htmlFor="cr">Comprimento do rolo</Label>
                 <NumberInput id="cr" value={comprimentoRoloM} onChange={setComprimentoRoloM} unit="m" decimals={2} placeholder="40" />
-                {inverso && <p className="text-[11px] text-muted-foreground">Opcional — só pra estimar quantos rolos abrir.</p>}
+                {inverso && <p className="text-[11px] text-muted-foreground">Comprimento em que a faixa é cortada.</p>}
               </div>
             </div>
 
@@ -259,53 +259,87 @@ export default function StrapCalculator() {
           ) : submitted.modo === 'necessidade' && needResult?.valid ? (
             /* ── MODO INVERSO: quanto material preciso ─────────────────── */
             <div key={runId} className="space-y-4 duration-300 animate-in fade-in-50 slide-in-from-bottom-2">
-              {/* Número-herói: material necessário */}
+              {/* Número-herói: largura a cortar do rolo */}
               <Card className="overflow-hidden border-red-500/30 bg-red-500/10">
                 <CardContent className="py-6">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-red-600/80 dark:text-red-400/80">
                     <ArrowsLeftRight className="h-3.5 w-3.5" weight="bold" />
-                    Material necessário
+                    Largura a cortar do rolo
                   </div>
                   <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-6xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
-                      {nf(needResult.materialNecessarioM, 3)}
+                      {nf(needResult.larguraCortarMm, 1)}
                     </span>
-                    <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">m de material linear</span>
+                    <span className="text-lg font-medium text-red-600/80 dark:text-red-400/80">
+                      mm · de {nf(submitted.larguraMaterialMm, 0)} mm
+                    </span>
                   </div>
+
+                  {/* Barra: quanto da largura do rolo é cortado */}
+                  <div className="mt-5">
+                    <div className="mb-1 flex justify-between font-mono text-[10px] tracking-wide text-red-700/60 dark:text-red-300/60">
+                      <span>0</span>
+                      <span>{nf(submitted.larguraMaterialMm, 0)} mm</span>
+                    </div>
+                    <div className="h-4 overflow-hidden rounded-md border border-red-500/30 bg-red-500/10">
+                      <div
+                        className="h-full rounded-r-sm bg-red-500 transition-all duration-300 dark:bg-red-400"
+                        style={{ width: `${Math.min(100, (needResult.larguraCortarMm / (submitted.larguraMaterialMm || 1)) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-red-700/80 dark:text-red-300/80">
+                      Corte uma faixa de <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.larguraCortarMm, 1)} mm</span> no
+                      comprimento cheio ({nf(submitted.comprimentoRoloM, 0)} m) → <span className="font-mono font-semibold text-red-700 dark:text-red-300">{nf(needResult.tirasNecessarias, 1)}</span> tiras de {nf(submitted.larguraTiraMm, 0)} mm.
+                    </p>
+                  </div>
+
                   <p className="mt-3 font-mono text-xs text-red-700/70 dark:text-red-300/70">
-                    {nf(needResult.tiraDesejadaM, 2)} m de tira ÷ {nf(needResult.metragemPorMetroLiq, 3)} m/m ={' '}
-                    {nf(needResult.materialNecessarioM, 3)} m
-                    <span className="text-red-600/50 dark:text-red-400/50">
-                      {' '}
-                      · taxa {nf(larguraMaterialMm, 2)} ÷ {nf(larguraTiraMm, 2)} × (1 − {nf(needResult.perdaPct, 2)}%)
-                    </span>
+                    {nf(needResult.tiraDesejadaM, 2)} m de tira × {nf(submitted.larguraTiraMm, 2)} mm ÷ ({nf(submitted.comprimentoRoloM, 2)} m × (1 − {nf(needResult.perdaPct, 2)}%)) = {nf(needResult.larguraCortarMm, 1)} mm
                   </p>
                 </CardContent>
               </Card>
 
-              {/* Rolos necessários */}
-              {needResult.rolosNecessarios != null && (
-                <Card>
-                  <CardContent className="flex items-center justify-between gap-4 py-5">
+              {/* Aviso: faixa passa da largura do rolo */}
+              {needResult.passaLargura && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                  <Warning className="mt-0.5 h-3.5 w-3.5 shrink-0" weight="fill" />
+                  <span>
+                    A faixa ({nf(needResult.larguraCortarMm, 0)} mm) passa da largura do rolo ({nf(submitted.larguraMaterialMm, 0)} mm) —
+                    é preciso de <span className="font-semibold">{nf(needResult.rolosInteiros, 0)}</span> rolos de {nf(submitted.comprimentoRoloM, 0)} m no comprimento cheio.
+                  </span>
+                </div>
+              )}
+
+              {/* Contexto: material linear + rolos */}
+              <Card>
+                <CardContent className="divide-y divide-border/60 py-0">
+                  <div className="flex items-center justify-between gap-4 py-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         <Package className="h-3.5 w-3.5" weight="bold" />
-                        Rolos necessários
+                        Material necessário
                       </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">comprimento linear a passar (largura cheia)</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{nf(needResult.materialNecessarioM, 2)}</span>
+                      <span className="ml-1 text-sm text-muted-foreground">m</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 py-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground">Rolos necessários</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
-                        {nf(needResult.materialNecessarioM, 3)} m ÷ {nf(submitted.comprimentoRoloM, 2)} m por rolo
-                        {needResult.rolosInteiros != null && (
-                          <> · abrir <span className="font-semibold text-foreground">{nf(needResult.rolosInteiros, 0)}</span> rolo{needResult.rolosInteiros === 1 ? '' : 's'}</>
-                        )}
+                        abrir <span className="font-semibold text-foreground">{nf(needResult.rolosInteiros, 0)}</span> rolo{needResult.rolosInteiros === 1 ? '' : 's'} de {nf(submitted.comprimentoRoloM, 0)} m
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <span className="font-mono text-3xl font-bold tabular-nums text-foreground">{nf(needResult.rolosNecessarios, 2)}</span>
+                      <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{nf(needResult.rolosNecessarios, 2)}</span>
                       <span className="ml-1 text-sm text-muted-foreground">rolo{needResult.rolosNecessarios === 1 ? '' : 's'}</span>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Custo do material necessário */}
               {showCostNeed ? (
