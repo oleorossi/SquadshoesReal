@@ -69,6 +69,38 @@ describe('computeBaseMaterialTotal', () => {
     expect(r.skipped).toBe(1);
   });
 
+  it('tira com rendimento HERDADO entra no total e é contada em derived (caso NAPA SUDANI)', () => {
+    // Cenário do print (23/07/2026): seção CAPUCCINO · NAPA SUDANI mostrava
+    // "7 itens ficaram fora do total" porque NAPA SUDANI não tinha receita.
+    // Com o rendimento herdado (strapYieldResolution), a tira converte e SOMA.
+    const r = computeBaseMaterialTotal([
+      { componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI', productUnit: 'm', totalQuantity: 13.51 },
+      {
+        componentType: 'Tiras', groupName: 'Tira chata 8mm', productUnit: 'm',
+        totalQuantity: 270.72,
+        artisanal: { baseName: 'NAPA SUDANI', baseQty: 270.72 / 60, yieldPerMeter: 60, derivedFrom: 'NAPA SOFT' },
+      },
+    ])!;
+    expect(r.total).toBeCloseTo(13.51 + 4.51, 2);
+    expect(r.skipped).toBe(0);
+    expect(r.derived).toBe(1);
+    expect(r.parts[0].name).toBe('NAPA SUDANI');
+  });
+
+  it('tira pendente (sem receita nem herança) continua fora do total e contada em skipped', () => {
+    const r = computeBaseMaterialTotal([
+      { componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI', productUnit: 'm', totalQuantity: 13.51 },
+      {
+        componentType: 'Tiras', groupName: 'TIRA NOVA 12MM', productUnit: 'm',
+        totalQuantity: 100,
+        artisanal: { baseName: 'NAPA SUDANI', baseQty: 0, yieldPerMeter: 0, pending: true },
+      },
+    ])!;
+    expect(r.total).toBeCloseTo(13.51, 2);
+    expect(r.skipped).toBe(1);
+    expect(r.derived).toBe(0);
+  });
+
   it('deixa de fora consumo não calculado (fachete sem specs)', () => {
     const r = computeBaseMaterialTotal([
       { componentType: 'Fachete', groupName: 'NAPA SOFT', productUnit: 'm', totalQuantity: 0, warning: 'sem consumo de fachete' },

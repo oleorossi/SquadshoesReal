@@ -37,9 +37,11 @@ export type BaseMaterialInput = {
   warning?: string;
   /** Equivalente em material base quando a linha é tira artesanal.
    *  `pending` = a napa-base (família da ficha da referência) é conhecida mas
-   *  não há rendimento cadastrado pra ela (ex.: tira em NAPA MADRID sem receita)
-   *  → fica FORA do total e conta como "a cadastrar". */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
+   *  não há rendimento cadastrado pra ela NEM como derivar de outra base
+   *  → fica FORA do total e conta como "a cadastrar".
+   *  `derivedFrom` = rendimento herdado de outra base da mesma tira
+   *  (`strapYieldResolution.ts`) → ENTRA no total, contado em `derived`. */
+  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean; derivedFrom?: string };
 };
 
 export type BaseMaterialTotal = {
@@ -50,6 +52,9 @@ export type BaseMaterialTotal = {
   /** Linhas de napa deixadas de fora por cadastro incompleto — entrariam
    *  ~100× infladas (largura faltando) ou sem consumo calculado. */
   skipped: number;
+  /** Tiras DENTRO do total cujo rendimento foi herdado de outra base (não
+   *  medido pra esta napa) — a UI sinaliza sem alarmar. */
+  derived: number;
 };
 
 // Cada parcela é arredondada a 2 casas ANTES de somar, de propósito: é o valor
@@ -108,7 +113,7 @@ export function computePurchaseBaseTotal(
   const parts = Array.from(byName.entries())
     .map(([name, qty]) => ({ name, qty }))
     .sort((a, b) => b.qty - a.qty);
-  return { total: round2(parts.reduce((s, p) => s + p.qty, 0)), parts, skipped: 0 };
+  return { total: round2(parts.reduce((s, p) => s + p.qty, 0)), parts, skipped: 0, derived: 0 };
 }
 
 /**
@@ -140,17 +145,19 @@ export function isSuspectUnrolledArtisanal(
 export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMaterialTotal | null {
   const byName = new Map<string, number>();
   let skipped = 0;
+  let derived = 0;
 
   for (const r of rows) {
     // Tira com família conhecida (napa da ficha) mas SEM rendimento cadastrado
-    // pra essa base → fora do total, conta como "a cadastrar" (não converte às
-    // cegas pela base errada). Ex.: tira em NAPA MADRID sem receita.
+    // pra essa base nem como derivar de outra → fora do total, conta como
+    // "a cadastrar" (não converte às cegas pela base errada).
     if (r.artisanal?.pending) { skipped++; continue; }
     // Tira artesanal: conta o equivalente em napa, NUNCA os metros de tira
     // (169,20 m de tira = 2,82 m de napa; somar os 169,20 inflaria 60×).
     if (r.artisanal && r.artisanal.baseQty > 0) {
       const name = r.artisanal.baseName || 'Material base';
       byName.set(name, (byName.get(name) || 0) + round2(r.artisanal.baseQty));
+      if (r.artisanal.derivedFrom) derived++;
       continue;
     }
     if (!BASE_MATERIAL_COMPONENTS.has(r.componentType)) continue;
@@ -164,5 +171,5 @@ export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMateria
   const parts = Array.from(byName.entries())
     .map(([name, qty]) => ({ name, qty }))
     .sort((a, b) => b.qty - a.qty);
-  return { total: round2(parts.reduce((s, p) => s + p.qty, 0)), parts, skipped };
+  return { total: round2(parts.reduce((s, p) => s + p.qty, 0)), parts, skipped, derived };
 }

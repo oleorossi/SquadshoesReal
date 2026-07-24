@@ -28,6 +28,7 @@ import {
   type ArtisanalStrapAggInput,
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
+import { resolveStrapYield, type StrapBaseRecipe } from '@/lib/strapYieldResolution';
 
 /** Linha do modal/tela = consumo canônico + disponibilidade anotada localmente. */
 export type ConsumptionRow = MaterialConsumptionRow & {
@@ -38,8 +39,10 @@ export type ConsumptionRow = MaterialConsumptionRow & {
   soleSizeStock?: Record<string, number>;
   /** Equivalente em material-base SE produzido artesanalmente (tira cortada do
    *  rolo). `baseName` = napa da FICHA da referência (materialFamily). `pending` =
-   *  família conhecida mas SEM receita/rendimento cadastrado pra essa base. */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
+   *  família conhecida mas SEM receita/rendimento cadastrado pra essa base (e sem
+   *  como derivar). `derivedFrom` = rendimento HERDADO de outra base da mesma
+   *  tira (`strapYieldResolution.ts`) — a linha ENTRA no total do material base. */
+  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean; derivedFrom?: string };
 };
 
 export const COMPONENT_ORDER = ['Cabedal', 'Forração', 'Fachete', 'Palmilha', 'Forração Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros'] as const;
@@ -126,17 +129,21 @@ export async function annotateConsumptionAvailability(
 
   // Mapa nome-do-produto-artesanal (normalizado) → { base, yield }.
   const recipeMap = new Map<string, { base: string; yieldPerMeter: number }>();
-  // Rendimento por (TIRA, BASE): a base de uma tira é a napa da ficha da referência
-  // (materialFamily), não a base fixa da receita. Chave `${nomeNorm}::${baseNorm}`.
-  const recipeYieldByNameBase = new Map<string, number>();
+  // TODAS as receitas por tira (normalizada): a base de uma tira é a napa da
+  // ficha da referência (materialFamily), não a base fixa da receita. O
+  // resolvedor (`resolveStrapYield`) acha a receita exata da base ou HERDA o
+  // rendimento de outra base da mesma tira.
+  const recipesByStrapNorm = new Map<string, StrapBaseRecipe[]>();
   for (const r of (recipesData || []) as any[]) {
     const y = Number(r.yield_per_meter) || 0;
     if (y > 0 && r.artisanal_product_name) {
-      if (!recipeMap.has(normTxt(r.artisanal_product_name))) {
-        recipeMap.set(normTxt(r.artisanal_product_name), { base: r.base_product_name, yieldPerMeter: y });
+      const norm = normTxt(r.artisanal_product_name);
+      if (!recipeMap.has(norm)) {
+        recipeMap.set(norm, { base: r.base_product_name, yieldPerMeter: y });
       }
       if (r.base_product_name) {
-        recipeYieldByNameBase.set(`${normTxt(r.artisanal_product_name)}::${normTxt(r.base_product_name)}`, y);
+        if (!recipesByStrapNorm.has(norm)) recipesByStrapNorm.set(norm, []);
+        recipesByStrapNorm.get(norm)!.push({ baseName: r.base_product_name, yieldPerMeter: y });
       }
     }
   }
@@ -196,13 +203,29 @@ export async function annotateConsumptionAvailability(
         && LINEAR.has((row.productUnit || '').toLowerCase())
         && row.totalQuantity > 0) {
       const nameNorm = normTxt(row.groupName);
-      const legacy = recipeMap.get(nameNorm) || recipeMap.get(normTxt(row.materialName));
+      const matNorm = normTxt(row.materialName);
+      const legacy = recipeMap.get(nameNorm) || recipeMap.get(matNorm);
       const baseName = (row.materialFamily || '').trim() || legacy?.base || '';
       if (baseName) {
-        const yld = recipeYieldByNameBase.get(`${nameNorm}::${normTxt(baseName)}`)
-          || (legacy && normTxt(legacy.base) === normTxt(baseName) ? legacy.yieldPerMeter : 0);
-        row.artisanal = yld > 0
-          ? { baseName, baseQty: row.totalQuantity / yld, yieldPerMeter: yld }
+        // Receitas desta tira (por grupo E por aplicação — mesmo alcance do
+        // lookup legado). O resolvedor usa a exata da base ou herda de outra.
+        const candidates = [
+          ...(recipesByStrapNorm.get(nameNorm) || []),
+          ...(nameNorm !== matNorm ? recipesByStrapNorm.get(matNorm) || [] : []),
+        ];
+        const resolved = resolveStrapYield({
+          baseName,
+          recipes: candidates,
+          // Largura do rolo da base = dimensions_width do grupo da napa.
+          rollWidthMm: (b) => groupWidthByNorm.get(normTxt(b)) || 0,
+        });
+        row.artisanal = resolved
+          ? {
+              baseName,
+              baseQty: row.totalQuantity / resolved.yieldPerMeter,
+              yieldPerMeter: resolved.yieldPerMeter,
+              ...(resolved.derivedFrom ? { derivedFrom: resolved.derivedFrom } : {}),
+            }
           : { baseName, baseQty: 0, yieldPerMeter: 0, pending: true };
       }
     }

@@ -759,6 +759,11 @@ export default function MaterialConsumptionView({
                     {base.skipped} {base.skipped === 1 ? 'item ficou' : 'itens ficaram'} fora do total — cadastro incompleto
                   </span>
                 )}
+                {base.derived > 0 && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {base.derived} {base.derived === 1 ? 'tira com rendimento herdado' : 'tiras com rendimento herdado'} de outra napa
+                  </span>
+                )}
                 <span className="ml-auto text-[11px] text-muted-foreground">
                   tiras convertidas em napa + napa cortada direto
                 </span>
@@ -848,6 +853,9 @@ export default function MaterialConsumptionView({
                           <div className="text-[10px] font-normal text-muted-foreground mt-0.5 whitespace-nowrap">
                             ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
                             <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
+                            {row.artisanal.derivedFrom && (
+                              <span className="opacity-70"> · rendimento herdado de {row.artisanal.derivedFrom}</span>
+                            )}
                           </div>
                         )
                       )}
