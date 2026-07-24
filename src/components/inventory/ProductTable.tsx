@@ -244,6 +244,21 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                      <TooltipContent side="bottom" className="text-xs">Item padrão de solado: adicionado automaticamente ao BOM</TooltipContent>
                    </Tooltip>
                  )}
+                 {/* Selo ARTESANAL — item marcado como cortado de rolo (Estoque →
+                     "Marcar como artesanal"). Cor própria (violeta) pra scan rápido
+                     de quais materiais são feitos artesanalmente. É a MESMA flag
+                     (`is_artisanal`) que o motor de consumo lê pra converter em napa. */}
+                 {(product as any).is_artisanal && (
+                   <Tooltip>
+                     <TooltipTrigger asChild>
+                       <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/30 dark:text-violet-300 gap-1 px-1.5 h-5">
+                         <FlaskConical className="h-3 w-3" />
+                         <span className="text-xs font-bold">ARTESANAL</span>
+                       </Badge>
+                     </TooltipTrigger>
+                     <TooltipContent side="bottom" className="text-xs">Produzido de forma artesanal (cortado de rolo). O consumo é convertido na matéria-prima base da receita.</TooltipContent>
+                   </Tooltip>
+                 )}
                  {/* Badge de "config faltando" — sinaliza materiais cujo
                      consumo/custeio está prejudicado por campo faltante
                      (largura, conversion_rate, preço, yield). Critical em

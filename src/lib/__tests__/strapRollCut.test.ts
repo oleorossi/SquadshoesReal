@@ -292,16 +292,21 @@ describe('isArtisanalStrap — detecção', () => {
   it('flag de grupo true detecta', () => {
     expect(isArtisanalStrap({ groupFlag: true, name: 'qualquer coisa' })).toBe(true);
   });
-  it('heurístico: "tira napa" é artesanal', () => {
-    expect(isArtisanalStrap({ name: 'TIRA NAPA CARAMELO' })).toBe(true);
+  // Palpite por nome REMOVIDO (2026-07-24): só cadastro explícito conta.
+  it('sem cadastro, nome de tira NÃO é artesanal (era o heurístico, agora removido)', () => {
+    expect(isArtisanalStrap({ name: 'TIRA NAPA CARAMELO' })).toBe(false);
+    expect(isArtisanalStrap({ name: 'Tira Artesanal' })).toBe(false);
   });
-  it('heurístico: "tira artesanal" é artesanal', () => {
-    expect(isArtisanalStrap({ name: 'Tira Artesanal' })).toBe(true);
-  });
-  it('heurístico: itens comprados prontos NÃO são artesanais', () => {
+  it('itens comprados prontos sem cadastro NÃO são artesanais', () => {
     expect(isArtisanalStrap({ name: 'TIRA STRASS' })).toBe(false);
     expect(isArtisanalStrap({ name: 'TIRA ELÁSTICA' })).toBe(false);
     expect(isArtisanalStrap({ name: 'Tira Trançada' })).toBe(false);
+  });
+  it('mas mesmo item comprado-pronto VIRA artesanal se cadastrado (receita/flag vence o nome)', () => {
+    // Ex.: uma "tira strass" que de fato seja cortada de napa e tenha sido
+    // marcada como artesanal no Estoque (cria receita) passa a ser reconhecida.
+    expect(isArtisanalStrap({ recipeFlag: true, name: 'TIRA STRASS' })).toBe(true);
+    expect(isArtisanalStrap({ groupFlag: true, name: 'TIRA ELÁSTICA' })).toBe(true);
   });
   it('sem nome e sem flag → não detecta', () => {
     expect(isArtisanalStrap({})).toBe(false);

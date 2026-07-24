@@ -210,52 +210,48 @@ export function strapRollBarHtml(
 
 // ─── Detecção de "tira artesanal" ───────────────────────────────────────────
 
-/** Itens de tira COMPRADOS prontos (não cortados de rolo) — excluídos do bloco. */
-const BOUGHT_READY_RE = /strass|el[aá]stic|tran[çc]|cadar[çc]|cord[ãa]o|fivela|ilh[oó]s|veluto|fita\b|gorgur[ãa]o/i;
-const TIRA_RE = /tira/i;
-const ARTESANAL_RE = /artesanal/i;
-
 export interface ArtisanalDetectionInput {
   /** Flag explícita no objeto da tira (strap_colors JSONB). Prefere esta. */
   strapFlag?: boolean | null;
   /**
    * Grupo da tira é o RESULTADO (`artisanal_product_name`) de uma receita ativa
    * em "Receitas → Produtos artesanais" (`artisanal_recipes`). Fonte AUTORITATIVA:
-   * se o Leonardo cadastrou a transformação artesanal, a tira é artesanal — não
-   * importa o nome. Vence a flag de grupo e o heurístico.
+   * marcar o produto/grupo como artesanal no Estoque ("Marcar como artesanal")
+   * cria essa receita → a tira passa a ser reconhecida como artesanal.
    */
   recipeFlag?: boolean | null;
   /** Flag de cadastro no grupo do produto (product_groups.is_artisanal_strap). */
   groupFlag?: boolean | null;
-  /** Nome/rótulo/categoria combinados para o heurístico de fallback. */
+  /**
+   * @deprecated NÃO é mais usado. A detecção não adivinha mais pelo nome (decisão
+   * do usuário, 2026-07-24). Mantido no shape só pra não quebrar chamadores que
+   * ainda passam o nome; qualquer valor aqui é ignorado.
+   */
   name?: string | null;
 }
 
 /**
  * Decide se uma tira é "artesanal cortada do rolo".
  *
- * Prioridade (conservadora):
- *   1. flag explícita por tira (`is_artisanal_strap` no JSONB) — `false` opta por fora.
- *   2. grupo é resultado de uma receita artesanal cadastrada (`recipeFlag`) — a
- *      FONTE da verdade do Leonardo (tela "Receitas → Produtos artesanais").
- *   3. flag de cadastro no grupo (`product_groups.is_artisanal_strap`).
- *   4. heurístico: nome casa /tira/ E não casa com itens comprados prontos
- *      (strass, elástico, trança, etc.). Casa também explicitamente "tira artesanal".
+ * SÓ por cadastro EXPLÍCITO — nunca por palpite de nome. O heurístico por nome
+ * (qualquer "tira" não-comprada-pronta virava artesanal) foi REMOVIDO em
+ * 2026-07-24 a pedido do usuário: "as tiras só devem seguir a lógica de artesanal
+ * quando estiverem cadastradas em artesanais". Uma tira SEM cadastro é material
+ * comprado normal, mesmo que tenha "tira"/"artesanal" no nome — assim some o
+ * consumo/pendência fantasma de tiras compradas prontas (strass etc.), e o que
+ * for de fato artesanal aparece só depois de marcado no Estoque.
  *
- * ⚠ O heurístico, sozinho, é frágil: ele NÃO pega tiras cujo grupo não tenha
- * "tira" no nome e ainda EXCLUI "trançado" (que é uma transformação artesanal
- * legítima — colide com a regex de comprados-prontos). Por isso o `recipeFlag`,
- * vindo do cadastro de receitas, é o caminho correto e prevalece.
+ * Prioridade:
+ *   1. flag explícita por tira (`strap_colors.is_artisanal_strap`) — `false` opta por fora.
+ *   2. grupo é resultado de uma receita artesanal cadastrada (`recipeFlag`) —
+ *      criada ao "Marcar como artesanal" o produto/grupo no Estoque.
+ *   3. flag de cadastro no grupo (`product_groups.is_artisanal_strap`).
  */
-export function isArtisanalStrap({ strapFlag, recipeFlag, groupFlag, name }: ArtisanalDetectionInput): boolean {
+export function isArtisanalStrap({ strapFlag, recipeFlag, groupFlag }: ArtisanalDetectionInput): boolean {
   if (strapFlag === true) return true;
   if (strapFlag === false) return false;
   if (recipeFlag === true) return true;
   if (groupFlag === true) return true;
-  const n = (name || '').toString().toLowerCase();
-  if (!n) return false;
-  if (ARTESANAL_RE.test(n) && TIRA_RE.test(n)) return true;
-  if (TIRA_RE.test(n) && !BOUGHT_READY_RE.test(n)) return true;
   return false;
 }
 
