@@ -857,6 +857,17 @@ export function computeConsumptionForItems(
   };
   const fallbackAverageWarning = (missing: string[]): string =>
     `Tamanhos usando a média escalar da ficha (sem consumo por numeração): ${missing.join(', ')}`;
+  /** Tamanho SEM valor por numeração E com escalar da ficha = 0 → contribuiu
+   *  ZERO ao cálculo. Espelha `v_zs_*` do SQL by_grade (mig 20260925131000):
+   *  o aviso antigo exigia escalar > 0, então o solado INFANTIL (specs só
+   *  34–40) numa grade infantil 25–34 zerava 9 numerações da Forração Palmilha
+   *  de I90/I91 sem avisar ninguém. */
+  const zeroSizesWarning = (missing: string[]): string =>
+    `Tamanhos SEM consumo cadastrado — contribuíram ZERO ao cálculo: ${missing.join(', ')}`;
+  /** Aviso de numeração faltando: média escalar quando há escalar; ZERO quando
+   *  não há. Antes o caso "sem escalar" saía calado (bug d da auditoria). */
+  const sizeWarning = (missing: string[], scalar: number): string | undefined =>
+    missing.length === 0 ? undefined : (scalar > 0 ? fallbackAverageWarning(missing) : zeroSizesWarning(missing));
 
   // Helper: o grupo (por nome) contém algum produto que casa na cor?
   const groupHasColor = (groupName: string, color: string): boolean => {
@@ -1113,8 +1124,7 @@ export function computeConsumptionForItems(
         // by_grade / fallback_average — F2-02), NÃO mais na média×multiplicador.
         const liningDm2 = calculateGradeBasedDm2(item, liningMatch.consumption, null, liningSolePerSize, soleProductId);
         liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
-        const missing = sizesMissingFromSpec(item, liningSolePerSize);
-        if (missing.length > 0 && liningMatch.consumption > 0) liningWarning = fallbackAverageWarning(missing);
+        liningWarning = sizeWarning(sizesMissingFromSpec(item, liningSolePerSize), liningMatch.consumption);
       } else {
         liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId).total;
       }
@@ -1202,9 +1212,7 @@ export function computeConsumptionForItems(
       // Aviso de fallback (tamanho sem spec → escalar), espelho do
       // consumption_warning/fallback_average do SQL. Mantido visível na UI.
       const insoleMissing = insoleSoleVals.length > 0 ? sizesMissingFromSpec(item, insoleSolePerSize) : [];
-      const insoleWarning = (insoleMissing.length > 0 && insoleScalarConsumption > 0)
-        ? fallbackAverageWarning(insoleMissing)
-        : undefined;
+      const insoleWarning = sizeWarning(insoleMissing, insoleScalarConsumption);
       // Unidade de estoque = a do produto RESOLVIDO (pin > resolve canônico);
       // fallback: unidade do produto da ficha de componente. null = desconhecida
       // → preserva o caminho legado (placa).
@@ -1213,7 +1221,40 @@ export function computeConsumptionForItems(
         || null;
       const palmRowColor = resolvedPalmProduct?.color || palmColor;
 
-      if (isAreaStockUnit(palmStockUnit)) {
+      // ── CONS-8 (auditoria 2026-09-25, caso b) ──────────────────────────────
+      // A ficha TEM consumo de palmilha mas o material não resolve produto.
+      // Sem grupo (`insole_material` = '' — NL01–NL04, 12 OPs/528 pares do
+      // PV-00148) a linha morria em `addConsumptionRow` (groupName vazio é
+      // descartado) e o SQL nem chegava a resolver o produto (gate
+      // `insole_material <> ''`): a placa sumia do modal, da reserva e do
+      // débito sem UM aviso. Agora sai uma linha neutra de alerta (qtd 0), o
+      // mesmo padrão do fachete sem specs. Com grupo mas sem produto ativo, a
+      // linha continua saindo com a quantidade — só ganha o aviso, porque o
+      // débito/reserva SQL descartam a linha e o operador precisa saber.
+      const insoleHasConsumption = insoleScalarConsumption > 0 || insoleSoleVals.length > 0;
+      // `!resolvedPalmProduct && !palmProductId` é load-bearing: sem grupo mas
+      // COM pin de produto (technical_sheet_palmilha_colors.palmilha_product_id
+      // ou pin da variante) a palmilha resolve normalmente — sem esse guard a
+      // linha real (par/dm²/placa) seria substituída por uma linha de aviso de
+      // qtd 0 e o consumo sumiria de vez. `resolveMaterialProductCanonical('')`
+      // devolve null, então o guard NÃO afeta NL01–NL04 (sem grupo, sem pin).
+      const insoleUnresolved = insoleHasConsumption
+        && !insoleGroupName && !resolvedPalmProduct && !palmProductId;
+      const insoleNoProductWarning = (insoleGroupName && !resolvedPalmProduct && !palmProductId && insoleHasConsumption)
+        ? `Material da palmilha "${insoleGroupName}" não resolve nenhum produto ativo no estoque — o consumo aparece aqui, mas NÃO será reservado nem debitado. Cadastre o produto no grupo (Materiais → Estoque).`
+        : undefined;
+
+      if (insoleUnresolved) {
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Palmilha',
+          groupName: 'PALMILHA (material não cadastrado)',
+          materialName: 'Palmilha',
+          productUnit: 'dm2',
+          color: palmColor,
+          totalQuantity: 0,
+          warning: `A ficha tem consumo de palmilha (${computeInsoleDm2().toFixed(2)} dm² no total) mas NÃO tem Material da Palmilha cadastrado — a linha inteira fica fora do consumo, da reserva e do débito. Cadastre em Ficha Técnica → Palmilha.`,
+        });
+      } else if (isAreaStockUnit(palmStockUnit)) {
         // Estoque em ÁREA: emite em dm² COM a perda de corte (waste_pct) da
         // ficha de conversão — contrato do SQL (que aplica ×(1+waste) na linha
         // Palmilha incondicionalmente) e da Lista de Separação. Antes o modal
@@ -1227,7 +1268,7 @@ export function computeConsumptionForItems(
           productUnit: 'dm2',
           color: palmRowColor,
           totalQuantity: insoleDm2 * (1 + insoleWastePct / 100),
-          warning: insoleWarning,
+          warning: insoleWarning || insoleNoProductWarning,
         });
       } else if (palmStockUnit && LINEAR_UNITS.has(palmStockUnit.toLowerCase().trim())) {
         // Estoque LINEAR (ex.: rolo EVA 3MM em metros): converte dm²→m pela
@@ -1249,7 +1290,7 @@ export function computeConsumptionForItems(
           color: palmRowColor,
           totalQuantity: linWidthMissing ? insoleDm2 : convertDm2ToLinearMeters(insoleDm2, linSheet as any),
           widthMissing: linWidthMissing,
-          warning: insoleWarning,
+          warning: insoleWarning || insoleNoProductWarning,
         });
       } else if (palmProductId) {
         // Palmilha pronta comprada por PAR (produto pinado no mapping de cor).
@@ -1280,7 +1321,7 @@ export function computeConsumptionForItems(
           productUnit: 'placa',
           color: palmColor,
           totalQuantity: insolePlates,
-          warning: insoleWarning,
+          warning: insoleWarning || insoleNoProductWarning,
         });
       }
 
@@ -1319,8 +1360,7 @@ export function computeConsumptionForItems(
         if (insoleLiningSoleVals.length > 0) {
           const forrDm2 = calculateGradeBasedDm2(item, insoleLiningCons, null, insoleLiningSolePerSize, soleProductIdForInsole);
           forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
-          const missing = sizesMissingFromSpec(item, insoleLiningSolePerSize);
-          if (missing.length > 0 && insoleLiningCons > 0) forrWarning = fallbackAverageWarning(missing);
+          forrWarning = sizeWarning(sizesMissingFromSpec(item, insoleLiningSolePerSize), insoleLiningCons);
         } else {
           forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole).total;
         }
@@ -1385,11 +1425,22 @@ export function computeConsumptionForItems(
       }
     }
 
+    // CONS-8 (auditoria 2026-09-25, caso c): `sole_material` é TEXTO LIVRE sem
+    // sole_group_id / primary_sole_id / mapping por cor → a cascata P0–P3 não
+    // chega a produto nenhum. A linha até aparece aqui (fallback pro texto da
+    // ficha), mas SEM produto: o SQL não emite Solado, então não há reserva nem
+    // débito e o PV entra em produção sem solado (BT01/BT02 "Solado Ricardo
+    // Tratorado" — 3 OPs / 440 pares nos PV-00139 e PV-00142). Marca a linha.
+    const soleUnresolvedWarning = (!soleProductIdResolved && soleGroupName.trim().length > 0)
+      ? `Solado "${soleGroupName}" não resolve produto no estoque (texto livre na ficha, sem grupo de solado, sem solado principal e sem mapeamento por cor) — NÃO será reservado nem debitado, e não entra no custeio. Vincule o solado em Ficha Técnica → Solado.`
+      : undefined;
+
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado',
       groupName: soleGroupName,
       // materialName usado só como fallback se sizeBreakdown vier vazio.
       materialName: 'Solado',
+      warning: soleUnresolvedWarning,
       productUnit: 'par',
       color: soleColor,
       // FIX auditoria motores 2026-07-01 (b): default 1 par/par. Com `|| 0`,
@@ -1607,7 +1658,26 @@ export function computeConsumptionForItems(
       // o v_covered_product_ids do SQL — o item-padrão é a fonte).
       if (stdCoveredProductIds.has(pid)) continue;
       const prod = (allProducts || []).find((p: any) => p.id === pid);
-      if (!prod) continue;
+      if (!prod) {
+        // CONS-8 (auditoria 2026-09-25, caso a): o product_id fixado na ficha
+        // não existe mais (ou está inativo) em products — 23 pares
+        // ficha/componente no banco vivo (EC06/I90/I91/S-039./ST15…). O
+        // `continue` mudo fazia o componente sumir do modal, da ficha de
+        // operador, da reserva e do débito: a ficha pedia 8 binóculos/par e
+        // ninguém via nada. Emite linha neutra de alerta (qtd 0), mesmo padrão
+        // do fachete sem specs — a ficha de operador filtra linhas assim.
+        const orphanName = (dc as any)?.product_name || 'Componente sem cadastro';
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Outros',
+          groupName: orphanName,
+          materialName: orphanName,
+          productUnit: (dc as any)?.unit || 'un',
+          color: '—',
+          totalQuantity: 0,
+          warning: `Componente direto "${orphanName}" (${qtyPerPair}/par) não resolve produto ativo no estoque — cadastro apagado ou inativo. NÃO será reservado nem debitado. Recadastre o produto e refaça o vínculo em Ficha Técnica → Componentes.`,
+        });
+        continue;
+      }
       directProductIds.add(pid);
       const groupName = (productGroups || []).find((g: any) => g.id === prod.group_id)?.name
         || prod.category || (dc as any)?.product_name || prod.name || 'Componente';

@@ -94,18 +94,22 @@ export async function autoCreateMaterialPO(params: {
 
   // ── Step 3: Check for existing open PO to accumulate into ────────────────
   let openPO: { id: string; order_number: string; total_value: number; notes: string } | null = null;
-  if (supplierName !== 'A definir') {
+  {
     // Acumula por supplier_id (robusto) quando houver — antes casava só por
     // supplier_name (texto): fornecedores homônimos colidiam e o MESMO
     // fornecedor com grafia ligeiramente diferente não acumulava (gerava OC
     // duplicada). Fallback p/ nome quando não há id. Auditoria 2026-06-14, Área 5.
+    //
+    // Auditoria 2026-09-25: o balde 'A definir' também acumula agora. Antes ele
+    // era pulado, então cada disparo criava uma OC nova — mesmo padrão que
+    // produziu as 6 OCs de solado do PV-00146.
     let q = (supabase as any)
       .from('purchase_orders')
       .select('id, order_number, total_value, notes')
       .in('status', ['pending', 'approved'])
       .order('created_at', { ascending: false })
       .limit(1);
-    q = supplierId ? q.eq('supplier_id', supplierId) : q.eq('supplier_name', supplierName);
+    q = supplierId ? q.eq('supplier_id', supplierId) : q.eq('supplier_name', supplierName).is('supplier_id', null);
     const { data } = await q.maybeSingle();
     openPO = data ?? null;
   }
@@ -155,6 +159,10 @@ export async function autoCreateMaterialPO(params: {
     const { data: so } = await (supabase.from('sale_orders') as any).select('id').eq('order_number', orderRef).maybeSingle();
     linkedPvId = so?.id ?? null;
   } catch { /* sem PV vinculado — segue sem purchase_by_date */ }
+  // Key determinística no padrão 'auto:<sale_order_id>:<product_id>' — protegida
+  // por UNIQUE INDEX parcial permanente (migration 20260925132000). Sem PV
+  // vinculado não há chave estável, então segue sem key (só o trigger de 30s).
+  const idempotencyKey = linkedPvId ? `auto:${linkedPvId}:${productId}` : null;
   const { data: po, error: poErr } = await (supabase as any)
     .from('purchase_orders')
     .insert({
@@ -163,12 +171,30 @@ export async function autoCreateMaterialPO(params: {
       auto_generated: true,
       total_value: orderQty * unitPrice,
       notes: `Gerada automaticamente — Falta de "${productName}" para PV ${orderRef}. Pedir ${orderQty} ${unit}.`,
-      ...(linkedPvId ? { linked_sale_order_ids: [linkedPvId] } : {}),
+      ...(linkedPvId
+        ? { linked_sale_order_ids: [linkedPvId], source_pv_ids: [linkedPvId], source_type: 'auto_pv', idempotency_key: idempotencyKey }
+        : {}),
     })
     .select('id, order_number')
     .single();
 
-  if (poErr || !po) return null;
+  if (poErr || !po) {
+    // 23505 = o mesmo (PV, produto) já tem OC ABERTA — disparo duplicado.
+    // Filtro alinhado ao índice ux_purchase_orders_idem_auto: OC
+    // cancelled/received/receiving não conta como "acumulada".
+    if (poErr?.code === '23505' && idempotencyKey) {
+      const { data: existing } = await (supabase as any)
+        .from('purchase_orders')
+        .select('order_number')
+        .eq('idempotency_key', idempotencyKey)
+        .not('status', 'in', '(cancelled,received,receiving)')
+        .maybeSingle();
+      if (existing?.order_number) {
+        return { poNumber: existing.order_number, supplierName, accumulated: true };
+      }
+    }
+    return null;
+  }
 
   const { error: itemErr } = await (supabase as any).from('purchase_order_items').insert({
     purchase_order_id: po.id,

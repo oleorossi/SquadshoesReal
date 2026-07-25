@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle as CheckCircle2, XCircle, ArrowsClockwise as RefreshCw, Database, Stethoscope, Copy, Warning as AlertTriangle, HardDrive, WifiHigh as Wifi, FileCode, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';
 import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
+import { useStockDebitHoles, summarizeStockDebitHoles } from '@/hooks/useStockDebitHoles';
 
 type SchemaObject = {
   name: string;
@@ -105,6 +107,19 @@ export default function SystemDiagnostics() {
     Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number; consumption_source: string }> | null
   >(null);
   const [consRunning, setConsRunning] = useState(false);
+
+  // Furo de baixa (auditoria 2026-07-25): material que a ficha pedia e NUNCA
+  // saiu do estoque. O ERP já detectava (record_order_consumption grava
+  // actual_quantity = 0 com a nota "possível furo de baixa"); faltava
+  // VISIBILIDADE. Varredura pesada → só carrega sob demanda.
+  const [holesEnabled, setHolesEnabled] = useState(false);
+  const {
+    data: holeRows,
+    isFetching: holesLoading,
+    error: holesError,
+    refetch: refetchHoles,
+  } = useStockDebitHoles(90, holesEnabled);
+  const holesSummary = summarizeStockDebitHoles(holeRows);
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
@@ -658,6 +673,94 @@ export default function SystemDiagnostics() {
                 {staleResRows.length > 40 && (
                   <p className="text-xs text-muted-foreground">
                     Mostrando 40 de {staleResRows.length} — rode list_ops_with_stale_reservations() no SQL pra a lista completa.
+                  </p>
+                )}
+              </>
+            )}
+          </Panel>
+
+          <Panel
+            eyebrow="ESTOQUE · FURO DE BAIXA"
+            title="Furo de baixa — material sem débito"
+            subtitle="Material que a ficha pedia e NUNCA saiu do estoque: a OP foi finalizada, a produção consumiu, mas nenhum stock_movements foi gravado. Acontece quando o material não tinha reserva (a baixa converte RESERVA em movimento) ou quando a baixa foi parcial por falta de estoque. Últimos 90 dias. Fonte: list_stock_debit_holes()."
+            bodyClassName="space-y-1.5"
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => (holesEnabled ? refetchHoles() : setHolesEnabled(true))}
+                disabled={holesLoading}
+              >
+                {holesLoading
+                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  : <RefreshCw className="h-4 w-4 mr-2" />}
+                {holesEnabled ? 'Recarregar' : 'Carregar furos'}
+              </Button>
+            }
+          >
+            {!holesEnabled && !holesLoading && (
+              <p className="text-sm text-muted-foreground">
+                Varredura pesada — clique em "Carregar furos" pra listar o material consumido sem baixa nas OPs dos últimos 90 dias.
+              </p>
+            )}
+            {holesError && (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <XCircle className="h-4 w-4" /> Falha ao carregar: {(holesError as Error | null)?.message}
+              </div>
+            )}
+            {holesEnabled && !holesLoading && !holesError && holesSummary.linhas === 0 && (
+              <EmptyState
+                size="sm"
+                icon={CheckCircle2}
+                title="Nenhum furo de baixa no período"
+                description="Todo material que a ficha pediu foi debitado do estoque nas OPs finalizadas dos últimos 90 dias."
+              />
+            )}
+            {holesEnabled && !holesError && holesSummary.linhas > 0 && (
+              <>
+                <div className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+                  <Badge variant="outline" className="bg-red-500/10 text-red-600 border-transparent text-[10px] shrink-0 tabular-nums">
+                    {holesSummary.linhas}
+                  </Badge>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      linhas sem débito em {holesSummary.ops} OP(s) / {holesSummary.pedidos} PV(s) — ≈{' '}
+                      {holesSummary.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    <p className="text-xs text-muted-foreground break-words">
+                      Regularize com entrada + baixa compensatória (efeito líquido zero no saldo) — modelo em
+                      {' '}sql-scripts/fix-furo-baixa-pv-00145.sql. Pra impedir novos furos, rode a reserva de delta
+                      (reserve_missing_materials_for_order) antes de finalizar.
+                    </p>
+                  </div>
+                </div>
+                {(holeRows ?? []).slice(0, 40).map((r, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+                    <Badge
+                      variant="outline"
+                      className={
+                        r.origem === 'consumo_sem_debito'
+                          ? 'bg-red-500/10 text-red-600 border-transparent text-[10px] shrink-0 tabular-nums'
+                          : 'bg-amber-500/10 text-amber-600 border-transparent text-[10px] shrink-0 tabular-nums'
+                      }
+                    >
+                      {Number(r.diferenca).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                      {r.unit ? ` ${r.unit}` : ''}
+                    </Badge>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{r.product_name ?? '—'}</p>
+                      <p className="text-xs text-muted-foreground break-words">
+                        {r.sale_order_number ?? '—'} · {r.order_number ?? '—'} · {r.reference_name ?? '—'} ·{' '}
+                        {Number(r.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {r.origem === 'reserva_parcial_pendente' ? ' · baixa parcial pendente' : ' · consumo sem débito'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {holesSummary.linhas > 40 && (
+                  <p className="text-xs text-muted-foreground">
+                    Mostrando 40 de {holesSummary.linhas} — rode list_stock_debit_holes() no SQL pra a lista completa.
                   </p>
                 )}
               </>

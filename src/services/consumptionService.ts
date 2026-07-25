@@ -44,6 +44,11 @@ export const CONSUMPTION_SOURCES = [
   'fallback_default',
   'sole_driven_default',
   'fallback_average',
+  // Linha de DIAGNÓSTICO (mig 20260925131000): componente que não resolve
+  // produto — product_id NULL, required 0, consumption_warning explicando.
+  // Antes a linha simplesmente não era emitida e o componente sumia calado.
+  // Sem este valor no whitelist o Zod derrubaria o payload INTEIRO.
+  'unresolved',
 ] as const;
 
 export const ConsumptionLineSchema = z

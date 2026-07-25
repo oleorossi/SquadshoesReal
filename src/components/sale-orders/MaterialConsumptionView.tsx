@@ -661,7 +661,7 @@ export default function MaterialConsumptionView({
           <div className="text-sm">
             <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo não calculado por falta de cadastro</p>
             <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
-              Linhas marcadas com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> aparecem <strong>sem quantidade</strong> porque falta cadastro (ex.: solado fachetado sem consumo de fachete). O consumo desses itens <strong>não entrou no total</strong> até você completar o cadastro em <strong>Materiais → Solado</strong>.
+              Linhas marcadas com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> aparecem <strong>sem quantidade</strong> porque o cadastro está incompleto: solado fachetado sem consumo de fachete, <strong>componente direto cujo produto foi apagado</strong> ou <strong>palmilha sem material na ficha</strong>. Esses itens <strong>não entram no total</strong> e <strong>não são reservados nem debitados</strong> — passe o mouse no ícone pra ver o motivo de cada linha e complete o cadastro (Ficha Técnica / Materiais).
             </p>
           </div>
         </div>
@@ -670,9 +670,9 @@ export default function MaterialConsumptionView({
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-2">
           <WarningIcon weight="fill" className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo estimado pelo escalar da ficha</p>
+            <p className="font-semibold text-amber-900 dark:text-amber-300">Atenção — consumo com ressalva</p>
             <p className="text-amber-900/80 dark:text-amber-200/80 mt-0.5">
-              Algumas numerações da grade <strong>não têm consumo por número</strong> cadastrado no solado — nesses números o cálculo usou o <strong>escalar da ficha técnica</strong> (mesma regra do custeio/débito). Cadastre as numerações que faltam em <strong>Materiais → Solado</strong> pra ter o valor exato.
+              Linhas marcadas com <WarningIcon weight="fill" className="h-3 w-3 inline text-amber-600" /> têm quantidade, mas com ressalva: numerações <strong>sem consumo por número</strong> no solado (o cálculo usou o escalar da ficha, ou contou <strong>ZERO</strong> quando nem escalar existe), ou material que <strong>não resolve produto no estoque</strong> (aparece aqui, mas não é reservado nem debitado). Passe o mouse no ícone pra ver o motivo e complete o cadastro em <strong>Materiais → Solado</strong> / <strong>Ficha Técnica</strong>.
             </p>
           </div>
         </div>
