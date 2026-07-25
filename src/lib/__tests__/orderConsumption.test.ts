@@ -1082,3 +1082,67 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
     expect(tiras[0].materialFamily ?? null).toBeNull();
   });
 });
+
+/**
+ * CONS-8 (auditoria 2026-09-25) — componente que NÃO resolve produto parava de
+ * ser emitido e sumia em silêncio do modal, da ficha, da reserva e do débito.
+ * Agora vira linha de AVISO (qtd 0 ou marcada), espelhando o `source=unresolved`
+ * do SQL `calculate_order_consumption_by_grade` (mig 20260925131000).
+ */
+describe('orderConsumption — componente não resolvido vira AVISO (CONS-8)', () => {
+  it('componente direto com product_id apagado emite linha de aviso (EC06/I90/S-039.)', () => {
+    const ctx = buildContext();
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        direct_components: [
+          { product_id: 'p-fantasma', product_name: 'BINÓCULO 6MM', quantity: 8, unit: 'un' },
+        ],
+      }),
+    });
+    const rows = computeConsumptionForItems([item], ctx);
+    const orphan = rows.find(r => r.materialName === 'BINÓCULO 6MM');
+    expect(orphan).toBeDefined();
+    expect(orphan!.totalQuantity).toBe(0);
+    expect(orphan!.warning).toMatch(/não resolve produto ativo/i);
+    expect(orphan!.warning).toContain('8/par');
+  });
+
+  it('ficha com consumo de palmilha e insole_material vazio emite aviso (NL01–NL04)', () => {
+    const ctx = buildContext();
+    const item = buildItem({
+      technical_sheets: buildSheet({ insole_material: '', insole_consumption: 4.4343 }),
+    });
+    const rows = computeConsumptionForItems([item], ctx);
+    const palm = rows.filter(r => r.componentType === 'Palmilha');
+    expect(palm).toHaveLength(1);
+    expect(palm[0].totalQuantity).toBe(0);
+    expect(palm[0].warning).toMatch(/Material da Palmilha/i);
+  });
+
+  it('solado em texto livre sem produto resolvido marca a linha com aviso (BT01/BT02)', () => {
+    const ctx = buildContext();
+    // buildContext não resolve solado (sem mapping/primary) e a ficha só tem o
+    // texto 'SOLADO TR 01' — mesmo caso do "Solado Ricardo Tratorado".
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const solado = rows.find(r => r.componentType === 'Solado')!;
+    expect(solado.soleProductId ?? null).toBeNull();
+    expect(solado.totalQuantity).toBe(24); // quantidade preservada
+    expect(solado.warning).toMatch(/não resolve produto no estoque/i);
+  });
+
+  it('tamanho sem spec no solado E escalar 0 avisa que contribuiu ZERO (I90/I91 infantil)', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'INFANTIL', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    // Specs só do 39 — a grade do item vai de 34 a 39.
+    ctx.insoleLiningSpecBySole = new Map([['p-solado', { '39': 2 }]]);
+    const item = buildItem({ technical_sheets: buildSheet({ insole_lining_consumption: 0 }) });
+    const rows = computeConsumptionForItems([item], ctx);
+    const palmForr = rows.find(r => r.componentType === 'Forração Palmilha')!;
+    expect(palmForr.warning).toMatch(/contribuíram ZERO/i);
+    expect(palmForr.warning).toContain('34');
+  });
+});

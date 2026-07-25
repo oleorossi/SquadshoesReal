@@ -261,16 +261,31 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
       updatedCount++;
     } else {
       // Cria nova OC; total_value parte de 0 e é acumulado pelo upsert_po_item_atomic.
+      //
+      // Auditoria 2026-09-25 — três correções neste INSERT:
+      //  1. `source_type`/`source_pv_ids` passam a ser preenchidos (eram
+      //     'manual'/NULL em 52/52 das OCs, mesmo com auto_generated=true);
+      //  2. a `idempotency_key` determinística agora é protegida por UNIQUE
+      //     INDEX parcial permanente (migration 20260925132000) — antes só
+      //     valia a janela de 30s do trigger, que não impedia a duplicação de
+      //     um dia pro outro;
+      //  3. a conversão estoque→compra dos itens (unidade, preço, CEIL) é feita
+      //     server-side dentro do `upsert_po_item_atomic`, então `item.unit` /
+      //     `item.unit_price` podem continuar vindo em unidade de ESTOQUE aqui.
       const { data: po, error: poErr } = await (supabase as any).from('purchase_orders').insert({
         supplier_name: group.supplier_name,
         supplier_id: group.supplier_id || null,
         notes,
         total_value: 0,
         auto_generated: true,
+        source_type: 'auto_pv',
         linked_sale_order_ids: saleOrderId ? [saleOrderId] : null,
+        source_pv_ids: saleOrderId ? [saleOrderId] : null,
         idempotency_key: `auto:${saleOrderId || saleOrderNumber}:${supplierKey}`,
       }).select('id').single();
 
+      // 23505 = já existe OC viva com essa key (mesmo PV + mesmo fornecedor).
+      // Não é erro: o disparo é duplicado, segue pro próximo fornecedor.
       if (poErr || !po) continue;
 
       let anyItemFailed = false;

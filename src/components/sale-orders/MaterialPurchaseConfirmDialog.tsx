@@ -69,6 +69,10 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
          // O3: usa suggested_purchase_qty + purchase_unit (já convertidos pra
          // unidade do fornecedor: m → rolo, kg → saco). Sem conversão, vira
          // OC em unidade interna e o comprador refaz manualmente.
+         // Auditoria 2026-09-25: o preço tem que vir na MESMA unidade da
+         // quantidade — usar `unit_price` (R$/unidade de estoque) junto de
+         // `suggested_purchase_qty` (unidade de compra) subfaturava a OC pelo
+         // conversion_rate. `purchase_unit_price` já é R$/unidade de compra.
          await upsertPO.mutateAsync({
            supplier_id: supplier.supplier_id,
            supplier_name: supplier.supplier_name,
@@ -77,11 +81,13 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, sale
            items: group.map(g => ({
              product_id: g.product_id,
              quantity: g.suggested_purchase_qty ?? g.suggested_qty,
-             unit_price: g.unit_price,
+             unit_price: g.purchase_unit_price ?? g.unit_price,
              unit: g.purchase_unit ?? g.unit,
              current_stock: g.available,
              min_stock: g.min_stock,
-             max_stock: 0,
+             // Antes: 0 hardcoded — toda OC gerada por PV nascia sem teto de
+             // estoque. Agora vem do cadastro do produto.
+             max_stock: g.max_stock ?? 0,
              // Solados saem com cor + grade preenchidos pra fornecedor entregar
              // a matriz de tamanhos correta. Materiais sem variação por cor
              // (forros/tiras/etc.) vêm com color=null/grade=null do

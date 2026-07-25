@@ -30,6 +30,15 @@ export interface MaterialShortage {
    is_artisanal: boolean;
   /** Minimum stock target — used to calculate artisanal forStock buffer. */
   min_stock: number;
+  /** Teto de estoque cadastrado no produto. Vai pro item da OC — antes o
+   *  MaterialPurchaseConfirmDialog gravava `max_stock: 0` hardcoded, o que
+   *  fazia toda OC gerada por PV nascer com política de estoque zerada. */
+  max_stock: number;
+  /** Preço unitário na UNIDADE DE COMPRA (= unit_price × conversion_rate).
+   *  Pareia com `suggested_purchase_qty`/`purchase_unit`; usar `unit_price`
+   *  junto de `suggested_purchase_qty` subfatura a OC pelo conversion_rate
+   *  (PLACA EVA: R$ 0,11/dm² em vez de R$ 16,50/placa). */
+  purchase_unit_price: number;
   /** References on the order that consume this material. */
   reference_labels: string[];
   /** Cor solicitada — preenchida quando o material varia por cor (típico SOLADOS).
@@ -77,6 +86,7 @@ type ProductRow = {
   lead_time_days: number | null;
   sole_moq: number | null;
   min_stock: number | null;
+  max_stock: number | null;
   is_artisanal: boolean | null;
   purchase_unit: string | null;
   purchase_order_unit: string | null;
@@ -173,7 +183,7 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
   const productIds = [...new Set([...aggregated.values()].map(v => v.product_id))];
   const { data: products } = await supabase
     .from('products')
-    .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
+    .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
     .in('id', productIds);
 
   const rows = (products || []) as unknown as ProductRow[];
@@ -295,6 +305,14 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
       conversion_rate: conversionRate,
       is_artisanal: !!product.is_artisanal,
       min_stock: minStock,
+      max_stock: Number(product.max_stock ?? 0),
+      // R$/estoque × (estoque por unidade de compra) = R$/compra. Mantém
+      // `quantity × unit_price` invariante entre as duas unidades.
+      // ⚠ Multiplica SÓ quando a quantidade foi de fato dividida (mesma
+      // condição de `rawPurchaseQty`): com um conversion_rate cadastrado entre
+      // 0 e 1 a quantidade sai inteira e multiplicar o preço mesmo assim
+      // faturaria a OC por um fator solto.
+      purchase_unit_price: Number(product.unit_price ?? 0) * (conversionRate > 1 ? conversionRate : 1),
       reference_labels: [...need.references],
       color: need.color,
       grade: scaledGrade,

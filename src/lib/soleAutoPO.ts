@@ -247,16 +247,24 @@ async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPO
   }
 
   // ── Step 4: Check for existing open OC to accumulate into ─────────────────
+  // Auditoria 2026-09-25: antes esse bloco só rodava com fornecedor NOMEADO —
+  // com "A definir" cada OP criava uma OC NOVA. Foi exatamente o que gerou
+  // OC-00176/177/178 (10/07) + OC-00179/180/181 (11/07): seis OCs "A definir"
+  // pro mesmo PV-00146, uma por OP, totais idênticos par a par. "A definir" é
+  // um balde legítimo de acumulação — o comprador resolve o fornecedor depois,
+  // numa OC só. Agora ele acumula igual aos demais.
   let openPO: { id: string; order_number: string; total_value: number; notes: string } | null = null;
-  if (supplierName !== 'A definir') {
-    const { data } = await (supabase as any)
+  {
+    let q = (supabase as any)
       .from('purchase_orders')
       .select('id, order_number, total_value, notes')
-      .eq('supplier_name', supplierName)
       .in('status', ['pending', 'approved'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    // Casa por supplier_id quando existe (robusto a homônimo/grafia); cai pro
+    // nome — inclusive pro balde 'A definir' — quando não há id.
+    q = supplierId ? q.eq('supplier_id', supplierId) : q.eq('supplier_name', supplierName).is('supplier_id', null);
+    const { data } = await q.maybeSingle();
     openPO = data ?? null;
   }
 
@@ -307,20 +315,48 @@ async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPO
     const { data: op } = await (supabase.from('orders') as any).select('sale_order_id').eq('id', orderId).maybeSingle();
     linkedPvId = op?.sale_order_id ?? null;
   } catch { /* sem PV vinculado — segue sem purchase_by_date */ }
+  // Idempotência determinística (migration 20260925132000): a key
+  // 'sole:<order_id>:<product_id>' é única por UNIQUE INDEX parcial enquanto a
+  // OC não for cancelada — não os 30s do trigger. `reference_order_id` passa a
+  // ser gravado pra que cancel_orphan_auto_purchase_orders() consiga fechar a
+  // OC se a OP de origem for deletada (era NULL em 52/52 e o único vínculo
+  // ficava no texto da nota).
+  const idempotencyKey = `sole:${orderId}:${soleProductId}`;
   const { data: po, error: poErr } = await (supabase as any)
     .from('purchase_orders')
     .insert({
       supplier_name: supplierName,
       supplier_id: supplierId,
       auto_generated: true,
+      source_type: 'auto_op',
+      reference_order_id: orderId,
+      idempotency_key: idempotencyKey,
       total_value: orderQty * unitPrice,
       notes: `Gerada automaticamente — Solado insuficiente para OP ${orderRef}. Grade necessária: ${gradeDesc}`,
-      ...(linkedPvId ? { linked_sale_order_ids: [linkedPvId] } : {}),
+      ...(linkedPvId ? { linked_sale_order_ids: [linkedPvId], source_pv_ids: [linkedPvId] } : {}),
     })
     .select('id, order_number')
     .single();
 
-  if (poErr || !po) return null;
+  if (poErr || !po) {
+    // 23505 = a mesma (OP, solado) já gerou OC ABERTA. Não é erro: devolve a OC
+    // existente pro caller mostrar "acumulada" em vez de criar a segunda.
+    // O filtro tem que casar com o índice ux_purchase_orders_idem_auto
+    // (cancelled/received/receiving ficam de fora): devolver uma OC já RECEBIDA
+    // como "acumulada" seria mentira — a demanda nova não entrou em lugar nenhum.
+    if (poErr?.code === '23505') {
+      const { data: existing } = await (supabase as any)
+        .from('purchase_orders')
+        .select('order_number')
+        .eq('idempotency_key', idempotencyKey)
+        .not('status', 'in', '(cancelled,received,receiving)')
+        .maybeSingle();
+      if (existing?.order_number) {
+        return { poNumber: existing.order_number, supplierName, accumulated: true };
+      }
+    }
+    return null;
+  }
 
   const { error: itemErr } = await (supabase as any).from('purchase_order_items').insert({
     purchase_order_id: po.id,
