@@ -484,21 +484,38 @@ export function LabelProductionTab() {
     };
   };
 
-  // Set de sale_order_ids que estão em alguma onda de produção. Usado pra
-  // GATE de impressão: o user só pode imprimir etiquetas de pedidos que já
-  // entraram em onda (decisão de 15/05/2026 — antes podia imprimir qualquer
-  // OP em produção, gerando etiquetas pra pedidos ainda não programados).
-  // Source: view v_wave_orders (mapeia wave_id ↔ sale_order_id).
-  const { data: saleOrdersInWaves = new Set<string>() } = useQuery({
-    queryKey: ['sale_orders_in_waves_for_labels'],
+  // Set de sale_order_ids PROGRAMADOS — GATE de impressão: o user só pode
+  // imprimir etiquetas de pedidos que já entraram na programação de produção
+  // (decisão de 15/05/2026 — antes podia imprimir qualquer OP em produção,
+  // gerando etiquetas pra pedidos ainda não programados).
+  // Duas fontes, unidas (bug PV-00147/PV-00148, auditoria 2026-07-25):
+  //   1. production_queue (motor de produção NOVO) — toda OP aberta entra na
+  //      fila automaticamente; PV com ≥1 OP na fila está programado. OP
+  //      finalizada SAI da fila, por isso a união com o histórico abaixo.
+  //   2. v_wave_orders (ondas LEGADAS) — desde o cutover do motor (mig
+  //      20260912120200) os triggers de onda foram derrubados e a view virou
+  //      histórico congelado: PV novo NUNCA mais entrava nela, então o gate
+  //      escondia todo PV pós-cutover desta tela. Mantida na união pra PVs
+  //      pré-cutover (aba Finalizados) continuarem visíveis.
+  // ⚠ PV pós-cutover 100% finalizado/faturado sai das duas fontes — reimpressão
+  //   nesse caso é pelo botão "Etiquetas" no detalhe do PV (?sale_order= ignora
+  //   o gate).
+  const { data: scheduledSaleOrderIds = new Set<string>() } = useQuery({
+    queryKey: ['sale_orders_scheduled_for_labels'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('v_wave_orders')
-        .select('sale_order_id');
-      if (error) throw error;
+      const [waves, queue] = await Promise.all([
+        (supabase as any).from('v_wave_orders').select('sale_order_id'),
+        (supabase as any).from('production_queue').select('order_id, orders!inner(sale_order_id)'),
+      ]);
+      if (waves.error) throw waves.error;
+      if (queue.error) throw queue.error;
       const set = new Set<string>();
-      for (const row of (data || []) as any[]) {
+      for (const row of (waves.data || []) as any[]) {
         if (row.sale_order_id) set.add(row.sale_order_id);
+      }
+      for (const row of (queue.data || []) as any[]) {
+        const soId = row.orders?.sale_order_id;
+        if (soId) set.add(soId);
       }
       return set;
     },
@@ -641,7 +658,7 @@ export function LabelProductionTab() {
       ['sale_orders_for_labels_v2'],
       ['sale_order_items_strap_lookup'],
       ['sale_order_items_color_lookup'],
-      ['sale_orders_in_waves_for_labels'],
+      ['sale_orders_scheduled_for_labels'],
       ['clients_by_cnpj_for_labels'],
     ];
     // (1) fresh ao entrar na tela
@@ -651,6 +668,10 @@ export function LabelProductionTab() {
       .channel('labels-tab-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         queryClient.invalidateQueries({ queryKey: ['orders'] });
+        // OP entra/sai da production_queue junto com INSERT/UPDATE de status em
+        // orders (o motor enfileira OP nova e remove finalizada) — invalida o
+        // gate pra fila refletir sem esperar remount.
+        queryClient.invalidateQueries({ queryKey: ['sale_orders_scheduled_for_labels'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_orders' }, () => {
         queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
@@ -795,12 +816,11 @@ export function LabelProductionTab() {
 
   const currentSize = LABEL_SIZES.find(s => s.id === labelSize) || LABEL_SIZES[0];
 
-  // Wave gating: só ordens cujo PV está em alguma onda podem ser impressas.
-  // User pediu (15/05/2026): "Quando pedido entrar em onda eu passa a poder
-  // ser impresso". Sem isso, a aba mostrava qualquer OP em produção mesmo
-  // se a programação ainda não tinha agendado essa onda.
+  // Gate de programação: só ordens cujo PV está programado (production_queue
+  // do motor novo, ou onda legada pré-cutover) podem ser impressas. User pediu
+  // (15/05/2026): "Quando pedido entrar em onda eu passa a poder ser impresso".
   let productionOrders = ordersWithResolvedColor.filter((o: any) =>
-    !!o.sale_order_id && saleOrdersInWaves.has(o.sale_order_id),
+    !!o.sale_order_id && scheduledSaleOrderIds.has(o.sale_order_id),
   );
 
   // Deep-link via querystring: /label-system?sale_order=<PV_ID> filtra a aba
