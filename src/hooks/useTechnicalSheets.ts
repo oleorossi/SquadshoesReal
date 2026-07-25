@@ -18,6 +18,19 @@ async function runResyncAndInvalidate(qc: QueryClient, sheetId: string) {
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
       toast.success(`${result.totalResyncedOPs} ${result.totalResyncedOPs === 1 ? 'OP resincronizada' : 'OPs resincronizadas'} automaticamente!`);
     }
+    // Re-reserva de material: avisa SÓ quando houve mudança real, pra o operador
+    // saber que o estoque reservado das OPs abertas foi reeditado junto com a
+    // ficha (era o furo do PV-00145 — componente novo nunca reservado, e por
+    // isso nunca debitado na finalização).
+    const r = result.reservations;
+    if (r && (r.inseridas > 0 || r.atualizadas > 0 || r.canceladas > 0)) {
+      const partes = [
+        r.inseridas > 0 ? `${r.inseridas} reservada(s)` : null,
+        r.atualizadas > 0 ? `${r.atualizadas} ajustada(s)` : null,
+        r.canceladas > 0 ? `${r.canceladas} cancelada(s)` : null,
+      ].filter(Boolean);
+      toast.success(`Material das OPs abertas reeditado: ${partes.join(' · ')}`);
+    }
     if (result.errors.length > 0) {
       toast.warning(`${result.errors.length} ${result.errors.length === 1 ? 'erro' : 'erros'} no resync`, {
         description: result.errors.slice(0, 3).join('\n'),

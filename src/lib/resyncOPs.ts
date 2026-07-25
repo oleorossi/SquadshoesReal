@@ -28,7 +28,7 @@ const DEFAULT_STAGES = [
  * Falls back to the legacy multi-step path if the RPC is unavailable
  * (e.g. ambiente legado sem a migration aplicada).
  */
-export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResyncedOPs: number; errors: string[] }> {
+export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResyncedOPs: number; errors: string[]; reservations?: { ops: number; inseridas: number; atualizadas: number; canceladas: number } }> {
   const { data: ops, error: opsErr } = await supabase
     .from('orders')
     .select('id, reference_id, quantity, status, color, grade, sale_order_id, order_number')
@@ -280,5 +280,44 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
     }
   }
 
-  return { totalResyncedOPs, errors };
+  // ── Re-reserva de material das OPs ativas ("reeditar sempre") ─────────────
+  // `resync_op_atomic` acima NÃO re-reserva material: não menciona
+  // direct_components nem chama try_reserve_materials. Era o elo que faltava —
+  // componente acrescentado à ficha depois da OP criada nunca era reservado e,
+  // como a baixa na finalização converte RESERVA em stock_movements, saía da
+  // fábrica sem débito (furo do PV-00145: 26 linhas, incluindo 2.208 pares de
+  // solado; e Ilhós 51 no PV-00142, achado pelo mesmo diagnóstico).
+  //
+  // Escopo do RPC: COMPONENTE DIRETO só. É a classe que causou o furo e a única
+  // onde a re-reserva automática é segura (a ficha fixa o product_id, unidade
+  // nativa). Materiais resolvidos por GRUPO ficam de fora de propósito — o motor
+  // de consumo e try_reserve_materials escolhem produtos diferentes dentro do
+  // mesmo grupo (PLACA 1.0 EVA 3.0 × EVA 3MM), e inserir pelo id do consumo
+  // dobraria a reserva. Esses seguem reportados em /diagnostics.
+  //
+  // Nunca mexe em reserva com quantity_consumed > 0 (material já separado).
+  // Falha aqui NÃO derruba o resync: o resto já foi aplicado.
+  let reservations: { ops: number; inseridas: number; atualizadas: number; canceladas: number } | undefined;
+  try {
+    // Cast no NOME da RPC (idioma do arquivo, ver resync_op_atomic acima) — a
+    // função é nova e ainda não está nos tipos gerados.
+    const { data: resData, error: resErr } = await supabase
+      .rpc('resync_sheet_material_reservations' as any, { p_sheet_id: sheetId });
+    if (resErr) {
+      errors.push(`Re-reserva de material: ${resErr.message}`);
+    } else if (resData) {
+      const r = resData as Record<string, unknown>;
+      reservations = {
+        ops: Number(r.ops) || 0,
+        inseridas: Number(r.inseridas) || 0,
+        atualizadas: Number(r.atualizadas) || 0,
+        canceladas: Number(r.canceladas) || 0,
+      };
+    }
+  } catch (resCatch) {
+    const msg = resCatch instanceof Error ? resCatch.message : 'falha inesperada';
+    errors.push(`Re-reserva de material: ${msg}`);
+  }
+
+  return { totalResyncedOPs, errors, reservations };
 }
