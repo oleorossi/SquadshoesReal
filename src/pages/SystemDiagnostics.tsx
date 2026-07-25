@@ -102,7 +102,7 @@ export default function SystemDiagnostics() {
   // resync de ficha não re-reserva material. Como o débito na finalização
   // converte RESERVA em movimento, o que entrou depois sai da fábrica sem baixa.
   const [staleResRows, setStaleResRows] = useState<
-    Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number }> | null
+    Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number; consumption_source: string }> | null
   >(null);
   const [consRunning, setConsRunning] = useState(false);
 
@@ -645,6 +645,12 @@ export default function SystemDiagnostics() {
                       <p className="text-sm font-medium">{r.product_name}</p>
                       <p className="text-xs text-muted-foreground break-words">
                         {r.sale_order_number} · {r.order_number} · {r.reference_name}
+                        {/* Componente Direto = a ficha FIXA o produto, então a linha é
+                            um material genuinamente sem reserva. As outras origens são
+                            resolvidas por grupo e merecem conferência antes de agir. */}
+                        {(r.consumption_source === 'direct_components' || r.consumption_source === 'component_color')
+                          ? ' · componente direto'
+                          : ` · ${r.consumption_source}`}
                       </p>
                     </div>
                   </div>
