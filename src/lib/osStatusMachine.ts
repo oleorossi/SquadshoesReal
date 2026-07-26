@@ -129,3 +129,37 @@ export function osStageIndex(s: string | null | undefined): number {
   if (c === OS_STATUS.CANCELADO) return -1;
   return OS_STAGE_ORDER.indexOf(c);
 }
+
+/**
+ * Cor semântica por status, no padrão que o PV já usa (SaleOrders.tsx).
+ *
+ * As variantes do <Badge> shadcn (`osStatusBadgeVariant`) só distinguem
+ * default/secondary/outline — na prática "Pendente" (outline) e "Enviada"
+ * (secondary) saíam quase idênticos na lista, e o estado da OS virava ruído
+ * visual em vez de informação. Aqui cada estado tem cor + ponto próprios.
+ *
+ * Cores semânticas (verde/âmbar/vermelho) são permitidas pelo CLAUDE.md; o que
+ * não pode é cinza hardcoded no lugar de token.
+ */
+export function osStatusColor(s: string | null | undefined): string {
+  switch (normalizeOsStatus(s)) {
+    case OS_STATUS.CONCLUIDO:
+      return 'bg-green-500/15 text-green-700 border-green-500/30 dark:text-green-300';
+    case OS_STATUS.EM_ANDAMENTO:
+      return 'bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300';
+    case OS_STATUS.CANCELADO:
+      return 'bg-red-500/15 text-red-700 border-red-500/30 dark:text-red-300';
+    default: // Pendente — neutro de propósito: ainda não saiu da fábrica
+      return 'bg-muted text-muted-foreground border-border';
+  }
+}
+
+/** Ponto de cor pareado com osStatusColor, pra leitura a distância. */
+export function osStatusDot(s: string | null | undefined): string {
+  switch (normalizeOsStatus(s)) {
+    case OS_STATUS.CONCLUIDO: return 'bg-green-500';
+    case OS_STATUS.EM_ANDAMENTO: return 'bg-amber-500';
+    case OS_STATUS.CANCELADO: return 'bg-red-500';
+    default: return 'bg-muted-foreground/50';
+  }
+}
