@@ -151,7 +151,6 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
           : `Retorno registrado — restam ${remaining} pares na rua.`,
       );
       qc.invalidateQueries({ queryKey: ['service_orders'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });

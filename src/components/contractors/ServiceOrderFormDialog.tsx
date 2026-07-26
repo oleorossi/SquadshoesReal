@@ -259,7 +259,6 @@ export function ServiceOrderFormDialog({
     onSuccess: (id) => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       toast.success('Ordem de serviço criada.');
       onCreated?.(id);

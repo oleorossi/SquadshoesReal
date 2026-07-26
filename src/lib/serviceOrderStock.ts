@@ -176,3 +176,49 @@ export async function uploadSignedReceiptPhoto(
 
   return { url: signed.signedUrl, path };
 }
+
+/**
+ * Recebimento total de uma OS — CAMINHO ÚNICO.
+ *
+ * A regra de pagamento do negócio é "paga-se par BOM devolvido × preço", e ela
+ * mora em `service_order_payable_amount` (SQL). Essa função só é honrada quando
+ * existe linha em `service_order_returns`: sem retorno registrado, o CASE cai no
+ * ELSE e a conta a pagar nasce por `total_value` — valor cheio, refugo ignorado.
+ *
+ * Por isso NINGUÉM deve fechar OS com `update({ status: 'received' })`. Havia
+ * três escritores fazendo exatamente isso (fluxo de gargalos, tela na-rua e o
+ * upload de foto assinada), cada um gerando um valor diferente para o mesmo
+ * recebimento. Todos passam a chamar esta função.
+ *
+ * Aqui NÃO se mexe em status nem em accounts_payable: inserido o retorno, os
+ * triggers fecham a OS quando o saldo zera, marcam 'Em Andamento' no parcial e
+ * emitem a conta pelo total de pares bons.
+ */
+export async function receiveServiceOrderFully(
+  serviceOrderId: string,
+  opts?: { fallbackQuantity?: number; notes?: string },
+): Promise<{ received: number; skipped: boolean }> {
+  const { data: bal, error: balErr } = await (supabase as any)
+    .from('v_service_order_balance')
+    .select('qty_in_field')
+    .eq('service_order_id', serviceOrderId)
+    .maybeSingle();
+  if (balErr) throw new Error(`Falha ao ler o saldo da OS: ${balErr.message}`);
+
+  const inField = Math.max(0, Number(bal?.qty_in_field ?? opts?.fallbackQuantity ?? 0));
+  // Nada na rua = já recebida. Não inserir retorno zerado (dispararia conta a
+  // pagar de valor zero e sujaria o histórico).
+  if (inField <= 0) return { received: 0, skipped: true };
+
+  const { error } = await (supabase as any).from('service_order_returns').insert({
+    service_order_id: serviceOrderId,
+    qty_good: inField,
+    qty_defect: 0,
+    qty_loss: 0,
+    contractor_id: null,
+    defect_notes: opts?.notes ?? null,
+  });
+  if (error) throw new Error(`Falha ao registrar o recebimento: ${error.message}`);
+
+  return { received: inField, skipped: false };
+}

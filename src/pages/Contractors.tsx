@@ -43,9 +43,11 @@ import {
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
+import { OsPaymentBadge, OsBalanceLine } from '@/components/contractors/OsStatusIndicators';
 import {
-  OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES,
+  OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
+  normalizeOsStatus,
 } from '@/lib/osStatusMachine';
 import {
   useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe, useDeleteArtisanalRecipe,
@@ -108,17 +110,24 @@ const STATUS_CHIPS: { value: string; label: string }[] = [
   { value: 'na_rua', label: 'Na rua' },
   { value: 'atrasados', label: 'Atrasados' },
   { value: 'paradas', label: 'Paradas +15d' },
+  // Rótulos = os canônicos de osStatusLabel (Pendente · Enviada · Recebida ·
+  // Cancelada). Antes os chips diziam "Em Processamento"/"Entregue" enquanto o
+  // badge da MESMA lista dizia "Enviada"/"Recebida" — três nomes pro mesmo
+  // estado sem sair da página.
   { value: 'Pendente', label: 'Pendente' },
-  { value: 'Em Andamento', label: 'Em Processamento' },
-  { value: 'Concluído', label: 'Entregue' },
+  { value: 'Em Andamento', label: 'Enviada' },
+  { value: 'Concluído', label: 'Recebida' },
   { value: 'Cancelado', label: 'Cancelada' },
 ];
 function matchesStatusChip(status: string, chip: string): boolean {
   switch (chip) {
     case 'all': return true;
     case 'active': return isOsActive(status);
-    case 'Pendente': return OS_PENDING_STATUSES.includes(status);
-    case 'Em Andamento': return status === 'Em Andamento';
+    // Normalizar em vez de comparar texto: havia OS gravada como 'pendente'
+    // minúsculo, 'enviada' e 'em_andamento' que os chips não pegavam — a OS
+    // aparecia em "Ativas" e sumia do seu próprio estado.
+    case 'Pendente': return normalizeOsStatus(status) === OS_STATUS.PENDENTE;
+    case 'Em Andamento': return normalizeOsStatus(status) === OS_STATUS.EM_ANDAMENTO;
     case 'Concluído': return isOsDone(status);
     case 'Cancelado': return isOsCancelled(status);
     default: return status === chip;
@@ -130,48 +139,6 @@ function getMaterials(order: ServiceOrder): MaterialSent[] {
   if (order.material_name || Number(order.material_meters) > 0) return [{ material: order.material_name || '', color: order.material_color || '', meters: Number(order.material_meters) || 0 }];
   return [];
 }
-
-// ── Indicador de pagamento da OS (vem da view v_service_order_overview) ───────
-// Mostra Pago/A pagar + vencimento da conta a pagar gerada na finalização da OS.
-function OsPaymentBadge({ ov }: { ov?: ServiceOrderOverview }) {
-  if (!ov || !ov.has_payable) return null;
-  if (ov.is_paid) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
-        <CheckCircle2 className="h-3 w-3" />
-        Pago{ov.payment_date ? ` · ${format(new Date(ov.payment_date + 'T12:00:00'), 'dd/MM')}` : ''}
-      </span>
-    );
-  }
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const overdue = !!ov.payment_due_date && ov.payment_due_date < todayIso;
-  return (
-    <span className={cn('inline-flex items-center gap-1 text-xs', overdue ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400')}>
-      <DollarSign className="h-3 w-3" />
-      A pagar{ov.payment_due_date ? ` · vence ${format(new Date(ov.payment_due_date + 'T12:00:00'), 'dd/MM')}` : ''}
-    </span>
-  );
-}
-
-// ── Saldo de recebimento parcial (Enviado / Devolvido bom / Na rua) ──────────
-// Só aparece quando houve algum retorno mas ainda há pares na rua (parcial).
-function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
-  if (!ov) return null;
-  const sent = Number(ov.qty_sent ?? 0);
-  const good = Number(ov.qty_returned_good ?? 0);
-  const defect = Number(ov.qty_returned_defect ?? 0);
-  const loss = Number(ov.qty_loss ?? 0);
-  const inField = Number(ov.qty_in_field ?? 0);
-  const returned = good + defect + loss;
-  if (sent <= 0 || returned <= 0 || inField <= 0) return null; // sem parcial em aberto
-  return (
-    <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400" title={`Bons ${good} · Defeito ${defect} · Perda ${loss}`}>
-      <Package className="h-3 w-3" />
-      Devolvido {returned}/{sent} · {inField} na rua
-    </span>
-  );
-}
-
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
   const navigate = useNavigate();
@@ -383,15 +350,23 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // ── Stats ──
   const stats = useMemo(() => {
     const activeContractors = contractors.filter(c => c.active).length;
-    const pendingOrders = orders.filter(o => o.status === 'Pendente').length;
-    const inProgressOrders = orders.filter(o => o.status === 'Em Andamento').length;
-    const completedOrders = orders.filter(o => o.status === 'Concluído').length;
-    const totalValue = orders.filter(o => o.status !== 'Cancelado').reduce((s, o) => s + Number(o.total_value || 0), 0);
+    // Normalizar, não comparar texto literal: uma OS fechada como 'received'
+    // (o vocabulário do fluxo de gargalos) não entrava em concluídas E ainda
+    // somava no valor total — os KPIs do topo divergiam dos chips logo abaixo,
+    // na mesma tela.
+    const pendingOrders = orders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.PENDENTE).length;
+    const inProgressOrders = orders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.EM_ANDAMENTO).length;
+    const completedOrders = orders.filter(o => isOsDone(o.status)).length;
+    const totalValue = orders.filter(o => !isOsCancelled(o.status)).reduce((s, o) => s + Number(o.total_value || 0), 0);
     // OS de gargalo: criadas via /gargalos, aguardando contratada confirmar prazo.
     // Enquanto status=pending_quote E quoted_deadline=NULL, a OP vinculada está
     // BLOQUEADA de avançar pra Montagem (trigger DB).
+    // 'quoted' incluído: era a ÚNICA grafia que o código realmente grava
+    // (useBulkAssignServiceOrders). Contar só 'pending_quote'/'quoted_unconfirmed'
+    // — que nenhum escritor do repo produz — deixava este KPI e o de OPs
+    // bloqueadas estruturalmente em zero.
     const pendingQuotes = orders.filter(o =>
-      (o.status === 'pending_quote' || o.status === 'quoted_unconfirmed') &&
+      (o.status === 'pending_quote' || o.status === 'quoted_unconfirmed' || o.status === 'quoted') &&
       !o.quoted_deadline
     );
     const blockedOps = new Set(pendingQuotes.map(o => o.order_id).filter(Boolean)).size;
@@ -639,7 +614,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     [searchedOrders, statusFilter, matchChip, contractorFilter, osFromDate, osToDate, osBasis, toOsCostRow],
   );
 
-  const selectedOrders = useMemo(() => orders.filter(o => selectedOsIds.has(o.id)), [orders, selectedOsIds]);
+  // Seleção PRESA AO FILTRO: derivar de `orders` deixava selecionada OS que o
+  // filtro atual não mostra — e "Receber em lote" registra devolução e dispara
+  // conta a pagar de verdade. Trocar de prestador/chip depois de selecionar
+  // podia cobrar OS que o usuário não estava mais vendo.
+  const selectedOrders = useMemo(
+    () => filteredOrders.filter(o => selectedOsIds.has(o.id)),
+    [filteredOrders, selectedOsIds],
+  );
   const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
   // Triagem P0.3: elegíveis pro recebimento total em lote (ativas, não arquivadas).
   const bulkReceivable = useMemo(
@@ -1798,7 +1780,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         {/* Rodapé: pagamento + ações contextuais + menu (faixa) */}
                         <div className="-mx-3.5 -mb-3.5 mt-3 flex items-center justify-between gap-2 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <OsPaymentBadge ov={osOverview?.get(o.id)} />
+                            <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
                             <OsBalanceLine ov={osOverview?.get(o.id)} />
                           </div>
                           {renderOsActions(o)}
@@ -1820,6 +1802,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         <TableHead className="hidden lg:table-cell">Prazo</TableHead>
                         <TableHead className="text-right">Valor</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Pagamento</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1863,6 +1846,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               {noValue ? <span className="text-xs font-medium text-muted-foreground">A definir</span> : formatCurrency(Number(o.total_value))}
                             </TableCell>
                             <TableCell><Badge variant={statusColor(o.status)} className="whitespace-nowrap text-[10px]">{statusLabel(o.status)}</Badge></TableCell>
+                            {/* A tabela é a visão PADRÃO da tela e não tinha coluna de
+                                pagamento — o estado só existia no rodapé do card, o que
+                                fazia o pagamento parecer ausente do fluxo. */}
+                            <TableCell className="whitespace-nowrap">
+                              <div className="flex flex-col gap-0.5">
+                                <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
+                                <OsBalanceLine ov={osOverview?.get(o.id)} />
+                              </div>
+                            </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>{renderOsActions(o)}</TableCell>
                           </TableRow>
                         );
@@ -2978,7 +2970,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         onOpenChange={setGenOsOpen}
         onGenerated={() => {
           queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-          queryClient.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
         }}
       />
     </>

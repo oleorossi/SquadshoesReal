@@ -29,11 +29,11 @@ export interface ContractorMetric {
 
 /** Estado de pagamento de uma OS — espelha o CASE da view v_contractor_os_financials. */
 export type OsPaymentState =
-  | 'paid'         // conta a pagar quitada
-  | 'unpaid'       // conta a pagar em aberto
-  | 'not_billed'   // OS ainda aberta, sem conta (normal: a AP nasce na finalização)
-  | 'missing_ap'   // OS finalizada SEM conta a pagar (anomalia)
-  | 'ap_cancelled'; // conta cancelada com a OS ativa (anomalia)
+  | 'paid'           // todas as contas a pagar da OS quitadas
+  | 'partially_paid' // parte quitada — OS dispatch_tracked paga por RETORNO, gerando N contas
+  | 'unpaid'         // há conta(s), nenhuma quitada
+  | 'not_billed'     // OS ainda aberta, sem conta (normal: a conta nasce na finalização)
+  | 'missing_ap';    // OS finalizada SEM conta a pagar (anomalia)
 
 export interface OsFinancialRow {
   os_id: string;
@@ -47,10 +47,8 @@ export interface OsFinancialRow {
   os_status: string;
   quantity: number;
   total_value: number | null;
-  ap_id: string | null;
-  ap_status: string | null;
-  ap_amount: number | null;
-  ap_amount_paid: number | null;
+  /** Quantas contas a pagar a OS tem (as dispatch_tracked geram uma por retorno). */
+  ap_count: number;
   payment_method: string | null;
   amount_due: number | null;
   amount_paid_effective: number | null;
