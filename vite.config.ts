@@ -161,13 +161,18 @@ const versionJsonPlugin = (): Plugin => ({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'query-vendor': ['@tanstack/react-query'],
+          // ⚠ manualChunks na forma de ARRAY cria aresta estática dura: tudo que for
+          // listado aqui entra no payload inicial de TODA rota, mesmo que só uma tela
+          // use. Por isso a lista tem só os primitives realmente eager (usados pela
+          // casca/layout). `react-select` e `react-tabs` saíram (são de telas
+          // específicas, o Rollup coloca no chunk da rota) e `react-toast` também —
+          // é dependência de src/components/ui/toast.tsx, que não é o padrão do
+          // projeto (a convenção viva é sonner) e não é montado na árvore.
+          // Antes de ADICIONAR algo aqui, confirme que a casca importa de fato.
           'ui-vendor': [
             '@radix-ui/react-dialog',
             '@radix-ui/react-dropdown-menu',
             '@radix-ui/react-popover',
-            '@radix-ui/react-select',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-toast',
             '@radix-ui/react-tooltip',
           ],
           'supabase-vendor': ['@supabase/supabase-js'],

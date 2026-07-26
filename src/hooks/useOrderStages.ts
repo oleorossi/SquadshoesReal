@@ -67,20 +67,30 @@ export function useAllOrderStages(orderIds?: string[]) {
     queryFn: async () => {
       // If specific order IDs provided, fetch only those
       if (orderIds && orderIds.length > 0) {
-        // Batch in chunks of 50 to avoid query size limits
+        // Batch in chunks of 50 to avoid query size limits.
+        // ⚠ PERF (2026-07-26): os chunks rodam em PARALELO. Antes era um `for` com
+        // `await` dentro, então 263 OPs viravam 6 round-trips ESTRITAMENTE SERIAIS —
+        // numa rede de fábrica com ~100ms de RTT isso é ~600ms de espera pura antes
+        // da tela de OPs pintar. São requisições independentes; não há ordem a
+        // preservar (o resultado é reordenado por stage_order dentro de cada chunk e
+        // os consumidores agrupam por order_id).
         const CHUNK = 50;
-        let allData: OrderStage[] = [];
+        const chunks: string[][] = [];
         for (let i = 0; i < orderIds.length; i += CHUNK) {
-          const chunk = orderIds.slice(i, i + CHUNK);
-          const { data, error } = await supabase
-            .from('order_stages')
-            .select('id, order_id, stage_name, stage_order, status, started_at, completed_at, completed_by, quantity_processed, quantity_total, observations, defects, created_at, updated_at, standard_time_minutes, cost_per_hour, actual_time_minutes, cost_per_pair')
-            .in('order_id', chunk)
-            .order('stage_order', { ascending: true });
-          if (error) throw error;
-          if (data) allData = allData.concat(data as OrderStage[]);
+          chunks.push(orderIds.slice(i, i + CHUNK));
         }
-        return allData;
+        const results = await Promise.all(
+          chunks.map(async (chunk) => {
+            const { data, error } = await supabase
+              .from('order_stages')
+              .select('id, order_id, stage_name, stage_order, status, started_at, completed_at, completed_by, quantity_processed, quantity_total, observations, defects, created_at, updated_at, standard_time_minutes, cost_per_hour, actual_time_minutes, cost_per_pair')
+              .in('order_id', chunk)
+              .order('stage_order', { ascending: true });
+            if (error) throw error;
+            return (data || []) as OrderStage[];
+          }),
+        );
+        return results.flat();
       }
 
       // Fallback: fetch all with pagination

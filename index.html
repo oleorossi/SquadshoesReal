@@ -23,8 +23,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <!-- Modulepreload for main entry to parallelize JS discovery -->
-    <link rel="modulepreload" href="/src/main.tsx" />
+    <!-- ⚠ NÃO reintroduzir `<link rel="modulepreload" href="/src/main.tsx">` aqui.
+         O Vite não reescreve esse href pro chunk buildado: ele INLINA o fonte TSX
+         cru como data: URI base64 no HTML de produção (~4,4 kB que o browser baixa
+         e não consegue executar, além de vazar o fonte). O próprio Vite já injeta
+         o modulepreload da entrada e dos vendor chunks automaticamente. -->
 
     <!-- PWA — iOS-specific meta tags (Apple ignora manifest.webmanifest pra
          alguns recursos como splash screens; precisa de tags próprias). -->

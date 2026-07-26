@@ -509,9 +509,17 @@ export function useSaleOrderAllItems() {
   return useQuery({
     queryKey: ['sale_order_items_all'],
     queryFn: async () => {
+      // ⚠ PERF (2026-07-26): era `select('*')` — baixava 269 kB porque a coluna
+      // `grade` (jsonb, uma entrada por numeração) domina o payload, e NENHUM dos 3
+      // consumidores usa grade. Lista abaixo = união exata do que eles leem:
+      //   SaleOrders.tsx  -> id, sale_order_id, reference_id, color, quantity
+      //   ComissoesTab    -> sale_order_id, quantity, unit_price
+      //   OutsourcingPlanningTab -> sale_order_id, reference_id, quantity
+      // Se um consumidor novo precisar de `grade`, crie uma queryKey própria em vez
+      // de alargar esta — ela é baixada em toda visita ao /sales.
       const { data, error } = await supabase
         .from('sale_order_items')
-        .select('*');
+        .select('id, sale_order_id, reference_id, color, quantity, unit_price');
       if (error) throw error;
       return data;
     },
