@@ -62,6 +62,11 @@ const PAYMENT_STATE_META: Record<OsPaymentState, { label: string; className: str
     className: 'bg-green-500/10 text-green-700 border-green-500/30 dark:text-green-400',
     hint: 'Conta a pagar quitada',
   },
+  partially_paid: {
+    label: 'Parcial',
+    className: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
+    hint: 'Parte das contas quitada — OS dividida paga por retorno, uma conta por devolução',
+  },
   unpaid: {
     label: 'A pagar',
     className: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
@@ -76,11 +81,6 @@ const PAYMENT_STATE_META: Record<OsPaymentState, { label: string; className: str
     label: 'Sem conta a pagar',
     className: 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
     hint: 'OS finalizada sem conta a pagar — verificar o lançamento no financeiro',
-  },
-  ap_cancelled: {
-    label: 'Conta cancelada',
-    className: 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
-    hint: 'A conta a pagar foi cancelada, mas a OS segue ativa',
   },
 };
 
@@ -163,12 +163,23 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     let paid = 0, unpaid = 0, overdue = 0, notBilled = 0, anomalies = 0;
     for (const r of financials) {
       const due = Number(r.amount_due || 0);
-      if (r.payment_state === 'paid') paid += Number(r.amount_paid_effective || 0);
-      else if (r.payment_state === 'unpaid') {
+      const alreadyPaid = Number(r.amount_paid_effective || 0);
+      if (r.payment_state === 'paid') {
+        paid += alreadyPaid;
+      } else if (r.payment_state === 'partially_paid') {
+        // OS dividida: parte já quitada, o resto continua sendo passivo.
+        paid += alreadyPaid;
+        const rest = Math.max(0, due - alreadyPaid);
+        unpaid += rest;
+        if (r.is_overdue) overdue += rest;
+      } else if (r.payment_state === 'unpaid') {
         unpaid += due;
         if (r.is_overdue) overdue += due;
-      } else if (r.payment_state === 'not_billed') notBilled += due;
-      else anomalies += 1;
+      } else if (r.payment_state === 'not_billed') {
+        notBilled += due;
+      } else {
+        anomalies += 1; // missing_ap
+      }
     }
     return { paid, unpaid, overdue, notBilled, anomalies, count: financials.length };
   }, [financials]);
