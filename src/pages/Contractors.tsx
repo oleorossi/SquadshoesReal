@@ -44,8 +44,9 @@ import {
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
 import {
-  OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES,
+  OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
+  normalizeOsStatus,
 } from '@/lib/osStatusMachine';
 import {
   useArtisanalRecipes, useCreateArtisanalRecipe, useUpdateArtisanalRecipe, useDeleteArtisanalRecipe,
@@ -108,17 +109,24 @@ const STATUS_CHIPS: { value: string; label: string }[] = [
   { value: 'na_rua', label: 'Na rua' },
   { value: 'atrasados', label: 'Atrasados' },
   { value: 'paradas', label: 'Paradas +15d' },
+  // Rótulos = os canônicos de osStatusLabel (Pendente · Enviada · Recebida ·
+  // Cancelada). Antes os chips diziam "Em Processamento"/"Entregue" enquanto o
+  // badge da MESMA lista dizia "Enviada"/"Recebida" — três nomes pro mesmo
+  // estado sem sair da página.
   { value: 'Pendente', label: 'Pendente' },
-  { value: 'Em Andamento', label: 'Em Processamento' },
-  { value: 'Concluído', label: 'Entregue' },
+  { value: 'Em Andamento', label: 'Enviada' },
+  { value: 'Concluído', label: 'Recebida' },
   { value: 'Cancelado', label: 'Cancelada' },
 ];
 function matchesStatusChip(status: string, chip: string): boolean {
   switch (chip) {
     case 'all': return true;
     case 'active': return isOsActive(status);
-    case 'Pendente': return OS_PENDING_STATUSES.includes(status);
-    case 'Em Andamento': return status === 'Em Andamento';
+    // Normalizar em vez de comparar texto: havia OS gravada como 'pendente'
+    // minúsculo, 'enviada' e 'em_andamento' que os chips não pegavam — a OS
+    // aparecia em "Ativas" e sumia do seu próprio estado.
+    case 'Pendente': return normalizeOsStatus(status) === OS_STATUS.PENDENTE;
+    case 'Em Andamento': return normalizeOsStatus(status) === OS_STATUS.EM_ANDAMENTO;
     case 'Concluído': return isOsDone(status);
     case 'Cancelado': return isOsCancelled(status);
     default: return status === chip;
@@ -424,15 +432,23 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   // ── Stats ──
   const stats = useMemo(() => {
     const activeContractors = contractors.filter(c => c.active).length;
-    const pendingOrders = orders.filter(o => o.status === 'Pendente').length;
-    const inProgressOrders = orders.filter(o => o.status === 'Em Andamento').length;
-    const completedOrders = orders.filter(o => o.status === 'Concluído').length;
-    const totalValue = orders.filter(o => o.status !== 'Cancelado').reduce((s, o) => s + Number(o.total_value || 0), 0);
+    // Normalizar, não comparar texto literal: uma OS fechada como 'received'
+    // (o vocabulário do fluxo de gargalos) não entrava em concluídas E ainda
+    // somava no valor total — os KPIs do topo divergiam dos chips logo abaixo,
+    // na mesma tela.
+    const pendingOrders = orders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.PENDENTE).length;
+    const inProgressOrders = orders.filter(o => normalizeOsStatus(o.status) === OS_STATUS.EM_ANDAMENTO).length;
+    const completedOrders = orders.filter(o => isOsDone(o.status)).length;
+    const totalValue = orders.filter(o => !isOsCancelled(o.status)).reduce((s, o) => s + Number(o.total_value || 0), 0);
     // OS de gargalo: criadas via /gargalos, aguardando contratada confirmar prazo.
     // Enquanto status=pending_quote E quoted_deadline=NULL, a OP vinculada está
     // BLOQUEADA de avançar pra Montagem (trigger DB).
+    // 'quoted' incluído: era a ÚNICA grafia que o código realmente grava
+    // (useBulkAssignServiceOrders). Contar só 'pending_quote'/'quoted_unconfirmed'
+    // — que nenhum escritor do repo produz — deixava este KPI e o de OPs
+    // bloqueadas estruturalmente em zero.
     const pendingQuotes = orders.filter(o =>
-      (o.status === 'pending_quote' || o.status === 'quoted_unconfirmed') &&
+      (o.status === 'pending_quote' || o.status === 'quoted_unconfirmed' || o.status === 'quoted') &&
       !o.quoted_deadline
     );
     const blockedOps = new Set(pendingQuotes.map(o => o.order_id).filter(Boolean)).size;
