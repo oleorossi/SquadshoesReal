@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { uploadSignedReceiptPhoto } from '@/lib/serviceOrderStock';
+import { uploadSignedReceiptPhoto, receiveServiceOrderFully } from '@/lib/serviceOrderStock';
 
 /**
  * Dialog pra anexar foto do recibo assinado pelo prestador.
@@ -55,13 +55,21 @@ export function SignedReceiptUploadDialog({
       if (!serviceOrderId) throw new Error('OS sem id.');
       if (!file) throw new Error('Selecione uma foto.');
       const { url } = await uploadSignedReceiptPhoto(serviceOrderId, file);
-      const patch: any = { signed_photo_url: url };
-      if (markAsReceived) patch.status = 'received';
       const { error } = await (supabase as any)
         .from('service_orders')
-        .update(patch)
+        .update({ signed_photo_url: url })
         .eq('id', serviceOrderId);
       if (error) throw new Error(error.message);
+
+      // Concluir a OS por `status: 'received'` fazia a conta a pagar nascer pelo
+      // valor cheio, ignorando refugo — anexar uma FOTO acabava pagando a mais.
+      // O caminho único registra o retorno e deixa os triggers pagarem por
+      // pares bons. Se já não há saldo na rua, só a foto é anexada.
+      if (markAsReceived) {
+        await receiveServiceOrderFully(serviceOrderId, {
+          notes: 'Recebida via foto assinada do recibo',
+        });
+      }
       return url;
     },
     onSuccess: () => {

@@ -655,7 +655,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     [searchedOrders, statusFilter, matchChip, contractorFilter, osFromDate, osToDate, osBasis, toOsCostRow],
   );
 
-  const selectedOrders = useMemo(() => orders.filter(o => selectedOsIds.has(o.id)), [orders, selectedOsIds]);
+  // Seleção PRESA AO FILTRO: derivar de `orders` deixava selecionada OS que o
+  // filtro atual não mostra — e "Receber em lote" registra devolução e dispara
+  // conta a pagar de verdade. Trocar de prestador/chip depois de selecionar
+  // podia cobrar OS que o usuário não estava mais vendo.
+  const selectedOrders = useMemo(
+    () => filteredOrders.filter(o => selectedOsIds.has(o.id)),
+    [filteredOrders, selectedOsIds],
+  );
   const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
   // Triagem P0.3: elegíveis pro recebimento total em lote (ativas, não arquivadas).
   const bulkReceivable = useMemo(
