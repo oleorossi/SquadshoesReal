@@ -32,6 +32,7 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
 import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
+import { lastDayOfMonth, rangeToPeriod, periodToRange, payrollPeriodLabel } from '@/lib/payrollPeriod';
 
 const fmt = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 /** Minutos → "7h00". */
@@ -40,51 +41,11 @@ const fmtHoras = (min: number) => {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 };
 
-const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-
-/** Último dia do mês "YYYY-MM" como "YYYY-MM-DD". */
-function lastDayOfMonth(ym: string): string {
-  const [y, m] = ym.split('-').map(Number);
-  if (!y || !m) return '';
-  return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
-}
-
 /** Nº de dias corridos no intervalo (base proporcional da quinzena).
  *  Usa a getDaysInRange CANÔNICA (UTC) de salaryPayroll.ts — antes havia uma
  *  cópia local em horário local (fonte dupla de verdade). */
 function daysBetween(from: string, to: string): number {
   return getDaysInRange(from, to).length;
-}
-
-/**
- * Chave/armazenamento do período em `payroll_runs.period` (UNIQUE employee_id+period):
- * mês cheio (01→último dia) vira "YYYY-MM" (compat com folhas mensais já gravadas);
- * qualquer outro intervalo vira "YYYY-MM-DD_YYYY-MM-DD".
- */
-function rangeToPeriod(from: string, to: string): string {
-  if (!from || !to) return '';
-  const fm = from.slice(0, 7);
-  if (from.slice(8) === '01' && fm === to.slice(0, 7) && to === lastDayOfMonth(fm)) return fm;
-  return `${from}_${to}`;
-}
-
-/** Inverso de rangeToPeriod: "YYYY-MM" ou "YYYY-MM-DD_YYYY-MM-DD" → {from, to}. */
-function periodToRange(period: string): { from: string; to: string } {
-  if (/^\d{4}-\d{2}$/.test(period)) return { from: `${period}-01`, to: lastDayOfMonth(period) };
-  const m = period.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
-  if (m) return { from: m[1], to: m[2] };
-  return { from: '', to: '' };
-}
-
-/** Rótulo amigável: mês cheio → "mai/2026"; senão → "01/05–15/05/2026". */
-function periodLabel(from: string, to: string): string {
-  if (!from || !to) return '—';
-  if (rangeToPeriod(from, to).length === 7) {
-    const [y, m] = from.slice(0, 7).split('-').map(Number);
-    return `${MONTHS_PT[m - 1]}/${y}`;
-  }
-  const dm = (d: string) => d.slice(8) + '/' + d.slice(5, 7);
-  return `${dm(from)}–${dm(to)}/${to.slice(0, 4)}`;
 }
 
 /** Atrasa `value` em `ms` — usado pra não refazer as queries a cada tecla na data. */
@@ -132,7 +93,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const appliedFrom = useDebouncedValue(range.from, 450);
   const appliedTo = useDebouncedValue(range.to, 450);
   const appliedPeriod = useMemo(() => rangeToPeriod(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
-  const periodTitle = useMemo(() => periodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
+  const periodTitle = useMemo(() => payrollPeriodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
   const periodDays = useMemo(() => daysBetween(range.from, range.to), [range.from, range.to]); // hint imediato (sem query)
   // Atalhos de quinzena ancorados no mês do "de".
   const applyPreset = (preset: '1q' | '2q' | 'mes') => {
@@ -1269,7 +1230,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               <div className="space-y-3">
                 <div className="text-sm">
                   <p className="font-bold text-base">{emp?.name}</p>
-                  <p className="text-muted-foreground">{emp?.role || '—'} • {emp?.department || '—'} • Período {periodLabel(periodToRange(r.period).from, periodToRange(r.period).to)}</p>
+                  <p className="text-muted-foreground">{emp?.role || '—'} • {emp?.department || '—'} • Período {payrollPeriodLabel(periodToRange(r.period).from, periodToRange(r.period).to)}</p>
                   <p className="text-muted-foreground flex items-center gap-1 mt-1">
                     <Clock className="h-3.5 w-3.5" />
                     Total trabalhado: <span className="font-mono font-semibold text-foreground">{fmtHoras(r.worked_minutes)}</span>

@@ -25,6 +25,9 @@ import { StatGrid, StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useEmployees } from "@/hooks/useEmployees";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
+import { useReferenciasProduzidas } from "@/hooks/useReferenciasProduzidas";
+import { RelatorioPagamentoPanel } from "@/components/production/montadores/RelatorioPagamentoPanel";
+import { ReferenciasProduzidasPanel } from "@/components/production/montadores/ReferenciasProduzidasPanel";
 import { toast } from "sonner";
 import { Printer, ChartBar, ClipboardText, ListChecks, Users, Package, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight } from "@phosphor-icons/react";
 
@@ -553,6 +556,16 @@ export default function FichaMontadoresPage() {
     [fichas, range, filtroMontador],
   );
 
+  // Referências + cores produzidas pelo setor no período (derivado das OPs) —
+  // só carrega na aba Relatórios.
+  const { data: refsProduzidas = [], isLoading: refsLoading } =
+    useReferenciasProduzidas(setor, range.from, range.to, tab === "fichas");
+  // Roster do relatório de pagamento respeita o filtro de montador da barra.
+  const montadoresRelatorio = useMemo(
+    () => (filtroMontador === "__all__" ? montadores : montadores.filter((e) => e.id === filtroMontador)),
+    [montadores, filtroMontador],
+  );
+
   const agg = useMemo<AggRow[]>(() => {
     const m = new Map<string, AggRow>();
     for (const f of fichasFiltradas) {
@@ -986,6 +999,25 @@ export default function FichaMontadoresPage() {
 
       {/* ════ RELATÓRIOS (período) ════ */}
       {tab === "fichas" && (
+        <div className="space-y-6">
+          {/* Pagamento por produção: produzido × já pago × saldo (folha) */}
+          <RelatorioPagamentoPanel
+            setorLabel={cfgSetor.label}
+            range={range}
+            periodoLabel={periodLabel[pMode]}
+            montadores={montadoresRelatorio as any}
+            fichasPeriodo={fichasFiltradas as any}
+            refs={refsProduzidas}
+          />
+
+          {/* Referências + cores produzidas pelo setor (derivado das OPs) */}
+          <ReferenciasProduzidasPanel
+            setorLabel={cfgSetor.label}
+            range={range}
+            refs={refsProduzidas}
+            isLoading={refsLoading}
+          />
+
         <section>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold text-foreground">Produção do período</h2>
@@ -1056,6 +1088,7 @@ export default function FichaMontadoresPage() {
             })}
           </div>
         </section>
+        </div>
       )}
     </div>
   );
