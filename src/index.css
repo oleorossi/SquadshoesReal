@@ -1,10 +1,15 @@
 /* Fontes — atualização ui-ux-pro-max (2026-05-31):
    Fira Sans → Fira Sans (body com mais caráter editorial)
    Fira Code → Fira Code (mono técnico unificado com Fira family)
-   Anton mantida (identidade Industrial Editorial Pro pra display/KPIs) */
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap');
-/* Nota: Fraunces (serif acentos editoriais) é carregada por src/styles-paper.css,
-   junto com tokens --p-* e utilitários .paper/.sheet/etc. */
+   Anton mantida (identidade Industrial Editorial Pro pra display/KPIs)
+
+   ⚠ O @import do Google Fonts SAIU daqui (perf, 2026-07-26) e virou um <link>
+   em index.html. Um @import dentro do CSS bundlado só é descoberto DEPOIS que o
+   browser baixa e parseia o CSS, criando a cascata HTML → CSS → CSS do Google →
+   woff2 (3 saltos antes do primeiro glifo). No HTML o preload scanner dispara
+   junto com o JS. Não reintroduzir aqui — mesma nota vale pra styles-paper.css.
+   Nota: Fraunces (serif acentos editoriais) é usada por src/styles-paper.css
+   (.p-serif) e já vem no mesmo <link>. */
 
 @tailwind base;
 @tailwind components;

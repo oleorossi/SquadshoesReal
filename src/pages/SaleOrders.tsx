@@ -144,14 +144,28 @@ const formatDateShort = (d: string) =>
 
 // Lookup batch de min_billing_date pra todos os PVs ativos da view sale_order_min_billing.
 // Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
-function useMinBillingMap() {
+//
+// ⚠ PERF (2026-07-26): esta é a query mais cara do app — a view roda
+// `compute_min_billing_date(id)` POR LINHA (plpgsql pesada: jsonb_array_elements sobre
+// production_sectors + joins em technical_sheets/default_lead_times/sale_order_items).
+// Antes buscava a view INTEIRA: 1422ms medidos p/ 56 PVs, dos quais ~82% eram
+// Faturado/Finalizado — status que `isInfeasible` descarta de qualquer jeito (ver o
+// uso no render e nos dois gates de aprovação). Filtrando pelos ids ativos o predicado
+// desce pro scan da base e a função só executa nas linhas que a UI usa.
+// NÃO remover o `.in(...)`: sem ele a tela de PVs volta a custar >1s por visita.
+function useMinBillingMap(activeIds: string[]) {
+  // Ordena pra estabilizar a queryKey — a ordem de `orders` varia entre refetches
+  // e uma key instável refaria a query cara sem necessidade.
+  const ids = useMemo(() => [...activeIds].sort(), [activeIds]);
   return useQuery<Map<string, string>>({
-    queryKey: ['sale_order_min_billing_map'],
+    queryKey: ['sale_order_min_billing_map', ids],
     queryFn: async () => {
+      const out = new Map<string, string>();
+      if (ids.length === 0) return out;
       const { data, error } = await supabase
         .from('sale_order_min_billing' as any)
-        .select('sale_order_id, min_billing_date');
-      const out = new Map<string, string>();
+        .select('sale_order_id, min_billing_date')
+        .in('sale_order_id', ids);
       if (error || !data) return out;
       for (const row of data as any[]) {
         if (row.sale_order_id && row.min_billing_date) {
@@ -160,14 +174,27 @@ function useMinBillingMap() {
       }
       return out;
     },
-    staleTime: 60_000,
+    enabled: ids.length > 0,
+    // Alinhado ao staleTime de useSaleOrders (5min), a lista que este map decora.
+    // A data mínima é função de lead time de setor e capacidade — não muda a cada
+    // minuto. Mudanças reais em sale_orders ainda invalidam via canal realtime.
+    staleTime: 5 * 60 * 1000,
   });
 }
 
 export default function SaleOrders() {
   const { data: orders = [], isLoading, isError, error } = useSaleOrders();
   const { data: allSaleItems = [] } = useSaleOrderAllItems();
-  const { data: minBillingMap = new Map<string, string>() } = useMinBillingMap();
+  // Só PVs ativos: os terminais (Faturado/Finalizado s/ NF/Cancelado) nunca chegam a
+  // ser marcados como inviáveis, então pagar compute_min_billing_date por eles é puro
+  // desperdício. Mesmo predicado usado em `activeCount` e no cálculo de `isInfeasible`.
+  const activeSaleOrderIds = useMemo(
+    () => orders
+      .filter(o => !TERMINAL_BILLED_STATUSES.includes(o.status) && o.status !== 'Cancelado')
+      .map(o => o.id),
+    [orders],
+  );
+  const { data: minBillingMap = new Map<string, string>() } = useMinBillingMap(activeSaleOrderIds);
   const { data: references = [] } = useTechnicalSheets();
   const { data: clients = [] } = useClients();
   const { data: economicGroups = [] } = useEconomicGroups();

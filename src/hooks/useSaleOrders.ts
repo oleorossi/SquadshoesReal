@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -2943,28 +2943,51 @@ export function useCommitPickingForSaleOrder() {
 //
 // Chamado uma vez por sessão dentro do SaleOrders.tsx. NÃO chamar em outros
 // componentes pra evitar múltiplos canais (cada channel custa recursos de WS).
+// ⚠ PERF (2026-07-26): o predicate `startsWith('sale_order')` casa ~22 queryKeys —
+// entre elas `sale_order_min_billing_map`, a query mais cara do sistema. Sem debounce,
+// salvar um PV de 8 itens gerava 8 eventos WAL = 8 rodadas de invalidação = 8 refetches
+// dessa view. Duas correções, ambas espelhando o padrão já usado em useRealtimeOrderStages:
+//   1. debounce de 400ms coalescendo a rajada numa única invalidação;
+//   2. `sale_order_items` NÃO invalida mais o min_billing_map — mexer na grade de um item
+//      não muda a data mínima de faturamento (que depende de status/prazo do PV e dos
+//      lead times de setor). O handler de `sale_orders` continua invalidando tudo.
+const MIN_BILLING_KEY = 'sale_order_min_billing_map';
+
 export function useRealtimeSaleOrders() {
   const qc = useQueryClient();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // `includeMinBilling` decide se a rodada coalescida também refaz a query cara.
+    // Uma rajada mista (PV + itens) mantém true — quem for mais abrangente vence.
+    let includeMinBilling = false;
+    const scheduleInvalidate = (withMinBilling: boolean) => {
+      includeMinBilling = includeMinBilling || withMinBilling;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        const withMB = includeMinBilling;
+        includeMinBilling = false;
+        qc.invalidateQueries({ predicate: (q) => {
+          const k = q.queryKey[0];
+          if (typeof k !== 'string' || !k.startsWith('sale_order')) return false;
+          return withMB || k !== MIN_BILLING_KEY;
+        }});
+      }, 400);
+    };
     const channel = supabase
       .channel('sale-orders-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_orders' }, () => {
-        // Invalida todas as queries de sale_orders (predicate-based pra cobrir
-        // variações com filtros — sale_orders_with_nfe, etc.).
-        qc.invalidateQueries({ predicate: (q) => {
-          const k = q.queryKey[0];
-          return typeof k === 'string' && k.startsWith('sale_order');
-        }});
+        // Mudança no PV (status, prazo) PODE mudar a data mínima → inclui a key cara.
+        scheduleInvalidate(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_order_items' }, () => {
-        qc.invalidateQueries({ predicate: (q) => {
-          const k = q.queryKey[0];
-          return typeof k === 'string' && k.startsWith('sale_order');
-        }});
+        scheduleInvalidate(false);
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') console.warn('[realtime] sale-orders:', err?.message);
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [qc]);
 }

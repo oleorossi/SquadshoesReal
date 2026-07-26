@@ -51,10 +51,19 @@
       }
     </style>
 
-    <!-- Optimized Font Loading: load only essential weights synchronously, rest async -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <!-- Fontes REAIS do app (Industrial Editorial Pro): Anton (display) + Fira Sans
+         (body) + Fira Code (mono) + Fraunces (serif de acento em styles-paper.css).
+         Declaradas aqui, no HTML, de propósito: o @import equivalente vivia dentro de
+         src/index.css e src/styles-paper.css, o que empurrava a descoberta da fonte pro
+         3º salto da cascata (HTML → CSS bundle → CSS do Google → woff2). Do HTML o
+         browser dispara na 1ª passada do preload scanner, em paralelo com o JS.
+         ⚠ NÃO reintroduzir @import de fonte nos .css — vira requisição encadeada.
+         ⚠ Esta lista é a fonte única: se mudar família aqui, atualize também
+         tailwind.config.ts (fontFamily) e os tokens --font-* de src/index.css. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap"
+    />
 
     <link rel="icon" href="/favicon.jpg" type="image/jpeg" />
     <link rel="stylesheet" href="/print.css" media="print" />
