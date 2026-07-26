@@ -115,6 +115,11 @@ export function useSaleOrdersWeightBatch(saleOrderIds: string[]) {
       return results.filter((r): r is SaleOrderWeight => r !== null);
     },
     enabled: saleOrderIds.length > 0,
-    staleTime: 15 * 1000,
+    // ⚠ PERF: cada refetch aqui custa N RPCs (uma por PV). 15s era curto demais pra um
+    // dado que só muda quando alguém edita itens do PV — e essa edição já invalida a key
+    // por realtime (o predicate de useRealtimeSaleOrders casa 'sale_orders_weight_batch').
+    // Correção por tempo é redundante; 5min mata o refetch em rajada nas telas de MDF-e
+    // e roteirização, que montam o hook com dezenas de PVs.
+    staleTime: 5 * 60 * 1000,
   });
 }

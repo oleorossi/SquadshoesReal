@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { resolveConversionFactors } from '@/lib/unitConversion';
 import { calculateConsumption, validateConsumptionPayload, type ConsumptionLine } from '@/services/consumptionService';
 import { classifyBomMaterial } from '@/lib/orderConsumption';
@@ -22,6 +23,18 @@ import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+
+/** Retorno da queryFn de consumo — as duas estruturas que a tela consome. */
+interface ConsumptionResult {
+  needs: OrderMaterialNeed[];
+  productsMap: Map<string, any>;
+}
+
+// Referências estáveis pro fallback de `data === undefined` (primeiro render e erro).
+// Literais inline (`?? []`) criariam objeto novo a cada render e invalidariam os
+// useMemo que dependem de orderNeeds/productsMap.
+const EMPTY_NEEDS: OrderMaterialNeed[] = [];
+const EMPTY_PRODUCTS_MAP = new Map<string, any>();
 
 interface OrderMaterialNeed {
   order_id: string;
@@ -91,10 +104,13 @@ export default function PurchasePlanningWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedWeek, setSelectedWeek] = useState('all');
-  const [orderNeeds, setOrderNeeds] = useState<OrderMaterialNeed[]>([]);
-  const [productsMap, setProductsMap] = useState<Map<string, any>>(new Map());
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // ⚠ PERF (2026-07-26): isto era `useEffect(() => { fetchOrderConsumption(); }, [])`,
+  // sem React Query — logo sem cache e sem dedupe. Cada montagem da tela refazia o
+  // trabalho inteiro: 1 RPC calculate_order_consumption_by_grade POR OP ativa (75 hoje,
+  // ~92ms cada = ~7s de CPU de banco disparados em paralelo) + 1
+  // get_material_conversion_info por material de área. Envolto em useQuery, voltar pra
+  // tela dentro do staleTime custa zero. Invalidar ['purchase_planning_consumption']
+  // se mexer em ficha técnica/BOM e precisar refletir na hora.
 
   // Quantidade FINAL de compra: déficit → inteiro → lote mínimo (moq) → múltiplo
   // de compra (embalagem). Fonte única usada na criação da OC E na exibição da
@@ -109,13 +125,23 @@ export default function PurchasePlanningWizard() {
   const [creating, setCreating] = useState(false);
 
   // Consumo por OP via motor CANÔNICO (RPC calculate_order_consumption_by_grade)
-  useEffect(() => {
-    fetchOrderConsumption();
-  }, []);
+  const {
+    data: consumption,
+    isPending: loading,
+    error: consumptionError,
+  } = useQuery({
+    queryKey: ['purchase_planning_consumption'],
+    queryFn: fetchOrderConsumption,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+  const orderNeeds = consumption?.needs ?? EMPTY_NEEDS;
+  const productsMap = consumption?.productsMap ?? EMPTY_PRODUCTS_MAP;
+  const loadError = consumptionError
+    ? ((consumptionError as any)?.message || 'Não foi possível carregar o planejamento de compras.')
+    : null;
 
-  async function fetchOrderConsumption() {
-    setLoading(true);
-    setLoadError(null);
+  async function fetchOrderConsumption(): Promise<ConsumptionResult> {
     try {
       const parseDateValue = (value?: string | null) => {
         if (!value) return null;
@@ -139,9 +165,7 @@ export default function PurchasePlanningWizard() {
 
       const activeOrders = (orders as any[]).filter(o => o.reference_id);
       if (activeOrders.length === 0) {
-        setOrderNeeds([]);
-        setLoading(false);
-        return;
+        return { needs: [], productsMap: new Map<string, any>() };
       }
 
       // 2b. Data-LIMITE de compra por OP (auditoria 2026-06-14, Top10 #3).
@@ -213,8 +237,7 @@ export default function PurchasePlanningWizard() {
       const getSupplierName = (product: any) =>
         product?.supplier_ref?.trade_name || product?.supplier_ref?.name || '';
 
-      const pMap = new Map(productRows.map(p => [p.id, p]));
-      setProductsMap(pMap);
+      const pMap = new Map<string, any>(productRows.map(p => [p.id, p]));
 
       const sheetNameById = new Map<string, string>();
       for (const s of (sheetsRes.data ?? []) as any[]) sheetNameById.set(s.id, s.name || '');
@@ -419,14 +442,14 @@ export default function PurchasePlanningWizard() {
 
       // Sort by week
       needs.sort((a, b) => a.week_start.getTime() - b.week_start.getTime());
-      setOrderNeeds(needs);
+      return { needs, productsMap: pMap };
     } catch (err: any) {
       console.error('[PurchasePlanning] Error fetching order consumption:', err, err?.message, err?.details, err?.hint);
-      setOrderNeeds([]);
-      setLoadError(err?.message || 'Não foi possível carregar o planejamento de compras.');
-      toast.error('Erro ao carregar consumo dos pedidos: ' + (err?.message || ''));
-    } finally {
-      setLoading(false);
+      // Relança pro React Query registrar o erro — a UI lê `loadError` do próprio
+      // estado da query, e o retry/backoff global do QueryClient passa a valer aqui.
+      // Sem toast local: o QueryCache.onError global (src/App.tsx) já emite um,
+      // com id estável por queryKey, então não duplica entre as tentativas de retry.
+      throw err;
     }
   }
 

@@ -157,29 +157,44 @@ export default function InputCostsPage() {
   const { data: priceSummaries = [], isLoading: loadingPrices } = useProductPriceSummary();
   const { data: suppliers = [] } = useSuppliers();
 
-  // Realtime: invalidate whenever any product price changes (from any screen)
+  // Realtime: invalidate whenever any product price changes (from any screen).
+  // ⚠ PERF: os fluxos que mexem em products fazem UPDATE em LOOP (ajuste de estoque,
+  // débito de picking, importação de XML inserindo invoice_items item a item), então
+  // cada um vira um evento WAL. Sem debounce, ajustar 30 produtos com esta tela aberta
+  // disparava 60 refetches em rajada. Coalesce em 400ms — mesmo padrão de
+  // useRealtimeOrderStages.
+  const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    let alsoProducts = false;
+    const scheduleInvalidate = (withProducts: boolean) => {
+      alsoProducts = alsoProducts || withProducts;
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+      invalidateTimerRef.current = setTimeout(() => {
+        const withP = alsoProducts;
+        alsoProducts = false;
+        if (withP) qc.invalidateQueries({ queryKey: ['products'] });
+        qc.invalidateQueries({ queryKey: ['product_price_summary'] });
+      }, 400);
+    };
     const channel = supabase
       .channel('input-costs-products-watch')
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'products' },
-        () => {
-          qc.invalidateQueries({ queryKey: ['products'] });
-          qc.invalidateQueries({ queryKey: ['product_price_summary'] });
-        },
+        () => scheduleInvalidate(true),
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'invoice_items' },
-        () => {
-          qc.invalidateQueries({ queryKey: ['product_price_summary'] });
-        },
+        () => scheduleInvalidate(false),
       )
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') console.warn('[realtime] input-costs:', err?.message);
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [qc]);
 
   const [search, setSearch] = useState('');
