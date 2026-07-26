@@ -133,8 +133,24 @@ function getMaterials(order: ServiceOrder): MaterialSent[] {
 
 // ── Indicador de pagamento da OS (vem da view v_service_order_overview) ───────
 // Mostra Pago/A pagar + vencimento da conta a pagar gerada na finalização da OS.
-function OsPaymentBadge({ ov }: { ov?: ServiceOrderOverview }) {
-  if (!ov || !ov.has_payable) return null;
+//
+// Ausência de conta a pagar tem DOIS significados e eles não podem ficar mudos
+// do mesmo jeito: OS ainda aberta legitimamente não tem conta (a AP nasce na
+// finalização) — silêncio correto; mas OS FINALIZADA sem conta é dinheiro que
+// ninguém vai cobrar, e antes disso não aparecia em lugar nenhum da tela.
+function OsPaymentBadge({ ov, osStatus }: { ov?: ServiceOrderOverview; osStatus?: string }) {
+  if (!ov || !ov.has_payable) {
+    if (!isOsDone(osStatus)) return null; // OS aberta: a conta ainda não deve existir
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-red-700 dark:text-red-400"
+        title="OS finalizada sem conta a pagar — o prestador não será cobrado. Verifique o lançamento no financeiro."
+      >
+        <AlertTriangle className="h-3 w-3" />
+        Sem conta a pagar
+      </span>
+    );
+  }
   if (ov.is_paid) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
@@ -1798,7 +1814,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         {/* Rodapé: pagamento + ações contextuais + menu (faixa) */}
                         <div className="-mx-3.5 -mb-3.5 mt-3 flex items-center justify-between gap-2 rounded-b-xl border-t border-border/60 bg-muted/30 px-3.5 pb-3 pt-2.5">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <OsPaymentBadge ov={osOverview?.get(o.id)} />
+                            <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
                             <OsBalanceLine ov={osOverview?.get(o.id)} />
                           </div>
                           {renderOsActions(o)}
