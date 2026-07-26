@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  ArrowLeft, ArrowsInSimple, ArrowsOutSimple, Funnel, Highlighter,
-  Info, Kanban as KanbanIcon, QrCode,
+  ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CheckSquare, Funnel, Highlighter,
+  Info, Kanban as KanbanIcon, QrCode, X,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
@@ -16,20 +17,23 @@ import {
 import { useAllOrderStages, useApontarProducao, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { toast } from 'sonner';
 import { deriveCard, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
 import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
+import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
 import { QrScanDialog } from '@/components/production/kanban/QrScanDialog';
 
 /**
  * CENTRAL DE PRODUÇÃO — o Kanban em modo "programa dedicado de gestão":
  * tela cheia SEM a casca do ERP (rota fora do AppLayout), todos os setores
- * visíveis de uma vez, busca que DESTACA a OP no quadro (ou filtra) e leitura
- * do QR das fichas de operador (câmera ou leitor físico). Mesmo motor do
- * Kanban: mesmos hooks, mesma RPC de apontamento, mesmo realtime — só muda a
- * moldura. Pensada pro analista deixar aberta num monitor o dia inteiro.
+ * visíveis de uma vez, busca que FILTRA o quadro (padrão; 'destacar' é opção),
+ * leitura do QR das fichas de operador (câmera ou leitor físico) e seleção
+ * múltipla pra mover várias OPs de setor de uma vez. Mesmo motor do Kanban:
+ * mesmos hooks, mesma RPC de apontamento, mesmo realtime — só muda a moldura.
+ * Pensada pro analista deixar aberta num monitor o dia inteiro.
  */
 export default function ProducaoKanbanGestao() {
   useEnsureFreshSchedule();
@@ -48,13 +52,20 @@ export default function ProducaoKanbanGestao() {
   const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled;
 
   const [search, setSearch] = useState('');
-  // 'destacar' = OP achada ganha anel e o resto esmaece (o quadro inteiro segue
-  // visível — modo analista); 'filtrar' = só as que casam ficam no quadro.
-  const [viewMode, setViewMode] = useState<'destacar' | 'filtrar'>('destacar');
+  // PADRÃO 'filtrar' (decisão do dono 2026-07-26): buscar deve deixar no quadro
+  // SÓ as OPs que casam — inclusive escondendo os setores que ficaram vazios,
+  // senão no celular se navega por telas em branco. 'destacar' (anel + resto
+  // esmaecido, quadro inteiro visível) fica como opção, e a escolha persiste.
+  const [viewMode, setViewMode] = usePersistedState<'destacar' | 'filtrar'>('kanban-gestao-view-mode', 'filtrar');
   const [scanOpen, setScanOpen] = useState(false);
   const [dragCard, setDragCard] = useState<KanbanCardData | null>(null);
   const [dropTarget, setDropTarget] = useState<{ card: KanbanCardData; target: string } | null>(null);
   const [detailStage, setDetailStage] = useState<{ card: KanbanCardData } | null>(null);
+  // Seleção múltipla → mover várias OPs de setor preenchendo uma por uma
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkTarget, setBulkTarget] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const cardEls = useRef(new Map<string, HTMLDivElement>());
@@ -160,6 +171,40 @@ export default function ProducaoKanbanGestao() {
     parciais: allCards.filter(c => c.isPartial).length,
   }), [allCards]);
 
+  // Busca ativa em modo filtrar: o quadro mostra SÓ o que casou.
+  const filtering = viewMode === 'filtrar' && !!matchedIds;
+
+  // Setor que ficou sem OP casada sai do quadro — no celular cada coluna ocupa
+  // uma tela inteira e passar por 9 vazias é ruído puro.
+  const visibleColumns = useMemo(() => {
+    if (!filtering || !matchedIds) return columns;
+    return columns.filter(sector => allCards.some(c => c.column === sector && matchedIds.has(c.q.order_id)));
+  }, [columns, filtering, matchedIds, allCards]);
+
+  const selectedCards = useMemo(
+    () => allCards.filter(c => selectedIds.has(c.q.order_id)),
+    [allCards, selectedIds],
+  );
+  const selectedPares = useMemo(
+    () => selectedCards.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0),
+    [selectedCards],
+  );
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkTarget('');
+  };
+
   const handleDrop = (target: string) => {
     if (!dragCard) return;
     const card = dragCard;
@@ -234,6 +279,17 @@ export default function ProducaoKanbanGestao() {
               <Funnel className="h-4 w-4" /> Filtrar
             </button>
           </div>
+          {canEdit && (
+            <Button
+              variant={selectMode ? 'default' : 'outline'}
+              size="sm"
+              className="h-11 md:h-9 gap-1.5"
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              aria-pressed={selectMode}
+            >
+              <CheckSquare className="h-4 w-4" /> Selecionar
+            </Button>
+          )}
           {canFullscreen && (
             <Button variant="outline" size="sm" className="h-11 w-11 md:h-9 md:w-9 p-0" onClick={toggleFullscreen} title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}>
               {isFullscreen ? <ArrowsInSimple className="h-4 w-4" /> : <ArrowsOutSimple className="h-4 w-4" />}
@@ -255,6 +311,53 @@ export default function ProducaoKanbanGestao() {
           <span className="ed-display text-lg tabular-nums hidden lg:inline">{clock}</span>
         </div>
       </div>
+
+      {/* ── Barra da seleção em lote ─────────────────────────────────────── */}
+      {selectMode && (
+        <div className="shrink-0 border-b border-border bg-primary/5 px-3 py-2 flex items-center gap-2 flex-wrap">
+          {selectedIds.size === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              Toque nos cards pra selecionar as OPs que vão mudar de setor.
+            </span>
+          ) : (
+            <span className="text-xs font-semibold font-mono shrink-0">
+              {selectedIds.size} OP{selectedIds.size > 1 ? 's' : ''} · {selectedPares.toLocaleString('pt-BR')} pares
+            </span>
+          )}
+          {searchActive && matches.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 text-xs"
+              onClick={() => setSelectedIds(new Set(matches.map(m => m.q.order_id)))}
+            >
+              Selecionar as {matches.length} encontradas
+            </Button>
+          )}
+          {selectedIds.size > 0 && (
+            <Button variant="ghost" size="sm" className="h-9 text-xs gap-1" onClick={() => setSelectedIds(new Set())}>
+              <X className="h-3.5 w-3.5" /> Limpar
+            </Button>
+          )}
+          <div className="flex items-center gap-2 md:ml-auto">
+            <Select value={bulkTarget} onValueChange={setBulkTarget}>
+              <SelectTrigger className="h-11 md:h-9 w-[180px]">
+                <SelectValue placeholder="Mover para o setor…" />
+              </SelectTrigger>
+              <SelectContent>
+                {columns.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button
+              className="h-11 md:h-9"
+              disabled={!bulkTarget || selectedIds.size === 0}
+              onClick={() => setBulkOpen(true)}
+            >
+              Mover
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Faixa de resultados da busca (onde cada OP está no fluxo) ────── */}
       {searchActive && (
@@ -302,11 +405,20 @@ export default function ProducaoKanbanGestao() {
             description="OPs criadas a partir dos PVs entram aqui automaticamente."
           />
         </div>
+      ) : visibleColumns.length === 0 ? (
+        /* Filtrando e nada casou: o quadro fica vazio de propósito */
+        <div className="flex-1 flex items-center justify-center">
+          <EmptyState
+            icon={Funnel}
+            title="Nenhuma OP encontrada"
+            description={`Nada no quadro casa com "${search.trim()}". Limpe a busca ou tente outro termo.`}
+          />
+        </div>
       ) : (
         <div className="flex-1 min-h-0 flex gap-2 overflow-x-auto px-3 py-3 snap-x snap-mandatory md:snap-none">
-          {columns.map(sector => {
+          {visibleColumns.map(sector => {
             const colAll = allCards.filter(c => c.column === sector);
-            const colCards = viewMode === 'filtrar' && matchedIds
+            const colCards = filtering && matchedIds
               ? colAll.filter(c => matchedIds.has(c.q.order_id))
               : colAll;
             const colPares = colAll.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
@@ -343,10 +455,13 @@ export default function ProducaoKanbanGestao() {
                       <KanbanOpCard
                         card={card}
                         compact
-                        draggable={canEdit}
+                        draggable={canEdit && !selectMode}
                         dragging={dragCard?.q.order_id === card.q.order_id}
                         dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}
-                        highlighted={!!matchedIds && matchedIds.has(card.q.order_id)}
+                        highlighted={!selectMode && !!matchedIds && matchedIds.has(card.q.order_id)}
+                        selectable={selectMode}
+                        selected={selectedIds.has(card.q.order_id)}
+                        onToggleSelect={() => toggleSelect(card.q.order_id)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => setDragCard(null)}
                         onOpen={() => setDetailStage({ card })}
@@ -376,6 +491,15 @@ export default function ProducaoKanbanGestao() {
           flowOrder={flowOrder}
           apontar={apontar}
           onClose={() => setDetailStage(null)}
+        />
+      )}
+      {bulkOpen && bulkTarget && selectedCards.length > 0 && (
+        <BulkMoveDialog
+          cards={selectedCards}
+          target={bulkTarget}
+          flowOrder={flowOrder}
+          apontar={apontar}
+          onClose={() => { setBulkOpen(false); exitSelectMode(); }}
         />
       )}
       <QrScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onDetect={handleScan} />

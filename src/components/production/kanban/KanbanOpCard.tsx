@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Warning as AlertTriangle, CalendarBlank } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
@@ -18,11 +19,16 @@ interface Props {
   dimmed?: boolean;
   /** Busca ativa e este card casa → anel de destaque pra achar de longe. */
   highlighted?: boolean;
+  /** Modo seleção em lote: o clique marca/desmarca em vez de abrir o diálogo. */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
   compact = false, dimmed = false, highlighted = false,
+  selectable = false, selected = false, onToggleSelect,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -34,13 +40,26 @@ export function KanbanOpCard({
         isPartial
           ? 'border-amber-500/60 bg-amber-500/10'   // R5.3: AMARELO = parcial
           : 'bg-card'
-      } ${dimmed ? 'opacity-25' : ''} ${highlighted ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}
+      } ${dimmed ? 'opacity-25' : ''} ${
+        selected ? 'ring-2 ring-primary' : highlighted ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''
+      }`}
       draggable={draggable}
       onDragStart={e => { onDragStart(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/op-id', q.order_id); }}
       onDragEnd={onDragEnd}
-      onClick={onOpen}
+      onClick={selectable ? onToggleSelect : onOpen}
+      role={selectable ? 'checkbox' : undefined}
+      aria-checked={selectable ? selected : undefined}
     >
       <div className="flex items-start gap-2">
+        {selectable && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onToggleSelect?.()}
+            onClick={e => e.stopPropagation()}
+            className="mt-0.5 shrink-0 h-5 w-5"
+            aria-label={`Selecionar ${q.order_number}`}
+          />
+        )}
         {thumb ? (
           <img
             src={thumb}
