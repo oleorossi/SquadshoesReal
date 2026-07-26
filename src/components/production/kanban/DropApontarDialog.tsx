@@ -24,6 +24,9 @@ const MOVE_ATUAL = '__atual';
  * alternativa de teclado no desktop).
  * Pulo de setor / volta (R5.5): avisar + confirmar, tudo pela mesma RPC.
  */
+// Sentinela do Select: Radix não aceita SelectItem com value="", então o
+// estado "sem operário" precisa de um valor próprio.
+const NO_OPERATOR = '__none__';
 export function DropApontarDialog({
   card, target, flowOrder, apontar, onClose,
 }: {
@@ -87,7 +90,16 @@ export function DropApontarDialog({
     setQty(back ? 0 : Math.max(0, columnRemaining));
   };
 
-  const { data: employees = [] } = useQuery({
+  // ⚠ O erro NÃO pode ser engolido aqui. Antes, qualquer falha (rede, sessão
+  // expirada, RLS) virava `employees = []` e a tela mostrava só o placeholder
+  // "Selecione o operário..." — indistinguível de "não há operário cadastrado".
+  // Sem essa distinção não dá pra diagnosticar nem do lado do usuário nem do
+  // nosso: o apontamento simplesmente não tinha quem selecionar.
+  const {
+    data: employees = [],
+    isLoading: loadingEmployees,
+    error: employeesError,
+  } = useQuery({
     queryKey: ['sector_operators'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -244,19 +256,39 @@ export function DropApontarDialog({
 
             <div>
               <Label className="text-xs">Operário (quem executou)</Label>
-              <Select value={operatorEmployeeId} onValueChange={setOperatorEmployeeId}>
+              <Select
+                value={operatorEmployeeId || NO_OPERATOR}
+                onValueChange={v => setOperatorEmployeeId(v === NO_OPERATOR ? '' : v)}
+              >
                 <SelectTrigger className="h-9 mt-1">
                   <SelectValue placeholder="Selecione o operário..." />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Sem esta opção não havia como DESMARCAR: escolhido um
+                      operário, o Select não oferece volta ao estado vazio. */}
+                  <SelectItem value={NO_OPERATOR}>Sem operário definido</SelectItem>
                   {employees.map(e => (
                     <SelectItem key={e.id} value={e.id}>{e.name}{e.role ? ` — ${e.role}` : ''}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                O apontamento grava também o usuário logado (autoria — R6.2).
-              </p>
+              {employeesError ? (
+                <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
+                  Não foi possível carregar os operários: {(employeesError as any)?.message || 'erro desconhecido'}.
+                  Confira a conexão e recarregue — o apontamento ainda funciona sem operário.
+                </p>
+              ) : loadingEmployees ? (
+                <p className="text-[10px] text-muted-foreground mt-1">Carregando operários...</p>
+              ) : employees.length === 0 ? (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                  Nenhum funcionário ativo encontrado. Cadastre em RH → Funcionários (ou reative alguém)
+                  para poder registrar quem executou.
+                </p>
+              ) : (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {employees.length} operários · o apontamento grava também o usuário logado (autoria — R6.2).
+                </p>
+              )}
             </div>
 
             {/* Progresso por setor (transparência do card único) */}
