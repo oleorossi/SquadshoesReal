@@ -188,6 +188,13 @@ export type ConsumptionContext = {
    *  quando a flag está ligada e há entrada pra a cor do pedido, esta lista
    *  SUBSTITUI direct_components. Opcional (testes antigos não constroem). */
   componentColorMap?: Map<string, Array<{ productId: string; quantityPerUnit: number }>>;
+  /** Padrões GLOBAIS por cor (component_color_defaults): (group_id::corNormalizada)
+   *  → product_id da regra; catch-all do grupo na chave (group_id::*). Regra
+   *  exata vence o default. Só age no fallback de direct_components (a lista
+   *  por-cor da ficha VENCE) e re-colore o SKU mantendo a quantidade da ficha —
+   *  espelha o lookup SQL do by_grade (mig 20260928121000). Opcional (testes
+   *  antigos não constroem). */
+  componentColorDefaultMap?: Map<string, string>;
   /** variant_id → campos de resolução da variante de material do item do PV.
    *  Opcional (testes antigos e callers sem variante não constroem). */
   materialVariantsById?: Map<string, MaterialVariantResolution>;
@@ -492,7 +499,7 @@ export async function fetchTechnicalSheetsForConsumption(
 export async function fetchConsumptionContext(refIds: string[]): Promise<ConsumptionContext> {
   const unique = [...new Set(refIds.filter(Boolean))];
 
-  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }, { data: componentColorMappings }, { data: materialVariants }] = await Promise.all([
+  const [{ data: materials, error: materialsError }, { data: allProducts }, { data: productGroups }, { data: componentSheets }, { data: sheetStrapData }, { data: soleColorMappings }, { data: palmilhaColorMappings }, { data: liningColorMappings }, { data: sheetSoleGroups }, { data: componentColorMappings }, { data: materialVariants }, { data: componentColorDefaults }] = await Promise.all([
     supabase
       .from('sheet_materials')
       // `material_variant_id`: NULL = linha compartilhada (todas as variantes);
@@ -529,6 +536,12 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
       .from('reference_material_variants')
       .select('id, reference_id, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override')
       .in('reference_id', unique),
+    // Padrões GLOBAIS por cor (component_color_defaults) — regra por GRUPO,
+    // não por ficha: carrega tudo que está ativo (tabela pequena, sem .in()).
+    (supabase as any)
+      .from('component_color_defaults')
+      .select('group_id, cabedal_color, product_id, is_default')
+      .eq('active', true),
   ]);
 
   if (materialsError) throw materialsError;
@@ -574,6 +587,16 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     const arr = componentColorMap.get(key) || [];
     arr.push({ productId: m.product_id, quantityPerUnit: Number(m.quantity_per_unit) || 0 });
     componentColorMap.set(key, arr);
+  }
+
+  // Padrões GLOBAIS por cor: (group_id::corNormalizada) → product_id da regra;
+  // linha is_default vira a chave catch-all (group_id::*). normalizeColorKey
+  // mantém a paridade com o lower(btrim(unaccent(...))) do lookup SQL.
+  const componentColorDefaultMap = new Map<string, string>();
+  for (const d of (componentColorDefaults || []) as any[]) {
+    if (!d.group_id || !d.product_id) continue;
+    const key = d.is_default ? `${d.group_id}::*` : `${d.group_id}::${normalizeColorKey(d.cabedal_color)}`;
+    componentColorDefaultMap.set(key, d.product_id);
   }
 
   // variant_id → campos de resolução da variante de material
@@ -745,6 +768,7 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     insoleSpecBySole,
     insoleLiningSpecBySole,
     componentColorMap,
+    componentColorDefaultMap,
     materialVariantsById,
     soleStandardItemsBySole,
   };
@@ -784,6 +808,7 @@ export function computeConsumptionForItems(
   const insoleSpecBySole = ctx.insoleSpecBySole ?? new Map<string, Record<string, number>>();
   const insoleLiningSpecBySole = ctx.insoleLiningSpecBySole ?? new Map<string, Record<string, number>>();
   const componentColorMap = ctx.componentColorMap ?? new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
+  const componentColorDefaultMap = ctx.componentColorDefaultMap ?? new Map<string, string>();
   const materialVariantsById = ctx.materialVariantsById ?? new Map<string, MaterialVariantResolution>();
   const soleStandardItemsBySole = ctx.soleStandardItemsBySole
     ?? new Map<string, Array<{ standardItemId: string; size: number; consumption: number; unit: string | null }>>();
@@ -1601,6 +1626,24 @@ export function computeConsumptionForItems(
         fichas: (item as any).fichas,
       });
 
+      // Padrão GLOBAL por cor (mig 20260929120000) — prioridade 0 da tira:
+      // regra do grupo pra COR ESCOLHIDA NO PV resolve o SKU determinístico
+      // (ex.: "Preta" → tira preto fundo preto, mesmo com 2 SKUs pretos no
+      // grupo). Anexa productIds pra disponibilidade medir o produto CERTO;
+      // sem regra, o match segue por grupo+cor como antes. Cor vazia não
+      // aplica regra (nem default) — paridade com o SQL, que avisa e não
+      // debita. allProducts só tem ativos e o guard de grupo espelha o JOIN
+      // p.group_id = v_group_id do SQL.
+      const strapRuleColor = (strap.color || '').toString().trim();
+      let strapRulePids: string[] | undefined;
+      if (strap.group_id && strapRuleColor) {
+        const rulePid = componentColorDefaultMap.get(`${strap.group_id}::${normalizeColorKey(strapRuleColor)}`)
+          ?? componentColorDefaultMap.get(`${strap.group_id}::*`);
+        if (rulePid && (allProducts || []).some((p: any) => p.id === rulePid && p.group_id === strap.group_id)) {
+          strapRulePids = [rulePid];
+        }
+      }
+
       addConsumptionRow(consumptionMap, {
         componentType: 'Tiras',
         groupName: strap.group_name || strap.label || 'Tira',
@@ -1609,6 +1652,7 @@ export function computeConsumptionForItems(
         color: strap.color || orderColor,
         totalQuantity: strapConsumptionCm / 100,
         materialFamily: refNapaFamily,
+        productIds: strapRulePids,
       });
     }
 
@@ -1678,19 +1722,45 @@ export function computeConsumptionForItems(
         });
         continue;
       }
+      // Padrão GLOBAL por cor (component_color_defaults, mig 20260928121000):
+      // só no fallback de direct_components (a lista por-cor da ficha VENCE) e
+      // com cor de pedido não-vazia, o grupo do componente pode ter regra pra
+      // cor (exata > default) → troca o SKU mantendo a QUANTIDADE da ficha.
+      // Entradas distintas que resolvem pro MESMO SKU somam via addConsumptionRow
+      // (chave = produto resolvido) — paridade com o colapso-soma do SQL.
+      // allProducts só tem produto ATIVO: regra pra produto inativo não resolve
+      // → mantém o original com aviso (paridade com o JOIN pr.active do SQL).
+      let effectiveProd = prod;
+      let ruleWarning: string | undefined;
+      if (!usedPerColorComponents && hasOrderColor && prod.group_id) {
+        const rulePid = componentColorDefaultMap.get(`${prod.group_id}::${normalizeColorKey(orderColor)}`)
+          ?? componentColorDefaultMap.get(`${prod.group_id}::*`);
+        if (rulePid) {
+          const ruleProd = (allProducts || []).find((p: any) => p.id === rulePid);
+          if (ruleProd) {
+            effectiveProd = ruleProd;
+          } else {
+            ruleWarning = 'Regra global de cor do grupo aponta produto inativo/apagado — usando o componente original da ficha. Corrija em Fichas Técnicas → Padrões por Cor.';
+          }
+        }
+      }
+      // Cobre o pid ORIGINAL e o RESOLVIDO: o dedup dc↔BOM sempre suprimiu o
+      // produto declarado na ficha — sem cobrir o original, a linha do BOM dele
+      // re-emergiria quando a regra troca o SKU (espelha o v_covered do SQL).
       directProductIds.add(pid);
-      const groupName = (productGroups || []).find((g: any) => g.id === prod.group_id)?.name
-        || prod.category || (dc as any)?.product_name || prod.name || 'Componente';
+      directProductIds.add(effectiveProd.id);
+      const groupName = (productGroups || []).find((g: any) => g.id === effectiveProd.group_id)?.name
+        || effectiveProd.category || (dc as any)?.product_name || effectiveProd.name || 'Componente';
       const totalQty = qtyPerPair * itemQuantity;
       addConsumptionRow(consumptionMap, {
-        componentType: classifyBomMaterial(groupName, prod.name || '', prod.category || ''),
+        componentType: classifyBomMaterial(groupName, effectiveProd.name || '', effectiveProd.category || ''),
         groupName,
-        materialName: prod.name || (dc as any)?.product_name || 'Componente',
-        productUnit: prod.unit || (dc as any)?.unit || 'un',
-        color: prod.color || '—',
+        materialName: effectiveProd.name || (dc as any)?.product_name || 'Componente',
+        productUnit: effectiveProd.unit || (dc as any)?.unit || 'un',
+        color: effectiveProd.color || '—',
         totalQuantity: totalQty,
-        productIds: [pid],
-        warning: unmappedColorWarning,
+        productIds: [effectiveProd.id],
+        warning: ruleWarning || unmappedColorWarning,
       });
     }
 

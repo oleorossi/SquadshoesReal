@@ -446,3 +446,63 @@ describe('calculateBomForOrders — direct_components e componentes por cor (BOM
     expect(rows.find(r => r.groupName === 'BINOCULO 6MM')).toBeUndefined();
   });
 });
+
+describe('calculateBomForOrders — padrões GLOBAIS por cor (component_color_defaults)', () => {
+  // Espelha o motor canônico/SQL (mig 20260928121000): no fallback de
+  // direct_components, regra ativa do grupo pra cor da OP troca o SKU
+  // mantendo a quantidade da ficha.
+  const withBinoculoColors = (t: Record<string, unknown[]>) => {
+    t.products = [...(t.products as any[]),
+      { id: 'p-bin', name: 'BINÓCULO 6MM DOURADO', color: 'DOURADO', group_id: 'g-bin', unit: 'un', quantity: 0, sole_classification: null },
+      { id: 'p-bin-preto', name: 'BINÓCULO 6MM PRETO', color: 'PRETO', group_id: 'g-bin', unit: 'un', quantity: 0, sole_classification: null },
+    ];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-bin', name: 'BINOCULO 6MM', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    (t.technical_sheets[0] as any).direct_components = [{ product_id: 'p-bin', quantity: 8 }];
+    return t;
+  };
+
+  it('regra do grupo pra cor da OP troca o SKU no picking, mantendo a qty da ficha', async () => {
+    const t = withBinoculoColors(buildBomTables());
+    t.component_color_defaults = [{
+      group_id: 'g-bin', cabedal_color: 'Preto', product_id: 'p-bin-preto', is_default: false, active: true,
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']); // OP na cor PRETO
+    const bin = rows.filter(r => r.groupName === 'BINOCULO 6MM');
+    expect(bin).toHaveLength(1);
+    expect(bin[0].materialName).toBe('BINÓCULO 6MM PRETO');
+    expect(bin[0].totalQuantity).toBe(8 * 720);
+  });
+
+  it('lista por-cor da ficha VENCE a regra global', async () => {
+    const t = withBinoculoColors(buildBomTables());
+    (t.technical_sheets[0] as any).component_colors_enabled = true;
+    t.technical_sheet_component_colors = [{
+      sheet_id: 'ts1', cabedal_color: 'PRETO', product_id: 'p-bin', quantity_per_unit: 8,
+    }];
+    t.component_color_defaults = [{
+      group_id: 'g-bin', cabedal_color: 'Preto', product_id: 'p-bin-preto', is_default: false, active: true,
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const bin = rows.filter(r => r.groupName === 'BINOCULO 6MM');
+    expect(bin).toHaveLength(1);
+    expect(bin[0].materialName).toBe('BINÓCULO 6MM DOURADO'); // escolha manual da ficha
+  });
+
+  it('regra apontando produto morto mantém o original com aviso', async () => {
+    const t = withBinoculoColors(buildBomTables());
+    t.component_color_defaults = [{
+      group_id: 'g-bin', cabedal_color: 'Preto', product_id: 'p-apagado', is_default: false, active: true,
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const bin = rows.filter(r => r.groupName === 'BINOCULO 6MM');
+    expect(bin).toHaveLength(1);
+    expect(bin[0].materialName).toBe('BINÓCULO 6MM DOURADO');
+    expect(bin[0].totalQuantity).toBe(8 * 720);
+    expect(bin[0].warning).toMatch(/regra global/i);
+  });
+});
