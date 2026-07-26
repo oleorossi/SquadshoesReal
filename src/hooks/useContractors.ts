@@ -116,9 +116,14 @@ export function useServiceOrders() {
       const PAGE = 1000;
       const all: any[] = [];
       for (let from = 0; ; from += PAGE) {
+        // ⚠ PERF (2026-07-26): o embed era `contractors(*)` — a linha COMPLETA do
+        // prestador (endereço, documentos, dados bancários, campos de busca…)
+        // repetida uma vez por OS. Com ~380 OS pra 6 prestadores, o mesmo registro
+        // vinha centenas de vezes e sozinho dominava os 748 kB da resposta. Um grep
+        // no repo inteiro mostra que só `name` e `trade_name` são lidos do embed.
         const { data, error } = await supabase
           .from('service_orders')
-          .select('*, contractors(*)')
+          .select('*, contractors(id, name, trade_name)')
           .order('created_at', { ascending: false })
           .range(from, from + PAGE - 1);
         if (error) throw error;
@@ -131,6 +136,10 @@ export function useServiceOrders() {
         materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
       }));
     },
+    // Sem staleTime próprio herdava os 60s globais e, com refetchOnMount ligado,
+    // re-baixava a lista paginada inteira a cada volta pra tela. As mutations de OS
+    // já invalidam ['service_orders'], então a correção por tempo é redundante.
+    staleTime: 5 * 60 * 1000,
   });
 }
 

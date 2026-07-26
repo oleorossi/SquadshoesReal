@@ -449,27 +449,19 @@ function AuthRoute() {
  */
 function RootRedirect() {
   const { user, loading } = useAuth();
-  const [target, setTarget] = useState<string | null>(null);
+  // ⚠ PERF (2026-07-26): antes isto era um fetch de `profiles` num useEffect, FORA do
+  // React Query, que segurava a tela num <PageLoader /> — um round-trip bloqueante no
+  // caminho de boot, duplicando o profile que o layout já busca logo em seguida.
+  // useCurrentProfile tem a mesma origem, staleTime de 5min e é COMPARTILHADO: vira
+  // 1 requisição em vez de 2 e, em navegações seguintes, o redirect é instantâneo
+  // porque o cache já está quente.
+  const { data: profile, isPending, isError } = useCurrentProfile();
 
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        const mod = await import('@/integrations/supabase/client');
-        const { data } = await mod.supabase
-          .from('profiles')
-          .select('is_sales_rep')
-          .eq('id', user.id)
-          .maybeSingle();
-        setTarget((data as any)?.is_sales_rep ? '/m' : '/dashboard');
-      } catch {
-        setTarget('/dashboard');
-      }
-    })();
-  }, [user]);
-
-  if (loading || !target) return <PageLoader />;
-  return <Navigate to={target} replace />;
+  if (loading) return <PageLoader />;
+  if (user && isPending && !isError) return <PageLoader />;
+  // `is_sales_rep` não está na interface Profile (types gerados) — mesmo cast que o
+  // código anterior fazia. Erro ao ler o profile cai no desktop, igual ao catch antigo.
+  return <Navigate to={(profile as any)?.is_sales_rep ? '/m' : '/dashboard'} replace />;
 }
 
 function LegacyInventoryRedirect() {
