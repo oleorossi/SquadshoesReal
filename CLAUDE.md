@@ -59,6 +59,9 @@ supabase db push → DB live
    ou import de export inexistente (ex.: ícone lucide importado do phosphor) passa direto
    e vira **ReferenceError em produção**. O typecheck de verdade é só com `-p tsconfig.app.json`.
 5. **Após edits visuais** — run `npm run check:tokens` to detect hardcoded colors that should be design tokens.
+6. **Fonte em fichas/etiquetas/cartões** — sempre a **MAIOR que couber** na moldura, nunca
+   abaixo dos pisos. Quando não couber, remova conteúdo antes de reduzir. Ver
+   "Tamanho de fonte em print" na seção *Design Token System*.
 
 ## Padrões de Código (CANÔNICO — seguir em toda sessão)
 
@@ -356,6 +359,53 @@ térmica**, independente do que acontece nas telas do app.
   `<link>` que carrega **`'Inter Tight'`** (body) + **`'JetBrains Mono'`** (mono) +
   **`'Anton'`** (display). Essas fontes valem SÓ no contexto da etiqueta.
 - Display em ambos: `'Anton', Impact, sans-serif` (uppercase decisive).
+
+### Tamanho de fonte em print — a MAIOR que couber (CANÔNICO, 2026-07-26)
+
+**Regra:** todo bloco de ficha/etiqueta/cartão usa a **maior fonte que couber na sua
+moldura**, sem estourar folha nem quadro. Fonte pequena é o **último** recurso — antes
+de reduzir, **remova conteúdo que não é do operador**. Abaixo do piso da tabela, o item
+**sai do papel**; não encolhe. Ilegível no chão de fábrica = ausente.
+
+**Por que existe** (`docs/PRINT_SPEC.md` §2.2): o scaling dinâmico global chegou a
+`scale 0.55` e o texto saiu com **4.7pt — ilegível na prática de fábrica**. Daí o piso do
+auto-fit (`AUTO_FIT_FLOOR 0.80`) e a tabela abaixo.
+
+**Ordem de prioridade** — quem cresce primeiro e encolhe por último:
+1. **Identidade** — nº da OP, cor, nome do setor (lido a 1m; erro aqui é caro)
+2. **Números operacionais** — grade por numeração, pares, placas, metros, quantidade
+3. **Metadados** — PV, razão social, datas, códigos de rastreio
+
+**Pisos por papel** (em `px` — unidade real dos componentes de print; pt ≈ px × 0,75):
+
+| Papel | Alvo | Piso | Referência viva |
+|---|---|---|---|
+| Identidade (Anton) | 20–28px | 14px | nome do setor no `WorksheetHeader` (28→22px adaptativo) |
+| Números de grade (Anton) | 15–20px | 12px | `displayPx` dos buckets (20→12) |
+| Célula de dados / mono | 10–12px | 8px | `cellPx` (12→8) |
+| Texto corrido (ref, material) | 9–10px | 7.5px | `textPx` (10→7.5) |
+| Rótulo mono UPPERCASE | 8–9px | 6.5px | rótulos do FlowRail (6.5px) |
+| Nº dentro do tally | 9.5–11px | 7px | `getFontSize()` do `TallyBox` (md 11/9.5/7.5 · sm 10/8/7) |
+| Campo manuscrito (nome, qtd, data) | 22px (~5,8mm) | 20px (~5,3mm) | `CompletionFooter` (campos 22px) |
+| Linha só de rubrica/visto | 15px (~4mm) | 15px | `CompletionFooter` (visto 15px) |
+| QR **acionável** (escanear → apontar) | 18–22mm | 15mm | — |
+
+⚠ O QR atual do `WorksheetHeader` é `size={46}` (~12mm), **abaixo do piso de acionável**:
+hoje ele serve só como identificação visual (payload = texto com os PVs). Quando virar
+URL que abre a OP, subir pra **≥ 15mm**.
+
+**Helpers — reusar, não reinventar:**
+- `adaptiveFontSize()` (`src/lib/adaptiveFontSize.ts`) — UM texto em largura fixa.
+  Diretriz desde 22/05: todo elemento de largura fixa com texto dinâmico usa.
+- `adaptiveTableFont()` / `gradeTableFont()` (`src/components/production/worksheet/adaptiveFont.ts`)
+  — dimensiona a TABELA inteira pelo nº de colunas (buckets já calibrados).
+- Auto-fit do `PaginatedSheet` — escala o documento inteiro.
+
+⚠ **Lacuna conhecida:** o auto-fit do `PaginatedSheet` só **encolhe** (`AUTO_FIT_FLOOR 0.80`,
+`AUTO_FIT_STEP 0.01`) e só quando isso remove uma folha — **nunca cresce** quando sobra
+espaço, então ficha com meia página vazia sai com fonte de página cheia (contraria a regra).
+Ao implementar o lado que cresce: a escala é **por documento, não por página** — senão a
+mesma tabela sai em tamanhos diferentes entre folhas do mesmo maço.
 
 Auditoria de 22/05/2026 confirmou que TODOS os worksheets seguem esse padrão
 (inline styles + cores hardcoded), por isso sobreviveram intactos às 6 fases

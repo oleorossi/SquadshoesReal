@@ -63,6 +63,8 @@
 - [ ] Imagens em caixa de tamanho FIXO; root sem `flex`/`grid`.
 - [ ] `@page A4 margin 0` + padding por página.
 - [ ] Inline + `#000`; sem shadcn/alpha; fontes Fira.
+- [ ] Fonte na MAIOR medida que couber na moldura, nunca abaixo dos pisos
+      (CLAUDE.md → "Tamanho de fonte em print"); sobrou espaço = fonte pequena demais.
 - [ ] Testado IMPRESSO: zero folha em branco, zero header órfão, zero bloco
       cortado, e nº físico de folhas == "N/TOTAL" da faixa de cabeçalho.
 
