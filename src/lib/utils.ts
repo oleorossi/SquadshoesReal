@@ -114,14 +114,30 @@ export function parseSafeNumber(val: any, fallback = 0, label = 'parseSafeNumber
  * dinheiro fechado é sempre 2 casas (R$ 0.000,00). Misturar os dois foi o que
  * produzia "Total estimado: R$ 12.689,945" no relatório de Compras por Pedido.
  */
+// ⚠ PERF (2026-07-26): as instâncias de Intl.NumberFormat são de MÓDULO, criadas uma
+// única vez. Construir o formatador a cada chamada custava ~34µs contra ~0,5µs de uma
+// instância reaproveitada (70×) — e estes são os helpers canônicos do projeto, com
+// ~300 call sites, muitos dentro de `.map()` de render em telas com centenas de linhas.
+// Instância de Intl é imutável e stateless: reusar é seguro.
+// Ao adicionar um formatador novo, hoiste do mesmo jeito — não chame o construtor
+// dentro da função.
+const BRL_UNIT_PRICE = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+const BRL_MONEY = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function formatCurrency(val: any): string {
   const num = parseSafeNumber(val, 0, 'formatCurrency');
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4
-  }).format(num);
+  return BRL_UNIT_PRICE.format(num);
 }
 
 /**
@@ -132,12 +148,7 @@ export function formatCurrency(val: any): string {
  */
 export function formatMoney(val: any): string {
   const num = parseSafeNumber(val, 0, 'formatMoney');
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
+  return BRL_MONEY.format(num);
 }
 
 /**
@@ -166,12 +177,21 @@ export function safeToFixed(val: any, digits = 2, fallback = '0', label = 'safeT
  * Format a number with locale-aware thousands separators and configurable decimals.
  * Safe for string/number/null inputs.
  */
+// `digits` é parâmetro, então o cache é por número de casas. Na prática o app usa
+// meia dúzia de valores (0, 2, 3, 4), logo o Map fica minúsculo e estável.
+const NUMBER_FORMATTERS = new Map<number, Intl.NumberFormat>();
+
 export function formatNumber(val: any, digits = 2): string {
   const num = parseSafeNumber(val, 0, 'formatNumber');
-   return new Intl.NumberFormat('pt-BR', {
-     minimumFractionDigits: digits,
-     maximumFractionDigits: digits,
-   }).format(num);
+  let fmt = NUMBER_FORMATTERS.get(digits);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat('pt-BR', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+    NUMBER_FORMATTERS.set(digits, fmt);
+  }
+  return fmt.format(num);
  }
  
  /** Standard production sectors in correct order */

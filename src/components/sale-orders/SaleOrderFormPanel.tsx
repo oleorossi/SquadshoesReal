@@ -515,7 +515,20 @@ export default function SaleOrderFormPanel({
       lastItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
   };
-  const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
+  // ⚠ PERF: identidade ESTÁVEL é obrigatória nas funções passadas ao
+  // SaleOrderItemForm — ele é `memo()` e uma arrow nova a cada render fura o memo,
+  // re-renderizando TODOS os itens do PV a cada tecla digitada numa célula de grade.
+  const removeItem = useCallback(
+    (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx)),
+    [setItems],
+  );
+
+  // `items` mais recente sem entrar na lista de dependências — é o que permite
+  // copyGradeFromPrevious (logo abaixo de updateItem) ter identidade estável
+  // apesar de precisar ler o item anterior.
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
    const updateItem = useCallback((idx: number, field: string, value: any) => {
      setItems(prev => {
        const next = prev.map((item, i) => i === idx ? { ...item, [field]: value } : item);
@@ -537,6 +550,16 @@ export default function SaleOrderFormPanel({
        return next;
      });
      }, [references, setItems]);
+
+  // Estável de propósito (memo do SaleOrderItemForm): lê o item anterior via
+  // itemsRef, então não precisa de `items` nas dependências.
+  const copyGradeFromPrevious = useCallback((i: number) => {
+    if (i <= 0) return;
+    const prev = itemsRef.current[i - 1];
+    if (!prev) return;
+    updateItem(i, 'grade', { ...prev.grade });
+    updateItem(i, 'fichas', prev.fichas || 1);
+  }, [updateItem]);
 
    // ── Bulk-edit de itens (pedido user 20/05/2026) ─────────────────────────
    // Seleção múltipla de itens do PV pra aplicar mudanças em lote: copiar
@@ -1607,13 +1630,7 @@ export default function SaleOrderFormPanel({
                 maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
                 onUpdate={updateItem}
                 onRemove={removeItem}
-                onCopyGradeFromPrevious={(i) => {
-                  if (i > 0) {
-                    const prev = items[i - 1];
-                    updateItem(i, 'grade', { ...prev.grade });
-                    updateItem(i, 'fichas', prev.fichas || 1);
-                  }
-                }}
+                onCopyGradeFromPrevious={copyGradeFromPrevious}
                 onSaveStateAndNavigate={onSaveStateAndNavigate}
                 isSelected={selectedItemIndices.has(idx)}
                 onToggleSelect={toggleItemSelection}

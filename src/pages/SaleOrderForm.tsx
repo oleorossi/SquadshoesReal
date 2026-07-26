@@ -381,18 +381,21 @@ export default function SaleOrderForm() {
     };
   }, [items, isEdit, id, canonicalReferences]);
 
-  const handleSaveStateAndNavigate = () => {
-    const draft = {
-      form,
-      items,
-      selectedClientId,
-      packagingProductId,
-      packagingQuantity,
-      savedAt: Date.now(),
-    };
-    sessionStorage.setItem(SALE_ORDER_DRAFT_KEY, JSON.stringify(draft));
+  // ⚠ PERF: esta função desce como prop até SaleOrderItemForm, que é `memo()`.
+  // Se ela mudar de identidade a cada render, o memo vira no-op e TODOS os itens do
+  // PV re-renderizam a cada tecla. Não dá pra só envolver em useCallback com as 5
+  // dependências (uma delas é `items`, que muda a cada digitação) — então o estado
+  // vai num ref lido só na hora do clique, e a função fica estável de verdade.
+  const draftStateRef = useRef({ form, items, selectedClientId, packagingProductId, packagingQuantity });
+  draftStateRef.current = { form, items, selectedClientId, packagingProductId, packagingQuantity };
+
+  const handleSaveStateAndNavigate = useCallback(() => {
+    sessionStorage.setItem(
+      SALE_ORDER_DRAFT_KEY,
+      JSON.stringify({ ...draftStateRef.current, savedAt: Date.now() }),
+    );
     navigate('/estoque?returnTo=sale-order');
-  };
+  }, [navigate]);
 
   // Load existing order for edit (only once, after references are ready)
   useEffect(() => {
