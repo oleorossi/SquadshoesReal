@@ -49,7 +49,8 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       // cases estruturais não pegam) + 2 de padrão GLOBAL por cor no by_grade
       // (migration 20260928121000: component_color_defaults aplicado no
       // fallback de direct_components, com lookup normalizado via
-      // extensions.unaccent). Total vivo: 20.
+      // extensions.unaccent). Total vivo: 22 (conferido no banco em 2026-07-26,
+      // todos ok — a base pré-padrão-global tinha 20).
       expect(rows.length).toBeGreaterThanOrEqual(13);
     });
   },
