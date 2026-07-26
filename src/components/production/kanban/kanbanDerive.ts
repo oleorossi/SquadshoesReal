@@ -17,15 +17,33 @@ export interface KanbanCardData {
 }
 
 /**
+ * Ordem REAL das etapas de UMA OP = `order_stages.stage_order` (a rota daquela
+ * ficha), não a `sector_settings.flow_order` global.
+ *
+ * ⚠ Não inverter isso (auditoria 2026-07-26 contra o banco de produção): hoje
+ * `sector_settings` tem Aviamento(30) ANTES de Costura(40), enquanto 229 das
+ * 232 OPs têm Costura(3) antes de Aviamento(4) — e é o `stage_order` da OP que
+ * o servidor valida em `apontar_producao_setor`. Ordenar pela config global
+ * fazia "mover Corte Forração → Costura" enxergar Aviamento no meio do caminho
+ * e FECHÁ-LO com 0 pares (setor pulado sem produção). `flow_order` só serve
+ * pra ordenar as COLUNAS na tela; a rota de cada OP manda no resto.
+ */
+export function orderStagesByRoute(stages: OrderStage[], flowOrder: Map<string, number>): OrderStage[] {
+  return [...stages].sort(
+    (a, b) =>
+      (a.stage_order - b.stage_order) ||
+      ((flowOrder.get(norm(a.stage_name)) ?? 0) - (flowOrder.get(norm(b.stage_name)) ?? 0)),
+  );
+}
+
+/**
  * Posição do card (decisão do dono, entrevista 2026-07-12): UM card só por OP,
  * na coluna MAIS AVANÇADA. Arrastar Corte→Costura apontando 120/300 move o card
  * pra Costura mostrando 120/300 em AMARELO — os 180 não cortados ficam
  * implícitos no contador. O card normaliza quando a entrega completa (R5.3/5.4).
  */
 export function deriveCard(q: QueueDetailRow, stagesRaw: OrderStage[], flowOrder: Map<string, number>): KanbanCardData | null {
-  const stages = [...stagesRaw].sort(
-    (a, b) => (flowOrder.get(norm(a.stage_name)) ?? a.stage_order * 10) - (flowOrder.get(norm(b.stage_name)) ?? b.stage_order * 10),
-  );
+  const stages = orderStagesByRoute(stagesRaw, flowOrder);
   const hasProgress = (s: OrderStage) => s.quantity_processed > 0 || s.status === 'concluido';
   let front: OrderStage | null = null;
   for (const s of stages) if (hasProgress(s)) front = s;

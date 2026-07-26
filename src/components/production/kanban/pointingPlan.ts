@@ -1,5 +1,21 @@
 import type { OrderStage, PointingWarning, useApontarProducao } from '@/hooks/useOrderStages';
-import { norm, KanbanCardData } from './kanbanDerive';
+import { norm, KanbanCardData, orderStagesByRoute } from './kanbanDerive';
+
+/**
+ * Sentido do movimento pela ROTA DA PRÓPRIA OP (`order_stages.stage_order`),
+ * com a config global só como desempate quando o destino não é etapa da OP.
+ * Ver o aviso em `orderStagesByRoute` — usar `flow_order` aqui fazia o Kanban
+ * fechar Aviamento sozinho ao mover pra Costura.
+ */
+function isBackwardMove(
+  stages: OrderStage[], column: string, target: string, flowOrder: Map<string, number>,
+): boolean {
+  const ordOf = new Map(stages.map(s => [norm(s.stage_name), s.stage_order]));
+  const cur = ordOf.get(column);
+  const tgt = ordOf.get(target);
+  if (cur !== undefined && tgt !== undefined) return tgt < cur;
+  return (flowOrder.get(target) ?? 0) < (flowOrder.get(column) ?? 0);
+}
 
 /**
  * REGRA ÚNICA de "mover card → apontar produção" (R5.4/R5.5), compartilhada
@@ -26,13 +42,14 @@ export interface PointingPlan {
 
 /** Destinos oferecidos no select de mover de UM card (modo detalhe). */
 export function moveOptions(card: KanbanCardData, flowOrder: Map<string, number>) {
-  const { stages, column, front } = card;
-  const seq = stages.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
+  const { column, front } = card;
+  const ordered = orderStagesByRoute(card.stages, flowOrder);
+  const seq = ordered.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
   const colIdx = seq.indexOf(column);
   const fwdOptions = colIdx >= 0 ? seq.slice(colIdx + 1) : [];
-  const prevSectors = stages
+  const prevSectors = ordered
     .map(s => norm(s.stage_name))
-    .filter(n => (flowOrder.get(n) ?? 0) < (flowOrder.get(column) ?? 0));
+    .filter(n => n !== column && isBackwardMove(ordered, column, n, flowOrder));
   const backOption = front && prevSectors.length ? prevSectors[prevSectors.length - 1] : null;
   return { fwdOptions, backOption };
 }
@@ -46,10 +63,11 @@ export function buildPointingPlan(
   target: string | null,
   flowOrder: Map<string, number>,
 ): PointingPlan {
-  const { stages, column, front } = card;
-  const seq = stages.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
+  const { column, front } = card;
+  const ordered = orderStagesByRoute(card.stages, flowOrder);
+  const seq = ordered.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
   const colIdx = seq.indexOf(column);
-  const isBackward = target !== null && (flowOrder.get(target) ?? 0) < (flowOrder.get(column) ?? 0);
+  const isBackward = target !== null && isBackwardMove(ordered, column, target, flowOrder);
 
   if (isBackward) {
     const pointedStage = front;
