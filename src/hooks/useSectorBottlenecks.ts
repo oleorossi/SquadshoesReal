@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { receiveServiceOrderFully } from '@/lib/serviceOrderStock';
 
 // F1-02 (auditoria de motores 2026-07): v_sector_weekly_load/v_sector_bottlenecks
 // foram reconstruídas sobre a cascata canônica do compute_wave_timeline e agora
@@ -190,14 +191,19 @@ export function useReceiveServiceOrder() {
       service_order_id: string;
       received_notes?: string;
     }) => {
-      const { error } = await (supabase as any)
-        .from('service_orders')
-        .update({
-          status: 'received',
-          notes: received_notes ?? undefined,
-        })
-        .eq('id', service_order_id);
-      if (error) throw error;
+      // NÃO fechar por update de status: a conta a pagar sairia pelo valor
+      // cheio, ignorando refugo. O caminho único registra o retorno e deixa os
+      // triggers fecharem a OS e emitirem a conta por pares bons.
+      const { skipped } = await receiveServiceOrderFully(service_order_id, {
+        notes: received_notes,
+      });
+      if (skipped) throw new Error('Esta OS já não tem pares na rua para receber.');
+      if (received_notes) {
+        await (supabase as any)
+          .from('service_orders')
+          .update({ notes: received_notes })
+          .eq('id', service_order_id);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });

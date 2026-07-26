@@ -100,6 +100,9 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   const [qtyGood, setQtyGood] = useState(0);
   const [qtyDefect, setQtyDefect] = useState(0);
   const [qtyLoss, setQtyLoss] = useState(0);
+  // Dos pares com defeito, quantos são sucata (não voltam pro prestador). O
+  // restante fica como retrabalho pendente e reabre saldo despachável.
+  const [qtyScrapped, setQtyScrapped] = useState(0);
   const [defectNotes, setDefectNotes] = useState('');
   const [contractor, setContractor] = useState('');
   const [saving, setSaving] = useState(false);
@@ -112,7 +115,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
   // Reset (só na ABERTURA) — não mexe no prestador depois pra não reverter a escolha.
   useEffect(() => {
-    if (open) { setQtyDefect(0); setQtyLoss(0); setDefectNotes(''); setContractor(serviceOrder?.contractorId || ''); }
+    if (open) { setQtyDefect(0); setQtyLoss(0); setQtyScrapped(0); setDefectNotes(''); setContractor(serviceOrder?.contractorId || ''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serviceOrder?.contractorId]);
   // Pré-preenche BONS com o saldo na rua (do prestador selecionado) — atualiza ao trocar.
@@ -120,6 +123,12 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
     if (open) setQtyGood(inField);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, inField]);
+
+  // Baixar o nº de defeituosos não pode deixar a sucata maior que eles (o banco
+  // tem CHECK pra isso — melhor corrigir na tela que estourar no save).
+  useEffect(() => {
+    setQtyScrapped(s => Math.min(s, qtyDefect));
+  }, [qtyDefect]);
 
   const totalReturn = qtyGood + qtyDefect + qtyLoss;
   const exceeds = totalReturn > inField;
@@ -138,6 +147,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
         service_order_id: soId,
         qty_good: qtyGood,
         qty_defect: qtyDefect,
+        qty_defect_scrapped: Math.min(qtyScrapped, qtyDefect),
         qty_loss: qtyLoss,
         defect_notes: defectNotes.trim() || null,
         contractor_id: dispatchTracked ? (contractor || null) : null,
@@ -151,7 +161,6 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
           : `Retorno registrado — restam ${remaining} pares na rua.`,
       );
       qc.invalidateQueries({ queryKey: ['service_orders'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
@@ -222,6 +231,35 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
                 <NumberInput value={qtyLoss} onChange={v => setQtyLoss(Math.max(0, Math.trunc(v ?? 0)))} min={0} className="h-9" />
               </div>
             </div>
+
+            {/* Destino do defeito: sem isso, TODO par defeituoso ficava como
+                retrabalho pendente e nunca havia como registrar sucata. */}
+            {qtyDefect > 0 && (
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <Label className="text-xs">Destino dos {qtyDefect} defeituosos</Label>
+                <div className="mt-1.5 grid grid-cols-2 items-end gap-3">
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground">Sucata (não volta)</Label>
+                    <NumberInput
+                      value={qtyScrapped}
+                      onChange={v => setQtyScrapped(Math.min(qtyDefect, Math.max(0, Math.trunc(v ?? 0))))}
+                      min={0}
+                      className="h-9"
+                    />
+                  </div>
+                  <p className="pb-2 text-[11px] text-muted-foreground">
+                    {qtyDefect - Math.min(qtyScrapped, qtyDefect) > 0 ? (
+                      <>
+                        <strong className="text-foreground">{qtyDefect - Math.min(qtyScrapped, qtyDefect)}</strong> voltam
+                        pro prestador como retrabalho — reabrem saldo pra nova remessa.
+                      </>
+                    ) : (
+                      <>Todos viram sucata: entram na conta de reposição, não voltam pro prestador.</>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {(qtyDefect > 0 || qtyLoss > 0) && (
               <div>

@@ -88,6 +88,8 @@ export interface SearchInputProps extends Omit<React.HTMLAttributes<HTMLDivEleme
   onFocus?: React.FocusEventHandler<HTMLInputElement>;
   'aria-label'?: string;
   id?: string;
+  /** Rótulo da tecla Enter no teclado virtual (mobile) — ex.: 'search'. */
+  enterKeyHint?: React.InputHTMLAttributes<HTMLInputElement>['enterKeyHint'];
 }
 
 export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
@@ -107,6 +109,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
       onKeyDown,
       onFocus,
       id,
+      enterKeyHint,
       'aria-label': ariaLabel,
       // rest vai pro wrapper div — necessário p/ composição via Slot/asChild
       // (ex.: SmartSearch embrulha em PopoverTrigger, que injeta handlers).
@@ -194,6 +197,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
           onFocus={onFocus}
           placeholder={placeholder}
           autoFocus={autoFocus}
+          enterKeyHint={enterKeyHint}
           autoComplete="off"
           aria-label={ariaLabel ?? placeholder}
           className={cn(

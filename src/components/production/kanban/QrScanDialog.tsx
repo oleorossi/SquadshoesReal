@@ -9,12 +9,19 @@ interface Props {
   onDetect: (raw: string) => void;
 }
 
+type JsQRFn = typeof import('@/vendor/jsqr').jsQR;
+
 /**
- * Leitor de QR pela câmera do dispositivo — BarcodeDetector nativo do browser
- * (Chrome/Edge/Android; sem dependência nova). As fichas de operador imprimem
+ * Leitor de QR pela câmera do dispositivo. As fichas de operador imprimem
  * o(s) PV(s) no QR do WorksheetHeader — bipar joga direto na busca da Central.
- * Sem suporte da API (Firefox/iOS antigo) ou sem câmera: orienta usar o leitor
- * físico USB, que digita o conteúdo na busca como teclado.
+ *
+ * Dois motores, na ordem:
+ * 1. BarcodeDetector nativo (Chrome/Edge/Android) — rápido, zero custo de JS.
+ * 2. jsQR vendorizado (iOS/WebKit não expõe BarcodeDetector — justamente o
+ *    iPhone/iPad da fábrica): decodifica frames reduzidos via canvas. Import
+ *    lazy: só baixa o chunk quando o diálogo abre SEM detector nativo.
+ * Sem câmera/permissão: orienta usar o leitor físico USB/Bluetooth, que
+ * digita o conteúdo na busca como teclado.
  */
 export function QrScanDialog({ open, onClose, onDetect }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -30,13 +37,28 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
+    let canvas: HTMLCanvasElement | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
 
     (async () => {
-      // BarcodeDetector ainda não está no lib.dom do TS — acesso dinâmico.
-      const Detector = (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => { detect(v: HTMLVideoElement): Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
-      if (!Detector) { setError('nosupport'); return; }
+      const Detector = (window as unknown as {
+        BarcodeDetector?: new (opts: { formats: string[] }) => { detect(v: HTMLVideoElement): Promise<Array<{ rawValue?: string }>> };
+      }).BarcodeDetector;
+      let detector: { detect(v: HTMLVideoElement): Promise<Array<{ rawValue?: string }>> } | null = null;
+      if (Detector) {
+        try { detector = new Detector({ formats: ['qr_code'] }); } catch { detector = null; }
+      }
+      let jsqr: JsQRFn | null = null;
+      if (!detector) {
+        try {
+          jsqr = (await import('@/vendor/jsqr')).jsQR;
+        } catch {
+          setError('nosupport'); // chunk não carregou (offline?) e sem detector nativo
+          return;
+        }
+      }
+      if (cancelled) return;
       try {
-        const detector = new Detector({ formats: ['qr_code'] });
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' },
           audio: false,
@@ -49,8 +71,26 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
         timer = setInterval(async () => {
           if (firedRef.current || !videoRef.current) return;
           try {
-            const codes = await detector.detect(videoRef.current);
-            const raw = codes?.[0]?.rawValue;
+            let raw: string | null = null;
+            if (detector) {
+              const codes = await detector.detect(videoRef.current);
+              raw = codes?.[0]?.rawValue || null;
+            } else if (jsqr) {
+              const v = videoRef.current;
+              if (!v.videoWidth) return; // 1º frame ainda não chegou
+              if (!canvas) {
+                canvas = document.createElement('canvas');
+                ctx = canvas.getContext('2d', { willReadFrequently: true });
+              }
+              if (!ctx) return;
+              // Frame reduzido (~480px): jsQR em resolução cheia trava iPhone antigo
+              const w = 480;
+              const h = Math.round(v.videoHeight * (w / v.videoWidth)) || 360;
+              canvas.width = w; canvas.height = h;
+              ctx.drawImage(v, 0, 0, w, h);
+              const img = ctx.getImageData(0, 0, w, h);
+              raw = jsqr(img.data, w, h, { inversionAttempts: 'dontInvert' })?.data || null;
+            }
             if (raw) {
               firedRef.current = true;
               onDetect(raw);
@@ -83,7 +123,7 @@ export function QrScanDialog({ open, onClose, onDetect }: Props) {
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <div>
               {error === 'nosupport'
-                ? 'Este navegador não tem leitor de QR embutido (use Chrome/Edge no computador ou Android).'
+                ? 'Não deu pra carregar o leitor de QR — verifique a conexão e tente de novo.'
                 : 'Não foi possível acessar a câmera — verifique a permissão do navegador.'}
               <p className="mt-1 text-muted-foreground">
                 Alternativa: leitor físico (USB/Bluetooth) bipando com o cursor na busca — o conteúdo do QR entra como digitação.

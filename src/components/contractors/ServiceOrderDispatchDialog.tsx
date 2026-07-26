@@ -119,7 +119,7 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
       if (error) throw error;
       const left = toDispatch - qty;
       toast.success(left > 0 ? `${qty} pares enviados — faltam ${left} pra enviar.` : `${qty} pares enviados — pedido todo na rua.`);
-      ['service_orders', 'v_outsourced_in_field', 'v_contractor_metrics', 'service_order_overview', 'so_dispatch_dialog', 'so_return_dialog']
+      ['service_orders', 'v_contractor_metrics', 'service_order_overview', 'so_dispatch_dialog', 'so_return_dialog']
         .forEach(k => qc.invalidateQueries({ queryKey: [k] }));
       refetch();
     } catch (e: any) {
