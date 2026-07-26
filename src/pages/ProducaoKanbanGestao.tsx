@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useProductionEngine';
 import { useAllOrderStages, useApontarProducao, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
+import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { toast } from 'sonner';
 import { deriveCard, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
@@ -40,6 +41,11 @@ export default function ProducaoKanbanGestao() {
   const { data: todayGrid = [] } = useProductionScheduleGrid(todayISO(), todayISO());
   const apontar = useApontarProducao();
   const canEdit = useCan('/producao/kanban').canEdit;
+  // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
+  // e sem drag HTML5 confiável — o select "Mover para" do diálogo cobre.
+  const coarsePointer = useIsCoarsePointer();
+  // iPhone não tem Fullscreen API pra elementos (só vídeo) — esconde o botão.
+  const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled;
 
   const [search, setSearch] = useState('');
   // 'destacar' = OP achada ganha anel e o resto esmaece (o quadro inteiro segue
@@ -174,50 +180,70 @@ export default function ProducaoKanbanGestao() {
   const clock = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground">
+    // h-dvh (não h-screen/100vh): no Safari iOS o vh inclui a área da barra de
+    // endereço e cortava o rodapé das colunas.
+    <div className="h-dvh flex flex-col overflow-hidden bg-background text-foreground">
       {/* ── Barra de comando ─────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-border bg-card px-3 py-2 flex items-center gap-3 flex-wrap">
-        <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-2 shrink-0" title="Voltar pro Kanban no ERP">
-          <Link to="/producao/kanban"><ArrowLeft className="h-4 w-4" /> Kanban</Link>
+      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 flex items-center gap-2 md:gap-3 flex-wrap">
+        <Button asChild variant="ghost" size="sm" className="h-11 md:h-8 gap-1.5 px-2 shrink-0" title="Voltar pro Kanban no ERP">
+          <Link to="/producao/kanban" aria-label="Voltar pro Kanban">
+            <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Kanban</span>
+          </Link>
         </Button>
         <div className="shrink-0 leading-none">
           <span className="ed-eyebrow block">PRODUÇÃO · GESTÃO</span>
-          <span className="ed-display text-lg leading-none">CENTRAL DE PRODUÇÃO</span>
+          <span className="ed-display text-base md:text-lg leading-none">CENTRAL DE PRODUÇÃO</span>
         </div>
 
         <SearchInput
           value={search}
           onChange={setSearch}
-          autoFocus
+          autoFocus={!coarsePointer}
+          enterKeyHint="search"
           placeholder="Buscar OP, referência, cor, cliente, PV — ou bipe o QR da ficha…"
           resultCount={matches.length}
           totalCount={allCards.length}
-          className="flex-1 min-w-[240px] max-w-xl"
-          inputClassName="h-9"
+          className="flex-1 min-w-[240px] max-w-xl order-last md:order-none basis-full md:basis-auto"
+          inputClassName="h-11 md:h-9"
         />
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setScanOpen(true)}>
+          <Button variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" onClick={() => setScanOpen(true)}>
             <QrCode className="h-4 w-4" /> Bipar
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5"
-            onClick={() => setViewMode(m => (m === 'destacar' ? 'filtrar' : 'destacar'))}
-            title="Destacar mantém o quadro inteiro visível e esmaece o resto; Filtrar esconde o que não casa."
-          >
-            {viewMode === 'destacar'
-              ? <><Highlighter className="h-4 w-4" /> Destacar</>
-              : <><Funnel className="h-4 w-4" /> Filtrar</>}
-          </Button>
-          <Button variant="outline" size="sm" className="h-9 w-9 p-0" onClick={toggleFullscreen} title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}>
-            {isFullscreen ? <ArrowsInSimple className="h-4 w-4" /> : <ArrowsOutSimple className="h-4 w-4" />}
-          </Button>
+          {/* Segmented: os dois modos visíveis (tooltip não existe no toque) */}
+          <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Modo da busca">
+            <button
+              type="button"
+              onClick={() => setViewMode('destacar')}
+              aria-pressed={viewMode === 'destacar'}
+              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                viewMode === 'destacar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+              }`}
+            >
+              <Highlighter className="h-4 w-4" /> Destacar
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('filtrar')}
+              aria-pressed={viewMode === 'filtrar'}
+              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
+                viewMode === 'filtrar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+              }`}
+            >
+              <Funnel className="h-4 w-4" /> Filtrar
+            </button>
+          </div>
+          {canFullscreen && (
+            <Button variant="outline" size="sm" className="h-11 w-11 md:h-9 md:w-9 p-0" onClick={toggleFullscreen} title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}>
+              {isFullscreen ? <ArrowsInSimple className="h-4 w-4" /> : <ArrowsOutSimple className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
 
-        {/* KPIs do quadro + relógio (painel de sala de controle) */}
-        <div className="flex items-center gap-4 shrink-0 ml-auto font-mono text-xs">
+        {/* KPIs do quadro + relógio (painel de sala de controle). No celular
+            ficam ocultos — os headers das colunas já carregam as contagens. */}
+        <div className="hidden md:flex items-center gap-4 shrink-0 ml-auto font-mono text-xs">
           <span><strong className="text-sm">{kpis.ops}</strong> <span className="text-muted-foreground">OPs</span></span>
           <span><strong className="text-sm">{kpis.pares.toLocaleString('pt-BR')}</strong> <span className="text-muted-foreground">pares</span></span>
           <span className={kpis.atrasadas > 0 ? 'text-red-600' : ''}>
@@ -226,7 +252,7 @@ export default function ProducaoKanbanGestao() {
           <span className={kpis.parciais > 0 ? 'text-amber-600 dark:text-amber-400' : ''}>
             <strong className="text-sm">{kpis.parciais}</strong> <span className={kpis.parciais > 0 ? '' : 'text-muted-foreground'}>parciais</span>
           </span>
-          <span className="ed-display text-lg tabular-nums">{clock}</span>
+          <span className="ed-display text-lg tabular-nums hidden lg:inline">{clock}</span>
         </div>
       </div>
 
@@ -244,7 +270,7 @@ export default function ProducaoKanbanGestao() {
                 <button
                   key={c.q.order_id}
                   type="button"
-                  className="font-mono rounded-md border border-border bg-card px-2 py-0.5 hover:bg-muted/60 transition-colors"
+                  className="font-mono rounded-md border border-border bg-card px-2.5 py-1.5 md:px-2 md:py-0.5 hover:bg-muted/60 transition-colors"
                   onClick={() => cardEls.current.get(c.q.order_id)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })}
                 >
                   <strong>{c.q.order_number}</strong>
@@ -277,7 +303,7 @@ export default function ProducaoKanbanGestao() {
           />
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex gap-2 overflow-x-auto px-3 py-3">
+        <div className="flex-1 min-h-0 flex gap-2 overflow-x-auto px-3 py-3 snap-x snap-mandatory md:snap-none">
           {columns.map(sector => {
             const colAll = allCards.filter(c => c.column === sector);
             const colCards = viewMode === 'filtrar' && matchedIds
@@ -286,9 +312,11 @@ export default function ProducaoKanbanGestao() {
             const colPares = colAll.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
             const g = gridToday.get(sector);
             return (
+              /* Celular: uma coluna por swipe (85vw + snap-center); iPad/desktop:
+                 colunas fluidas lado a lado como antes. */
               <div
                 key={sector}
-                className="flex flex-col flex-1 basis-0 min-w-[185px] max-w-[300px] min-h-0"
+                className="flex flex-col flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px] min-h-0 snap-center md:snap-align-none"
                 onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                 onDrop={e => { e.preventDefault(); handleDrop(sector); }}
               >

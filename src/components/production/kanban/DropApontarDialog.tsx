@@ -13,9 +13,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { norm, KanbanCardData } from './kanbanDerive';
 
+/** Valor-sentinela do select de mover (shadcn Select não aceita value vazio). */
+const MOVE_ATUAL = '__atual';
+
 /**
  * Diálogo de apontamento do drop (R5.4) e também o detalhe do card (click).
- * target=null → modo detalhe: aponta no setor da coluna atual sem mover regra.
+ * target=null → modo detalhe: aponta no setor da coluna atual sem mover regra,
+ * e expõe o select "Mover para" — MESMA semântica do drop (pulo/estorno), pra
+ * celular/iPad onde o HTML5 drag & drop não dispara com toque (e como
+ * alternativa de teclado no desktop).
  * Pulo de setor / volta (R5.5): avisar + confirmar, tudo pela mesma RPC.
  */
 export function DropApontarDialog({
@@ -30,12 +36,28 @@ export function DropApontarDialog({
   const { q, stages, column, front } = card;
   const seq = stages.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
   const colIdx = seq.indexOf(column);
-  const targetIdx = target ? seq.indexOf(target) : colIdx + 1;
-  const isBackward = target !== null && (flowOrder.get(target) ?? 0) < (flowOrder.get(column) ?? 0);
-  // Pular = soltar além do PRÓXIMO setor pendente do fluxo da OP
-  const skipped = !isBackward && target !== null && targetIdx > colIdx + 1
+
+  // Modo detalhe (target=null): o usuário pode escolher um destino no select —
+  // vale como se tivesse arrastado o card até lá.
+  const [moveTarget, setMoveTarget] = useState<string>('');
+  const effTarget = target ?? (moveTarget || null);
+
+  const targetIdx = effTarget ? seq.indexOf(effTarget) : colIdx + 1;
+  const isBackward = effTarget !== null && (flowOrder.get(effTarget) ?? 0) < (flowOrder.get(column) ?? 0);
+  // Pular = soltar/mover além do PRÓXIMO setor pendente do fluxo da OP
+  const skipped = !isBackward && effTarget !== null && targetIdx > colIdx + 1
     ? seq.slice(colIdx + 1, targetIdx)
     : [];
+
+  // Opções do select de mover (só no modo detalhe): pra frente = setores ainda
+  // pendentes depois do atual; pra trás = o setor anterior no fluxo (o estorno
+  // sempre acontece no último setor com progresso, igual ao drag).
+  const fwdOptions = seq.slice(colIdx + 1);
+  const prevSectors = stages
+    .map(s => norm(s.stage_name))
+    .filter(n => (flowOrder.get(n) ?? 0) < (flowOrder.get(column) ?? 0));
+  const backOption = front && prevSectors.length ? prevSectors[prevSectors.length - 1] : null;
+  const showMove = target === null && (fwdOptions.length > 0 || backOption !== null);
 
   // Estágio apontado: para frente = o setor ONDE o card está (o trabalho que
   // acabou de acontecer); para trás = estorno no último setor com progresso.
@@ -45,13 +67,25 @@ export function DropApontarDialog({
   const remaining = pointedStage
     ? pointedStage.quantity_total - pointedStage.quantity_processed
     : 0;
+  const columnRemaining = card.columnStage
+    ? card.columnStage.quantity_total - card.columnStage.quantity_processed
+    : 0;
 
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
   const [operatorEmployeeId, setOperatorEmployeeId] = useState<string>(() => {
     try { return localStorage.getItem('sector_operator_employee_id') || ''; } catch { return ''; }
   });
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
-  const [confirmSkip] = useState(skipped.length > 0 || isBackward);
+  const confirmSkip = skipped.length > 0 || isBackward;
+
+  const handleMoveChange = (v: string) => {
+    const t = v === MOVE_ATUAL ? '' : v;
+    setMoveTarget(t);
+    // Reancora a quantidade no novo sentido: frente = saldo do setor atual;
+    // trás = 0 (o usuário digita quantos pares estorna), igual ao drop.
+    const back = t !== '' && (flowOrder.get(t) ?? 0) < (flowOrder.get(column) ?? 0);
+    setQty(back ? 0 : Math.max(0, columnRemaining));
+  };
 
   const { data: employees = [] } = useQuery({
     queryKey: ['sector_operators'],
@@ -96,7 +130,7 @@ export function DropApontarDialog({
         quantity,
         operatorEmployeeId: operatorEmployeeId || null,
         note: isBackward
-          ? `Estorno via Kanban (${column} → ${target})`
+          ? `Estorno via Kanban (${column} → ${effTarget})`
           : (skipped.length ? `Via Kanban, pulando: ${skipped.join(', ')}` : 'Via Kanban'),
         // Finaliza o setor quando o total fecha — a RPC resolve/inicia o próximo
         finalize: willComplete,
@@ -143,8 +177,36 @@ export function DropApontarDialog({
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
               {q.reference_name}{q.color ? ` · ${q.color}` : ''} · {q.quantity} pares
-              {target && !isBackward && <> · movendo pra <strong>{target}</strong></>}
+              {effTarget && !isBackward && <> · movendo pra <strong>{effTarget}</strong></>}
             </p>
+
+            {/* Mover sem drag (touch/teclado): mesma semântica do drop */}
+            {showMove && (
+              <div>
+                <Label className="text-xs">Mover OP para</Label>
+                <Select value={moveTarget || MOVE_ATUAL} onValueChange={handleMoveChange}>
+                  <SelectTrigger className="h-11 md:h-9 mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={MOVE_ATUAL}>Setor atual — {column}</SelectItem>
+                    {fwdOptions.map((s, i) => (
+                      <SelectItem key={s} value={s}>
+                        {s}{i > 0 ? ' — pula setor' : ''}
+                      </SelectItem>
+                    ))}
+                    {backOption && (
+                      <SelectItem value={backOption}>
+                        ← {backOption} — voltar (estorno)
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  No celular/tablet o arrasto não existe — mover por aqui tem o mesmo efeito do drag.
+                </p>
+              </div>
+            )}
 
             {confirmSkip && skipped.length > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
