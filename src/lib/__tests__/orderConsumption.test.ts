@@ -642,6 +642,141 @@ describe('orderConsumption — motor canônico', () => {
     });
   });
 
+  describe('padrões GLOBAIS por cor (component_color_defaults) — paridade com o SQL', () => {
+    // Espelha o lookup do by_grade (mig 20260928121000): no fallback de
+    // direct_components, regra ativa do GRUPO do componente pra cor do pedido
+    // (exata > default) troca o SKU mantendo a quantidade da ficha. A lista
+    // por-cor da ficha (technical_sheet_component_colors) sempre vence.
+    function ctxGlobalDefaults(): ConsumptionContext {
+      const ctx = buildContext();
+      ctx.productGroups.push({ id: 'g-strass', name: 'TIRA STRASS 6MM', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.allProducts.push(
+        { id: 'p-fundo-transp', name: 'TIRA STRASS 6MM PRETO FUNDO TRANSPARENTE', color: 'PRETO', group_id: 'g-strass', quantity: 10, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+        { id: 'p-fundo-preto', name: 'TIRA STRASS 6MM PRETO FUNDO PRETO', color: 'PRETO', group_id: 'g-strass', quantity: 50, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+        { id: 'p-strass-branco', name: 'TIRA STRASS 6MM BRANCO', color: 'BRANCO', group_id: 'g-strass', quantity: 5, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+      );
+      ctx.componentColorDefaultMap = new Map([
+        ['g-strass::preta', 'p-fundo-preto'],   // regra exata: cor Preta
+        ['g-strass::*', 'p-strass-branco'],     // default (catch-all) do grupo
+      ]);
+      return ctx;
+    }
+    const sheetG = (over: Record<string, any> = {}) => buildSheet({
+      id: 'sheet-G',
+      direct_components: [{ product_id: 'p-fundo-transp', quantity: 4, unit: 'un', product_name: 'TIRA STRASS 6MM PRETO FUNDO TRANSPARENTE' }],
+      ...over,
+    });
+    const strass = (rows: any[]) => rows.filter((r: any) => r.groupName === 'TIRA STRASS 6MM');
+
+    it('regra EXATA troca o SKU mantendo a quantidade da ficha (Preta → fundo preto)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG() })],
+        ctxGlobalDefaults(),
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO PRETO');
+      expect(s[0].totalQuantity).toBe(4 * 24); // quantidade da FICHA, intocada
+      // Disponibilidade mede o SKU RESOLVIDO, não o original da ficha.
+      expect(s[0].productIds).toContain('p-fundo-preto');
+      expect(s[0].productIds).not.toContain('p-fundo-transp');
+    });
+
+    it('cor sem regra exata cai no DEFAULT (catch-all) do grupo', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: 'VERMELHA', technical_sheets: sheetG() })],
+        ctxGlobalDefaults(),
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('BRANCO');
+      expect(s[0].totalQuantity).toBe(4 * 24);
+    });
+
+    it('lista por-cor da FICHA vence a regra global', () => {
+      const ctx = ctxGlobalDefaults();
+      ctx.componentColorMap = new Map([
+        ['sheet-G::preta', [{ productId: 'p-fundo-transp', quantityPerUnit: 4 }]],
+      ]);
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG({ component_colors_enabled: true }) })],
+        ctx,
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO TRANSPARENTE'); // escolha manual da ficha
+      expect(s[0].materialName).not.toContain('FUNDO PRETO');
+    });
+
+    it('pedido SEM cor não aplica regra (nem o default)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: '', technical_sheets: sheetG() })],
+        ctxGlobalDefaults(),
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO TRANSPARENTE'); // original da ficha
+    });
+
+    it('COLAPSO SOMA: 2 entradas do mesmo grupo resolvem pro mesmo SKU e somam', () => {
+      // Ficha antiga listando 2 variantes do grupo (4/par + 3/par): com regra pra
+      // cor, ambas caem no SKU da regra → UMA linha com 7/par (sem a soma, o
+      // dedup derrubaria a 2ª em silêncio e o consumo cairia pela metade).
+      const rows = computeConsumptionForItems(
+        [buildItem({
+          reference_id: 'sheet-G', color: 'PRETA',
+          technical_sheets: sheetG({
+            direct_components: [
+              { product_id: 'p-fundo-transp', quantity: 4, unit: 'un', product_name: 'TIRA STRASS 6MM PRETO FUNDO TRANSPARENTE' },
+              { product_id: 'p-strass-branco', quantity: 3, unit: 'un', product_name: 'TIRA STRASS 6MM BRANCO' },
+            ],
+          }),
+        })],
+        ctxGlobalDefaults(),
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO PRETO');
+      expect(s[0].totalQuantity).toBe((4 + 3) * 24);
+      expect(s[0].productIds).toEqual(['p-fundo-preto']);
+    });
+
+    it('regra apontando produto MORTO/inativo mantém o original com aviso', () => {
+      const ctx = ctxGlobalDefaults();
+      ctx.componentColorDefaultMap = new Map([['g-strass::preta', 'p-apagado']]);
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG() })],
+        ctx,
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO TRANSPARENTE'); // original preservado
+      expect(s[0].totalQuantity).toBe(4 * 24);
+      expect(s[0].warning).toMatch(/regra global/i);
+    });
+
+    it('match da regra é insensível a acento/caixa/espaços (≡ SQL unaccent+btrim)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: ' Prêta ', technical_sheets: sheetG() })],
+        ctxGlobalDefaults(),
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO PRETO');
+    });
+
+    it('flag de componentes-por-cor LIGADA sem lista pra cor: regra global ainda aplica (e o aviso de cor sem mapeamento permanece)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG({ component_colors_enabled: true }) })],
+        ctxGlobalDefaults(),
+      );
+      const s = strass(rows);
+      expect(s).toHaveLength(1);
+      expect(s[0].materialName).toContain('FUNDO PRETO');
+      expect(s[0].warning).toMatch(/sem mapeamento/i);
+    });
+  });
+
   it('solado agrupa pelo MODELO (grupo) e soma cores embutidas no nome do produto', () => {
     // Grupo "SOLADO 204" com 2 produtos cuja COR vive no nome ("204 - CARAMELO"
     // / "204 - Preto"). Agrupar pelo nome do produto quebraria o mesmo solado em

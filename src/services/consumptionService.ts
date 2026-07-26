@@ -29,6 +29,11 @@ export const CONSUMPTION_SOURCES = [
   'sole_standard_per_size',
   'direct_components',
   'component_color',
+  // Padrão GLOBAL grupo+cor (component_color_defaults, mig 20260928121000):
+  // componente da ficha re-colorido pela regra global no fallback de
+  // direct_components. Sem este valor o Zod derruba o payload INTEIRO na
+  // primeira ficha atingida por regra.
+  'component_color_default',
   // Fontes emitidas pelo motor único `calculate_order_consumption_by_grade`
   // (o escalar delega a ele) confirmadas no banco vivo em 2026-07-08. Faltavam
   // aqui → o Zod REJEITARIA o payload inteiro (ConsumptionSchemaError) na
