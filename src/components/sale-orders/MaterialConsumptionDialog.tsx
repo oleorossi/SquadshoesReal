@@ -269,7 +269,6 @@ export default function MaterialConsumptionDialog({ open, onOpenChange, saleOrde
       setExistingOsByKey((prev) => ({ ...prev, [g.key]: inserted.order_number as string }));
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['contractors'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       if (unitPrice > 0) {
         toast.success(`OS ${inserted.order_number} criada (R$ ${unitPrice.toFixed(2)}/par pela tabela) — visível no menu Terceirizados.`);

@@ -481,7 +481,6 @@ export function useBulkReceiveServiceOrders() {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       const parts = [`${ok} OS recebida(s) — conta a pagar gerada pelos pares bons.`];

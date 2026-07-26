@@ -43,6 +43,7 @@ import {
   Contractor, ServiceOrder, MaterialSent, ServiceOrderOverview,
 } from '@/hooks/useContractors';
 import { SERVICE_ORDER_SECTORS } from '@/lib/serviceOrderSectors';
+import { OsPaymentBadge, OsBalanceLine } from '@/components/contractors/OsStatusIndicators';
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
@@ -138,89 +139,6 @@ function getMaterials(order: ServiceOrder): MaterialSent[] {
   if (order.material_name || Number(order.material_meters) > 0) return [{ material: order.material_name || '', color: order.material_color || '', meters: Number(order.material_meters) || 0 }];
   return [];
 }
-
-// ── Indicador de pagamento da OS (vem da view v_service_order_overview) ───────
-// Mostra Pago/A pagar + vencimento da conta a pagar gerada na finalização da OS.
-//
-// Ausência de conta a pagar tem DOIS significados e eles não podem ficar mudos
-// do mesmo jeito: OS ainda aberta legitimamente não tem conta (a AP nasce na
-// finalização) — silêncio correto; mas OS FINALIZADA sem conta é dinheiro que
-// ninguém vai cobrar, e antes disso não aparecia em lugar nenhum da tela.
-function OsPaymentBadge({ ov, osStatus }: { ov?: ServiceOrderOverview; osStatus?: string }) {
-  if (!ov || !ov.has_payable) {
-    if (!isOsDone(osStatus)) return null; // OS aberta: a conta ainda não deve existir
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-xs text-red-700 dark:text-red-400"
-        title="OS finalizada sem conta a pagar — o prestador não será cobrado. Verifique o lançamento no financeiro."
-      >
-        <AlertTriangle className="h-3 w-3" />
-        Sem conta a pagar
-      </span>
-    );
-  }
-  if (ov.is_paid) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
-        <CheckCircle2 className="h-3 w-3" />
-        Pago{ov.payment_date ? ` · ${format(new Date(ov.payment_date + 'T12:00:00'), 'dd/MM')}` : ''}
-      </span>
-    );
-  }
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const overdue = !!ov.payment_due_date && ov.payment_due_date < todayIso;
-  return (
-    <span className={cn('inline-flex items-center gap-1 text-xs', overdue ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400')}>
-      <DollarSign className="h-3 w-3" />
-      A pagar{ov.payment_due_date ? ` · vence ${format(new Date(ov.payment_due_date + 'T12:00:00'), 'dd/MM')}` : ''}
-    </span>
-  );
-}
-
-// ── Saldo de recebimento parcial (Enviado / Devolvido bom / Na rua) ──────────
-// Só aparece quando houve algum retorno mas ainda há pares na rua (parcial).
-function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
-  if (!ov) return null;
-  const sent = Number(ov.qty_sent ?? 0);
-  const good = Number(ov.qty_returned_good ?? 0);
-  const defect = Number(ov.qty_returned_defect ?? 0);
-  const loss = Number(ov.qty_loss ?? 0);
-  const inField = Number(ov.qty_in_field ?? 0);
-  const returned = good + defect + loss;
-  const rework = Number((ov as any).qty_defect_pending_rework ?? 0);
-  const short = Number((ov as any).qty_short ?? 0);
-  // Defeito e perda precisam aparecer MESMO com a OS sem saldo na rua: são
-  // justamente os casos em que o par sumiu do controle (voltou com defeito ou
-  // se perdeu no prestador) e alguém precisa decidir retrabalho ou reposição.
-  if (sent <= 0 || returned <= 0) return null;
-  if (inField <= 0 && rework <= 0 && short <= 0) return null;
-  return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-      {inField > 0 && (
-        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"
-              title={`Bons ${good} · Defeito ${defect} · Perda ${loss}`}>
-          <Package className="h-3 w-3" />
-          Devolvido {returned}/{sent} · {inField} na rua
-        </span>
-      )}
-      {rework > 0 && (
-        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"
-              title="Pares com defeito aguardando retrabalho — podem ser enviados de volta ao prestador">
-          <ArrowRight className="h-3 w-3" />
-          {rework} p/ retrabalho
-        </span>
-      )}
-      {short > 0 && (
-        <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-400"
-              title="Perda no prestador + sucata: a OS não entrega essa quantidade sem repor material">
-          <AlertTriangle className="h-3 w-3" />
-          {short} a repor
-        </span>
-      )}
-    </span>
-  );
-}
-
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
   const navigate = useNavigate();
@@ -1884,6 +1802,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         <TableHead className="hidden lg:table-cell">Prazo</TableHead>
                         <TableHead className="text-right">Valor</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Pagamento</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1927,6 +1846,15 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               {noValue ? <span className="text-xs font-medium text-muted-foreground">A definir</span> : formatCurrency(Number(o.total_value))}
                             </TableCell>
                             <TableCell><Badge variant={statusColor(o.status)} className="whitespace-nowrap text-[10px]">{statusLabel(o.status)}</Badge></TableCell>
+                            {/* A tabela é a visão PADRÃO da tela e não tinha coluna de
+                                pagamento — o estado só existia no rodapé do card, o que
+                                fazia o pagamento parecer ausente do fluxo. */}
+                            <TableCell className="whitespace-nowrap">
+                              <div className="flex flex-col gap-0.5">
+                                <OsPaymentBadge ov={osOverview?.get(o.id)} osStatus={o.status} />
+                                <OsBalanceLine ov={osOverview?.get(o.id)} />
+                              </div>
+                            </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>{renderOsActions(o)}</TableCell>
                           </TableRow>
                         );
@@ -3042,7 +2970,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
         onOpenChange={setGenOsOpen}
         onGenerated={() => {
           queryClient.invalidateQueries({ queryKey: ['service_orders'] });
-          queryClient.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
         }}
       />
     </>
