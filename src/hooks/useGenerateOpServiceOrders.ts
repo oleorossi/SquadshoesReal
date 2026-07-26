@@ -82,7 +82,6 @@ export function useGenerateOpServiceOrders() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
     },

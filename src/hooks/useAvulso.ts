@@ -221,7 +221,6 @@ export function useCreateAvulsoServiceOrder() {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       toast.success('OS avulsa lançada no financeiro!');
     },
     onError: (e: any) => toast.error(e.message),

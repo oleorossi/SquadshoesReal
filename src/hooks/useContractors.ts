@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { isOsDone } from '@/lib/osStatusMachine';
 import { stripSearchNorm } from '@/lib/searchUtils';
+import { receiveServiceOrderFully } from '@/lib/serviceOrderStock';
 
 export interface Contractor {
   id: string;
@@ -160,6 +161,10 @@ export interface ServiceOrderOverview {
   qty_returned_defect: number | null;
   qty_loss: number | null;
   qty_in_field: number | null;
+  /** Defeito que ainda pode voltar ao prestador (não sucateado). */
+  qty_defect_pending_rework?: number | null;
+  /** Perda + sucata: o que a OS não entrega sem reposição de material. */
+  qty_short?: number | null;
   last_return_at: string | null;
 }
 
@@ -458,22 +463,12 @@ export function useBulkReceiveServiceOrders() {
       for (const o of orders) {
         try {
           if (o.dispatch_tracked) { skipped.push(o.order_number); continue; }
-          // Saldo na rua = enviado − devolvido (view); OS sem dispatch usa quantity.
-          const { data: bal } = await (supabase as any)
-            .from('v_service_order_balance')
-            .select('qty_in_field')
-            .eq('service_order_id', o.id)
-            .maybeSingle();
-          const inField = Math.max(0, Number(bal?.qty_in_field ?? o.quantity ?? 0));
-          if (inField <= 0) { skipped.push(o.order_number); continue; }
-          const { error } = await (supabase as any).from('service_order_returns').insert({
-            service_order_id: o.id,
-            qty_good: inField,
-            qty_defect: 0,
-            qty_loss: 0,
-            contractor_id: null,
+          // Mesmo caminho único dos recebimentos individuais (registra retorno,
+          // triggers fecham a OS e pagam por pares bons).
+          const { skipped: noBalance } = await receiveServiceOrderFully(o.id, {
+            fallbackQuantity: Number(o.quantity ?? 0),
           });
-          if (error) throw error;
+          if (noBalance) { skipped.push(o.order_number); continue; }
           ok++;
         } catch (e: any) {
           console.error('Receber em lote falhou na OS', o.order_number, e);
@@ -486,7 +481,6 @@ export function useBulkReceiveServiceOrders() {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
-      qc.invalidateQueries({ queryKey: ['v_outsourced_in_field'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
       const parts = [`${ok} OS recebida(s) — conta a pagar gerada pelos pares bons.`];
