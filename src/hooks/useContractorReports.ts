@@ -15,11 +15,62 @@ export interface ContractorMetric {
   open_overdue_count: number;
   avg_late_days: number;
   total_value_all: number;
+  /** ⚠ Desde 2026-07-26 é DINHEIRO EFETIVAMENTE PAGO (accounts_payable quitadas).
+   *  Antes somava OS concluídas — OS entregue e não paga contava como paga. */
   total_value_paid: number;
   total_value_open: number;
   total_quantity: number;
   last_order_at: string | null;
+  /** Significado ANTIGO de total_value_paid: soma das OS concluídas (produção). */
+  total_value_completed: number;
+  /** Contas a pagar em aberto (o que ainda se deve ao prestador). */
+  total_value_unpaid: number;
 }
+
+/** Estado de pagamento de uma OS — espelha o CASE da view v_contractor_os_financials. */
+export type OsPaymentState =
+  | 'paid'         // conta a pagar quitada
+  | 'unpaid'       // conta a pagar em aberto
+  | 'not_billed'   // OS ainda aberta, sem conta (normal: a AP nasce na finalização)
+  | 'missing_ap'   // OS finalizada SEM conta a pagar (anomalia)
+  | 'ap_cancelled'; // conta cancelada com a OS ativa (anomalia)
+
+export interface OsFinancialRow {
+  os_id: string;
+  order_number: string | null;
+  contractor_id: string | null;
+  contractor_name: string;
+  service_type: string | null;
+  sector: string;
+  description: string | null;
+  is_avulsa: boolean;
+  os_status: string;
+  quantity: number;
+  total_value: number | null;
+  ap_id: string | null;
+  ap_status: string | null;
+  ap_amount: number | null;
+  ap_amount_paid: number | null;
+  payment_method: string | null;
+  amount_due: number | null;
+  amount_paid_effective: number | null;
+  service_date: string | null;
+  due_date: string | null;
+  payment_date: string | null;
+  finished_at: string | null;
+  payment_state: OsPaymentState;
+  is_overdue: boolean;
+  days_overdue: number;
+}
+
+/** Eixo de data pelo qual o período é filtrado (escolhido na tela). */
+export type OsDateField = 'due' | 'service' | 'payment';
+
+const DATE_COLUMN: Record<OsDateField, string> = {
+  due: 'due_date',
+  service: 'service_date',
+  payment: 'payment_date',
+};
 
 export interface ContractorHistoryOrder {
   id: string;
@@ -77,6 +128,54 @@ export function useContractorHistory(filters?: {
       const { data, error } = await q;
       if (error) throw error;
       return (data || []) as ContractorHistoryOrder[];
+    },
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Relatório financeiro de OS por prestador — pagas × não pagas.
+ *
+ * Lê `v_contractor_os_financials`, onde o estado de pagamento vem de
+ * `accounts_payable` (a fonte de verdade do dinheiro), e não do status da OS.
+ * O período é filtrado pelo eixo de data escolhido na tela (`date_field`),
+ * por isso a view expõe as três datas como colunas.
+ *
+ * ⚠ Filtrar por 'payment' (data de pagamento) naturalmente exclui as não pagas —
+ * elas não têm data de pagamento. A tela avisa o usuário quando isso acontece.
+ */
+export function useContractorOsFinancials(filters?: {
+  contractor_id?: string | null;
+  date_field?: OsDateField;
+  period_start?: string | null;
+  period_end?: string | null;
+  payment_state?: 'all' | OsPaymentState | 'overdue';
+}) {
+  const dateField = filters?.date_field ?? 'service';
+  const state = filters?.payment_state ?? 'all';
+  return useQuery({
+    queryKey: [
+      'v_contractor_os_financials',
+      filters?.contractor_id ?? '__all__',
+      dateField,
+      filters?.period_start ?? '',
+      filters?.period_end ?? '',
+      state,
+    ],
+    queryFn: async () => {
+      const col = DATE_COLUMN[dateField];
+      let q = (supabase as any)
+        .from('v_contractor_os_financials')
+        .select('*')
+        .order(col, { ascending: false, nullsFirst: false });
+      if (filters?.contractor_id) q = q.eq('contractor_id', filters.contractor_id);
+      if (filters?.period_start) q = q.gte(col, filters.period_start);
+      if (filters?.period_end) q = q.lte(col, filters.period_end);
+      if (state === 'overdue') q = q.eq('is_overdue', true);
+      else if (state !== 'all') q = q.eq('payment_state', state);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data || []) as OsFinancialRow[];
     },
     staleTime: 60_000,
   });

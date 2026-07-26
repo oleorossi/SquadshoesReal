@@ -19,8 +19,9 @@ import { Panel } from '@/components/ui/panel';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
-  useContractorMetrics, useContractorHistory,
+  useContractorMetrics, useContractorHistory, useContractorOsFinancials,
   type ContractorMetric, type ContractorHistoryOrder,
+  type OsFinancialRow, type OsDateField, type OsPaymentState,
 } from '@/hooks/useContractorReports';
 import { useContractors } from '@/hooks/useContractors';
 import { printServiceOrderReceipt } from '@/lib/printServiceOrderReceipt';
@@ -53,6 +54,41 @@ function calcPunctualityRate(m: ContractorMetric): number | null {
   if (finishedWithDeadline === 0) return null;
   return Math.round((m.on_time_count / finishedWithDeadline) * 100);
 }
+
+/** Rótulo + estilo de cada estado de pagamento (cores semânticas — CLAUDE.md). */
+const PAYMENT_STATE_META: Record<OsPaymentState, { label: string; className: string; hint: string }> = {
+  paid: {
+    label: 'Paga',
+    className: 'bg-green-500/10 text-green-700 border-green-500/30 dark:text-green-400',
+    hint: 'Conta a pagar quitada',
+  },
+  unpaid: {
+    label: 'A pagar',
+    className: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
+    hint: 'Conta a pagar em aberto',
+  },
+  not_billed: {
+    label: 'Não faturada',
+    className: 'bg-muted text-muted-foreground border-border',
+    hint: 'OS ainda aberta — a conta a pagar nasce na finalização',
+  },
+  missing_ap: {
+    label: 'Sem conta a pagar',
+    className: 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
+    hint: 'OS finalizada sem conta a pagar — verificar o lançamento no financeiro',
+  },
+  ap_cancelled: {
+    label: 'Conta cancelada',
+    className: 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
+    hint: 'A conta a pagar foi cancelada, mas a OS segue ativa',
+  },
+};
+
+const DATE_FIELD_LABEL: Record<OsDateField, string> = {
+  due: 'Vencimento',
+  service: 'Data do serviço',
+  payment: 'Data do pagamento',
+};
 
 const PUNCTUALITY_STYLE: Record<string, string> = {
   on_time: 'bg-green-500/10 text-green-700 border-green-500/30 dark:text-green-400',
@@ -99,15 +135,43 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
   // KPIs gerais
   const summary = useMemo(() => {
     const totalOrders = filteredMetrics.reduce((s, m) => s + m.completed_orders, 0);
+    // total_value_paid = dinheiro efetivamente pago (accounts_payable quitadas).
     const totalValue  = filteredMetrics.reduce((s, m) => s + Number(m.total_value_paid || 0), 0);
+    const totalCompleted = filteredMetrics.reduce((s, m) => s + Number(m.total_value_completed || 0), 0);
     const totalOnTime = filteredMetrics.reduce((s, m) => s + m.on_time_count, 0);
     const totalLate   = filteredMetrics.reduce((s, m) => s + m.late_count, 0);
     const punctualityRate = (totalOnTime + totalLate) > 0
       ? Math.round((totalOnTime / (totalOnTime + totalLate)) * 100)
       : null;
     const openOverdue = filteredMetrics.reduce((s, m) => s + m.open_overdue_count, 0);
-    return { totalOrders, totalValue, totalOnTime, totalLate, punctualityRate, openOverdue };
+    return { totalOrders, totalValue, totalCompleted, totalOnTime, totalLate, punctualityRate, openOverdue };
   }, [filteredMetrics]);
+
+  // ── Pagamentos: filtros próprios (eixo de data + estado) ───────────────────
+  const [dateField, setDateField] = useState<OsDateField>('service');
+  const [paymentState, setPaymentState] = useState<'all' | OsPaymentState | 'overdue'>('all');
+
+  const { data: financials = [], isLoading: loadingFinancials } = useContractorOsFinancials({
+    contractor_id: contractorFilter !== 'all' ? contractorFilter : null,
+    date_field:    dateField,
+    period_start:  period.start,
+    period_end:    period.end,
+    payment_state: paymentState,
+  });
+
+  const finSummary = useMemo(() => {
+    let paid = 0, unpaid = 0, overdue = 0, notBilled = 0, anomalies = 0;
+    for (const r of financials) {
+      const due = Number(r.amount_due || 0);
+      if (r.payment_state === 'paid') paid += Number(r.amount_paid_effective || 0);
+      else if (r.payment_state === 'unpaid') {
+        unpaid += due;
+        if (r.is_overdue) overdue += due;
+      } else if (r.payment_state === 'not_billed') notBilled += due;
+      else anomalies += 1;
+    }
+    return { paid, unpaid, overdue, notBilled, anomalies, count: financials.length };
+  }, [financials]);
 
   // History do período (linha por OS) — usado pra tabela de histórico
   const periodHistory = useMemo(() => history, [history]);
@@ -243,7 +307,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
           label="Valor pago (all-time)"
           value={formatCurrency(summary.totalValue)}
           icon={DollarSign}
-          hint="excluindo canceladas"
+          hint={`conta quitada · ${formatCurrency(summary.totalCompleted)} concluído`}
         />
         <StatCard
           label="Taxa de pontualidade"
@@ -266,12 +330,146 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         />
       </StatGrid>
 
+      {/* Pagamentos — pagas × não pagas por prestador e período */}
+      <Panel
+        eyebrow={`${DATE_FIELD_LABEL[dateField]} · ${period.label}`}
+        title="Pagamentos aos prestadores"
+        subtitle="Estado real vindo das contas a pagar — não do status da OS."
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={dateField} onValueChange={(v) => setDateField(v as OsDateField)}>
+              <SelectTrigger className="h-8 w-[168px] text-xs">
+                <SelectValue placeholder="Filtrar data por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="service">Data do serviço</SelectItem>
+                <SelectItem value="due">Vencimento</SelectItem>
+                <SelectItem value="payment">Data do pagamento</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1 flex-wrap">
+              {([
+                ['all', 'Todas'], ['paid', 'Pagas'], ['unpaid', 'A pagar'],
+                ['overdue', 'Vencidas'], ['not_billed', 'Não faturadas'],
+              ] as const).map(([value, label]) => (
+                <Button
+                  key={value}
+                  variant={paymentState === value ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setPaymentState(value as typeof paymentState)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        }
+      >
+        <StatGrid>
+          <StatCard label="Pago no período" value={formatCurrency(finSummary.paid)} icon={CheckCircle} tone="success" hint="contas quitadas" />
+          <StatCard label="A pagar" value={formatCurrency(finSummary.unpaid)} icon={DollarSign} tone={finSummary.unpaid > 0 ? 'warning' : 'default'} hint="conta emitida, ainda não quitada" />
+          <StatCard label="Vencido" value={formatCurrency(finSummary.overdue)} icon={AlertTriangle} tone={finSummary.overdue > 0 ? 'destructive' : 'default'} hint="a pagar com vencimento passado" />
+          <StatCard label="Ainda não faturado" value={formatCurrency(finSummary.notBilled)} icon={Clock} hint="OS aberta — conta nasce na finalização" />
+        </StatGrid>
+
+        {dateField === 'payment' && paymentState !== 'paid' && (
+          <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+            Filtrando por <strong>data do pagamento</strong>: OS ainda não pagas não têm essa data e ficam de fora.
+            Para ver o que está em aberto, filtre por <strong>vencimento</strong> ou <strong>data do serviço</strong>.
+          </p>
+        )}
+        {finSummary.anomalies > 0 && (
+          <p className="mt-3 text-xs text-red-700 dark:text-red-400">
+            {finSummary.anomalies} OS finalizada(s) sem conta a pagar válida — o valor não entra em nenhum total acima. Verifique o lançamento no financeiro.
+          </p>
+        )}
+      </Panel>
+
+      <Panel
+        eyebrow={`${financials.length} OS`}
+        title="Detalhamento de pagamentos"
+        subtitle={`Período por ${DATE_FIELD_LABEL[dateField].toLowerCase()}.`}
+        flush
+      >
+        {loadingFinancials ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">Carregando pagamentos...</div>
+        ) : financials.length === 0 ? (
+          <EmptyState
+            icon={DollarSign}
+            title="Nenhuma OS no período"
+            description="Ajuste o prestador, o período ou o eixo de data para ver os pagamentos."
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
+                <TableHead>OS</TableHead>
+                <TableHead>Prestador</TableHead>
+                <TableHead>Setor</TableHead>
+                <TableHead className="text-right">Qtd</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+                <TableHead>Serviço</TableHead>
+                <TableHead>Vencimento</TableHead>
+                <TableHead>Pago em</TableHead>
+                <TableHead>Estado</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {financials.map((r: OsFinancialRow) => {
+                const meta = PAYMENT_STATE_META[r.payment_state];
+                return (
+                  <TableRow key={r.os_id} className="hover:bg-muted/30">
+                    <TableCell className="text-sm font-mono">
+                      {r.order_number || '—'}
+                      {r.is_avulsa && <span className="ml-1 text-[10px] text-muted-foreground">avulsa</span>}
+                    </TableCell>
+                    <TableCell className="text-sm">{r.contractor_name}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground capitalize">{r.sector}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">{r.quantity}</TableCell>
+                    <TableCell className="text-right text-sm font-semibold tabular-nums">
+                      {formatCurrency(Number(r.amount_due || 0))}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{formatDateBR(r.service_date)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {formatDateBR(r.due_date)}
+                      {r.is_overdue && (
+                        <span className="ml-1 text-red-600 dark:text-red-400 font-semibold">
+                          +{r.days_overdue}d
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{formatDateBR(r.payment_date)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn('text-[10px]', meta.className)} title={meta.hint}>
+                        {meta.label}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              <TableRow className="bg-muted/40 font-semibold">
+                <TableCell colSpan={4} className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Total do período
+                </TableCell>
+                <TableCell className="text-right text-sm tabular-nums">
+                  {formatCurrency(financials.reduce((s, r) => s + Number(r.amount_due || 0), 0))}
+                </TableCell>
+                <TableCell colSpan={4} className="text-xs text-muted-foreground">
+                  {formatCurrency(finSummary.paid)} pago · {formatCurrency(finSummary.unpaid)} a pagar
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        )}
+      </Panel>
+
       {/* Ranking por contractor */}
       {filteredMetrics.length > 0 && (
         <Panel
           eyebrow="All-time"
           title="Ranking de contratadas"
-          subtitle="Ordenado por valor pago. Pontualidade exige OSs finalizadas com prazo definido."
+          subtitle="Ordenado por valor total. Concluído = produzido · Pago = conta quitada · A pagar = conta em aberto."
           flush
         >
           <Table>
@@ -280,7 +478,9 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                 <TableHead>Contratada</TableHead>
                 <TableHead className="text-right">OSs finalizadas</TableHead>
                 <TableHead className="text-right">Pares totais</TableHead>
-                <TableHead className="text-right">Valor pago</TableHead>
+                <TableHead className="text-right">Concluído</TableHead>
+                <TableHead className="text-right">Pago</TableHead>
+                <TableHead className="text-right">A pagar</TableHead>
                 <TableHead className="text-right">Em aberto</TableHead>
                 <TableHead className="text-right">Pontualidade</TableHead>
                 <TableHead className="text-right">Atraso médio</TableHead>
@@ -321,8 +521,17 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                     <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                       {Number(m.total_quantity).toLocaleString('pt-BR')}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm font-semibold mono">
+                    <TableCell className="text-right tabular-nums text-sm text-muted-foreground mono">
+                      {formatCurrency(m.total_value_completed)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm font-semibold mono text-green-700 dark:text-green-400">
                       {formatCurrency(m.total_value_paid)}
+                    </TableCell>
+                    <TableCell className={cn(
+                      'text-right tabular-nums text-sm mono',
+                      Number(m.total_value_unpaid) > 0 && 'text-amber-700 dark:text-amber-400 font-semibold',
+                    )}>
+                      {formatCurrency(m.total_value_unpaid)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm">
                       {m.open_orders}
