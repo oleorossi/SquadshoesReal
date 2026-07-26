@@ -45,10 +45,10 @@ interface ConstructionConfigPanelProps {
 // Silk fica entre Aviamento e Colagem quando ativado.
 const SECTORS_CABEDAL              = ['Corte Palmilha', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 const SECTORS_CABEDAL_SILK         = ['Corte Palmilha', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
-const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_FORRADO      = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_TIRAS                = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
+const SECTORS_TIRAS_SILK           = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'];
 
 function sectorsForModel(model: ProductionModel, hasSilk: boolean): string[] {
   if (model === 'cabedal')        return hasSilk ? SECTORS_CABEDAL_SILK         : SECTORS_CABEDAL;
@@ -76,6 +76,8 @@ function isCanonicalRouting(current: string[] | null | undefined): boolean {
     // Pre-2026-05-12 listas Cabedal (sem 'Corte Cabedal' — englobado em 'Corte Palmilha')
     ['Corte Palmilha', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte Palmilha', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    // Pré divisão da costura (2026-10-01) — mantidos pra não marcar ficha
+    // antiga como "roteiro customizado" e disparar o aviso de sobrescrita.
     ['Corte Palmilha', 'Corte Forração', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte Palmilha', 'Corte Forração', 'Costura', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     // Legacy lists (pre-2026-05-06 rename + pre-2026-05-20 Mesa→Aviamento)

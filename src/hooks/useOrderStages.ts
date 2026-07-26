@@ -10,17 +10,22 @@ import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
 // não mais 'Mesa'. O banco foi normalizado (0 rows 'Mesa'), resync_op_atomic
 // também grava 'Aviamento', e a RPC apontar_producao_setor aceita o alias
 // legado Mesa ⇄ Aviamento pra rows antigas que escaparem.
+// ⚠ Costura virou DOIS setores paralelos em 2026-10-01 (migration
+// 20261001120000): Costura Palmilha e Costura Cabedal. A ordem espelha
+// `canonical_stage_order()` no banco — Aviamento saiu de 4 pra 5 e tudo
+// depois dele deslocou uma casa. Não reordenar sem mudar a função SQL junto.
 export const PRODUCTION_STAGES = [
   { name: 'Corte Palmilha', order: 1 },
   { name: 'Corte Forração', order: 2 },
-  { name: 'Costura', order: 3 },
-  { name: 'Aviamento', order: 4 },
-  { name: 'Silk', order: 5 },
-  { name: 'Colagem', order: 6 },
-  { name: 'Montagem', order: 7 },
-  { name: 'Solagem', order: 8 },
-  { name: 'Acabamento', order: 9 },
-  { name: 'Expedição', order: 10 },
+  { name: 'Costura Palmilha', order: 3 },
+  { name: 'Costura Cabedal', order: 4 },
+  { name: 'Aviamento', order: 5 },
+  { name: 'Silk', order: 6 },
+  { name: 'Colagem', order: 7 },
+  { name: 'Montagem', order: 8 },
+  { name: 'Solagem', order: 9 },
+  { name: 'Acabamento', order: 10 },
+  { name: 'Expedição', order: 11 },
 ] as const;
 
 export type OrderStage = {

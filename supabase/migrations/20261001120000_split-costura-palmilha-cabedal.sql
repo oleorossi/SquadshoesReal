@@ -257,3 +257,67 @@ UPDATE public.order_stages
 -- 7d. Agenda diária: as linhas de 'Costura' passam a ser da palmilha (o motor
 --     recalcula o resto no próximo run).
 UPDATE public.production_schedule SET sector = 'Costura Palmilha' WHERE sector = 'Costura';
+
+-- ── 8. Guard de transição (DAG do servidor) ─────────────────────────────────
+-- Sem isto o guard continuaria exigindo um setor 'Costura' que deixou de
+-- existir — e o pré-requisito de Colagem viraria no-op silencioso.
+--
+-- ⚠ NÃO endurecemos o DAG: as costuras seguem SEM pré-requisito, como a
+-- 'Costura' única era. A ordem "cortes primeiro" é regra de PLANEJAMENTO
+-- (parallel_group + cascata de datas), não bloqueio de chão de fábrica —
+-- quem avisa lá é o `limite_setor_anterior`, confirmável. Endurecer aqui
+-- mudaria o comportamento do apontamento sem o dono ter pedido.
+CREATE OR REPLACE FUNCTION public.fn_guard_manual_stage_transition()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_required text[];
+  v_missing  text;
+BEGIN
+  IF NEW.status IS NOT DISTINCT FROM OLD.status OR NEW.status = 'pendente' THEN
+    RETURN NEW;
+  END IF;
+
+  v_required := CASE NEW.stage_name
+    WHEN 'Corte Palmilha'   THEN ARRAY[]::text[]
+    WHEN 'Corte Forração'   THEN ARRAY[]::text[]
+    WHEN 'Aviamento'        THEN ARRAY[]::text[]
+    WHEN 'Mesa'             THEN ARRAY[]::text[]
+    WHEN 'Silk'             THEN ARRAY[]::text[]
+    WHEN 'Costura Palmilha' THEN ARRAY[]::text[]
+    WHEN 'Costura Cabedal'  THEN ARRAY[]::text[]
+    WHEN 'Costura'          THEN ARRAY[]::text[]   -- legado
+    WHEN 'Colagem'          THEN ARRAY['Corte Palmilha','Costura Palmilha','Costura Cabedal']
+    WHEN 'Montagem'         THEN ARRAY['Colagem']
+    WHEN 'Solagem'          THEN ARRAY['Montagem']
+    WHEN 'Acabamento'       THEN ARRAY['Solagem']
+    WHEN 'Expedição'        THEN ARRAY['Acabamento']
+    ELSE NULL
+  END;
+
+  IF v_required IS NULL OR cardinality(v_required) = 0 THEN
+    RETURN NEW;
+  END IF;
+
+  -- Pré-requisito satisfeito = concluído OU já com produção apontada.
+  -- Setor que NÃO existe na OP (ficha sem ele) não bloqueia.
+  SELECT os.stage_name INTO v_missing
+    FROM public.order_stages os
+   WHERE os.order_id = NEW.order_id
+     AND os.stage_name = ANY(v_required)
+     AND os.status <> 'concluido'
+     AND COALESCE(os.quantity_processed, 0) = 0
+   LIMIT 1;
+
+  IF v_missing IS NOT NULL THEN
+    RAISE EXCEPTION 'Setor "%" ainda não entregou nada — não dá pra iniciar "%".',
+      v_missing, NEW.stage_name
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;

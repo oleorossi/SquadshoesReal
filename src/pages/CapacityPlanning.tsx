@@ -27,7 +27,8 @@ import { ForwardScheduleTool } from '@/components/production/ForwardScheduleTool
 // ─── TYPES & CONFIG ──────────────────────────────────────────────────────────
 
 type SectorKey =
-  | 'corte_palmilha' | 'corte_forracao' | 'mesa' | 'costura' | 'silk'
+  | 'corte_palmilha' | 'corte_forracao' | 'mesa'
+  | 'costura_palmilha' | 'costura_cabedal' | 'silk'
   | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao';
 
 type StatusKey = 'ok' | 'warning' | 'critical';
@@ -36,7 +37,8 @@ const SECTORS = [
   { key: 'corte_palmilha' as SectorKey, label: 'Corte Palmilha', short: 'Cor. Palm', icon: Scissors,   capField: 'sewing_capacity_per_day',    defaultCap: 500 },
   { key: 'corte_forracao' as SectorKey, label: 'Corte Forração', short: 'Cor. Forr', icon: Layers,     capField: 'cutting_capacity_per_day',   defaultCap: 450 },
   { key: 'mesa'           as SectorKey, label: 'Aviamento',      short: 'Aviam.',    icon: Hand,       capField: 'mesa_daily_capacity',        defaultCap: 275 },
-  { key: 'costura'        as SectorKey, label: 'Costura',        short: 'Costura',   icon: Pen,        capField: 'costura_capacity_per_day',   defaultCap: 300 },
+  { key: 'costura_palmilha' as SectorKey, label: 'Costura Palmilha', short: 'Cost. Palm', icon: Pen,   capField: 'costura_palmilha_capacity_per_day', defaultCap: 300 },
+  { key: 'costura_cabedal'  as SectorKey, label: 'Costura Cabedal',  short: 'Cost. Cab',  icon: Pen,   capField: 'costura_cabedal_capacity_per_day',  defaultCap: 300 },
   { key: 'silk'           as SectorKey, label: 'Silk',           short: 'Silk',      icon: Printer,    capField: 'silk_capacity_per_day',      defaultCap: 400 },
   { key: 'colagem'        as SectorKey, label: 'Colagem',        short: 'Colag.',    icon: Flame,      capField: 'gluing_capacity_per_day',    defaultCap: 500 },
   { key: 'montagem'       as SectorKey, label: 'Montagem',       short: 'Mont.',     icon: Hammer,     capField: 'assembly_capacity_per_day',  defaultCap: 300 },
@@ -65,7 +67,9 @@ function bizDaysBetween(a: Date, b: Date): number {
 const SECTOR_NORM: Record<string, SectorKey> = {
   'corte palmilha': 'corte_palmilha', 'corte_palmilha': 'corte_palmilha', 'palmilha': 'corte_palmilha', 'corte': 'corte_palmilha',
   'corte forração': 'corte_forracao', 'corte forracão': 'corte_forracao', 'corte_forracao': 'corte_forracao',
-  'costura': 'costura',
+  'costura palmilha': 'costura_palmilha', 'costura_palmilha': 'costura_palmilha',
+  'costura cabedal': 'costura_cabedal',   'costura_cabedal': 'costura_cabedal',
+  'costura': 'costura_palmilha',  // legado: a etapa única era a de palmilha
   'forração': 'corte_forracao', 'forracao': 'corte_forracao',
   'mesa': 'mesa', 'aviamento': 'mesa',
   'silk': 'silk', 'serigrafia': 'silk',
@@ -85,7 +89,12 @@ function hasSectorActive(sheet: any, key: SectorKey): boolean {
 function getSectorKey(stageName: string): SectorKey | null {
   const l = stageName.toLowerCase().trim();
   if (l.includes('forr') || l === 'corte_forracao') return 'corte_forracao';
-  if (l === 'costura') return 'costura';
+  // ⚠ As costuras vêm ANTES do teste de 'palmilha': "costura palmilha" contém
+  // "palmilha" e cairia em corte_palmilha se a ordem invertesse.
+  if (l.startsWith('costura')) {
+    if (l.includes('cabedal')) return 'costura_cabedal';
+    return 'costura_palmilha';   // inclui a grafia legada 'costura'
+  }
   if (l.includes('corte') || l.includes('palmilha') || l === 'corte_palmilha') return 'corte_palmilha';
   if (l === 'mesa' || l === 'aviamento') return 'mesa';
   if (l === 'silk' || l.includes('serigraf')) return 'silk';
@@ -248,7 +257,8 @@ export default function CapacityPlanning() {
 
   const timelineData = useMemo(() => {
     const zeroEntry = (): Record<SectorKey, number> => ({
-      corte_palmilha: 0, corte_forracao: 0, mesa: 0, costura: 0, silk: 0,
+      corte_palmilha: 0, corte_forracao: 0, mesa: 0,
+      costura_palmilha: 0, costura_cabedal: 0, silk: 0,
       colagem: 0, montagem: 0, solagem: 0, acabamento: 0, expedicao: 0,
     });
     const dayMap = new Map<string, Record<SectorKey, number>>();
@@ -272,7 +282,8 @@ export default function CapacityPlanning() {
         { key: 'corte_palmilha', start: pw.corte_palmilha.start, end: pw.corte_palmilha.end, active: pw.corte_palmilha.required },
         { key: 'corte_forracao', start: pw.corte_forracao.start, end: pw.corte_forracao.end, active: pw.corte_forracao.required && hasSectorActive(s, 'corte_forracao') },
         { key: 'mesa',           start: pw.mesa.start,           end: pw.mesa.end,           active: pw.mesa.required && hasSectorActive(s, 'mesa') },
-        { key: 'costura',        start: pw.costura.start,        end: pw.costura.end,        active: pw.costura.required && pw.costura.cap > 0 },
+        { key: 'costura_palmilha', start: pw.costura_palmilha.start, end: pw.costura_palmilha.end, active: pw.costura_palmilha.required && pw.costura_palmilha.cap > 0 },
+        { key: 'costura_cabedal',  start: pw.costura_cabedal.start,  end: pw.costura_cabedal.end,  active: pw.costura_cabedal.required && pw.costura_cabedal.cap > 0 },
         { key: 'silk',           start: pw.silk.start,           end: pw.silk.end,           active: pw.silk.required && hasSectorActive(s, 'silk') },
         { key: 'colagem',        start: pw.colagem.start,        end: pw.colagem.end,        active: pw.colagem.required && hasSectorActive(s, 'colagem') },
         { key: 'montagem',       start: pw.montagem.start,       end: pw.montagem.end,       active: pw.montagem.required },

@@ -37,6 +37,8 @@ interface SheetCapacityRow {
   cutting_capacity_per_day?: number | null;
   sewing_capacity_per_day?: number | null;
   costura_capacity_per_day?: number | null;
+  costura_palmilha_capacity_per_day?: number | null;
+  costura_cabedal_capacity_per_day?: number | null;
   assembly_capacity_per_day?: number | null;
   finishing_capacity_per_day?: number | null;
   mesa_daily_capacity?: number | null;
@@ -56,6 +58,8 @@ interface CategoryDefaultsRow {
   cutting_capacity_per_day?: number | null;
   sewing_capacity_per_day?: number | null;
   costura_capacity_per_day?: number | null;
+  costura_palmilha_capacity_per_day?: number | null;
+  costura_cabedal_capacity_per_day?: number | null;
   mesa_daily_capacity?: number | null;
   silk_capacity_per_day?: number | null;
   gluing_capacity_per_day?: number | null;
@@ -101,6 +105,13 @@ const SECTOR_CONFIG: Record<SectorKey, {
   // palmilha de "costura de palmilha"), mas o lead_time correto é o de corte.
   corte_palmilha: { capField: 'sewing_capacity_per_day',    ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
   corte_forracao: { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
+  // Costura dividida em dois setores paralelos (migration 20261001120000).
+  // Cada um tem capacidade própria, com fallback pra coluna antiga enquanto as
+  // fichas não forem recadastradas — a migration já copiou o valor, o fallback
+  // cobre ficha nova salva sem preencher os dois campos.
+  costura_palmilha: { capField: 'costura_palmilha_capacity_per_day', fallbackCapField: 'costura_capacity_per_day', ltField: 'lead_time_costura_dias', hardFallbackDays: 1 },
+  costura_cabedal:  { capField: 'costura_cabedal_capacity_per_day',  fallbackCapField: 'costura_capacity_per_day', ltField: 'lead_time_costura_dias', hardFallbackDays: 1 },
+  // Legacy alias — a 'Costura' única de antes da divisão
   costura:        { capField: 'costura_capacity_per_day',   ltField: 'lead_time_costura_dias',    hardFallbackDays: 1 },
   mesa:           { capField: 'mesa_daily_capacity',        ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },
   silk:           { capField: 'silk_capacity_per_day',      ltField: 'lead_time_corte_dias',      hardFallbackDays: 1 },

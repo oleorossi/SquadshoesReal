@@ -3778,7 +3778,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Costura', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              insoleReadyMade={(sheet as any).insole_ready_made === true}
              onChange={(sectors: string[]) => {
                updateSheet.mutate({ id: sheet.id, data: { production_sectors: sectors } as any });
@@ -4053,16 +4053,23 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
    // Sub-etapas paralelas de Corte (decisão 2026-05-12):
    //   - Corte Palmilha: sempre (todo sapato tem palmilha)
    //   - Corte Forração: quando o modelo tem forração na palmilha
-   //   - Costura: junta palmilha + forração + cabedal
+   // Costura dividida em DOIS setores independentes que trabalham lado a lado
+   // (decisão do dono 2026-10-01, migration 20261001120000):
+   //   - Costura Palmilha: costura palmilha + forração (interna)
+   //   - Costura Cabedal: costura do cabedal (é a terceirizável)
    // ⚠ 'Corte Cabedal' NÃO é selecionável: o trigger
    // tg_normalize_production_sectors descarta ele do array (fora da lista
    // canônica), então o chip era salvo e sumia em silêncio. A impressão
    // decide esse setor sozinha por has_straps (modelo sem tiras = corta
    // cabedal) — não depende do roteiro.
-   { name: 'Corte Palmilha', order: 1 },
-   { name: 'Corte Forração', order: 2 },
-   { name: 'Costura',        order: 4 },
-   { name: 'Aviamento',      order: 5 },
+   // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
+   // você adicionar aqui TEM que entrar na lista canônica do trigger também,
+   // senão o usuário marca, salva, e o valor desaparece sem erro.
+   { name: 'Corte Palmilha',   order: 1 },
+   { name: 'Corte Forração',   order: 2 },
+   { name: 'Costura Palmilha', order: 3 },
+   { name: 'Costura Cabedal',  order: 4 },
+   { name: 'Aviamento',        order: 5 },
    { name: 'Silk',           order: 6 },
    { name: 'Colagem',        order: 7 },
    { name: 'Montagem',       order: 8 },
@@ -4074,7 +4081,9 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
 // Setores removidos automaticamente pelo trigger do banco
 // (tg_strip_cut_sectors_when_ready_made) quando a palmilha é pronta na cor.
 // O editor desabilita os chips pra não fingir que a seleção foi salva.
-const READY_MADE_STRIPPED_SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura'];
+// Palmilha pronta na cor ⇒ não há palmilha pra cortar nem pra costurar. A
+// costura de CABEDAL segue valendo (é outro componente).
+const READY_MADE_STRIPPED_SECTORS = ['Corte Palmilha', 'Corte Forração', 'Costura Palmilha'];
  
 // Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
 // production_sectors, abre um sub-painel pra escolher quais dessas etapas

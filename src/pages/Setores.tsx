@@ -9,7 +9,7 @@ import { useEnsureFreshSchedule } from '@/hooks/useProductionEngine';
 
 const Corte = lazy(() => import('./Corte'));
 const Forracao = lazy(() => import('./Costura')); // legado: Costura.tsx é "Corte Forração"
-const Costura = lazy(() => import('./SetorCostura')); // novo setor: costura palmilha + cabedal
+const SetorCostura = lazy(() => import('./SetorCostura')); // genérica: recebe o setor por prop
 const Aviamento = lazy(() => import('./Aviamento'));
 const Silk = lazy(() => import('./Silk'));
 const Colagem = lazy(() => import('./Colagem'));
@@ -24,7 +24,7 @@ const TabLoader = () => (
   </div>
 );
 
- const SECTOR_TABS = ['corte', 'forracao', 'costura', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
+ const SECTOR_TABS = ['corte', 'forracao', 'costura-palmilha', 'costura-cabedal', 'aviamento', 'silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'] as const;
 
 /**
  * APONTAMENTO (R6) — a porta de chão de fábrica do motor: uma aba por setor,
@@ -43,6 +43,8 @@ export default function Setores() {
   // Redireciona quem ainda tem 'ordens' salvo no localStorage
   useEffect(() => {
     if (activeTab === 'ordens') setActiveTab('corte');
+    // Divisão da costura (2026-10-01): quem tinha a aba única salva cai na de palmilha
+    if (activeTab === 'costura') setActiveTab('costura-palmilha');
   }, [activeTab, setActiveTab]);
 
   // Deep-link: ?sub=corte (redirects /corte etc. em App.tsx) tem PRIORIDADE
@@ -84,8 +86,11 @@ export default function Setores() {
               <TabsTrigger value="forracao" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
                 <Cloud className="h-4 w-4" /> Corte Forração
               </TabsTrigger>
-              <TabsTrigger value="costura" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
-                <Pen className="h-4 w-4" /> Costura
+              <TabsTrigger value="costura-palmilha" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Pen className="h-4 w-4" /> Costura Palmilha
+              </TabsTrigger>
+              <TabsTrigger value="costura-cabedal" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
+                <Pen className="h-4 w-4" /> Costura Cabedal
               </TabsTrigger>
               <TabsTrigger value="aviamento" className="text-xs whitespace-nowrap gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 py-1.5 rounded-md">
                 <Paperclip className="h-4 w-4" /> Aviamento
@@ -123,9 +128,15 @@ export default function Setores() {
             </Suspense>
           </TabsContent>
 
-          <TabsContent value="costura">
+          <TabsContent value="costura-palmilha">
             <Suspense fallback={<TabLoader />}>
-              <Costura />
+              <SetorCostura sectorName="Costura Palmilha" />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="costura-cabedal">
+            <Suspense fallback={<TabLoader />}>
+              <SetorCostura sectorName="Costura Cabedal" />
             </Suspense>
           </TabsContent>
 
