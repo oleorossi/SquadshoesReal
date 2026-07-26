@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Info } from '@phosphor-icons/react';
+import { Info, UserCircle } from '@phosphor-icons/react';
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
+import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { norm, KanbanCardData } from './kanbanDerive';
+import { buildPointingPlan, moveOptions, applyPointing } from './pointingPlan';
 
 /** Valor-sentinela do select de mover (shadcn Select não aceita value vazio). */
 const MOVE_ATUAL = '__atual';
@@ -36,50 +36,26 @@ export function DropApontarDialog({
   apontar: ReturnType<typeof useApontarProducao>;
   onClose: () => void;
 }) {
-  const { q, stages, column, front } = card;
-  const seq = stages.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
-  const colIdx = seq.indexOf(column);
+  const { q, stages, column } = card;
+  const { data: profile } = useCurrentProfile();
 
   // Modo detalhe (target=null): o usuário pode escolher um destino no select —
   // vale como se tivesse arrastado o card até lá.
   const [moveTarget, setMoveTarget] = useState<string>('');
   const effTarget = target ?? (moveTarget || null);
 
-  const targetIdx = effTarget ? seq.indexOf(effTarget) : colIdx + 1;
-  const isBackward = effTarget !== null && (flowOrder.get(effTarget) ?? 0) < (flowOrder.get(column) ?? 0);
-  // Pular = soltar/mover além do PRÓXIMO setor pendente do fluxo da OP
-  const skipped = !isBackward && effTarget !== null && targetIdx > colIdx + 1
-    ? seq.slice(colIdx + 1, targetIdx)
-    : [];
+  const plan = buildPointingPlan(card, effTarget, flowOrder);
+  const { pointedStage, isBackward, skipped, remaining } = plan;
 
-  // Opções do select de mover (só no modo detalhe): pra frente = setores ainda
-  // pendentes depois do atual; pra trás = o setor anterior no fluxo (o estorno
-  // sempre acontece no último setor com progresso, igual ao drag).
-  const fwdOptions = seq.slice(colIdx + 1);
-  const prevSectors = stages
-    .map(s => norm(s.stage_name))
-    .filter(n => (flowOrder.get(n) ?? 0) < (flowOrder.get(column) ?? 0));
-  const backOption = front && prevSectors.length ? prevSectors[prevSectors.length - 1] : null;
+  const { fwdOptions, backOption } = moveOptions(card, flowOrder);
   const showMove = target === null && (fwdOptions.length > 0 || backOption !== null);
 
-  // Estágio apontado: para frente = o setor ONDE o card está (o trabalho que
-  // acabou de acontecer); para trás = estorno no último setor com progresso.
-  const pointedStage = isBackward
-    ? front
-    : (card.columnStage ?? null);
-  const remaining = pointedStage
-    ? pointedStage.quantity_total - pointedStage.quantity_processed
-    : 0;
   const columnRemaining = card.columnStage
     ? card.columnStage.quantity_total - card.columnStage.quantity_processed
     : 0;
 
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
-  const [operatorEmployeeId, setOperatorEmployeeId] = useState<string>(() => {
-    try { return localStorage.getItem('sector_operator_employee_id') || ''; } catch { return ''; }
-  });
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
-  const confirmSkip = skipped.length > 0 || isBackward;
 
   const handleMoveChange = (v: string) => {
     const t = v === MOVE_ATUAL ? '' : v;
@@ -90,38 +66,13 @@ export function DropApontarDialog({
     setQty(back ? 0 : Math.max(0, columnRemaining));
   };
 
-  // ⚠ O erro NÃO pode ser engolido aqui. Antes, qualquer falha (rede, sessão
-  // expirada, RLS) virava `employees = []` e a tela mostrava só o placeholder
-  // "Selecione o operário..." — indistinguível de "não há operário cadastrado".
-  // Sem essa distinção não dá pra diagnosticar nem do lado do usuário nem do
-  // nosso: o apontamento simplesmente não tinha quem selecionar.
-  const {
-    data: employees = [],
-    isLoading: loadingEmployees,
-    error: employeesError,
-  } = useQuery({
-    queryKey: ['sector_operators'],
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('id, name, role')
-        .eq('active', true)
-        .order('name');
-      if (error) throw error;
-      return (data || []) as { id: string; name: string; role: string | null }[];
-    },
-  });
-
   if (!pointedStage) {
     return (
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>{q.order_number}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {isBackward
-              ? 'Nada pra estornar — nenhum setor desta OP tem apontamento.'
-              : 'Nenhum setor pendente pra apontar nesta OP.'}
+            {plan.unavailableReason ?? 'Nenhum setor pendente pra apontar nesta OP.'}
           </p>
         </DialogContent>
       </Dialog>
@@ -129,47 +80,20 @@ export function DropApontarDialog({
   }
 
   const doApontar = async (confirmed?: string[]) => {
-    const quantity = isBackward ? -Math.abs(qty) : qty;
-    if (quantity === 0) { onClose(); return; }
+    if (qty === 0) { onClose(); return; }
     try {
-      if (operatorEmployeeId) {
-        try { localStorage.setItem('sector_operator_employee_id', operatorEmployeeId); } catch { /* noop */ }
-      }
-      const willComplete = !isBackward && pointedStage.quantity_processed + quantity >= pointedStage.quantity_total;
-      const res = await apontar.mutateAsync({
-        orderId: q.order_id,
-        stageName: pointedStage.stage_name,
-        quantity,
-        operatorEmployeeId: operatorEmployeeId || null,
-        note: isBackward
-          ? `Estorno via Kanban (${column} → ${effTarget})`
-          : (skipped.length ? `Via Kanban, pulando: ${skipped.join(', ')}` : 'Via Kanban'),
-        // Finaliza o setor quando o total fecha — a RPC resolve/inicia o próximo
-        finalize: willComplete,
-        confirmedWarnings: confirmed,
-      });
-      if (res?.needs_confirmation) {
-        setPendingWarnings(res.warnings || []);
+      const res = await applyPointing({ card, plan, target: effTarget, qty, apontar, confirmedWarnings: confirmed });
+      if (res.status === 'needs_confirmation') {
+        setPendingWarnings(res.warnings);
         return;
       }
-      // Pulo confirmado (R5.5): conclui os setores intermediários com 0 pares
-      // (pulados de propósito — o motor os trata como entrega total)
-      for (const skippedSector of skipped) {
-        await apontar.mutateAsync({
-          orderId: q.order_id,
-          stageName: skippedSector,
-          quantity: 0,
-          operatorEmployeeId: operatorEmployeeId || null,
-          note: `Setor pulado via Kanban (confirmado)`,
-          finalize: true,
-          confirmedWarnings: ['limite_setor_anterior', 'material_nao_reservado'],
-        });
+      if (res.status === 'ok') {
+        toast.success(
+          isBackward
+            ? `Estornado ${Math.abs(res.quantity)} pares de ${pointedStage.stage_name}.`
+            : `${pointedStage.stage_name}: +${res.quantity} pares (${Math.min(pointedStage.quantity_processed + res.quantity, pointedStage.quantity_total)}/${pointedStage.quantity_total}).`,
+        );
       }
-      toast.success(
-        isBackward
-          ? `Estornado ${Math.abs(quantity)} pares de ${pointedStage.stage_name}.`
-          : `${pointedStage.stage_name}: +${quantity} pares (${Math.min(pointedStage.quantity_processed + quantity, pointedStage.quantity_total)}/${pointedStage.quantity_total}).`,
-      );
       onClose();
     } catch {
       // toast de erro já emitido pela mutation (estorno em setor concluído é
@@ -220,7 +144,7 @@ export function DropApontarDialog({
               </div>
             )}
 
-            {confirmSkip && skipped.length > 0 && (
+            {skipped.length > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
                 <strong>Pulando setor{skipped.length > 1 ? 'es' : ''}:</strong> {skipped.join(', ')}.
                 Eles serão marcados como concluídos sem produção apontada — fica registrado.
@@ -244,7 +168,7 @@ export function DropApontarDialog({
                   decimals={0}
                   value={qty}
                   onChange={n => setQty(Math.max(0, Math.round(n)))}
-                  className="font-mono w-28 h-9"
+                  className="font-mono w-28 h-11 md:h-9"
                 />
                 <span className="text-xs text-muted-foreground">
                   {isBackward
@@ -254,47 +178,18 @@ export function DropApontarDialog({
               </div>
             </div>
 
-            <div>
-              <Label className="text-xs">Operário (quem executou)</Label>
-              <Select
-                value={operatorEmployeeId || NO_OPERATOR}
-                onValueChange={v => setOperatorEmployeeId(v === NO_OPERATOR ? '' : v)}
-              >
-                <SelectTrigger className="h-9 mt-1">
-                  <SelectValue placeholder="Selecione o operário..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* Sem esta opção não havia como DESMARCAR: escolhido um
-                      operário, o Select não oferece volta ao estado vazio. */}
-                  <SelectItem value={NO_OPERATOR}>Sem operário definido</SelectItem>
-                  {employees.map(e => (
-                    <SelectItem key={e.id} value={e.id}>{e.name}{e.role ? ` — ${e.role}` : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {employeesError ? (
-                <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
-                  Não foi possível carregar os operários: {(employeesError as any)?.message || 'erro desconhecido'}.
-                  Confira a conexão e recarregue — o apontamento ainda funciona sem operário.
-                </p>
-              ) : loadingEmployees ? (
-                <p className="text-[10px] text-muted-foreground mt-1">Carregando operários...</p>
-              ) : employees.length === 0 ? (
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                  Nenhum funcionário ativo encontrado. Cadastre em RH → Funcionários (ou reative alguém)
-                  para poder registrar quem executou.
-                </p>
-              ) : (
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  {employees.length} operários · o apontamento grava também o usuário logado (autoria — R6.2).
-                </p>
-              )}
-            </div>
+            {/* Autoria: quem responde pelo lançamento é o usuário logado — não
+                se escolhe operário aqui (decisão do dono 2026-07-26). */}
+            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+              <UserCircle className="h-4 w-4 shrink-0" />
+              Lançamento registrado como{' '}
+              <strong className="text-foreground">{profile?.full_name || profile?.email || 'usuário logado'}</strong>
+            </p>
 
             {/* Progresso por setor (transparência do card único) */}
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2">
+                <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 px-2">
                   <Info className="h-3 w-3" /> Progresso por setor
                 </Button>
               </PopoverTrigger>
@@ -311,8 +206,9 @@ export function DropApontarDialog({
             </Popover>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button variant="outline" className="h-11 md:h-10" onClick={onClose}>Cancelar</Button>
               <Button
+                className="h-11 md:h-10"
                 onClick={() => doApontar()}
                 disabled={apontar.isPending || qty === 0}
               >
