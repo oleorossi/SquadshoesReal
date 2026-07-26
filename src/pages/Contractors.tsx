@@ -47,6 +47,7 @@ import { OsPaymentBadge, OsBalanceLine } from '@/components/contractors/OsStatus
 import {
   OS_DONE_STATUSES, OS_CANCELLED_STATUSES, OS_PENDING_STATUSES, OS_STATUS,
   isOsDone, isOsCancelled, isOsActive, osStatusLabel, osStatusBadgeVariant,
+  osStatusColor, osStatusDot,
   normalizeOsStatus,
 } from '@/lib/osStatusMachine';
 import {
@@ -624,10 +625,33 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   );
   const osSelectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toOsCostRow)), [selectedOrders, toOsCostRow]);
   // Triagem P0.3: elegíveis pro recebimento total em lote (ativas, não arquivadas).
+
   const bulkReceivable = useMemo(
     () => selectedOrders.filter(o => isOsActive(o.status) && !o.archived_at),
     [selectedOrders],
   );
+
+  // Quebra por prestador do que o recebimento em lote vai efetivamente cobrar.
+  // A confirmação descrevia o efeito ("gera conta a pagar") mas não mostrava
+  // quanto nem pra quem — e a ação cria dinheiro de verdade.
+  const bulkReceivePreview = useMemo(() => {
+    const byContractor = new Map<string, { name: string; os: number; pairs: number; value: number }>();
+    let skipped = 0;
+    for (const o of bulkReceivable) {
+      if (o.dispatch_tracked) { skipped++; continue; }
+      const ov = osOverview?.get(o.id);
+      const pairs = Math.max(0, Number(ov?.qty_in_field ?? o.quantity ?? 0));
+      if (pairs <= 0) { skipped++; continue; }
+      const key = o.contractor_id || '—';
+      const cur = byContractor.get(key) || { name: o.contractors?.name || 'Sem prestador', os: 0, pairs: 0, value: 0 };
+      cur.os += 1;
+      cur.pairs += pairs;
+      cur.value += pairs * Number(o.unit_price || 0);
+      byContractor.set(key, cur);
+    }
+    const rows = Array.from(byContractor.values()).sort((a, b) => b.value - a.value);
+    return { rows, skipped, total: rows.reduce((s, r) => s + r.value, 0) };
+  }, [bulkReceivable, osOverview]);
   const allOsSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOsIds.has(o.id));
   const toggleSelectAllOs = useCallback(() => {
     setSelectedOsIds(prev => (filteredOrders.length > 0 && filteredOrders.every(o => prev.has(o.id))) ? new Set() : new Set(filteredOrders.map(o => o.id)));
@@ -1711,7 +1735,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 : formatCurrency(Number(o.total_value))}
                             </p>
                             <div className="mt-1 flex justify-end">
-                              <Badge variant={statusColor(o.status)} className="text-[10px]">{statusLabel(o.status)}</Badge>
+                              <Badge variant="outline" className={cn('gap-1 text-[11px]', osStatusColor(o.status))}><span className={cn('h-1.5 w-1.5 rounded-full', osStatusDot(o.status))} />{statusLabel(o.status)}</Badge>
                             </div>
                           </div>
                         </div>
@@ -1845,7 +1869,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             <TableCell className="whitespace-nowrap text-right font-mono text-sm font-bold tabular-nums">
                               {noValue ? <span className="text-xs font-medium text-muted-foreground">A definir</span> : formatCurrency(Number(o.total_value))}
                             </TableCell>
-                            <TableCell><Badge variant={statusColor(o.status)} className="whitespace-nowrap text-[10px]">{statusLabel(o.status)}</Badge></TableCell>
+                            <TableCell><Badge variant="outline" className={cn('gap-1 whitespace-nowrap text-[11px]', osStatusColor(o.status))}><span className={cn('h-1.5 w-1.5 rounded-full', osStatusDot(o.status))} />{statusLabel(o.status)}</Badge></TableCell>
                             {/* A tabela é a visão PADRÃO da tela e não tinha coluna de
                                 pagamento — o estado só existia no rodapé do card, o que
                                 fazia o pagamento parecer ausente do fluxo. */}
@@ -1868,9 +1892,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           </TabsContent>
 
           {/* ── CONSOLIDADA TAB (OS por prestador · modelo contêiner+linhas) ── */}
-          <TabsContent value="consolidated" className="mt-3">
-            <ConsolidatedServiceOrders />
-          </TabsContent>
 
           {/* ── PLANNING TAB ── */}
           <TabsContent value="planning" className="mt-3">
@@ -1878,95 +1899,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           </TabsContent>
 
           {/* ── RECIPES TAB ── */}
-          <TabsContent value="recipes" className="mt-3 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <p className="text-sm font-medium">Receitas de Produção Artesanal</p>
-                <p className="text-xs text-muted-foreground">
-                  Receitas são configuradas diretamente no estoque — clique no ícone{' '}
-                  <FlaskConical className="h-3 w-3 inline-block align-middle" /> em cada material.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={() => navigate('/estoque?tab=materials')}>
-                  <Package className="h-4 w-4" /> Configurar no Estoque
-                </Button>
-                <Button size="sm" variant="ghost" className="h-9 gap-1.5 text-muted-foreground text-xs" onClick={() => { setEditingRecipe({ ...emptyRecipe }); setIsEditingRecipe(false); setRecipeDialog(true); }}>
-                  <Plus className="h-3.5 w-3.5" /> Manual
-                </Button>
-              </div>
-            </div>
-            {recipes.length === 0 ? (
-              <Panel flush>
-                <EmptyState
-                  icon={FlaskConical}
-                  title="Nenhuma receita cadastrada"
-                  description="Vá em Estoque → Materiais e clique no ícone de frasco em um material para configurá-lo como artesanal."
-                  action={
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate('/estoque?tab=materials')}>
-                      <Package className="h-4 w-4" /> Ir para o Estoque
-                    </Button>
-                  }
-                />
-              </Panel>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {recipes.map(r => (
-                  <Card key={r.id} className={r.active ? '' : 'opacity-50'}>
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-sm">{r.name}</p>
-                          {!r.active && <Badge variant="outline" className="text-xs mt-0.5">Inativo</Badge>}
-                        </div>
-                        <div className="flex gap-0.5 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar receita ${r.name}`} onClick={() => { setEditingRecipe(r); setIsEditingRecipe(true); setRecipeDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir receita ${r.name}`}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
-                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir a receita “{r.name}”?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteRecipe.mutate(r.id)}>Excluir</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="flex items-center gap-1.5 bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded px-2 py-1 flex-1 min-w-0">
-                          <Package className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate text-xs font-medium">{r.base_product_name}</span>
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded px-2 py-1 flex-1 min-w-0">
-                          <Scissors className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate text-xs font-medium">{r.artisanal_product_name}</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className="bg-muted/40 rounded p-2 text-center">
-                          <div className="text-muted-foreground">Rendimento</div>
-                          <div className="font-bold font-mono">{r.yield_per_meter}×</div>
-                          <div className="text-muted-foreground">m/m</div>
-                        </div>
-                        <div className="bg-muted/40 rounded p-2 text-center">
-                          <div className="text-muted-foreground">MO/metro</div>
-                          <div className="font-bold font-mono text-green-700 dark:text-green-400">
-                            {r.labor_cost_per_meter > 0 ? `R$${r.labor_cost_per_meter.toFixed(2)}` : '—'}
-                          </div>
-                        </div>
-                        <div className="bg-muted/40 rounded p-2 text-center">
-                          <div className="text-muted-foreground">Prestador</div>
-                          <div className="font-semibold truncate">{contractors.find(c => c.id === r.default_contractor_id)?.name?.split(' ')[0] || '—'}</div>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline" size="sm" className="w-full h-8 gap-1.5 text-xs"
-                        onClick={() => { openNewOrder(contractors.find(c => c.id === r.default_contractor_id)?.id); setIsArtisanal(true); setArtRecipeId(r.id); }}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Criar OS com esta Receita
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
 
           {/* ── CONTRACTORS TAB ── */}
           <TabsContent value="contractors" className="mt-3 space-y-3">
@@ -2684,14 +2616,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Pendente">Pendente</SelectItem>
-                      <SelectItem value="Em Andamento">Em Andamento</SelectItem>
+                      <SelectItem value="Em Andamento">Enviada</SelectItem>
                       {/* "Concluído" só p/ artesanal (valor fixo). OS por par conclui
                           pelo botão "Entregue" (registra pares bons/defeito) pra a
                           conta a pagar não sair pelo valor cheio. */}
                       {(isArtisanal || editingOrder.status === 'Concluído') && (
-                        <SelectItem value="Concluído">Concluído</SelectItem>
+                        <SelectItem value="Concluído">Recebida</SelectItem>
                       )}
-                      <SelectItem value="Cancelado">Cancelado</SelectItem>
+                      <SelectItem value="Cancelado">Cancelada</SelectItem>
                     </SelectContent>
                   </Select>
                   {!isArtisanal && editingOrder.status !== 'Concluído' && (
@@ -2917,6 +2849,32 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       {bulkReceivable.some(o => o.dispatch_tracked) && ' OS divididas entre prestadores serão puladas.'}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
+
+                  {/* O que será efetivamente cobrado, por prestador. */}
+                  {bulkReceivePreview.rows.length > 0 && (
+                    <div className="rounded-md border border-border bg-muted/30 p-3 text-xs">
+                      <div className="mb-1.5 font-semibold uppercase tracking-wider text-muted-foreground text-[10px]">
+                        Será lançado
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {bulkReceivePreview.rows.map(r => (
+                          <div key={r.name} className="flex items-baseline justify-between gap-3">
+                            <span className="truncate">{r.name} <span className="text-muted-foreground">· {r.os} OS · {r.pairs} pares</span></span>
+                            <span className="font-mono font-semibold tabular-nums">{formatCurrency(r.value)}</span>
+                          </div>
+                        ))}
+                        <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-1 font-semibold">
+                          <span>Total</span>
+                          <span className="font-mono tabular-nums">{formatCurrency(bulkReceivePreview.total)}</span>
+                        </div>
+                      </div>
+                      {bulkReceivePreview.skipped > 0 && (
+                        <p className="mt-1.5 text-[11px] text-muted-foreground">
+                          {bulkReceivePreview.skipped} OS serão puladas (divididas entre prestadores ou sem saldo na rua).
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
                     <AlertDialogAction onClick={() => {
