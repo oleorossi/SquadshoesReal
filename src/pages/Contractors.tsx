@@ -179,11 +179,36 @@ function OsBalanceLine({ ov }: { ov?: ServiceOrderOverview }) {
   const loss = Number(ov.qty_loss ?? 0);
   const inField = Number(ov.qty_in_field ?? 0);
   const returned = good + defect + loss;
-  if (sent <= 0 || returned <= 0 || inField <= 0) return null; // sem parcial em aberto
+  const rework = Number((ov as any).qty_defect_pending_rework ?? 0);
+  const short = Number((ov as any).qty_short ?? 0);
+  // Defeito e perda precisam aparecer MESMO com a OS sem saldo na rua: são
+  // justamente os casos em que o par sumiu do controle (voltou com defeito ou
+  // se perdeu no prestador) e alguém precisa decidir retrabalho ou reposição.
+  if (sent <= 0 || returned <= 0) return null;
+  if (inField <= 0 && rework <= 0 && short <= 0) return null;
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400" title={`Bons ${good} · Defeito ${defect} · Perda ${loss}`}>
-      <Package className="h-3 w-3" />
-      Devolvido {returned}/{sent} · {inField} na rua
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+      {inField > 0 && (
+        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"
+              title={`Bons ${good} · Defeito ${defect} · Perda ${loss}`}>
+          <Package className="h-3 w-3" />
+          Devolvido {returned}/{sent} · {inField} na rua
+        </span>
+      )}
+      {rework > 0 && (
+        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"
+              title="Pares com defeito aguardando retrabalho — podem ser enviados de volta ao prestador">
+          <ArrowRight className="h-3 w-3" />
+          {rework} p/ retrabalho
+        </span>
+      )}
+      {short > 0 && (
+        <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-400"
+              title="Perda no prestador + sucata: a OS não entrega essa quantidade sem repor material">
+          <AlertTriangle className="h-3 w-3" />
+          {short} a repor
+        </span>
+      )}
     </span>
   );
 }

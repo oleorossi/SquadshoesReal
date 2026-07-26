@@ -161,6 +161,10 @@ export interface ServiceOrderOverview {
   qty_returned_defect: number | null;
   qty_loss: number | null;
   qty_in_field: number | null;
+  /** Defeito que ainda pode voltar ao prestador (não sucateado). */
+  qty_defect_pending_rework?: number | null;
+  /** Perda + sucata: o que a OS não entrega sem reposição de material. */
+  qty_short?: number | null;
   last_return_at: string | null;
 }
 
