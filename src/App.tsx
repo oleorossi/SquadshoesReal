@@ -113,6 +113,7 @@ const PCPHub = lazy(() => import("./pages/PCPHub"));
 // diretos no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
 const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
 const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
+const ProducaoKanbanGestao = lazy(() => import("./pages/ProducaoKanbanGestao"));
 const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
 const ProducaoSetoresConfig = lazy(() => import("./pages/ProducaoSetoresConfig"));
 const ProducaoApontamento = lazy(() => import("./pages/Setores"));
@@ -529,6 +530,23 @@ const router = createBrowserRouter([
       <Suspense fallback={<InlinePageLoader />}>
         <DesignPreview />
       </Suspense>
+    ),
+    errorElement: <RouteErrorFallback />,
+  },
+  {
+    // Central de Produção — o Kanban como "programa dedicado de gestão":
+    // TELA CHEIA fora do AppLayout (sem sidebar/tabs), pro analista deixar
+    // aberta num monitor. Permissão herda de /producao/kanban: o RouteGuard
+    // resolve o módulo pelo prefixo e o owner de menu é o próprio item Kanban.
+    path: "/producao/kanban/gestao",
+    element: (
+      <ProtectedRoute>
+        <Suspense fallback={<PageLoader />}>
+          <RouteGuard>
+            <ProducaoKanbanGestao />
+          </RouteGuard>
+        </Suspense>
+      </ProtectedRoute>
     ),
     errorElement: <RouteErrorFallback />,
   },
