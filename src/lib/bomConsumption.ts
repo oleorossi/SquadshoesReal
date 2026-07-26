@@ -236,6 +236,24 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     }
   }
 
+  // Padrões GLOBAIS por cor (component_color_defaults) — regra por GRUPO, não
+  // por ficha: (group_id::corNormalizada) → product_id; linha is_default vira a
+  // chave catch-all (group_id::*). Regra exata vence o default. Espelha o
+  // lookup SQL do by_grade (mig 20260928121000) e o motor canônico
+  // (orderConsumption.ts).
+  const componentColorDefaultMap = new Map<string, string>();
+  {
+    const { data: componentColorDefaults } = await (supabase as any)
+      .from('component_color_defaults')
+      .select('group_id, cabedal_color, product_id, is_default')
+      .eq('active', true);
+    for (const d of (componentColorDefaults || []) as any[]) {
+      if (!d.group_id || !d.product_id) continue;
+      const key = d.is_default ? `${d.group_id}::*` : `${d.group_id}::${normalizeColorKey(d.cabedal_color)}`;
+      componentColorDefaultMap.set(key, d.product_id);
+    }
+  }
+
   // Cor do FORRO mapeada por cor do cabedal — usada pela linha de Fachete
   // (paridade com o motor canônico; as demais linhas seguem com a cor do pedido).
   const liningColorMap = new Map<string, string>();
@@ -893,17 +911,40 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (stdCoveredProductIds.has(pid)) continue;
       const prod = (allProducts || []).find((p: any) => p.id === pid);
       if (!prod) continue;
+      // Padrão GLOBAL por cor (component_color_defaults, mig 20260928121000):
+      // só no fallback de direct_components (lista por-cor da ficha VENCE) e
+      // com cor não-vazia, regra do grupo (exata > default) troca o SKU
+      // mantendo a quantidade da ficha. Entradas que colapsam no mesmo SKU
+      // somam via addConsumptionRow. Regra pra produto inativo não resolve
+      // (allProducts só tem ativos) → mantém o original com aviso.
+      let effectiveProd = prod as any;
+      let ruleWarning: string | undefined;
+      if (!usedPerColorComponents && hasOrderColor && (prod as any).group_id) {
+        const rulePid = componentColorDefaultMap.get(`${(prod as any).group_id}::${normalizeColorKey(orderColor)}`)
+          ?? componentColorDefaultMap.get(`${(prod as any).group_id}::*`);
+        if (rulePid) {
+          const ruleProd = (allProducts || []).find((p: any) => p.id === rulePid);
+          if (ruleProd) {
+            effectiveProd = ruleProd as any;
+          } else {
+            ruleWarning = 'Regra global de cor do grupo aponta produto inativo/apagado — usando o componente original da ficha. Corrija em Fichas Técnicas → Padrões por Cor.';
+          }
+        }
+      }
+      // Cobre o pid original E o resolvido (dedup dc↔BOM — espelha o motor
+      // canônico e o v_covered do SQL).
       directProductIds.add(pid);
-      const dcGroupName = groupNameById((prod as any).group_id)
-        || (dc as any)?.product_name || (prod as any).name || 'Componente';
+      directProductIds.add(effectiveProd.id);
+      const dcGroupName = groupNameById(effectiveProd.group_id)
+        || (dc as any)?.product_name || effectiveProd.name || 'Componente';
       addConsumptionRow(consumptionMap, {
-        componentType: classifyBomMaterial(dcGroupName, (prod as any).name || '', ''),
+        componentType: classifyBomMaterial(dcGroupName, effectiveProd.name || '', ''),
         groupName: dcGroupName,
-        materialName: (prod as any).name || (dc as any)?.product_name || 'Componente',
-        productUnit: (prod as any).unit || (dc as any)?.unit || 'un',
-        color: (prod as any).color || '—',
+        materialName: effectiveProd.name || (dc as any)?.product_name || 'Componente',
+        productUnit: effectiveProd.unit || (dc as any)?.unit || 'un',
+        color: effectiveProd.color || '—',
         totalQuantity: qtyPerPair * itemQuantity,
-        warning: unmappedColorWarning,
+        warning: ruleWarning || unmappedColorWarning,
       });
     }
 

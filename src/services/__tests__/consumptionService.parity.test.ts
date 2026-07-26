@@ -46,7 +46,11 @@ const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
       // (migration 20260910170000: enum_sem_coercao_texto varre funções vivas
       // atrás de COALESCE/= '' sobre coluna enum, e 2 smokes que EXECUTAM o
       // motor de consumo e a resolução de solado — quebra de RUNTIME que os
-      // cases estruturais não pegam). Total vivo: 18.
+      // cases estruturais não pegam) + 2 de padrão GLOBAL por cor no by_grade
+      // (migration 20260928121000: component_color_defaults aplicado no
+      // fallback de direct_components, com lookup normalizado via
+      // extensions.unaccent). Total vivo: 22 (conferido no banco em 2026-07-26,
+      // todos ok — a base pré-padrão-global tinha 20).
       expect(rows.length).toBeGreaterThanOrEqual(13);
     });
   },

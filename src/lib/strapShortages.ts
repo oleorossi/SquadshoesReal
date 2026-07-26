@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeColorKey } from '@/lib/materialConsumption';
 
 /**
  * Detecta tiras com estoque insuficiente para um PV específico.
@@ -141,16 +142,39 @@ export async function detectStrapShortagesForSaleOrder(
     .eq('active', true);
   if (prodErr) throw prodErr;
   const productByKey = new Map<string, any>();
+  const productById = new Map<string, any>();
   for (const p of (products || []) as any[]) {
     const key = `${p.group_id}::${(p.color || '').toUpperCase().trim()}`;
     productByKey.set(key, p);
+    productById.set(p.id, p);
+  }
+
+  // Padrões GLOBAIS por cor (component_color_defaults) — prioridade 0 na
+  // resolução da tira, espelhando order_strap_needs/debit_strap_stock (mig
+  // 20260929120000): regra exata > default; como `products` já vem filtrado
+  // por grupo+ativo, regra apontando produto de outro grupo/inativo não
+  // resolve e cai na cascata por cor (mesmo guard do SQL).
+  const ruleByKey = new Map<string, string>();
+  {
+    const { data: strapRules } = await (supabase as any)
+      .from('component_color_defaults')
+      .select('group_id, cabedal_color, product_id, is_default')
+      .eq('active', true)
+      .in('group_id', groupIds);
+    for (const d of (strapRules || []) as any[]) {
+      if (!d.group_id || !d.product_id) continue;
+      const key = d.is_default ? `${d.group_id}::*` : `${d.group_id}::${normalizeColorKey(d.cabedal_color)}`;
+      ruleByKey.set(key, d.product_id);
+    }
   }
 
   // 3) Calcula shortage por candidate
   const shortages: StrapShortage[] = [];
   for (const c of candidates) {
     const key = `${c.group_id}::${c.strap_color.toUpperCase().trim()}`;
-    const prod = productByKey.get(key);
+    const rulePid = ruleByKey.get(`${c.group_id}::${normalizeColorKey(c.strap_color)}`)
+      ?? ruleByKey.get(`${c.group_id}::*`);
+    const prod = (rulePid ? productById.get(rulePid) : undefined) ?? productByKey.get(key);
     const available = prod ? Math.max(0, Number(prod.quantity || 0) - Number(prod.reserved_stock || 0)) : 0;
     // consumption_per_pair está em CM/par (igual a ficha/backend); o estoque do
     // produto-tira está em METROS. Sem o ÷100, required saía ~100× inflado e o

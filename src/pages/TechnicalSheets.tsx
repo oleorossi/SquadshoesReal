@@ -133,7 +133,7 @@
  }
  
 import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -178,6 +178,7 @@ import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSole
  import { usePalmilhaColorMappings, useUpsertPalmilhaColorMapping, PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
  import { useLiningColorMappings, useUpsertLiningColorMapping, LINING_DEFAULT_KEY } from '@/hooks/useLiningColorMappings';
  import { useComponentColorMappings, useAddComponentColorRow, useUpdateComponentColorRow, useDeleteComponentColorRow } from '@/hooks/useComponentColorMappings';
+ import { useComponentColorDefaults } from '@/hooks/useComponentColorDefaults';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useProducts } from '@/hooks/useProducts';
 import { useReadyStock } from '@/hooks/useReadyStock';
@@ -458,6 +459,17 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           actions={
             <>
               <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />
+              <Button
+                variant="outline"
+                asChild
+                className="gap-2"
+                title="Regras globais de componente/tira por cor (grupo + cor do pedido → produto padrão), valendo pra todos os modelos"
+              >
+                <Link to="/fichas-tecnicas/padroes">
+                  <Palette className="h-4 w-4" />
+                  <span className="hidden sm:inline">Padrões por Cor</span>
+                </Link>
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleBulkApplySoleSettings}
@@ -3418,6 +3430,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   products={products}
                   groups={groups}
                   mappings={componentColorMappings}
+                  directComponents={Array.isArray(form.direct_components) ? form.direct_components : []}
                   addRow={addComponentColorRow}
                   updateRow={updateComponentColorRow}
                   deleteRow={deleteComponentColorRow}
@@ -4828,17 +4841,22 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
    /* ===== Component Color Mapping Panel (cor predominante → lista de componentes) =====
       Opt-in (technical_sheets.component_colors_enabled). Cada cor lista a lista COMPLETA
       de componentes; reusa DirectComponentSelect (grupo → produto) + NumberInput. */
-   function ComponentColorMappingPanel({ sheetId, corPredominanteId, products, groups, mappings, addRow, updateRow, deleteRow, onSetPredominante }: {
+   function ComponentColorMappingPanel({ sheetId, corPredominanteId, products, groups, mappings, directComponents, addRow, updateRow, deleteRow, onSetPredominante }: {
      sheetId: string;
      corPredominanteId: string | null;
      products: any[];
      groups: any[];
      mappings: any[];
+     /** direct_components da ficha (form) — base pra mostrar quais cores são
+      *  cobertas por regra GLOBAL (component_color_defaults) sem lista própria. */
+     directComponents?: any[];
      addRow: any;
      updateRow: any;
      deleteRow: any;
      onSetPredominante: (groupId: string) => void;
    }) {
+     // Regras GLOBAIS por cor — badge informativo por cor sem lista própria.
+     const { data: globalColorRules = [] } = useComponentColorDefaults();
      const cabedelColors = useMemo(() => {
        if (!corPredominanteId) return [];
        const groupProducts = products.filter((p: any) => p.active && p.group_id === corPredominanteId);
@@ -4873,7 +4891,37 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
        return m;
      }, [mappings]);
 
+     // Cores SEM lista própria cobertas por regra GLOBAL (component_color_defaults):
+     // pra cada grupo usado nos direct_components da ficha, regra exata da cor >
+     // default do grupo. Mostra badge informativo — a regra age no motor de
+     // consumo sem precisar configurar nada aqui.
+     const globalRuleCoverage = useMemo(() => {
+       const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+       const dcGroupIds = new Set<string>();
+       for (const dc of directComponents || []) {
+         const p = products.find((x: any) => x.id === dc?.product_id);
+         if (p?.group_id) dcGroupIds.add(p.group_id);
+       }
+       const m = new Map<string, string[]>();
+       if (dcGroupIds.size === 0) return m;
+       for (const colorName of cabedelColors) {
+         const names: string[] = [];
+         for (const gid of dcGroupIds) {
+           const exact = globalColorRules.find(r => r.active && !r.is_default && r.group_id === gid && norm(r.cabedal_color) === norm(colorName));
+           const rule = exact || globalColorRules.find(r => r.active && r.is_default && r.group_id === gid);
+           if (rule) {
+             const p = products.find((x: any) => x.id === rule.product_id);
+             if (p?.name) names.push(p.name);
+           }
+         }
+         if (names.length > 0) m.set(colorName.toLowerCase(), names);
+       }
+       return m;
+     }, [directComponents, products, cabedelColors, globalColorRules]);
+
      const configuredCount = cabedelColors.filter(c => (byColor.get(c.toLowerCase()) || []).length > 0).length;
+     const ruleCoveredCount = cabedelColors.filter(c =>
+       (byColor.get(c.toLowerCase()) || []).length === 0 && globalRuleCoverage.has(c.toLowerCase())).length;
      const ready = !!corPredominanteId && cabedelColors.length > 0;
 
      return (
@@ -4881,7 +4929,11 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
          <div className="flex items-center gap-2">
            <Wand2 className="h-4 w-4 text-primary" />
            <h4 className="text-sm font-bold">Componentes por Cor</h4>
-           {ready && <Badge variant="outline" className="text-xs ml-auto">{configuredCount}/{cabedelColors.length} configuradas</Badge>}
+           {ready && (
+             <Badge variant="outline" className="text-xs ml-auto">
+               {configuredCount}/{cabedelColors.length} configuradas{ruleCoveredCount > 0 ? ` · ${ruleCoveredCount} por regra global` : ''}
+             </Badge>
+           )}
          </div>
 
          {/* Grupo de cor predominante — fonte das cores do modelo (ex.: o material do
@@ -4921,7 +4973,18 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                    <Badge variant="secondary" className="text-[10px] ml-auto">{rows.length} {rows.length === 1 ? 'item' : 'itens'}</Badge>
                  </div>
                  {rows.length === 0 && (
-                   <p className="text-[11px] text-muted-foreground italic">Sem componentes próprios — usa a lista padrão acima.</p>
+                   globalRuleCoverage.has(colorName.toLowerCase()) ? (
+                     <div className="space-y-1">
+                       <Badge variant="secondary" className="text-[10px]">
+                         padrão global: {globalRuleCoverage.get(colorName.toLowerCase())!.join(' · ')}
+                       </Badge>
+                       <p className="text-[11px] text-muted-foreground italic">
+                         Cor coberta por regra global (Padrões por Cor) — o consumo troca o SKU automaticamente; a quantidade segue a lista padrão.
+                       </p>
+                     </div>
+                   ) : (
+                     <p className="text-[11px] text-muted-foreground italic">Sem componentes próprios — usa a lista padrão acima.</p>
+                   )
                  )}
                  {rows.map((r: any) => {
                    const prod = products.find((p: any) => p.id === r.product_id);
