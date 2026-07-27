@@ -16,6 +16,7 @@ import {
 } from '@/hooks/useProductionEngine';
 import { useAllOrderStages, useApontarProducao, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
+import { useReferenceThumbs } from '@/hooks/useReferenceThumbs';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
@@ -43,6 +44,8 @@ export default function ProducaoKanbanGestao() {
   const orderIds = useMemo(() => queue.map(q => q.order_id), [queue]);
   const { data: allStages = [], isLoading: stagesLoading } = useAllOrderStages(orderIds);
   const { data: todayGrid = [] } = useProductionScheduleGrid(todayISO(), todayISO());
+  // Foto da referência: a view manda reference_photo_url vazio (ver o hook)
+  const { data: refThumbs } = useReferenceThumbs(queue.map(q => q.reference_id));
   const apontar = useApontarProducao();
   const canEdit = useCan('/producao/kanban').canEdit;
   // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
@@ -483,6 +486,7 @@ export default function ProducaoKanbanGestao() {
                       <KanbanOpCard
                         card={card}
                         compact
+                        photoUrl={refThumbs?.get(card.q.reference_id || '') || null}
                         draggable={canEdit && !selectMode}
                         dragging={dragCard?.q.order_id === card.q.order_id}
                         dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}

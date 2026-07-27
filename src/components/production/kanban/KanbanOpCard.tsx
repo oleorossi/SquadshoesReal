@@ -23,17 +23,21 @@ interface Props {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Foto da referência resolvida por `useReferenceThumbs` (a view manda
+   *  `reference_photo_url` vazio — ver o hook). Cai pro campo da view quando
+   *  ausente, então o card funciona mesmo se a view for corrigida no futuro. */
+  photoUrl?: string | null;
 }
 
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
   compact = false, dimmed = false, highlighted = false,
-  selectable = false, selected = false, onToggleSelect,
+  selectable = false, selected = false, onToggleSelect, photoUrl,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage } = card;
   const total = columnStage?.quantity_total || q.quantity;
   const thumbSize = compact ? 32 : 40;
-  const thumb = thumbUrl(q.reference_photo_url, thumbSize);
+  const thumb = thumbUrl(photoUrl || q.reference_photo_url, thumbSize);
   return (
     <Card
       className={`${compact ? 'p-2' : 'p-2.5'} cursor-pointer select-none transition-all hover:shadow-md ${dragging ? 'opacity-40' : ''} ${
@@ -85,8 +89,12 @@ export function KanbanOpCard({
               </Badge>
             )}
           </div>
-          <p className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-muted-foreground truncate`}>
-            {q.reference_name || '—'}{q.color ? ` · ${q.color}` : ''}
+          {/* Referência em VERMELHO (pedido do dono 2026-10-01): é o dado que
+              o operador procura primeiro no card. A cor fica só na referência —
+              a cor do produto segue em muted pra não competir. */}
+          <p className={`${compact ? 'text-[10px]' : 'text-[11px]'} truncate`}>
+            <span className="font-semibold text-primary">{q.reference_name || '—'}</span>
+            {q.color ? <span className="text-muted-foreground"> · {q.color}</span> : null}
           </p>
           <div className="mt-1 flex items-center justify-between">
             <span className={`font-mono ${compact ? 'text-[11px]' : 'text-xs'} font-bold ${isPartial ? 'text-amber-600 dark:text-amber-400' : ''}`}>
