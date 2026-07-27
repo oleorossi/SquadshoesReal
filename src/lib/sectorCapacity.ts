@@ -349,7 +349,8 @@ export interface ParallelWindow {
 }
 
 export type ParallelWindows = Record<
-  'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk'
+  'corte_palmilha' | 'corte_forracao' | 'costura_palmilha' | 'costura_cabedal'
+  | 'mesa' | 'silk'
   | 'colagem' | 'montagem' | 'solagem' | 'acabamento',
   ParallelWindow
 >;
@@ -365,7 +366,10 @@ export function computeParallelWindows(
   const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, categoryDefaults);
   const ltColagem  = hasSectorPub(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, categoryDefaults) : 0;
   const ltSilk     = hasSectorPub(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, categoryDefaults) : 0;
-  const ltCostura  = hasSectorPub(sheet, 'Costura') ? computeSectorLeadTimeDays('costura', qty, sheet, categoryDefaults) : 0;
+  const ltCostPalm = hasSectorPub(sheet, 'Costura Palmilha')
+    ? computeSectorLeadTimeDays('costura_palmilha', qty, sheet, categoryDefaults) : 0;
+  const ltCostCab  = hasSectorPub(sheet, 'Costura Cabedal')
+    ? computeSectorLeadTimeDays('costura_cabedal', qty, sheet, categoryDefaults) : 0;
   const ltMesa     = (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento'))
     ? computeSectorLeadTimeDays('mesa', qty, sheet, categoryDefaults) : 0;
   const ltForracao = hasSectorPub(sheet, 'Corte Forração') ? computeSectorLeadTimeDays('corte_forracao', qty, sheet, categoryDefaults) : 0;
@@ -378,7 +382,8 @@ export function computeParallelWindows(
   // é idêntico ao antigo (só a ficha).
   const capPalmilha = getEffectiveCapacityPerDay('corte_palmilha', sheet, categoryDefaults);
   const capForracao = getEffectiveCapacityPerDay('corte_forracao', sheet, categoryDefaults);
-  const capCostura  = getEffectiveCapacityPerDay('costura',        sheet, categoryDefaults);
+  const capCostPalm = getEffectiveCapacityPerDay('costura_palmilha', sheet, categoryDefaults);
+  const capCostCab  = getEffectiveCapacityPerDay('costura_cabedal',  sheet, categoryDefaults);
   const capMesa     = getEffectiveCapacityPerDay('mesa',           sheet, categoryDefaults);
   const capSilk     = getEffectiveCapacityPerDay('silk',           sheet, categoryDefaults);
   const capColagem  = getEffectiveCapacityPerDay('colagem',        sheet, categoryDefaults);
@@ -396,23 +401,30 @@ export function computeParallelWindows(
   const colaStart  = addBusinessDays(colaEnd,    -ltColagem);
   const silkEnd    = colaStart;
   const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
-  // Prep PARALELO: Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura — todos
-  // terminam em silkStart (início da cadeia sequencial) com SEU lead. Costura e
-  // Aviamento são paralelos (decisão do dono 2026-06-28; antes Costura era
-  // sequencial). Espelha compute_wave_timeline (migration costura-parallel-prep).
-  const costuraEnd   = silkStart;
-  const costuraStart = addBusinessDays(costuraEnd, -ltCostura);
-  const palmEnd    = silkStart;
+  // Prep em DOIS blocos paralelos (fluxo descrito pelo dono 2026-10-01):
+  //   bloco 2 — Costura Palmilha ‖ Costura Cabedal ‖ Aviamento
+  //   bloco 1 — Corte Palmilha ‖ Corte Forração   (antes do bloco 2)
+  // Cada bloco termina junto; o bloco 1 termina quando o 2 começa. Antes os 4
+  // começavam juntos (Costura era prep ao lado dos cortes) — o que adiantava
+  // a costura pra antes do corte existir.
+  const costPalmEnd   = silkStart;
+  const costPalmStart = addBusinessDays(costPalmEnd, -ltCostPalm);
+  const costCabEnd    = silkStart;
+  const costCabStart  = addBusinessDays(costCabEnd,  -ltCostCab);
+  const mesaEnd       = silkStart;
+  const mesaStart     = addBusinessDays(mesaEnd,     -ltMesa);
+  // Início do bloco 2 = o mais cedo entre os três (quem tem o maior lead manda)
+  const bloco2Start = new Date(Math.min(costPalmStart.getTime(), costCabStart.getTime(), mesaStart.getTime()));
+  const palmEnd    = bloco2Start;
   const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
-  const forrEnd    = silkStart;
+  const forrEnd    = bloco2Start;
   const forrStart  = addBusinessDays(forrEnd,    -ltForracao);
-  const mesaEnd    = silkStart;
-  const mesaStart  = addBusinessDays(mesaEnd,    -ltMesa);
 
   return {
     corte_palmilha: { start: palmStart,    end: palmEnd,    cap: capPalmilha, required: hasSectorPub(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
     corte_forracao: { start: forrStart,    end: forrEnd,    cap: capForracao, required: hasSectorPub(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
-    costura:        { start: costuraStart, end: costuraEnd, cap: capCostura,  required: hasSectorPub(sheet, 'Costura') },
+    costura_palmilha: { start: costPalmStart, end: costPalmEnd, cap: capCostPalm, required: hasSectorPub(sheet, 'Costura Palmilha') },
+    costura_cabedal:  { start: costCabStart,  end: costCabEnd,  cap: capCostCab,  required: hasSectorPub(sheet, 'Costura Cabedal') },
     mesa:           { start: mesaStart,    end: mesaEnd,    cap: capMesa,     required: (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento')) && capMesa > 0 },
     silk:           { start: silkStart,    end: silkEnd,    cap: capSilk,     required: hasSectorPub(sheet, 'Silk') && capSilk > 0 },
     colagem:        { start: colaStart,    end: colaEnd,    cap: capColagem,  required: hasSectorPub(sheet, 'Colagem') && capColagem > 0 },
@@ -458,7 +470,11 @@ export interface ForwardSchedule {
   steps: ForwardSectorStep[];   // só os setores requeridos, na ordem do fluxo
 }
 
-const FORWARD_PREP: SectorKey[] = ['corte_palmilha', 'corte_forracao', 'mesa', 'costura'];
+// Fluxo do dono (2026-10-01): os dois CORTES abrem em paralelo; quando o
+// último fecha, começam as duas COSTURAS e o AVIAMENTO, também em paralelo;
+// só então a cadeia sequencial. Antes os 4 começavam juntos.
+const FORWARD_CORTES: SectorKey[] = ['corte_palmilha', 'corte_forracao'];
+const FORWARD_COSTURA_AVIAMENTO: SectorKey[] = ['costura_palmilha', 'costura_cabedal', 'mesa'];
 const FORWARD_SEQ: SectorKey[] = ['silk', 'colagem', 'montagem', 'solagem', 'acabamento', 'expedicao'];
 
 /** YYYY-MM-DD (data local) — reusa o helper local. */
@@ -488,12 +504,21 @@ export function computeForwardSchedule(
     steps.push({ key: k, label: SECTOR_LABELS[k] ?? k, startISO: fwdISO(start), endISO: fwdISO(end), leadDays: ld, required: true });
   };
 
-  // Prep paralelo: todos começam em startDate.
-  let convergence = new Date(startDate);
-  for (const k of FORWARD_PREP) {
+  // Bloco 1 — os dois cortes, paralelos, começando na data de início.
+  let cortesEnd = new Date(startDate);
+  for (const k of FORWARD_CORTES) {
     const ld = lead(k);
     const end = addBusinessDays(startDate, ld);
     pushStep(k, startDate, end, ld);
+    if (required(k) && end.getTime() > cortesEnd.getTime()) cortesEnd = end;
+  }
+
+  // Bloco 2 — costuras ‖ aviamento, paralelos, a partir do fim dos cortes.
+  let convergence = new Date(cortesEnd);
+  for (const k of FORWARD_COSTURA_AVIAMENTO) {
+    const ld = lead(k);
+    const end = addBusinessDays(cortesEnd, ld);
+    pushStep(k, cortesEnd, end, ld);
     if (required(k) && end.getTime() > convergence.getTime()) convergence = end;
   }
 
@@ -508,7 +533,7 @@ export function computeForwardSchedule(
   }
 
   // Ordena os steps na ordem canônica do fluxo (prep primeiro, depois seq).
-  const order = [...FORWARD_PREP, ...FORWARD_SEQ];
+  const order = [...FORWARD_CORTES, ...FORWARD_COSTURA_AVIAMENTO, ...FORWARD_SEQ];
   steps.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
 
   const finish = steps.length > 0 ? cursor : new Date(startDate);

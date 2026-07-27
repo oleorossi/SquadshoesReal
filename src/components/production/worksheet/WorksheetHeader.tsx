@@ -38,23 +38,23 @@ interface Props {
   sizeBand?: SizeBand;
 }
 
-/** Trilho do fluxo (10 setores canônicos) — wayfinding no topo da ficha.
+/** Trilho do fluxo (11 setores canônicos) — wayfinding no topo da ficha.
  *  Print-safe P&B: passos cumpridos = quadrado PREENCHIDO, atual = quadrado
  *  preenchido com nº (white-on-black) e contorno duplo, pendentes = contorno.
  *  (Sem cor — a fábrica imprime laser P&B; vermelho viraria cinza.) */
-const FLOW_RAIL_STEPS = ['C.PLM', 'C.FOR', 'COST', 'AVIA', 'SILK', 'COLA', 'MONT', 'SOLA', 'ACAB', 'EXP'] as const;
+const FLOW_RAIL_STEPS = ['C.PLM', 'C.FOR', 'CS.PLM', 'CS.CAB', 'AVIA', 'SILK', 'COLA', 'MONT', 'SOLA', 'ACAB', 'EXP'] as const;
 
 /** Cor-assinatura por setor (MESMA ordem do fluxo 1–10) — escolha do dono
  *  2026-06-30: cada setor tem uma cor pra reconhecer a ficha de longe e não
  *  confundir. Aplicada SÓ na faixa do topo + nome do setor (decisão "barata":
  *  se imprimir em P&B a faixa vira cinza e nada de conteúdo se perde). */
 const SECTOR_COLORS = [
-  '#2563eb', '#0d9488', '#4f46e5', '#d97706', '#7c3aed',
-  '#0891b2', '#dc2626', '#16a34a', '#db2777', '#475569',
+  '#2563eb', '#0d9488', '#4f46e5', '#7c3aed', '#d97706',
+  '#9333ea', '#0891b2', '#dc2626', '#16a34a', '#db2777', '#475569',
 ] as const;
 
 const FlowRail = ({ current }: { current: number }) => (
-  <div className="flex items-stretch gap-[3px] mb-0.5" aria-label={`Setor ${current} de 10 no fluxo`}>
+  <div className="flex items-stretch gap-[3px] mb-0.5" aria-label={`Setor ${current} de 11 no fluxo`}>
     {FLOW_RAIL_STEPS.map((label, i) => {
       const step = i + 1;
       const done = step < current;
@@ -114,7 +114,7 @@ export const WorksheetHeader = ({
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
   // Passo do fluxo (1–10) pro trilho: lê o nº à frente do index ("03 / SILK" → 3).
   const flowStep = parseInt(editorialIndex, 10);
-  const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 10;
+  const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 11;
   // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo 1–10 → preto.
   const sectorColor = hasFlow ? SECTOR_COLORS[flowStep - 1] : '#000';
   return (

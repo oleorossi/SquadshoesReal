@@ -9,6 +9,9 @@
 /** Grafia legada → canônica (rows antigas e caminhos de escrita antigos). */
 const STAGE_ALIASES: Record<string, string> = {
   Mesa: 'Aviamento',
+  // A 'Costura' única virou dois setores (migration 20261001120000). O legado
+  // resolve pra PALMILHA — era o que a etapa única representava em toda ficha.
+  Costura: 'Costura Palmilha',
 };
 
 export function canonicalStageName(name: string): string {
@@ -22,16 +25,25 @@ export function sameStage(a: string, b: string): boolean {
 }
 
 /**
- * Pré-requisitos por setor (DAG). Setores prep são paralelos (array vazio);
- * setor desconhecido (legacy não mapeado) = sem bloqueio, igual ao guard.
+ * Pré-requisitos por setor (DAG). Setores sem pré-requisito são paralelos
+ * (array vazio); setor desconhecido (legacy não mapeado) = sem bloqueio,
+ * igual ao guard.
+ *
+ * ⚠ A ordem "cortes primeiro, depois costura ‖ aviamento" (dono, 2026-10-01)
+ * vive no PLANEJAMENTO (sector_settings.parallel_group + cascata de datas),
+ * NÃO como bloqueio aqui: o chão de fábrica sempre pôde apontar costura sem
+ * o corte fechado, e quem avisa sobre isso é o aviso confirmável
+ * `limite_setor_anterior`. Endurecer viraria mudança de comportamento.
+ * As duas costuras são independentes entre si — nenhuma bloqueia a outra.
  */
 export const STAGE_DAG: Record<string, string[]> = {
   'Corte Palmilha': [],
   'Corte Forração': [],
+  'Costura Palmilha': [],
+  'Costura Cabedal': [],
   'Aviamento': [],
   'Silk': [],
-  'Costura': [],
-  'Colagem': ['Corte Palmilha', 'Costura'],
+  'Colagem': ['Corte Palmilha', 'Costura Palmilha', 'Costura Cabedal'],
   'Montagem': ['Colagem'],
   'Solagem': ['Montagem'],
   'Acabamento': ['Solagem'],

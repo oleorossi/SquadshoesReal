@@ -11,10 +11,12 @@ import { SubmitFlowStepper } from './SubmitFlowStepper';
 import { useAccessControl } from '@/hooks/useAccessControl';
 
 const SECTOR_ICONS: Record<SectorKey, React.ComponentType<any>> = {
-  corte_palmilha: Scissors,
-  corte_forracao: Layers,
-  mesa:           LayoutGrid,
-  costura:        Pen,
+  corte_palmilha:   Scissors,
+  corte_forracao:   Layers,
+  mesa:             LayoutGrid,
+  costura_palmilha: Pen,
+  costura_cabedal:  Pen,
+  costura:          Pen,
   silk:           Paintbrush,
   colagem:        Wind,
   montagem:       Hammer,

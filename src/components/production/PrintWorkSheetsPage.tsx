@@ -3105,14 +3105,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
           // se aplicam a ele — antes ambos exibiam todas as cores, inflando
           // os números pra cortador.
           // Setor de FICHA → setor testado no roteiro (production_sectors).
-          // Os dois setores de Costura (2026-06-12) são camada de impressão:
-          // 'Costura Palmilha' testa o setor 'Costura' do fluxo; 'Costura
-          // Cabedal' testa 'Corte Cabedal' (+ upper_corte_a_fio=false via
-          // requiresUpperSewing abaixo).
-          const roteiroSectorFor = (sector: GroupedSector): string =>
-            sector === 'Costura Palmilha' ? 'Costura'
-            : sector === 'Costura Cabedal' ? 'Corte Cabedal'
-            : sector;
+          // Desde a divisão da costura em setores de fluxo reais (2026-10-01,
+          // migration 20261001120000) o mapeamento é IDENTIDADE: 'Costura
+          // Palmilha' e 'Costura Cabedal' existem no roteiro da ficha. Antes
+          // eram camada só de impressão e precisavam de proxy ('Costura' e
+          // 'Corte Cabedal'), o que fazia a ficha de Costura Cabedal sair pra
+          // modelo errado. `sheetHasSector` ainda resolve o legado 'Costura'
+          // pra palmilha, então ficha não migrada continua imprimindo.
+          const roteiroSectorFor = (sector: GroupedSector): string => sector;
 
           const filterGroupForSector = (group: SoleSilkGroup, sector: GroupedSector): SoleSilkGroup | null => {
             // B1: exclui colorGroups cujas OPs NÃO têm o setor no roteiro

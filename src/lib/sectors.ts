@@ -14,10 +14,13 @@
  */
 
 export type SectorKey =
-  | 'corte_palmilha' | 'corte_forracao' | 'costura' | 'mesa' | 'silk'
+  | 'corte_palmilha' | 'corte_forracao'
+  | 'costura_palmilha' | 'costura_cabedal'
+  | 'mesa' | 'silk'
   | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
-  // legacy alias — 'corte' foi renomeado para corte_palmilha (pré PR1)
-  | 'corte';
+  // legacy aliases — 'corte' virou corte_palmilha (pré PR1) e a 'costura'
+  // única virou os dois setores acima (migration 20261001120000).
+  | 'corte' | 'costura';
 
 /**
  * Normalização nome-de-exibição → enum canônico. Cobre as grafias atuais
@@ -32,7 +35,12 @@ export const SECTOR_NORMALIZE: Record<string, SectorKey> = {
   'corte forracao': 'corte_forracao',
   'aviamento':      'mesa',
   'mesa':           'mesa',
-  'costura':        'costura',
+  // Costura dividida em dois setores paralelos (2026-10-01). O legado
+  // 'costura' resolve pra PALMILHA: era ela que a etapa única representava em
+  // toda ficha (a de cabedal é opt-in por ficha, ver a migration).
+  'costura palmilha': 'costura_palmilha',
+  'costura cabedal':  'costura_cabedal',
+  'costura':          'costura_palmilha',
   'silk':           'silk',
   'colagem':        'colagem',
   'montagem':       'montagem',
@@ -64,30 +72,38 @@ export function sheetHasSector(sheet: { production_sectors?: unknown } | null | 
 
 /** Rótulo de usuário por enum de setor. */
 export const SECTOR_LABELS: Record<SectorKey, string> = {
-  corte_palmilha: 'Corte Palmilha',
-  corte_forracao: 'Corte Forração',
-  costura:        'Costura',     // novo setor (PR 2)
-  mesa:           'Aviamento',   // enum interno é "mesa", label do usuário é Aviamento
-  silk:           'Silk',
-  colagem:        'Colagem',
-  montagem:       'Montagem',
-  solagem:        'Solagem',
-  acabamento:     'Acabamento',
-  expedicao:      'Expedição',
-  // legacy alias — pré rename de 2026-05-06
-  corte:          'Corte',
+  corte_palmilha:   'Corte Palmilha',
+  corte_forracao:   'Corte Forração',
+  costura_palmilha: 'Costura Palmilha',
+  costura_cabedal:  'Costura Cabedal',
+  mesa:             'Aviamento',   // enum interno é "mesa", label do usuário é Aviamento
+  silk:             'Silk',
+  colagem:          'Colagem',
+  montagem:         'Montagem',
+  solagem:          'Solagem',
+  acabamento:       'Acabamento',
+  expedicao:        'Expedição',
+  // legacy aliases — pré rename de 2026-05-06 / pré divisão da costura
+  corte:            'Corte',
+  costura:          'Costura',
 };
 
-/** Setores na ORDEM de exibição do fluxo de fábrica (exclui expedicao e o
- *  alias legacy 'corte'). Telas de programação iteram esta lista. */
+/**
+ * Setores na ORDEM de exibição do fluxo de fábrica (exclui expedicao e os
+ * aliases legacy). Telas de programação iteram esta lista.
+ *
+ * Ordem = fluxo real (2026-10-01): cortes primeiro, depois as duas costuras
+ * em paralelo com o aviamento, depois a cadeia sequencial.
+ */
 export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
-  { key: 'corte_palmilha', label: SECTOR_LABELS.corte_palmilha },
-  { key: 'corte_forracao', label: SECTOR_LABELS.corte_forracao },
-  { key: 'mesa',           label: SECTOR_LABELS.mesa },
-  { key: 'costura',        label: SECTOR_LABELS.costura },
-  { key: 'silk',           label: SECTOR_LABELS.silk },
-  { key: 'colagem',        label: SECTOR_LABELS.colagem },
-  { key: 'montagem',       label: SECTOR_LABELS.montagem },
-  { key: 'solagem',        label: SECTOR_LABELS.solagem },
-  { key: 'acabamento',     label: SECTOR_LABELS.acabamento },
+  { key: 'corte_palmilha',   label: SECTOR_LABELS.corte_palmilha },
+  { key: 'corte_forracao',   label: SECTOR_LABELS.corte_forracao },
+  { key: 'costura_palmilha', label: SECTOR_LABELS.costura_palmilha },
+  { key: 'costura_cabedal',  label: SECTOR_LABELS.costura_cabedal },
+  { key: 'mesa',             label: SECTOR_LABELS.mesa },
+  { key: 'silk',             label: SECTOR_LABELS.silk },
+  { key: 'colagem',          label: SECTOR_LABELS.colagem },
+  { key: 'montagem',         label: SECTOR_LABELS.montagem },
+  { key: 'solagem',          label: SECTOR_LABELS.solagem },
+  { key: 'acabamento',       label: SECTOR_LABELS.acabamento },
 ];

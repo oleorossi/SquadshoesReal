@@ -8,13 +8,18 @@ import {
 } from '@/lib/sectorCapacity';
 
 /**
- * Guarda do motor de cascata (D4). O lead time + a topologia (prep paralelo
- * Corte Palmilha ‖ Corte Forração ‖ Aviamento ‖ Costura → convergem em Silk →
- * sequencial até Acabamento) vivem em UM lugar (leadTime.ts + sectorCapacity.ts)
- * e são consumidos pela cascata REVERSA (computeParallelWindows, espelho do SQL
- * compute_wave_timeline) e pela DIRETA (computeForwardSchedule). Este teste trava
- * o contrato entre elas: se alguém mexer no motor e quebrar a simetria
- * forward×backward, o teste pega.
+ * Guarda do motor de cascata (D4). O lead time + a topologia vivem em UM lugar
+ * (leadTime.ts + sectorCapacity.ts) e são consumidos pela cascata REVERSA
+ * (computeParallelWindows, espelho do SQL compute_wave_timeline) e pela DIRETA
+ * (computeForwardSchedule). Este teste trava o contrato entre elas: se alguém
+ * mexer no motor e quebrar a simetria forward×backward, o teste pega.
+ *
+ * TOPOLOGIA (fluxo do dono, 2026-10-01):
+ *   bloco 1: Corte Palmilha ‖ Corte Forração
+ *   bloco 2: Costura Palmilha ‖ Costura Cabedal ‖ Aviamento  (após o bloco 1)
+ *   → convergem em Silk → sequencial até Acabamento
+ * Antes os 4 (2 cortes + aviamento + costura) começavam JUNTOS, o que
+ * adiantava a costura pra antes do corte existir.
  *
  * (A paridade TS×SQL completa exige rodar compute_wave_timeline no banco —
  *  coberta por integração com RUN_DB_INTEGRATION; aqui travamos o lado TS.)
@@ -27,12 +32,13 @@ beforeAll(() => setHolidayCache([]));
 // o round-trip fechar exatamente no deadline = fim do Acabamento).
 const sheet = {
   production_sectors: [
-    'Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento',
-    'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento',
+    'Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal',
+    'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento',
   ],
   sewing_capacity_per_day: 100,    // Corte Palmilha
   cutting_capacity_per_day: 120,   // Corte Forração
-  costura_capacity_per_day: 150,
+  costura_palmilha_capacity_per_day: 150,
+  costura_cabedal_capacity_per_day: 160,
   mesa_daily_capacity: 90,         // Aviamento (prep mais lento)
   silk_capacity_per_day: 300,
   gluing_capacity_per_day: 200,
@@ -54,13 +60,10 @@ describe('motor de cascata — forward × backward (D4)', () => {
     const deadline = new Date('2026-09-30T00:00:00');
     const back = computeParallelWindows(sheet, QTY, deadline);
 
-    // Início do job = prep que começa mais cedo (o de maior lead). Costura
-    // agora também é prep paralela, então entra no min.
+    // Início do job = o CORTE que começa mais cedo — os cortes abrem o fluxo.
     const earliestStart = minDate(
       back.corte_palmilha.start,
       back.corte_forracao.start,
-      back.mesa.start,
-      back.costura.start,
     );
 
     const fwd = computeForwardSchedule(sheet, QTY, earliestStart);
@@ -68,42 +71,57 @@ describe('motor de cascata — forward × backward (D4)', () => {
     expect(fwd.finishISO).toBe('2026-09-30');
   });
 
-  it('forward: os 3 prep começam JUNTOS na data de início', () => {
+  it('forward: os 2 CORTES começam JUNTOS na data de início', () => {
     const start = new Date('2026-07-01T00:00:00');
     const fwd = computeForwardSchedule(sheet, QTY, start);
-    const prep = fwd.steps.filter((s) => ['corte_palmilha', 'corte_forracao', 'mesa'].includes(s.key));
-    expect(prep.length).toBe(3);
-    for (const p of prep) expect(p.startISO).toBe('2026-07-01');
+    const cortes = fwd.steps.filter((s) => ['corte_palmilha', 'corte_forracao'].includes(s.key));
+    expect(cortes.length).toBe(2);
+    for (const c of cortes) expect(c.startISO).toBe('2026-07-01');
   });
 
-  it('forward: Costura roda em PARALELO com a prep; Silk começa na convergência', () => {
+  it('forward: costuras ‖ aviamento começam quando o ÚLTIMO corte fecha', () => {
     const start = new Date('2026-07-01T00:00:00');
     const fwd = computeForwardSchedule(sheet, QTY, start);
-    // Costura é prep — começa JUNTO com os cortes/aviamento.
-    const costura = fwd.steps.find((s) => s.key === 'costura')!;
-    expect(costura.startISO).toBe('2026-07-01');
-    // A cadeia sequencial (Silk) só começa quando o ÚLTIMO prep termina.
-    const prepEnds = fwd.steps.filter((s) => ['corte_palmilha', 'corte_forracao', 'mesa', 'costura'].includes(s.key)).map((s) => s.endISO);
+    const fimDosCortes = fwd.steps
+      .filter((s) => ['corte_palmilha', 'corte_forracao'].includes(s.key))
+      .map((s) => s.endISO).sort().at(-1)!;
+    // Bloco 2 inteiro arranca junto, no fim dos cortes — e NÃO antes.
+    for (const k of ['costura_palmilha', 'costura_cabedal', 'mesa']) {
+      const step = fwd.steps.find((s) => s.key === k)!;
+      expect(step.startISO).toBe(fimDosCortes);
+    }
+    // A cadeia sequencial (Silk) só começa quando o bloco 2 inteiro termina.
+    const fimBloco2 = fwd.steps
+      .filter((s) => ['costura_palmilha', 'costura_cabedal', 'mesa'].includes(s.key))
+      .map((s) => s.endISO).sort().at(-1)!;
     const silk = fwd.steps.find((s) => s.key === 'silk')!;
-    const maxPrepEnd = prepEnds.sort().at(-1)!;
-    expect(silk.startISO).toBe(maxPrepEnd);
+    expect(silk.startISO).toBe(fimBloco2);
   });
 
   it('forward: setup days (B3) adiam a entrega', () => {
     const start = new Date('2026-07-01T00:00:00');
     const base = computeForwardSchedule(sheet, QTY, start);
-    const withSetup = computeForwardSchedule(sheet, QTY, start, { montagem: 2, costura: 1 } as Partial<Record<SectorKey, number>>);
+    const withSetup = computeForwardSchedule(sheet, QTY, start, { montagem: 2, costura_palmilha: 1 } as Partial<Record<SectorKey, number>>);
     expect(new Date(withSetup.finishISO).getTime()).toBeGreaterThan(new Date(base.finishISO).getTime());
   });
 
-  it('backward: os 4 prep TERMINAM juntos no início da cadeia sequencial (Silk)', () => {
+  it('backward: costuras ‖ aviamento terminam no Silk; os cortes, quando eles começam', () => {
     const deadline = new Date('2026-09-30T00:00:00');
     const back = computeParallelWindows(sheet, QTY, deadline);
     const conv = back.silk.start.getTime();
-    expect(back.corte_palmilha.end.getTime()).toBe(conv);
-    expect(back.corte_forracao.end.getTime()).toBe(conv);
+    // Bloco 2 encosta na cadeia sequencial
+    expect(back.costura_palmilha.end.getTime()).toBe(conv);
+    expect(back.costura_cabedal.end.getTime()).toBe(conv);
     expect(back.mesa.end.getTime()).toBe(conv);
-    expect(back.costura.end.getTime()).toBe(conv);
+    // Bloco 1 (cortes) fecha quando o bloco 2 arranca — nunca depois
+    const bloco2Start = Math.min(
+      back.costura_palmilha.start.getTime(),
+      back.costura_cabedal.start.getTime(),
+      back.mesa.start.getTime(),
+    );
+    expect(back.corte_palmilha.end.getTime()).toBe(bloco2Start);
+    expect(back.corte_forracao.end.getTime()).toBe(bloco2Start);
+    expect(back.corte_palmilha.end.getTime()).toBeLessThanOrEqual(conv);
   });
 
   it('backward: Acabamento termina no deadline', () => {
