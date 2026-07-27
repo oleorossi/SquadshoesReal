@@ -145,6 +145,14 @@ export default function ProducaoKanbanGestao() {
     [matchedIds, allCards],
   );
 
+  // Setor comum a TODAS as OPs achadas (null quando estão espalhadas). Permite
+  // dizer o destino uma vez no rótulo em vez de repeti-lo em cada chip.
+  const uniformMatchColumn = useMemo(() => {
+    if (matches.length === 0) return null;
+    const first = matches[0].column;
+    return matches.every(c => c.column === first) ? first : null;
+  }, [matches]);
+
   // Achou → leva o olho até o card (a coluna certa pode estar fora da viewport)
   useEffect(() => {
     if (!matches.length) return;
@@ -339,9 +347,11 @@ export default function ProducaoKanbanGestao() {
               <X className="h-3.5 w-3.5" /> Limpar
             </Button>
           )}
-          <div className="flex items-center gap-2 md:ml-auto">
+          {/* w-full no celular: com w-[180px] fixo o rótulo truncava em
+              "Mover para o…", escondendo justamente o que o campo faz. */}
+          <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto">
             <Select value={bulkTarget} onValueChange={setBulkTarget}>
-              <SelectTrigger className="h-11 md:h-9 w-[180px]">
+              <SelectTrigger className="h-11 md:h-9 flex-1 md:w-[180px] md:flex-none">
                 <SelectValue placeholder="Mover para o setor…" />
               </SelectTrigger>
               <SelectContent>
@@ -349,38 +359,56 @@ export default function ProducaoKanbanGestao() {
               </SelectContent>
             </Select>
             <Button
-              className="h-11 md:h-9"
+              className="h-11 shrink-0 md:h-9"
               disabled={!bulkTarget || selectedIds.size === 0}
+              // Botão cinza sem explicação era adivinhação: agora o title diz
+              // exatamente o que falta pra habilitar.
+              title={
+                selectedIds.size === 0
+                  ? 'Toque nos cards pra escolher quais OPs mover'
+                  : !bulkTarget
+                    ? 'Escolha o setor de destino'
+                    : `Mover ${selectedIds.size} OP${selectedIds.size > 1 ? 's' : ''} para ${bulkTarget}`
+              }
               onClick={() => setBulkOpen(true)}
             >
-              Mover
+              Mover{selectedIds.size > 0 ? ` ${selectedIds.size}` : ''}
             </Button>
           </div>
         </div>
       )}
 
       {/* ── Faixa de resultados da busca (onde cada OP está no fluxo) ────── */}
+      {/* flex-nowrap + rolagem horizontal: com flex-wrap, no celular cada chip
+          virava uma linha e 12 OPs empurravam o quadro inteiro pra fora da
+          tela — sobrava um card visível pra tocar. Agora a faixa tem altura de
+          uma linha, não importa quantas OPs a busca ache. */}
       {searchActive && (
-        <div className="shrink-0 border-b border-border bg-muted/30 px-3 py-1.5 flex items-center gap-2 flex-wrap text-xs">
+        <div className="shrink-0 border-b border-border bg-muted/30 px-3 py-1.5 flex items-center gap-2 flex-nowrap overflow-x-auto text-xs [scrollbar-width:thin]">
           {matches.length === 0 ? (
             <span className="text-muted-foreground">
               Nenhuma OP no quadro casa com a busca — pode já ter saído da produção ou ainda não ter entrado.
             </span>
           ) : (
             <>
-              <span className="text-muted-foreground shrink-0">{matches.length} OP{matches.length > 1 ? 's' : ''}:</span>
-              {matches.slice(0, 12).map(c => (
+              {/* Quando TODAS as OPs achadas estão no mesmo setor, o destino é
+                  dito uma vez aqui — antes cada chip repetia "→ Corte Palmilha"
+                  12 vezes, enchendo a tela de ruído. */}
+              <span className="text-muted-foreground shrink-0">
+                {matches.length} OP{matches.length > 1 ? 's' : ''}
+                {uniformMatchColumn ? <> em <strong className="text-foreground">{uniformMatchColumn}</strong></> : null}:
+              </span>
+              {matches.map(c => (
                 <button
                   key={c.q.order_id}
                   type="button"
-                  className="font-mono rounded-md border border-border bg-card px-2.5 py-1.5 md:px-2 md:py-0.5 hover:bg-muted/60 transition-colors"
+                  className="shrink-0 font-mono rounded-md border border-border bg-card px-2.5 py-1.5 md:px-2 md:py-0.5 hover:bg-muted/60 transition-colors"
                   onClick={() => cardEls.current.get(c.q.order_id)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })}
                 >
                   <strong>{c.q.order_number}</strong>
-                  <span className="text-muted-foreground"> → {c.column}</span>
+                  {!uniformMatchColumn && <span className="text-muted-foreground"> → {c.column}</span>}
                 </button>
               ))}
-              {matches.length > 12 && <span className="text-muted-foreground">+{matches.length - 12}</span>}
             </>
           )}
         </div>
