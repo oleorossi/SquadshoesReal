@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { debitStockForServiceOrder } from '@/lib/serviceOrderStock';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,11 +48,20 @@ export interface ArtisanalOsNeed {
   product_name: string;
   color: string;
   needed_meters: number;
+  base_product_id: string | null;
   base_product_name: string | null;
   base_needed_qty: number | null;
   base_shortage: number | null;
   os_send_date: string | null;
   artisanal_recipe_id: string | null;
+}
+
+function earliestDate(...dates: Array<string | null | undefined>): string | null {
+  return dates.filter((date): date is string => Boolean(date)).sort()[0] ?? null;
+}
+
+function mergeSaleOrderIds(existingIds: string[] | null | undefined, waveSaleOrderIds: string[]): string[] {
+  return Array.from(new Set([...(existingIds ?? []), ...waveSaleOrderIds]));
 }
 
 export interface WaveCreateResult {
@@ -116,6 +126,7 @@ export async function createWaveWithMaterialOrders(params: {
       product_name: an.product_name,
       color: an.color,
       needed_meters: an.needed_qty,
+      base_product_id: an.base_product_id,
       base_product_name: an.base_product_name,
       base_needed_qty: an.base_needed_qty,
       base_shortage: an.base_shortage,
@@ -154,6 +165,17 @@ export async function createWaveWithMaterialOrders(params: {
     return { waveId, posCreated, artisanalOsNeeds };
   }
 
+  // A OC precisa nascer com a mesma data-limite que foi calculada para a onda.
+  // Quando a necessidade ainda não a trouxe no payload, o motor canônico a
+  // recalcula pelos PVs antes de permitir criar uma OC sem prazo.
+  const wavePurchaseDeadline = earliestDate(...needs.map((need) => need.purchase_deadline))
+    ?? (await computeWaveTimeline(saleOrderIds))?.purchase_deadline
+    ?? null;
+  if (!wavePurchaseDeadline) {
+    throw new Error('Não foi possível calcular o prazo de compra da onda. Revise os prazos dos PVs antes de gerar a OC.');
+  }
+  const waveSaleOrderIds = Array.from(new Set(saleOrderIds));
+
   // Group shortages by supplier (null supplier → one PO)
   const bySupplier = new Map<string, { supplier_id: string | null; supplier_name: string; items: WaveMaterialNeed[] }>();
   for (const s of shortages) {
@@ -169,15 +191,16 @@ export async function createWaveWithMaterialOrders(params: {
   }
 
   // Fetch existing auto-generated pending POs keyed by supplier_id
-  const { data: existingPOs } = await supabase
+  const { data: existingPOs, error: existingPOsErr } = await supabase
     .from('purchase_orders')
-    .select('id, supplier_id, total_value')
+    .select('id, supplier_id, total_value, linked_sale_order_ids, source_pv_ids, purchase_by_date')
     .eq('status', 'pending')
     .eq('auto_generated', true);
+  if (existingPOsErr) throw existingPOsErr;
 
-  const pendingPOMap = new Map<string, string>(); // supplier_id → PO id
+  const pendingPOMap = new Map<string, any>(); // supplier_id → PO
   for (const po of (existingPOs || []) as any[]) {
-    if (po.supplier_id) pendingPOMap.set(po.supplier_id, po.id);
+    if (po.supplier_id) pendingPOMap.set(po.supplier_id, po);
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -197,9 +220,13 @@ export async function createWaveWithMaterialOrders(params: {
 
     if (!poItems.length) continue;
 
-    const existingPoId = group.supplier_id ? pendingPOMap.get(group.supplier_id) : null;
+    const groupPurchaseDeadline = earliestDate(
+      ...group.items.map((item) => item.purchase_deadline),
+      wavePurchaseDeadline,
+    );
+    const existingPo = group.supplier_id ? pendingPOMap.get(group.supplier_id) : null;
 
-    if (existingPoId) {
+    if (existingPo) {
       // Pass item.quantity as p_qty_delta (additive). A stale pre-read delta would
       // race against concurrent wave creations for the same supplier: the pre-lock
       // read is not inside the RPC's FOR UPDATE, so two concurrent callers would
@@ -208,7 +235,7 @@ export async function createWaveWithMaterialOrders(params: {
       // item in PO) and slightly over-orders on retry; operators can adjust in OC.
       for (const item of poItems) {
         const { error: rpcErr } = await supabase.rpc('upsert_po_item_atomic' as any, {
-          p_po_id:         existingPoId,
+          p_po_id:         existingPo.id,
           p_product_id:    item.product_id,
           p_qty_delta:     item.quantity,
           p_unit_price:    item.unit_price,
@@ -222,7 +249,13 @@ export async function createWaveWithMaterialOrders(params: {
 
       // Keep notes in sync (total_value updated by RPC above)
       const { error: updPoErr } = await supabase.from('purchase_orders')
-        .update({ notes: waveRef }).eq('id', existingPoId);
+        .update({
+          notes: waveRef,
+          linked_sale_order_ids: mergeSaleOrderIds(existingPo.linked_sale_order_ids, waveSaleOrderIds),
+          source_pv_ids: mergeSaleOrderIds(existingPo.source_pv_ids, waveSaleOrderIds),
+          purchase_by_date: earliestDate(existingPo.purchase_by_date, groupPurchaseDeadline),
+        })
+        .eq('id', existingPo.id);
       if (updPoErr) throw updPoErr;
     } else {
       // order_number is generated by the DB trigger (oc_number_seq) — omit from insert.
@@ -236,10 +269,14 @@ export async function createWaveWithMaterialOrders(params: {
           total_value: 0,
           notes: waveRef,
           auto_generated: true,
+          linked_sale_order_ids: waveSaleOrderIds,
+          source_pv_ids: waveSaleOrderIds,
+          purchase_by_date: groupPurchaseDeadline,
         })
         .select('id').single();
 
-      if (poErr || !newPO) continue;
+      if (poErr) throw poErr;
+      if (!newPO) throw new Error(`Não foi possível criar a OC para ${group.supplier_name}.`);
 
       // Use upsert_po_item_atomic for each item so total_value is correctly
       // accumulated and concurrent wave creations for the same supplier don't race.
@@ -279,12 +316,13 @@ export async function autoCreateArtisanalServiceOrders(
   if (!artisanalNeeds.length) return 0;
 
   // Find contractor "nego"
-  const { data: contractors } = await (supabase as any)
+  const { data: contractors, error: contractorsErr } = await (supabase as any)
     .from('contractors')
     .select('id, name')
     .ilike('name', '%nego%')
     .eq('active', true)
     .limit(1);
+  if (contractorsErr) throw contractorsErr;
 
   const negoId: string | null = (contractors as any[])?.[0]?.id ?? null;
   if (!negoId) {
@@ -293,8 +331,25 @@ export async function autoCreateArtisanalServiceOrders(
     throw new Error('Terceiro "nego" não encontrado ou inativo — cadastre o terceiro antes de criar ondas com necessidades artesanais.');
   }
 
+  const needsWithMaterialsSent = artisanalNeeds.filter(
+    (need) => need.base_product_name && (need.base_needed_qty ?? 0) > 0,
+  );
+  let stockProducts: any[] = [];
+  let productGroups: any[] = [];
+  if (needsWithMaterialsSent.length > 0) {
+    const [productsRes, productGroupsRes] = await Promise.all([
+      supabase.from('products').select('id, name, color, quantity, group_id'),
+      supabase.from('product_groups').select('id, name'),
+    ]);
+    if (productsRes.error) throw productsRes.error;
+    if (productGroupsRes.error) throw productGroupsRes.error;
+    stockProducts = (productsRes.data ?? []) as any[];
+    productGroups = (productGroupsRes.data ?? []) as any[];
+  }
+
   let created = 0;
   const insertedOsIds: string[] = [];
+  const confirmedOsIds = new Set<string>();
   try {
     for (const need of artisanalNeeds) {
       if (!need.artisanal_recipe_id) continue;
@@ -334,25 +389,55 @@ export async function autoCreateArtisanalServiceOrders(
         console.error(`autoCreateArtisanalServiceOrders: falha ao criar OS para ${need.product_name}:`, error.message);
         throw new Error(`Falha ao criar OS artesanal para "${need.product_name}": ${error.message}`);
       }
-      if (osRow?.id) insertedOsIds.push(osRow.id);
+      if (!osRow?.id) throw new Error(`Falha ao criar OS artesanal para "${need.product_name}": resposta sem identificador.`);
+      insertedOsIds.push(osRow.id);
+
+      if (materialsSent) {
+        const debitResult = await debitStockForServiceOrder(
+          [{
+            material: need.base_product_name!,
+            color: need.color || '',
+            meters: need.base_needed_qty!,
+            product_id: need.base_product_id ?? undefined,
+          }],
+          {
+            service_order_id: osRow.id,
+            products: stockProducts,
+            product_groups: productGroups,
+          },
+        );
+        const failed = debitResult.items.filter((item) => item.status !== 'ok');
+        if (failed.length > 0) {
+          throw new Error(
+            `OS artesanal para "${need.product_name}" não pôde enviar a MP base: ${failed.map((item) => item.message || `${item.material}/${item.color}`).join('; ')}.`,
+          );
+        }
+
+        // Mantém o snapshot local coerente para OSs seguintes que usem a mesma MP.
+        for (const item of debitResult.items) {
+          if (item.status !== 'ok' || !item.product_id) continue;
+          const product = stockProducts.find((row) => row.id === item.product_id);
+          if (product) product.quantity = Math.max(0, Number(product.quantity) - item.meters);
+        }
+      }
+      confirmedOsIds.add(osRow.id);
       created++;
     }
   } catch (err: any) {
-    // Compensating delete: remove OSs already created in this batch so the wave
-    // doesn't end up with partial artisanal coverage and no signal to the operator.
-    // CRITICAL: surface delete failures so the operator knows OSs are stranded.
-    // Silently ignoring the delete error left orphan Pending OSs invisible to
-    // the wave-creation flow.
-    if (insertedOsIds.length > 0) {
+    // Só remove a OS cujo débito ainda não foi confirmado. OSs anteriores já
+    // baixaram estoque e precisam permanecer rastreáveis mesmo se outra OS do
+    // lote falhar; o erro propaga para sinalizar a cobertura parcial da onda.
+    const unconfirmedOsIds = insertedOsIds.filter((id) => !confirmedOsIds.has(id));
+    if (unconfirmedOsIds.length > 0) {
       const { error: delErr } = await (supabase as any)
         .from('service_orders')
         .delete()
-        .in('id', insertedOsIds);
+        .in('id', unconfirmedOsIds);
       if (delErr) {
         const cause = err?.message ?? String(err);
         throw new Error(
-          `${cause}. ATENÇÃO: ${insertedOsIds.length} ${insertedOsIds.length === 1 ? 'OS artesanal já criada' : 'OSs artesanais já criadas'} ` +
-          `não puderam ser removidas (${delErr.message}). Remover manualmente: ${insertedOsIds.join(', ')}.`
+          `${cause}. ATENÇÃO: ${unconfirmedOsIds.length} ${unconfirmedOsIds.length === 1 ? 'OS artesanal já criada' : 'OSs artesanais já criadas'} ` +
+          `sem débito confirmado não puderam ser removidas (${delErr.message}). Remover manualmente: ${unconfirmedOsIds.join(', ')}.`
         );
       }
     }

@@ -38,7 +38,7 @@ export interface DebitResultItem {
   color: string;
   meters: number;
   product_id: string | null;
-  status: 'ok' | 'product_not_found' | 'rpc_failed';
+  status: 'ok' | 'product_not_found' | 'insufficient_stock' | 'rpc_failed';
   message?: string;
 }
 
@@ -65,8 +65,30 @@ export async function debitStockForServiceOrder(
   const reasonPrefix = `Débito automático para OS ${ctx.order_number || ctx.service_order_id.slice(0, 8)}${pvLabel}`;
 
   for (const mat of materials) {
-    if (!mat.material || !mat.color || !(mat.meters > 0)) continue;
+    if (!mat.material || !(mat.meters > 0) || (!mat.color && !mat.product_id)) {
+      items.push({
+        material: mat.material,
+        color: mat.color,
+        meters: mat.meters,
+        product_id: mat.product_id ?? null,
+        status: 'product_not_found',
+        message: 'Material enviado sem identificação suficiente para debitar o estoque',
+      });
+      continue;
+    }
     let product = mat.product_id ? ctx.products.find((p) => p.id === mat.product_id) : undefined;
+
+    if (mat.product_id && !product) {
+      items.push({
+        material: mat.material,
+        color: mat.color,
+        meters: mat.meters,
+        product_id: mat.product_id,
+        status: 'product_not_found',
+        message: 'Produto informado não encontrado no estoque',
+      });
+      continue;
+    }
 
     if (!product) {
       const group = ctx.product_groups.find((g) => normalize(g.name) === normalize(mat.material));
@@ -95,7 +117,19 @@ export async function debitStockForServiceOrder(
     }
 
     const prevQty = product.quantity || 0;
-    const newQty = Math.max(0, prevQty - mat.meters);
+    if (prevQty < mat.meters) {
+      items.push({
+        material: mat.material,
+        color: mat.color,
+        meters: mat.meters,
+        product_id: product.id,
+        status: 'insufficient_stock',
+        message: `Saldo insuficiente: disponível ${prevQty}, necessário ${mat.meters}`,
+      });
+      continue;
+    }
+
+    const newQty = prevQty - mat.meters;
     const result = await adjustStockSafe({
       productId: product.id,
       expectedPrevious: prevQty,

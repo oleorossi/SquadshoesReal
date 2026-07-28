@@ -68,7 +68,7 @@ function TimelinePanel({ tl }: { tl: WaveTimeline }) {
   // chama mesa_start_date (não vamos migrar a coluna agora).
   const stages = [
     { label: 'Compra',         date: tl.purchase_deadline,           icon: ShoppingBag, className: 'text-orange-600 bg-orange-500/10 border-orange-500/20' },
-    { label: 'Mat. chega',     date: tl.material_ready_date,         icon: Package,     className: 'text-blue-600 bg-blue-500/10 border-blue-500/20' },
+    { label: 'Material requerido até', date: tl.material_ready_date, icon: Package,     className: 'text-blue-600 bg-blue-500/10 border-blue-500/20' },
     { label: 'Corte Palmilha', date: tl.corte_palmilha_start_date,   icon: Scissors,    className: 'text-violet-600 bg-violet-500/10 border-violet-500/20' },
     { label: 'Corte Forração', date: tl.corte_forracao_start_date,   icon: Wrench,      className: 'text-indigo-600 bg-indigo-500/10 border-indigo-500/20' },
     tl.mesa_start_date      ? { label: 'Aviamento', date: tl.mesa_start_date,      icon: Hand,      className: 'text-rose-600 bg-rose-500/10 border-rose-500/20' }      : null,
@@ -249,6 +249,7 @@ export function WaveBuilder({
   const [timeline, setTimeline] = useState<WaveTimeline | null>(null);
   const [materialNeeds, setMaterialNeeds] = useState<WaveMaterialNeed[]>([]);
   const [creating, setCreating] = useState(false);
+  const [shortageOverrideConfirmed, setShortageOverrideConfirmed] = useState(false);
   // ── Capacity overflow / outsourcing dialog ──
   // Estado da onda recém-criada (waveId + orderIds) usado pelo
   // CapacityOverflowDialog. Mantemos waveId num ref pra chamar onCreated
@@ -260,7 +261,7 @@ export function WaveBuilder({
   const createWave = useCreateWave();
 
   useEffect(() => {
-    if (!open) { setStep('select'); setTimeline(null); setMaterialNeeds([]); return; }
+    if (!open) { setStep('select'); setTimeline(null); setMaterialNeeds([]); setShortageOverrideConfirmed(false); return; }
     setLoading(true);
     setSelected(new Set());
     setConflictIds(new Set());
@@ -333,6 +334,7 @@ export function WaveBuilder({
       return;
     }
 
+    setShortageOverrideConfirmed(false);
     setPreviewLoading(true);
     setStep('preview');
     try {
@@ -352,6 +354,10 @@ export function WaveBuilder({
 
   async function handleCreate(generatePOs: boolean) {
     if (!selected.size || creating) return;
+    if (hasShortages && !generatePOs && !shortageOverrideConfirmed) {
+      toast.error('Confirme o override para criar a onda sem gerar as OCs dos materiais em falta.');
+      return;
+    }
     setCreating(true);
     try {
       // Ordena PVs por delivery_deadline ASC antes de criar a onda. A versão
@@ -369,6 +375,22 @@ export function WaveBuilder({
         return da.localeCompare(db);
       });
       const waveId = await createWave.mutateAsync({ weekStart, saleOrderIds: ids });
+      if (hasShortages && !generatePOs) {
+        const { data: waveRow, error: waveReadErr } = await supabase
+          .from('production_waves')
+          .select('notes')
+          .eq('id', waveId)
+          .single();
+        if (waveReadErr) throw waveReadErr;
+        const overrideNote = `Override confirmado: onda criada com materiais em falta sem gerar OCs em ${new Date().toISOString()}.`;
+        const { error: overrideErr } = await supabase
+          .from('production_waves')
+          .update({
+            notes: [waveRow?.notes, overrideNote].filter(Boolean).join('\n'),
+          })
+          .eq('id', waveId);
+        if (overrideErr) throw overrideErr;
+      }
       const result = await createWaveWithMaterialOrders({ weekStart, saleOrderIds: ids, waveId, generatePOs });
 
       // Always auto-create artisanal service orders assigned to "nego"
@@ -574,6 +596,23 @@ export function WaveBuilder({
                     <MaterialNeedsPanel needs={materialNeeds} wavePurchaseDeadline={timeline?.purchase_deadline} />
                   </CardContent>
                 </Card>
+                {hasShortages && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-2">
+                    <p className="text-sm font-medium text-destructive">
+                      Há materiais em falta. Gere as OCs ou confirme explicitamente o override para criar a onda sem compra.
+                    </p>
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="wave-shortage-override"
+                        checked={shortageOverrideConfirmed}
+                        onCheckedChange={(checked) => setShortageOverrideConfirmed(checked === true)}
+                      />
+                      <Label htmlFor="wave-shortage-override" className="text-xs leading-5 cursor-pointer">
+                        Confirmo que esta onda será criada com materiais em falta e sem gerar OCs. O override será registrado na onda.
+                      </Label>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -592,15 +631,21 @@ export function WaveBuilder({
           {step === 'preview' && (
             <>
               <Button variant="outline" onClick={() => setStep('select')} disabled={creating}>← Voltar</Button>
-              <Button variant="outline" onClick={() => handleCreate(false)} disabled={creating || previewLoading}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Criar onda
-              </Button>
               {hasShortages && (
-                <Button onClick={() => handleCreate(true)} disabled={creating || previewLoading}>
-                  {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShoppingBag className="h-4 w-4 mr-2" />}
-                  Criar onda + Gerar OCs
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleCreate(false)}
+                    disabled={creating || previewLoading || !shortageOverrideConfirmed}
+                  >
+                    {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Criar onda sem OC
+                  </Button>
+                  <Button onClick={() => handleCreate(true)} disabled={creating || previewLoading}>
+                    {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShoppingBag className="h-4 w-4 mr-2" />}
+                    Criar onda + Gerar OCs
+                  </Button>
+                </>
               )}
               {!hasShortages && (
                 <Button onClick={() => handleCreate(false)} disabled={creating || previewLoading}>

@@ -16,7 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { CheckCircle as CheckCircle2, ArrowRight, ArrowLeft, MagnifyingGlass as Search, TrendUp as TrendingUp, Package, Truck, Calendar, CurrencyDollar as DollarSign, ShoppingCart, Sparkle as Sparkles, CalendarBlank as CalendarDays } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore, addWeeks } from 'date-fns';
+import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch } from '@/lib/searchUtils';
 import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
@@ -35,6 +35,8 @@ interface ConsumptionResult {
 // useMemo que dependem de orderNeeds/productsMap.
 const EMPTY_NEEDS: OrderMaterialNeed[] = [];
 const EMPTY_PRODUCTS_MAP = new Map<string, any>();
+const MISSING_PURCHASE_DEADLINE_LABEL = 'Sem prazo de compra — resolver planejamento';
+const UNSCHEDULED_WEEK_START = new Date(8640000000000000);
 
 interface OrderMaterialNeed {
   order_id: string;
@@ -46,6 +48,7 @@ interface OrderMaterialNeed {
   delivery_date: string | null;
   /** Data-limite de compra (data_limite_compra da projeção) — backward do faturamento. */
   purchase_deadline?: string | null;
+  missing_purchase_deadline: boolean;
   week_label: string;
   week_start: Date;
   materials: MaterialLine[];
@@ -69,6 +72,7 @@ interface WeeklyMaterialSummary {
   week_start: Date;
   orders_count: number;
   total_pairs: number;
+  has_missing_purchase_deadline: boolean;
   materials: Map<string, AggregatedMaterial>;
 }
 
@@ -88,6 +92,7 @@ interface AggregatedMaterial {
   orders: string[];
   /** Data-limite de compra MAIS CEDO entre os pedidos que precisam deste material. */
   earliest_purchase_deadline?: string | null;
+  missing_purchase_deadline?: boolean;
   product_id?: string; // representative product id for PO item creation
   width_missing?: boolean; // alguma linha de área sem largura → quantidade não confiável
 }
@@ -178,10 +183,11 @@ export default function PurchasePlanningWizard() {
       const orderIds = Array.from(new Set(activeOrders.map(o => o.id).filter(Boolean)));
       const purchaseDeadlineByOrder = new Map<string, string>();
       if (orderIds.length > 0) {
-        const { data: timelineRows } = await (supabase as any)
+        const { data: timelineRows, error: timelineRowsErr } = await (supabase as any)
           .from('purchase_projection_timeline')
           .select('order_id, data_limite_compra')
           .in('order_id', orderIds);
+        if (timelineRowsErr) throw timelineRowsErr;
         for (const row of (timelineRows || []) as any[]) {
           if (!row.order_id || !row.data_limite_compra) continue;
           const prev = purchaseDeadlineByOrder.get(row.order_id);
@@ -342,7 +348,6 @@ export default function PurchasePlanningWizard() {
 
       // 6. Necessidades por OP a partir das linhas canônicas
       const needs: OrderMaterialNeed[] = [];
-      const today = new Date();
 
       activeOrders.forEach((order, idx) => {
         const lines = consumptionByOrder[idx];
@@ -351,14 +356,20 @@ export default function PurchasePlanningWizard() {
         const saleOrder = Array.isArray(order.sale_orders) ? order.sale_orders[0] : order.sale_orders;
         const deliveryDate = order.planned_delivery || saleOrder?.delivery_deadline || null;
         // Agrupa pela DATA-LIMITE DE COMPRA (quando comprar) e não pela entrega
-        // (quando entregar) — ver bloco 2b. Fallback pra entrega quando a view não
-        // cobre a OP. Auditoria 2026-06-14, Top10 #3.
+        // (quando entregar). Sem prazo calculado não existe semana segura para
+        // compra: o item fica explicitamente pendente de planejamento.
         const purchaseDeadline = purchaseDeadlineByOrder.get(order.id) || null;
-        const schedulingDate = purchaseDeadline || deliveryDate;
-        const schedulingDateObj = parseDateValue(schedulingDate) ?? addWeeks(today, 4);
-        const weekStart = startOfWeek(schedulingDateObj, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(schedulingDateObj, { weekStartsOn: 1 });
-        const weekLabel = `${format(weekStart, 'dd/MM', { locale: ptBR })} - ${format(weekEnd, 'dd/MM', { locale: ptBR })}`;
+        const schedulingDate = parseDateValue(purchaseDeadline);
+        const missingPurchaseDeadline = schedulingDate == null;
+        const weekStart = missingPurchaseDeadline
+          ? new Date(UNSCHEDULED_WEEK_START)
+          : startOfWeek(schedulingDate!, { weekStartsOn: 1 });
+        const weekEnd = missingPurchaseDeadline
+          ? null
+          : endOfWeek(schedulingDate!, { weekStartsOn: 1 });
+        const weekLabel = missingPurchaseDeadline
+          ? MISSING_PURCHASE_DEADLINE_LABEL
+          : `${format(weekStart, 'dd/MM', { locale: ptBR })} - ${format(weekEnd!, 'dd/MM', { locale: ptBR })}`;
 
         const qty = Number(order.quantity) || 0;
         const packagingMode = saleOrder?.packaging_mode || null;
@@ -434,6 +445,7 @@ export default function PurchasePlanningWizard() {
           quantity: qty,
           delivery_date: deliveryDate,
           purchase_deadline: purchaseDeadline,
+          missing_purchase_deadline: missingPurchaseDeadline,
           week_label: weekLabel,
           week_start: weekStart,
           materials,
@@ -473,12 +485,14 @@ export default function PurchasePlanningWizard() {
           week_start: order.week_start,
           orders_count: 0,
           total_pairs: 0,
+          has_missing_purchase_deadline: false,
           materials: new Map(),
         });
       }
       const week = weekMap.get(order.week_label)!;
       week.orders_count++;
       week.total_pairs += order.quantity;
+      week.has_missing_purchase_deadline ||= order.missing_purchase_deadline;
 
       for (const mat of order.materials) {
         // Chave por PRODUTO (não nome+tipo): o mesmo material usado em 2
@@ -502,6 +516,7 @@ export default function PurchasePlanningWizard() {
             supplier_id: matAny._supplier_id || undefined,
             orders: [],
             earliest_purchase_deadline: order.purchase_deadline || null,
+            missing_purchase_deadline: order.missing_purchase_deadline,
             product_id: matAny._product_id || undefined,
             width_missing: matAny.width_missing || false,
           });
@@ -510,6 +525,7 @@ export default function PurchasePlanningWizard() {
         // Use converted quantity (in purchase unit) for comparison with stock
         agg.total_needed += mat.total_needed_converted;
         if (matAny.width_missing) agg.width_missing = true;
+        if (order.missing_purchase_deadline) agg.missing_purchase_deadline = true;
         agg.orders.push(order.order_number);
         if (order.purchase_deadline && (!agg.earliest_purchase_deadline || order.purchase_deadline < agg.earliest_purchase_deadline)) {
           agg.earliest_purchase_deadline = order.purchase_deadline;
@@ -526,7 +542,7 @@ export default function PurchasePlanningWizard() {
         // estoque INVÁLIDA: não estima custo nem auto-seleciona (a OC já bloqueia
         // esses itens — auto-marcar só pré-ticava uma linha que cairia fora).
         mat.estimated_cost = mat.width_missing ? 0 : deficit * mat.unit_price;
-        mat.selected = !mat.width_missing && mat.stock_after < 0; // auto-select deficit items
+        mat.selected = !mat.width_missing && !mat.missing_purchase_deadline && mat.stock_after < 0; // auto-select deficit items
       }
     }
 
@@ -550,6 +566,7 @@ export default function PurchasePlanningWizard() {
           const existing = merged.get(key)!;
           existing.total_needed += mat.total_needed;
           if (mat.width_missing) existing.width_missing = true;
+          if (mat.missing_purchase_deadline) existing.missing_purchase_deadline = true;
           existing.orders = Array.from(new Set([...existing.orders, ...mat.orders]));
           if (mat.earliest_purchase_deadline && (!existing.earliest_purchase_deadline || mat.earliest_purchase_deadline < existing.earliest_purchase_deadline)) {
             existing.earliest_purchase_deadline = mat.earliest_purchase_deadline;
@@ -558,7 +575,7 @@ export default function PurchasePlanningWizard() {
           const deficit = Math.max(0, existing.total_needed - existing.current_stock);
           // Área sem largura → quantidade inflada/comparação inválida (ver acima).
           existing.estimated_cost = existing.width_missing ? 0 : deficit * existing.unit_price;
-          existing.selected = !existing.width_missing && existing.stock_after < 0;
+          existing.selected = !existing.width_missing && !existing.missing_purchase_deadline && existing.stock_after < 0;
         }
       }
     }
@@ -594,10 +611,16 @@ export default function PurchasePlanningWizard() {
       // quantidade inflada (~100×). NÃO gera OC pra esses (evita pedido absurdo);
       // avisa pra cadastrar a largura. Auditoria 2026-06-14.
       const blocked = eligible.filter(m => m.width_missing);
-      const active = eligible.filter(m => !m.width_missing);
+      const planningBlocked = eligible.filter(m => m.missing_purchase_deadline);
+      const active = eligible.filter(m => !m.width_missing && !m.missing_purchase_deadline);
       if (blocked.length > 0) {
         toast.warning(
           `${blocked.length} material(is) de área sem largura na ficha (${blocked.slice(0, 3).map(m => m.name).join(', ')}${blocked.length > 3 ? '…' : ''}) ficaram FORA da OC — a quantidade não é confiável. Cadastre a largura em Materiais → Ficha de Componente → Dimensões.`,
+        );
+      }
+      if (planningBlocked.length > 0) {
+        toast.error(
+          `${planningBlocked.length} material(is) ficaram FORA da OC por estarem sem prazo de compra — resolva o planejamento antes de comprar.`,
         );
       }
       const bySupplier = new Map<string, AggregatedMaterial[]>();
@@ -831,10 +854,11 @@ export default function PurchasePlanningWizard() {
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
-                        Semana {week.week_label}
+                        {week.has_missing_purchase_deadline ? week.week_label : `Semana ${week.week_label}`}
                       </CardTitle>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{week.orders_count} OPs</Badge>
+                        {week.has_missing_purchase_deadline && <Badge variant="destructive">Resolver planejamento</Badge>}
                         <Badge variant="secondary">{week.total_pairs.toLocaleString()} pares</Badge>
                       </div>
                     </div>
@@ -863,7 +887,7 @@ export default function PurchasePlanningWizard() {
                             return mats.sort((a, b) => a.stock_after - b.stock_after).map(mat => (
                               // Área sem largura: linha NEUTRA (não vermelha) — a
                               // comparação com estoque é inválida (qtd ~100× inflada).
-                              <TableRow key={mat.material_key} className={!mat.width_missing && mat.stock_after < 0 ? 'bg-destructive/5' : ''}>
+                              <TableRow key={mat.material_key} className={(!mat.width_missing && mat.stock_after < 0) || mat.missing_purchase_deadline ? 'bg-destructive/5' : ''}>
                                 <TableCell>
                                   <p className="font-medium text-sm">{mat.name}</p>
                                   <p className="text-xs text-muted-foreground">{mat.orders.length} OP(s)</p>
@@ -875,7 +899,11 @@ export default function PurchasePlanningWizard() {
                                   {mat.width_missing ? '—' : `${fmtQty(mat.stock_after)} ${mat.unit}`}
                                 </TableCell>
                                 <TableCell className="text-right">{!mat.width_missing && mat.estimated_cost > 0 ? fmt(mat.estimated_cost) : '—'}</TableCell>
-                                <TableCell>{mat.width_missing ? widthMissingBadge : stockBadge(mat.stock_after)}</TableCell>
+                                <TableCell>
+                                  {mat.missing_purchase_deadline
+                                    ? <Badge variant="destructive">Sem prazo de compra</Badge>
+                                    : mat.width_missing ? widthMissingBadge : stockBadge(mat.stock_after)}
+                                </TableCell>
                               </TableRow>
                             ));
                           })()}
@@ -950,14 +978,21 @@ export default function PurchasePlanningWizard() {
                       return (
                         <TableRow key={m.material_key} className={!m.selected ? 'opacity-50' : ''}>
                           <TableCell>
-                            <Checkbox checked={m.selected} onCheckedChange={() => toggleMaterial(m.material_key)} />
+                            <Checkbox
+                              checked={m.selected}
+                              disabled={m.missing_purchase_deadline}
+                              onCheckedChange={() => toggleMaterial(m.material_key)}
+                            />
                           </TableCell>
                           <TableCell>
                             <p className="font-medium text-sm flex items-center gap-1.5">
                               {m.name}
                               {m.width_missing && widthMissingBadge}
+                              {m.missing_purchase_deadline && <Badge variant="destructive">Sem prazo de compra</Badge>}
                             </p>
-                            <p className="text-xs text-muted-foreground">{m.orders.length} OP(s)</p>
+                            <p className={m.missing_purchase_deadline ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+                              {m.missing_purchase_deadline ? 'Resolver planejamento antes de gerar a OC.' : `${m.orders.length} OP(s)`}
+                            </p>
                           </TableCell>
                           <TableCell><Badge variant="outline" className="text-xs">{m.type}</Badge></TableCell>
                           <TableCell className={`text-right font-semibold ${m.width_missing ? 'text-muted-foreground' : 'text-destructive'}`}>
@@ -998,7 +1033,7 @@ export default function PurchasePlanningWizard() {
             </CardHeader>
             <CardContent className="space-y-4">
               {(() => {
-                const active = selectedMaterials.filter(m => m.selected && m.stock_after < 0);
+                const active = selectedMaterials.filter(m => m.selected && m.stock_after < 0 && !m.missing_purchase_deadline);
                 const bySupplier = new Map<string, AggregatedMaterial[]>();
                 active.forEach(m => {
                   const key = m.supplier_name || 'Sem Fornecedor';
