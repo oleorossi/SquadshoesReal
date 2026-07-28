@@ -17,7 +17,10 @@ interface Props {
   compact?: boolean;
   /** Busca ativa e este card NÃO casa → esmaece sem tirar do quadro. */
   dimmed?: boolean;
-  /** Busca ativa e este card casa → anel de destaque pra achar de longe. */
+  /** Busca ativa (modo 'destacar') e este card casa → anel TINTA pra achar de
+   *  longe. NÃO usa `ring-primary`: no sistema inteiro anel vermelho = item
+   *  SELECIONADO, e reaproveitá-lo aqui fazia a busca parecer que já tinha
+   *  marcado tudo sozinha (relato do dono 2026-07-28). */
   highlighted?: boolean;
   /** Modo seleção em lote: o clique marca/desmarca em vez de abrir o diálogo. */
   selectable?: boolean;
@@ -45,7 +48,11 @@ export function KanbanOpCard({
           ? 'border-amber-500/60 bg-amber-500/10'   // R5.3: AMARELO = parcial
           : 'bg-card'
       } ${dimmed ? 'opacity-25' : ''} ${
-        selected ? 'ring-2 ring-primary' : highlighted ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''
+        selected
+          ? 'ring-2 ring-primary'                                            // VERMELHO = selecionado (só isto)
+          : highlighted
+            ? 'ring-2 ring-foreground/70 ring-offset-1 ring-offset-background' // TINTA = achado pela busca
+            : ''
       }`}
       draggable={draggable}
       onDragStart={e => { onDragStart(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/op-id', q.order_id); }}
