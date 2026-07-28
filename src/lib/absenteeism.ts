@@ -79,7 +79,9 @@ export function absenteeismRate(
   return denom > 0 ? (absenceBizDays / denom) * 100 : 0;
 }
 
-/** Set de feriados OBRIGATÓRIOS (optional !== true) a partir da lista de useHolidays. */
+/** Set de feriados OBRIGATÓRIOS (optional !== true) a partir da lista de useHolidays.
+ *  ⚠ NÃO expande feriado `recurring` (data crua). Prefira `buildHolidaySet`
+ *  (src/lib/holidays.ts), que expande a recorrência no período consultado (M28). */
 export function mandatoryHolidaySet(holidaysList: Array<{ holiday_date: string; optional?: boolean }>): Set<string> {
   return new Set((holidaysList || []).filter(h => h.optional !== true).map(h => h.holiday_date));
 }

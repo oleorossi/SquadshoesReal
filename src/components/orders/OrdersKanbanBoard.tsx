@@ -52,7 +52,9 @@ const STAGE_GROUPS = [
     key: 'costura' as const,
     label: 'COSTURA',
     short: 'Costura / Silk',
-    sectors: ['Costura', 'Silk'],
+    // 'Costura' legado mantido pra OPs antigas; pós-split (mig 20261001120000)
+    // as etapas se chamam 'Costura Palmilha'/'Costura Cabedal'.
+    sectors: ['Costura', 'Costura Palmilha', 'Costura Cabedal', 'Silk'],
     colorVar: '--stage-sew-fg',
   },
   {

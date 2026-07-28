@@ -2824,12 +2824,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors }: PrintWorkSheets
     // quando tem ao menos um grupo válido.
     if (activeSectors.has('Corte Forração') && smGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração')))) total += 1;
-    // Mapeamento de roteiro: Costura Palmilha testa 'Costura'; Costura
-    // Cabedal testa 'Corte Cabedal' + requiresUpperSewing.
+    // Roteiro por IDENTIDADE — MESMO teste do render (roteiroSectorFor):
+    // desde a mig 20261001120000 'Costura Palmilha'/'Costura Cabedal' existem
+    // em production_sectors (legado 'Costura' resolve pra palmilha via
+    // sheetHasSector). O proxy antigo 'Corte Cabedal' nunca foi valor válido
+    // de roteiro → a ficha renderizava sem contar e sheetCount === 0
+    // desabilitava o Imprimir com o maço visível (bug A10).
     if (activeSectors.has('Costura Palmilha') && smGroups.some(g =>
-      g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
+      g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura Palmilha')))) total += 1;
     if (activeSectors.has('Costura Cabedal') && smGroups.some(g =>
-      g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Corte Cabedal')))) total += 1;
+      g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Costura Cabedal')))) total += 1;
     if (activeSectors.has('Aviamento') && (aviamentoGroups || []).some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento')))) total += 1;
     if (activeSectors.has('Silk') && smGroups.some(g =>

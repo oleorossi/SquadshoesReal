@@ -127,6 +127,17 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveStage?.quantity_processed, liveStage?.id]);
 
+  // Regras de transição (R6.3): a RPC devolve needs_confirmation SEM gravar;
+  // guardamos os params e reabrimos a mesma chamada com os códigos confirmados.
+  // (Declarado ANTES do early-return: hook depois de `if (!stage) return null`
+  // muda a contagem de hooks quando o dialog abre/fecha e crasha o componente.)
+  type ApontarParams = Parameters<typeof apontar.mutateAsync>[0];
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    params: ApontarParams;
+    warnings: PointingWarning[];
+    onDone?: (res: ApontarResult) => void;
+  } | null>(null);
+
   if (!stage) return null;
 
   const config = STAGE_CONFIGS[stage.stage_name] || { color: '', icon: ClipboardList, hints: '' };
@@ -171,15 +182,6 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       qtyDirty.current = false;
     }
   };
-
-  // Regras de transição (R6.3): a RPC devolve needs_confirmation SEM gravar;
-  // guardamos os params e reabrimos a mesma chamada com os códigos confirmados.
-  type ApontarParams = Parameters<typeof apontar.mutateAsync>[0];
-  const [pendingConfirm, setPendingConfirm] = useState<{
-    params: ApontarParams;
-    warnings: PointingWarning[];
-    onDone?: (res: ApontarResult) => void;
-  } | null>(null);
 
   const apontarComAvisos = async (params: ApontarParams, onDone?: (res: ApontarResult) => void) => {
     const res = await apontar.mutateAsync(params);

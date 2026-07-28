@@ -100,7 +100,8 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
     const w = Number(c.largura_cm) || 0;
     const h = Number(c.altura_cm) || 0;
     const volM3 = l * w * h / 1_000_000;
-    const stockAvail = Number((c.box_types as any)?.quantity) ?? null;
+    const stockQty = Number((c.box_types as any)?.quantity);
+    const stockAvail = Number.isFinite(stockQty) ? stockQty : null;
     return {
       type: c.packaging_type as string,
       nome: (c.box_types as any)?.nome || c.nome || c.packaging_type,

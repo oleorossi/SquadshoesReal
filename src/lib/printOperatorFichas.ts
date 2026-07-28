@@ -1,13 +1,16 @@
 import { supabase } from '@/integrations/supabase/client';
+import { resolveFicha, CORRUGADOS } from '@/components/production/worksheet/fichaSize';
 
 /**
  * Fichas de operador a partir do pedido (PV) ou de OPs selecionadas — pros setores
  * Corte Forração, Aviamento e Montagem. Pra cada item (referência + cor), gera N
- * fichas REPETIDAS (N = total ÷ pares-por-ficha; ex.: 1104 ÷ 12 = 92), cada uma com
- * a grade BASE (12 pares) numerada "Ficha f/N" — porque cada papel acompanha uma
+ * fichas REPETIDAS (N = nº de corrugados físicos derivado por `resolveFicha` —
+ * 12/15/18 pares; ex.: 1104 ÷ 12 = 92), cada uma com a curva de 1 ficha + bloco
+ * Controle de Fichas, numerada "Ficha f/N" — porque cada papel acompanha uma
  * fornada física. Cada fornada sai em 2 vias (OPERADOR + SUPERVISOR). Setor ausente
  * em `technical_sheets.production_sectors` → NÃO gera. (Regras do usuário 2026-06-27.)
- * Print A4 num window.open próprio (inline styles + #000, regra de print).
+ * Print A4 num window.open próprio (inline styles + #000 + `@page margin:0`,
+ * regras de print do PRINT_SPEC §0.2).
  */
 
 const SECTORS = ['Corte Forração', 'Aviamento', 'Montagem'] as const;
@@ -50,6 +53,12 @@ export interface FichaPlan {
   sectors: Sector[];
   /** Papéis impressos = fornadas × setores × 2 vias. */
   papers: number;
+  /** Pares por corrugado físico (A11 — derivado por resolveFicha). */
+  corrugado: number;
+  /** false = curva não confiável / última fornada parcial → UI mostra "≈". */
+  exact: boolean;
+  /** Total de pares da OP (denominador real das fornadas). */
+  total: number;
 }
 
 /**
@@ -62,15 +71,27 @@ export function planFichas(p: {
   quantity: number;
   sectors: string[];
 }): FichaPlan {
-  const base = p.grade || {};
-  const baseSum = Object.values(base).reduce((s, v) => s + Number(v || 0), 0);
+  const rawBase = p.grade || {};
+  const rawSum = Object.values(rawBase).reduce((s, v) => s + Number(v || 0), 0);
   const sectors = SECTORS.filter(s => p.sectors.includes(s));
-  if (baseSum <= 0 || sectors.length === 0) {
-    return { base, baseSum, nFichas: 0, sectors, papers: 0 };
+  if (rawSum <= 0 || sectors.length === 0) {
+    return { base: rawBase, baseSum: rawSum, nFichas: 0, sectors, papers: 0, corrugado: 0, exact: false, total: 0 };
   }
-  const total = Number(p.quantity) || baseSum;
-  const nFichas = Math.max(1, Math.round(total / baseSum));
-  return { base, baseSum, nFichas, sectors, papers: nFichas * sectors.length * VIAS_POR_FICHA };
+  const total = Number(p.quantity) || rawSum;
+  // A11: `sale_order_items.grade` ora chega como curva-base (Σ 12/15/18), ora
+  // como a grade TOTAL do pedido (Σ 120/360/444). `round(total / Σ)` tratava as
+  // duas iguais e imprimia "Ficha 1/1 · 360 pares" em vez de N fichas de 12 —
+  // instrução errada pro operador. resolveFicha distingue os dois casos e
+  // devolve a curva-base real + o nº de corrugados físicos.
+  const r = resolveFicha(total, rawBase);
+  const base = r.baseCurve;
+  const baseSum = Object.values(base).reduce((s, v) => s + Number(v || 0), 0);
+  const nFichas = Math.max(1, r.fichas);
+  return {
+    base, baseSum, nFichas, sectors,
+    papers: nFichas * sectors.length * VIAS_POR_FICHA,
+    corrugado: r.corrugado, exact: r.exact, total,
+  };
 }
 
 function esc(s: unknown): string {
@@ -79,13 +100,27 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/** Bloco Controle de Fichas (tally do modelo canônico — 1 caixinha por
+ *  corrugado, a fornada DESTA folha sai preenchida). Fontes por nº de dígitos
+ *  = TallyBox size sm (10/8/7px, pisos do CLAUDE.md). */
+function tallyBoxesHtml(nFichas: number, fornada: number): string {
+  const boxes: string[] = [];
+  for (let n = 1; n <= nFichas; n++) {
+    const digits = String(n).length;
+    const fs = digits <= 2 ? 10 : digits === 3 ? 8 : 7;
+    boxes.push(`<span class="tb${n === fornada ? ' cur' : ''}" style="font-size:${fs}px">${n}</span>`);
+  }
+  return boxes.join('');
+}
+
 function fichaHtml(p: {
   sector: Sector; via: Via; pv: string; client: string; date: string;
   refCode: string; refName: string; color: string;
   sizes: string[]; base: Record<string, number>; baseSum: number;
   fornada: number; nFichas: number;
+  corrugado: number; exact: boolean; rowLabel: string; totalPairs: number;
 }): string {
-  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, fornada, nFichas } = p;
+  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, fornada, nFichas, corrugado, exact, rowLabel, totalPairs } = p;
   const th = SECTOR_THEME[sector];
   const head = sizes.map(s => `<th>${esc(s)}</th>`).join('');
   const baseRow = sizes.map(s => `<td>${base[s] || 0}</td>`).join('');
@@ -93,8 +128,11 @@ function fichaHtml(p: {
   const signLeft = via === 'SUPERVISOR'
     ? 'Conferido por (supervisor): ____________________'
     : 'Executado por (operador): ____________________';
+  // exact=false (resolveFicha) = última ficha parcial / curva não confiável →
+  // sinaliza "≈" no nº de fichas e nos pares por ficha.
+  const aprox = exact ? '' : '≈ ';
   return `
-  <div class="ficha">
+  <div class="fwrap"><div class="ficha">
     <div class="band" style="background:${th.bg};color:${th.fg}">
       <span class="bt">${esc(sector.toUpperCase())}</span>
       <span class="via" style="${viaStyle}">VIA · ${esc(via)}</span>
@@ -103,15 +141,19 @@ function fichaHtml(p: {
     <div class="meta">
       <div><span class="ml">Referência</span><span class="mv">${esc(refName)}${refCode ? ` · ${esc(refCode)}` : ''}</span></div>
       <div><span class="ml">Cor</span><span class="mv">${esc(color || '—')}</span></div>
-      <div><span class="ml">Ficha</span><span class="mv tot">${fornada} / ${nFichas}</span></div>
-      <div><span class="ml">Pares por ficha</span><span class="mv">${baseSum} pares</span></div>
+      <div><span class="ml">Ficha</span><span class="mv tot">${fornada} / ${aprox}${nFichas}</span></div>
+      <div><span class="ml">Pares por ficha</span><span class="mv">${aprox}${corrugado} pares</span></div>
     </div>
     <table class="grade">
       <thead><tr><th class="rh">Nº</th>${head}<th class="tc">Total</th></tr></thead>
-      <tbody><tr><td class="rh">Pares</td>${baseRow}<td class="tc tot">${baseSum}</td></tr></tbody>
+      <tbody><tr><td class="rh">${esc(rowLabel)}</td>${baseRow}<td class="tc tot">${baseSum}</td></tr></tbody>
     </table>
+    <div class="tally">
+      <div class="tally-head"><span class="tt">Controle de Fichas · ${aprox}${corrugado} pares / ficha</span><span class="tn">${aprox}${nFichas}× · ${totalPairs} pares</span></div>
+      <div class="tg">${tallyBoxesHtml(nFichas, fornada)}</div>
+    </div>
     <div class="sign"><span>${signLeft}</span><span>Data: ____ / ____</span><span>Visto: __________</span></div>
-  </div>`;
+  </div></div>`;
 }
 
 function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
@@ -122,7 +164,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   for (const sector of SECTORS) {
     const fichas: string[] = [];
     for (const it of inputs) {
-      const { base, baseSum, nFichas, sectors } = planFichas(it);
+      const { base, baseSum, nFichas, sectors, corrugado, exact, total } = planFichas(it);
       if (!sectors.includes(sector)) continue; // setor ausente → não gera
       if (nFichas === 0) continue;             // sem grade base → nada a imprimir
       const sizes = Object.keys(base).filter(s => Number(base[s]) > 0).sort((a, b) => Number(a) - Number(b));
@@ -132,6 +174,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
           sector, pv: it.pv, client: it.client, date,
           refCode: it.refCode, refName: it.refName, color: it.color,
           sizes, base, baseSum, fornada: f, nFichas,
+          corrugado, exact, rowLabel: 'Pares', totalPairs: total,
         };
         fichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
         fichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
@@ -146,7 +189,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
     return;
   }
   if (generated > PAPER_WARN_LIMIT &&
-      !window.confirm(`Isso vai gerar ${generated} fichas (papéis), 2 vias por fornada de 12 pares. Continuar?`)) {
+      !window.confirm(`Isso vai gerar ${generated} fichas (papéis), 2 vias por fornada. Continuar?`)) {
     return;
   }
 
@@ -156,8 +199,12 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:#e8e6e1;font-family:Arial,Helvetica,sans-serif;color:#000}
   body{padding:14px}
-  @page{size:A4 portrait;margin:10mm}
-  .ficha{width:190mm;max-width:100%;margin:0 auto 10px;background:#fff;border:1.5px solid #000;break-inside:avoid;page-break-inside:avoid}
+  /* Regra anti-header do navegador (PRINT_SPEC §0.2-4): margin 0 no @page mata
+     o URL/data/"Página N de M" que o Chrome desenha na margem reservada. A área
+     segura vem do padding do .fwrap em print (como printLabels/atrasoReportPrint). */
+  @page{size:A4 portrait;margin:0}
+  .fwrap{width:190mm;max-width:100%;margin:0 auto 10px;break-inside:avoid;page-break-inside:avoid}
+  .ficha{background:#fff;border:1.5px solid #000}
   .band{padding:8px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid #000}
   .band .bt{font-size:16px;font-weight:800;letter-spacing:1px}
   .via{font-size:11px;font-weight:800;letter-spacing:1px;padding:3px 11px;border-radius:3px}
@@ -173,12 +220,22 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   table.grade .rh{text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;width:96px;background:#fafafa}
   table.grade .tc{font-weight:800}
   table.grade .tot{font-size:13px}
+  .tally{padding:6px 12px 7px}
+  .tally .tally-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+  .tally .tt{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#555}
+  .tally .tn{font-size:9px;font-weight:700;letter-spacing:.5px;color:#000;font-variant-numeric:tabular-nums}
+  .tally .tg{display:flex;flex-wrap:wrap;gap:2px}
+  .tally .tb{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1.5px solid #000;background:#fff;color:#000;font-weight:700;font-variant-numeric:tabular-nums}
+  .tally .tb.cur{background:#000;color:#fff}
   .sign{display:flex;gap:18px;justify-content:space-between;padding:7px 12px;border-top:1px solid #000;font-size:10px;color:#333}
   .print-bar{max-width:190mm;margin:14px auto 0;text-align:center}
   .print-bar button{font:inherit;font-size:12px;font-weight:600;padding:9px 22px;border-radius:4px;cursor:pointer;border:0}
   .print-bar .go{background:#0f172a;color:#fff}
   .print-bar .close{background:#fff;color:#0f172a;border:1px solid #0f172a;margin-left:8px}
-  @media print{body{background:#fff;padding:0}.ficha{width:auto}.print-bar{display:none}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sector-group{page-break-before:always}.sector-group:first-child{page-break-before:auto}}
+  /* .fwrap em print: 8mm laterais + 3mm topo/base POR CARD (com @page margin 0
+     o card que abre cada página fica fora da zona não-imprimível — mesmo
+     mecanismo do .reduced-card do PrintWorkSheetsPage). */
+  @media print{body{background:#fff;padding:0}.fwrap{width:auto;max-width:none;margin:0;padding:3mm 8mm}.print-bar{display:none}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sector-group{page-break-before:always}.sector-group:first-child{page-break-before:auto}}
 </style></head><body>
   ${blocks.join('')}
   <div class="print-bar">

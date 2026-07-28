@@ -36,15 +36,19 @@ import { sheetHasSector } from '@/lib/sectors';
  *
  * Demanda: pares dos PVs ativos (status não-terminal) com delivery_deadline
  * na semana, somando só os itens cuja ficha técnica passa pelo setor:
- *   • Costura      → production_sectors contém 'Costura' (via sheetHasSector,
- *                    mesma taxonomia de src/lib/sectors usada pelo motor de
- *                    capacidade sectorCapacity.ts — não divergir).
+ *   • Costura Cabedal → production_sectors contém 'Costura Cabedal' (via
+ *                    sheetHasSector, mesma taxonomia de src/lib/sectors usada
+ *                    pelo motor de capacidade sectorCapacity.ts — não divergir).
+ *                    É ELA a costura terceirizável (decisão do split da Costura,
+ *                    mig 20261001120000); compat: roteiro legado com 'Costura'
+ *                    cru conta quando a ficha tem cabedal (has_straps === false).
  *   • Corte Cabedal→ has_straps === false (regra canônica: ficha SEM tiras
  *                    corta cabedal; com tiras o corte é o fluxo de tiras).
  *
  * Capacidade interna semanal — APROXIMAÇÃO documentada:
- * a capacidade/dia é cadastrada POR FICHA TÉCNICA (costura_capacity_per_day /
- * cutting_capacity_per_day), mas a semana mistura fichas diferentes. Usamos a
+ * a capacidade/dia é cadastrada POR FICHA TÉCNICA (costura_cabedal_capacity_per_day
+ * com fallback na legada costura_capacity_per_day / cutting_capacity_per_day),
+ * mas a semana mistura fichas diferentes. Usamos a
  * MÉDIA PONDERADA POR PARES das fichas com demanda na semana × 5 dias úteis.
  * Fichas sem capacidade cadastrada entram com 0 no peso (conservador) e geram
  * aviso pra cadastrar. Não é um sequenciamento real (o motor fino por janela
@@ -62,7 +66,15 @@ interface PlanningSheet {
   production_sectors: unknown;
   has_straps: boolean | null;
   costura_capacity_per_day: number | null;
+  costura_cabedal_capacity_per_day: number | null;
   cutting_capacity_per_day: number | null;
+}
+
+/** Roteiro legado com 'Costura' cru (pré-split, sem os nomes novos). Não dá
+ *  pra usar sheetHasSector: normalizeSector('costura') resolve pra palmilha. */
+function hasLegacyCosturaSector(sheet: PlanningSheet): boolean {
+  const sectors = Array.isArray(sheet.production_sectors) ? (sheet.production_sectors as string[]) : [];
+  return sectors.some((s) => String(s).toLowerCase().trim() === 'costura');
 }
 
 const PLANNING_SECTORS: {
@@ -81,11 +93,17 @@ const PLANNING_SECTORS: {
     capPerDay: (s) => Number(s.cutting_capacity_per_day || 0),
   },
   {
+    // key 'costura' mantido: é o target_sector gravado nas OSs existentes e a
+    // chave de tarifa (get_contractor_rate) — mudar quebraria dedup/preço.
     key: 'costura',
-    label: 'Costura',
+    label: 'Costura Cabedal',
     icon: Buildings,
-    appliesTo: (s) => sheetHasSector(s, 'Costura'),
-    capPerDay: (s) => Number(s.costura_capacity_per_day || 0),
+    // A costura terceirizável é a de CABEDAL (split mig 20261001120000).
+    // Compat: roteiro legado com 'Costura' cru conta quando a ficha tem
+    // cabedal pra costurar (has_straps === false).
+    appliesTo: (s) => sheetHasSector(s, 'Costura Cabedal')
+      || (hasLegacyCosturaSector(s) && s.has_straps === false),
+    capPerDay: (s) => Number(s.costura_cabedal_capacity_per_day || s.costura_capacity_per_day || 0),
   },
 ];
 
@@ -137,9 +155,11 @@ export function OutsourcingPlanningTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, code, production_sectors, has_straps, costura_capacity_per_day, cutting_capacity_per_day');
+        .select('id, name, code, production_sectors, has_straps, costura_capacity_per_day, costura_cabedal_capacity_per_day, cutting_capacity_per_day');
       if (error) throw error;
-      return (data || []) as PlanningSheet[];
+      // as unknown: costura_cabedal_capacity_per_day (mig 20261001120000) ainda
+      // não está nos types gerados.
+      return (data || []) as unknown as PlanningSheet[];
     },
     staleTime: 5 * 60_000,
   });
@@ -319,7 +339,7 @@ export function OutsourcingPlanningTab() {
           <div>
             <p className="text-sm font-medium">Demanda programada vs capacidade interna — próximas {WEEKS_AHEAD} semanas</p>
             <p className="text-xs text-muted-foreground">
-              Setores terceirizáveis: Corte Cabedal (fichas sem tiras) e Costura. Linhas em vermelho = semana estourada → designe o excedente pra uma terceirizada.
+              Setores terceirizáveis: Corte Cabedal (fichas sem tiras) e Costura Cabedal. Linhas em vermelho = semana estourada → designe o excedente pra uma terceirizada.
             </p>
           </div>
           <Tooltip>
@@ -344,7 +364,7 @@ export function OutsourcingPlanningTab() {
             <EmptyState
               icon={CalendarIcon}
               title="Nenhuma demanda programada"
-              description={`Nenhum PV ativo com prazo de entrega nas próximas ${WEEKS_AHEAD} semanas passa por Corte Cabedal ou Costura.`}
+              description={`Nenhum PV ativo com prazo de entrega nas próximas ${WEEKS_AHEAD} semanas passa por Corte Cabedal ou Costura Cabedal.`}
             />
           </Panel>
         ) : (

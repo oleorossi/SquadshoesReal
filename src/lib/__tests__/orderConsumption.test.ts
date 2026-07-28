@@ -1040,6 +1040,77 @@ describe('orderConsumption — motor canônico', () => {
       expect(solado.groupName).toBe('SOLADO 99');
     });
 
+    // ── M7 (auditoria 2026-07-28): variante por GRUPO vence o pin da FICHA ──
+    // Precedência canônica (resolvers SQL, mig 20260907120500): produto legado
+    // pinado > grupo da variante (+cor do PV) > pin da ficha > grupo da ficha.
+    // O motor invertia: com variante group-only, o pin da ficha dirigia SKU e
+    // largura da conversão dm²→m.
+    it('M7: variante por GRUPO vence o pin da FICHA no cabedal (SKU e largura do grupo da variante)', () => {
+      const ctx = buildVariantContext();
+      // Pin da FICHA (Material 1) com cs PRÓPRIA de 2,0 m — antes do fix ele
+      // vencia o grupo da variante e a conversão saía pela largura DELE.
+      ctx.allProducts.push({ id: 'p-napa-pin', name: 'NAPA SOFT PINADA', color: 'PRETO', group_id: 'g-napa', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, active: true } as any);
+      ctx.componentSheets.push({ product_id: 'p-napa-pin', dimensions_width: 2.0, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: {}, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-napa', name: 'NAPA SOFT PINADA', color: 'PRETO', unit: 'm' } } as any);
+      const item = buildItem({
+        material_variant_id: 'var-glow',
+        technical_sheets: buildSheet({ upper_material_product_id: 'p-napa-pin' }),
+      });
+      const rows = computeConsumptionForItems([item], ctx);
+      const cabedal = rows.find(r => r.componentType === 'Cabedal')!;
+      expect(cabedal.groupName).toBe('GLOW METALIC');
+      // SKU resolvido no grupo DA VARIANTE (+cor do PV), não o pin da ficha.
+      expect(cabedal.materialName).toBe('GLOW METALIC PRETO');
+      // 144 dm² ÷ (1400 mm/10) = 1,0286 m — largura do grupo da variante
+      // (1,4 m), não os 2,0 m da cs do pin da ficha (que dariam 0,72 m).
+      expect(cabedal.totalQuantity).toBeCloseTo(144 / 140, 6);
+    });
+
+    it('M7: variante por GRUPO vence o pin da FICHA no forro (Forração e Forração Palmilha)', () => {
+      const ctx = buildVariantContext();
+      ctx.productGroups.push({ id: 'g-forro2', name: 'FORRO PREMIUM', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
+      ctx.allProducts.push({ id: 'p-forro2', name: 'FORRO PREMIUM PRETO', color: 'PRETO', group_id: 'g-forro2', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      ctx.componentSheets.push({ product_id: 'cs-forro2', dimensions_width: 0.8, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: {}, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-forro2', name: 'FORRO PREMIUM PRETO', color: 'PRETO', unit: 'm' } } as any);
+      // Pin da FICHA no forro, com cs própria de 2,0 m.
+      ctx.allProducts.push({ id: 'p-forro-pin', name: 'NAPA FORRO PINADA', color: 'PRETO', group_id: 'g-forro', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, active: true } as any);
+      ctx.componentSheets.push({ product_id: 'p-forro-pin', dimensions_width: 2.0, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: {}, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-forro', name: 'NAPA FORRO PINADA', color: 'PRETO', unit: 'm' } } as any);
+      const v = ctx.materialVariantsById!.get('var-glow')!;
+      v.lining_material_group_id = 'g-forro2';
+      const item = buildItem({
+        material_variant_id: 'var-glow',
+        technical_sheets: buildSheet({ lining_material_product_id: 'p-forro-pin' }),
+      });
+      const rows = computeConsumptionForItems([item], ctx);
+      const forr = rows.find(r => r.componentType === 'Forração')!;
+      expect(forr.groupName).toBe('FORRO PREMIUM');
+      expect(forr.materialName).toBe('FORRO PREMIUM PRETO');
+      // 96 dm² ÷ 80 = 1,2 m — largura do grupo da variante (0,8 m), não os
+      // 2,0 m da cs do pin da ficha (que dariam 0,48 m).
+      expect(forr.totalQuantity).toBeCloseTo(96 / 80, 6);
+      const palmForr = rows.find(r => r.componentType === 'Forração Palmilha')!;
+      expect(palmForr.totalQuantity).toBeCloseTo(72 / 80, 6);
+    });
+
+    it('M7: variante por GRUPO na palmilha vence o pin do mapping de cor da ficha', () => {
+      const ctx = buildVariantContext();
+      // Pin do MAPPING de cor (palmilha pronta por par) — antes do fix ele
+      // vencia o grupo da variante e a linha saía como 24 par do pinado.
+      ctx.allProducts.push({ id: 'p-palm-pronta', name: 'PALMILHA PRONTA 123', unit: 'par', color: 'BEGE', group_id: 'g-eva', quantity: 100, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      ctx.palmilhaColorMap.set('sheet-1::preto', { color: 'BEGE', productId: 'p-palm-pronta' });
+      // Grupo da variante: EVA PREMIUM com produto estocado em dm².
+      ctx.productGroups.push({ id: 'g-eva2', name: 'EVA PREMIUM', dimensions_length: 100, dimensions_width: 50, dimensions_unit: 'cm' } as any);
+      ctx.allProducts.push({ id: 'p-eva2', name: 'PLACA EVA PREMIUM', unit: 'dm²', color: '', group_id: 'g-eva2', quantity: 500, reserved_stock: 0, stock_grade: null, sole_classification: null } as any);
+      const v = ctx.materialVariantsById!.get('var-glow')!;
+      v.insole_material_group_id = 'g-eva2';
+      const item = buildItem({ material_variant_id: 'var-glow' });
+      const rows = computeConsumptionForItems([item], ctx);
+      const palm = rows.find(r => r.componentType === 'Palmilha')!;
+      expect(palm.groupName).toBe('EVA PREMIUM');
+      expect(palm.materialName).toBe('PLACA EVA PREMIUM');
+      // Unidade de ESTOQUE do produto do grupo da variante: 5 dm²/par × 24 = 120.
+      expect(palm.productUnit).toBe('dm2');
+      expect(palm.totalQuantity).toBeCloseTo(120, 6);
+    });
+
     it('BOM por variante: linha específica SUBSTITUI a compartilhada do mesmo produto; linha de OUTRA variante fica fora', () => {
       const ctx = buildVariantContext();
       // Linha compartilhada (COLA 0.01/par) já existe no buildContext. Override

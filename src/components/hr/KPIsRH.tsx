@@ -16,7 +16,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Calendar, Alarm as AlarmClock, CurrencyDollar as DollarSign, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { businessDaysInPeriod, sumAbsenceBusinessDays, absenteeismRate, mandatoryHolidaySet } from '@/lib/absenteeism';
+import { businessDaysInPeriod, sumAbsenceBusinessDays, absenteeismRate } from '@/lib/absenteeism';
+import { buildHolidaySet } from '@/lib/holidays';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -58,13 +59,14 @@ function useKPIsRH() {
         // divergia de PainelRH/AbsenceReport. Ver src/lib/absenteeism.ts.
         (supabase as any).from('employee_absences').select('start_date, end_date')
           .gte('end_date', monthStart).lte('start_date', monthEnd),
-        (supabase as any).from('holidays').select('holiday_date, optional'),
+        (supabase as any).from('holidays').select('holiday_date, optional, recurring'),
       ]);
 
       const runs = (runsRes.data || []) as any[];
       const employees = (empRes.data || []) as any[];
       const absences = (absRes.data || []) as any[];
-      const holidays = mandatoryHolidaySet((holRes.data || []) as any[]);
+      // Recorrência expandida no mês (M28) — helper único da Folha.
+      const holidays = buildHolidaySet((holRes.data || []) as any[], monthStart, monthEnd);
       const funcsAtivos = employees.length;
 
       const totals = runs.reduce((acc, r) => ({

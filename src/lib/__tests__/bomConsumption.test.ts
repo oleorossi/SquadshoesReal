@@ -447,6 +447,49 @@ describe('calculateBomForOrders — direct_components e componentes por cor (BOM
   });
 });
 
+describe('calculateBomForOrders — variante por GRUPO vence o pin da FICHA (M7)', () => {
+  // Precedência canônica (resolvers SQL, mig 20260907120500): produto legado
+  // pinado > grupo da variante (+cor do PV) > pin da ficha > grupo da ficha.
+  // Antes, com variante group-only, o pin da FICHA dirigia a cs da conversão
+  // dm²→m e o consumo em metros saía pela largura do material errado.
+  it('cabedal: conversão dm²→m usa a largura do grupo da VARIANTE, não a cs do pin da ficha', async () => {
+    const t = buildBomTables();
+    (t.technical_sheets[0] as any).upper_material = 'NAPA SOFT';
+    (t.technical_sheets[0] as any).upper_consumption = 6; // dm²/par
+    (t.technical_sheets[0] as any).upper_material_product_id = 'p-napa-pin';
+    (t.sale_order_items[0] as any).material_variant_id = 'var-1';
+    t.reference_material_variants = [{
+      id: 'var-1', reference_id: 'ts1',
+      upper_material_product_id: null, upper_material_group_id: 'g-glow',
+      lining_material_product_id: null, lining_material_group_id: null,
+      insole_material_product_id: null, insole_material_group_id: null,
+      insole_consumption_override: null,
+      sole_material_product_id: null, sole_consumption_override: null,
+    }];
+    t.products = [...(t.products as any[]),
+      { id: 'p-napa-pin', name: 'NAPA SOFT PINADA', color: 'PRETO', group_id: 'g-napa', quantity: 0, sole_classification: null },
+      { id: 'p-glow', name: 'GLOW METALIC PRETO', color: 'PRETO', group_id: 'g-glow', quantity: 0, sole_classification: null },
+    ];
+    t.product_groups = [...(t.product_groups as any[]),
+      { id: 'g-napa', name: 'NAPA SOFT', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+      { id: 'g-glow', name: 'GLOW METALIC', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+    ];
+    t.component_sheets = [...(t.component_sheets as any[]),
+      // cs do PIN da ficha (2,0 m) — antes do fix dirigia a conversão.
+      { product_id: 'p-napa-pin', dimensions_width: 2.0, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: null, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-napa', name: 'NAPA SOFT PINADA', color: 'PRETO', unit: 'm' } },
+      // cs do grupo da VARIANTE (1,4 m) — fonte correta da largura.
+      { product_id: 'cs-glow', dimensions_width: 1.4, dimensions_length: 0, dimensions_unit: 'm', yield_per_size: null, yield_per_sole: null, waste_pct: 0, products: { group_id: 'g-glow', name: 'GLOW METALIC PRETO', color: 'PRETO', unit: 'm' } },
+    ];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cabedal = rows.find(r => r.componentType === 'Cabedal');
+    expect(cabedal?.groupName).toBe('GLOW METALIC');
+    // 6 dm²/par × 720 = 4320 dm² ÷ (1400 mm/10) = 30,857 m — largura do grupo
+    // da variante; a cs do pin da ficha (2,0 m) daria 21,6 m.
+    expect(cabedal?.totalQuantity).toBeCloseTo(4320 / 140, 6);
+  });
+});
+
 describe('calculateBomForOrders — padrões GLOBAIS por cor (component_color_defaults)', () => {
   // Espelha o motor canônico/SQL (mig 20260928121000): no fallback de
   // direct_components, regra ativa do grupo pra cor da OP troca o SKU

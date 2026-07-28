@@ -35,24 +35,6 @@ const KIND_BADGE: Record<BoxKind, { tone: string; helper: string }> = {
 export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
   const qc = useQueryClient();
 
-  // Modelo novo é por ficha. Quando chamado com soleGroupId (legacy), mostra
-  // aviso pedindo pra configurar via ficha — não tentamos derivar a primeira
-  // ficha do solado porque diferentes fichas podem ter caixas diferentes.
-  if (!sheetId && soleGroupId) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-muted-foreground space-y-2">
-          <Info className="h-10 w-10 mx-auto opacity-30" />
-          <p className="text-sm font-medium text-foreground">Embalagem agora é vinculada por ficha técnica</p>
-          <p className="text-xs max-w-md mx-auto">
-            Abra a ficha técnica do modelo (Fichas Técnicas → escolha a referência → aba Embalagem)
-            pra marcar quais caixas cadastradas em <strong>Gestão de Embalagens</strong> essa ficha usa.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Todas as caixas cadastradas no setor de Embalagens
   const { data: boxTypes = [], isLoading: loadingBoxes } = useQuery({
     queryKey: ['box_types_with_kind'],
@@ -108,6 +90,26 @@ export function PackagingTab({ sheetId, soleGroupId }: PackagingTabProps) {
     }
     invalidate();
   };
+
+  // Modelo novo é por ficha. Quando chamado com soleGroupId (legacy), mostra
+  // aviso pedindo pra configurar via ficha — não tentamos derivar a primeira
+  // ficha do solado porque diferentes fichas podem ter caixas diferentes.
+  // (Fica DEPOIS dos hooks: early-return antes deles muda a contagem de hooks
+  // entre renders quando sheetId chega async e crasha o componente.)
+  if (!sheetId && soleGroupId) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground space-y-2">
+          <Info className="h-10 w-10 mx-auto opacity-30" />
+          <p className="text-sm font-medium text-foreground">Embalagem agora é vinculada por ficha técnica</p>
+          <p className="text-xs max-w-md mx-auto">
+            Abra a ficha técnica do modelo (Fichas Técnicas → escolha a referência → aba Embalagem)
+            pra marcar quais caixas cadastradas em <strong>Gestão de Embalagens</strong> essa ficha usa.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!sheetId) {
     return (

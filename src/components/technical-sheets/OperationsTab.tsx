@@ -30,6 +30,9 @@ const STAGE_COLORS: Record<string, string> = {
    'Corte Cabedal':  'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
    'Forração': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', // legacy alias
    'Costura': 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300',
+   // Split da Costura (mig 20261001120000) — cores próprias pra distinguir
+   'Costura Palmilha': 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300',
+   'Costura Cabedal': 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-300',
    'Aviamento': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
   'Silk': 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
    'Colagem': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -75,6 +78,9 @@ interface OperationsTabProps {
   leadTimeBufferMaterialDias?: number;
    cuttingCapacityPerDay?: number;
    sewingCapacityPerDay?: number;
+   /** Capacidades das duas Costuras pós-split (mig 20261001120000). */
+   costuraPalmilhaCapacityPerDay?: number;
+   costuraCabedalCapacityPerDay?: number;
    silkCapacityPerDay?: number;
   gluingCapacityPerDay?: number;
   assemblyCapacityPerDay?: number;
@@ -111,6 +117,8 @@ export function OperationsTab({
   leadTimeBufferMaterialDias = 2,
    cuttingCapacityPerDay = 0,
    sewingCapacityPerDay = 0,
+   costuraPalmilhaCapacityPerDay = 0,
+   costuraCabedalCapacityPerDay = 0,
    silkCapacityPerDay = 0,
   gluingCapacityPerDay = 0,
   assemblyCapacityPerDay = 0,
@@ -165,6 +173,8 @@ export function OperationsTab({
   const [ltBuffer, setLtBuffer] = useState(leadTimeBufferMaterialDias);
   const [capCorte, setCapCorte] = useState(cuttingCapacityPerDay);
   const [capCostura, setCapCostura] = useState(sewingCapacityPerDay);
+  const [capCosturaPalmilha, setCapCosturaPalmilha] = useState(costuraPalmilhaCapacityPerDay);
+  const [capCosturaCabedal, setCapCosturaCabedal] = useState(costuraCabedalCapacityPerDay);
    const [capSilk, setCapSilk] = useState(silkCapacityPerDay);
    const [capColagem, setCapColagem] = useState(gluingCapacityPerDay);
    const [capMontagem, setCapMontagem] = useState(assemblyCapacityPerDay);
@@ -230,6 +240,8 @@ export function OperationsTab({
          lead_time_buffer_material_dias: ltBuffer,
          cutting_capacity_per_day: capCorte,
          sewing_capacity_per_day: capCostura,
+         costura_palmilha_capacity_per_day: capCosturaPalmilha,
+         costura_cabedal_capacity_per_day: capCosturaCabedal,
          silk_capacity_per_day: capSilk,
          gluing_capacity_per_day: capColagem,
          assembly_capacity_per_day: capMontagem,
@@ -346,6 +358,10 @@ export function OperationsTab({
           {([
             { key: 'corte',     label: 'Corte',      cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
             { key: 'forracao',  label: 'Corte Forração', cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
+            // Costuras do split (mig 20261001120000). O lead time fallback das
+            // duas é a MESMA coluna legada lead_time_costura_dias (leadTime.ts).
+            { key: 'costura_palmilha', label: 'Costura Palmilha', cap: capCosturaPalmilha, setCap: setCapCosturaPalmilha, lt: ltCostura, setLt: setLtCostura },
+            { key: 'costura_cabedal',  label: 'Costura Cabedal',  cap: capCosturaCabedal,  setCap: setCapCosturaCabedal,  lt: ltCostura, setLt: setLtCostura },
             { key: 'silk',      label: 'Silk',       cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
             { key: 'colagem',   label: 'Colagem',    cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
             {
@@ -370,6 +386,8 @@ export function OperationsTab({
                   return (
                     (s.key === 'corte' && (n.includes('corte palmilha') || n === 'corte')) ||
                     (s.key === 'forracao' && (n.includes('corte forração') || n.includes('costura') || n === 'forracao')) ||
+                    (s.key === 'costura_palmilha' && (n.includes('costura palmilha') || n === 'costura')) ||
+                    (s.key === 'costura_cabedal' && n.includes('costura cabedal')) ||
                     (s.key === 'silk' && n.includes('silk')) ||
                     (s.key === 'colagem' && n.includes('colagem')) ||
                     (s.key === 'montagem' && n.includes('montagem')) ||

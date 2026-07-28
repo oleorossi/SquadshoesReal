@@ -384,11 +384,15 @@ export async function syncFinancialRecordsCore(
     }
 
     // Despesa financeira do desconto factoring — entry separada pra DRE.
+    // Só lançamentos ATIVOS: revert_invoiced_sale_order estorna a entry de
+    // juros junto com a receita, e o re-faturamento tem que inserir uma nova
+    // (o índice único parcial de 20260616120000 exclui 'estornado').
     const { data: existingFactoringEntry } = await db
       .from('financial_entries')
       .select('id')
       .eq('reference_id', saleOrderId)
-      .eq('reference_type', 'sale_order_factoring');
+      .eq('reference_type', 'sale_order_factoring')
+      .not('status', 'in', '(cancelado,cancelled,estornado)');
 
     if (factoringDiscount > 0 && factoringConfigForEntry) {
       const factoringDesc = `Juros factoring (${factoringConfigForEntry.name || 'config'}, ${factoringConfigForEntry.monthly_interest_rate}% a.m.) - ${so.client_name || ''} - ${so.order_number || ''}`;
@@ -412,7 +416,8 @@ export async function syncFinancialRecordsCore(
         const { error } = await db.from('financial_entries')
           .update({ description: factoringDesc })
           .eq('reference_id', saleOrderId)
-          .eq('reference_type', 'sale_order_factoring');
+          .eq('reference_type', 'sale_order_factoring')
+          .not('status', 'in', '(cancelado,cancelled,estornado)');
         must('Atualizar rótulo de juros factoring', error);
       }
     } else if (existingFactoringEntry && existingFactoringEntry.length > 0) {

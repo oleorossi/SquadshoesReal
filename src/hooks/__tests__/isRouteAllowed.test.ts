@@ -67,6 +67,52 @@ describe('isRouteAllowed — RBAC por role (sem granular)', () => {
     expect(isRouteAllowed('/pcp', prod)).toBe(true);
     expect(isRouteAllowed('/fichas-montadores', prod)).toBe(true);
   });
+  it('gerente/comercial/consulta acessam os relatórios A4 (/relatorios/*)', () => {
+    for (const role of ['gerente', 'comercial', 'consulta']) {
+      const o = { isAdmin: false, roles: [role], perms: [], allMenuPaths: MENU };
+      expect(isRouteAllowed('/relatorios/op', o), `role ${role}`).toBe(true);
+      expect(isRouteAllowed('/relatorios/oee', o), `role ${role}`).toBe(true);
+    }
+    // Raiz /relatorios (hub em systemItems) continua admin-only.
+    expect(isRouteAllowed('/relatorios', { isAdmin: false, roles: ['gerente'], perms: [], allMenuPaths: MENU })).toBe(false);
+  });
+  it('detalhe de grupo econômico exige módulo clientes (não fica fora do mapa)', () => {
+    const prod = { isAdmin: false, roles: ['producao'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/grupos-economicos/abc-123', prod)).toBe(false);
+    const com = { isAdmin: false, roles: ['comercial'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/grupos-economicos/abc-123', com)).toBe(true);
+  });
+  it('ferramentas de sistema fora do menu são admin-only', () => {
+    const ger = { isAdmin: false, roles: ['gerente'], perms: [], allMenuPaths: MENU };
+    expect(isRouteAllowed('/navigation-audit', ger)).toBe(false);
+    expect(isRouteAllowed('/modules/reports', ger)).toBe(false);
+    expect(isRouteAllowed('/modules/quality', ger)).toBe(true); // módulo producao
+  });
+});
+
+describe('isRouteAllowed — rotas-satélite no modo granular (sem item de menu)', () => {
+  // Catálogo espelhando a sidebar REAL: '/orders' NÃO é item de menu
+  // (spec R7.1) — os links de OP moram nas telas de Produção.
+  const MENU_REAL = ['/producao/planejamento', '/producao/kanban', '/sales', '/rh'];
+  it('grant de item de Produção concede /orders (alias ordens→producao)', () => {
+    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/producao/kanban')], allMenuPaths: MENU_REAL };
+    expect(isRouteAllowed('/orders', o)).toBe(true);
+    expect(isRouteAllowed('/orders/123/edit', o)).toBe(true);
+  });
+  it('satélite herda do módulo do item concedido (/sac e /forecast ← /sales)', () => {
+    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/sales')], allMenuPaths: MENU_REAL };
+    expect(isRouteAllowed('/sac', o)).toBe(true);
+    expect(isRouteAllowed('/forecast', o)).toBe(true);
+  });
+  it('sem item do módulo concedido, a satélite continua bloqueada', () => {
+    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/rh')], allMenuPaths: MENU_REAL };
+    expect(isRouteAllowed('/orders', o)).toBe(false);
+    expect(isRouteAllowed('/sac', o)).toBe(false);
+  });
+  it('rota COM item de menu não ganha fallback (allow-list estrita preservada)', () => {
+    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/producao/kanban')], allMenuPaths: MENU_REAL };
+    expect(isRouteAllowed('/sales', o)).toBe(false);
+  });
 });
 
 describe('isRouteAllowed — granular POR ITEM (allow-list de paths)', () => {

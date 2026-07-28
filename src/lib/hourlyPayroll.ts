@@ -37,6 +37,10 @@ export const LONG_DAY_MIN = 360;
 /** Janela em que o almoço acontece: 12:00–14:00 (decisão 2026-06-02). */
 export const LUNCH_WINDOW_START = 12 * 60;
 export const LUNCH_WINDOW_END = 14 * 60;
+/** Batida DUPLA do relógio (ex.: 07:59 + 08:01): batida a menos de 5 min da
+ *  anterior é descartada ANTES de parear — mesma regra do SQL
+ *  `calculate_day_summary` (paridade M25, auditoria 2026-07-28). */
+export const DOUBLE_PUNCH_DEDUPE_MIN = 5;
 
 export interface HourlyDayInput {
   date: string; // YYYY-MM-DD
@@ -74,6 +78,8 @@ function timeToMin(t: string): number {
  * - Dia útil → antes das 18:00 normal; depois das 18:00 vira 1,5×.
  *
  * Batidas:
+ * - **Batida DUPLA (<5 min)** → deduplicada antes de tudo (mesma regra do SQL
+ *   `calculate_day_summary` — os dois motores têm que classificar o dia igual).
  * - **4+ pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
  * - **2 batidas** (entrada+saída) → span do 1º ao último (não perde a tarde).
  * - **nº ÍMPAR** (pulou uma batida) → INCONSISTENTE: 0h + `incomplete`. Não é mais
@@ -99,14 +105,37 @@ export function splitDayMinutes(
    */
   forceNormalDay: boolean = false,
 ): { normal: number; premium: number; incomplete: boolean } {
-  const n = punches.length;
-  if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
+  if (punches.length < 2) return { normal: 0, premium: 0, incomplete: punches.length === 1 };
   // Ordena as batidas numericamente antes de parear: o relógio pode entregar fora de
   // ordem e, sem ordenar, os pares saem trocados e o almoço deixa de ser deduzido
   // (ex.: 08,18,12,13 → [08→18]+[12→13] = 11h em vez de 9h). A validação já ordena
   // (timeValidationRules), mas o motor não — contrato silencioso. Numérico, não lexical
   // (tolera '12:37*'). Idempotente em batidas já ordenadas.
-  const ps = [...punches].sort((a, b) => timeToMin(a) - timeToMin(b));
+  const sorted = [...punches].sort((a, b) => timeToMin(a) - timeToMin(b));
+  // DEDUPE de batida DUPLA (<5 min da anterior BRUTA — ex.: 07:59 + 08:01): o
+  // relógio registra o mesmo evento 2×. Sem isto, [07:59, 08:01, 18:00] virava
+  // "3 batidas = pendente, 0h" e o dia não era pago, enquanto Pendências (SQL
+  // `calculate_day_summary`, que deduplica) não listava nada pra resolver.
+  // Espelha o pré-passe do SQL (M25, auditoria 2026-07-28): compara sempre com a
+  // batida BRUTA anterior, não com a última mantida.
+  const deduped: string[] = [];
+  let prevMin: number | null = null;
+  for (const p of sorted) {
+    const min = timeToMin(p);
+    if (prevMin === null || Math.abs(min - prevMin) >= DOUBLE_PUNCH_DEDUPE_MIN) deduped.push(p);
+    prevMin = min;
+  }
+  // Se o dedupe transformou um conjunto PAR (≥4, com pares reais) em ÍMPAR, a
+  // batida "dupla" removida na verdade FECHAVA um par (ex.: [08,12,12:04,18] —
+  // 12:04 é a volta do almoço, não repique). Descartá-la quebra o pareamento e
+  // zeraria um dia que o caminho que PAGA calculava certo. Nesse caso mantém o
+  // conjunto original ordenado (M25 review, 2026-07-28). O caso alvo do dedupe
+  // (repique tipo [07:59,08:01,18:00]) tem original ÍMPAR → não recai aqui.
+  const ps = (deduped.length % 2 !== 0 && sorted.length % 2 === 0 && sorted.length >= 4)
+    ? sorted
+    : deduped;
+  const n = ps.length;
+  if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
   // Nº ÍMPAR de batidas:
   //  • n = 3 (FALTOU uma batida) → INCONSISTENTE: 0h + incomplete, resolve manual
   //    em Pendências (não dá pra inferir com segurança qual batida faltou).

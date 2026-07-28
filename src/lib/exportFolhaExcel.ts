@@ -27,8 +27,10 @@ export interface FolhaExportRow {
  *   - "Resumo": 1 linha por funcionário (salário, faltas, atrasos, HE, líquidos mês/quinzenas).
  *   - "Detalhe dia a dia": 1 linha por (funcionário × dia) com batidas, esperado, trabalhado,
  *     situação, saldo e o desconto/excedente DO DIA.
- *   - "Como ler": notas (HE/atraso pago é líquido do período; falta = salário ÷ 30).
- * Tudo com o MESMO motor da folha (evaluationDetail reconcilia com computePeriodFolha).
+ *   - "Como ler": notas com a política canônica (falta ÷ dias úteis, HE em R$/h).
+ * Tudo com o MESMO motor da folha: o Detalhe usa evaluationDetail COM a
+ * SalaryPolicy do Resumo (M26, auditoria 2026-07-28) — antes o Detalhe saía no
+ * legado ÷30/×1,5 e contradizia o valor pago (ex.: falta R$100 × R$136,36).
  */
 export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: string, filename: string): Promise<void> {
   const XLSX = await import('xlsx'); // lazy: 424KB só ao exportar a Folha
@@ -61,9 +63,10 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
   for (const r of rows) {
     const e = evaluationDetail(r.data);
     for (const d of e.dayRows) {
-      const deficitMin = d.kind === 'falta' ? d.expected : (d.kind === 'curto' ? Math.max(0, d.expected - d.worked) : 0);
-      const descontoDia = d.kind === 'falta' ? e.valorDia : (d.kind === 'curto' ? (deficitMin / 60) * e.vh : 0);
-      const excedenteDia = d.saldo > 0 ? (d.saldo / 60) * e.vh * e.premiumMultiplier : 0;
+      // R$ do dia vem do PRÓPRIO motor (evaluationDetail com a policy do Resumo)
+      // — não recalcular aqui com ÷30/×1,5 (era a divergência do M26).
+      const descontoDia = d.descontoDia;
+      const excedenteDia = d.excedenteDia;
       detalhe.push({
         'Matrícula': r.ext || '',
         'Funcionário': r.name,
@@ -90,14 +93,17 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
   const notas = [
     [`Folha — ${periodLabel}`],
     [],
-    ['Os valores seguem o MESMO motor da Folha (hora extra LÍQUIDA do período).'],
-    ['• Falta = desconta 1 dia (salário ÷ 30). O "Desconto do dia (R$)" da falta é exato.'],
-    ['• Atraso: o "Desconto do dia (R$)" de um dia "abaixo do esperado" é só referência —'],
-    ['  o atraso PAGO é LÍQUIDO do período (dias longos / fim de semana abatem antes).'],
-    ['  O valor oficial está em "Atrasos (R$)" no Resumo.'],
-    ['• Hora extra: o "Excedente do dia (R$)" é bruto por dia (×1,5). A HE PAGA é o'],
-    ['  excedente LÍQUIDO do período — quem não bate a meta de horas NÃO tem HE.'],
-    ['  O valor oficial está em "Hora extra (R$)" no Resumo.'],
+    ['Os valores seguem o MESMO motor da Folha (política canônica, por dia, sem'],
+    ['compensação entre dias).'],
+    ['• Falta = desconta 1 dia útil (salário ÷ dias ÚTEIS do mês do dia).'],
+    ['• Atraso = minutos faltantes × valor-hora (valor-dia ÷ jornada da escala).'],
+    ['• Hora extra = excedente do dia × R$/h CADASTRADO do funcionário (taxa normal'],
+    ['  em dia útil/sábado; taxa domingo/feriado nesses dias). Excedente até o mínimo'],
+    ['  de HE da escala é descartado.'],
+    ['• O "Desconto do dia (R$)" e o "Excedente do dia (R$)" usam essas fórmulas; o'],
+    ['  valor oficial do período está no Resumo ("Faltas/Atrasos/Hora extra (R$)") —'],
+    ['  pode diferir do somatório do Detalhe quando há dia abonado (ausência'],
+    ['  justificada) ou dia sem cobertura do relógio, tratados só no Resumo.'],
     ['• Batida ímpar = dia pendente (fica fora do cálculo até resolver em Pendências).'],
     ['• Base da quinzena é proporcional aos dias do mês: 1ª + 2ª = salário exato.'],
     ['• Líquido = salário (proporcional) − faltas − atrasos + HE − adiantamentos.'],

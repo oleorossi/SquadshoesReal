@@ -46,6 +46,9 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/sales-report': 'relatorios',
   '/suppliers': 'fornecedores',
   '/clients': 'clientes',
+  // Detalhe de grupo econômico (receita 12m, limite de crédito, aging AR) —
+  // linkado da tela de Clientes; mesma governança.
+  '/grupos-economicos': 'clientes',
   '/finance': 'financeiro',
   '/companies': 'empresas_fiscal',
   '/nfe': 'nfe',
@@ -116,6 +119,10 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/inventory': 'estoque',
   '/production': 'producao',
   '/quality': 'producao',
+  // Módulos legados montados em /modules/* (App.tsx) — mesma governança dos
+  // análogos ('/quality' e '/reports').
+  '/modules/quality': 'producao',
+  '/modules/reports': 'sistema',
   '/groups': 'produtos',
   '/stock-history': 'estoque',
   '/component-sheets': 'produtos',
@@ -169,6 +176,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/audit-logs': 'sistema',
   '/system-diagnostics': 'sistema',
   '/unit-audit': 'sistema',
+  '/navigation-audit': 'sistema',
 };
 
 /**
@@ -178,7 +186,11 @@ export const ROLE_MODULES: Record<string, string[]> = {
   admin: ['*'], // all
   gerente: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
-    'relatorios', 'financeiro', 'nfe', 'empresas_fiscal',
+    // 'reports' = relatórios A4 operacionais (/relatorios/*); 'relatorios'
+    // (legado) hoje governa só o redirect /sales-report. Concedidos juntos
+    // pra alinhar com os ROLE_TEMPLATES do CreateUserDialog (que usam
+    // 'reports') e com o comentário do ROUTE_MODULE_MAP.
+    'relatorios', 'reports', 'financeiro', 'nfe', 'empresas_fiscal',
     'fornecedores', 'terceirizados', 'rh', 'rh_folha',
     'producao', 'expedicao',
   ],
@@ -194,11 +206,11 @@ export const ROLE_MODULES: Record<string, string[]> = {
     'dashboard', 'estoque',
   ],
   comercial: [
-    'dashboard', 'vendas', 'clientes', 'relatorios',
+    'dashboard', 'vendas', 'clientes', 'relatorios', 'reports',
   ],
   consulta: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
-    'relatorios', 'financeiro', 'nfe', 'empresas_fiscal', 'fornecedores',
+    'relatorios', 'reports', 'financeiro', 'nfe', 'empresas_fiscal', 'fornecedores',
     'terceirizados', 'rh', 'producao', 'expedicao',
   ],
   // Operador NF-e: emite/cancela NF + vê PVs com valores + cadastra clientes/empresas.
@@ -262,6 +274,18 @@ export function resolveMenuOwner(path: string, allMenuPaths: string[] = ALL_MENU
   return best;
 }
 
+// Modo granular: rotas-satélite são telas VÁLIDAS sem item de sidebar
+// (secondaryRoutes, '/orders', hubs legados). resolveMenuOwner devolve null
+// pra elas e a matriz de permissões só grava paths de itens de menu
+// (useUserManagement valida contra getAllMenuItems) — sem fallback seriam
+// impossíveis de conceder (ex.: link de OP do Kanban → 'Acesso Restrito').
+// Regra: rota SEM item dono herda do MÓDULO — liberada quando algum item de
+// menu CONCEDIDO resolve pro mesmo módulo do ROUTE_MODULE_MAP.
+// '/orders' (módulo 'ordens') não tem item de menu próprio (spec R7.1: saiu
+// da sidebar) e os links de OP moram nas telas de Produção, então 'ordens'
+// também aceita grants do módulo 'producao'.
+const SATELLITE_MODULE_ALIASES: Record<string, string[]> = { ordens: ['producao'] };
+
 /** Ações controláveis por área/tela (module = path). 'view' governa a rota. */
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete';
 
@@ -291,7 +315,9 @@ export interface RouteAccessInput {
  *   3. dashboard → sempre liberado (tela inicial).
  *   4. tem permissão granular (rows em user_permissions):
  *        - libera se o ITEM dono da rota está liberado por PATH, OU
- *        - (retrocompat) se o MÓDULO da rota está liberado por key.
+ *        - (retrocompat) se o MÓDULO da rota está liberado por key, OU
+ *        - rota-satélite (sem item de menu dono): se algum item CONCEDIDO
+ *          resolve pro mesmo módulo (ou alias — SATELLITE_MODULE_ALIASES).
  *      Caso contrário, bloqueia (allow-list estrita — "só os selecionados").
  *   5. sem granular → RBAC por role (comportamento legado).
  */
@@ -316,6 +342,17 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
     const owner = resolveMenuOwner(path, allMenuPaths);
     if (owner && grantedPaths.has(owner)) return true;
     if (mod && grantedModules.has(mod)) return true; // retrocompat módulo
+    // Rota-satélite (sem item de menu dono): herda do módulo — ver
+    // SATELLITE_MODULE_ALIASES acima. Rotas COM item dono não caem aqui,
+    // preservando a semântica de irmãos da allow-list estrita.
+    if (!owner && mod) {
+      const mods = [mod, ...(SATELLITE_MODULE_ALIASES[mod] ?? [])];
+      if (mods.some((m) => grantedModules.has(m))) return true;
+      for (const granted of grantedPaths) {
+        const grantedMod = resolveModuleForPath(granted);
+        if (grantedMod && mods.includes(grantedMod)) return true;
+      }
+    }
     return false;
   }
 

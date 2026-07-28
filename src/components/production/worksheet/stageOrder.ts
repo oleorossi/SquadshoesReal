@@ -1,7 +1,9 @@
 /**
  * Mapa canônico de `stage_order` por nome de setor (espelha SQL function
- * `canonical_stage_order` aplicada na mig 20260629230000). Usado pra
- * exibir "Operação NN" no header das fichas de operador.
+ * `canonical_stage_order` reescrita na mig 20261001120000 — fluxo de 11
+ * etapas após o split da Costura). Usado pra exibir "Operação NN" no header
+ * das fichas de operador; a numeração é a MESMA do trilho de 11 posições
+ * (FLOW_RAIL_STEPS/SECTOR_COLORS no WorksheetHeader).
  *
  * Padrão de mercado (manufacturing traveler): cada operação tem número
  * sequencial pra rastreio e contagem (001-NNN).
@@ -11,20 +13,20 @@ export const CANONICAL_STAGE_ORDER: Readonly<Record<string, number>> = {
   'Corte Forração': 2,
   'Corte Forracao': 2,
   'Corte Cabedal':  2,
-  'Costura':        3,
-  // Setores de FICHA (2026-06-12): a camada de impressão divide 'Costura'
-  // em dois. O setor 'Costura' do fluxo de produção (enum/DB) segue único.
   'Costura Palmilha': 3,
-  'Costura Cabedal':  3,
-  'Aviamento':      4,
-  'Mesa':           4,
-  'Silk':           5,
-  'Colagem':        6,
-  'Montagem':       7,
-  'Solagem':        8,
-  'Acabamento':     9,
-  'Expedição':     10,
-  'Expedicao':     10,
+  // Legado: a 'Costura' única do fluxo antigo era a da palmilha (a de
+  // cabedal é opt-in por ficha) → posição 3, igual ao SQL.
+  'Costura':        3,
+  'Costura Cabedal': 4,
+  'Aviamento':      5,
+  'Mesa':           5,
+  'Silk':           6,
+  'Colagem':        7,
+  'Montagem':       8,
+  'Solagem':        9,
+  'Acabamento':    10,
+  'Expedição':     11,
+  'Expedicao':     11,
 };
 
 /**

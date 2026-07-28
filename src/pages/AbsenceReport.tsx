@@ -19,8 +19,9 @@ import {
 } from '@/hooks/useRH';
 import {
   businessDaysInPeriod, absenceBusinessDays, sumAbsenceBusinessDays,
-  absenteeismRate, mandatoryHolidaySet,
+  absenteeismRate,
 } from '@/lib/absenteeism';
+import { buildHolidaySet } from '@/lib/holidays';
 
 export default function AbsenceReport() {
   const today = new Date();
@@ -35,7 +36,8 @@ export default function AbsenceReport() {
   const { data: absences = [], isLoading } = useAbsences({ from, to });
   const { data: holidaysList = [] } = useHolidays();
   // Feriados OBRIGATÓRIOS (optional !== true) excluídos da contagem de dias úteis.
-  const holidaysSet = useMemo(() => mandatoryHolidaySet(holidaysList as any[]), [holidaysList]);
+  // Recorrência expandida no período consultado (M28) — helper único da Folha.
+  const holidaysSet = useMemo(() => buildHolidaySet(holidaysList as any[], from, to), [holidaysList, from, to]);
   const upsert = useUpsertAbsence();
   const remove = useDeleteAbsence();
 
