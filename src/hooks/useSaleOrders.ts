@@ -2359,7 +2359,7 @@ export function useResyncOPsFromSheets() {
           // Get existing OPs for this sale order
           const { data: existingOPs } = await supabase
             .from('orders')
-            .select('id, reference_id, quantity, status, color, grade, sale_order_id')
+            .select('id, reference_id, quantity, status, color, grade, sale_order_id, sale_order_item_id')
             .eq('sale_order_id', so.id)
             .in('status', ['Reservado', 'Em Produção']);
           
@@ -2370,6 +2370,7 @@ export function useResyncOPsFromSheets() {
             .from('sale_order_items')
             .select('*')
             .eq('sale_order_id', so.id);
+          const soItemsById = new Map((soItems || []).map(item => [item.id, item]));
 
           for (const op of existingOPs) {
             try {
@@ -2455,7 +2456,22 @@ export function useResyncOPsFromSheets() {
               }
 
               // 8. Re-debit strap materials
-              const matchingItem = soItems?.find(i => i.reference_id === op.reference_id && i.color === op.color);
+              let matchingItem = op.sale_order_item_id
+                ? soItemsById.get(op.sale_order_item_id)
+                : undefined;
+              if (!op.sale_order_item_id) {
+                const fallbackItems = (soItems || []).filter(
+                  item => item.reference_id === op.reference_id && item.color === op.color,
+                );
+                if (fallbackItems.length === 1) {
+                  matchingItem = fallbackItems[0];
+                } else if (fallbackItems.length > 1) {
+                  console.warn(
+                    'Resync de tiras ignorado: OP órfã tem múltiplos itens do PV para a mesma referência e cor.',
+                    { orderId: op.id, referenceId: op.reference_id, color: op.color, candidateItemIds: fallbackItems.map(item => item.id) },
+                  );
+                }
+              }
               if (matchingItem?.strap_colors && Array.isArray(matchingItem.strap_colors) && (matchingItem.strap_colors as any[]).length > 0) {
                 const { error: strapError } = await supabase.rpc('debit_strap_stock', {
                   p_strap_colors: matchingItem.strap_colors,
