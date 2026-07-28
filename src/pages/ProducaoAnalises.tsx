@@ -10,6 +10,7 @@ const PCPDashboard = lazy(() => import('./PCPDashboard'));
 const SectorBottleneckView = lazy(() => import('./SectorBottleneckView'));
 const LeadTime = lazy(() => import('./LeadTime'));
 const CapacityPlanning = lazy(() => import('./CapacityPlanning'));
+const DefaultLeadTimesCapacity = lazy(() => import('./DefaultLeadTimesCapacity'));
 const RCCPPlanning = lazy(() => import('@/components/production/RCCPPlanning'));
 const PostOPAnalysis = lazy(() => import('@/components/production/PostOPAnalysis'));
 const OrderFlowAudit = lazy(() => import('./OrderFlowAudit'));
@@ -34,6 +35,7 @@ const VIEWS: { value: string; label: string; render: () => JSX.Element }[] = [
   { value: 'gargalos',     label: 'Gargalos',         render: () => <SectorBottleneckView /> },
   { value: 'lead-time',    label: 'Lead Time',        render: () => <LeadTime /> },
   { value: 'capacidade',   label: 'Capacidade',       render: () => <CapacityPlanning /> },
+  { value: 'tempos-padrao', label: 'Tempos-Padrão por Setor', render: () => <DefaultLeadTimesCapacity /> },
   { value: 'rccp',         label: 'RCCP',             render: () => <RCCPPlanning /> },
   { value: 'pos-op',       label: 'Pós-OP',           render: () => <PostOPAnalysis /> },
   { value: 'auditoria',    label: 'Auditoria',        render: () => <OrderFlowAudit embedded /> },
