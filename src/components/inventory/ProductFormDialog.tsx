@@ -23,7 +23,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Product, ProductFormData, UNITS, UNIT_LABELS, LOCATIONS } from '@/types/inventory';
-import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
+import { CONVERSION_TEMPLATES, suggestConversionRate, effectiveConversionFactor, effectiveConversionFactorStrict, describeConversion, needsWidthForConversion, purchasePriceToUnitPrice } from '@/lib/purchaseConversion';
 import { PROPAGABLE_LABELS, computePropagableDiff } from '@/hooks/useVariantPropagation';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { useGroups } from '@/hooks/useGroups';
@@ -253,7 +253,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       dimensions_length: source.dimensions_length || prev.dimensions_length,
       dimensions_width: source.dimensions_width || prev.dimensions_width,
       dimensions_thickness: source.dimensions_thickness || prev.dimensions_thickness,
-      dimensions_unit: source.dimensions_unit || prev.dimensions_unit,
+      dimensions_unit: source.dimensions_unit || (source.dimensions_width ? '' : prev.dimensions_unit),
       min_stock_grade: (source.min_stock_grade && typeof source.min_stock_grade === 'object' && !Array.isArray(source.min_stock_grade))
         ? (source.min_stock_grade as Record<string, number>)
         : prev.min_stock_grade,
@@ -261,7 +261,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     setPlateLength(source.dimensions_length || 0);
     setPlateWidth(source.dimensions_width || 0);
     setPlateThickness(source.dimensions_thickness || 0);
-    setPlateUnit(source.dimensions_unit || 'mm');
+    setPlateUnit(source.dimensions_unit || (source.dimensions_width ? '' : 'mm'));
     if (source.min_stock_grade && typeof source.min_stock_grade === 'object') {
       setMinStockGrade(source.min_stock_grade as Record<string, number>);
     }
@@ -326,10 +326,14 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         dimensions_length: rest.dimensions_length ?? 0,
         dimensions_width: rest.dimensions_width ?? 0,
         dimensions_thickness: rest.dimensions_thickness ?? 0,
-        dimensions_unit: rest.dimensions_unit || 'mm',
+        dimensions_unit: rest.dimensions_unit || (rest.dimensions_width ? '' : 'mm'),
         purchase_unit: normalizeUnit(rest.purchase_unit || rest.purchase_order_unit),
         production_unit: rest.unit || 'un',
-        conversion_rate: rest.conversion_rate ?? 1,
+        conversion_rate: rest.conversion_rate ?? (
+          normalizeUnit(rest.purchase_unit || rest.purchase_order_unit) !== normalizeUnit(rest.unit)
+            ? 0
+            : 1
+        ),
         purchase_order_unit: normalizeUnit(rest.purchase_unit || rest.purchase_order_unit),
         min_order_quantity: rest.min_order_quantity ?? 1,
         purchase_multiple: (rest as any).purchase_multiple ?? 0,
@@ -350,14 +354,14 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       let dimLength = rest.dimensions_length || 0;
       let dimWidth = rest.dimensions_width || 0;
       let dimThickness = rest.dimensions_thickness || 0;
-      let dimUnit = rest.dimensions_unit || 'mm';
+      let dimUnit = rest.dimensions_unit || (dimWidth > 0 ? '' : 'mm');
       if (!dimLength && !dimWidth && !dimThickness && rest.group_id) {
         const grp = groups.find(g => g.id === rest.group_id);
         if (grp) {
           dimLength = grp.dimensions_length || 0;
           dimWidth = grp.dimensions_width || 0;
           dimThickness = grp.dimensions_thickness || 0;
-          dimUnit = grp.dimensions_unit || 'mm';
+          dimUnit = grp.dimensions_unit || (dimWidth > 0 ? '' : 'mm');
           if (dimLength || dimWidth || dimThickness) {
             setForm(prev => ({
               ...prev,
@@ -476,12 +480,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         dimensions_length: similar.dimensions_length || prev.dimensions_length,
         dimensions_width: similar.dimensions_width || prev.dimensions_width,
         dimensions_thickness: similar.dimensions_thickness || prev.dimensions_thickness,
-        dimensions_unit: similar.dimensions_unit || prev.dimensions_unit,
+        dimensions_unit: similar.dimensions_unit || (similar.dimensions_width ? '' : prev.dimensions_unit),
       }));
       setPlateLength(similar.dimensions_length || 0);
       setPlateWidth(similar.dimensions_width || 0);
       setPlateThickness(similar.dimensions_thickness || 0);
-      setPlateUnit(similar.dimensions_unit || 'mm');
+      setPlateUnit(similar.dimensions_unit || (similar.dimensions_width ? '' : 'mm'));
       setAutoFilled(true);
       toast.info(`Dados preenchidos com base em "${similar.name}"`);
     }
@@ -546,6 +550,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     if (!form.sku.trim()) errs.sku = true;
     if (!form.group_id) errs.group_id = true;
     if (hasGrade && (sizeFrom == null || sizeTo == null || sizeTo < sizeFrom)) errs.sizeRange = true;
+    const purchaseUnit = normalizeUnit(form.purchase_unit || form.purchase_order_unit);
+    const stockUnit = normalizeUnit(form.unit);
+    const conversionRate = Number(form.conversion_rate);
+    if (purchaseUnit !== stockUnit && (!Number.isFinite(conversionRate) || conversionRate <= 0)) {
+      errs.conversion_rate = true;
+    }
     return errs;
   };
 
@@ -557,11 +567,16 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
+      if (errs.conversion_rate) {
+        toast.error('A taxa de conversão deve ser maior que zero quando a unidade de compra for diferente da unidade de estoque.');
+        return;
+      }
       const fieldNames: Record<string, string> = {
         name: 'Nome',
         sku: 'SKU',
         group_id: 'Grupo',
-        sizeRange: 'Grade de Tamanhos'
+        sizeRange: 'Grade de Tamanhos',
+        conversion_rate: 'Fator de Conversão',
       };
       const missingFields = Object.keys(errs)
         .map(key => fieldNames[key] || key)
@@ -576,6 +591,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       return;
     }
     const baseData = { ...form };
+    if (needsWidthForConversion(baseData) && effectiveConversionFactorStrict(baseData) == null) {
+      toast.error('A conversão de metro linear para área exige largura positiva com unidade (mm, cm, dm ou m).');
+      return;
+    }
     // Unidade de estoque == unidade de consumo: sincronizamos sempre que houver
     // unit definido. Form tem só "Unidade de Consumo" (que escreve em form.unit)
     // — espelhamos no consumption_unit pra manter as duas colunas alinhadas.
@@ -801,8 +820,9 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           purchase_unit: prev.purchase_unit,
           conversion_rate: prev.conversion_rate,
           dimensions_width: prev.dimensions_width,
+          dimensions_unit: prev.dimensions_unit,
         });
-        const oldPackPrice = (prev.unit_price ?? 0) * oldFactor;
+        const oldPackPrice = oldFactor == null ? 0 : (prev.unit_price ?? 0) * oldFactor;
 
         // Auto-suggest conversion_rate (cobre área, massa, volume, comprimento)
         const pu = prev.purchase_unit || prev.purchase_order_unit || 'un';
@@ -812,12 +832,14 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
         // Recalcula unit_price para manter o R$/purchase_unit constante
         if (oldPackPrice > 0) {
-          next.unit_price = purchasePriceToUnitPrice(oldPackPrice, {
+          const nextUnitPrice = purchasePriceToUnitPrice(oldPackPrice, {
             unit: next.unit,
             purchase_unit: next.purchase_unit,
             conversion_rate: next.conversion_rate,
             dimensions_width: next.dimensions_width,
+            dimensions_unit: next.dimensions_unit,
           });
+          if (nextUnitPrice != null) next.unit_price = nextUnitPrice;
         }
       }
 
@@ -828,20 +850,23 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           purchase_unit: prev.purchase_unit,
           conversion_rate: prev.conversion_rate,
           dimensions_width: prev.dimensions_width,
+          dimensions_unit: prev.dimensions_unit,
         });
-        const oldPackPrice = (prev.unit_price ?? 0) * oldFactor;
+        const oldPackPrice = oldFactor == null ? 0 : (prev.unit_price ?? 0) * oldFactor;
 
         next.purchase_order_unit = value as string;
         const suggested = suggestConversionRate(value as string, next.unit);
         if (suggested !== null) next.conversion_rate = suggested;
 
         if (oldPackPrice > 0) {
-          next.unit_price = purchasePriceToUnitPrice(oldPackPrice, {
+          const nextUnitPrice = purchasePriceToUnitPrice(oldPackPrice, {
             unit: next.unit,
             purchase_unit: next.purchase_unit,
             conversion_rate: next.conversion_rate,
             dimensions_width: next.dimensions_width,
+            dimensions_unit: next.dimensions_unit,
           });
+          if (nextUnitPrice != null) next.unit_price = nextUnitPrice;
         }
       }
 
@@ -1164,11 +1189,11 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                     setPlateLength(selectedGroup.dimensions_length || 0);
                     setPlateWidth(selectedGroup.dimensions_width || 0);
                     setPlateThickness(selectedGroup.dimensions_thickness || 0);
-                    setPlateUnit(selectedGroup.dimensions_unit || 'mm');
+                    setPlateUnit(selectedGroup.dimensions_unit || (selectedGroup.dimensions_width ? '' : 'mm'));
                     update('dimensions_length', selectedGroup.dimensions_length || 0);
                     update('dimensions_width', selectedGroup.dimensions_width || 0);
                     update('dimensions_thickness', selectedGroup.dimensions_thickness || 0);
-                    update('dimensions_unit', selectedGroup.dimensions_unit || 'mm');
+                    update('dimensions_unit', selectedGroup.dimensions_unit || (selectedGroup.dimensions_width ? '' : 'mm'));
                   }
                   if (selectedGroup.package_weight_kg > 0 && selectedGroup.package_price > 0) {
                     const calcPrice = Math.round((selectedGroup.package_price / selectedGroup.package_weight_kg) * 10000) / 10000;
@@ -1542,6 +1567,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                           purchase_unit: form.purchase_unit,
                           conversion_rate: form.conversion_rate,
                           dimensions_width: form.dimensions_width,
+                          dimensions_unit: form.dimensions_unit,
                         })}
                       </p>
                     </div>
@@ -1595,23 +1621,36 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                             onChange={v => {
                               update('dimensions_width', v);
                               setPlateWidth(v);
-                              // recalcula conversion_rate via largura
-                              if (v > 0 && form.unit === 'dm²') {
-                                update('conversion_rate', 10 * v);
-                              } else if (v > 0 && form.unit === 'm²') {
-                                update('conversion_rate', v / 10);
-                              }
+                              const factor = effectiveConversionFactorStrict({
+                                unit: form.unit,
+                                purchase_unit: form.purchase_unit,
+                                conversion_rate: 1,
+                                dimensions_width: v,
+                                dimensions_unit: form.dimensions_unit,
+                              });
+                              if (factor != null) update('conversion_rate', factor);
                             }}
                             min={0}
                             step="0.1"
                             className="mt-0.5 h-8 text-xs"
-                            placeholder="Ex: 10 (dm)"
+                            placeholder="Ex: 1.400 (mm)"
                           />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Unidade da largura</Label>
-                          <Select value={form.dimensions_unit || 'dm'} onValueChange={v => { update('dimensions_unit', v); setPlateUnit(v); }}>
-                            <SelectTrigger className="mt-0.5 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <Select value={form.dimensions_unit || ''} onValueChange={v => {
+                            update('dimensions_unit', v);
+                            setPlateUnit(v);
+                            const factor = effectiveConversionFactorStrict({
+                              unit: form.unit,
+                              purchase_unit: form.purchase_unit,
+                              conversion_rate: 1,
+                              dimensions_width: form.dimensions_width,
+                              dimensions_unit: v,
+                            });
+                            if (factor != null) update('conversion_rate', factor);
+                          }}>
+                            <SelectTrigger className="mt-0.5 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="dm">dm</SelectItem>
                               <SelectItem value="cm">cm</SelectItem>

@@ -79,7 +79,7 @@ export const planejamentoService = {
       dados.unidadeNecessaria as string,
       dados.unidadeEstoque as string,
       dados.unidadeCompra as string,
-      dados.conversionRate ?? 1,
+      dados.conversionRate,
     );
     const needInStock = dados.quantidadeNecessaria / needToStockDivisor;
     const quantidadeNecessariaConverted = needInStock / stockToPurchaseDivisor;

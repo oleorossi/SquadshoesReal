@@ -126,11 +126,22 @@ export function resolveConversionFactors(
   purchaseUnit: string | null | undefined,
   conversionRate: number | null | undefined,
 ): ConversionFactors {
-  const cr = (conversionRate && conversionRate > 0) ? conversionRate : 1;
-  if (cr === 1) return { needToStockDivisor: 1, stockToPurchaseDivisor: 1 };
-
   const consumptionMatchesStock = areSameUnit(consumptionUnit, stockUnit);
   const stockMatchesPurchase = areSameUnit(stockUnit, purchaseUnit);
+  const cr = Number(conversionRate);
+  const hasValidFactor = Number.isFinite(cr) && cr > 0;
+
+  // Uma conversão só é dispensável quando todas as unidades são iguais. Não
+  // transformar taxa 0/nula em 1:1: isso já gerou pedidos 100×/150× errados.
+  if ((!consumptionMatchesStock || !stockMatchesPurchase) && !hasValidFactor) {
+    throw new Error(
+      `Conversão inválida entre "${consumptionUnit || '—'}", "${stockUnit || '—'}" e "${purchaseUnit || '—'}": informe uma taxa de conversão maior que zero.`,
+    );
+  }
+
+  if (consumptionMatchesStock && stockMatchesPurchase) {
+    return { needToStockDivisor: 1, stockToPurchaseDivisor: 1 };
+  }
 
   if (!consumptionMatchesStock && stockMatchesPurchase) {
     // Case 1: Leather — dm²→m→metro
@@ -150,7 +161,6 @@ export function resolveConversionFactors(
     return { needToStockDivisor: cr, stockToPurchaseDivisor: 1 };
   }
 
-  // All units match — no conversion needed despite non-1 rate
   return { needToStockDivisor: 1, stockToPurchaseDivisor: 1 };
 }
 

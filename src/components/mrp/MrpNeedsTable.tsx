@@ -12,7 +12,7 @@ import { format, parseISO, differenceInDays, startOfDay } from "date-fns";
 import { Warning as AlertTriangle, CircleNotch as Loader2, ShoppingCart } from '@phosphor-icons/react';
 import ProductReservationDetailsDialog from "@/components/inventory/ProductReservationDetailsDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { effectiveConversionFactor, type PurchaseConversionContext } from "@/lib/purchaseConversion";
+import { effectiveConversionFactorStrict, type PurchaseConversionContext } from "@/lib/purchaseConversion";
 
 // Unidades de compra DISCRETAS (não dá pra comprar fração) → Math.ceil no
 // display. Contínuas (kg, g, m, L, dm²…) mantêm 2 casas decimais.
@@ -40,7 +40,7 @@ export function MrpNeedsTable() {
     queryFn: async () => {
       const { data: rows, error } = await supabase
         .from('products')
-        .select('id, unit, purchase_unit, conversion_rate, dimensions_width')
+        .select('id, unit, purchase_unit, conversion_rate, dimensions_width, dimensions_unit')
         .in('id', productIds);
       if (error) throw error;
       return new Map<string, PurchaseConversionContext>(
@@ -49,6 +49,7 @@ export function MrpNeedsTable() {
           purchase_unit: r.purchase_unit,
           conversion_rate: r.conversion_rate,
           dimensions_width: r.dimensions_width,
+          dimensions_unit: r.dimensions_unit,
         }]),
       );
     },
@@ -204,10 +205,8 @@ export function MrpNeedsTable() {
                       <Badge variant="destructive">{n.suggested_qty} {n.unit}</Badge>
                       {(() => {
                         const ctx = convCtxById.get(n.product_id);
-                        const factor = ctx
-                          ? effectiveConversionFactor(ctx)
-                          : (n.conversion_rate || 1);
-                        if (factor === 1 || factor <= 0) return null;
+                        const factor = ctx ? effectiveConversionFactorStrict(ctx) : null;
+                        if (factor == null || factor === 1 || factor <= 0) return null;
                         const purchaseUnit = ctx?.purchase_unit || n.purchase_unit || n.purchase_order_unit || 'un';
                         const inPurchaseUnit = n.suggested_qty / factor;
                         const display = DISCRETE_PURCHASE_UNITS.test(purchaseUnit.trim())

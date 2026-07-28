@@ -10,7 +10,7 @@
  import { Plus, Trash as Trash2, CircleNotch as Loader2, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import { toast } from 'sonner';
- import { effectiveConversionFactor, describeConversion } from '@/lib/purchaseConversion';
+ import { describeConversion, effectiveConversionFactorStrict } from '@/lib/purchaseConversion';
 
  type OrderItem = {
    product_id: string;
@@ -19,8 +19,9 @@
    unit_price: number;
    unit: string;
    purchase_unit: string;
-   conversion_rate: number;
+   conversion_rate: number | null;
    dimensions_width: number | null;
+   dimensions_unit: string | null;
    stock_unit: string;
    current_stock: number;
    min_stock: number;
@@ -46,18 +47,24 @@
        return;
      }
  
-     const purchaseUnit = (product as any).purchase_unit || product.unit || 'un';
+     const purchaseUnit = (product as any).purchase_unit || (product as any).purchase_order_unit || product.unit || 'un';
      const stockUnit = product.unit || 'un';
-     const convRate = Number((product as any).conversion_rate) || 1;
-     const dimWidth = Number((product as any).dimensions_width) || 0;
+     const convRate = (product as any).conversion_rate ?? null;
+     const dimWidth = (product as any).dimensions_width ?? null;
+     const dimUnit = (product as any).dimensions_unit ?? null;
      // Custo unitário em produtos é R$ por unidade de estoque. Convertendo pra
      // R$/purchase_unit pra mostrar o preço da NF (= unit_price * factor).
-     const factor = effectiveConversionFactor({
+     const factor = effectiveConversionFactorStrict({
        unit: stockUnit,
        purchase_unit: purchaseUnit,
        conversion_rate: convRate,
        dimensions_width: dimWidth,
+       dimensions_unit: dimUnit,
      });
+     if (factor == null) {
+       toast.error(`"${product.name}": conversão inválida. Informe uma taxa maior que zero e, para material de área, a largura com unidade.`);
+       return;
+     }
      const purchasePrice = (product.unit_price || 0) * factor;
 
      setItems(prev => [...prev, {
@@ -69,6 +76,7 @@
        purchase_unit: purchaseUnit,
        conversion_rate: convRate,
        dimensions_width: dimWidth,
+       dimensions_unit: dimUnit,
        stock_unit: stockUnit,
        current_stock: product.quantity || 0,
        min_stock: product.min_stock || 0,
@@ -182,14 +190,15 @@
                    </TableRow>
                  ) : (
                    items.map((item, index) => {
-                     const factor = effectiveConversionFactor({
+                     const factor = effectiveConversionFactorStrict({
                        unit: item.stock_unit,
                        purchase_unit: item.purchase_unit,
                        conversion_rate: item.conversion_rate,
                        dimensions_width: item.dimensions_width,
+                       dimensions_unit: item.dimensions_unit,
                      });
-                     const hasConversion = factor !== 1;
-                     const inStockUnit = item.quantity * factor;
+                     const hasConversion = factor != null && factor !== 1;
+                     const inStockUnit = factor == null ? 0 : item.quantity * factor;
                      return (
                        <TableRow key={index}>
                          <TableCell className="font-medium">
@@ -202,6 +211,7 @@
                                  purchase_unit: item.purchase_unit,
                                  conversion_rate: item.conversion_rate,
                                  dimensions_width: item.dimensions_width,
+                                 dimensions_unit: item.dimensions_unit,
                                })}
                              </div>
                            )}

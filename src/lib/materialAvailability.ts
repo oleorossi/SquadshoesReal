@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { isDiscretePurchaseUnit } from '@/lib/unitConversion';
+import { isDiscretePurchaseUnit, normalizeUnit } from '@/lib/unitConversion';
 
 export interface MaterialShortage {
   product_id: string;
@@ -181,16 +181,18 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
   }
 
   const productIds = [...new Set([...aggregated.values()].map(v => v.product_id))];
-  const { data: products } = await supabase
+  const { data: products, error: productsError } = await supabase
     .from('products')
     .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
     .in('id', productIds);
+  if (productsError) throw productsError;
 
   const rows = (products || []) as unknown as ProductRow[];
   const supplierIds = [...new Set(rows.map(p => p.supplier_id).filter(Boolean))] as string[];
-  const { data: suppliers } = supplierIds.length > 0
+  const { data: suppliers, error: suppliersError } = supplierIds.length > 0
     ? await supabase.from('suppliers').select('id, name, lead_time_days').in('id', supplierIds)
-    : { data: [] as SupplierRow[] };
+    : { data: [] as SupplierRow[], error: null };
+  if (suppliersError) throw suppliersError;
   const supplierMap = new Map((suppliers || []).map(s => [s.id, s as SupplierRow]));
 
   let maxLeadTime = 0;
@@ -270,7 +272,13 @@ export async function enrichMaterialShortages(rawShortages: RawShortage[]): Prom
     // (ex: m → rolo, kg → saco). CEIL pra não pedir fração de rolo.
     const consumptionUnit = product.unit || 'un';
     const purchaseUnit = product.purchase_order_unit || product.purchase_unit || consumptionUnit;
-    const conversionRate = Number(product.conversion_rate) > 0 ? Number(product.conversion_rate) : 1;
+    const conversionRate = Number(product.conversion_rate);
+    const hasDifferentUnits = normalizeUnit(purchaseUnit) !== normalizeUnit(consumptionUnit);
+    if (hasDifferentUnits && (!Number.isFinite(conversionRate) || conversionRate <= 0)) {
+      throw new Error(
+        `${product.name || need.product_name}: taxa de conversão inválida para ${purchaseUnit} → ${consumptionUnit}. Cadastre um fator maior que zero antes de gerar a compra.`,
+      );
+    }
     const rawPurchaseQty = conversionRate > 1 ? suggested / conversionRate : suggested;
     // CEIL sempre que a unidade de compra é DISCRETA (placa/un/par/cx/rolo…) —
     // antes só arredondava quando conversion_rate>1, então rate=1 deixava

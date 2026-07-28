@@ -33,7 +33,7 @@ export function useComponentSheets() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('component_sheets')
-        .select('*, products(name, sku, unit, category, unit_price, quantity, image_url, group_id, color), product_groups!component_sheets_group_id_fkey(id, name, colors), default_sole_group:product_groups!component_sheets_default_sole_group_id_fkey(id, name)')
+        .select('*, products(name, sku, unit, purchase_unit, purchase_order_unit, category, unit_price, quantity, image_url, group_id, color), product_groups!component_sheets_group_id_fkey(id, name, colors), default_sole_group:product_groups!component_sheets_default_sole_group_id_fkey(id, name)')
         .order('updated_at', { ascending: false });
       if (error) throw error;
       return data;

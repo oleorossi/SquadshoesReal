@@ -132,7 +132,11 @@ export default function ProductDetail() {
       dimensions_thickness: rest.dimensions_thickness ?? 0, dimensions_unit: rest.dimensions_unit || 'mm',
       purchase_unit: normalizePurchaseUnit(rest.purchase_unit),
       production_unit: normalizeProductionUnit(rest.production_unit),
-      conversion_rate: rest.conversion_rate ?? 1,
+      conversion_rate: rest.conversion_rate ?? (
+        normalizePurchaseUnit(rest.purchase_unit || rest.purchase_order_unit) !== normalizeProductionUnit(rest.unit)
+          ? 0
+          : 1
+      ),
       purchase_order_unit: normalizePurchaseUnit(rest.purchase_order_unit),
       min_order_quantity: rest.min_order_quantity ?? 1,
       safety_stock: rest.safety_stock ?? 0, lead_time_days: rest.lead_time_days ?? 7,
@@ -210,6 +214,14 @@ export default function ProductDetail() {
       baseData.dimensions_width = plateWidth;
       baseData.dimensions_thickness = plateThickness;
       baseData.dimensions_unit = plateUnit;
+
+      const purchaseUnit = normalizePurchaseUnit(baseData.purchase_unit || baseData.purchase_order_unit);
+      const stockUnit = normalizeProductionUnit(baseData.unit);
+      const conversionRate = Number(baseData.conversion_rate);
+      if (purchaseUnit !== stockUnit && (!Number.isFinite(conversionRate) || conversionRate <= 0)) {
+        toast.error('A taxa de conversão deve ser maior que zero quando a unidade de compra for diferente da unidade de estoque.');
+        return;
+      }
 
       const validatedData = ProductSchema.parse(baseData);
       await updateProduct.mutateAsync({ id: product.id, data: validatedData as any });

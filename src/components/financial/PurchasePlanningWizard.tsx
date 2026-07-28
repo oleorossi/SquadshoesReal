@@ -411,7 +411,7 @@ export default function PurchasePlanningWizard() {
           // estoque→compra pelo conversion_rate (ex.: PLACA EVA dm²→placa ÷150);
           // preço convertido pelo MESMO fator (convenção de purchase_order_items).
           const purchaseUnit = prod?.purchase_order_unit || stockUnit;
-          const convRate = Number(prod?.conversion_rate) || 1;
+          const convRate = prod?.conversion_rate;
           const { stockToPurchaseDivisor } = resolveConversionFactors(stockUnit, stockUnit, purchaseUnit, convRate);
           const totalNeededConverted = needInStock / stockToPurchaseDivisor;
           const stockInPurchaseUnit = (prod ? availableStock(prod) : 0) / stockToPurchaseDivisor;

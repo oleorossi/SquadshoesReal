@@ -146,6 +146,23 @@ function calcAreaDm2(length: number, width: number, unit: string): number {
   return (toMm(length) * toMm(width)) / 10000;
 }
 
+function isLinearMaterialConsumedByArea(product?: {
+  unit?: string | null;
+  purchase_unit?: string | null;
+  purchase_order_unit?: string | null;
+}): boolean {
+  const stockUnit = (product?.unit || '').trim().toLowerCase();
+  const purchaseUnit = (product?.purchase_unit || product?.purchase_order_unit || '').trim().toLowerCase();
+  const purchaseIsMeter = ['m', 'metro', 'metros', 'mt', 'mtl'].includes(purchaseUnit);
+  return stockUnit === 'm' || (purchaseIsMeter && ['dm²', 'dm2', 'm²', 'm2'].includes(stockUnit));
+}
+
+function hasValidLinearWidth(form: Pick<ComponentSheetFormData, 'dimensions_width' | 'dimensions_unit'>): boolean {
+  return Number.isFinite(Number(form.dimensions_width))
+    && Number(form.dimensions_width) > 0
+    && DIM_UNITS.includes(form.dimensions_unit);
+}
+
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v);
 
@@ -663,6 +680,10 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGroup) return;
+    if (selectedGroup.products.some(isLinearMaterialConsumedByArea) && !hasValidLinearWidth(form as ComponentSheetFormData)) {
+      toast.error('Informe largura positiva e a unidade linear (mm, cm, dm ou m) antes de salvar a ficha de material consumido por área.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -711,7 +732,7 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
               dimensions_length: rep.dimensions_length || 0,
               dimensions_width: rep.dimensions_width || 0,
               dimensions_thickness: rep.dimensions_thickness || 0,
-              dimensions_unit: rep.dimensions_unit || 'mm',
+              dimensions_unit: rep.dimensions_unit || (rep.dimensions_width ? '' : 'mm'),
             }));
           } else {
             setForm(f => ({ ...f, yield_per_size: {} }));
@@ -772,27 +793,27 @@ function CreateComponentForm({ onCreated }: { onCreated: (id: string) => void })
         )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <Label className="text-xs">Base ({form.dimensions_unit || 'mm'})</Label>
+            <Label className="text-xs">Base ({form.dimensions_unit || '—'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_length || ''} onChange={e => setForm(f => ({ ...f, dimensions_length: Number(e.target.value) }))} className="mt-1" placeholder="1200" />
           </div>
           <div>
-            <Label className="text-xs">Altura/larg. ({form.dimensions_unit || 'mm'})</Label>
+            <Label className="text-xs">Altura/larg. ({form.dimensions_unit || '—'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_width || ''} onChange={e => setForm(f => ({ ...f, dimensions_width: Number(e.target.value) }))} className="mt-1" placeholder="800" />
           </div>
           <div>
-            <Label className="text-xs">Espessura ({form.dimensions_unit || 'mm'})</Label>
+            <Label className="text-xs">Espessura ({form.dimensions_unit || '—'})</Label>
             <Input type="number" step="0.1" value={form.dimensions_thickness || ''} onChange={e => setForm(f => ({ ...f, dimensions_thickness: Number(e.target.value) }))} className="mt-1" placeholder="3" />
           </div>
           <div>
             <Label className="text-xs">Unidade (das dimensões)</Label>
             <Select value={form.dimensions_unit} onValueChange={v => setForm(f => ({ ...f, dimensions_unit: v }))}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>{dimUnitOptions(form.dimensions_unit).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          A <strong>Altura (largura)</strong> é a fonte da conversão dm²→{form.dimensions_unit || 'mm'} linear do sistema.
+          A <strong>Altura (largura)</strong> é a fonte da conversão dm²→{form.dimensions_unit || '—'} linear do sistema.
           Sem ela, o consumo de materiais de área (napa/forro) fica ~100× inflado.
         </p>
       </div>
@@ -920,7 +941,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
     dimensions_length: sheet.dimensions_length || 0,
     dimensions_width: sheet.dimensions_width || 0,
     dimensions_thickness: sheet.dimensions_thickness || 0,
-    dimensions_unit: sheet.dimensions_unit || 'mm',
+    dimensions_unit: sheet.dimensions_unit || (sheet.dimensions_width ? '' : 'mm'),
     yield_per_size: sheet.yield_per_size || {},
     waste_pct: sheet.waste_pct ?? 0,
     notes: sheet.notes || '',
@@ -936,7 +957,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
         dimensions_length: currentSheet.dimensions_length || 0,
         dimensions_width: currentSheet.dimensions_width || 0,
         dimensions_thickness: currentSheet.dimensions_thickness || 0,
-        dimensions_unit: currentSheet.dimensions_unit || 'mm',
+        dimensions_unit: currentSheet.dimensions_unit || (currentSheet.dimensions_width ? '' : 'mm'),
         yield_per_size: currentSheet.yield_per_size || {},
         waste_pct: currentSheet.waste_pct ?? 0,
         notes: currentSheet.notes || '',
@@ -951,6 +972,10 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
   };
 
   const saveAll = () => {
+    if (isLinearMaterialConsumedByArea(prod) && !hasValidLinearWidth(form)) {
+      toast.error('Informe largura positiva e a unidade linear (mm, cm, dm ou m) antes de salvar a ficha de material consumido por área.');
+      return;
+    }
     const { product_id: _, ...data } = form;
     const isSharedConsumptionTab = activeTab === 'yield' || activeTab === 'consumption';
     const idsToUpdate = (isGroupEdit || isSharedConsumptionTab || allColorsSelected) && siblingIds.length > 0
@@ -1229,32 +1254,37 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Base / comp. ({form.dimensions_unit || 'mm'})</Label>
+                <Label className="text-xs text-muted-foreground">Base / comp. ({form.dimensions_unit || '—'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_length || ''} onChange={e => updateField('dimensions_length', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Altura / larg. ({form.dimensions_unit || 'mm'})</Label>
+                <Label className="text-xs text-muted-foreground">Altura / larg. ({form.dimensions_unit || '—'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_width || ''} onChange={e => updateField('dimensions_width', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Espessura ({form.dimensions_unit || 'mm'})</Label>
+                <Label className="text-xs text-muted-foreground">Espessura ({form.dimensions_unit || '—'})</Label>
                 <Input type="number" step="0.1" value={form.dimensions_thickness || ''} onChange={e => updateField('dimensions_thickness', Number(e.target.value))} className="mt-1 h-9 text-sm font-mono" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Unidade (linear)</Label>
                 <Select value={form.dimensions_unit} onValueChange={v => updateField('dimensions_unit', v)}>
-                  <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>{dimUnitOptions(form.dimensions_unit).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              A <strong>Altura / largura</strong> é a fonte da conversão dm²→{form.dimensions_unit || 'mm'} linear (cabedal, forro, BOM).
+              A <strong>Altura / largura</strong> é a fonte da conversão dm²→{form.dimensions_unit || '—'} linear (cabedal, forro, BOM).
               Sem largura, o consumo de material de área fica ~100× inflado. Use só unidade linear (mm/cm/dm/m).
             </p>
             {form.dimensions_unit && !DIM_UNITS.includes(form.dimensions_unit) && (
               <p className="mt-1 text-xs text-amber-600">
                 ⚠ Unidade "{form.dimensions_unit}" não é linear — os motores de consumo a tratam como mm, inflando a conversão. Troque para mm/cm/dm/m.
+              </p>
+            )}
+            {isLinearMaterialConsumedByArea(prod) && !hasValidLinearWidth(form) && (
+              <p className="mt-1 text-xs text-destructive">
+                Largura positiva e unidade linear são obrigatórias para material consumido por área.
               </p>
             )}
           </div>

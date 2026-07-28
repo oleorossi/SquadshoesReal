@@ -5,8 +5,8 @@
  *   - `unit`           → unidade de estoque + consumo (a que a ficha técnica usa)
  *   - `purchase_unit`  → unidade da NF do fornecedor / contagem física
  *   - `conversion_rate`→ quanto de `unit` cabe em 1 `purchase_unit`
- *   - `dimensions_width` (+ `dimensions_unit`) → largura para materiais
- *     lineares (m → dm²). Sem `dimensions_unit`, assume dm (contrato antigo).
+ *   - `dimensions_width` + `dimensions_unit` → largura para materiais
+ *     lineares (m → dm²). A unidade é obrigatória: sem ela não há conversão.
  *
  * Use cases (diferente do unitConversion.ts que cuida do MRP):
  *   1. Entrada de compra: usuário digita qtd em purchase_unit → soma em unit
@@ -26,8 +26,7 @@ export type PurchaseConversionContext = {
   unit: string;
   purchase_unit?: string | null;
   conversion_rate?: number | null;
-  /** Largura do material. Interpretada junto com `dimensions_unit`; sem a
-   *  unidade, assume-se o contrato histórico (dm). */
+  /** Largura do material. Só é interpretada junto com `dimensions_unit`. */
   dimensions_width?: number | null;
   /** Unidade da largura ('mm' | 'cm' | 'dm' | 'm'). No banco a coluna
    *  products.dimensions_unit guarda quase sempre 'mm' — SEM normalizar, o
@@ -37,24 +36,19 @@ export type PurchaseConversionContext = {
 };
 
 /**
- * Normaliza a largura pra DM conforme `dimensions_unit` (F5-08). Sem unidade
- * cadastrada mantém o contrato antigo (valor já em dm) — call-sites que passam
- * a coluna crua do banco DEVEM passar também `dimensions_unit`.
+ * Normaliza a largura pra dm conforme `dimensions_unit`. Sem uma unidade
+ * linear canônica não há conversão segura.
  */
 function widthInDm(ctx: PurchaseConversionContext): number | null {
   const w = Number(ctx.dimensions_width ?? 0);
-  if (!w || w <= 0) return null;
-  const u = (ctx.dimensions_unit || 'dm').trim().toLowerCase();
+  if (!Number.isFinite(w) || w <= 0 || !ctx.dimensions_unit) return null;
+  const u = ctx.dimensions_unit.trim().toLowerCase();
   if (u === 'mm') return w / 100;
   if (u === 'cm') return w / 10;
   if (u === 'm') return w * 10;
-  return w; // 'dm' (contrato do helper) ou unidade desconhecida — sem mágica
+  if (u === 'dm') return w;
+  return null;
 }
-
-/** Unidades de contagem/embalagem (pós-normalização de `lc`): pra elas o
- *  conversion_rate=1 (default da coluna) pode significar 1:1 legítimo
- *  (ex.: solado comprado em 'un', estoque em 'par'). */
-const COUNT_LIKE_UNITS = new Set(['un', 'par', 'cx', 'pc', 'rl', 'fh', 'jg', 'placa', 'chapa']);
 
 /**
  * Resolve a unidade ao CANÔNICO antes de decidir a regra de conversão. Sem
@@ -109,61 +103,36 @@ export function suggestConversionRate(
  * Fator efetivo (qty unit por 1 qty purchase_unit), considerando
  * dimensions_width quando aplicável (m → dm²).
  */
-export function effectiveConversionFactor(ctx: PurchaseConversionContext): number {
-  const pu = lc(ctx.purchase_unit || ctx.unit);
-  const su = lc(ctx.unit);
-
-  if (pu === su) return 1;
-
-  const wDm = widthInDm(ctx);
-
-  // Caso m linear → dm²: 1 m × W dm largura = 10*W dm²
-  if (pu === 'm' && su === 'dm²' && wDm) {
-    return 10 * wDm;
-  }
-
-  // Caso m linear → m²: largura em dm / 10
-  if (pu === 'm' && su === 'm²' && wDm) {
-    return wDm / 10;
-  }
-
-  if (ctx.conversion_rate && ctx.conversion_rate > 0) return ctx.conversion_rate;
-
-  return suggestConversionRate(pu, su) ?? 1;
+export function effectiveConversionFactor(ctx: PurchaseConversionContext): number | null {
+  return effectiveConversionFactorStrict(ctx);
 }
 
 /**
- * Variante ESTRITA: retorna null quando purchase_unit ≠ unit e não existe
- * NENHUMA regra (sem largura, sem conversion_rate, sem sugestão segura).
- * Use no RECEBIMENTO de compra pra bloquear o item em vez de creditar a
- * quantidade crua na unidade errada (o fluxo de NF já bloqueia com
- * needsConfig — este é o equivalente pro recebimento de OC).
- * `effectiveConversionFactor` (fallback 1) continua valendo pra displays.
+ * Retorna `null` quando purchase_unit ≠ unit e não há uma conversão segura.
+ * Largura para materiais de área é obrigatória e precisa declarar a unidade.
  */
 export function effectiveConversionFactorStrict(ctx: PurchaseConversionContext): number | null {
   const pu = lc(ctx.purchase_unit || ctx.unit);
   const su = lc(ctx.unit);
+
   if (pu === su) return 1;
+
+  const rate = Number(ctx.conversion_rate);
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+
   const wDm = widthInDm(ctx);
-  if (pu === 'm' && su === 'dm²' && wDm) {
-    return 10 * wDm;
+
+  // Caso m linear → dm²: 1 m × W dm largura = 10*W dm²
+  if (pu === 'm' && su === 'dm²') {
+    return wDm ? 10 * wDm : null;
   }
-  if (pu === 'm' && su === 'm²' && wDm) {
-    return wDm / 10;
+
+  // Caso m linear → m²: largura em dm / 10
+  if (pu === 'm' && su === 'm²') {
+    return wDm ? wDm / 10 : null;
   }
-  const rate = Number(ctx.conversion_rate ?? 0);
-  // rate ≠ 1 é configuração deliberada → vale.
-  if (rate > 0 && rate !== 1) return rate;
-  // Sugestão métrica segura (kg→g, m→cm, m²→dm²…) cobre rate ausente OU rate=1
-  // default — espelho da P4 da NF (CONVERSOES).
-  const suggested = suggestConversionRate(pu, su);
-  if (suggested != null) return suggested;
-  // F5-02: conversion_rate=1 é o DEFAULT da coluna, não uma configuração — a NF
-  // (convertNfToStockUnit, P2) BLOQUEIA esse caso quando o estoque é unidade de
-  // medida. Só aceitamos 1:1 quando compra E estoque são contagem/embalagem
-  // (ex.: solado purchase 'un' → estoque 'par' — os 12 produtos vivos corretos).
-  if (rate === 1 && COUNT_LIKE_UNITS.has(pu) && COUNT_LIKE_UNITS.has(su)) return 1;
-  return null;
+
+  return rate;
 }
 
 /** Resultado do fator de recebimento ciente da unidade da LINHA da OC.
@@ -206,7 +175,7 @@ export function receiptConversionFactor(
     if (f == null) {
       return {
         ok: false,
-        reason: `${name}: unidade de compra "${ctx.purchase_unit || ctx.unit}" sem regra de conversão pra "${ctx.unit}" — configure a Taxa de conversão (≠ 1) ou a largura na Ficha de Componente antes de receber.`,
+        reason: `${name}: unidade de compra "${ctx.purchase_unit || ctx.unit}" sem regra de conversão pra "${ctx.unit}" — configure uma taxa maior que zero e, para área, a largura com unidade na Ficha de Componente antes de receber.`,
       };
     }
     return { ok: true, factor: f, basis: 'compra' };
@@ -243,26 +212,30 @@ export function weightedAverageUnitPrice(
 
 /** Converte qty em purchase_unit → qty em stock unit. */
 export function purchaseToStock(qtyPurchase: number, ctx: PurchaseConversionContext): number {
-  return qtyPurchase * effectiveConversionFactor(ctx);
+  const factor = effectiveConversionFactor(ctx);
+  if (factor == null) throw new Error('Conversão de compra inválida: revise a taxa ou a largura do material.');
+  return qtyPurchase * factor;
 }
 
 /** Converte qty em stock unit → qty em purchase_unit. Útil pra mostrar aproximação. */
-export function stockToPurchase(qtyStock: number, ctx: PurchaseConversionContext): number {
+export function stockToPurchase(qtyStock: number, ctx: PurchaseConversionContext): number | null {
   const f = effectiveConversionFactor(ctx);
-  if (f <= 0) return 0;
+  if (f == null || f <= 0) return null;
   return qtyStock / f;
 }
 
 /** Preço por purchase_unit (R$/placa) → preço por stock unit (R$/dm²). */
-export function purchasePriceToUnitPrice(packPrice: number, ctx: PurchaseConversionContext): number {
+export function purchasePriceToUnitPrice(packPrice: number, ctx: PurchaseConversionContext): number | null {
   const f = effectiveConversionFactor(ctx);
-  if (f <= 0) return packPrice;
+  if (f == null || f <= 0) return null;
   return packPrice / f;
 }
 
 /** Inverso: R$/stock unit → R$/purchase unit. */
 export function unitPriceToPurchasePrice(unitPrice: number, ctx: PurchaseConversionContext): number {
-  return unitPrice * effectiveConversionFactor(ctx);
+  const factor = effectiveConversionFactor(ctx);
+  if (factor == null) throw new Error('Conversão de compra inválida: revise a taxa ou a largura do material.');
+  return unitPrice * factor;
 }
 
 /** Descrição amigável do fator efetivo: "1 placa = 144 dm²" */
@@ -271,6 +244,7 @@ export function describeConversion(ctx: PurchaseConversionContext): string {
   const su = ctx.unit;
   if (lc(pu) === lc(su)) return 'Mesma unidade';
   const f = effectiveConversionFactor(ctx);
+  if (f == null) return 'Conversão não configurada — informe taxa válida e, para área, largura com unidade.';
   const fStr = f >= 100 ? f.toFixed(0) : f >= 1 ? f.toFixed(2).replace(/\.?0+$/, '') : f.toFixed(4);
   return `1 ${pu} = ${fStr} ${su}`;
 }

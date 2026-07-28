@@ -83,25 +83,44 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [products]);
 
   // Conversão estoque→compra por produto (mesmo fator do recebimento da OC):
-  // PLACA EVA vira placa, cola/napa ficam como estão. Sem regra segura → mantém
-  // a unidade de estoque (fator 1), igual ao recebimento que bloquearia.
+  // PLACA EVA vira placa, cola/napa ficam como estão. Sem regra segura, a
+  // geração fica bloqueada: nunca rebaixa a conversão para 1:1.
   const conversionByProduct = useMemo(() => {
-    const m = new Map<string, { purchase_unit: string | null; conversion_factor: number }>();
+    const m = new Map<string, { purchase_unit: string | null; conversion_factor: number | null; conversion_warning: string | null }>();
     for (const p of products as any[]) {
+      const purchaseUnit = p.purchase_unit || p.purchase_order_unit;
       const ctx = {
         unit: p.unit,
-        purchase_unit: p.purchase_unit,
+        purchase_unit: purchaseUnit,
         conversion_rate: p.conversion_rate,
         dimensions_width: p.dimensions_width,
+        dimensions_unit: p.dimensions_unit,
       };
       const factor = effectiveConversionFactorStrict(ctx);
-      const differs = p.purchase_unit && normalizeUnit(p.purchase_unit) !== normalizeUnit(p.unit);
-      m.set(p.id, differs && factor != null && factor > 0
-        ? { purchase_unit: p.purchase_unit, conversion_factor: factor }
-        : { purchase_unit: null, conversion_factor: 1 });
+      const differs = purchaseUnit && normalizeUnit(purchaseUnit) !== normalizeUnit(p.unit);
+      if (differs && (factor == null || factor <= 0)) {
+        m.set(p.id, {
+          purchase_unit: null,
+          conversion_factor: null,
+          conversion_warning: `"${p.name}": conversão de ${purchaseUnit} para ${p.unit} inválida. Informe uma taxa maior que zero e, para área, largura com unidade.`,
+        });
+      } else {
+        m.set(p.id, {
+          purchase_unit: differs ? purchaseUnit : null,
+          conversion_factor: differs ? factor : 1,
+          conversion_warning: null,
+        });
+      }
     }
     return m;
   }, [products]);
+
+  const conversionWarnings = useMemo(
+    () => [...new Set(needs
+      .map((n: any) => conversionByProduct.get(n.material_id)?.conversion_warning)
+      .filter((warning): warning is string => !!warning))],
+    [needs, conversionByProduct],
+  );
 
   // Identificação do item pro fornecedor: código (SKU) + descrição técnica. Nos
   // materiais comprados o SKU já É o código do fornecedor, e a technical_name
@@ -121,7 +140,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [products]);
 
   const enrichedNeeds = useMemo(
-    () => needs.map((n: any) => {
+    () => needs.filter((n: any) => !conversionByProduct.get(n.material_id)?.conversion_warning).map((n: any) => {
       const conv = conversionByProduct.get(n.material_id);
       const ident = identityByProduct.get(n.material_id);
       return {
@@ -136,7 +155,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
         technical_name: ident?.technical_name ?? null,
         purchase_multiple: multipleByProduct.get(n.material_id) ?? null,
         purchase_unit: conv?.purchase_unit ?? null,
-        conversion_factor: conv?.conversion_factor ?? 1,
+        conversion_factor: conv?.conversion_factor,
       };
     }),
     [needs, multipleByProduct, conversionByProduct, identityByProduct],
@@ -215,6 +234,10 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
   }, [pvNumbers, pvIds.length]);
 
   const handleGenerate = async () => {
+    if (conversionWarnings.length > 0) {
+      toast.error('Corrija os cadastros de conversão indicados antes de gerar as OCs.');
+      return;
+    }
     try {
       const res = await generate.mutateAsync({ pvIds, pvNumbers, drafts });
       onGenerated?.(res.createdIds);
@@ -266,6 +289,18 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
             Falha ao calcular materiais: {(error as Error)?.message || 'erro desconhecido'}.
             {' '}Verifique se a migration <code>compute_materials_per_pv</code> já foi aplicada no banco.
+          </div>
+        )}
+
+        {conversionWarnings.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <strong>OC bloqueada por conversão inválida.</strong>
+              <ul className="mt-1 list-disc pl-4">
+                {conversionWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            </div>
           </div>
         )}
 
@@ -545,8 +580,8 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             )}
             <Button
               onClick={handleGenerate}
-              disabled={generate.isPending || drafts.length === 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch)}
-              title={summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : undefined}
+              disabled={generate.isPending || drafts.length === 0 || conversionWarnings.length > 0 || (summary.colorMismatchCount > 0 && !overrideColorMismatch)}
+              title={conversionWarnings.length > 0 ? 'Há materiais com conversão inválida' : summary.colorMismatchCount > 0 && !overrideColorMismatch ? 'Há itens com cor não cadastrada — cadastre a cor ou marque o override' : undefined}
               className="gap-2"
             >
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
