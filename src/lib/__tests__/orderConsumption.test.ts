@@ -207,6 +207,48 @@ describe('orderConsumption — motor canônico', () => {
     expect(rows.find(r => r.componentType === 'Forração Palmilha')?.totalQuantity).toBeCloseTo(4.8, 6); // 10 × 24 dm² ÷ 50
   });
 
+  it('mapa canônico do solado vence legado *_dm2 e escalar da ficha sem override por número', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    ctx.liningSpecBySole = new Map([['p-solado', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 }]]);
+    ctx.insoleSpecBySole = new Map([['p-solado', { '34': 3, '35': 3, '36': 3, '37': 3, '38': 3, '39': 3 }]]);
+    ctx.insoleLiningSpecBySole = new Map([['p-solado', { '34': 4, '35': 4, '36': 4, '37': 4, '38': 4, '39': 4 }]]);
+    ctx.liningConsumptionPerSizeBySole = new Map([['p-solado', { '34': 5, '35': 5, '36': 5, '37': 5, '38': 5, '39': 5 }]]);
+    ctx.insoleConsumptionPerSizeBySole = new Map([['p-solado', { '34': 6, '35': 6, '36': 6, '37': 6, '38': 6, '39': 6 }]]);
+    ctx.insoleLiningConsumptionPerSizeBySole = new Map([['p-solado', { '34': 7, '35': 7, '36': 7, '37': 7, '38': 7, '39': 7 }]]);
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+
+    // Sem *_consumption_per_size na ficha: 5/6/7 (canônico) vencem 2/3/4
+    // (legado) e 4/5/3 (escalares da ficha), respectivamente.
+    expect(rows.find(r => r.componentType === 'Forração')?.totalQuantity).toBeCloseTo(2.4, 6);
+    expect(rows.find(r => r.componentType === 'Palmilha')?.totalQuantity).toBeCloseTo(2.88, 6);
+    expect(rows.find(r => r.componentType === 'Forração Palmilha')?.totalQuantity).toBeCloseTo(3.36, 6);
+  });
+
+  it('tamanho ausente no mapa canônico cai no legado do solado e depois no escalar da ficha', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    // 34 vem do mapa canônico; 35 só existe no legado; 36–39 caem no escalar 5.
+    ctx.insoleConsumptionPerSizeBySole = new Map([['p-solado', { '34': 8 }]]);
+    ctx.insoleSpecBySole = new Map([['p-solado', { '35': 6 }]]);
+
+    const rows = computeConsumptionForItems([buildItem()], ctx);
+    const insole = rows.find(r => r.componentType === 'Palmilha')!;
+
+    // 4 pares por tamanho × (8 canônico + 6 legado + 4×5 escalar) = 136 dm²;
+    // a placa do contexto mede 50 dm².
+    expect(insole.totalQuantity).toBeCloseTo(136 / 50, 6);
+  });
+
   it('forração de palmilha do SOLADO é emitida mesmo com insole_lining_consumption escalar = 0', () => {
     const ctx = buildContext();
     ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);

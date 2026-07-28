@@ -19726,10 +19726,14 @@ export type Database = {
           consumption: number | null
           created_at: string
           fachete_lining_consumption_dm2: number | null
+          fachete_lining_consumption_per_size: Json | null
           id: string
           insole_consumption_dm2: number | null
+          insole_consumption_per_size: Json | null
           insole_lining_consumption_dm2: number | null
+          insole_lining_consumption_per_size: Json | null
           lining_consumption_dm2: number | null
+          lining_consumption_per_size: Json | null
           reference_date: string | null
           reference_sole_id: string | null
           size: number
@@ -19740,10 +19744,14 @@ export type Database = {
           consumption?: number | null
           created_at?: string
           fachete_lining_consumption_dm2?: number | null
+          fachete_lining_consumption_per_size?: Json | null
           id?: string
           insole_consumption_dm2?: number | null
+          insole_consumption_per_size?: Json | null
           insole_lining_consumption_dm2?: number | null
+          insole_lining_consumption_per_size?: Json | null
           lining_consumption_dm2?: number | null
+          lining_consumption_per_size?: Json | null
           reference_date?: string | null
           reference_sole_id?: string | null
           size: number
@@ -19754,10 +19762,14 @@ export type Database = {
           consumption?: number | null
           created_at?: string
           fachete_lining_consumption_dm2?: number | null
+          fachete_lining_consumption_per_size?: Json | null
           id?: string
           insole_consumption_dm2?: number | null
+          insole_consumption_per_size?: Json | null
           insole_lining_consumption_dm2?: number | null
+          insole_lining_consumption_per_size?: Json | null
           lining_consumption_dm2?: number | null
+          lining_consumption_per_size?: Json | null
           reference_date?: string | null
           reference_sole_id?: string | null
           size?: number

@@ -282,6 +282,45 @@ export const mergePerSizeConsumption = (...sources: unknown[]): Record<string, n
   return merged;
 };
 
+type SoleTechnicalSpecWithRecency = {
+  sole_id: string | null;
+  size: number | null;
+  updated_at: string | null;
+};
+
+const soleSpecUpdatedAtTimestamp = (value: string | null): number => {
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+};
+
+/**
+ * Resolve linhas conflitantes de sole_technical_specs com a mesma precedência
+ * do SQL: updated_at DESC (mais recente vence). A ordem retornada é da mais
+ * antiga para a mais recente para que mergePerSizeConsumption deixe a vencedora
+ * por último; em empate, size menor vence como em get_sole_consumption_per_size.
+ */
+export const reduceSoleTechnicalSpecsByRecency = <T extends SoleTechnicalSpecWithRecency>(
+  rows: T[] | null | undefined,
+): T[] => {
+  const latestBySoleAndSize = new Map<string, T>();
+
+  for (const row of rows || []) {
+    const key = `${row.sole_id ?? ''}::${row.size ?? ''}`;
+    const current = latestBySoleAndSize.get(key);
+    if (!current || soleSpecUpdatedAtTimestamp(row.updated_at) > soleSpecUpdatedAtTimestamp(current.updated_at)) {
+      latestBySoleAndSize.set(key, row);
+    }
+  }
+
+  return [...latestBySoleAndSize.values()].sort((a, b) => {
+    const timestampDifference = soleSpecUpdatedAtTimestamp(a.updated_at) - soleSpecUpdatedAtTimestamp(b.updated_at);
+    if (timestampDifference !== 0) return timestampDifference;
+
+    // SQL usa size ASC como desempate; para o merge, o menor precisa vir por último.
+    return Number(b.size ?? Number.MAX_SAFE_INTEGER) - Number(a.size ?? Number.MAX_SAFE_INTEGER);
+  });
+};
+
 /** Mapas mínimos pra resolução canônica de solado (prioridade P0–P3 do
  *  resolve_sole_color SQL). Subconjunto de ConsumptionContext — exportado pra
  *  Lista de Separação (bomConsumption.ts) usar a MESMA cascata sem duplicar
@@ -687,9 +726,9 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   if (fachetadoSoleIds.length > 0) {
     const { data: facheteSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, fachete_lining_consumption_dm2, fachete_lining_consumption_per_size')
+      .select('sole_id, size, updated_at, fachete_lining_consumption_dm2, fachete_lining_consumption_per_size')
       .in('sole_id', fachetadoSoleIds);
-    for (const r of (facheteSpecs || []) as any[]) {
+    for (const r of reduceSoleTechnicalSpecsByRecency(facheteSpecs as any[])) {
       const v = Number(r.fachete_lining_consumption_dm2) || 0;
       if (v > 0 && r.size != null) {
         const m = facheteSpecBySole.get(r.sole_id) || {};
@@ -714,8 +753,8 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   {
     const { data: liningSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, lining_consumption_dm2, lining_consumption_per_size');
-    for (const r of (liningSpecs || []) as any[]) {
+      .select('sole_id, size, updated_at, lining_consumption_dm2, lining_consumption_per_size');
+    for (const r of reduceSoleTechnicalSpecsByRecency(liningSpecs as any[])) {
       const v = Number(r.lining_consumption_dm2) || 0;
       if (v > 0 && r.size != null) {
         const m = liningSpecBySole.get(r.sole_id) || {};
@@ -742,8 +781,8 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   {
     const { data: insoleSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, insole_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_per_size, insole_lining_consumption_per_size');
-    for (const r of (insoleSpecs || []) as any[]) {
+      .select('sole_id, size, updated_at, insole_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_per_size, insole_lining_consumption_per_size');
+    for (const r of reduceSoleTechnicalSpecsByRecency(insoleSpecs as any[])) {
       const iv = Number(r.insole_consumption_dm2) || 0;
       if (iv > 0 && r.size != null) {
         const m = insoleSpecBySole.get(r.sole_id) || {};

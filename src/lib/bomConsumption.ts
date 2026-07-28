@@ -12,7 +12,12 @@ import {
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
-import { mergePerSizeConsumption, resolveSoleProductIdCanonical, resolveMaterialProductCanonical } from '@/lib/orderConsumption';
+import {
+  mergePerSizeConsumption,
+  reduceSoleTechnicalSpecsByRecency,
+  resolveSoleProductIdCanonical,
+  resolveMaterialProductCanonical,
+} from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import {
@@ -293,8 +298,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   {
     const { data: liningSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2, lining_consumption_per_size, insole_lining_consumption_per_size, insole_consumption_per_size, fachete_lining_consumption_per_size');
-    for (const r of (liningSpecs || []) as any[]) {
+      .select('sole_id, size, updated_at, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2, lining_consumption_per_size, insole_lining_consumption_per_size, insole_consumption_per_size, fachete_lining_consumption_per_size');
+    for (const r of reduceSoleTechnicalSpecsByRecency(liningSpecs as any[])) {
       const v = Number(r.lining_consumption_dm2) || 0;
       if (v > 0 && r.size != null) {
         const m = liningSpecBySole.get(r.sole_id) || {};
