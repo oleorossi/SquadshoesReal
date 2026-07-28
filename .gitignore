@@ -45,6 +45,9 @@ supabase/.temp/
 # Scratch/saída de typecheck e auditoria (não versionar)
 *_audit_out.txt
 
+# Saída gerada pelo graphify (graph.html / GRAPH_REPORT.md / graph.json) — não versionar
+graphify-out/
+
 # Artefatos de skill-authoring (Claude Code) — NÃO versionar no repo do app, que
 # auto-deploya na Vercel. Skills empacotadas (.skill), o diretório solto de skill
 # no root e o zip temporário do instalador. Se for pra versionar uma skill, ela
