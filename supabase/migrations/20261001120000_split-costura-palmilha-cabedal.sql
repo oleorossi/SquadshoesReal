@@ -36,10 +36,18 @@ ALTER TABLE public.default_lead_times
   ADD COLUMN IF NOT EXISTS costura_palmilha_capacity_per_day integer,
   ADD COLUMN IF NOT EXISTS costura_cabedal_capacity_per_day  integer;
 
+-- ⚠ Só fichas que REALMENTE costuram. Além de semanticamente certo (ficha sem
+-- costura não precisa de capacidade de costura), isso evita acordar o guard
+-- `trg_guard_implausible_consumption`: ele valida a LINHA INTEIRA em qualquer
+-- UPDATE, então tocar uma ficha com consumo fora do teto aborta a migration
+-- mesmo sem mexer em consumo. Descoberto ao aplicar em produção (2026-10-01):
+-- a ficha "CF 09" tem upper_consumption=2000 dm²/par (teto 50) e derrubava
+-- tudo — dado pré-existente, deixado intacto de propósito.
 UPDATE public.technical_sheets
    SET costura_palmilha_capacity_per_day = COALESCE(costura_palmilha_capacity_per_day, costura_capacity_per_day),
        costura_cabedal_capacity_per_day  = COALESCE(costura_cabedal_capacity_per_day,  costura_capacity_per_day)
- WHERE costura_capacity_per_day IS NOT NULL;
+ WHERE costura_capacity_per_day IS NOT NULL
+   AND production_sectors @> '["Costura"]'::jsonb;
 
 UPDATE public.default_lead_times
    SET costura_palmilha_capacity_per_day = COALESCE(costura_palmilha_capacity_per_day, costura_capacity_per_day),

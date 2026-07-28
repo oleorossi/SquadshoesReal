@@ -62,6 +62,40 @@ const emptyItem: SaleOrderItemFormData = {
 
 const SALE_ORDER_DRAFT_KEY = 'sale_order_draft';
 
+// Extraída pra ser testável de fora do componente (guard de regressão do
+// incidente PV-00146). O `id` PRECISA viajar junto: é ele que faz o save
+// ATUALIZAR a linha do item em vez de apagar+recriar — o que rompia o vínculo
+// de OP/OS/alocação e duplicava OPs (migration 20260919120000).
+export function mapLoadedSaleOrderItem(
+  i: any,
+  canonicalReferenceIdMap: Map<string, string>,
+): SaleOrderItemFormData {
+  const grade = (i.grade as Record<string, number>) || {};
+  const gradeTotal = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+  const qty = Number(i.quantity) || 0;
+  const fichas = gradeTotal > 0 ? Math.max(1, Math.round(qty / gradeTotal)) : 1;
+  const normalizedReferenceId = canonicalReferenceIdMap.get(i.reference_id) || i.reference_id;
+  return {
+    id: i.id,
+    reference_id: normalizedReferenceId,
+    color: i.color || '',
+    grade,
+    unit_price: Number(i.unit_price) || 0,
+    quantity: qty,
+    fichas,
+    strap_colors: (i.strap_colors as any[]) || [],
+    observation: (i as any).observation || null,
+    // Sem copiar na carga, editar o PV gravava null (o payload de update e o
+    // RPC update_sale_order_atomic JÁ persistem a coluna) → perda silenciosa
+    // da variante de cor a cada edição. Auditoria 2026-06-14, Top10 #9.
+    material_variant_id: (i as any).material_variant_id ?? null,
+    // Terceirização integrada: preserva a seleção ao reabrir o PV pra editar.
+    selected_terceirizacao_ids: ((i as any).selected_terceirizacao_ids as string[]) ?? [],
+    // ...e a quantidade parcial por serviço (split fábrica × rua).
+    terceirizacao_quantities: ((i as any).terceirizacao_quantities as Record<string, number>) ?? {},
+  };
+}
+
 export default function SaleOrderForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -437,31 +471,7 @@ export default function SaleOrderForm() {
       setSelectedClientId(client?.id || '');
       const { data: orderItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', id);
       if (orderItems && orderItems.length > 0) {
-        const mapped = orderItems.map(i => {
-          const grade = (i.grade as Record<string, number>) || {};
-          const gradeTotal = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
-          const qty = Number(i.quantity) || 0;
-          const fichas = gradeTotal > 0 ? Math.max(1, Math.round(qty / gradeTotal)) : 1;
-          const normalizedReferenceId = canonicalReferenceIdMap.get(i.reference_id) || i.reference_id;
-          return {
-            reference_id: normalizedReferenceId,
-            color: i.color || '',
-            grade,
-            unit_price: Number(i.unit_price) || 0,
-            quantity: qty,
-            fichas,
-            strap_colors: (i.strap_colors as any[]) || [],
-            observation: (i as any).observation || null,
-            // Sem copiar na carga, editar o PV gravava null (o payload de update e o
-            // RPC update_sale_order_atomic JÁ persistem a coluna) → perda silenciosa
-            // da variante de cor a cada edição. Auditoria 2026-06-14, Top10 #9.
-            material_variant_id: (i as any).material_variant_id ?? null,
-            // Terceirização integrada: preserva a seleção ao reabrir o PV pra editar.
-            selected_terceirizacao_ids: ((i as any).selected_terceirizacao_ids as string[]) ?? [],
-            // ...e a quantidade parcial por serviço (split fábrica × rua).
-            terceirizacao_quantities: ((i as any).terceirizacao_quantities as Record<string, number>) ?? {},
-          };
-        });
+        const mapped = orderItems.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
         // Sort items so that the same reference (and color) always appears together in editing
         const refLabel = (refId: string) => {
           const ref = (references as any[]).find(r => r.id === refId);

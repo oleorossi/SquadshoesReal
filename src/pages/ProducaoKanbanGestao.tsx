@@ -490,7 +490,11 @@ export default function ProducaoKanbanGestao() {
                         draggable={canEdit && !selectMode}
                         dragging={dragCard?.q.order_id === card.q.order_id}
                         dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}
-                        highlighted={!selectMode && !!matchedIds && matchedIds.has(card.q.order_id)}
+                        // Anel só no 'destacar', onde separa o achado do resto
+                        // esmaecido. No 'filtrar' o quadro JÁ é só o que casou:
+                        // anelar todo mundo não informava nada e o quadro
+                        // inteiro parecia pré-selecionado.
+                        highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
                         selectable={selectMode}
                         selected={selectedIds.has(card.q.order_id)}
                         onToggleSelect={() => toggleSelect(card.q.order_id)}
