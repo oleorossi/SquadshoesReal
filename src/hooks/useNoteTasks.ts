@@ -62,18 +62,14 @@ export function useAllNoteTasks() {
   return useQuery({
     queryKey: ['all_note_tasks'],
     queryFn: async () => {
-      // Isolamento por criador (interino, sem RLS — o seguro é política no banco).
-      // Meio-termo até o backfill: "minhas + sem dono" — mostra as tarefas do
-      // usuário logado E as antigas com created_by nulo, pra a lista não sumir.
-      // Tarefas novas nascem com created_by, então ficam isoladas por usuário.
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id;
-      let query = (supabase as any)
+      // Modelo PESSOAL (A1): a RLS já isola por dono — cada usuário vê só as
+      // suas; admin vê todas (inclui as legadas sem dono). NÃO filtramos por
+      // created_by no cliente, senão o admin (que deve ver tudo) ficaria preso
+      // a "as minhas + sem dono". A trava real é a política no banco.
+      const { data, error } = await (supabase as any)
         .from('note_tasks')
         .select('*, notes(title)')
         .order('created_at', { ascending: true });
-      if (uid) query = query.or(`created_by.eq.${uid},created_by.is.null`);
-      const { data, error } = await query;
       if (error) throw error;
       return sortTasks((data || []) as NoteTaskWithNote[]);
     },

@@ -21,6 +21,7 @@ import { EditorialPageHeader } from "@/components/layout/EditorialPageHeader";
 import { StatCard, StatGrid } from "@/components/ui/stat-card";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useAccessControl } from "@/hooks/useAccessControl";
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -217,6 +218,10 @@ function LogFormDialog({ equipmentList, plans, children }: { equipmentList: Equi
 
 // ─── Main Page ───
 export default function MaintenancePage() {
+  // Espelha a RLS de manutenção (admin+gerente escrevem): esconde os controles
+  // de criar/editar/excluir pra quem não pode, evitando botão que só dá erro.
+  const { isAdmin, roles } = useAccessControl();
+  const canManage = isAdmin || roles.includes('gerente');
   const { data: equipment = [], isLoading: loadingEq } = useEquipment();
   const { data: plans = [], isLoading: loadingPlans } = useMaintenancePlans();
   const { data: logs = [], isLoading: loadingLogs } = useMaintenanceLogs();
@@ -276,7 +281,7 @@ export default function MaintenancePage() {
           <Panel
             eyebrow="SISTEMA · MANUTENÇÃO"
             title="Equipamentos"
-            actions={<EquipmentFormDialog><Button size="sm"><Plus className="h-4 w-4 mr-1" />Novo</Button></EquipmentFormDialog>}
+            actions={canManage ? <EquipmentFormDialog><Button size="sm"><Plus className="h-4 w-4 mr-1" />Novo</Button></EquipmentFormDialog> : undefined}
             flush
           >
               <Table>
@@ -297,8 +302,12 @@ export default function MaintenancePage() {
                       <TableCell>{eq.sector || "—"}</TableCell>
                       <TableCell>{statusBadge(eq.status)}</TableCell>
                       <TableCell className="text-right space-x-1">
-                        <EquipmentFormDialog equipment={eq}><Button variant="ghost" size="sm">Editar</Button></EquipmentFormDialog>
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteEq.mutate(eq.id)}>Excluir</Button>
+                        {canManage && (
+                          <>
+                            <EquipmentFormDialog equipment={eq}><Button variant="ghost" size="sm">Editar</Button></EquipmentFormDialog>
+                            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteEq.mutate(eq.id)}>Excluir</Button>
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -317,12 +326,12 @@ export default function MaintenancePage() {
           <Panel
             eyebrow="SISTEMA · MANUTENÇÃO"
             title="Planos de Manutenção"
-            actions={
+            actions={canManage ? (
               <div className="flex gap-2">
                 <LogFormDialog equipmentList={equipment} plans={plans}><Button size="sm" variant="outline"><CheckCircle2 className="h-4 w-4 mr-1" />Registrar Manutenção</Button></LogFormDialog>
                 <PlanFormDialog equipmentList={equipment}><Button size="sm"><Plus className="h-4 w-4 mr-1" />Novo Plano</Button></PlanFormDialog>
               </div>
-            }
+            ) : undefined}
             flush
           >
               <Table>
