@@ -25,24 +25,20 @@
 -- Idempotente (UPDATEs com WHERE que zera após a 1ª aplicação + CREATE OR REPLACE).
 -- ============================================================================
 
--- 1) Backfill do stage legado. Critério CONSERVADOR: só migra quando o
---    operation_name aponta exatamente UMA das pernas ('%cabedal%' ou
---    '%palmilha%', nunca ambos); ambíguas ficam em 'Costura' e caem na
---    compatibilidade legado→palmilha da key (mesma regra do TS). Condição em
---    texto cru pra não depender da ordem das redefinições abaixo.
---    Dado vivo em 2026-07-28: 42 operações, todas stage='Costura' com
---    operation_name='Costura Cabedal' (a fase 1 nomeou assim o que existia).
-UPDATE public.bom_operations
-   SET stage = 'Costura Cabedal', updated_at = now()
- WHERE lower(btrim(stage)) = 'costura'
-   AND lower(coalesce(operation_name, '')) LIKE '%cabedal%'
-   AND lower(coalesce(operation_name, '')) NOT LIKE '%palmilha%';
-
-UPDATE public.bom_operations
-   SET stage = 'Costura Palmilha', updated_at = now()
- WHERE lower(btrim(stage)) = 'costura'
-   AND lower(coalesce(operation_name, '')) LIKE '%palmilha%'
-   AND lower(coalesce(operation_name, '')) NOT LIKE '%cabedal%';
+-- 1) BACKFILL REMOVIDO (era aqui; aplicado e revertido em 2026-07-28).
+--    O critério usava operation_name, mas TODAS as 42 operações vivas se
+--    chamam 'Costura Cabedal' — a fase 1 nomeou assim o que existia, então o
+--    nome NÃO é evidência de qual perna a operação representa. 25 das 42
+--    pertencem a fichas cujo roteiro tem 'Costura Palmilha' e NÃO tem
+--    'Costura Cabedal': o backfill as jogava no balde de órfãs e fazia
+--    'Costura Palmilha' aparecer como faltando na Produtividade por Modelo —
+--    o oposto do que esta migration pretende. E o UPDATE é one-way (o stage
+--    'Costura' original se perde).
+--    Sem o backfill o objetivo já é atingido: o item 2 abaixo mapeia o legado
+--    'costura' → 'costura_palmilha', que casa com o roteiro dessas fichas.
+--    Quando um backfill for mesmo necessário, o critério tem que ser o ROTEIRO
+--    da ficha (technical_sheets.production_sectors), não o nome da operação,
+--    e precisa guardar o stage anterior antes de escrever.
 
 -- 2) Normalização stage/display → key canônica (espelho de src/lib/sectors.ts).
 CREATE OR REPLACE FUNCTION public.capacity_sector_key(p_sector text)
