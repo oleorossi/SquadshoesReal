@@ -6,7 +6,6 @@ import {
   businessDaysBetween,
   type SectorKey,
 } from '@/lib/sectorCapacity';
-import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 
 /**
  * Guarda do motor de cascata (D4). O lead time + a topologia vivem em UM lugar
@@ -56,20 +55,60 @@ function minDate(...ds: Date[]): Date {
   return ds.reduce((m, d) => (d.getTime() < m.getTime() ? d : m));
 }
 
-describe('motor de cascata — forward × backward (D4)', () => {
-  it('onda: itens no mesmo setor consomem dias sequenciais, não o pico por item', () => {
-    const sharedCorteSheet = {
-      production_sectors: ['Corte Palmilha'],
-      sewing_capacity_per_day: 100,
-    };
-    const itemLeads = Array.from({ length: 10 }, () =>
-      computeSectorLeadTimeDays('corte_palmilha', 100, sharedCorteSheet),
-    );
+/** Espelho matemático dos nove agregadores SQL de compute_wave_timeline. */
+function aggregateSectorLeadDays(
+  items: Array<{ quantity: number; capacityPerDay?: number | null; legacyLeadDays?: number | null }>,
+  fallback: number,
+): number {
+  let fractionalLoad: number | null = null;
+  let maxLegacyLead: number | null = null;
 
-    // Cada referência usa a mesma capacidade física de Corte Palmilha: 10 itens
-    // de 100 pares a 100 pares/dia exigem 10 dias de máquina, não 1 dia.
-    expect(Math.max(...itemLeads)).toBe(1);
-    expect(itemLeads.reduce((total, lead) => total + lead, 0)).toBe(10);
+  for (const item of items) {
+    const capacity = Number(item.capacityPerDay) || 0;
+    if (capacity > 0) {
+      fractionalLoad = (fractionalLoad ?? 0) + item.quantity / capacity;
+      continue;
+    }
+
+    const legacyLead = Number(item.legacyLeadDays) || 0;
+    if (legacyLead > 0) {
+      maxLegacyLead = Math.max(maxLegacyLead ?? legacyLead, legacyLead);
+    }
+  }
+
+  // PostgreSQL usa numeric; remove só o ruído binário de somar frações em JS.
+  const roundedCapacityDays = fractionalLoad === null
+    ? null
+    : Math.ceil(fractionalLoad - Number.EPSILON * Math.max(1, fractionalLoad));
+  const candidates = [
+    roundedCapacityDays,
+    maxLegacyLead,
+  ].filter((value): value is number => value !== null);
+
+  return candidates.length > 0 ? Math.max(...candidates) : fallback;
+}
+
+describe('motor de cascata — forward × backward (D4)', () => {
+  it('onda: 10 itens de 100 pares a 100 pares/dia exigem 10 dias', () => {
+    expect(aggregateSectorLeadDays(
+      Array.from({ length: 10 }, () => ({ quantity: 100, capacityPerDay: 100 })),
+      1,
+    )).toBe(10);
+  });
+
+  it('onda: 20 itens de 5 pares a 100 pares/dia exigem 1 dia, não 20', () => {
+    expect(aggregateSectorLeadDays(
+      Array.from({ length: 20 }, () => ({ quantity: 5, capacityPerDay: 100 })),
+      1,
+    )).toBe(1);
+  });
+
+  it('onda sem capacidade usa o maior lead legado do setor, não a soma', () => {
+    expect(aggregateSectorLeadDays([
+      { quantity: 100, legacyLeadDays: 2 },
+      { quantity: 100, legacyLeadDays: 5 },
+      { quantity: 100, legacyLeadDays: 3 },
+    ], 1)).toBe(5);
   });
 
   it('round-trip: início mais cedo da cascata reversa, indo pra frente, volta ao deadline', () => {
