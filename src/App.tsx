@@ -97,9 +97,9 @@ const UnitAudit = lazy(() => import("./pages/UnitAudit"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
-// CapacityPlanning: rota standalone /capacity-planning virou redirect pro hub
-// (/pcp?tab=capacidade) em 2026-07-01 — a filha /capacity-planning/distribuir
-// segue viva (CapacityDistribution não tem aba no hub).
+// CapacityPlanning: rota standalone /capacity-planning aposentada em favor dos
+// tempos-padrão. A filha /capacity-planning/distribuir segue aposentada (R9.3,
+// redireciona pro Planejamento novo) — não ressuscitar o 3º motor de PCP.
 const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
@@ -1048,9 +1048,9 @@ const router = createBrowserRouter([
         element: <Settings />,
       },
       {
-        // Rota legada: Capacidade é aba do hub PCP. A filha /distribuir segue viva.
+        // Rota legada: a configuração de capacidade agora fica em Tempos-Padrão.
         path: "capacity-planning",
-        element: <Navigate to="/pcp?tab=capacidade" replace />,
+        element: <Navigate to="/producao/analises?view=tempos-padrao" replace />,
       },
       {
         // Legado: o planejador de distribuição por setor (sector_distribution_plan,

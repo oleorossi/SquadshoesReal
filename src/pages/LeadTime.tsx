@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
  import { Clock, Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Info, Lightning as Zap } from '@phosphor-icons/react';
+import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
  import { useCapacityDrivenLeadTimes } from '@/hooks/usePurchaseOrders';
 
@@ -89,6 +90,8 @@ export default function LeadTime() {
   const [editing, setEditing] = useState<DefaultLeadTime | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Omit<DefaultLeadTime, 'id'>>(emptyForm);
+  const { data: shoeCategories = [] } = useShoeCategories();
+  const shoeCategoryOptions = shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES;
 
   const { data: dynamicLeadTimes = [], isLoading: loadingDynamic } = useCapacityDrivenLeadTimes();
 
@@ -104,8 +107,8 @@ export default function LeadTime() {
     },
   });
 
-  // Category options come from the canonical SHOE_CATEGORIES list — the same
-  // options offered when creating a Ficha Técnica.
+  // A taxonomia vem do catálogo editável; a constante mantém o formulário
+  // utilizável enquanto a consulta ainda não respondeu.
 
 
   const upsertMutation = useMutation({
@@ -237,7 +240,7 @@ export default function LeadTime() {
                         <SelectValue placeholder="Selecione a categoria (mesma lista da Ficha Técnica)" />
                       </SelectTrigger>
                       <SelectContent>
-                        {SHOE_CATEGORIES.map((c) => {
+                        {shoeCategoryOptions.map((c) => {
                           const alreadyConfigured = leadTimes.some(
                             (lt) => lt.shoe_category === c && lt.id !== editing?.id,
                           );

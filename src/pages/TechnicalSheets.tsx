@@ -194,6 +194,7 @@ import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purcha
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 
+import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -1031,6 +1032,8 @@ function SheetImageEditor({ sheet, onSaved, updateSheet }: { sheet: any; onSaved
 
 function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const addSheet = useAddSheet();
+  const { data: shoeCategories = [] } = useShoeCategories();
+  const shoeCategoryOptions = shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES;
   // Form reformulado em 2026-05: agora inclui campos essenciais (descrição,
   // coleção, status da ficha) pra reduzir asymmetry com edit. Removido
   // 'gender' — campo morto sem uso em business logic. Layout em 2 seções
@@ -1147,7 +1150,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
               <SelectTrigger id="qc-category" className={cn("mt-1 h-9", categoryMissing && "border-destructive")}>
                 <SelectValue placeholder="Selecione…" />
               </SelectTrigger>
-              <SelectContent>{SHOE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              <SelectContent>{shoeCategoryOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
           </div>
 
@@ -1309,6 +1312,8 @@ function SheetCompleteness({ sheet }: { sheet: any }) {
 function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () => void }) {
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
+  const { data: shoeCategories = [] } = useShoeCategories();
+  const shoeCategoryOptions = shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES;
   const { data: products = [] } = useProducts();
   const { data: sheetMaterials = [] } = useSheetMaterials(sheet.id);
   const { data: soleColorMappings = [] } = useSoleColorMappings(sheet.id);
@@ -2112,7 +2117,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     updateField('shoe_category', v);
                     updateField('sizes', v === 'Infantil' ? '25-36' : '34-40');
                   }}
-                  options={[...SHOE_CATEGORIES]}
+                  options={[...shoeCategoryOptions]}
                   placeholder="Tipo"
                 />
                 <FieldSelect label="Status Produção" value={form.status} onChange={v => updateField('status', v)} options={[...STATUSES]} />

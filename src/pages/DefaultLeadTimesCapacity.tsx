@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FloppyDisk, Info, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Check, CircleNotch as Loader2, FloppyDisk, GearSix, Info, PencilSimple as Pencil, Plus, Trash, X } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,6 +27,12 @@ import {
   useDefaultLeadTimes,
   useUpsertDefaultLeadTimes,
 } from '@/hooks/useDefaultLeadTimes';
+import {
+  useCreateShoeCategory,
+  useDeleteShoeCategory,
+  useRenameShoeCategory,
+  useShoeCategories,
+} from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 
 const SECTORS: ReadonlyArray<{
@@ -45,12 +63,24 @@ function valuesFromRow(row: Record<string, unknown> | null | undefined): Default
 export default function DefaultLeadTimesCapacity() {
   const [shoeCategory, setShoeCategory] = useState<string>(SHOE_CATEGORIES[0]);
   const [capacities, setCapacities] = useState<DefaultLeadTimesCapacity>(emptyDefaultLeadTimesCapacity);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [renamedCategory, setRenamedCategory] = useState('');
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
   const { data: defaultLeadTimes, isLoading } = useDefaultLeadTimes(shoeCategory);
   const { data: configuredCategories = [] } = useDefaultLeadTimeCategories();
+  const { data: shoeCategories = [], isLoading: isLoadingShoeCategories } = useShoeCategories();
   const upsertDefaultLeadTimes = useUpsertDefaultLeadTimes();
+  const createShoeCategory = useCreateShoeCategory();
+  const renameShoeCategory = useRenameShoeCategory();
+  const deleteShoeCategory = useDeleteShoeCategory();
   const categoryOptions = useMemo(
-    () => Array.from(new Set([...SHOE_CATEGORIES, ...configuredCategories])).sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [configuredCategories],
+    () => Array.from(new Set([
+      ...(shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES),
+      ...configuredCategories,
+    ])).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [configuredCategories, shoeCategories],
   );
 
   useEffect(() => {
@@ -63,6 +93,42 @@ export default function DefaultLeadTimesCapacity() {
 
   const handleSave = () => {
     upsertDefaultLeadTimes.mutate({ shoe_category: shoeCategory, ...capacities });
+  };
+
+  const handleAddCategory = () => {
+    const name = newCategory.trim();
+    if (!name) return;
+    createShoeCategory.mutate({ name }, {
+      onSuccess: () => {
+        setNewCategory('');
+        setShoeCategory(name);
+      },
+    });
+  };
+
+  const handleRenameCategory = (oldName: string) => {
+    const newName = renamedCategory.trim();
+    if (!newName) return;
+    renameShoeCategory.mutate({ oldName, newName }, {
+      onSuccess: () => {
+        if (shoeCategory === oldName) setShoeCategory(newName);
+        setEditingCategory(null);
+        setRenamedCategory('');
+      },
+    });
+  };
+
+  const handleDeleteCategory = () => {
+    if (!categoryToDelete) return;
+    const deletedCategory = categoryToDelete;
+    deleteShoeCategory.mutate(deletedCategory, {
+      onSuccess: () => {
+        if (shoeCategory === deletedCategory) {
+          setShoeCategory(categoryOptions.find((category) => category !== deletedCategory) ?? SHOE_CATEGORIES[0]);
+        }
+        setCategoryToDelete(null);
+      },
+    });
   };
 
   return (
@@ -89,18 +155,24 @@ export default function DefaultLeadTimesCapacity() {
             <CardTitle>Categoria do calçado</CardTitle>
             <CardDescription>Use a mesma taxonomia cadastrada nas Fichas Técnicas.</CardDescription>
           </div>
-          <div className="w-full sm:w-72">
-            <Label htmlFor="shoe-category" className="sr-only">Categoria do calçado</Label>
-            <Select value={shoeCategory} onValueChange={setShoeCategory}>
-              <SelectTrigger id="shoe-category">
-                <SelectValue placeholder="Selecione a categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                {categoryOptions.map((category) => (
-                  <SelectItem key={category} value={category}>{category}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button variant="outline" className="h-9 gap-2" onClick={() => setManageCategoriesOpen(true)}>
+              <GearSix className="h-4 w-4" />
+              Gerenciar tipos
+            </Button>
+            <div className="w-full sm:w-72">
+              <Label htmlFor="shoe-category" className="sr-only">Categoria do calçado</Label>
+              <Select value={shoeCategory} onValueChange={setShoeCategory}>
+                <SelectTrigger id="shoe-category">
+                  <SelectValue placeholder="Selecione a categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((category) => (
+                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -147,6 +219,119 @@ export default function DefaultLeadTimesCapacity() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={manageCategoriesOpen} onOpenChange={setManageCategoriesOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Gerenciar tipos de calçado</DialogTitle>
+            <DialogDescription>
+              Adicione, renomeie ou exclua os tipos usados nas Fichas Técnicas e nos tempos-padrão.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2">
+            <Input
+              value={newCategory}
+              onChange={(event) => setNewCategory(event.target.value)}
+              placeholder="Novo tipo de calçado"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleAddCategory();
+                }
+              }}
+            />
+            <Button className="h-9 gap-2" onClick={handleAddCategory} disabled={createShoeCategory.isPending || !newCategory.trim()}>
+              {createShoeCategory.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Adicionar
+            </Button>
+          </div>
+
+          <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+            {isLoadingShoeCategories ? (
+              <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando tipos…
+              </div>
+            ) : shoeCategories.length === 0 ? (
+              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Nenhum tipo cadastrado ainda. Adicione o primeiro tipo acima.
+              </p>
+            ) : shoeCategories.map((category) => (
+              <div key={category} className="flex min-h-10 items-center gap-2 rounded-md border p-2">
+                {editingCategory === category ? (
+                  <>
+                    <Input
+                      value={renamedCategory}
+                      onChange={(event) => setRenamedCategory(event.target.value)}
+                      aria-label={`Novo nome para ${category}`}
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleRenameCategory(category)}
+                      disabled={renameShoeCategory.isPending || !renamedCategory.trim()}
+                      aria-label="Salvar novo nome"
+                    >
+                      {renameShoeCategory.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => { setEditingCategory(null); setRenamedCategory(''); }}
+                      aria-label="Cancelar renomeação"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{category}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => { setEditingCategory(category); setRenamedCategory(category); }}
+                      aria-label={`Renomear ${category}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setCategoryToDelete(category)}
+                      aria-label={`Excluir ${category}`}
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!categoryToDelete} onOpenChange={(open) => !open && setCategoryToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir tipo de calçado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {categoryToDelete ? `"${categoryToDelete}" será excluído permanentemente.` : ''}
+              {' '}Tipos em uso não podem ser excluídos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteCategory} disabled={deleteShoeCategory.isPending}>
+              {deleteShoeCategory.isPending ? 'Excluindo…' : 'Excluir'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

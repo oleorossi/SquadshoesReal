@@ -1,8 +1,8 @@
 /**
- * Canonical list of shoe categories shared between the Technical Sheet form
- * and the Lead Time defaults page. Keep this list as the single source of
- * truth — adding a new value here automatically makes it selectable in both
- * the Ficha Técnica and the Lead Time padrão por categoria.
+ * Fonte em runtime: public.silk_shoe_category (via useShoeCategories).
+ *
+ * Esta constante é mantida como fallback, seed e tipo enquanto o catálogo
+ * remoto ainda não foi carregado.
  */
 export const SHOE_CATEGORIES = [
   'Scarpin',
@@ -13,7 +13,6 @@ export const SHOE_CATEGORIES = [
   'Oxford',
   'Plataforma',
   'Anabela',
-  'Rasteira',
   'Rasteirinha',
   'Tênis',
   'Sapatilha',

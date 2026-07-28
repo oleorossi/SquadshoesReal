@@ -46,7 +46,7 @@ export default function PCPHub() {
         break;
       case 'dashboard':   to = '/producao/analises?view=dashboard'; break;
       case 'lead-time':   to = '/producao/analises?view=lead-time'; break;
-      case 'capacidade':  to = '/producao/analises?view=capacidade'; break;
+      case 'capacidade':  to = '/producao/analises?view=tempos-padrao'; break;
       case 'tempos-padrao': to = '/producao/analises?view=tempos-padrao'; break;
       case 'auditoria':   to = '/producao/analises?view=auditoria'; break;
       case 'rccp':        to = '/producao/analises?view=rccp'; break;

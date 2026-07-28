@@ -356,22 +356,22 @@ export function OperationsTab({
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {([
-            { key: 'corte',     label: 'Corte',      cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
-            { key: 'forracao',  label: 'Corte Forração', cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
-            { key: 'costura-legado', label: 'Costura (legado)', cap: capCosturaLegado, setCap: setCapCosturaLegado, lt: ltCostura, setLt: setLtCostura },
+            { key: 'corte',     label: 'Corte',      capacityLabel: undefined, cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
+            { key: 'forracao',  label: 'Corte Forração', capacityLabel: undefined, cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
+            { key: 'costura-legado', label: 'Costura (legado)', capacityLabel: undefined, cap: capCosturaLegado, setCap: setCapCosturaLegado, lt: ltCostura, setLt: setLtCostura },
             { key: 'costura-cabedal', label: 'Costura Cabedal', capacityLabel: 'Costura Cabedal (pares/dia)', cap: capCosturaCabedal, setCap: setCapCosturaCabedal, lt: ltCostura, setLt: setLtCostura },
             { key: 'costura-palmilha', label: 'Costura Palmilha', capacityLabel: 'Costura Palmilha (pares/dia)', cap: capCosturaPalmilha, setCap: setCapCosturaPalmilha, lt: undefined, setLt: undefined },
-            { key: 'silk',      label: 'Silk',       cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
-            { key: 'colagem',   label: 'Colagem',    cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
+            { key: 'silk',      label: 'Silk',       capacityLabel: undefined, cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
+            { key: 'colagem',   label: 'Colagem',    capacityLabel: undefined, cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
             {
-              key: 'montagem', label: 'Montagem',
+              key: 'montagem', label: 'Montagem', capacityLabel: undefined,
               cap: capMontagem, setCap: setCapMontagem,
               lt: ltMontagem,   setLt: setLtMontagem,
               // Sugestão automática removida — dependia do card de
               // tempo×dificuldade que foi deletado por redundância.
             },
-            { key: 'acabamento', label: 'Acabamento', cap: capAcabamento, setCap: setCapAcabamento, lt: ltAcabamento, setLt: setLtAcabamento },
-            { key: 'expedicao',  label: 'Expedição',  cap: capExpedicao,  setCap: setCapExpedicao,  lt: ltExpedicao,  setLt: setLtExpedicao },
+            { key: 'acabamento', label: 'Acabamento', capacityLabel: undefined, cap: capAcabamento, setCap: setCapAcabamento, lt: ltAcabamento, setLt: setLtAcabamento },
+            { key: 'expedicao',  label: 'Expedição', capacityLabel: undefined, cap: capExpedicao,  setCap: setCapExpedicao,  lt: ltExpedicao,  setLt: setLtExpedicao },
           ] as const).map((s) => {
             const usingCapacity = (s.cap ?? 0) > 0;
             // Audit visual F2: marca setor como "não usado neste modelo" se

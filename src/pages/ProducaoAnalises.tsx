@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { useEnsureFreshSchedule } from '@/hooks/useProductionEngine';
@@ -9,7 +9,6 @@ import { useEnsureFreshSchedule } from '@/hooks/useProductionEngine';
 const PCPDashboard = lazy(() => import('./PCPDashboard'));
 const SectorBottleneckView = lazy(() => import('./SectorBottleneckView'));
 const LeadTime = lazy(() => import('./LeadTime'));
-const CapacityPlanning = lazy(() => import('./CapacityPlanning'));
 const DefaultLeadTimesCapacity = lazy(() => import('./DefaultLeadTimesCapacity'));
 const RCCPPlanning = lazy(() => import('@/components/production/RCCPPlanning'));
 const PostOPAnalysis = lazy(() => import('@/components/production/PostOPAnalysis'));
@@ -34,7 +33,6 @@ const VIEWS: { value: string; label: string; render: () => JSX.Element }[] = [
   { value: 'dashboard',    label: 'Dashboard',        render: () => <PCPDashboard /> },
   { value: 'gargalos',     label: 'Gargalos',         render: () => <SectorBottleneckView /> },
   { value: 'lead-time',    label: 'Lead Time',        render: () => <LeadTime /> },
-  { value: 'capacidade',   label: 'Capacidade',       render: () => <CapacityPlanning /> },
   { value: 'tempos-padrao', label: 'Tempos-Padrão por Setor', render: () => <DefaultLeadTimesCapacity /> },
   { value: 'rccp',         label: 'RCCP',             render: () => <RCCPPlanning /> },
   { value: 'pos-op',       label: 'Pós-OP',           render: () => <PostOPAnalysis /> },
@@ -60,6 +58,9 @@ export default function ProducaoAnalises() {
   useEnsureFreshSchedule();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'dashboard';
+  if (view === 'capacidade') {
+    return <Navigate to="/producao/analises?view=tempos-padrao" replace />;
+  }
   const active = VIEWS.find(v => v.value === view) ?? VIEWS[0];
 
   return (
