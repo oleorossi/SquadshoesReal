@@ -177,6 +177,36 @@ describe('orderConsumption — motor canônico', () => {
     expect(palmForr.totalQuantity).toBeCloseTo(1.08, 6);
   });
 
+  it('PARIDADE por numeração: override da ficha vence mapa canônico do solado e legado *_dm2', () => {
+    const ctx = buildContext();
+    ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);
+    ctx.allProducts = [
+      ...ctx.allProducts,
+      { id: 'p-solado', name: 'SOLADO TR 01 PRETO', color: 'PRETO', group_id: 'g-solado', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null },
+    ];
+    // Fallback legado `*_dm2` do solado (menor precedência que o novo mapa).
+    ctx.liningSpecBySole = new Map([['p-solado', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 }]]);
+    ctx.insoleSpecBySole = new Map([['p-solado', { '34': 3, '35': 3, '36': 3, '37': 3, '38': 3, '39': 3 }]]);
+    ctx.insoleLiningSpecBySole = new Map([['p-solado', { '34': 4, '35': 4, '36': 4, '37': 4, '38': 4, '39': 4 }]]);
+    // Padrão canônico do tipo de solado (vence o legado).
+    ctx.liningConsumptionPerSizeBySole = new Map([['p-solado', { '34': 5, '35': 5, '36': 5, '37': 5, '38': 5, '39': 5 }]]);
+    ctx.insoleConsumptionPerSizeBySole = new Map([['p-solado', { '34': 6, '35': 6, '36': 6, '37': 6, '38': 6, '39': 6 }]]);
+    ctx.insoleLiningConsumptionPerSizeBySole = new Map([['p-solado', { '34': 7, '35': 7, '36': 7, '37': 7, '38': 7, '39': 7 }]]);
+
+    // Override por ficha: deve vencer as duas fontes do solado em todos os tamanhos.
+    const item = buildItem({ technical_sheets: buildSheet({
+      lining_consumption_per_size: { '34': 8, '35': 8, '36': 8, '37': 8, '38': 8, '39': 8 },
+      insole_consumption_per_size: { '34': 9, '35': 9, '36': 9, '37': 9, '38': 9, '39': 9 },
+      insole_lining_consumption_per_size: { '34': 10, '35': 10, '36': 10, '37': 10, '38': 10, '39': 10 },
+    }) });
+    const rows = computeConsumptionForItems([item], ctx);
+
+    // Grade base de 6 pares escalada para 24 → 4 pares por numeração.
+    expect(rows.find(r => r.componentType === 'Forração')?.totalQuantity).toBeCloseTo(3.84, 6); // 8 × 24 dm² ÷ 50
+    expect(rows.find(r => r.componentType === 'Palmilha')?.totalQuantity).toBeCloseTo(4.32, 6); // 9 × 24 dm² ÷ 50
+    expect(rows.find(r => r.componentType === 'Forração Palmilha')?.totalQuantity).toBeCloseTo(4.8, 6); // 10 × 24 dm² ÷ 50
+  });
+
   it('forração de palmilha do SOLADO é emitida mesmo com insole_lining_consumption escalar = 0', () => {
     const ctx = buildContext();
     ctx.sheetPrimarySoleMap = new Map([['sheet-1', 'p-solado']]);

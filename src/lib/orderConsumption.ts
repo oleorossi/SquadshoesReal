@@ -168,21 +168,35 @@ export type ConsumptionContext = {
   /** sole_product_id → consumo de FACHETE por numeração (dm²/par), de
    *  `sole_technical_specs.fachete_lining_consumption_dm2`. Só solados fachetados. */
   facheteSpecBySole: Map<string, Record<string, number>>;
+  /** sole_product_id → mapa canônico de FACHETE por numeração, vindo de
+   *  `sole_technical_specs.fachete_lining_consumption_per_size`. Vence o
+   *  legado `*_dm2` do solado. */
+  facheteConsumptionPerSizeBySole?: Map<string, Record<string, number>>;
   /** sole_product_id → consumo do FORRO DO CABEDAL por numeração (dm²/par), de
    *  `sole_technical_specs.lining_consumption_dm2`. Fonte do consumo do forro
    *  (2026-07-01): a ficha do modelo só escolhe o grupo/cor; o consumo é por
    *  solado. Espelha o fallback `v_spec.lining_consumption_dm2` do SQL by_grade.
    *  Opcional (testes antigos constroem o contexto sem ele). */
   liningSpecBySole?: Map<string, Record<string, number>>;
+  /** sole_product_id → mapa canônico de FORRO por numeração no tipo de
+   *  solado. Precedência: ficha por tamanho > este mapa > `liningSpecBySole`
+   *  (legado `*_dm2`) > escalar da ficha. */
+  liningConsumptionPerSizeBySole?: Map<string, Record<string, number>>;
   /** sole_product_id → PALMILHA PLACA por numeração (dm²/par), de
    *  `sole_technical_specs.insole_consumption_dm2`. Espelha o forro: a fonte da
    *  palmilha (placa) é o SOLADO por número, igual ao SQL by_grade (fallback
    *  `v_spec.insole_consumption_dm2`). Opcional. */
   insoleSpecBySole?: Map<string, Record<string, number>>;
+  /** sole_product_id → mapa canônico de PALMILHA (placa) por numeração no
+   *  tipo de solado. */
+  insoleConsumptionPerSizeBySole?: Map<string, Record<string, number>>;
   /** sole_product_id → PALMILHA FORRAÇÃO por numeração (dm²/par), de
    *  `sole_technical_specs.insole_lining_consumption_dm2`. Espelha o SQL
    *  (`v_spec.insole_lining_consumption_dm2`). Opcional. */
   insoleLiningSpecBySole?: Map<string, Record<string, number>>;
+  /** sole_product_id → mapa canônico de FORRAÇÃO DA PALMILHA por numeração no
+   *  tipo de solado. */
+  insoleLiningConsumptionPerSizeBySole?: Map<string, Record<string, number>>;
   /** (sheet_id::corPredominanteNormalizada) → lista de componentes por cor
    *  (opt-in via technical_sheets.component_colors_enabled). Espelha o gate SQL:
    *  quando a flag está ligada e há entrada pra a cor do pedido, esta lista
@@ -235,9 +249,11 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   lining_consumption_per_size,
   insole_material,
   insole_consumption,
+  insole_consumption_per_size,
   insole_has_lining,
   insole_ready_made,
   insole_lining_consumption,
+  insole_lining_consumption_per_size,
   sole_material,
   sole_consumption,
   sole_color,
@@ -248,6 +264,23 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   direct_components,
   component_colors_enabled
 `;
+
+/**
+ * Junta mapas de consumo por numeração da menor para a maior precedência.
+ * Valores zero/vazios significam "sem override" (mesma semântica do
+ * `NULLIF(..., 0)` no motor SQL).
+ */
+export const mergePerSizeConsumption = (...sources: unknown[]): Record<string, number> => {
+  const merged: Record<string, number> = {};
+  for (const source of sources) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    for (const [size, value] of Object.entries(source as Record<string, unknown>)) {
+      const consumption = Number(value);
+      if (Number.isFinite(consumption) && consumption > 0) merged[String(size)] = consumption;
+    }
+  }
+  return merged;
+};
 
 /** Mapas mínimos pra resolução canônica de solado (prioridade P0–P3 do
  *  resolve_sole_color SQL). Subconjunto de ConsumptionContext — exportado pra
@@ -647,39 +680,53 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   // o caminho SQL de calculate_order_consumption (que adiciona o componente
   // "Fachete"): só carregamos as specs dos solados marcados is_fachetado.
   const facheteSpecBySole = new Map<string, Record<string, number>>();
+  const facheteConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   const fachetadoSoleIds = (allProducts || [])
     .filter((p: any) => p.is_fachetado)
     .map((p: any) => p.id);
   if (fachetadoSoleIds.length > 0) {
     const { data: facheteSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, fachete_lining_consumption_dm2')
+      .select('sole_id, size, fachete_lining_consumption_dm2, fachete_lining_consumption_per_size')
       .in('sole_id', fachetadoSoleIds);
     for (const r of (facheteSpecs || []) as any[]) {
       const v = Number(r.fachete_lining_consumption_dm2) || 0;
-      if (v <= 0 || r.size == null) continue;
-      const m = facheteSpecBySole.get(r.sole_id) || {};
-      m[String(r.size)] = v;
-      facheteSpecBySole.set(r.sole_id, m);
+      if (v > 0 && r.size != null) {
+        const m = facheteSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = v;
+        facheteSpecBySole.set(r.sole_id, m);
+      }
+      const canonical = mergePerSizeConsumption(
+        facheteConsumptionPerSizeBySole.get(r.sole_id),
+        r.fachete_lining_consumption_per_size,
+      );
+      if (Object.keys(canonical).length > 0) facheteConsumptionPerSizeBySole.set(r.sole_id, canonical);
     }
   }
 
   // FORRO DO CABEDAL por numeração (dm²/par) vindo do SOLADO
   // (`sole_technical_specs.lining_consumption_dm2`). Fonte do consumo do forro
   // desde 2026-07-01: a ficha só escolhe o grupo/cor; o consumo é por solado.
-  // `.gt(0)` limita às linhas realmente preenchidas (solado × numeração).
+  // O mapa JSONB canônico é lido junto: filtros `.gt(0)` não servem porque um
+  // solado pode ter apenas o mapa por tamanho, com os escalares legados vazios.
   const liningSpecBySole = new Map<string, Record<string, number>>();
+  const liningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   {
     const { data: liningSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, lining_consumption_dm2')
-      .gt('lining_consumption_dm2', 0);
+      .select('sole_id, size, lining_consumption_dm2, lining_consumption_per_size');
     for (const r of (liningSpecs || []) as any[]) {
       const v = Number(r.lining_consumption_dm2) || 0;
-      if (v <= 0 || r.size == null) continue;
-      const m = liningSpecBySole.get(r.sole_id) || {};
-      m[String(r.size)] = v;
-      liningSpecBySole.set(r.sole_id, m);
+      if (v > 0 && r.size != null) {
+        const m = liningSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = v;
+        liningSpecBySole.set(r.sole_id, m);
+      }
+      const canonical = mergePerSizeConsumption(
+        liningConsumptionPerSizeBySole.get(r.sole_id),
+        r.lining_consumption_per_size,
+      );
+      if (Object.keys(canonical).length > 0) liningConsumptionPerSizeBySole.set(r.sole_id, canonical);
     }
   }
 
@@ -690,25 +737,35 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
   // forro=0 e palmilha>0 (o `.gt(lining)` da query do forro excluiria essas linhas).
   const insoleSpecBySole = new Map<string, Record<string, number>>();
   const insoleLiningSpecBySole = new Map<string, Record<string, number>>();
+  const insoleConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
+  const insoleLiningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   {
     const { data: insoleSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, insole_consumption_dm2, insole_lining_consumption_dm2')
-      .or('insole_consumption_dm2.gt.0,insole_lining_consumption_dm2.gt.0');
+      .select('sole_id, size, insole_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_per_size, insole_lining_consumption_per_size');
     for (const r of (insoleSpecs || []) as any[]) {
-      if (r.size == null) continue;
       const iv = Number(r.insole_consumption_dm2) || 0;
-      if (iv > 0) {
+      if (iv > 0 && r.size != null) {
         const m = insoleSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = iv;
         insoleSpecBySole.set(r.sole_id, m);
       }
       const lv = Number(r.insole_lining_consumption_dm2) || 0;
-      if (lv > 0) {
+      if (lv > 0 && r.size != null) {
         const m = insoleLiningSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = lv;
         insoleLiningSpecBySole.set(r.sole_id, m);
       }
+      const insoleCanonical = mergePerSizeConsumption(
+        insoleConsumptionPerSizeBySole.get(r.sole_id),
+        r.insole_consumption_per_size,
+      );
+      if (Object.keys(insoleCanonical).length > 0) insoleConsumptionPerSizeBySole.set(r.sole_id, insoleCanonical);
+      const insoleLiningCanonical = mergePerSizeConsumption(
+        insoleLiningConsumptionPerSizeBySole.get(r.sole_id),
+        r.insole_lining_consumption_per_size,
+      );
+      if (Object.keys(insoleLiningCanonical).length > 0) insoleLiningConsumptionPerSizeBySole.set(r.sole_id, insoleLiningCanonical);
     }
   }
 
@@ -764,9 +821,13 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
     soleColorGroupMap,
     sheetPrimarySoleMap,
     facheteSpecBySole,
+    facheteConsumptionPerSizeBySole,
     liningSpecBySole,
+    liningConsumptionPerSizeBySole,
     insoleSpecBySole,
+    insoleConsumptionPerSizeBySole,
     insoleLiningSpecBySole,
+    insoleLiningConsumptionPerSizeBySole,
     componentColorMap,
     componentColorDefaultMap,
     materialVariantsById,
@@ -805,8 +866,12 @@ export function computeConsumptionForItems(
   const soleColorGroupMap = ctx.soleColorGroupMap ?? new Map<string, string>();
   const sheetPrimarySoleMap = ctx.sheetPrimarySoleMap ?? new Map<string, string>();
   const liningSpecBySole = ctx.liningSpecBySole ?? new Map<string, Record<string, number>>();
+  const liningConsumptionPerSizeBySole = ctx.liningConsumptionPerSizeBySole ?? new Map<string, Record<string, number>>();
   const insoleSpecBySole = ctx.insoleSpecBySole ?? new Map<string, Record<string, number>>();
+  const insoleConsumptionPerSizeBySole = ctx.insoleConsumptionPerSizeBySole ?? new Map<string, Record<string, number>>();
   const insoleLiningSpecBySole = ctx.insoleLiningSpecBySole ?? new Map<string, Record<string, number>>();
+  const insoleLiningConsumptionPerSizeBySole = ctx.insoleLiningConsumptionPerSizeBySole ?? new Map<string, Record<string, number>>();
+  const facheteConsumptionPerSizeBySole = ctx.facheteConsumptionPerSizeBySole ?? new Map<string, Record<string, number>>();
   const componentColorMap = ctx.componentColorMap ?? new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
   const componentColorDefaultMap = ctx.componentColorDefaultMap ?? new Map<string, string>();
   const materialVariantsById = ctx.materialVariantsById ?? new Map<string, MaterialVariantResolution>();
@@ -1108,9 +1173,17 @@ export function computeConsumptionForItems(
     // sole_drives_consumption=true (idem SQL) — fichas de calçado fechado (forro
     // real, sem forro-de-palmilha no solado) não são afetadas.
     const soleForLiningId = resolveSoleForItem();
+    const soleInsoleLiningConsumption = mergePerSizeConsumption(
+      insoleLiningSpecBySole.get(soleForLiningId || ''),
+      insoleLiningConsumptionPerSizeBySole.get(soleForLiningId || ''),
+    );
+    const soleLiningConsumption = mergePerSizeConsumption(
+      liningSpecBySole.get(soleForLiningId || ''),
+      liningConsumptionPerSizeBySole.get(soleForLiningId || ''),
+    );
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
-      && Object.values(insoleLiningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0)
-      && !Object.values(liningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0);
+      && Object.values(soleInsoleLiningConsumption).some((v) => Number(v) > 0)
+      && !Object.values(soleLiningConsumption).some((v) => Number(v) > 0);
     // Pin de SKU do forro (variante > ficha) — hoisted: dirige a ficha de
     // conversão (F2-04) do Forro E da Forração Palmilha abaixo.
     const isPrincipalLining = !!liningMatch && (liningVariantDriven || liningMatch.group === (sheet?.lining_material || ''));
@@ -1124,7 +1197,8 @@ export function computeConsumptionForItems(
       const soleProductId = resolveSoleForItem();
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
       // FORRAÇÃO ALTERNATIVA (lining_accessories): consumo por número da própria
-      // ficha (é escolha do modelo). A PRINCIPAL não usa mais per_size da ficha.
+      // ficha (é escolha do modelo). Na principal, a ficha é override explícito
+      // sobre o padrão do tipo de solado.
       const liningOverride = isPrincipalLining
         ? null
         : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
@@ -1132,12 +1206,18 @@ export function computeConsumptionForItems(
       // (`sole_technical_specs.lining_consumption_dm2`, dm²/par). A ficha só escolhe
       // grupo/cor. Espelha o fachete (dm²→metro pela largura da ficha do material)
       // e o fallback `v_spec.lining_consumption_dm2` do SQL by_grade. Prioridade
-      // idêntica ao SQL: solado → escalar `lining_consumption` (per_size da ficha
-      // saiu — o grid foi removido; 0 fichas tinham valor). (2026-07-01)
+      // idêntica ao SQL: ficha por número > mapa canônico do solado > legado
+      // `*_dm2` do solado > escalar da ficha.
       // Override LEGADO da variante é consumo explícito → ignora o per-size do
       // solado e usa o escalar já embutido em liningMatch.consumption.
       const hasLegacyLiningOverride = liningVariantDriven && variant?.lining_consumption_override != null;
-      const liningSolePerSize = (isPrincipalLining && !hasLegacyLiningOverride) ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
+      const liningSolePerSize = (isPrincipalLining && !hasLegacyLiningOverride)
+        ? mergePerSizeConsumption(
+            liningSpecBySole.get(soleProductId || ''),
+            liningConsumptionPerSizeBySole.get(soleProductId || ''),
+            sheet?.lining_consumption_per_size,
+          )
+        : {};
       const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
       const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
       let liningTotal: number;
@@ -1217,19 +1297,23 @@ export function computeConsumptionForItems(
       // Ficha de conversão: cs do produto resolvido primeiro (F2-04), senão a
       // preferida do grupo em modo placa (comportamento anterior).
       const insoleSheet = getConversionSheetForProduct(resolvedPalmProduct?.id, insoleGroupName, { mode: 'plate', preferYield: true });
-      // PALMILHA PLACA por numeração vinda do SOLADO (sole_technical_specs.insole_consumption_dm2),
-      // espelhando o Forro e a produção/ondas: quando o solado tem valores, o consumo (dm²) vem
-      // deles por número (ESCALAR da ficha como fallback POR TAMANHO — contrato
-      // SQL/fallback_average, F2-02) e a ficha de componente é usada SÓ pra
-      // conversão dm²→placa. Sem valores no solado → caminho antigo (yield da
-      // ficha de componente, fallback escalar FLAT — sem multiplicador).
+      // PALMILHA PLACA por número: ficha por número (override) > mapa canônico
+      // do tipo de solado > legado `insole_consumption_dm2` do solado > escalar
+      // da ficha. A ficha de componente serve só para converter dm² em unidade
+      // física; sem mapa em nenhuma fonte, preserva o caminho legado por yield.
       // Override LEGADO da variante (consumo explícito) suprime o per-size do
       // solado e substitui o escalar da ficha.
       const hasLegacyInsoleOverride = insoleVariantDriven && variant?.insole_consumption_override != null;
       const insoleScalarConsumption = hasLegacyInsoleOverride
         ? (Number(variant?.insole_consumption_override) || 0)
         : (Number(sheet?.insole_consumption) || 0);
-      const insoleSolePerSize = hasLegacyInsoleOverride ? {} : (insoleSpecBySole.get(soleProductIdForInsole || '') || {});
+      const insoleSolePerSize = hasLegacyInsoleOverride
+        ? {}
+        : mergePerSizeConsumption(
+            insoleSpecBySole.get(soleProductIdForInsole || ''),
+            insoleConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
+            sheet?.insole_consumption_per_size,
+          );
       const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
       const computeInsoleDm2 = () => insoleSoleVals.length > 0
         ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
@@ -1363,10 +1447,13 @@ export function computeConsumptionForItems(
       const liningGroupForPalm = liningVariantDriven
         ? (liningVariant.groupName || sheet?.lining_material || '')
         : (liningMatch?.group || sheet?.lining_material || '');
-      // FORRAÇÃO da palmilha por numeração vinda do SOLADO
-      // (sole_technical_specs.insole_lining_consumption_dm2), espelhando o Forro e a
-      // produção/ondas (SQL by_grade).
-      const insoleLiningSolePerSize = insoleLiningSpecBySole.get(soleProductIdForInsole || '') || {};
+      // FORRAÇÃO da palmilha: mesma precedência canônica da placa, com o mapa
+      // JSONB do tipo de solado entre o override da ficha e o legado `*_dm2`.
+      const insoleLiningSolePerSize = mergePerSizeConsumption(
+        insoleLiningSpecBySole.get(soleProductIdForInsole || ''),
+        insoleLiningConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
+        sheet?.insole_lining_consumption_per_size,
+      );
       const insoleLiningSoleVals = Object.values(insoleLiningSolePerSize).filter((v) => Number(v) > 0) as number[];
       // Emite quando há consumo escalar OU o solado tem valores por número — senão a
       // forração-de-palmilha dirigida pelo solado nunca sairia se o escalar fosse 0.
@@ -1498,7 +1585,10 @@ export function computeConsumptionForItems(
         ? ((productGroups || []).find((g: any) => g.id === facheteGroupId)?.name || '')
         : '';
       const facheteMaterialName = facheteGroupName || (sheet?.lining_material || '');
-      const fachetePerSize = facheteSpecBySole.get(soleProductIdResolved) || {};
+      const fachetePerSize = mergePerSizeConsumption(
+        facheteSpecBySole.get(soleProductIdResolved),
+        facheteConsumptionPerSizeBySole.get(soleProductIdResolved),
+      );
       const facheteVals = Object.values(fachetePerSize).filter((v) => Number(v) > 0) as number[];
       if (facheteMaterialName && facheteVals.length > 0) {
         const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;

@@ -12,7 +12,7 @@ import {
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
-import { resolveSoleProductIdCanonical, resolveMaterialProductCanonical } from '@/lib/orderConsumption';
+import { mergePerSizeConsumption, resolveSoleProductIdCanonical, resolveMaterialProductCanonical } from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import {
@@ -127,7 +127,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_ready_made, insole_has_lining, insole_lining_consumption, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled')
+      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
@@ -284,37 +284,57 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // FACHETE por número (dm²/par) do SOLADO (fachete_lining_consumption_dm2) —
   // BOM-5: componente inteiro faltava na Lista de Separação.
   const facheteSpecBySole = new Map<string, Record<string, number>>();
+  // Mapas JSONB canônicos do TIPO de solado. Eles vencem os campos `*_dm2`
+  // legados, que continuam como fallback por compatibilidade de cadastro.
+  const liningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
+  const insoleConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
+  const insoleLiningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
+  const facheteConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   {
     const { data: liningSpecs } = await (supabase as any)
       .from('sole_technical_specs')
-      .select('sole_id, size, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2')
-      .or('lining_consumption_dm2.gt.0,insole_lining_consumption_dm2.gt.0,insole_consumption_dm2.gt.0,fachete_lining_consumption_dm2.gt.0');
+      .select('sole_id, size, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2, lining_consumption_per_size, insole_lining_consumption_per_size, insole_consumption_per_size, fachete_lining_consumption_per_size');
     for (const r of (liningSpecs || []) as any[]) {
-      if (r.size == null) continue;
       const v = Number(r.lining_consumption_dm2) || 0;
-      if (v > 0) {
+      if (v > 0 && r.size != null) {
         const m = liningSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = v;
         liningSpecBySole.set(r.sole_id, m);
       }
       const lv = Number(r.insole_lining_consumption_dm2) || 0;
-      if (lv > 0) {
+      if (lv > 0 && r.size != null) {
         const m = insoleLiningSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = lv;
         insoleLiningSpecBySole.set(r.sole_id, m);
       }
       const iv = Number(r.insole_consumption_dm2) || 0;
-      if (iv > 0) {
+      if (iv > 0 && r.size != null) {
         const m = insoleSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = iv;
         insoleSpecBySole.set(r.sole_id, m);
       }
       const fv = Number(r.fachete_lining_consumption_dm2) || 0;
-      if (fv > 0) {
+      if (fv > 0 && r.size != null) {
         const m = facheteSpecBySole.get(r.sole_id) || {};
         m[String(r.size)] = fv;
         facheteSpecBySole.set(r.sole_id, m);
       }
+      const liningCanonical = mergePerSizeConsumption(
+        liningConsumptionPerSizeBySole.get(r.sole_id), r.lining_consumption_per_size,
+      );
+      if (Object.keys(liningCanonical).length > 0) liningConsumptionPerSizeBySole.set(r.sole_id, liningCanonical);
+      const insoleCanonical = mergePerSizeConsumption(
+        insoleConsumptionPerSizeBySole.get(r.sole_id), r.insole_consumption_per_size,
+      );
+      if (Object.keys(insoleCanonical).length > 0) insoleConsumptionPerSizeBySole.set(r.sole_id, insoleCanonical);
+      const insoleLiningCanonical = mergePerSizeConsumption(
+        insoleLiningConsumptionPerSizeBySole.get(r.sole_id), r.insole_lining_consumption_per_size,
+      );
+      if (Object.keys(insoleLiningCanonical).length > 0) insoleLiningConsumptionPerSizeBySole.set(r.sole_id, insoleLiningCanonical);
+      const facheteCanonical = mergePerSizeConsumption(
+        facheteConsumptionPerSizeBySole.get(r.sole_id), r.fachete_lining_consumption_per_size,
+      );
+      if (Object.keys(facheteCanonical).length > 0) facheteConsumptionPerSizeBySole.set(r.sole_id, facheteCanonical);
     }
   }
 
@@ -559,11 +579,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         soleColorGroupMap,
         sheetPrimarySoleMap,
         allProducts: allProducts || [],
-      });
+    });
     const soleIdForLiningBom = resolvedSolePid;
+    const soleInsoleLiningConsumption = mergePerSizeConsumption(
+      insoleLiningSpecBySole.get(soleIdForLiningBom || ''),
+      insoleLiningConsumptionPerSizeBySole.get(soleIdForLiningBom || ''),
+    );
+    const soleLiningConsumption = mergePerSizeConsumption(
+      liningSpecBySole.get(soleIdForLiningBom || ''),
+      liningConsumptionPerSizeBySole.get(soleIdForLiningBom || ''),
+    );
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
-      && Object.values(insoleLiningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0)
-      && !Object.values(liningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0);
+      && Object.values(soleInsoleLiningConsumption).some((v) => Number(v) > 0)
+      && !Object.values(soleLiningConsumption).some((v) => Number(v) > 0);
     // Pin de SKU do forro (variante > ficha) — hoisted: dirige a ficha de
     // conversão (F2-04) do Forro E da Forração Palmilha abaixo.
     const isPrincipalLining = !!liningMatch && (!!liningVariantGroup || liningMatch.group === (sheet?.lining_material || ''));
@@ -582,10 +610,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const liningOverride = isPrincipalLining
         ? null
         : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
-      // FORRO DO CABEDAL (principal) = SOLADO por número (lining_consumption_dm2,
-      // dm²→metro pela largura da ficha, igual fachete). Tamanho SEM spec cai no
-      // ESCALAR da ficha (contrato SQL/fallback_average — F2-02) com aviso.
-      const liningSolePerSize = isPrincipalLining ? (liningSpecBySole.get(soleProductId || '') || {}) : {};
+      // FORRO DO CABEDAL: ficha por número > mapa canônico do tipo de solado >
+      // legado `lining_consumption_dm2` > escalar da ficha.
+      const liningSolePerSize = isPrincipalLining
+        ? mergePerSizeConsumption(
+            liningSpecBySole.get(soleProductId || ''),
+            liningConsumptionPerSizeBySole.get(soleProductId || ''),
+            sheet?.lining_consumption_per_size,
+          )
+        : {};
       const liningSoleVals = Object.values(liningSolePerSize).filter((v) => Number(v) > 0) as number[];
       const liningWidthMissing = isLinearWidthMissing(liningSheet, 'm');
       let liningTotal: number;
@@ -629,16 +662,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         || resolveMaterialProductCanonical(insoleGroupName, orderColor, allProducts || [], productGroups || []);
       // Ficha de conversão: cs do produto resolvido primeiro (F2-04).
       const insoleSheet = getConversionSheetForProduct(resolvedPalmProd?.id, insoleGroupName, { mode: 'plate', preferYield: true });
-      // PLACA por número do SOLADO (BOM-4): quando o solado tem
-      // insole_consumption_dm2 preenchido, o dm² vem dele por numeração;
-      // tamanho SEM spec cai no ESCALAR da ficha (contrato SQL/
-      // fallback_average — F2-02, sem multiplicador). Override LEGADO da
-      // variante é consumo explícito e suprime o per-size do solado.
+      // PLACA por número: ficha por número > mapa canônico do tipo de solado >
+      // legado `insole_consumption_dm2` > escalar da ficha. Override legado da
+      // variante é consumo explícito e continua vencendo todos esses mapas.
       const hasLegacyInsoleOverride = !!variant && variant.insole_consumption_override != null;
       const insoleScalarConsumption = hasLegacyInsoleOverride
         ? (Number(variant.insole_consumption_override) || 0)
         : (Number(sheet?.insole_consumption) || 0);
-      const insoleSolePerSize = hasLegacyInsoleOverride ? {} : (insoleSpecBySole.get(soleProductIdForInsole || '') || {});
+      const insoleSolePerSize = hasLegacyInsoleOverride
+        ? {}
+        : mergePerSizeConsumption(
+            insoleSpecBySole.get(soleProductIdForInsole || ''),
+            insoleConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
+            sheet?.insole_consumption_per_size,
+          );
       const insoleSoleVals = Object.values(insoleSolePerSize).filter((v) => Number(v) > 0) as number[];
       const insoleDm2 = insoleSoleVals.length > 0
         ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
@@ -701,11 +738,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // principal não tem a cor) > lining_material cru. O SQL resolve as duas
       // linhas pelo MESMO v_lining_pid — usar o lining_material cru aqui mandava
       // cortar a napa errada quando o forro era alternativo (F2-09). Área por
-      // número vem do SOLADO (insole_lining_consumption_dm2); tamanho SEM spec
-      // cai no ESCALAR da ficha (contrato SQL/fallback_average — F2-02).
+      // número segue: ficha por número > mapa canônico do solado > legado
+      // `insole_lining_consumption_dm2` > escalar da ficha.
       const insoleLiningCons = Number(sheet?.insole_lining_consumption) || 0;
       const liningGroupForPalm = liningVariantGroup || liningMatch?.group || sheet?.lining_material || '';
-      const insoleLiningSolePerSize = insoleLiningSpecBySole.get(soleProductIdForInsole || '') || {};
+      const insoleLiningSolePerSize = mergePerSizeConsumption(
+        insoleLiningSpecBySole.get(soleProductIdForInsole || ''),
+        insoleLiningConsumptionPerSizeBySole.get(soleProductIdForInsole || ''),
+        sheet?.insole_lining_consumption_per_size,
+      );
       const insoleLiningSoleVals = Object.values(insoleLiningSolePerSize).filter((v) => Number(v) > 0) as number[];
       if ((insoleLiningCons > 0 || insoleLiningSoleVals.length > 0) && liningGroupForPalm && sheet?.insole_has_lining !== false) {
         // Mesma ficha de conversão do Forro do cabedal (cs do pin primeiro —
@@ -764,7 +805,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const facheteGroupId = (insoleSoleProd as any).fachete_material_group_id;
       const facheteGroupName = facheteGroupId ? (groupNameById(facheteGroupId) || '') : '';
       const facheteMaterialName = facheteGroupName || (sheet?.lining_material || '');
-      const fachetePerSize = facheteSpecBySole.get(resolvedSolePid) || {};
+      const fachetePerSize = mergePerSizeConsumption(
+        facheteSpecBySole.get(resolvedSolePid),
+        facheteConsumptionPerSizeBySole.get(resolvedSolePid),
+      );
       const facheteVals = Object.values(fachetePerSize).filter((v) => Number(v) > 0) as number[];
       const facheteLiningColor = liningColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`)
         || liningDefaultMap.get(order.reference_id) || orderColor;
