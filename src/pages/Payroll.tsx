@@ -17,10 +17,11 @@ import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange, SALARY_DAY_DIVISOR } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
-import { aggregateProducaoByMontador, FICHA_MONTADORES_PRODUCAO_COLUMNS, type FichaMontadorRow } from '@/lib/montadorProduction';
+import { aggregateProducaoByMontador, fetchMontadorProducaoInRange } from '@/lib/montadorProduction';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
+import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
 import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin } from '@/lib/printPayrollBundle';
@@ -152,10 +153,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   // Feriados OBRIGATÓRIOS (optional !== true) → dia inteiro 1,5×.
   const holidaysSet = useMemo(
-    () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[])
-      .filter(h => h.optional !== true)
-      .map(h => h.holiday_date)),
-    [holidaysList],
+    () => resolveHolidaysForPayrollRange(holidaysList as any[], appliedFrom, appliedTo),
+    [holidaysList, appliedFrom, appliedTo],
   );
 
   // Trocas de dia (compensação): dia flex — normal quando trabalhado, neutro quando não.
@@ -249,12 +248,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     enabled: !!(appliedFrom && appliedTo),
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('ficha_montadores')
-        .select(FICHA_MONTADORES_PRODUCAO_COLUMNS)
-        .gte('dia', appliedFrom).lte('dia', appliedTo);
-      if (error) throw error;
-      return (data || []) as FichaMontadorRow[];
+      return fetchMontadorProducaoInRange(appliedFrom, appliedTo);
     },
   });
   const comparativo = useMemo(() => computeComparativoRows({
@@ -467,7 +461,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
         { v: fmt(tLiq), align: 'r', strong: true },
       ],
-      footNote: 'Faltas = dias × salário/30 · Atrasos = min × salário/220 · H.E. = min × salário/220 × 1,5.',
+      footNote: 'Faltas e atrasos conforme dias úteis e jornada da escala · H.E. conforme taxa cadastrada.',
     });
   };
 
@@ -524,6 +518,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     }
     setCalcRunning(true);
     try {
+      const calculationHolidays = resolveHolidaysForPayrollRange(holidaysList as any[], cFrom, cTo);
       // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
       // como falta quem ainda não teve o ponto baixado). Folha fica "parcial" até importar.
       const maxCov = coverage?.maxCovered || null;
@@ -562,13 +557,14 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
       // Adiantamentos pendentes do período (único desconto). Vales já amarrados
       // a outra folha (payroll_run_id) não entram de novo.
-      const { data: advances } = await supabase
+      const { data: advances, error: advancesError } = await supabase
         .from('employee_advances')
         .select('employee_id, amount, advance_date, status, payroll_run_id')
         .gte('advance_date', cFrom)
         .lte('advance_date', cTo)
         .is('payroll_run_id', null)
         .eq('status', 'pending');
+      if (advancesError) throw advancesError;
       const advancesByEmp = new Map<string, number>();
       for (const a of (advances || []) as any[]) {
         advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + Number(a.amount || 0));
@@ -576,27 +572,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
       // B4 (auditoria 2026-06-29): ausências JUSTIFICADAS (férias/atestado/licença)
       // no período → dias abonados (não descontam falta). Expande [start,end]∩[período].
-      const { data: absences } = await supabase
+      const { data: absences, error: absencesError } = await supabase
         .from('employee_absences')
         .select('employee_id, start_date, end_date')
         .lte('start_date', cTo)
         .gte('end_date', cFrom);
-      const absencesByEmp = new Map<string, Set<string>>();
-      for (const ab of (absences || []) as any[]) {
-        const set = absencesByEmp.get(ab.employee_id) || new Set<string>();
-        const s = ab.start_date > cFrom ? ab.start_date : cFrom;
-        const e = ab.end_date < cTo ? ab.end_date : cTo;
-        for (const day of getDaysInRange(s, e)) set.add(day.date);
-        absencesByEmp.set(ab.employee_id, set);
-      }
+      if (absencesError) throw absencesError;
+      const absencesByEmp = expandAbsenceDatesByEmployee((absences || []) as any[], cFrom, cTo);
 
       // Produção por par (Ficha de Montadores) do período — base do regime 'producao'
       // (Σ pares × R$/par snapshot de cada apontamento). Ignora salário/ponto.
-      const { data: fichaRows } = await (supabase as any)
-        .from('ficha_montadores')
-        .select(FICHA_MONTADORES_PRODUCAO_COLUMNS)
-        .gte('dia', cFrom).lte('dia', cTo);
-      const producaoByEmp = aggregateProducaoByMontador((fichaRows || []) as FichaMontadorRow[]);
+      const producaoByEmp = aggregateProducaoByMontador(await fetchMontadorProducaoInRange(cFrom, cTo));
 
       let calculated = 0;
       let withIncomplete = 0;
@@ -631,7 +617,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           salary: Number(emp.salary) || 0,
           from: cFrom, to: cTo,
           schedule: sch,
-          holidaysSet,
+          holidaysSet: calculationHolidays,
           swapWorkedSet,
           swapOffSet,
           punchesByDate: empPunches,
@@ -888,7 +874,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     <div className="space-y-4 page-enter">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário × dias do período ÷ dias do mês · falta = −1 dia (salário÷30) · atraso/saída cedo = min × (salário÷220) ·
+          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário × dias do período ÷ dias do mês · faltas e atrasos conforme a escala ·
           {' '}hora extra após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1260,7 +1246,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                 value: periodBase, type: 'p' as const, always: true,
               },
               { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
-              { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.base_salary || 0) / SALARY_DAY_DIVISOR)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
+              { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
               { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
               { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
             ].filter(l => l.value > 0 || (l as any).always);

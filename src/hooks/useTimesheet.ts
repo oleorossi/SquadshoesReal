@@ -652,7 +652,7 @@ export function calculateDaySummary(
   // NEUTRO (não vira falta). Fora de troca, dia útil = regra da escala.
   const isWorkday = isSwap ? workedMinutes > 0 : (worksOnDow(schedule, dayOfWeek) && !isHoliday);
   // Esperado: dia útil (ou pendente de troca) usa a jornada da escala; neutro = 0.
-  const expectedMinutes = (isWorkday || (isSwap && sp.incomplete)) ? expectedDayMinutes(schedule) : 0;
+  const expectedMinutes = (isWorkday || (isSwap && sp.incomplete)) ? expectedDayMinutes(schedule, dayOfWeek) : 0;
 
   // Batida ímpar / 1 batida → INCONSISTENTE → PENDENTE (resolve na aba Pendências).
   if (sp.incomplete) {

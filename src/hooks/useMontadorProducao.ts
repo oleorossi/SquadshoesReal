@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import {
   aggregateProducaoByMontador,
-  FICHA_MONTADORES_PRODUCAO_COLUMNS,
-  type FichaMontadorRow,
+  fetchMontadorProducaoInRange,
   type ProducaoAgg,
 } from '@/lib/montadorProduction';
 
@@ -17,13 +15,7 @@ export function useMontadorProducao(from: string, to: string, enabled = true) {
     queryKey: ['montador_producao', from, to],
     enabled: enabled && !!from && !!to,
     queryFn: async (): Promise<Map<string, ProducaoAgg>> => {
-      const { data, error } = await (supabase as any)
-        .from('ficha_montadores')
-        .select(FICHA_MONTADORES_PRODUCAO_COLUMNS)
-        .gte('dia', from)
-        .lte('dia', to);
-      if (error) throw error;
-      return aggregateProducaoByMontador((data || []) as FichaMontadorRow[]);
+      return aggregateProducaoByMontador(await fetchMontadorProducaoInRange(from, to));
     },
     staleTime: 60_000,
   });

@@ -1,4 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
+import { supabase } from '@/integrations/supabase/client';
 // FONTE ÚNICA do cálculo de produção por par (piece-rate) usado na FOLHA.
 //
 // Funcionário com payment_type='producao' é pago por par montado, valorado por
@@ -103,3 +104,22 @@ export function aggregateProducaoByMontador(rows: FichaMontadorRow[]): Map<strin
 /** Colunas de ficha_montadores necessárias pro cálculo (usar no .select()). */
 export const FICHA_MONTADORES_PRODUCAO_COLUMNS =
   'montador_id, dia, total, detalhe, origem, numeracoes, valor_par, valor_par_medio, valor_par_dificil';
+
+/** Busca toda a produção do intervalo; PostgREST limita cada página a 1.000 linhas. */
+export async function fetchMontadorProducaoInRange(from: string, to: string): Promise<FichaMontadorRow[]> {
+  const pageSize = 1000;
+  const rows: FichaMontadorRow[] = [];
+  for (let start = 0; ; start += pageSize) {
+    const { data, error } = await (supabase as any)
+      .from('ficha_montadores')
+      .select(FICHA_MONTADORES_PRODUCAO_COLUMNS)
+      .gte('dia', from)
+      .lte('dia', to)
+      .order('id')
+      .range(start, start + pageSize - 1);
+    if (error) throw error;
+    const page = (data || []) as FichaMontadorRow[];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}

@@ -35,6 +35,7 @@ import { computePeriodFolha, SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
+import { resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -712,13 +713,18 @@ function TimesheetRecordsTab() {
     return { startDate: dates[0], endDate: dates[dates.length - 1] };
   }, [resolvedFilters.dateRange, records]);
 
-  // Pre-compute holiday sets for O(1) lookups
-  const holidayDates = useMemo(() => new Set(holidays.filter(h => !h.recurring).map(h => h.holiday_date)), [holidays]);
-  const recurringHolidayMMDD = useMemo(() => new Set(holidays.filter(h => h.recurring).map(h => h.holiday_date.slice(5))), [holidays]);
+  // Resolve uma vez por intervalo: feriado recorrente vale em todos os anos do ponto.
+  const holidayDates = useMemo(
+    () => batchDateRange
+      ? resolveHolidaysForPayrollRange(holidays, batchDateRange.startDate, batchDateRange.endDate)
+      : new Set<string>(),
+    [holidays, batchDateRange],
+  );
   // Troca de dia: qualquer data de troca (work/off) prevalece sobre feriado — o dia
   // é lido pela regra flex (normal quando trabalhado, neutro quando não).
   const isHolidayDate = (dateStr: string) =>
-    !swapWorkedSet.has(dateStr) && !swapOffSet.has(dateStr) && (holidayDates.has(dateStr) || recurringHolidayMMDD.has(dateStr.slice(5)));
+    !swapWorkedSet.has(dateStr) && !swapOffSet.has(dateStr)
+    && (holidayDates.has(dateStr) || resolveHolidaysForPayrollRange(holidays, dateStr, dateStr).has(dateStr));
 
   const calcSummariesForEmployee = (empName: string) => {
     const empRecords = employeeGroups.get(empName) || [];
@@ -796,9 +802,11 @@ function TimesheetRecordsTab() {
     const salary = Number(emp?.salary) || 0;
     const sch = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
     const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
+    const from = dayData[0]?.date || '';
+    const to = dayData[dayData.length - 1]?.date || '';
     return computePeriodFolha({
-      salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
-      schedule: sch, holidaysSet: holidayDates, swapWorkedSet, swapOffSet, punchesByDate,
+      salary, from, to,
+      schedule: sch, holidaysSet: resolveHolidaysForPayrollRange(holidays, from, to), swapWorkedSet, swapOffSet, punchesByDate,
       // HE em R$/h por funcionário + regime — pra o Espelho/Ponto bater com a Folha (spec req.15).
       payRegime: (String((emp as any)?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
       dailyRate: Number((emp as any)?.daily_rate) || 0,

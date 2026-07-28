@@ -5,13 +5,15 @@
 //
 // Fonte da verdade: o MESMO motor da folha (computePeriodFolha → falta_dates), então
 // a falta aqui bate EXATAMENTE com a coluna FALTAS da Folha do Mês e com o desconto
-// aplicado no líquido (falta_desconto = nº faltas × salário/30).
+// aplicado no líquido (falta_desconto retornado pelo motor da folha).
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
-import { computePeriodFolha, SALARY_DAY_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
+import { useAbsences } from '@/hooks/useRH';
+import { computePeriodFolha, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
+import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,8 +55,8 @@ interface FaltaRow {
   /** Batidas por data (do relógio) — alimenta o calendário (dias trabalhados). */
   punchesByDate: Map<string, string[]>;
   schedule: any;
-  /** Salário mensal — pra calcular o R$ descontado (= nº faltas × salário/30). */
-  salary: number;
+  /** Desconto já calculado pela folha para as faltas do período. */
+  faltaDiscount: number;
 }
 
 function monthsBetween(from: string, to: string): { y: number; m: number }[] {
@@ -70,9 +72,8 @@ const MES_LABEL = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', '
 // ─── Calendário de faltas de UM funcionário ──────────────────────────────────
 function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null; from: string; to: string; onClose: () => void }) {
   if (!row) return null;
-  const valorDia = (Number(row.salary) || 0) / SALARY_DAY_DIVISOR;
   const faltaSet = new Set(row.days);
-  const totalRS = row.days.length * valorDia;
+  const totalRS = row.faltaDiscount;
   const expMin = expectedDayMinutes(row.schedule);
   const expWindow = row.schedule
     ? `${hhmm(row.schedule.entry_time)}–${hhmm(row.schedule.exit_time)}${row.schedule.lunch_start ? ` · almoço ${hhmm(row.schedule.lunch_start)}–${hhmm(row.schedule.lunch_end)}` : ''}`
@@ -156,7 +157,7 @@ function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null;
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="bg-muted/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
             <span>Dias de falta</span>
-            <span>Desconto</span>
+            <span>Desconto total</span>
           </div>
           <div className="divide-y divide-border">
             {row.days.map((date) => (
@@ -169,7 +170,6 @@ function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null;
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 leading-none">−1 dia</p>
-                  <p className="text-[11px] tabular-nums text-muted-foreground mt-0.5">{fmtBRL(valorDia)}</p>
                 </div>
               </div>
             ))}
@@ -185,10 +185,6 @@ export default function RelatorioFaltas() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidaysList = [] } = useHolidays();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
-  const holidaysSet = useMemo(
-    () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[]).filter(h => h.optional !== true).map(h => h.holiday_date)),
-    [holidaysList],
-  );
   const { swapWorkedSet, swapOffSet } = useSwapSets();
   // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
   // mesma contagem precisa invalidar o cache do relatório.
@@ -202,6 +198,20 @@ export default function RelatorioFaltas() {
   const [cTo, setCTo] = useState(todayISO());
   const [selected, setSelected] = useState<FaltaRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
+  const holidaysSet = useMemo(
+    () => resolveHolidaysForPayrollRange(holidaysList as any[], from, to),
+    [holidaysList, from, to],
+  );
+  const { data: absences = [], isLoading: absencesLoading } = useAbsences({ from, to });
+  const absenceDatesByEmployee = useMemo(
+    () => expandAbsenceDatesByEmployee(absences, from, to),
+    [absences, from, to],
+  );
+  const holidayKey = useMemo(() => [...holidaysSet].sort().join(','), [holidaysSet]);
+  const absenceKey = useMemo(
+    () => absences.map(a => `${a.employee_id}:${a.start_date}:${a.end_date}`).sort().join(','),
+    [absences],
+  );
 
   // Cobertura do relógio: até que dia o ponto foi de fato importado. FALTA só conta
   // em dia COBERTO (relógio lido). Dias após a última importação NÃO viram falta —
@@ -210,8 +220,8 @@ export default function RelatorioFaltas() {
   const partial = !!(coverage?.maxCovered && coverage.maxCovered < to);
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ['relatorio-faltas', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapKey, coverage?.maxCovered ?? null, coverage?.count ?? 0],
-    enabled: !!from && !!to && from <= to && (employees as any[]).length > 0,
+    queryKey: ['relatorio-faltas', from, to, (employees as any[]).length, (schedules as any[]).length, holidayKey, absenceKey, swapKey, coverage?.maxCovered ?? null, coverage?.count ?? 0],
+    enabled: !!from && !!to && from <= to && (employees as any[]).length > 0 && !absencesLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<FaltaRow[]> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do calendário).
@@ -262,6 +272,7 @@ export default function RelatorioFaltas() {
         const res = computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to, schedule: sch, holidaysSet, swapWorkedSet, swapOffSet,
           punchesByDate: empPunches,
+          absenceDates: absenceDatesByEmployee.get(emp.id),
           // Recorta por vínculo: quem foi admitido depois (ou demitido antes) não
           // pode gerar falta nos dias fora do contrato.
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
@@ -275,7 +286,7 @@ export default function RelatorioFaltas() {
         if (faltas.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: faltas,
-            punchesByDate: empPunches, schedule: sch, salary: Number(emp.salary) || 0,
+            punchesByDate: empPunches, schedule: sch, faltaDiscount: res.falta_desconto,
           });
         }
       }
@@ -285,7 +296,7 @@ export default function RelatorioFaltas() {
 
   const totals = useMemo(() => {
     const dias = rows.reduce((s, r) => s + r.days.length, 0);
-    const desconto = rows.reduce((s, r) => s + r.days.length * ((Number(r.salary) || 0) / SALARY_DAY_DIVISOR), 0);
+    const desconto = rows.reduce((s, r) => s + r.faltaDiscount, 0);
     return { funcionarios: rows.length, dias, desconto };
   }, [rows]);
 
@@ -303,7 +314,7 @@ export default function RelatorioFaltas() {
       kpis: [
         { label: 'Funcionários c/ falta', value: String(totals.funcionarios) },
         { label: 'Total de faltas', value: String(totals.dias) },
-        { label: 'Desconto estimado', value: fmtBRL(totals.desconto) },
+        { label: 'Desconto da folha', value: fmtBRL(totals.desconto) },
       ],
       headers: [
         { label: 'Funcionário' },
@@ -312,12 +323,11 @@ export default function RelatorioFaltas() {
         { label: 'Desconto', align: 'r' },
       ],
       rows: rows.map((r): RhCell[] => {
-        const desc = r.days.length * ((Number(r.salary) || 0) / SALARY_DAY_DIVISOR);
         return [
           { v: r.name },
           { v: String(r.days.length), align: 'r', strong: true },
           { v: r.days.map(d => `${fmtDia(d)} ${dowShort(d)}`).join(', ') },
-          { v: `− ${fmtBRL(desc)}`, align: 'r', neg: true },
+          { v: `− ${fmtBRL(r.faltaDiscount)}`, align: 'r', neg: true },
         ];
       }),
       totals: [
@@ -326,7 +336,7 @@ export default function RelatorioFaltas() {
         { v: '' },
         { v: `− ${fmtBRL(totals.desconto)}`, align: 'r', neg: true, strong: true },
       ],
-      footNote: `Falta = dia útil coberto pelo relógio, sem batida e sem ausência justificada. Desconto = nº faltas × salário/${SALARY_DAY_DIVISOR}.`,
+      footNote: 'Falta = dia útil coberto pelo relógio, sem batida e sem ausência justificada. Desconto calculado pela Folha.',
     });
   };
 
@@ -372,7 +382,7 @@ export default function RelatorioFaltas() {
         {[
           { label: 'Funcionários com falta', value: String(totals.funcionarios), icon: Users },
           { label: 'Total de faltas', value: String(totals.dias), icon: CalendarX, accent: true },
-          { label: 'Desconto estimado', value: fmtBRL(totals.desconto), icon: UserMinus },
+          { label: 'Desconto da folha', value: fmtBRL(totals.desconto), icon: UserMinus },
         ].map((k) => (
           <div key={k.label} className={`rounded-lg border p-3 ${k.accent ? 'border-red-500/30 bg-red-500/5' : 'border-border bg-card'}`}>
             <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">

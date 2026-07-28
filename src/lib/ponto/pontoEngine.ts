@@ -82,7 +82,7 @@ export function buildPontoDays(inp: PontoEngineInput): PontoDay[] {
   return dates.map(({ date, dow }) => {
     const isHoliday = inp.holidaysSet.has(date);
     const isWorkday = worksOnDow(inp.schedule, dow) && !isHoliday;
-    const expectedMinutes = isWorkday ? expectedDayMinutes(inp.schedule) : 0;
+    const expectedMinutes = isWorkday ? expectedDayMinutes(inp.schedule, dow) : 0;
     const punches = inp.punchesByDate.get(date) || [];
 
     const sp = punches.length >= 2

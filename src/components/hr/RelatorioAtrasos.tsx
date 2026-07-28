@@ -5,14 +5,15 @@
 //
 // Fonte da verdade: o MESMO motor da folha (computePeriodFolha → late_days), então
 // o atraso aqui bate EXATAMENTE com a coluna ATRASOS da Folha do Mês e com o
-// desconto aplicado no líquido (atraso_desconto = atraso_min/60 × salário/220).
+// desconto aplicado no líquido (atraso_desconto retornado pelo motor da folha).
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useWorkSchedules } from '@/hooks/useTimesheet';
-import { computePeriodFolha, SALARY_HOUR_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
+import { useAbsences } from '@/hooks/useRH';
+import { computePeriodFolha, expectedDayMinutes } from '@/lib/salaryPayroll';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
+import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,8 +56,8 @@ interface AtrasoRow {
   /** Batidas por data (exatamente do relógio) — alimenta o calendário. */
   punchesByDate: Map<string, string[]>;
   schedule: any;
-  /** Salário mensal — pra calcular o R$ descontado (= min/60 × salário/220). */
-  salary: number;
+  /** Desconto já calculado pela folha para os atrasos do período. */
+  atrasoDiscount: number;
 }
 
 // ─── Calendário de atrasos de UM funcionário ─────────────────────────────────
@@ -72,9 +73,8 @@ const MES_LABEL = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', '
 
 function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | null; from: string; to: string; onClose: () => void }) {
   if (!row) return null;
-  const valorHora = (Number(row.salary) || 0) / SALARY_HOUR_DIVISOR;
   const lateMap = new Map(row.days.map((d) => [d.date, d.minutes]));
-  const totalRS = (row.totalMin / 60) * valorHora;
+  const totalRS = row.atrasoDiscount;
   const expMin = expectedDayMinutes(row.schedule);
   const expWindow = row.schedule
     ? `${hhmm(row.schedule.entry_time)}–${hhmm(row.schedule.exit_time)}${row.schedule.lunch_start ? ` · almoço ${hhmm(row.schedule.lunch_start)}–${hhmm(row.schedule.lunch_end)}` : ''}`
@@ -162,12 +162,11 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="bg-muted/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
             <span>Dias com atraso · batidas do relógio</span>
-            <span>Déficit · desconto</span>
+            <span>Déficit</span>
           </div>
           <div className="divide-y divide-border">
             {row.days.map((d) => {
               const punches = row.punchesByDate.get(d.date) || [];
-              const rs = (d.minutes / 60) * valorHora;
               return (
                 <div key={d.date} className="flex items-center justify-between gap-3 px-3 py-2">
                   <div className="min-w-0">
@@ -180,7 +179,6 @@ function AtrasoCalendarDialog({ row, from, to, onClose }: { row: AtrasoRow | nul
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 leading-none">{fmtMin(d.minutes)}</p>
-                    <p className="text-[11px] tabular-nums text-muted-foreground mt-0.5">{fmtBRL(rs)}</p>
                   </div>
                 </div>
               );
@@ -197,10 +195,6 @@ export default function RelatorioAtrasos() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidaysList = [] } = useHolidays();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
-  const holidaysSet = useMemo(
-    () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[]).filter(h => h.optional !== true).map(h => h.holiday_date)),
-    [holidaysList],
-  );
   const { swapWorkedSet, swapOffSet } = useSwapSets();
   // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
   // mesma contagem precisa invalidar o cache do relatório.
@@ -214,10 +208,24 @@ export default function RelatorioAtrasos() {
   const [cTo, setCTo] = useState(todayISO());
   const [selected, setSelected] = useState<AtrasoRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
+  const holidaysSet = useMemo(
+    () => resolveHolidaysForPayrollRange(holidaysList as any[], from, to),
+    [holidaysList, from, to],
+  );
+  const { data: absences = [], isLoading: absencesLoading } = useAbsences({ from, to });
+  const absenceDatesByEmployee = useMemo(
+    () => expandAbsenceDatesByEmployee(absences, from, to),
+    [absences, from, to],
+  );
+  const holidayKey = useMemo(() => [...holidaysSet].sort().join(','), [holidaysSet]);
+  const absenceKey = useMemo(
+    () => absences.map(a => `${a.employee_id}:${a.start_date}:${a.end_date}`).sort().join(','),
+    [absences],
+  );
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ['relatorio-atrasos', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapKey],
-    enabled: !!from && !!to && from <= to && (employees as any[]).length > 0,
+    queryKey: ['relatorio-atrasos', from, to, (employees as any[]).length, (schedules as any[]).length, holidayKey, absenceKey, swapKey],
+    enabled: !!from && !!to && from <= to && (employees as any[]).length > 0 && !absencesLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<AtrasoRow[]> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do
@@ -261,6 +269,7 @@ export default function RelatorioAtrasos() {
         const res = computePeriodFolha({
           salary: Number(emp.salary) || 0, from, to, schedule: sch, holidaysSet, swapWorkedSet, swapOffSet,
           punchesByDate: empPunches,
+          absenceDates: absenceDatesByEmployee.get(emp.id),
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
@@ -269,7 +278,7 @@ export default function RelatorioAtrasos() {
         if (late.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: late, totalMin: late.reduce((s, d) => s + d.minutes, 0),
-            punchesByDate: empPunches, schedule: sch, salary: Number(emp.salary) || 0,
+            punchesByDate: empPunches, schedule: sch, atrasoDiscount: res.atraso_desconto,
           });
         }
       }

@@ -57,6 +57,22 @@ describe('pontoEngine — base canônica por-dia', () => {
     expect(days.find(d => d.date === '2026-06-07')!.expectedMinutes).toBe(0); // domingo
   });
 
+  it('usa a jornada específica de sábado quando a escala trabalha sábado', () => {
+    const saturdaySchedule = {
+      ...schedule,
+      works_saturday: true,
+      saturday_entry: '08:00',
+      saturday_exit: '12:00',
+    };
+    const saturday = buildPontoDays({
+      ...base,
+      from: '2026-06-06',
+      to: '2026-06-06',
+      schedule: saturdaySchedule,
+    });
+    expect(saturday[0].expectedMinutes).toBe(240);
+  });
+
   it('dia pendente (ímpar) não soma horas trabalhadas', () => {
     expect(days.find(d => d.date === '2026-06-07')!.workedMinutes).toBe(0);
   });
