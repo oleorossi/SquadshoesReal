@@ -17,6 +17,12 @@ const SECTORS = ['Corte Forração', 'Aviamento', 'Montagem'] as const;
 type Sector = typeof SECTORS[number];
 type Via = 'OPERADOR' | 'SUPERVISOR';
 
+/** Setores que a ficha de operador cobre — exposto pro diálogo de seleção. */
+export const OPERATOR_FICHA_SECTORS = SECTORS;
+
+/** Cada fornada sai em 2 vias (OPERADOR + SUPERVISOR). */
+const VIAS_POR_FICHA = 2;
+
 const SECTOR_THEME: Record<Sector, { bg: string; fg: string }> = {
   'Corte Forração': { bg: '#E1F5EE', fg: '#085041' },
   'Aviamento': { bg: '#FAEEDA', fg: '#633806' },
@@ -34,6 +40,40 @@ interface FichaInput {
   grade: Record<string, number>; // grade BASE (1 ficha)
   quantity: number;              // total de pares do item/OP
   sectors: string[];             // production_sectors da ficha técnica
+}
+
+export interface FichaPlan {
+  /** Grade base (1 ficha = 1 fornada). */
+  base: Record<string, number>;
+  /** Pares por ficha (soma da grade base). */
+  baseSum: number;
+  /** Nº de fornadas = total ÷ pares por ficha. 0 = não gera nada. */
+  nFichas: number;
+  /** Setores da ficha técnica que realmente geram ficha (interseção com SECTORS). */
+  sectors: Sector[];
+  /** Papéis impressos = fornadas × setores × 2 vias. */
+  papers: number;
+}
+
+/**
+ * Quantas fichas um item/OP gera, e em quais setores. FONTE ÚNICA: o render
+ * abaixo e o diálogo de seleção (SaleOrders → "Ficha Montagem") chamam esta
+ * função, pra prévia na tela bater com o que sai na impressora.
+ */
+export function planFichas(p: {
+  grade: Record<string, number> | null | undefined;
+  quantity: number;
+  sectors: string[];
+}): FichaPlan {
+  const base = p.grade || {};
+  const baseSum = Object.values(base).reduce((s, v) => s + Number(v || 0), 0);
+  const sectors = SECTORS.filter(s => p.sectors.includes(s));
+  if (baseSum <= 0 || sectors.length === 0) {
+    return { base, baseSum, nFichas: 0, sectors, papers: 0 };
+  }
+  const total = Number(p.quantity) || baseSum;
+  const nFichas = Math.max(1, Math.round(total / baseSum));
+  return { base, baseSum, nFichas, sectors, papers: nFichas * sectors.length * VIAS_POR_FICHA };
 }
 
 function esc(s: unknown): string {
@@ -106,24 +146,9 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   for (const sector of SECTORS) {
     const fichas: string[] = [];
     for (const it of inputs) {
-      if (!it.sectors.includes(sector)) continue; // setor ausente → não gera
-      const raw = it.grade || {};
-      const rawSum = Object.values(raw).reduce((s, v) => s + Number(v || 0), 0);
-      if (rawSum <= 0) continue;
-      const total = Number(it.quantity) || rawSum;
-      // Corrugado físico (12/15/18) derivado por resolveFicha — MESMA regra das
-      // fichas da rota /imprimir-fichas (7º passe). NUNCA round(total/Σgrid):
-      // it.grade ora chega como curva-base, ora como a grade TOTAL do pedido
-      // (round imprimia "1 ficha de 360 pares" e SUBcontava fornadas parciais).
-      const ficha = resolveFicha(total, raw);
-      const nFichas = Math.max(1, ficha.fichas);
-      // Sem curva confiável (baseCurve null) o papel mantém a grade recebida;
-      // quando ela é maior que um corrugado (= grade TOTAL, não curva de 1
-      // ficha), a linha sai rotulada "Grade total" — imprimir grade total como
-      // se fosse por-ficha era o bug original.
-      const base = ficha.baseCurve || raw;
-      const baseSum = ficha.baseCurve ? ficha.corrugado : rawSum;
-      const rowLabel = !ficha.baseCurve && rawSum > Math.max(...CORRUGADOS) ? 'Grade total' : 'Pares';
+      const { base, baseSum, nFichas, sectors } = planFichas(it);
+      if (!sectors.includes(sector)) continue; // setor ausente → não gera
+      if (nFichas === 0) continue;             // sem grade base → nada a imprimir
       const sizes = Object.keys(base).filter(s => Number(base[s]) > 0).sort((a, b) => Number(a) - Number(b));
       // N fichas REPETIDAS; cada fornada em 2 vias (operador + supervisor, adjacentes).
       for (let f = 1; f <= nFichas; f++) {
@@ -293,8 +318,12 @@ function gcd(a: number, b: number): number {
   return a || 1;
 }
 
-/** Deriva a grade base (1 ficha) de uma grade escalada pelo MDC dos valores. */
-function deriveBaseFromScaled(scaled: Record<string, number>): Record<string, number> {
+/**
+ * Deriva a grade base (1 ficha) de uma grade escalada pelo MDC dos valores.
+ * Exportada porque o diálogo de seleção precisa da MESMA base pra prever
+ * quantas fichas cada OP gera quando ela não tem `sale_order_item_id`.
+ */
+export function deriveBaseFromScaled(scaled: Record<string, number>): Record<string, number> {
   const vals = Object.values(scaled).map(v => Math.round(Number(v) || 0)).filter(v => v > 0);
   if (vals.length === 0) return scaled;
   const g = vals.reduce((acc, v) => gcd(acc, v));

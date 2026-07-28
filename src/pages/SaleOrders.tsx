@@ -15,6 +15,7 @@ import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar
 import { cn } from "@/lib/utils";
 import MaterialConsumptionDialog from '@/components/sale-orders/MaterialConsumptionDialog';
 import MarginDialog from '@/components/sale-orders/MarginDialog';
+import OperatorFichasDialog from '@/components/sale-orders/OperatorFichasDialog';
 import { ServiceOrderFormDialog } from '@/components/contractors/ServiceOrderFormDialog';
 import GeneratePurchaseOrdersDialog from '@/components/purchase/GeneratePurchaseOrdersDialog';
 import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
@@ -54,7 +55,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
-import { printOperatorFichas } from '@/lib/printOperatorFichas';
 import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
 import { resolveSenderCnpj } from '@/lib/companySender';
@@ -359,6 +359,8 @@ export default function SaleOrders() {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [consumptionDialogOpen, setConsumptionDialogOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
+  // "Ficha Montagem": abre a seleção de OPs em vez de imprimir o PV inteiro.
+  const [operatorFichasOpen, setOperatorFichasOpen] = useState(false);
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
   const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[] } | null>(null);
   const [quickConsumptionId, setQuickConsumptionId] = useState<string | null>(null);
@@ -2548,7 +2550,7 @@ export default function SaleOrders() {
                 <div className="hidden sm:block w-px self-stretch bg-border mx-1" aria-hidden="true" />
                 <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Impressão e documentos">
                   <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printAllSectorsForSaleOrder(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }}><FileText className="h-3.5 w-3.5" /> OPs</Button>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={async () => { try { await printOperatorFichas(selectedOrder.id, selectedOrder.order_number); } catch (err: any) { toast.error(err.message); } }} title="Fichas de operador (Corte Forração / Aviamento / Montagem) geradas do pedido — N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Ficha Montagem</Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setOperatorFichasOpen(true)} title="Abre a seleção de OPs — marque quais entram na impressão. Fichas de operador (Corte Forração / Aviamento / Montagem): N fichas por fornada de 12 pares, 2 vias; pula setor que a referência não tem"><Printer className="h-3.5 w-3.5" /> Ficha Montagem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => { void printSaleOrderPdf(selectedOrder); }}><FileText className="h-3.5 w-3.5" /> Gerar Pedido</Button>
                   {/* Botão "Etiquetas" — abre /etiquetas pré-filtrado pelo PV.
                       Antes printava térmica direto (perdia acesso a caixa externa,
@@ -3187,6 +3189,15 @@ export default function SaleOrders() {
         saleOrderId={selectedOrder?.id || null}
         orderNumber={selectedOrder?.order_number || ''}
         total={Number(selectedOrder?.total) || 0}
+      />
+
+      {/* "Ficha Montagem": seleção de OPs antes de imprimir. Sem OP vinculada,
+          o próprio diálogo oferece o caminho antigo (pelos itens do pedido). */}
+      <OperatorFichasDialog
+        open={operatorFichasOpen}
+        onOpenChange={setOperatorFichasOpen}
+        saleOrderId={selectedOrder?.id || null}
+        orderNumber={selectedOrder?.order_number || ''}
       />
 
       {/* Atalho "Gerar OS" do PV — reusa o form canônico de OS, já com os itens

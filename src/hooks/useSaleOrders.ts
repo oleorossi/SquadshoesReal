@@ -731,11 +731,14 @@ export function useUpdateSaleOrderStatus() {
         );
       }
 
-      // Achado D (auditoria 2026-07-01): bloquear APROVAÇÃO de PV com tira de
-      // COR VAZIA em strap_colors — a OP nasceria com consumo fantasma (o
-      // débito de tira não resolve produto sem cor). Guard ANTES do claim pra
-      // não deixar o PV meio-aprovado.
-      if (status === 'Aprovado') {
+      // Achado D (auditoria 2026-07-01) + auditoria #2: bloquear a APROVAÇÃO e a
+      // PROMOÇÃO DIRETA (atalho Rascunho/Pendente → Em Produção) de PV com tira
+      // de COR VAZIA — a OP nasceria com consumo fantasma (o débito de tira não
+      // resolve produto sem cor). Guard ANTES do claim/RPC. Passou a valer pro
+      // atalho porque a promoção direta agora debita tiras.
+      const isDirectPromotion =
+        status === 'Em Produção' && ['Rascunho', 'Pendente'].includes(currentStatus);
+      if (status === 'Aprovado' || isDirectPromotion) {
         const { data: itemsGuard, error: itemsGuardErr } = await supabase
           .from('sale_order_items')
           .select('color, strap_colors, technical_sheets(name, code)')
@@ -750,11 +753,52 @@ export function useUpdateSaleOrderStatus() {
         );
         if (tirasSemCor.length > 0) {
           throw new Error(
-            `Não é possível aprovar: tira sem COR definida — ${tirasSemCor.slice(0, 4).join('; ')}` +
+            `Não é possível prosseguir: tira sem COR definida — ${tirasSemCor.slice(0, 4).join('; ')}` +
             `${tirasSemCor.length > 4 ? ` e mais ${tirasSemCor.length - 4}` : ''}. ` +
-            'Edite o item do pedido e defina a cor de cada tira antes de aprovar.'
+            'Edite o item do pedido e defina a cor de cada tira antes de continuar.'
           );
         }
+      }
+
+      // Atalho Rascunho/Pendente → Em Produção: promoção ATÔMICA via RPC que
+      // reserva/debita material (mesma pipeline do Aprovado) ANTES de expor a OP
+      // em produção — corrige a auditoria #2 (OP em produção sem reserva/baixa).
+      // A RPC suprime o trigger e já marca o PV; por isso retornamos aqui, sem
+      // cair no update de status genérico nem no bloco de sync de OPs abaixo.
+      if (isDirectPromotion) {
+        const { data: promoteOut, error: promoteErr } = await (supabase as any).rpc(
+          'promote_sale_order_to_production',
+          { p_sale_order_id: id },
+        );
+        if (promoteErr) throw promoteErr;
+
+        // Espelha o Aprovado: a RPC roda no servidor e não emite toast nem cria
+        // OC de solado — o front faz isso a partir do retorno por OP.
+        const promotedOps: any[] = Array.isArray((promoteOut as any)?.ops)
+          ? (promoteOut as any).ops
+          : [];
+        for (const op of promotedOps) {
+          if (op?.packaging) warnPackagingDebit(op.packaging);
+          if (op?.needs_pipeline && op?.op_id) {
+            try {
+              const po = await autoCreateSolePOFromShortfall({
+                orderId: op.op_id,
+                orderRef: String(op.op_id).slice(0, 8),
+              });
+              if (po) {
+                toast.warning(
+                  `Solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}) pra cobrir o déficit.`,
+                  { duration: 8000 },
+                );
+              }
+            } catch (poErr: any) {
+              console.error('Erro ao gerar OC de solado por déficit (promoção direta):', poErr?.message);
+            }
+          }
+        }
+
+        await syncFinancialRecords(id);
+        return;
       }
 
       // Require an authorized NF-e before marking as Expedido — without one,
