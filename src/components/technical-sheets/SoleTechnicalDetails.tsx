@@ -50,6 +50,24 @@ interface SoleSpec {
   fachete_lining_consumption_dm2: number | null;
 }
 
+type ConsumptionField = Exclude<keyof SoleSpec, 'size'>;
+
+const PER_SIZE_COLUMN_BY_FIELD: Record<ConsumptionField, string> = {
+  lining_consumption_dm2: 'lining_consumption_per_size',
+  insole_consumption_dm2: 'insole_consumption_per_size',
+  insole_lining_consumption_dm2: 'insole_lining_consumption_per_size',
+  fachete_lining_consumption_dm2: 'fachete_lining_consumption_per_size',
+};
+
+const CONSUMPTION_FIELDS = Object.keys(PER_SIZE_COLUMN_BY_FIELD) as ConsumptionField[];
+
+const emptyPerSizeOverrides = (): Record<ConsumptionField, Record<number, number>> => ({
+  lining_consumption_dm2: {},
+  insole_consumption_dm2: {},
+  insole_lining_consumption_dm2: {},
+  fachete_lining_consumption_dm2: {},
+});
+
 // NOTA (auditoria 2026-06-29): os presets de numeração (Adulto/Infantil/Baby) e a
 // função getSortedPresets foram removidos junto com os botões de preset do Passo 2.
 // A grade hoje vem do range (size_from/size_to) definido na aba Cadastro — ver o
@@ -63,6 +81,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
   const [missingDialogOpen, setMissingDialogOpen] = useState(false);
   const [missingWarnings, setMissingWarnings] = useState<string[]>([]);
   const [specs, setSpecs] = useState<Record<number, SoleSpec>>({});
+  // Os campos `*_consumption_per_size` são o padrão canônico do TIPO de
+  // solado. Mantemos os escalares legados em `specs` intactos para que um mapa
+  // vazio continue caindo neles como fallback no motor SQL/TS.
+  const [perSizeOverrides, setPerSizeOverrides] = useState<Record<ConsumptionField, Record<number, number>>>(emptyPerSizeOverrides);
   // Buffer de texto cru por célula EM EDIÇÃO. Sem isto o input controlado
   // re-renderizava o NÚMERO armazenado (`toString()`) a cada tecla: digitar
   // "4," reparsa pra 4 → exibe "4" e a vírgula some na hora, impossibilitando
@@ -153,9 +175,12 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
    * preenchido, ou null se nenhum tem). Numa linha conjugada os valores
    * dos N sizes deveriam ser iguais — se divergem, mostra o do primeiro.
    */
-  const getRowValue = (row: DisplayRow, field: keyof SoleSpec): number | null => {
+  const getSizeValue = (size: number, field: ConsumptionField): number | null =>
+    perSizeOverrides[field][size] ?? specs[size]?.[field] ?? null;
+
+  const getRowValue = (row: DisplayRow, field: ConsumptionField): number | null => {
     for (const s of row.sizes) {
-      const v = specs[s]?.[field];
+      const v = getSizeValue(s, field);
       if (v != null) return v as number;
     }
     return null;
@@ -165,37 +190,35 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
    * Setter de valor pra uma linha — escreve em TODOS os sizes da linha
    * (mantendo conjugação sincronizada).
    */
-  const cellEditKey = (row: DisplayRow, field: keyof SoleSpec) => `${row.key}::${String(field)}`;
+  const cellEditKey = (row: DisplayRow, field: ConsumptionField) => `${row.key}::${String(field)}`;
 
   /** Valor exibido no input: o texto cru se a célula está em edição; senão o
    *  número canônico armazenado (string vazia quando null). */
-  const getRowInputValue = (row: DisplayRow, field: keyof SoleSpec): string => {
+  const getRowInputValue = (row: DisplayRow, field: ConsumptionField): string => {
     const k = cellEditKey(row, field);
     if (k in rawCellEdits) return rawCellEdits[k];
     const v = getRowValue(row, field);
     return v != null ? String(v) : "";
   };
 
-  const handleRowInputChange = (row: DisplayRow, field: keyof SoleSpec, value: string) => {
+  const handleRowInputChange = (row: DisplayRow, field: ConsumptionField, value: string) => {
     // Guarda o texto cru enquanto edita (deixa o user digitar "4," → "4,6" →
     // "4,68" sem a vírgula sumir no round-trip número→string).
     setRawCellEdits(prev => ({ ...prev, [cellEditKey(row, field)]: value }));
     const parsed = parseFloat(value.replace(",", "."));
     const numValue = value.trim() === "" ? null : (Number.isFinite(parsed) ? parsed : null);
-    setSpecs(prev => {
-      const next = { ...prev };
+    setPerSizeOverrides(prev => {
+      const next = { ...prev, [field]: { ...prev[field] } };
       for (const s of row.sizes) {
-        next[s] = {
-          ...(next[s] || { size: s, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }),
-          [field]: numValue,
-        };
+        if (numValue == null) delete next[field][s];
+        else next[field][s] = numValue;
       }
       return next;
     });
   };
 
   /** Ao sair da célula, descarta o buffer cru → volta a exibir o canônico. */
-  const handleRowInputBlur = (row: DisplayRow, field: keyof SoleSpec) => {
+  const handleRowInputBlur = (row: DisplayRow, field: ConsumptionField) => {
     const k = cellEditKey(row, field);
     setRawCellEdits(prev => {
       if (!(k in prev)) return prev;
@@ -213,6 +236,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setSpecs(prev => {
       const next = { ...prev };
       for (const s of row.sizes) delete next[s];
+      return next;
+    });
+    setPerSizeOverrides(prev => {
+      const next = emptyPerSizeOverrides();
+      for (const field of CONSUMPTION_FIELDS) {
+        next[field] = { ...prev[field] };
+        for (const s of row.sizes) delete next[field][s];
+      }
       return next;
     });
   };
@@ -295,6 +326,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setSizes(loadedSizes);
 
     const specsMap: Record<number, SoleSpec> = {};
+    const loadedOverrides = emptyPerSizeOverrides();
     (specsData || []).forEach((item: any) => {
       specsMap[item.size] = {
         size: item.size,
@@ -303,8 +335,15 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
       };
+      for (const field of CONSUMPTION_FIELDS) {
+        for (const [size, rawValue] of Object.entries(item[PER_SIZE_COLUMN_BY_FIELD[field]] || {})) {
+          const value = Number(rawValue);
+          if (Number.isFinite(value) && value > 0) loadedOverrides[field][Number(size)] = value;
+        }
+      }
     });
     setSpecs(specsMap);
+    setPerSizeOverrides(loadedOverrides);
 
     if (structData) {
       const lining = structData.find((d: any) => d.component_type === "Forro");
@@ -386,6 +425,7 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     setSizes(loadedSizes);
 
     const specsMap: Record<number, SoleSpec> = {};
+    const loadedOverrides = emptyPerSizeOverrides();
     filteredSpecs.forEach((item: any) => {
       specsMap[item.size] = {
         size: item.size,
@@ -394,8 +434,15 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         insole_lining_consumption_dm2: item.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: item.fachete_lining_consumption_dm2 ?? null,
       };
+      for (const field of CONSUMPTION_FIELDS) {
+        for (const [size, rawValue] of Object.entries(item[PER_SIZE_COLUMN_BY_FIELD[field]] || {})) {
+          const value = Number(rawValue);
+          if (Number.isFinite(value) && value > 0) loadedOverrides[field][Number(size)] = value;
+        }
+      }
     });
     setSpecs(specsMap);
+    setPerSizeOverrides(loadedOverrides);
 
     const { data: structData } = await supabase
       .from("sole_structures")
@@ -440,22 +487,30 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
       delete next[size];
       return next;
     });
+    setPerSizeOverrides(prev => {
+      const next = emptyPerSizeOverrides();
+      for (const field of CONSUMPTION_FIELDS) {
+        next[field] = { ...prev[field] };
+        delete next[field][size];
+      }
+      return next;
+    });
   };
 
   // handleInputChange + fillConjugatedFromSize foram substituídos pelo
   // novo modelo de displayRows (linhas conjugadas atômicas) — handleRowInputChange
   // já escreve em todos os sizes da linha em uma chamada.
 
-  const fillRemaining = (field: "lining_consumption_dm2" | "insole_consumption_dm2" | "insole_lining_consumption_dm2" | "fachete_lining_consumption_dm2") => {
-    const firstValue = Object.values(specs).find((s) => s[field] !== null)?.[field];
+  const fillRemaining = (field: ConsumptionField) => {
+    const firstValue = sizes.map(size => getSizeValue(size, field)).find((value) => value != null);
     if (firstValue === undefined || firstValue === null) return;
-    const next = { ...specs };
-    sizes.forEach((size) => {
-      if (!next[size] || next[size][field] === null) {
-        next[size] = { ...(next[size] || { size, lining_consumption_dm2: null, insole_consumption_dm2: null, insole_lining_consumption_dm2: null, fachete_lining_consumption_dm2: null }), [field]: firstValue };
-      }
+    setPerSizeOverrides(prev => {
+      const next = { ...prev, [field]: { ...prev[field] } };
+      sizes.forEach((size) => {
+        if (next[field][size] == null) next[field][size] = firstValue;
+      });
+      return next;
     });
-    setSpecs(next);
   };
 
   /**
@@ -468,11 +523,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
     const missingFachete: number[] = [];
 
     for (const s of sizes) {
-      const spec = specs[s];
-      if (!isPalmilhaPronta && (!spec || spec.insole_consumption_dm2 === null || spec.insole_consumption_dm2 <= 0)) {
+      if (!isPalmilhaPronta && (getSizeValue(s, 'insole_consumption_dm2') ?? 0) <= 0) {
         missingInsole.push(s);
       }
-      if (isFachetado && (!spec || spec.fachete_lining_consumption_dm2 === null || spec.fachete_lining_consumption_dm2 <= 0)) {
+      if (isFachetado && (getSizeValue(s, 'fachete_lining_consumption_dm2') ?? 0) <= 0) {
         missingFachete.push(s);
       }
     }
@@ -498,6 +552,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
 
     setSaving(true);
     try {
+      const perSizeMaps = Object.fromEntries(
+        CONSUMPTION_FIELDS.map(field => [
+          field,
+          Object.fromEntries(
+            Object.entries(perSizeOverrides[field]).filter(([, value]) => Number(value) > 0),
+          ),
+        ]),
+      ) as Record<ConsumptionField, Record<string, number>>;
       const dataToUpsert = sizes.map((size) => ({
         sole_id: soleId,
         size,
@@ -506,6 +568,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
         insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
         insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
         fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
+        lining_consumption_per_size: perSizeMaps.lining_consumption_dm2,
+        insole_consumption_per_size: perSizeMaps.insole_consumption_dm2,
+        insole_lining_consumption_per_size: perSizeMaps.insole_lining_consumption_dm2,
+        fachete_lining_consumption_per_size: perSizeMaps.fachete_lining_consumption_dm2,
         reference_sole_id: referenceInfo?.id || null,
         reference_date: referenceInfo ? new Date().toISOString() : null
       }));
@@ -536,6 +602,10 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
             insole_consumption_dm2: specs[size]?.insole_consumption_dm2 ?? null,
             insole_lining_consumption_dm2: specs[size]?.insole_lining_consumption_dm2 ?? null,
             fachete_lining_consumption_dm2: specs[size]?.fachete_lining_consumption_dm2 ?? null,
+            lining_consumption_per_size: perSizeMaps.lining_consumption_dm2,
+            insole_consumption_per_size: perSizeMaps.insole_consumption_dm2,
+            insole_lining_consumption_per_size: perSizeMaps.insole_lining_consumption_dm2,
+            fachete_lining_consumption_per_size: perSizeMaps.fachete_lining_consumption_dm2,
             reference_sole_id: referenceInfo?.id || null,
             reference_date: referenceInfo ? new Date().toISOString() : null
           }));
@@ -975,13 +1045,14 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Define quantos <strong>dm²/par</strong> são consumidos de
+                Define o padrão canônico por numeração — quantos <strong>dm²/par</strong> são consumidos de
                 {` Forro do cabedal${!isPalmilhaPronta ? ' + Palmilha (placa + forração)' : ''}${isFachetado ? ' + fachete' : ''}`} por tamanho.
                 <strong className="text-foreground"> Vale pra QUALQUER material</strong> que o PV escolher
                 (couro, lona, sintético, etc.) — independe da seleção do Passo 3.
                 <span className="block mt-1 text-[11px] text-muted-foreground">
-                  O <strong>forro do cabedal</strong> agora é definido AQUI (consumo por número);
-                  a ficha do modelo escolhe só o <strong>grupo/cor</strong> do material.
+                  A ficha do modelo pode sobrescrever uma numeração específica; com este campo vazio,
+                  o motor mantém o <strong>consumo escalar do solado</strong> como fallback. A ficha do
+                  modelo escolhe só o <strong>grupo/cor</strong> do material.
                 </span>
                 {isPalmilhaPronta && (
                   <span className="block mt-1 text-[11px] text-violet-700 dark:text-violet-300">
@@ -998,7 +1069,8 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                 {/* Título consolidado no banner acima — aqui só sublabel com dica */}
                 <CardDescription className="text-xs">
                   Preencha {`forro do cabedal${!isPalmilhaPronta ? ' + palmilha (placa + forração)' : ''}${isFachetado ? ' + fachete' : ''}`} por tamanho. Conjugadas (🔗) aparecem como UMA
-                  linha. Tamanhos sem valor caem na <span className="text-amber-700 dark:text-amber-400 font-semibold">média escalar</span>.
+                  linha. O mapa por numeração é o padrão compartilhado do tipo de solado; tamanhos sem
+                  valor caem no <span className="text-amber-700 dark:text-amber-400 font-semibold">consumo escalar</span>.
                 </CardDescription>
               </div>
               {/* Modo simplificado: 1 input que replica pra TODOS — útil quando o consumo é
@@ -1008,15 +1080,12 @@ export function SoleTechnicalDetails({ soleId, soleName, onClose }: SoleTechnica
                   type="button"
                   onClick={() => {
                     // Pega o primeiro valor não-vazio de cada coluna e replica
-                    const replicate = (field: keyof SoleSpec) => {
-                      const first = sizes.find(s => specs[s]?.[field] != null)?.toString();
-                      if (!first) return;
-                      const v = specs[Number(first)]?.[field];
-                      setSpecs(prev => {
-                        const next = { ...prev };
-                        for (const s of sizes) {
-                          next[s] = { ...next[s], size: s, [field]: v } as SoleSpec;
-                        }
+                    const replicate = (field: ConsumptionField) => {
+                      const v = sizes.map(size => getSizeValue(size, field)).find(value => value != null);
+                      if (v == null) return;
+                      setPerSizeOverrides(prev => {
+                        const next = { ...prev, [field]: { ...prev[field] } };
+                        for (const s of sizes) next[field][s] = v;
                         return next;
                       });
                     };
