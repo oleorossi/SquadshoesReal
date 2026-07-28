@@ -53,6 +53,12 @@ export interface FichaPlan {
   sectors: Sector[];
   /** Papéis impressos = fornadas × setores × 2 vias. */
   papers: number;
+  /** Pares por corrugado físico (A11 — derivado por resolveFicha). */
+  corrugado: number;
+  /** false = curva não confiável / última fornada parcial → UI mostra "≈". */
+  exact: boolean;
+  /** Total de pares da OP (denominador real das fornadas). */
+  total: number;
 }
 
 /**
@@ -65,15 +71,27 @@ export function planFichas(p: {
   quantity: number;
   sectors: string[];
 }): FichaPlan {
-  const base = p.grade || {};
-  const baseSum = Object.values(base).reduce((s, v) => s + Number(v || 0), 0);
+  const rawBase = p.grade || {};
+  const rawSum = Object.values(rawBase).reduce((s, v) => s + Number(v || 0), 0);
   const sectors = SECTORS.filter(s => p.sectors.includes(s));
-  if (baseSum <= 0 || sectors.length === 0) {
-    return { base, baseSum, nFichas: 0, sectors, papers: 0 };
+  if (rawSum <= 0 || sectors.length === 0) {
+    return { base: rawBase, baseSum: rawSum, nFichas: 0, sectors, papers: 0, corrugado: 0, exact: false, total: 0 };
   }
-  const total = Number(p.quantity) || baseSum;
-  const nFichas = Math.max(1, Math.round(total / baseSum));
-  return { base, baseSum, nFichas, sectors, papers: nFichas * sectors.length * VIAS_POR_FICHA };
+  const total = Number(p.quantity) || rawSum;
+  // A11: `sale_order_items.grade` ora chega como curva-base (Σ 12/15/18), ora
+  // como a grade TOTAL do pedido (Σ 120/360/444). `round(total / Σ)` tratava as
+  // duas iguais e imprimia "Ficha 1/1 · 360 pares" em vez de N fichas de 12 —
+  // instrução errada pro operador. resolveFicha distingue os dois casos e
+  // devolve a curva-base real + o nº de corrugados físicos.
+  const r = resolveFicha(total, rawBase);
+  const base = r.baseCurve;
+  const baseSum = Object.values(base).reduce((s, v) => s + Number(v || 0), 0);
+  const nFichas = Math.max(1, r.fichas);
+  return {
+    base, baseSum, nFichas, sectors,
+    papers: nFichas * sectors.length * VIAS_POR_FICHA,
+    corrugado: r.corrugado, exact: r.exact, total,
+  };
 }
 
 function esc(s: unknown): string {
@@ -146,7 +164,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   for (const sector of SECTORS) {
     const fichas: string[] = [];
     for (const it of inputs) {
-      const { base, baseSum, nFichas, sectors } = planFichas(it);
+      const { base, baseSum, nFichas, sectors, corrugado, exact, total } = planFichas(it);
       if (!sectors.includes(sector)) continue; // setor ausente → não gera
       if (nFichas === 0) continue;             // sem grade base → nada a imprimir
       const sizes = Object.keys(base).filter(s => Number(base[s]) > 0).sort((a, b) => Number(a) - Number(b));
@@ -156,7 +174,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
           sector, pv: it.pv, client: it.client, date,
           refCode: it.refCode, refName: it.refName, color: it.color,
           sizes, base, baseSum, fornada: f, nFichas,
-          corrugado: ficha.corrugado, exact: ficha.exact, rowLabel, totalPairs: total,
+          corrugado, exact, rowLabel: 'Pares', totalPairs: total,
         };
         fichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
         fichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
