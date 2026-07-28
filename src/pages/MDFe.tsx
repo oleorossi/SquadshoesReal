@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,25 @@ const emptyForm: MdfeForm = {
   notes: '',
   related_nfe_chaves: '',
 };
+
+function toMdfeForm(editing: any): MdfeForm {
+  return {
+    mdfe_number: editing.mdfe_number ?? '',
+    emission_date: editing.emission_date ?? format(new Date(), 'yyyy-MM-dd'),
+    modal: editing.modal ?? 'rodoviario',
+    origin_uf: editing.origin_uf ?? 'RJ',
+    destination_uf: editing.destination_uf ?? 'SP',
+    vehicle_plate: editing.vehicle_plate ?? '',
+    vehicle_renavam: editing.vehicle_renavam ?? '',
+    driver_name: editing.driver_name ?? '',
+    driver_cpf: editing.driver_cpf ?? '',
+    total_pairs: Number(editing.total_pairs ?? 0),
+    total_value: Number(editing.total_value ?? 0),
+    total_weight_kg: Number(editing.total_weight_kg ?? 0),
+    notes: editing.notes ?? '',
+    related_nfe_chaves: (editing.related_nfe_chaves ?? []).join('\n'),
+  };
+}
 
 export default function MDFe() {
   const qc = useQueryClient();
@@ -225,27 +244,11 @@ function MdfeEditorDialog({
 }) {
   const qc = useQueryClient();
   const isEdit = !!editing;
-  const [form, setForm] = useState<MdfeForm>(() => {
-    if (editing) {
-      return {
-        mdfe_number: editing.mdfe_number ?? '',
-        emission_date: editing.emission_date ?? format(new Date(), 'yyyy-MM-dd'),
-        modal: editing.modal ?? 'rodoviario',
-        origin_uf: editing.origin_uf ?? 'RJ',
-        destination_uf: editing.destination_uf ?? 'SP',
-        vehicle_plate: editing.vehicle_plate ?? '',
-        vehicle_renavam: editing.vehicle_renavam ?? '',
-        driver_name: editing.driver_name ?? '',
-        driver_cpf: editing.driver_cpf ?? '',
-        total_pairs: Number(editing.total_pairs ?? 0),
-        total_value: Number(editing.total_value ?? 0),
-        total_weight_kg: Number(editing.total_weight_kg ?? 0),
-        notes: editing.notes ?? '',
-        related_nfe_chaves: (editing.related_nfe_chaves ?? []).join('\n'),
-      };
-    }
-    return emptyForm;
-  });
+  const [form, setForm] = useState<MdfeForm>(emptyForm);
+
+  useEffect(() => {
+    if (open) setForm(editing ? toMdfeForm(editing) : emptyForm);
+  }, [open, editing?.id]);
 
   // Parse chaves NF-e digitadas → resolve cada uma pra sale_order_id em
   // nfe_emitidas, e usa o batch hook pra somar peso/pares de todos os PVs.
@@ -257,10 +260,11 @@ function MdfeEditorDialog({
     queryKey: ['mdfe_nfe_chaves_resolution', parsedChaves],
     queryFn: async () => {
       if (parsedChaves.length === 0) return [];
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('nfe_emitidas')
         .select('chave_acesso, sale_order_id')
         .in('chave_acesso', parsedChaves);
+      if (error) throw error;
       return (data || []) as { chave_acesso: string; sale_order_id: string | null }[];
     },
     enabled: parsedChaves.length > 0,

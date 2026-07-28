@@ -74,15 +74,20 @@ function useOrderFlowAudit() {
         supabase.from('order_stages').select('id, order_id, stage_name, status, completed_at, quantity_processed, quantity_total').order('completed_at', { ascending: false }).limit(5000),
       ]);
 
-      const saleOrders = soRes.data || [];
-      const ops = opsRes.data || [];
-      const reservations = reservationsRes.data || [];
-      const goodsIssues = giRes.data || [];
-      const fgReceipts = fgrRes.data || [];
-      const wipEntries = wipRes.data || [];
-      const arEntries = arRes.data || [];
-      const cogsEntries = cogsRes.data || [];
-      const stages = stagesRes.data || [];
+      const queryError = [soRes, opsRes, reservationsRes, giRes, fgrRes, wipRes, arRes, cogsRes, stagesRes]
+        .map((result) => result.error)
+        .find(Boolean);
+      if (queryError) throw queryError;
+
+      const saleOrders = soRes.data ?? [];
+      const ops = opsRes.data ?? [];
+      const reservations = reservationsRes.data ?? [];
+      const goodsIssues = giRes.data ?? [];
+      const fgReceipts = fgrRes.data ?? [];
+      const wipEntries = wipRes.data ?? [];
+      const arEntries = arRes.data ?? [];
+      const cogsEntries = cogsRes.data ?? [];
+      const stages = stagesRes.data ?? [];
 
       // Build audit per sale order
       const audits: OrderAudit[] = saleOrders.map(so => {
@@ -439,7 +444,7 @@ function ProductionAuditTab({ stages }: { stages: any[] }) {
 }
 
 export default function OrderFlowAudit({ embedded = false }: { embedded?: boolean }) {
-  const { data, isLoading, refetch } = useOrderFlowAudit();
+  const { data, isLoading, error, refetch } = useOrderFlowAudit();
   const audits = data?.orderAudits || [];
   const recentStages = data?.recentStages || [];
   const [search, setSearch] = useState('');
@@ -489,6 +494,15 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
           }
         />
 
+        {error && (
+          <Panel className="border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <XCircle className="h-4 w-4 shrink-0" />
+              Auditoria indisponível: {(error as Error).message}
+            </div>
+          </Panel>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList indicator="none" className="bg-muted/50 p-1 h-12 inline-flex">
             <TabsTrigger value="flow" className="gap-2 px-6 font-bold uppercase text-xs data-[state=active]:bg-background shadow-none">
@@ -501,13 +515,15 @@ export default function OrderFlowAudit({ embedded = false }: { embedded?: boolea
 
           <TabsContent value="flow" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* Summary Cards */}
-            <StatGrid>
-              <StatCard label="Total Pedidos" value={summary.total} />
-              <StatCard label="Fluxo OK" value={summary.ok} tone="success" />
-              <StatCard label="Alertas" value={summary.warn} tone="warning" />
-              <StatCard label="Erros" value={summary.error} tone="destructive" />
-              <StatCard label="Process Score" value={`${summary.avgScore}%`} tone="primary" />
-            </StatGrid>
+            {!error && (
+              <StatGrid>
+                <StatCard label="Total Pedidos" value={summary.total} />
+                <StatCard label="Fluxo OK" value={summary.ok} tone="success" />
+                <StatCard label="Alertas" value={summary.warn} tone="warning" />
+                <StatCard label="Erros" value={summary.error} tone="destructive" />
+                <StatCard label="Process Score" value={`${summary.avgScore}%`} tone="primary" />
+              </StatGrid>
+            )}
 
             {/* Filters */}
             <div className="flex gap-3 flex-wrap bg-card p-4 rounded-lg border border-border">

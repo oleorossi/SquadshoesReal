@@ -14,6 +14,8 @@ const STAGE_ALIASES: Record<string, string> = {
   Costura: 'Costura Palmilha',
 };
 
+const CUTTING_STAGES = new Set(['Corte Palmilha', 'Corte Forração']);
+
 export function canonicalStageName(name: string): string {
   const trimmed = (name || '').trim();
   return STAGE_ALIASES[trimmed] ?? trimmed;
@@ -21,7 +23,11 @@ export function canonicalStageName(name: string): string {
 
 /** Compara nomes de setor tolerando grafia legada (Mesa ⇄ Aviamento). */
 export function sameStage(a: string, b: string): boolean {
-  return canonicalStageName(a) === canonicalStageName(b);
+  const canonicalA = canonicalStageName(a);
+  const canonicalB = canonicalStageName(b);
+  return canonicalA === canonicalB ||
+    (canonicalA === 'Corte' && CUTTING_STAGES.has(canonicalB)) ||
+    (canonicalB === 'Corte' && CUTTING_STAGES.has(canonicalA));
 }
 
 /**

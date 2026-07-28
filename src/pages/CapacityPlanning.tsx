@@ -54,14 +54,14 @@ const SECTORS = [
 // semanas com feriado, divergindo das bordas das janelas (computeParallelWindows,
 // que já são feriado-aware). Auditoria 2026-06-14, Área 1.
 function bizDaysBetween(a: Date, b: Date): number {
-  if (b <= a) return 1;
+  if (b <= a) return 0;
   const d = new Date(a);
   let c = 0;
-  while (d <= b) {
+  while (d < b) {
     if (isBusinessDay(d)) c++;
     d.setDate(d.getDate() + 1);
   }
-  return Math.max(1, c);
+  return c;
 }
 
 const SECTOR_NORM: Record<string, SectorKey> = {
@@ -295,6 +295,7 @@ export default function CapacityPlanning() {
       for (const w of windows) {
         if (!w.active) continue;
         const days = bizDaysBetween(w.start, w.end);
+        if (days === 0) continue;
         const perDay = qty / days;
         const cur = new Date(w.start);
         while (cur < w.end) {

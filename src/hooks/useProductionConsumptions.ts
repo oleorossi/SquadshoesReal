@@ -94,26 +94,26 @@ export function useUpdateProductionConsumption() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<ProductionConsumption> }) => {
       const updates: any = { ...data };
-      // Always refetch standard values when updating actuals so variance is
-      // recomputed against the current DB standard, not just what was passed in.
-      if (data.actual_quantity !== undefined || data.actual_cost !== undefined) {
+      // Busca os valores atuais sempre que padrão ou realizado mudar, para que
+      // alterar só o padrão também atualize a variância já registrada.
+      if (
+        data.actual_quantity !== undefined ||
+        data.actual_cost !== undefined ||
+        data.standard_quantity !== undefined ||
+        data.standard_cost !== undefined
+      ) {
         const { data: current, error: fetchErr } = await supabase
           .from('production_consumptions')
-          .select('standard_quantity, standard_cost')
+          .select('standard_quantity, actual_quantity, standard_cost, actual_cost')
           .eq('id', id)
           .single();
         if (fetchErr) throw fetchErr;
         const stdQ = data.standard_quantity ?? current.standard_quantity;
-        const actQ = data.actual_quantity;
+        const actQ = data.actual_quantity ?? current.actual_quantity;
         const stdC = data.standard_cost ?? current.standard_cost;
-        const actC = data.actual_cost;
-        if (actQ !== undefined) updates.variance_quantity = Math.round((actQ - stdQ) * 1000) / 1000;
-        if (actC !== undefined) updates.variance_cost = Math.round((actC - stdC) * 100) / 100;
-      } else if (data.actual_quantity !== undefined && data.standard_quantity !== undefined) {
-        updates.variance_quantity = Math.round((data.actual_quantity - data.standard_quantity) * 1000) / 1000;
-      }
-      if (data.actual_cost !== undefined && data.standard_cost !== undefined) {
-        updates.variance_cost = Math.round((data.actual_cost - data.standard_cost) * 100) / 100;
+        const actC = data.actual_cost ?? current.actual_cost;
+        updates.variance_quantity = Math.round((actQ - stdQ) * 1000) / 1000;
+        updates.variance_cost = Math.round((actC - stdC) * 100) / 100;
       }
       const { error } = await supabase
         .from('production_consumptions')

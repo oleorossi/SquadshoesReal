@@ -32,56 +32,35 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
   const mode = order.packagingMode || order.model_packaging_type || 'individual_amarrado';
   const activeTypes = MODE_TYPES[mode] || ['individual'];
 
-  const { data: configs = [], isLoading } = useQuery({
+  const { data: configs = [], isLoading, error: configsError } = useQuery({
     queryKey: ['packaging_configs_decision', order.sheetId],
     enabled: !!order.sheetId,
     queryFn: async () => {
-      // Resolve solado da ficha técnica
-      const { data: sheet, error: e1 } = await supabase
-        .from('technical_sheets')
-        .select('sole_group_id')
-        .eq('id', order.sheetId!)
-        .maybeSingle();
-      if (e1) throw e1;
-      const soleGroupId = (sheet as any)?.sole_group_id;
-      if (!soleGroupId) return [];
+      // Fonte canônica do débito: vínculos da própria ficha, não os slots
+      // legados de product_groups.
+      const { data, error } = await (supabase as any)
+        .from('technical_sheet_box_types')
+        .select(`
+          box_type_id,
+          box_types(id, nome, tipo, pairs_per_box_default, comprimento_cm, largura_cm, altura_cm, quantity, unit_price)
+        `)
+        .eq('sheet_id', order.sheetId!);
+      if (error) throw error;
 
-      const { data: pg, error: e2 } = await (supabase as any)
-        .from('product_groups')
-        .select('box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho')
-        .eq('id', soleGroupId)
-        .maybeSingle();
-      if (e2) throw e2;
-      if (!pg) return [];
-
-      const slotMap: Array<{ type: string; boxId: string | null; pairs: number | null }> = [
-        { type: 'individual', boxId: pg.box_type_id,         pairs: pg.pairs_per_box_individual },
-        { type: 'master',     boxId: pg.box_type_master_id,  pairs: pg.pairs_per_box_master },
-        { type: 'colmeia',    boxId: pg.box_type_colmeia_id, pairs: pg.pairs_per_box_colmeia },
-        { type: 'fitilho',    boxId: pg.box_type_fitilho_id, pairs: pg.pairs_per_box_fitilho },
-      ].filter(s => !!s.boxId);
-
-      if (slotMap.length === 0) return [];
-      const ids = slotMap.map(s => s.boxId!) as string[];
-      const { data: boxes, error: e3 } = await supabase
-        .from('box_types')
-        .select('id, nome, comprimento_cm, largura_cm, altura_cm, quantity, unit_price')
-        .in('id', ids);
-      if (e3) throw e3;
-
-      return slotMap.map(s => {
-        const bx = (boxes || []).find(b => b.id === s.boxId);
-        return {
-          packaging_type: s.type,
-          nome: bx?.nome || s.type,
-          pairs_per_box: s.pairs ?? 1,
-          comprimento_cm: bx?.comprimento_cm ?? 0,
-          largura_cm: bx?.largura_cm ?? 0,
-          altura_cm: bx?.altura_cm ?? 0,
-          cost_per_unit: bx?.unit_price ?? 0,
-          box_type_id: s.boxId,
-          box_types: { nome: bx?.nome, quantity: bx?.quantity },
-        };
+      return (data ?? []).flatMap((row: any) => {
+        const box = Array.isArray(row.box_types) ? row.box_types[0] : row.box_types;
+        if (!box) return [];
+        return [{
+          packaging_type: box.tipo ?? 'individual',
+          nome: box.nome ?? 'Embalagem',
+          pairs_per_box: box.pairs_per_box_default ?? 1,
+          comprimento_cm: box.comprimento_cm ?? 0,
+          largura_cm: box.largura_cm ?? 0,
+          altura_cm: box.altura_cm ?? 0,
+          cost_per_unit: box.unit_price ?? 0,
+          box_type_id: row.box_type_id,
+          box_types: { nome: box.nome, quantity: box.quantity },
+        }];
       });
     },
   });
@@ -100,7 +79,8 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
     const w = Number(c.largura_cm) || 0;
     const h = Number(c.altura_cm) || 0;
     const volM3 = l * w * h / 1_000_000;
-    const stockAvail = Number((c.box_types as any)?.quantity) ?? null;
+    const stockValue = Number((c.box_types as any)?.quantity);
+    const stockAvail = Number.isFinite(stockValue) ? stockValue : null;
     return {
       type: c.packaging_type as string,
       nome: (c.box_types as any)?.nome || c.nome || c.packaging_type,
@@ -110,7 +90,8 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
       totalCost: costPerUnit * boxesNeeded,
       volM3: volM3 * boxesNeeded,
       stockAvail,
-      hasShortage: stockAvail !== null && stockAvail < boxesNeeded,
+      stockUnavailable: stockAvail === null,
+      hasShortage: stockAvail === null || stockAvail < boxesNeeded,
     };
   });
 
@@ -144,6 +125,11 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
           <div className="text-muted-foreground text-sm flex items-center gap-2">
             <Package className="h-4 w-4" />
             Selecione uma OP com ficha técnica para visualizar a sugestão de embalagem.
+          </div>
+        ) : configsError ? (
+          <div className="text-destructive text-sm flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            Não foi possível consultar as embalagens vinculadas à ficha: {(configsError as Error).message}
           </div>
         ) : relevant.length === 0 ? (
           <div className="text-muted-foreground text-sm flex items-center gap-2">
@@ -185,7 +171,7 @@ export function PackagingDecision({ order }: PackagingDecisionProps) {
                             {b.stockAvail}
                             {b.hasShortage && <span className="ml-1 text-xs text-destructive">⚠ FALTA {b.boxesNeeded - b.stockAvail}</span>}
                           </span>
-                        ) : <span className="text-muted-foreground">—</span>}
+                        ) : <span className="text-destructive font-semibold">Indisponível</span>}
                       </td>
                       <td className="p-2 text-right text-xs font-mono pr-3">
                         {b.totalCost > 0 ? fmtBRL(b.totalCost) : '—'}

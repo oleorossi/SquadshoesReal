@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Truck, Package, Cube as Box, Gear as Settings2, CaretDown as ChevronDown, Lightbulb, TrendUp as TrendingUp, Leaf, Scales as Weight, Ruler, Buildings as Building2, MapPin } from '@phosphor-icons/react';
-import { useBaus, useBoxTypes, useTransportCompanies, useTransportCompanyRates } from '@/hooks/useTransport';
+import { useBaus, useBoxTypes, useTransportCompanies } from '@/hooks/useTransport';
+import { supabase } from '@/integrations/supabase/client';
 import { calculatePacking } from '@/lib/packingCalculator';
 import { PRODUCT_VOLUMES } from '@/lib/logistics/CubageEngine';
 import { recommendBestVehicle, type Vehicle } from '@/lib/logistics/FleetOptimizer';
@@ -339,7 +341,7 @@ function TransportResults({
         />
         <MetricCard
           icon={<TrendingUp className="h-4 w-4 text-primary" />}
-          label="Ocupação do Baú"
+          label="Demanda / Baú"
           value={`${packingResult?.ocupacao_total_pct ?? 0}%`}
           highlight={packingResult ? packingResult.ocupacao_total_pct > 80 : false}
         />
@@ -385,7 +387,9 @@ function TransportResults({
                     <TableRow>
                       <TableHead>Item</TableHead>
                       <TableHead className="text-center">Arranjo</TableHead>
-                      <TableHead className="text-center">Qtd</TableHead>
+                      <TableHead className="text-center">Qtd. solicitada</TableHead>
+                      <TableHead className="text-center">Cap./viagem</TableHead>
+                      <TableHead className="text-center">Viagens</TableHead>
                       <TableHead className="text-right">Volume</TableHead>
                       <TableHead className="text-right">Ocupação</TableHead>
                     </TableRow>
@@ -405,7 +409,9 @@ function TransportResults({
                         <TableCell className="text-center font-mono text-sm">
                           {r.fits ? `${r.nL}×${r.nW}×${r.nH}` : '—'}
                         </TableCell>
-                        <TableCell className="text-center font-bold">{r.total}</TableCell>
+                        <TableCell className="text-center font-bold">{r.quantidade_solicitada}</TableCell>
+                        <TableCell className="text-center">{r.capacidade_por_viagem}</TableCell>
+                        <TableCell className="text-center">{r.viagens_necessarias || '—'}</TableCell>
                         <TableCell className="text-right text-sm">{r.volume_m3} m³</TableCell>
                         <TableCell className="text-right text-sm">{r.ocupacao_pct}%</TableCell>
                       </TableRow>
@@ -420,14 +426,18 @@ function TransportResults({
 
               {/* Bau summary */}
               {packingResult && (
-                <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="mt-4 grid grid-cols-4 gap-3">
                   <div className="p-3 rounded-lg bg-muted">
                     <p className="text-xs text-muted-foreground">Volume do Baú</p>
                     <p className="text-base font-bold">{packingResult.bau_volume_m3} m³</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted">
-                    <p className="text-xs text-muted-foreground">Volume Ocupado</p>
+                    <p className="text-xs text-muted-foreground">Volume Solicitado</p>
                     <p className="text-base font-bold">{packingResult.total_volume_m3} m³</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted">
+                    <p className="text-xs text-muted-foreground">Viagens Necessárias</p>
+                    <p className="text-base font-bold">{Math.max(0, ...packingResult.results.map(r => r.viagens_necessarias))}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-primary/10">
                     <p className="text-xs text-muted-foreground">Residual</p>
@@ -607,12 +617,44 @@ function CarrierComparison({ companies, destinationState, destinationCity, total
   totalWeight: number;
   totalVolume: number;
 }) {
+  const companyIds = useMemo(() => companies.map((company) => company.id), [companies]);
+  const { data: allRates = [], error: ratesError } = useQuery({
+    queryKey: ['transport_company_rates', 'comparison', destinationState, companyIds],
+    enabled: !!destinationState && companyIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('transport_company_rates')
+        .select('*')
+        .in('transport_company_id', companyIds)
+        .eq('estado', destinationState!);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const ratesByCompany = useMemo(() => {
+    const byCompany: Record<string, any[]> = {};
+    allRates.forEach((rate: any) => {
+      (byCompany[rate.transport_company_id] ??= []).push(rate);
+    });
+    return byCompany;
+  }, [allRates]);
+
   if (!destinationState) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
           <MapPin className="h-8 w-8 mx-auto mb-2 opacity-20" />
           <p>Selecione um destino para comparar fretes</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (ratesError) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-destructive">
+          Não foi possível consultar as tarifas: {(ratesError as Error).message}
         </CardContent>
       </Card>
     );
@@ -628,6 +670,7 @@ function CarrierComparison({ companies, destinationState, destinationCity, total
           city={destinationCity}
           weight={totalWeight}
           volume={totalVolume}
+          rates={ratesByCompany[company.id] ?? []}
         />
       ))}
       {companies.length === 0 && (
@@ -637,14 +680,14 @@ function CarrierComparison({ companies, destinationState, destinationCity, total
   );
 }
 
-function CarrierRateCard({ company, state, city, weight, volume }: {
+function CarrierRateCard({ company, state, city, weight, volume, rates }: {
   company: any;
   state: string;
   city?: string;
   weight: number;
   volume: number;
+  rates: any[];
 }) {
-  const { data: rates = [] } = useTransportCompanyRates(company.id);
   const rate = rates.find(r => r.estado === state);
 
   const cost = useMemo(() => {

@@ -6,9 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pulse as Activity, Shield, Database, Cpu, Users, Clock, MagnifyingGlass as Search, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, Eye, ArrowsClockwise as RefreshCw, ChartBar as BarChart3, Lightning as Zap, HardDrive, WifiHigh as Wifi } from '@phosphor-icons/react';
+import { Pulse as Activity, Shield, Database, Cpu, Users, Clock, MagnifyingGlass as Search, CheckCircle as CheckCircle2, XCircle, Warning as AlertTriangle, ArrowsClockwise as RefreshCw, Lightning as Zap, HardDrive, WifiHigh as Wifi } from '@phosphor-icons/react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
@@ -46,27 +46,26 @@ export default function SystemMonitor() {
   const [auditFilter, setAuditFilter] = useState('all');
 
   // Fetch audit logs
-  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAudit } = useQuery({
+  const { data: auditLogs = [], isLoading: auditLoading, error: auditError, refetch: refetchAudit } = useQuery({
     queryKey: ['audit-logs-monitor'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
-      return data || [];
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
-  // Simulated performance metrics (in production these would come from real monitoring)
+  // Esta tela não tem uma fonte de observabilidade de produção conectada.
+  // Exibe apenas estatísticas reais do cache local; os demais indicadores ficam
+  // explicitamente indisponíveis até a integração ser feita.
   const perfMetrics = useMemo(() => {
     const cacheStats = intelligentCache.getStats();
     return {
       cache: cacheStats,
-      responseTime: 145 + Math.random() * 50,
-      uptime: 99.97,
-      errorRate: 0.3 + Math.random() * 0.2,
-      activeUsers: 8 + Math.floor(Math.random() * 5),
     };
   }, []);
 
@@ -90,16 +89,6 @@ export default function SystemMonitor() {
     return { total, successful, failed, topResources, topActions };
   }, [auditLogs]);
 
-  // Simulated time series
-  const timeSeries = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => ({
-      name: `${i * 2}h`,
-      requests: 80 + Math.floor(Math.random() * 120),
-      errors: Math.floor(Math.random() * 5),
-      latency: 100 + Math.floor(Math.random() * 80),
-    }));
-  }, []);
-
   // Filtered audit logs
   const filteredAudit = useMemo(() => {
     let logs = auditLogs;
@@ -118,13 +107,18 @@ export default function SystemMonitor() {
       <EditorialPageHeader
         sectionLabel="SISTEMA · MONITOR"
         title="Monitor do Sistema"
-        description="Performance, segurança e auditoria em tempo real"
+        description="Demonstração da interface de monitoramento; telemetria de produção ainda não está conectada."
         actions={
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetchAudit()}>
             <RefreshCw className="h-3.5 w-3.5" />Atualizar
           </Button>
         }
       />
+
+      <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+        <p><strong>Demonstração:</strong> latência, uptime, taxa de erro, usuários ativos e gráficos de performance não representam telemetria real.</p>
+      </div>
 
       <Tabs defaultValue="performance" className="space-y-4">
         <TabsList>
@@ -142,53 +136,46 @@ export default function SystemMonitor() {
         {/* ═══ PERFORMANCE TAB ═══ */}
         <TabsContent value="performance" className="space-y-4">
           <StatGrid>
-            <StatCard label="Tempo Resposta" value={`${perfMetrics.responseTime.toFixed(0)}ms`} icon={Zap} tone="success" />
-            <StatCard label="Uptime" value={`${perfMetrics.uptime}%`} icon={Wifi} tone="success" />
-            <StatCard label="Taxa de Erro" value={`${perfMetrics.errorRate.toFixed(2)}%`} icon={AlertTriangle} tone={perfMetrics.errorRate > 1 ? 'destructive' : 'warning'} />
-            <StatCard label="Usuários Ativos" value={perfMetrics.activeUsers} icon={Users} tone="primary" />
+            <StatCard label="Tempo Resposta" value="—" hint="Telemetria não conectada" icon={Zap} tone="default" />
+            <StatCard label="Uptime" value="—" hint="Telemetria não conectada" icon={Wifi} tone="default" />
+            <StatCard label="Taxa de Erro" value="—" hint="Telemetria não conectada" icon={AlertTriangle} tone="default" />
+            <StatCard label="Usuários Ativos" value="—" hint="Telemetria não conectada" icon={Users} tone="default" />
           </StatGrid>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Panel title={<span className="flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Requisições & Erros (24h)</span>}>
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={timeSeries}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="requests" stroke="hsl(var(--stage-cut-fg))" fill="hsl(var(--stage-cut-fg))" fillOpacity={0.1} name="Requisições" />
-                    <Area type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.15} name="Erros" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">Telemetria de requisições não conectada</div>
             </Panel>
 
             <Panel title={<span className="flex items-center gap-2"><Clock className="h-4 w-4 text-warning" />Latência (ms)</span>}>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={timeSeries}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="latency" fill="hsl(var(--warning))" radius={[3, 3, 0, 0]} name="Latência" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">Telemetria de latência não conectada</div>
             </Panel>
           </div>
         </TabsContent>
 
         {/* ═══ AUDIT TAB ═══ */}
         <TabsContent value="audit" className="space-y-4">
+          {auditError && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              <XCircle className="h-4 w-4 shrink-0" />
+              Auditoria indisponível: {(auditError as Error).message}
+            </div>
+          )}
           {/* Audit KPIs */}
-          <StatGrid>
-            <StatCard label="Eventos totais" value={auditStats.total} />
-            <StatCard label="Bem-sucedidos" value={auditStats.successful} tone="success" />
-            <StatCard label="Falhas" value={auditStats.failed} tone={auditStats.failed > 0 ? 'destructive' : 'default'} />
-          </StatGrid>
+          {!auditError && (
+            <StatGrid>
+              <StatCard label="Eventos totais" value={auditStats.total} />
+              <StatCard label="Bem-sucedidos" value={auditStats.successful} tone="success" />
+              <StatCard label="Falhas" value={auditStats.failed} tone={auditStats.failed > 0 ? 'destructive' : 'default'} />
+            </StatGrid>
+          )}
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Panel title="Eventos por Recurso">
-                {auditStats.topResources.length > 0 ? (
+                {auditError ? (
+                  <div className="flex items-center justify-center h-[200px] text-sm text-destructive">Auditoria indisponível</div>
+                ) : auditStats.topResources.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       <Pie data={auditStats.topResources} cx="50%" cy="50%" innerRadius={40} outerRadius={75}
@@ -209,7 +196,9 @@ export default function SystemMonitor() {
             </Panel>
 
             <Panel title="Top Ações">
-                {auditStats.topActions.length > 0 ? (
+                {auditError ? (
+                  <div className="flex items-center justify-center h-[200px] text-sm text-destructive">Auditoria indisponível</div>
+                ) : auditStats.topActions.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={auditStats.topActions} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -269,6 +258,12 @@ export default function SystemMonitor() {
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">
                           Carregando...
+                        </TableCell>
+                      </TableRow>
+                    ) : auditError ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-destructive text-sm">
+                          Auditoria indisponível: {(auditError as Error).message}
                         </TableCell>
                       </TableRow>
                     ) : filteredAudit.length === 0 ? (

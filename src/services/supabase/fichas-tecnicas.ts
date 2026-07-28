@@ -89,10 +89,16 @@ export const fichaTecnicaService = {
   },
 
   async buscar(termo: string) {
+    // A expressão .or() é uma gramática PostgREST, não um parâmetro SQL. Limita
+    // o termo a texto, números, espaço e hífen antes de interpolá-lo para que
+    // vírgulas, parênteses, curingas e operadores não alterem o filtro.
+    const termoSeguro = termo.trim().replace(/[^\p{L}\p{N}\s-]/gu, '');
+    if (!termoSeguro) return [];
+
     const { data, error } = await supabase
       .from('technical_sheets')
       .select('*')
-      .or(`code.ilike.%${termo}%,name.ilike.%${termo}%`)
+      .or(`code.ilike.%${termoSeguro}%,name.ilike.%${termoSeguro}%`)
       .eq('status', 'Ativo');
     if (error) {
       console.error('Erro ao buscar fichas técnicas:', error);

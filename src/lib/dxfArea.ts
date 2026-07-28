@@ -2,8 +2,8 @@
  * Leitura de DXF (Shoemaster/AutoCAD) → área das peças em dm².
  *
  * Cada CONTORNO FECHADO (LWPOLYLINE/POLYLINE com flag closed, ou CIRCLE) é uma
- * peça do molde. A área vem da fórmula do shoelace nos vértices (arcos/bulge são
- * aproximados pela corda — "o mais básico correto"). A unidade do desenho é
+ * peça do molde. A área vem da fórmula do shoelace nos vértices. Contornos com
+ * arcos/bulge são aproximados pela corda e retornam um aviso explícito. A unidade do desenho é
  * detectada do header `$INSUNITS`; default mm (padrão de calçado), com override.
  *
  * Saída em dm²/par no TAMANHO BASE — depois é escalonada por numeração
@@ -21,6 +21,7 @@ export interface DxfPiece {
   type: string;
   areaDm2: number;
   vertices: number;
+  approximate: boolean;
 }
 
 export interface DxfAreaResult {
@@ -28,6 +29,9 @@ export interface DxfAreaResult {
   unitFromHeader: boolean;
   pieces: DxfPiece[];
   totalDm2: number;
+  /** Verdadeiro quando algum contorno contém bulge e a área usa a corda. */
+  approximate: boolean;
+  warnings: string[];
 }
 
 export interface DxfAreaOptions {
@@ -73,6 +77,9 @@ const isClosed = (e: any): boolean => {
   return false;
 };
 
+const hasBulge = (e: any): boolean =>
+  Array.isArray(e.vertices) && e.vertices.some((v: any) => Number(v?.bulge ?? 0) !== 0);
+
 /** Lê o DXF e devolve as peças (contornos fechados) com área em dm². */
 export function computeDxfAreas(dxfText: string, opts: DxfAreaOptions = {}): DxfAreaResult {
   const parser = new DxfParser();
@@ -96,19 +103,27 @@ export function computeDxfAreas(dxfText: string, opts: DxfAreaOptions = {}): Dxf
   const minArea = opts.minAreaDm2 ?? 0.01;
 
   const pieces: DxfPiece[] = [];
+  let approximate = false;
   for (const e of (dxf.entities ?? []) as any[]) {
     if (e.type === 'CIRCLE' && typeof e.radius === 'number') {
       const areaDm2 = areaToDm2(Math.PI * e.radius * e.radius, unit);
-      if (areaDm2 >= minArea) pieces.push({ layer: e.layer || '', type: 'CIRCLE', areaDm2, vertices: 0 });
+      if (areaDm2 >= minArea) pieces.push({ layer: e.layer || '', type: 'CIRCLE', areaDm2, vertices: 0, approximate: false });
       continue;
     }
     if ((e.type === 'LWPOLYLINE' || e.type === 'POLYLINE') && Array.isArray(e.vertices) && e.vertices.length >= 3 && isClosed(e)) {
       const pts: XY[] = e.vertices.map((v: any) => ({ x: Number(v.x) || 0, y: Number(v.y) || 0 }));
       const areaDm2 = areaToDm2(polygonArea(pts), unit);
-      if (areaDm2 >= minArea) pieces.push({ layer: e.layer || '', type: e.type, areaDm2, vertices: pts.length });
+      const pieceApproximate = hasBulge(e);
+      if (areaDm2 >= minArea) {
+        approximate ||= pieceApproximate;
+        pieces.push({ layer: e.layer || '', type: e.type, areaDm2, vertices: pts.length, approximate: pieceApproximate });
+      }
     }
   }
 
   const totalDm2 = pieces.reduce((s, p) => s + p.areaDm2, 0);
-  return { unit, unitFromHeader, pieces, totalDm2 };
+  const warnings = approximate
+    ? ['Há contornos com bulge; a área foi aproximada pelas cordas. Confirme no CAD antes de usar no consumo.']
+    : [];
+  return { unit, unitFromHeader, pieces, totalDm2, approximate, warnings };
 }

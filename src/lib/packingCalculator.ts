@@ -91,6 +91,9 @@ function findBestOrientation(
     if (!fits || item.L > Math.max(bauL, bauW, bauH) || 
         item.W > Math.max(bauL, bauW, bauH) || 
         item.H > Math.max(bauL, bauW, bauH)) {
+      const quantidadeSolicitada = Math.max(0, Number(item.quantity ?? 0));
+      const volumeSolicitado = quantidadeSolicitada * itemVolume;
+      totalVolume += volumeSolicitado;
       results.push({
         id: item.id,
         type: item.type,
@@ -99,8 +102,11 @@ function findBestOrientation(
         nL: 0,
         nW: 0,
         nH: 0,
-        total: 0,
-        volume_m3: 0,
+        total: quantidadeSolicitada,
+        quantidade_solicitada: quantidadeSolicitada,
+        capacidade_por_viagem: 0,
+        viagens_necessarias: 0,
+        volume_m3: Number(volumeSolicitado.toFixed(4)),
         ocupacao_pct: 0,
         fits: false,
         warning: 'Item não cabe no baú em nenhuma orientação',
@@ -110,13 +116,16 @@ function findBestOrientation(
     
      const best = findBestOrientation(bauL, bauW, bauH, item.L, item.W, item.H, item.maxStack, efficiency);
     
-    // Apply quantity limit if specified
-    let effectiveTotal = best.total;
-    if (item.quantity && item.quantity > 0 && effectiveTotal > item.quantity) {
-      effectiveTotal = item.quantity;
-    }
+    const capacidadePorViagem = best.total;
+    const quantidadeSolicitada = Math.max(0, Number(item.quantity ?? capacidadePorViagem));
+    const viagensNecessarias = capacidadePorViagem > 0
+      ? Math.ceil(quantidadeSolicitada / capacidadePorViagem)
+      : 0;
+    const fitsInOneTrip = capacidadePorViagem > 0 && quantidadeSolicitada <= capacidadePorViagem;
     
-    const usedVolume = effectiveTotal * itemVolume;
+    // A recomendação e a cotação devem usar o volume de TODA a demanda, não
+    // apenas o que cabe em uma viagem do baú selecionado.
+    const usedVolume = quantidadeSolicitada * itemVolume;
     totalVolume += usedVolume;
     
     results.push({
@@ -127,10 +136,16 @@ function findBestOrientation(
       nL: best.nL,
       nW: best.nW,
       nH: best.nH,
-      total: effectiveTotal,
+      total: quantidadeSolicitada,
+      quantidade_solicitada: quantidadeSolicitada,
+      capacidade_por_viagem: capacidadePorViagem,
+      viagens_necessarias: viagensNecessarias,
       volume_m3: Number(usedVolume.toFixed(4)),
       ocupacao_pct: bauVolume > 0 ? Number(((usedVolume / bauVolume) * 100).toFixed(2)) : 0,
-      fits: true,
+      fits: fitsInOneTrip,
+      warning: fitsInOneTrip
+        ? undefined
+        : `Demanda de ${quantidadeSolicitada} excede a capacidade de ${capacidadePorViagem} por viagem (${viagensNecessarias} viagens necessárias)`,
     });
   }
   
@@ -138,7 +153,7 @@ function findBestOrientation(
     bau_volume_m3: Number(bauVolume.toFixed(4)),
     total_volume_m3: Number(totalVolume.toFixed(4)),
     ocupacao_total_pct: bauVolume > 0 ? Number(((totalVolume / bauVolume) * 100).toFixed(2)) : 0,
-    residual_volume_m3: Number((bauVolume - totalVolume).toFixed(4)),
+    residual_volume_m3: Number(Math.max(0, bauVolume - totalVolume).toFixed(4)),
     results,
   };
 }

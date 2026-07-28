@@ -73,8 +73,10 @@ export default function EscalonamentoCadPage() {
   const onCadApply = (r: { totalDm2: number; dpi: number; pieces: { areaDm2: number }[]; dxfText: string }) => {
     setDxf({
       unit: 'mm', unitFromHeader: false,
-      pieces: r.pieces.map((p, i) => ({ layer: `Peça ${i + 1}`, type: 'CAD', areaDm2: p.areaDm2, vertices: 0 })),
+      pieces: r.pieces.map((p, i) => ({ layer: `Peça ${i + 1}`, type: 'CAD', areaDm2: p.areaDm2, vertices: 0, approximate: false })),
       totalDm2: r.totalDm2,
+      approximate: false,
+      warnings: [],
     });
     setDxfName(`CAD · ${r.dpi} DPI`);
     if (r.totalDm2 > 0) { setBaseValue(Number(r.totalDm2.toFixed(4))); setUnitLabel('dm²'); }
@@ -93,7 +95,11 @@ export default function EscalonamentoCadPage() {
       if (res.totalDm2 > 0) {
         setBaseValue(Number(res.totalDm2.toFixed(4)));
         setUnitLabel('dm²');
-        toast.success(`${res.pieces.length} peça(s) lida(s) · ${fmt(res.totalDm2, 2)} dm²`);
+        if (res.approximate) {
+          toast.warning('DXF lido com área aproximada: há contornos com bulge. Confirme no CAD antes de usar no consumo.');
+        } else {
+          toast.success(`${res.pieces.length} peça(s) lida(s) · ${fmt(res.totalDm2, 2)} dm²`);
+        }
       } else {
         toast.warning('Nenhuma peça fechada encontrada no DXF — verifique a unidade.');
       }
@@ -191,6 +197,11 @@ export default function EscalonamentoCadPage() {
                   <span className="text-muted-foreground">{dxf.pieces.length} peça(s){dxf.unitFromHeader ? ' · unidade do header' : ''}</span>
                   <span className="font-semibold tabular-nums">Área total: {fmt(dxf.totalDm2, 2)} dm²</span>
                 </div>
+                {dxf.approximate && (
+                  <p className="mt-2 text-xs text-warning">
+                    Área aproximada: há contornos com arco (bulge) calculados pela corda. Confirme no CAD antes de copiar esta curva para o consumo.
+                  </p>
+                )}
                 {dxf.pieces.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {dxf.pieces.map((p, i) => (

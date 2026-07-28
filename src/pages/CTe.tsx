@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,23 @@ const emptyForm: CteForm = {
   freight_modality: 'cif',
   related_nfe_chaves: '',
 };
+
+function toCteForm(editing: any): CteForm {
+  return {
+    cte_number: editing.cte_number ?? '',
+    cte_type: editing.cte_type ?? 'normal',
+    emission_date: editing.emission_date ?? format(new Date(), 'yyyy-MM-dd'),
+    origin_uf: editing.origin_uf ?? 'RJ',
+    destination_uf: editing.destination_uf ?? 'SP',
+    origin_city: editing.origin_city ?? '',
+    destination_city: editing.destination_city ?? '',
+    transporter_name: editing.transporter_name ?? '',
+    transporter_cnpj: editing.transporter_cnpj ?? '',
+    freight_value: Number(editing.freight_value ?? 0),
+    freight_modality: editing.freight_modality ?? 'cif',
+    related_nfe_chaves: (editing.related_nfe_chaves ?? []).join('\n'),
+  };
+}
 
 export default function CTe() {
   const qc = useQueryClient();
@@ -192,25 +209,11 @@ function CteEditorDialog({
 }) {
   const qc = useQueryClient();
   const isEdit = !!editing;
-  const [form, setForm] = useState<CteForm>(() => {
-    if (editing) {
-      return {
-        cte_number: editing.cte_number ?? '',
-        cte_type: editing.cte_type ?? 'normal',
-        emission_date: editing.emission_date ?? format(new Date(), 'yyyy-MM-dd'),
-        origin_uf: editing.origin_uf ?? 'RJ',
-        destination_uf: editing.destination_uf ?? 'SP',
-        origin_city: editing.origin_city ?? '',
-        destination_city: editing.destination_city ?? '',
-        transporter_name: editing.transporter_name ?? '',
-        transporter_cnpj: editing.transporter_cnpj ?? '',
-        freight_value: Number(editing.freight_value ?? 0),
-        freight_modality: editing.freight_modality ?? 'cif',
-        related_nfe_chaves: (editing.related_nfe_chaves ?? []).join('\n'),
-      };
-    }
-    return emptyForm;
-  });
+  const [form, setForm] = useState<CteForm>(emptyForm);
+
+  useEffect(() => {
+    if (open) setForm(editing ? toCteForm(editing) : emptyForm);
+  }, [open, editing?.id]);
 
   const save = useMutation({
     mutationFn: async () => {

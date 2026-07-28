@@ -100,7 +100,11 @@ export interface PackingResult {
   nL: number;
   nW: number;
   nH: number;
+  /** Mantido para compatibilidade; representa a quantidade solicitada. */
   total: number;
+  quantidade_solicitada: number;
+  capacidade_por_viagem: number;
+  viagens_necessarias: number;
   volume_m3: number;
   ocupacao_pct: number;
   fits: boolean;

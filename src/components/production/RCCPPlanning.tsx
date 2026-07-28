@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
+import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChartBar as BarChart3, Warning as AlertTriangle, CheckCircle as CheckCircle2, Info, Gauge, Funnel as Filter } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
@@ -93,10 +93,11 @@ function useRCCPData() {
       const refIds = [...new Set((data || []).map(o => o.reference_id).filter(Boolean))];
       let refMap: Record<string, string> = {};
       if (refIds.length > 0) {
-        const { data: refs } = await supabase
+        const { data: refs, error: refsError } = await supabase
           .from("technical_sheets")
           .select("id, shoe_category")
           .in("id", refIds);
+        if (refsError) throw refsError;
         if (refs) refMap = Object.fromEntries(refs.map(r => [r.id, r.shoe_category || "generico"]));
       }
 
@@ -181,7 +182,9 @@ export default function RCCPPlanning() {
   const monthlyData = useMemo(() => {
     return months.map(m => {
       const monthOrders = orders.filter(o => {
-        const d = new Date(o.planned_delivery);
+        // `planned_delivery` é date-only no banco. parseISO preserva o dia no
+        // fuso local, enquanto new Date('yyyy-MM-dd') interpreta UTC.
+        const d = parseISO(o.planned_delivery);
         return d >= m.start && d <= m.end;
       });
       const totalDemand = monthOrders.reduce((s, o) => s + (o.quantity || 0), 0);

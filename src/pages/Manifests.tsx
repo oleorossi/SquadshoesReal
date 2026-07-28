@@ -202,24 +202,32 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   const computeTotals = useMutation({
     mutationFn: async () => {
-      const { data: vols } = await (supabase as any).from('shipping_volumes').select('*').eq('manifest_id', id);
-      const total_volumes = vols?.length ?? 0;
-      const total_pairs = (vols ?? []).reduce((s: number, v: any) => s + Number(v.total_pairs ?? 0), 0);
-      const total_weight_kg = (vols ?? []).reduce((s: number, v: any) => s + Number(v.weight_kg ?? 0), 0);
+      const { data: vols, error: volumesError } = await (supabase as any)
+        .from('shipping_volumes')
+        .select('*')
+        .eq('manifest_id', id);
+      if (volumesError) throw volumesError;
+
+      const volumes = vols ?? [];
+      const total_volumes = volumes.length;
+      const total_pairs = volumes.reduce((s: number, v: any) => s + Number(v.total_pairs ?? 0), 0);
+      const total_weight_kg = volumes.reduce((s: number, v: any) => s + Number(v.weight_kg ?? 0), 0);
       const dests = new Set<string>();
-      for (const v of vols ?? []) {
+      for (const v of volumes) {
         if (v.destination_city || v.destination_uf) {
           dests.add(`${v.destination_city ?? ''}/${v.destination_uf ?? ''}`);
         } else if (v.sale_orders) {
           dests.add(v.sale_order_id);
         }
       }
-      await (supabase as any).from('shipping_manifests').update({
+      const { error: updateError } = await (supabase as any).from('shipping_manifests').update({
         total_volumes, total_pairs, total_weight_kg,
         destinations_count: dests.size,
       }).eq('id', id);
+      if (updateError) throw updateError;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shipping_manifest', id] }),
+    onError: (e: Error) => toast.error(`Não foi possível recalcular os totais: ${e.message}`),
   });
 
   if (!manifest) return (

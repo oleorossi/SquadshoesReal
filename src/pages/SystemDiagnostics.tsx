@@ -107,6 +107,7 @@ export default function SystemDiagnostics() {
     Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number; consumption_source: string }> | null
   >(null);
   const [consRunning, setConsRunning] = useState(false);
+  const [consChecksError, setConsChecksError] = useState<string | null>(null);
 
   // Furo de baixa (auditoria 2026-07-25): material que a ficha pedia e NUNCA
   // saiu do estoque. O ERP já detectava (record_order_consumption grava
@@ -123,6 +124,16 @@ export default function SystemDiagnostics() {
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
+    setConsChecksError(null);
+    setConsChecks(null);
+    setParityChecks(null);
+    setFreshChecks(null);
+    setCpcChecks(null);
+    setDebitRows(null);
+    setDebitGuards(null);
+    setCapacityChecks(null);
+    setLinkChecks(null);
+    setStaleResRows(null);
     try {
       const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
@@ -143,49 +154,31 @@ export default function SystemDiagnostics() {
         // list_ops_with_stale_reservations — reserva defasada vs ficha atual.
         (supabase as any).rpc('list_ops_with_stale_reservations'),
       ]);
-      if (consRes.error) throw consRes.error;
+
+      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes]
+        .map((result) => result.error)
+        .find(Boolean);
+      if (queryError) throw queryError;
+
       setConsChecks((consRes.data ?? []) as ConsistencyRow[]);
-      setFreshChecks((freshRes?.error ? [] : (freshRes?.data ?? [])) as ConsistencyRow[]);
-      setCpcChecks((cpcRes?.error ? [] : (cpcRes?.data ?? [])) as ConsistencyRow[]);
-      setDebitRows((debitRes?.error ? [] : (debitRes?.data ?? [])) as DebitRow[]);
-      setDebitGuards((guardRes?.error ? [] : (guardRes?.data ?? [])) as ParityRow[]);
-      // Falha do RPC NÃO pode virar lista vazia (estado verde falso): mantém
-      // null (estado "rode a verificação") e avisa.
-      if (capRes?.error) {
-        setCapacityChecks(null);
-        toast.message('Consistência de capacidade indisponível', { description: capRes.error.message });
-      } else {
-        setCapacityChecks(capRes?.data ?? []);
-      }
-      if (linkRes?.error) {
-        setLinkChecks(null);
-        toast.message('Vínculos do pedido indisponíveis', { description: linkRes.error.message });
-      } else {
-        setLinkChecks(linkRes?.data ?? []);
-      }
-      // Mesma regra do capRes/linkRes: erro NÃO vira lista vazia (verde falso).
-      if (staleResRes?.error) {
-        setStaleResRows(null);
-        toast.message('Reservas defasadas indisponíveis', { description: staleResRes.error.message });
-      } else {
-        setStaleResRows(staleResRes?.data ?? []);
-      }
-      // Paridade pode depender de flags/dados de integração — tolera falha.
-      if (parRes.error) {
-        setParityChecks([]);
-        toast.message('Paridade indisponível', { description: parRes.error.message });
-      } else {
-        setParityChecks((parRes.data ?? []) as ParityRow[]);
-      }
+      setFreshChecks((freshRes.data ?? []) as ConsistencyRow[]);
+      setCpcChecks((cpcRes.data ?? []) as ConsistencyRow[]);
+      setDebitRows((debitRes.data ?? []) as DebitRow[]);
+      setDebitGuards((guardRes.data ?? []) as ParityRow[]);
+      setCapacityChecks(capRes.data ?? []);
+      setLinkChecks(linkRes.data ?? []);
+      setStaleResRows(staleResRes.data ?? []);
+      setParityChecks((parRes.data ?? []) as ParityRow[]);
       toast.success('Verificação de consumo concluída');
     } catch (e: any) {
+      setConsChecksError(e.message || 'Falha ao consultar as verificações de consumo.');
       toast.error('Falha na verificação de consumo: ' + e.message);
     } finally {
       setConsRunning(false);
     }
   };
 
-  const { data: migrations, isLoading: migLoading, refetch: refetchMig } = useQuery({
+  const { data: migrations, isLoading: migLoading, error: migrationsError, refetch: refetchMig } = useQuery({
     queryKey: ['system-diag', 'migrations'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_applied_migrations');
@@ -194,7 +187,7 @@ export default function SystemDiagnostics() {
     },
   });
 
-  const { data: schemaObjects, isLoading: schemaLoading, refetch: refetchSchema } = useQuery({
+  const { data: schemaObjects, isLoading: schemaLoading, error: schemaError, refetch: refetchSchema } = useQuery({
     queryKey: ['system-diag', 'schema-objects'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('check_schema_objects');
@@ -205,7 +198,7 @@ export default function SystemDiagnostics() {
 
   const required = ['sole_size_conjugations', 'get_sole_size_key', 'get_sole_group_id_for_product'];
   const missing = (schemaObjects ?? []).filter((o) => required.includes(o.name) && !o.exists);
-  const allOk = missing.length === 0 && (schemaObjects ?? []).length > 0;
+  const allOk = !schemaError && missing.length === 0 && (schemaObjects ?? []).length > 0;
 
   const runDiagnostics = async () => {
     setRunning(true);
@@ -408,10 +401,12 @@ export default function SystemDiagnostics() {
         <Alert variant={allOk ? 'default' : 'destructive'}>
           {allOk ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
           <AlertTitle>
-            {allOk ? 'Schema do solado OK' : `${missing.length} objeto(s) ausente(s)`}
+            {schemaError ? 'Consulta de schema indisponível' : allOk ? 'Schema do solado OK' : `${missing.length} objeto(s) ausente(s)`}
           </AlertTitle>
           <AlertDescription>
-            {allOk
+            {schemaError
+              ? (schemaError as Error).message
+              : allOk
               ? 'Tabela sole_size_conjugations e funções get_sole_size_key / get_sole_group_id_for_product estão presentes.'
               : `Faltando: ${missing.map((m) => m.name).join(', ')}. Aplique a migration correspondente.`}
           </AlertDescription>
@@ -488,6 +483,7 @@ export default function SystemDiagnostics() {
             bodyClassName="space-y-2"
           >
               {schemaLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+              {schemaError && <p className="text-sm text-destructive">Consulta indisponível: {(schemaError as Error).message}</p>}
               {(schemaObjects ?? []).map((o) => (
                 <div key={o.name} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
                   <div className="mt-0.5">
@@ -515,8 +511,9 @@ export default function SystemDiagnostics() {
           <Panel
             eyebrow="SISTEMA · DIAGNÓSTICO"
             title="Migrations aplicadas"
-            subtitle={migLoading ? 'Carregando…' : `${migrations?.length ?? 0} migration(s) aplicada(s) — exibindo as 200 mais recentes.`}
+            subtitle={migLoading ? 'Carregando…' : migrationsError ? 'Consulta indisponível.' : `${migrations?.length ?? 0} migration(s) aplicada(s) — exibindo as 200 mais recentes.`}
           >
+              {migrationsError && <p className="px-3 py-2 text-sm text-destructive">Consulta indisponível: {(migrationsError as Error).message}</p>}
               <ScrollArea className="h-[480px] rounded-md border border-border">
                 <div className="divide-y divide-border">
                   {(migrations ?? []).map((m) => (
@@ -539,6 +536,14 @@ export default function SystemDiagnostics() {
         <TabsContent value="consumo" className="space-y-4">
           {/* Normalização assistida pé×par do cabedal (spec consumo-cabedal-padrao-par). */}
           <CabedalParPeAuditPanel />
+
+          {consChecksError && (
+            <Alert variant="destructive">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Verificações de consumo indisponíveis</AlertTitle>
+              <AlertDescription>{consChecksError}</AlertDescription>
+            </Alert>
+          )}
 
           <Panel
             eyebrow="PCP · CONSUMO"
