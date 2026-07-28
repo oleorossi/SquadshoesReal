@@ -168,6 +168,7 @@ export default function ProducaoKanban() {
           target={dropTarget.target}
           flowOrder={flowOrder}
           apontar={apontar}
+          photoUrl={refThumbs?.get(dropTarget.card.q.reference_id || '') || null}
           onClose={() => setDropTarget(null)}
         />
       )}
@@ -177,6 +178,7 @@ export default function ProducaoKanban() {
           target={null}
           flowOrder={flowOrder}
           apontar={apontar}
+          photoUrl={refThumbs?.get(detailStage.card.q.reference_id || '') || null}
           onClose={() => setDetailStage(null)}
         />
       )}

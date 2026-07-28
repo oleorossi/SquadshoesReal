@@ -72,6 +72,11 @@ export default function ProducaoKanbanGestao() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const cardEls = useRef(new Map<string, HTMLDivElement>());
+  const boardEl = useRef<HTMLDivElement | null>(null);
+  // Coluna sob o card arrastado (contorno respirando) e OP que acabou de ser
+  // apontada (halo de pouso). Ambos são transitórios — nada fica piscando.
+  const [dragOverSector, setDragOverSector] = useState<string | null>(null);
+  const [landedId, setLandedId] = useState<string | null>(null);
 
   useEffect(() => {
     const prev = document.title;
@@ -234,6 +239,59 @@ export default function ProducaoKanbanGestao() {
 
   const isLoading = queueLoading || stagesLoading;
   const clock = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  /** Máscaras de topo/pé da coluna: aparecem só quando há mais OP naquele
+   *  sentido. É o aviso de "esta lista rola" antes de alguém tentar. */
+  const syncColumnFade = (list: HTMLElement | null) => {
+    const wrap = list?.parentElement;
+    if (!list || !wrap) return;
+    const more = list.scrollHeight - list.clientHeight;
+    wrap.dataset.moreUp = list.scrollTop > 2 ? '1' : '0';
+    wrap.dataset.moreDown = more > 2 && list.scrollTop < more - 2 ? '1' : '0';
+  };
+
+  useEffect(() => {
+    boardEl.current?.querySelectorAll<HTMLElement>('[data-kb-list]').forEach(syncColumnFade);
+  }, [visibleColumns, allCards.length, matchedIds]);
+
+  /**
+   * A RODA DO MOUSE PERTENCE À COLUNA SOB O CURSOR — nunca à página.
+   *
+   * As colunas já tinham `overflow-y-auto`, mas sem `overscroll-behavior` o
+   * scroll ENCADEIA assim que a coluna chega ao fim: vai pro quadro
+   * (`overflow-x-auto`) e daí pro documento — era isso que fazia "a página"
+   * subir/descer em vez das OPs. O `overscroll-contain` no JSX corta o
+   * encadeamento; este handler cobre o resto: ponteiro no cabeçalho da coluna,
+   * em coluna vazia, ou em coluna que não rola (aí NADA se mexe, em vez de o
+   * quadro andar de lado). Panorâmica horizontal segue em Shift+roda, trackpad
+   * horizontal ou arraste.
+   *
+   * ⚠ Listener NATIVO, não `onWheel`: o React registra `wheel` como PASSIVE no
+   *   root, e `preventDefault()` em listener passivo é no-op silencioso.
+   */
+  useEffect(() => {
+    const board = boardEl.current;
+    if (!board) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      const list = (e.target as HTMLElement | null)
+        ?.closest?.('[data-kb-col]')
+        ?.querySelector<HTMLElement>('[data-kb-list]');
+      e.preventDefault();
+      if (list && list.scrollHeight - list.clientHeight > 1) {
+        list.scrollTop += e.deltaY;
+        syncColumnFade(list);
+      }
+    };
+    board.addEventListener('wheel', onWheel, { passive: false });
+    return () => board.removeEventListener('wheel', onWheel);
+  }, [isLoading, allCards.length, visibleColumns.length]);
+
+  /** Apontou → a OP ganha halo de pouso na coluna nova por ~1,6s. */
+  const markLanded = (orderId: string) => {
+    setLandedId(orderId);
+    window.setTimeout(() => setLandedId(cur => (cur === orderId ? null : cur)), 1600);
+  };
 
   return (
     // h-dvh (não h-screen/100vh): no Safari iOS o vh inclui a área da barra de
@@ -446,8 +504,11 @@ export default function ProducaoKanbanGestao() {
           />
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex gap-2 overflow-x-auto px-3 py-3 snap-x snap-mandatory md:snap-none">
-          {visibleColumns.map(sector => {
+        <div
+          ref={boardEl}
+          className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain px-3 py-3 snap-x snap-mandatory md:snap-none"
+        >
+          {visibleColumns.map((sector, colIdx) => {
             const colAll = allCards.filter(c => c.column === sector);
             const colCards = filtering && matchedIds
               ? colAll.filter(c => matchedIds.has(c.q.order_id))
@@ -459,9 +520,15 @@ export default function ProducaoKanbanGestao() {
                  colunas fluidas lado a lado como antes. */
               <div
                 key={sector}
-                className="flex flex-col flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px] min-h-0 snap-center md:snap-align-none"
-                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                onDrop={e => { e.preventDefault(); handleDrop(sector); }}
+                data-kb-col={sector}
+                style={{ animationDelay: `${colIdx * 45}ms` }}
+                className="kb-col-in flex flex-col flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px] min-h-0 snap-center md:snap-align-none"
+                onDragOver={e => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverSector(cur => (cur === sector ? cur : sector));
+                }}
+                onDrop={e => { e.preventDefault(); setDragOverSector(null); handleDrop(sector); }}
               >
                 <div className="shrink-0 rounded-t-md bg-muted px-2.5 py-1.5 border border-border">
                   <div className="flex items-center justify-between gap-1">
@@ -474,10 +541,25 @@ export default function ProducaoKanbanGestao() {
                     {g && g.carryover_pairs > 0 ? ` +${g.carryover_pairs}` : ''} · Σ {colPares.toLocaleString('pt-BR')} pares
                   </p>
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 rounded-b-md border border-t-0 border-border bg-muted/20 p-1.5">
-                  {colCards.map(card => (
+                {/* kb-fade: as máscaras de rolagem moram no WRAPPER, não no
+                    scroller — senão elas rolariam junto com as OPs. */}
+                <div className="kb-fade flex-1 min-h-0">
+                <div
+                  data-kb-list={sector}
+                  onScroll={e => syncColumnFade(e.currentTarget)}
+                  className={`h-full overflow-y-auto overscroll-contain [scrollbar-gutter:stable] space-y-1.5 rounded-b-md border border-t-0 border-border bg-muted/20 p-1.5 transition-colors ${
+                    dragOverSector === sector && dragCard && dragCard.column !== sector
+                      ? 'kb-drop-target border-primary bg-primary/5'
+                      : ''
+                  }`}
+                >
+                  {colCards.map((card, cardIdx) => (
                     <div
                       key={card.q.order_id}
+                      // Cascata com teto de 10: o 11º card já nasce pronto, senão
+                      // uma coluna com 72 OPs levaria 1,6s pra terminar de entrar.
+                      style={{ animationDelay: `${colIdx * 45 + 140 + Math.min(cardIdx, 10) * 22}ms` }}
+                      className="kb-card-in"
                       ref={el => {
                         if (el) cardEls.current.set(card.q.order_id, el);
                         else cardEls.current.delete(card.q.order_id);
@@ -497,13 +579,15 @@ export default function ProducaoKanbanGestao() {
                         highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
                         selectable={selectMode}
                         selected={selectedIds.has(card.q.order_id)}
+                        landed={landedId === card.q.order_id}
                         onToggleSelect={() => toggleSelect(card.q.order_id)}
                         onDragStart={() => setDragCard(card)}
-                        onDragEnd={() => setDragCard(null)}
+                        onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}
                         onOpen={() => setDetailStage({ card })}
                       />
                     </div>
                   ))}
+                </div>
                 </div>
               </div>
             );
@@ -517,6 +601,8 @@ export default function ProducaoKanbanGestao() {
           target={dropTarget.target}
           flowOrder={flowOrder}
           apontar={apontar}
+          photoUrl={refThumbs?.get(dropTarget.card.q.reference_id || '') || null}
+          onApontado={markLanded}
           onClose={() => setDropTarget(null)}
         />
       )}
@@ -526,6 +612,8 @@ export default function ProducaoKanbanGestao() {
           target={null}
           flowOrder={flowOrder}
           apontar={apontar}
+          photoUrl={refThumbs?.get(detailStage.card.q.reference_id || '') || null}
+          onApontado={markLanded}
           onClose={() => setDetailStage(null)}
         />
       )}

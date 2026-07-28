@@ -294,6 +294,19 @@
                         border-color var(--duration-fast) var(--ease-out),
                         color var(--duration-fast) var(--ease-out);
 
+  /* Movimento do quadro de produção (Kanban / Central de Produção).
+     Nomeados por PAPEL, não por tamanho — a Central fica aberta num monitor
+     o dia inteiro, então movimento serve pra dizer O QUE MUDOU, nunca pra
+     chamar atenção. Regra: só `transform` e `opacity`, e nada em laço
+     infinito exceto o alvo do arrasto (que some no drop). */
+  --m-tap:     90ms;    /* toque, checkbox                    */
+  --m-quick:  140ms;    /* hover, cor                         */
+  --m-base:   220ms;    /* entrada de card                    */
+  --m-flow:   340ms;    /* coluna, filtro                     */
+  --m-settle: 560ms;    /* pouso após mudar de setor          */
+  --stagger-col:  45ms; /* cascata entre colunas              */
+  --stagger-card: 22ms; /* cascata entre cards (teto: 10)     */
+
   /* ═══════════════════════════════════════════════════════════════
      ▼ Z-INDEX layers
      ═════════════════════════════════════════════════════════════ */
@@ -696,6 +709,50 @@ a:focus-visible {
 .animate-spin        { animation: spin 800ms linear infinite; }
 .page-enter          { animation: page-enter 220ms var(--ease-out) both; }
 .badge-dot-pulse     { animation: badge-pulse 2s ease-in-out infinite; }
+
+/* ── Movimento do quadro de produção ────────────────────────────────
+   Prefixo `kb-` (kanban board). Usado por ProducaoKanbanGestao,
+   ProducaoKanban e KanbanOpCard. Ver os tokens --m-* acima. */
+@keyframes kb-col-in    { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes kb-card-in   { from { opacity: 0; transform: translateX(-7px); } to { opacity: 1; transform: none; } }
+/* Halo do pouso — SÓ box-shadow. Animar `background` aqui com fill:both
+   travaria o card na cor final e apagaria o âmbar do parcial pra sempre. */
+@keyframes kb-landed    { from { box-shadow: 0 0 0 2px hsl(var(--primary)), var(--shadow-md); } to { box-shadow: var(--shadow-sm); } }
+@keyframes kb-landed-partial {
+  0%   { box-shadow: 0 0 0 3px hsl(38 92% 50% / 0.9), var(--shadow-md); }
+  72%  { box-shadow: 0 0 0 3px hsl(38 92% 50% / 0), var(--shadow-sm); }
+  100% { box-shadow: var(--shadow-sm); }
+}
+@keyframes kb-drop-breathe {
+  0%, 100% { box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.35); }
+  50%      { box-shadow: inset 0 0 0 3px hsl(var(--primary) / 0.18); }
+}
+
+/* ⚠ fill `backwards`, NUNCA `forwards`/`both`: com fill pra frente o último
+   keyframe (`transform: none`) fica grudado no elemento e passa a VENCER o
+   `hover:-translate-y-0.5` do card — o hover pararia de levantar. `backwards`
+   só segura o estado inicial durante o delay da cascata, que é o que se quer. */
+.kb-col-in         { animation: kb-col-in var(--m-settle) var(--ease-out) backwards; }
+.kb-card-in        { animation: kb-card-in var(--m-base) var(--ease-out) backwards; }
+/* Sem fill: terminado o halo, o card volta à sombra normal do Card. */
+.kb-landed         { animation: kb-landed 900ms var(--ease-out); }
+.kb-landed-partial { animation: kb-landed-partial 1400ms var(--ease-out); }
+/* Única animação em laço do quadro — e some no drop. */
+.kb-drop-target    { animation: kb-drop-breathe 1.5s var(--ease-in-out) infinite; }
+
+/* Trilho de rolagem: máscaras no topo/pé da coluna, visíveis SÓ quando há
+   mais OP naquele sentido. `data-more-*` é setado no scroll pela página. */
+.kb-fade { position: relative; }
+.kb-fade::before,
+.kb-fade::after {
+  content: ''; position: absolute; left: 1px; right: 1px; height: 24px;
+  pointer-events: none; z-index: 3; opacity: 0;
+  transition: opacity var(--m-base) var(--ease-out);
+}
+.kb-fade::before { top: 0;    background: linear-gradient(to bottom, hsl(var(--background)), transparent); }
+.kb-fade::after  { bottom: 0; background: linear-gradient(to top,    hsl(var(--background)), transparent); }
+.kb-fade[data-more-up="1"]::before  { opacity: 1; }
+.kb-fade[data-more-down="1"]::after { opacity: 1; }
 
 /* Skeleton loading */
 .skeleton {
