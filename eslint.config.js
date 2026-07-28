@@ -21,6 +21,10 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // TS é loose de propósito (ver CLAUDE.md) — `any`/casts são aceitos aqui.
+      // Com a regra ligada, 4.8k erros de `any` afogavam as regras que pegam
+      // bug real (no-fallthrough, no-dupe-else-if, no-constant-binary-expression).
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 );
