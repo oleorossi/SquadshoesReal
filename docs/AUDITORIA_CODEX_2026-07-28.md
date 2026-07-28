@@ -12,21 +12,24 @@
 
 ## Sumário executivo
 
-A auditoria encontrou **~70 achados**, concentrados em **cinco doenças sistêmicas** que se repetem em quase todas as fatias. Não são bugs isolados — são padrões arquiteturais que reaparecem porque a lógica que deveria ser server-side transacional está espalhada em mutações client-side sequenciais.
+A auditoria encontrou **152 achados** — **74 Críticos, 63 Altos, 15 Médios, 0 Baixos**. O peso em Crítico/Alto não é ruído: o prompt pediu explicitamente "poucos achados REAIS a muitos genéricos", então quase tudo aqui é bug de correção/segurança confirmado, não cosmético. Os achados se concentram em **cinco doenças sistêmicas** que se repetem em quase todas as fatias. Não são bugs isolados — são padrões arquiteturais que reaparecem porque a lógica que deveria ser server-side transacional está espalhada em mutações client-side sequenciais.
 
 | # | Tema transversal | Gravidade | Onde aparece |
 |---|---|---|---|
 | T1 | **`conversion_rate = 0` vira fator `1:1` em silêncio** | 🔴 Crítico | P01, P02, P03, P05, P07, P10 |
-| T2 | **Área (dm²) usada crua como unidade linear / sem largura da ficha → infla ~100×** | 🔴 Crítico | P01, P02, P03, P04, P05, P07, P10 |
+| T2 | **Área (dm²) usada crua como unidade linear / sem largura da ficha → infla ~100×** | 🔴 Crítico | P01, P02, P03, P04, P05, P06, P07, P10, P11 |
 | T3 | **Escala de grade com `Math.round` por número → soma ≠ total da OP** | 🔴 Crítico | P01, P03, P08 |
-| T4 | **Mutações multi-etapa não-transacionais que mexem em estoque/dinheiro, com erros engolidos e sem idempotência** | 🔴 Crítico | P02, P04, P05, P07, P09, P10, P12 |
-| T5 | **RLS permissiva / `SECURITY DEFINER` sem authz / identidade vinda do cliente** | 🔴 Crítico | P02, P09, P10, P12 |
+| T4 | **Mutações multi-etapa não-transacionais que mexem em estoque/dinheiro, com erros engolidos e sem idempotência** | 🔴 Crítico | P02, P04, P05, P06, P07, P09, P10, P11, P12 |
+| T5 | **RLS permissiva / `SECURITY DEFINER` sem authz / identidade vinda do cliente** | 🔴 Crítico | P02, P09, P10, P11, P12 |
 
 Além disso, três temas de **gravidade alta** recorrentes:
 
 - **T6 — XSS persistente na impressão:** HTML montado por concatenação e injetado em `iframe.srcdoc` **sem `sandbox`** e sem `escapeHtml`, com dados vindos do banco (P01, P03, P04). Mais injeção de comandos **ZPL** nas etiquetas térmicas (P01).
-- **T7 — Truncamento silencioso apresentado como "completo":** `limit(500)`, limite padrão de 1.000 linhas do PostgREST, `Math.min(…, 2000)` — sem aviso de corte (P03, P08, P09).
-- **T8 — "Falha vira verde":** telas de diagnóstico/auditoria convertem erro de query em array vazio e o interpretam como "nenhuma inconsistência" (P03, P04, P12); `SystemMonitor` exibe `Math.random()` como telemetria de produção (P12).
+- **T7 — Truncamento silencioso apresentado como "completo":** `limit(500)`, limite padrão de 1.000 linhas do PostgREST, `Math.min(…, 2000)`, `limit(5000)` — sem aviso de corte (P03, P06, P08, P09).
+- **T8 — "Falha vira verde":** telas de diagnóstico/auditoria convertem erro de query em array vazio e o interpretam como "nenhuma inconsistência" (P03, P04, P06, P11, P12); `SystemMonitor` exibe `Math.random()` como telemetria de produção (P12).
+
+### Concorrência sem lock (subconjunto de T4, alto volume)
+Um padrão específico e perigoso dentro de T4: **read-modify-write no cliente** sem lock/incremento atômico em saldos e contadores. Aparece em bipagem de picking (`picked_qty + 1`), ajuste de estoque, conciliação bancária, grade de solado com total igual, pagamentos de folha e recebimento de OC. Todos perdem escrita sob duas abas / dois operadores. Correção comum: RPC de incremento atômico com `FOR UPDATE`.
 
 **Recomendação estratégica:** priorizar T1–T5 porque corrompem **dado financeiro e de estoque** de forma cumulativa e difícil de reverter. T1, T2 e T3 têm correção pontual e alto retorno (uma função central cada). T4 e T5 exigem consolidar mutações em RPCs transacionais/idempotentes com autorização e `auth.uid()` server-side — trabalho maior, mas é a causa-raiz de dezenas de achados.
 
@@ -270,4 +273,49 @@ Cada seção abaixo preserva a ordenação Crítico → Baixo da fatia correspon
 
 ---
 
-<!-- P06 e P11 inseridos após reexecução -->
+### P06 · Estoque, grupos, solados, MRP, receitas, picking
+
+**Resumo:** caminhos críticos alteram saldo/reserva/custo fora dos invariantes transacionais; picking pode ser encerrado sem baixa; bipagem perde unidades sob concorrência; largura mm×dm infla até 100×; perda de saldo por conjugação e sobrescrita concorrente de grades.
+
+- 🔴 **Largura mm usada como dm infla conversões/custos em 100×** — `ProductFormDialog.tsx:799-1743`; `MrpProjectionsTab.tsx:124-132`; `MrpNeedsTable.tsx:40-52`; `purchaseConversion.ts:44-132`. `effectiveConversionFactor` assume `dm` sem unidade; form grava `conversion_rate = 10×largura` sem normalizar. Napa 1.400 mm → `1 m = 14.000 dm²` (correto 140). **Fix:** propagar `dimensions_unit`; centralizar em `widthInDm`; bloquear fator automático sem largura/unidade. *Confirmado.* (ver T2)
+- 🔴 **Editor de variante altera `quantity`/`reserved_stock` direto, sem RPC nem trilha** — `MasterVariantDialog.tsx:85-242`; `useProducts.ts:162-179`. Contorna a proteção do hook padrão (que remove `quantity`/`stock_grade`). Pode zerar `reserved_stock` com reservas ativas → MRP vê comprometido como livre. **Fix:** remover qty/reserva do editor; ajuste por RPC; `reserved_stock` derivado das reservas. *Confirmado.* (ver T4)
+- 🔴 **Baixa manual permite consumir material já reservado** — `ManualStockOutDialog.tsx:33-121`; mig `20260819120000:33-65`. Valida contra `quantity`, não `quantity − reserved_stock`; `adjust_stock` idem. 100 estoque/90 reservado → baixa de 50 aceita → disponível negativo. **Fix:** validar na RPC sob lock que saída comum não reduza abaixo de `reserved_stock`. *Confirmado.*
+- 🔴 **Sessão de picking finalizável sem efetivar a baixa** — `Picking.tsx:163-288`; mig `20260613120000:202-212`. "Finalizar" vai a `concluida` sem exigir `stock_committed_at`; depois esconde "Dar baixa". 10 unidades conferidas concluem sem debitar. **Fix:** transição via RPC que faça/valide o commit; banco rejeita `picked_qty > committed_qty`. *Confirmado.*
+- 🔴 **Bipagem de picking perde unidades em concorrência** — `Picking.tsx:387-400`. `picked_qty + 1` calculado no cliente, sem incremento atômico. Duas bipagens leem 0, gravam 1 → some 1 unidade. **Fix:** RPC de incremento atômico. *Confirmado.* (ver T4/concorrência)
+- 🟠 **Remover conjugação abandona saldo no bucket antigo** — `SoleSizeConjugationsEditor.tsx:144-239`; `SoleConjugationPanel.tsx:118-155`; `SoladoGradeDialog.tsx:495-520`. Excluir `"33/34"` não migra o saldo p/ 33 e 34 → 12 pares viram zero. **Fix:** bloquear remoção com saldo; realocar por RPC. *Confirmado.*
+- 🟠 **Concorrência de grade não detecta redistribuição com total igual** — `StockAdjustmentPage.tsx:275-612`; mig `20260819120000:38-65`. Conflito só por `quantity`; dois movimentos de mesmo total sobrescrevem o JSON. **Fix:** versionar a grade (hash/updated_at) e validar sob `FOR UPDATE`. *Confirmado.*
+- 🟠 **RPC de picking incompatível com solado graduado** — `Picking.tsx:651-669`; migs `20260613120000:152-168`, `20260620310000:24-33`. `commit_picking_session` reduz só `quantity`, não `stock_grade` → trigger de coerência aborta. **Fix:** proibir solado graduado genérico ou debitar grade+quantity juntas. *Confirmado.*
+- 🟠 **Consumo de fachete não pode ser zerado** — `SolesCadastroTab.tsx:348-827`. Form remove linhas `dm2<=0`; mutation nunca zera/apaga as existentes. 0,25 dm²/par permanece e é reservado/custeado. **Fix:** enviar grade completa com zero ou excluir explicitamente. *Confirmado.*
+- 🟠 **Cópia de materiais padrão pode apagar BOM parcialmente** — `SoleStandardMaterialsEditor.tsx:207-305`. Delete antes do insert, sem validar; cópia p/ vários solados em requests sequenciais. **Fix:** RPC por destino, delete+insert na mesma transação. *Confirmado.*
+- 🟠 **Operações de hierarquia de grupos não são atômicas** — `useGroups.ts:107-146`; `useGroupOrganization.ts:129-145`. Desvincula fichas/produtos antes do delete final; família criada antes de mover. **Fix:** encapsular em RPCs transacionais. *Confirmado.*
+- 🟠 **Diálogo "adicionar item ao picking" consulta colunas inexistentes e esconde o erro** — `Picking.tsx:150-698`. Seleciona `code`/`ean` que `products` não tem; erro ignorado → lista vazia. **Fix:** usar `sku`; propagar `error`. *Confirmado.* (ver T8)
+- 🟡 **Salvar receita artesanal com várias bases pode persistir só parte** — `ArtisanalRecipes.tsx:161-229`. Updates/inserts/deletes sequenciais sem transação. **Fix:** RPC transacional que substitua o conjunto de bases. *Confirmado.*
+- 🟡 **Painel de reservas mostra totais incompletos acima de 5.000 produtos** — `StockReservations.tsx:148-162`. `limit(5000)` tratado como universo completo. **Fix:** paginar + agregar no banco. *Confirmado.* (ver T7)
+
+---
+
+### P11 · Logística, transporte, entrega própria
+
+**Resumo:** RLS aberta na frota/entrega própria; cubagem que subdimensiona carga; romaneio que registra volume mas não efetiva a expedição do PV (reaparece em fluxos posteriores); rotas próprias não-atômicas, roteirizáveis sem status de expedição e concluíveis com paradas pendentes; dois cadastros de "transportadora" incompatíveis.
+
+- 🔴 **RLS de frota e entrega própria libera tudo p/ qualquer autenticado** — mig `20260512120000_own-delivery-module.sql:182-197`. 5 tabelas com `FOR ALL TO authenticated USING(true) WITH CHECK(true)`. Expõe CNH/telefone de motorista; qualquer um edita veículos/rotas/preço de combustível. **Fix:** escopo por dono/empresa + RLS por `auth.uid()`; operações sensíveis por RPC. *Confirmado.* (ver T5)
+- 🔴 **Cubagem usa a capacidade do baú como se fosse a quantidade solicitada** — `OrderTransportCalculator.tsx:79-128`; `packingCalculator.ts:113-120`. `calculatePacking` retorna `best.total` quando a demanda excede a capacidade, sem marcar falha nem calcular viagens. 500 pares (42 caixas) num baú de 10 → calcula 10. **Fix:** separar solicitado/capacidade/viagens; `fits:false` + volume total na recomendação/frete. *Confirmado.*
+- 🔴 **Adicionar volume ao romaneio não registra a expedição do pedido** — `Manifests.tsx:420-450`. Insere só em `shipping_volumes`; não chama `register_order_shipment` nem muda status/`shipped_at` do PV. Romaneio vai a `entregue` com PV ainda `Faturado` → reaparece / dupla expedição. **Fix:** RPC transacional que bloqueie o PV, valide NF/status e faça a transição. *Confirmado.* (ver T4)
+- 🔴 **Rota própria não mantém pedido e paradas consistentes** — `useDeliveryRoutes.ts:139-258`. `useOwnDeliveryOrders` não filtra status do PV; `useUpdateRouteStatus` altera só `delivery_routes.status`, não paradas/`delivered_at`/estado do pedido. Rota "concluída" com paradas `pending`. **Fix:** restringir a status prontos p/ expedição + RPC de transição atômica. *Confirmado.*
+- 🔴 **Criação de rota e paradas não é atômica nem impede PV duplicado** — `useDeliveryRoutes.ts:103-124`; mig `20260512120000:80-98`. Rota e paradas em chamadas separadas; sem restrição de PV em 2 rotas ativas. **Fix:** RPC transacional com `FOR UPDATE` nos PVs + regra no banco. *Confirmado.*
+- 🟠 **Alerta de sobrecarga não bloqueia salvar a rota** — `RoutePlannerOwn.tsx:99-434`. `exceedsCapacity` só muda o aviso; `canSubmit` não exige `!exceedsCapacity`. Veículo 1.000 kg / carga 1.200 kg salva. **Fix:** bloquear salvar com sobrecarga; override auditado se necessário. *Confirmado.*
+- 🟠 **Recalcular totais do romaneio pode gravar zero após erro de leitura** — `Manifests.tsx:203-223`. Leitura de `shipping_volumes` ignora `error` → `undefined` → totais zero → `update` também ignora erro. **Fix:** propagar erros; agregação por RPC. *Confirmado.* (ver T8)
+- 🟠 **Permissões granulares não protegem mutações de romaneio/transporte** — `Manifests.tsx:252-274`; `Transport.tsx:108-204`. Botões usam `editable`, não `perm.canEdit`; Transporte não usa `useCan`. Usuário "consulta" avança status / edita cadastros. **Fix:** `canCreate/canEdit/canDelete` + RLS/RPC. *Confirmado.* (ver T5)
+- 🟠 **"Transportadoras" da aba Transporte e do romaneio são cadastros incompatíveis** — `useTransport.ts:182-200`; `Manifests.tsx:577-600`. Transporte grava `transport_companies`; romaneio usa `transporters`; sem sincronização. **Fix:** unificar numa tabela canônica ou integrar explicitamente. *Confirmado.*
+- 🟠 **Campo `responsavel` provavelmente quebra salvar transportadora em produção** — `Transport.tsx:584-658`; `useTransport.ts:196-201`; `types.ts:22737-22788`. Payload sempre inclui `responsavel`, mas `transport_companies` (tipo gerado) não tem essa coluna; TS loose deixa passar. **Fix:** adicionar coluna+regenerar tipos ou remover o campo. *Suspeita — confirmar em `information_schema.columns` de produção.*
+- 🟡 **Comparação de fretes faz 1 consulta por transportadora** — `OrderTransportCalculator.tsx:621-648`. Cada `CarrierRateCard` chama `useTransportCompanyRates(id)` → waterfall de N queries. **Fix:** buscar todas as tarifas numa query e mapear por `transport_company_id`. *Confirmado.*
+
+---
+
+## Apêndice — Metodologia e limitações
+
+- **Cobertura:** 12 fatias cobrindo todo `src/` exceto `src/integrations/supabase/types.ts` (gerado). Cada fatia recebeu o mesmo prompt e leu os arquivos reais em sandbox read-only.
+- **Falsos positivos possíveis:** achados que citam migrations com data **> 28/07/2026** (ex.: `CHECK conversion_rate > 0` em `20260814…`, `payroll-payments` em `20260901…`) estão marcados **Suspeita** — confirmar o estado real no banco de produção antes de agir, conforme a regra do projeto "a verdade é o banco, não os arquivos de migration".
+- **Nota de escopo:** `src/pages/OutsourcedInField.tsx` (listado na fatia P10) não existe no workspace; foi ignorado.
+- **Não coberto por este sweep:** as ~1257 migrations SQL como corpo isolado, e a paridade fina entre os motores SQL (`calculate_order_consumption*`) e o motor TS — vários achados aqui (T1, T2, `sole_consumption`) já apontam divergências SQL↔TS que merecem uma auditoria SQL dedicada via MCP do Supabase.
+- **Reprodutibilidade:** relatórios por fatia preservados em `scratchpad/audit/reports/P01…P12.md` (sessão).
