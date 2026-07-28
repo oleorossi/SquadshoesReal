@@ -116,3 +116,21 @@
 2. **OC da onda com PV + `purchase_by_date`** (Crítico #2) e **recalcular OC ao mudar prazo** (Alto #7) — pra a compra realmente respeitar o lead time.
 3. **Faturamento não finaliza sem baixa** (Crítico #3) e **1 dono do consumo, por setor** (Alto #5) — integridade do estoque.
 4. **OS artesanal debita atômico** (Alto #6) e **matriz de débito por categoria/evento** (Alto embalagem).
+
+---
+
+## Status (28/07/2026, fim do dia)
+
+| Item | Situação |
+|---|---|
+| **Crítico #1** — `planned_start` ignora material | ✅ **Fechado.** `orders` ganhou `planned_start_capacity` (regressivo puro) e `material_ready_date`; `planned_start = GREATEST(as duas)`. `recompute_material_gate_for_sale_orders()` calcula por PV pelo motor canônico e roda na aprovação e na promoção pra produção. Central de Produção sinaliza. Mig `20261015120000`. |
+| **Crítico #2** — OC da onda sem PV/prazo | ✅ Fechado no batch 3 (commit `48a2cc8`). |
+| **Crítico #3** — faturamento encerra sem baixa | ✅ **Fechado por outro caminho.** Bloquear contraria decisão explícita do dono (PV-67) e o débito parcial já existia; o que faltava era **fechar** o furo. `reconcile_stock_debit_hole()` faz a baixa compensatória e o botão "Reconciliar" está em /diagnostics. Mig `20261016120000`. |
+| **Alto #4** — duas explosões incompatíveis | ✅ `compute_material_ready_date` converte dm²→física (batch 5, `82bf8c7`); o gate do Crítico #1 usa direto o `get_wave_material_needs_core`. |
+| **Alto #5** — dois donos do consumo | ⚠️ **Parcial.** A corrida entre eles foi fechada (lock único `stock_debit:<op>` em `convert_reservation_to_out`, `consume_all_reservations_for_order` e `reconcile_stock_debit_hole`). **Continua em aberto** o desenho maior: consumo por SETOR no apontamento — `apontar_producao_setor` segue sem tocar estoque. |
+| **Alto #6** — OS artesanal sem débito | ✅ Fechado no batch 3 (`48a2cc8`). |
+| **Alto #7** — `purchase_by_date` estático | ✅ Fechado no batch 3 (`48a2cc8`). |
+| **Alto** — embalagem baixa cedo | ❌ Em aberto (matriz categoria×evento). |
+| **Médio** — Wizard cai pra data de entrega | ❌ Em aberto. |
+| **Médio** — UI trata `material_ready_date` como ETA | ⚠️ O rótulo do WaveBuilder já é "Material requerido até"; falta mostrar ETA/recebimento real por OC. |
+| **Médio** — três calendários divergentes | ❌ Em aberto (é o trabalho de fundo: 1 motor de calendário por OP). |

@@ -33,6 +33,22 @@ Um padrão específico e perigoso dentro de T4: **read-modify-write no cliente**
 
 **Recomendação estratégica:** priorizar T1–T5 porque corrompem **dado financeiro e de estoque** de forma cumulativa e difícil de reverter. T1, T2 e T3 têm correção pontual e alto retorno (uma função central cada). T4 e T5 exigem consolidar mutações em RPCs transacionais/idempotentes com autorização e `auth.uid()` server-side — trabalho maior, mas é a causa-raiz de dezenas de achados.
 
+### Status por batch (28/07/2026, fim do dia)
+
+| Batch | Escopo | Situação |
+|---|---|---|
+| Onda 0 | Contenção de segurança (anon RLS, guard fail-open, crash de Hooks, XSS de impressão) | ✅ `1d51d1f`, `6f89546` |
+| 1 | 11 bugs de frontend independentes (inclui `SystemMonitor` sem `Math.random` e `SystemDiagnostics` que não pinta erro de verde — **T8**) | ✅ `a1135b3` |
+| 2 | Dedup/integridade (drop de backup, UNIQUE de invoice/parcela) | ✅ `7adfa78` |
+| 3 | Planejamento: OC da onda com PV+prazo, OS artesanal debita, gates da onda | ✅ `48a2cc8` |
+| 4-RH | Cálculo de folha/ponto + RLS por papel | ✅ `b433cb5`, `05ca849` |
+| 5 | **T1** (`conversion_rate = 0` fail-closed + CHECK) e **T2** (dm²/largura obrigatória) | ✅ `e9c1a69`, `0e66af0`, `82bf8c7` |
+| 6 | Permissões: RLS de clients, gates de edição | ✅ `a51d3f3`, `93e8a8b` |
+| 7 | **T6** (sandbox nos 8 iframes de print restantes, `safeUrlAttr` em 15 arquivos, injeção ZPL via `^FH`) e **T7** (paginação de `v_time_pendings` e reservas, aviso de corte nas etiquetas) | ✅ `276758f` + guards em `printSecurity.test.ts` |
+| — | **T4/concorrência**: bipagem de picking, movimento manual por delta, guarda do reservado na baixa manual | ✅ mig `20261017120000` |
+
+**Em aberto (não iniciado):** **T3** (escala de grade com `Math.round` por número — `scaleGradeWithLargestRemainder` já existe e é usado em 11 arquivos, falta varrer os demais); o restante de **T4/concorrência** (conciliação bancária, pagamentos de folha, recebimento de OC, matriz do grupo econômico, OC a partir de cotação); **T5** residual; e o desenho de consumo por setor.
+
 ---
 
 ## Temas transversais (detalhe + plano de correção)
