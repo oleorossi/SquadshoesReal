@@ -1894,61 +1894,10 @@ export function useUpdateSaleOrder() {
         throw new Error('Não é possível salvar um pedido sem itens.');
       }
 
-      // 2. Desmonta as OPs órfãs/de item removido ANTES da RPC — nesta ordem
-      //    porque o banco agora RECUSA apagar item com OP ativa
-      //    (trg_block_item_delete_with_active_op): se a OP não sair primeiro, o
-      //    DELETE do item estoura em vez de orfanar em silêncio. É a trava
-      //    funcionando, não um erro.
-      //    All OPs at this point are Reservado or earlier (enforced by guard 0a).
-      //    Sole grade restoration must precede product restoration — otherwise
-      //    conjugated per-size buckets stay depleted (silent stock corruption).
-      if (existingOPs && existingOPs.length > 0) {
-        for (const op of existingOPs) {
-          // Rascunho and Cancelada OPs never had stock debited — skip restore
-          // to avoid spuriously inflating sole-grade buckets (restore_sole_grade_for_order is NOT idempotent).
-          const hadStock = !['Rascunho', 'Cancelada'].includes((op as any).status);
-          if (!hadStock) continue;
-          // release_order_reservations cleans reservation_batches (no FK CASCADE);
-          // must run before the stock restores to maintain canonical order.
-          const { error: relErr } = await (supabase as any).rpc('release_order_reservations', { p_order_id: op.id });
-          if (relErr && !/does not exist|not found/i.test(relErr.message)) {
-            throw new Error(`Falha ao liberar reservas da OP ${op.id}: ${relErr.message}`);
-          }
-          const { error: soleErr } = await (supabase as any).rpc('restore_sole_grade_for_order', { p_order_id: op.id });
-          if (soleErr && !/does not exist|not found/i.test(soleErr.message)) {
-            throw new Error(`Falha ao restaurar grade do solado da OP ${op.id}: ${soleErr.message}`);
-          }
-          const { error: restoreErr } = await (supabase as any).rpc('restore_product_stocks_for_order', { p_order_id: op.id });
-          if (restoreErr) throw new Error(`Falha ao estornar estoque da OP ${op.id}: ${restoreErr.message}`);
-        }
-
-        const { error: stagesError } = await supabase
-          .from('order_stages')
-          .delete()
-          .in('order_id', existingOpIds);
-        if (stagesError) throw stagesError;
-
-        const { error: consumptionsError } = await supabase
-          .from('production_consumptions')
-          .delete()
-          .in('order_id', existingOpIds);
-        if (consumptionsError) throw consumptionsError;
-
-        const { error: detachMovementsError } = await supabase
-          .from('stock_movements')
-          .update({ order_id: null })
-          .in('order_id', existingOpIds);
-        if (detachMovementsError) throw detachMovementsError;
-
-        const { error: deleteOpsError } = await supabase
-          .from('orders')
-          .delete()
-          .in('id', existingOpIds);
-        if (deleteOpsError) throw deleteOpsError;
-      }
-
-      // 3. Atomic header + items replace — single SQL transaction with SELECT FOR UPDATE.
-      // OPs are already gone so the replace cannot leave orphaned OP→item references.
+      // 2. The database tears down these orphaned/removed-item OPs and applies
+      //    the header/items replace in one transaction. This preserves the
+      //    canonical reservation → sole grade → product stock order while
+      //    preventing a failed request from leaving a partial teardown.
       const itemsPayload = items.map(i => ({
         // Manda o id quando o item já existe → a RPC faz UPDATE no lugar.
         // Sem isto o item seria recriado e todo vínculo se romperia.
@@ -1971,10 +1920,11 @@ export function useUpdateSaleOrder() {
       // useUpdateSaleOrderStatus which enforces the state machine. Including
       // status here would let the edit form bypass all status-change guards.
       const { status: _discardedStatus, ...headerForRpc } = updateData as any;
-      const { data: rpcOut, error: rpcErr } = await (supabase as any).rpc('update_sale_order_atomic', {
+      const { data: rpcOut, error: rpcErr } = await (supabase as any).rpc('update_sale_order_with_teardown', {
         p_order_id: id,
         p_header: headerForRpc,
         p_items: itemsPayload,
+        p_teardown_op_ids: existingOpIds,
       });
       if (rpcErr) throw rpcErr;
 
