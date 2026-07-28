@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { StatusPill, canonicalStatusToKey } from '@/components/ui/badges';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 
 import { useOrders, useCreateOrder, useDeleteOrder, useCheckStockAvailability, useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useTechnicalSheets, useSheetMaterials } from '@/hooks/useTechnicalSheets';
@@ -1507,6 +1508,7 @@ function getWeekOptions() {
                                   <span className="text-xs text-muted-foreground font-mono">{order.quantity} pares</span>
                                   {so && <span className="text-xs text-muted-foreground">• {so.client_name} — Ped. {so.order_number}</span>}
                                   <StatusPill status={canonicalStatusToKey(order.status)} />
+                                  <MaterialReservationErrorBadge materialStatus={order.material_status} notes={order.notes} />
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" aria-label="Editar" onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}/edit`); }}>
@@ -1587,6 +1589,7 @@ function getWeekOptions() {
                               </span>
                             )}
                             <StatusPill status={canonicalStatusToKey(order.status)} />
+                            <MaterialReservationErrorBadge materialStatus={order.material_status} notes={order.notes} />
                             {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                           </div>
                           <div className="flex items-center gap-1">
@@ -1669,6 +1672,7 @@ function getWeekOptions() {
                               )}
                               {(() => { const so = saleOrderById.get((order as any).sale_order_id); return so ? <span className="text-xs text-muted-foreground">• {so.client_name} — Ped. {so.order_number}</span> : null; })()}
                               <StatusPill status={canonicalStatusToKey(order.status)} />
+                              <MaterialReservationErrorBadge materialStatus={order.material_status} notes={order.notes} />
                               {(order as any).due_date && (() => {
                                 // Normaliza ambas as datas para meia-noite local antes de comparar.
                                 const dueRaw = new Date((order as any).due_date);
@@ -1772,6 +1776,7 @@ function getWeekOptions() {
                                   </span>
                                 )}
                                 <StatusPill status={canonicalStatusToKey(order.status)} />
+                                <MaterialReservationErrorBadge materialStatus={order.material_status} notes={order.notes} />
                                 {hasStages && <SectorProgressDots completed={completedStages} total={totalStages} />}
                               </div>
                               <div className="flex items-center gap-1">
@@ -1861,6 +1866,7 @@ function getWeekOptions() {
                         <div className="flex items-center gap-3 flex-wrap">
                           <span className="font-mono text-base font-bold">{(order as any).order_number || '—'}</span>
                           <StatusPill status={canonicalStatusToKey(order.status)} />
+                          <MaterialReservationErrorBadge materialStatus={order.material_status} notes={order.notes} />
                         </div>
                         <div className="text-sm space-y-0.5">
                           <p><strong>Referência:</strong> {ref?.code} — {ref?.name}</p>

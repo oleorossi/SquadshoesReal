@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -1192,10 +1193,14 @@ export default function SaleOrders() {
     setSelectedOrder(order);
     setDetailDialogOpen(true);
     setLoadingOrderItems(true);
-    const { data: items, error } = await supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', order.id).order('created_at', { ascending: true });
-    
-    if (error) {
-      toast.error(`Erro: ${error.message}`);
+    const [itemsResult, productionOrdersResult] = await Promise.all([
+      supabase.from('sale_order_items').select('*, technical_sheets(name, code, image_url, images)').eq('sale_order_id', order.id).order('created_at', { ascending: true }),
+      supabase.from('orders').select('id, sale_order_item_id, material_status, notes').eq('sale_order_id', order.id),
+    ]);
+    const { data: items, error } = itemsResult;
+
+    if (error || productionOrdersResult.error) {
+      toast.error(`Erro: ${(error || productionOrdersResult.error)?.message}`);
       setSelectedOrderItems([]);
     } else {
       // Fetch color variant images
@@ -1204,7 +1209,8 @@ export default function SaleOrders() {
       
       const mappedItems = (items || []).map(item => {
         const variant = colorVariants?.find(v => v.reference_id === item.reference_id && v.color === item.color);
-        return { ...item, variant_image_url: variant?.image_url || '' };
+        const productionOrders = (productionOrdersResult.data || []).filter(op => op.sale_order_item_id === item.id);
+        return { ...item, variant_image_url: variant?.image_url || '', productionOrders };
       });
       // Sort by reference (code/name) then by color so items of the same reference appear together
       mappedItems.sort((a: any, b: any) => {
@@ -2702,7 +2708,16 @@ export default function SaleOrders() {
                                     )}
                                   >
                                     <div className="min-w-0">
-                                      <p className="text-sm font-semibold">{item.color || '—'}</p>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-semibold">{item.color || '—'}</p>
+                                        {(item.productionOrders || []).map((op: any) => (
+                                          <MaterialReservationErrorBadge
+                                            key={op.id}
+                                            materialStatus={op.material_status}
+                                            notes={op.notes}
+                                          />
+                                        ))}
+                                      </div>
                                       {(item.strap_colors as any[])?.length > 0 && (
                                         <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
                                           <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>

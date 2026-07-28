@@ -19,6 +19,7 @@ import { Funnel as Filter, Plus, Warning as AlertTriangle } from '@phosphor-icon
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { OrderStage } from '@/hooks/useOrderStages';
+import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 
 type Order = {
   id: string;
@@ -31,6 +32,8 @@ type Order = {
   reference_id?: string | null;
   technical_sheets?: { name?: string | null } | null;
   sale_order_id?: string | null;
+  material_status?: string | null;
+  notes?: string | null;
 };
 
 interface Props {
@@ -295,6 +298,15 @@ export default function OrdersKanbanBoard({
                             </span>
                           )}
                         </div>
+
+                        {order.material_status === 'erro_reserva' && (
+                          <div className="mt-1.5">
+                            <MaterialReservationErrorBadge
+                              materialStatus={order.material_status}
+                              notes={order.notes}
+                            />
+                          </div>
+                        )}
 
                         {/* Reference name */}
                         <div className="text-xs font-semibold mt-2 leading-tight truncate text-foreground">
