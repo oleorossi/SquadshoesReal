@@ -103,6 +103,7 @@ export default function Clients() {
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
 
   const handleSyncCnpj = async () => {
+    if (!perm.canEdit) return;
     setIsSyncingCnpj(true);
     try {
       const { data, error } = await supabase.functions.invoke('sync-cnpj-addresses', { body: {} });
@@ -164,6 +165,7 @@ export default function Clients() {
 
   const openAddClient = () => { setEditingClient(null); setForm(emptyClient); setClientDialog(true); };
   const openEditClient = (c: Client) => {
+    if (!perm.canEdit) return;
     setEditingClient(c);
     const { id, created_at, updated_at, ...rest } = c;
     setForm(rest as ClientFormData);
@@ -178,6 +180,7 @@ export default function Clients() {
       return;
     }
     if (editingClient) {
+      if (!perm.canEdit) return;
       updateClient.mutate({ id: editingClient.id, data: form });
     } else {
       createClient.mutate(form);
@@ -213,6 +216,7 @@ export default function Clients() {
     setGroupDialog(true); 
   };
   const openEditGroup = (g: EconomicGroup) => {
+    if (!perm.canEdit) return;
     setEditingGroup(g);
     setGroupForm({ 
       name: g.name, 
@@ -230,6 +234,7 @@ export default function Clients() {
     e.preventDefault();
     // Fecha só no sucesso — falha mantém o dialog aberto com os dados digitados.
     if (editingGroup) {
+      if (!perm.canEdit) return;
       updateGroup.mutate({ id: editingGroup.id, data: groupForm }, { onSuccess: () => setGroupDialog(false) });
     } else {
       createGroup.mutate(groupForm, { onSuccess: () => setGroupDialog(false) });
@@ -254,7 +259,7 @@ export default function Clients() {
   };
 
   const handleAddStoresToGroup = async () => {
-    if (!editingGroup || selectedStoreIds.length === 0) return;
+    if (!perm.canEdit || !editingGroup || selectedStoreIds.length === 0) return;
     // Parallelize linking — sequential loop hung the page on dozens of stores.
     const results = await Promise.allSettled(
       selectedStoreIds.map(id =>
@@ -272,6 +277,7 @@ export default function Clients() {
   };
 
   const handleRemoveFromGroup = (clientId: string) => {
+    if (!perm.canEdit) return;
     updateClient.mutate({ id: clientId, data: { economic_group_id: null } });
   };
 
@@ -352,10 +358,12 @@ export default function Clients() {
                 totalCount={clients.length}
               />
               <div className="flex gap-2">
-                <Button variant="outline" onClick={handleSyncCnpj} disabled={isSyncingCnpj} className="gap-2">
-                  <RefreshCw className={cn("h-4 w-4", isSyncingCnpj && "animate-spin")} />
-                  {isSyncingCnpj ? 'Sincronizando...' : 'Atualizar CNPJ'}
-                </Button>
+                {perm.canEdit && (
+                  <Button variant="outline" onClick={handleSyncCnpj} disabled={isSyncingCnpj} className="gap-2">
+                    <RefreshCw className={cn("h-4 w-4", isSyncingCnpj && "animate-spin")} />
+                    {isSyncingCnpj ? 'Sincronizando...' : 'Atualizar CNPJ'}
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setExcelDialog(true)} className="gap-2">
                   <FileUp className="h-4 w-4" />Importar Arquivo
                 </Button>
@@ -454,8 +462,8 @@ export default function Clients() {
                                 key={c.id}
                                 data-marquee-item
                                 data-marquee-id={c.id}
-                                className={cn("group cursor-pointer hover:bg-muted/50 transition-colors", !c.active && "opacity-50", sel.isSelected(c.id) && "bg-primary/5 hover:bg-primary/10")}
-                                onClick={(e) => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditClient(c); }}
+                                className={cn("group transition-colors", perm.canEdit && "cursor-pointer hover:bg-muted/50", !c.active && "opacity-50", sel.isSelected(c.id) && "bg-primary/5 hover:bg-primary/10")}
+                                onClick={perm.canEdit ? (e) => { if ((e.target as HTMLElement).closest('button,[role="checkbox"]')) return; openEditClient(c); } : undefined}
                               >
                                 <TableCell onClick={(e) => e.stopPropagation()}>
                                   <Checkbox
@@ -467,9 +475,11 @@ export default function Clients() {
                                 <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">{(c as any).client_number || '—'}</TableCell>
                                 <TableCell className="font-medium">
                                   <div className="flex items-center gap-1.5">
-                                    <button onClick={(e) => { e.stopPropagation(); updateClient.mutate({ id: c.id, data: { is_favorite: !c.is_favorite } }); }} className="shrink-0">
-                                      <Star className={cn("h-4 w-4 transition-colors", c.is_favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30 hover:text-amber-300")} />
-                                    </button>
+                                    {perm.canEdit && (
+                                      <button onClick={(e) => { e.stopPropagation(); updateClient.mutate({ id: c.id, data: { is_favorite: !c.is_favorite } }); }} className="shrink-0">
+                                        <Star className={cn("h-4 w-4 transition-colors", c.is_favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30 hover:text-amber-300")} />
+                                      </button>
+                                    )}
                                     <div>
                                       <div>{c.razao_social}</div>
                                       {c.nome_fantasia && <div className="text-xs text-muted-foreground">{c.nome_fantasia}</div>}
@@ -487,7 +497,7 @@ export default function Clients() {
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditClient(c)} aria-label="Editar cliente"><Pencil className="h-4 w-4" /></Button>
+                                    {perm.canEdit && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditClient(c)} aria-label="Editar cliente"><Pencil className="h-4 w-4" /></Button>}
                                     {perm.canDelete && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteClientId(c.id)} aria-label="Excluir cliente"><Trash2 className="h-4 w-4" /></Button>}
                                   </div>
                                 </TableCell>
@@ -541,9 +551,11 @@ export default function Clients() {
                           <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">{g.group_number || '—'}</TableCell>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-1.5">
-                              <button onClick={(e) => { e.stopPropagation(); updateGroup.mutate({ id: g.id, data: { name: g.name, description: g.description || '', is_favorite: !g.is_favorite } as any }); }} className="shrink-0">
-                                <Star className={cn("h-4 w-4 transition-colors", g.is_favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30 hover:text-amber-300")} />
-                              </button>
+                              {perm.canEdit && (
+                                <button onClick={(e) => { e.stopPropagation(); updateGroup.mutate({ id: g.id, data: { name: g.name, description: g.description || '', is_favorite: !g.is_favorite } as any }); }} className="shrink-0">
+                                  <Star className={cn("h-4 w-4 transition-colors", g.is_favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30 hover:text-amber-300")} />
+                                </button>
+                              )}
                               {g.name}
                             </div>
                           </TableCell>
@@ -554,7 +566,7 @@ export default function Clients() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir 360°" aria-label="Abrir visão 360° do grupo econômico" onClick={() => navigate(`/grupos-economicos/${g.id}`)}><ExternalLink className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Edição rápida" aria-label="Edição rápida do grupo econômico" onClick={() => openEditGroup(g)}><Pencil className="h-4 w-4" /></Button>
+                              {perm.canEdit && <Button variant="ghost" size="icon" className="h-8 w-8" title="Edição rápida" aria-label="Edição rápida do grupo econômico" onClick={() => openEditGroup(g)}><Pencil className="h-4 w-4" /></Button>}
                               {perm.canDelete && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteGroupId(g.id)} aria-label="Excluir grupo econômico"><Trash2 className="h-4 w-4" /></Button>}
                             </div>
                           </TableCell>
@@ -658,9 +670,11 @@ export default function Clients() {
                 <TabsContent value="lojas" className="mt-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">{groupClients.length} loja(s) neste grupo</p>
-                    <Button type="button" size="sm" className="gap-1.5" onClick={() => { setStoreSearch(''); setSelectedStoreIds([]); setAddStoreDialog(true); }}>
-                      <Store className="h-4 w-4" />Adicionar Loja
-                    </Button>
+                    {perm.canEdit && (
+                      <Button type="button" size="sm" className="gap-1.5" onClick={() => { setStoreSearch(''); setSelectedStoreIds([]); setAddStoreDialog(true); }}>
+                        <Store className="h-4 w-4" />Adicionar Loja
+                      </Button>
+                    )}
                   </div>
                   {groupClients.length > 0 ? (
                     <div className="rounded-md border divide-y max-h-48 overflow-y-auto">
@@ -670,9 +684,11 @@ export default function Clients() {
                             <span className="font-medium">{c.razao_social}</span>
                             {c.nome_fantasia && <span className="text-muted-foreground ml-2">({c.nome_fantasia})</span>}
                           </div>
-                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemoveFromGroup(c.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          {perm.canEdit && (
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleRemoveFromGroup(c.id)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -739,7 +755,7 @@ export default function Clients() {
               })
             )}
           </div>
-          {selectedStoreIds.length > 0 && (
+          {perm.canEdit && selectedStoreIds.length > 0 && (
             <div className="flex items-center justify-between pt-2">
               <span className="text-sm text-muted-foreground">{selectedStoreIds.length} selecionada(s)</span>
               <Button onClick={handleAddStoresToGroup} className="gap-1.5">

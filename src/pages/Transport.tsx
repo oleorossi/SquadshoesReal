@@ -28,10 +28,14 @@ import { BRAZILIAN_STATES } from '@/types/transport';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
+import { useCan } from '@/hooks/useAccessControl';
+
+type PermissionGate = ReturnType<typeof useCan>;
 
 export default function Transport() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'capacity';
+  const perm = useCan('/transporte');
 
   const handleTabChange = (value: string) => {
     setSearchParams(value === 'capacity' ? {} : { tab: value }, { replace: true });
@@ -75,7 +79,7 @@ export default function Transport() {
           </TabsList>
 
           <TabsContent value="capacity">
-            <CapacityTab />
+            <CapacityTab perm={perm} />
           </TabsContent>
 
           <TabsContent value="packaging">
@@ -83,7 +87,7 @@ export default function Transport() {
           </TabsContent>
 
           <TabsContent value="carriers">
-            <CarriersTab />
+            <CarriersTab perm={perm} />
           </TabsContent>
 
           <TabsContent value="simulator">
@@ -105,7 +109,7 @@ export default function Transport() {
 
 // ============= CAPACITY TAB =============
 
-function CapacityTab() {
+function CapacityTab({ perm }: { perm: PermissionGate }) {
   const { data: baus = [] } = useBaus();
   const { data: boxTypes = [] } = useBoxTypes();
   const { data: itemTypes = [] } = useItemTypes();
@@ -166,7 +170,7 @@ function CapacityTab() {
   // Fechar/resetar só no sucesso — se a mutation falhar, o dialog continua
   // aberto com o que o usuário digitou.
   const handleSaveBau = () => {
-    if (!bauForm.nome.trim()) return;
+    if (!perm.canCreate || !bauForm.nome.trim()) return;
     addBau.mutate(bauForm, {
       onSuccess: () => {
         setBauDialog(false);
@@ -176,7 +180,7 @@ function CapacityTab() {
   };
 
   const handleSaveBox = () => {
-    if (!boxForm.nome.trim()) return;
+    if (!perm.canCreate || !boxForm.nome.trim()) return;
     addBoxType.mutate(boxForm, {
       onSuccess: () => {
         setBoxDialog(false);
@@ -186,7 +190,7 @@ function CapacityTab() {
   };
 
   const handleSaveItem = () => {
-    if (!itemForm.nome.trim()) return;
+    if (!perm.canCreate || !itemForm.nome.trim()) return;
     addItemType.mutate(itemForm, {
       onSuccess: () => {
         setItemDialog(false);
@@ -196,7 +200,7 @@ function CapacityTab() {
   };
 
   const handleConfirmDelete = () => {
-    if (!deleteDialog) return;
+    if (!perm.canDelete || !deleteDialog) return;
     if (deleteDialog.type === 'bau') deleteBau.mutate(deleteDialog.id);
     else if (deleteDialog.type === 'box') deleteBoxType.mutate(deleteDialog.id);
     else deleteItemType.mutate(deleteDialog.id);
@@ -226,9 +230,11 @@ function CapacityTab() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" onClick={() => setBauDialog(true)}>
-                <Plus className="h-4 w-4" />
-              </Button>
+              {perm.canCreate && (
+                <Button variant="outline" size="icon" onClick={() => setBauDialog(true)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
             </div>
             {selectedBau && (
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -249,12 +255,12 @@ function CapacityTab() {
         <Panel
           eyebrow="LOGÍSTICA · CAPACIDADE"
           title="Tipos de Caixa"
-          actions={
+          actions={perm.canCreate ? (
             <Button variant="outline" size="sm" onClick={() => setBoxDialog(true)}>
               <Plus className="h-4 w-4 mr-1" />
               Nova
             </Button>
-          }
+          ) : undefined}
         >
             <ScrollArea className="h-[200px]">
               <div className="space-y-2">
@@ -271,9 +277,11 @@ function CapacityTab() {
                       <Button size="sm" variant="ghost" onClick={() => handleAddItemToCalculation('box', box.id)}>
                         <Plus className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteDialog({ type: 'box', id: box.id, name: box.nome })}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {perm.canDelete && (
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteDialog({ type: 'box', id: box.id, name: box.nome })}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -288,12 +296,12 @@ function CapacityTab() {
         <Panel
           eyebrow="LOGÍSTICA · CAPACIDADE"
           title="Itens Individuais"
-          actions={
+          actions={perm.canCreate ? (
             <Button variant="outline" size="sm" onClick={() => setItemDialog(true)}>
               <Plus className="h-4 w-4 mr-1" />
               Novo
             </Button>
-          }
+          ) : undefined}
         >
             <ScrollArea className="h-[150px]">
               <div className="space-y-2">
@@ -309,9 +317,11 @@ function CapacityTab() {
                       <Button size="sm" variant="ghost" onClick={() => handleAddItemToCalculation('item', item.id)}>
                         <Plus className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteDialog({ type: 'item', id: item.id, name: item.nome })}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {perm.canDelete && (
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteDialog({ type: 'item', id: item.id, name: item.nome })}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -471,7 +481,7 @@ function CapacityTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBauDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveBau} disabled={addBau.isPending}>{addBau.isPending ? 'Salvando…' : 'Salvar'}</Button>
+            {perm.canCreate && <Button onClick={handleSaveBau} disabled={addBau.isPending}>{addBau.isPending ? 'Salvando…' : 'Salvar'}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -508,7 +518,7 @@ function CapacityTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBoxDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveBox} disabled={addBoxType.isPending}>{addBoxType.isPending ? 'Salvando…' : 'Salvar'}</Button>
+            {perm.canCreate && <Button onClick={handleSaveBox} disabled={addBoxType.isPending}>{addBoxType.isPending ? 'Salvando…' : 'Salvar'}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -541,7 +551,7 @@ function CapacityTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSaveItem} disabled={addItemType.isPending}>{addItemType.isPending ? 'Salvando…' : 'Salvar'}</Button>
+            {perm.canCreate && <Button onClick={handleSaveItem} disabled={addItemType.isPending}>{addItemType.isPending ? 'Salvando…' : 'Salvar'}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -556,9 +566,11 @@ function CapacityTab() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Excluir
-            </AlertDialogAction>
+            {perm.canDelete && (
+              <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -568,7 +580,7 @@ function CapacityTab() {
 
 // ============= CARRIERS TAB =============
 
-function CarriersTab() {
+function CarriersTab({ perm }: { perm: PermissionGate }) {
   const { data: companies = [] } = useTransportCompanies();
   const addCompany = useAddTransportCompany();
   const updateCompany = useUpdateTransportCompany();
@@ -614,6 +626,7 @@ function CarriersTab() {
   }, [companies, search]);
 
   const openNewDialog = () => {
+    if (!perm.canCreate) return;
     setEditingCompany(null);
     setForm({
       nome: '',
@@ -631,6 +644,7 @@ function CarriersTab() {
   };
 
   const openEditDialog = (company: TransportCompany) => {
+    if (!perm.canEdit) return;
     setEditingCompany(company);
     setForm({
       nome: company.nome,
@@ -652,14 +666,16 @@ function CarriersTab() {
     const payload = { ...form };
     // Fecha só no sucesso — falha mantém o dialog aberto com os dados digitados.
     if (editingCompany) {
+      if (!perm.canEdit) return;
       updateCompany.mutate({ id: editingCompany.id, data: payload }, { onSuccess: () => setDialogOpen(false) });
     } else {
+      if (!perm.canCreate) return;
       addCompany.mutate(payload, { onSuccess: () => setDialogOpen(false) });
     }
   };
 
   const handleConfirmDelete = () => {
-    if (!deleteDialog) return;
+    if (!perm.canDelete || !deleteDialog) return;
     deleteCompany.mutate(deleteDialog.id);
     setDeleteDialog(null);
   };
@@ -675,10 +691,12 @@ function CarriersTab() {
           totalCount={companies.length}
           className="flex-1 max-w-sm"
         />
-        <Button onClick={openNewDialog}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Transportadora
-        </Button>
+        {perm.canCreate && (
+          <Button onClick={openNewDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Transportadora
+          </Button>
+        )}
       </div>
 
       <Panel flush>
@@ -715,15 +733,21 @@ function CarriersTab() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" aria-label={`Tarifas por estado de ${company.nome}`} onClick={() => { setSelectedCompanyId(company.id); setRatesDialogOpen(true); }}>
-                      <MapPin className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" aria-label={`Editar ${company.nome}`} onClick={() => openEditDialog(company)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Excluir ${company.nome}`} onClick={() => setDeleteDialog({ id: company.id, name: company.nome })}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {perm.canEdit && (
+                      <>
+                        <Button size="sm" variant="ghost" aria-label={`Tarifas por estado de ${company.nome}`} onClick={() => { setSelectedCompanyId(company.id); setRatesDialogOpen(true); }}>
+                          <MapPin className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" aria-label={`Editar ${company.nome}`} onClick={() => openEditDialog(company)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                    {perm.canDelete && (
+                      <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Excluir ${company.nome}`} onClick={() => setDeleteDialog({ id: company.id, name: company.nome })}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -846,7 +870,7 @@ function CarriersTab() {
 
       {/* Rates Dialog */}
       {selectedCompanyId && (
-        <RatesDialog companyId={selectedCompanyId} open={ratesDialogOpen} onOpenChange={setRatesDialogOpen} />
+        <RatesDialog companyId={selectedCompanyId} open={ratesDialogOpen} onOpenChange={setRatesDialogOpen} perm={perm} />
       )}
 
       {/* Delete Confirmation */}
@@ -860,9 +884,11 @@ function CarriersTab() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Excluir
-            </AlertDialogAction>
+            {perm.canDelete && (
+              <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -872,7 +898,7 @@ function CarriersTab() {
 
 // ============= RATES DIALOG =============
 
-function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+function RatesDialog({ companyId, open, onOpenChange, perm }: { companyId: string; open: boolean; onOpenChange: (o: boolean) => void; perm: PermissionGate }) {
   const { data: rates = [], isLoading: ratesLoading } = useTransportCompanyRates(companyId);
   const upsertRates = useUpsertTransportCompanyRates();
   const { data: companies = [] } = useTransportCompanies();
@@ -902,6 +928,7 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
   }, [open, rates, ratesLoading]);
 
   const handleSave = () => {
+    if (!perm.canEdit) return;
     const toSave = Object.entries(localRates)
       .filter(([, v]) => v.valor_capital > 0 || v.valor_interior > 0)
       .map(([estado, v]) => ({
@@ -913,6 +940,7 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
   };
 
   const updateRate = (estado: string, field: string, value: any) => {
+    if (!perm.canEdit) return;
     setLocalRates(prev => ({
       ...prev,
       [estado]: {
@@ -996,9 +1024,11 @@ function RatesDialog({ companyId, open, onOpenChange }: { companyId: string; ope
         </ScrollArea>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button onClick={handleSave} disabled={upsertRates.isPending}>
-            {upsertRates.isPending ? 'Salvando…' : 'Salvar Tarifas'}
-          </Button>
+          {perm.canEdit && (
+            <Button onClick={handleSave} disabled={upsertRates.isPending}>
+              {upsertRates.isPending ? 'Salvando…' : 'Salvar Tarifas'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

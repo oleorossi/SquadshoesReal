@@ -21,6 +21,7 @@ import { useCan } from '@/hooks/useAccessControl';
 import { cn } from '@/lib/utils';
 
 type ManifestStatus = 'em_montagem' | 'liberado' | 'em_transito' | 'entregue' | 'cancelado';
+type PermissionGate = ReturnType<typeof useCan>;
 
 // Cores semânticas dark-mode-safe (tint /10 + texto -600 + borda /20).
 const STATUS_COLOR: Record<string, string> = {
@@ -34,25 +35,26 @@ const STATUS_COLOR: Record<string, string> = {
 export default function Manifests() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const perm = useCan('/manifests');
 
   if (selectedId) {
-    return <ManifestDetail id={selectedId} onBack={() => setSelectedId(null)} />;
+    return <ManifestDetail id={selectedId} onBack={() => setSelectedId(null)} perm={perm} />;
   }
 
   return (
     <div className="space-y-4">
-      <ManifestsList onOpen={setSelectedId} onCreate={() => setCreating(true)} />
+      <ManifestsList onOpen={setSelectedId} onCreate={() => setCreating(true)} perm={perm} />
       <NewManifestDialog
         open={creating}
         onClose={() => setCreating(false)}
         onCreated={(id) => { setCreating(false); setSelectedId(id); }}
+        perm={perm}
       />
     </div>
   );
 }
 
-function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
-  const perm = useCan('/manifests');
+function ManifestsList({ onOpen, onCreate, perm }: { onOpen: (id: string) => void; onCreate: () => void; perm: PermissionGate }) {
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['shipping_manifests'],
     queryFn: async () => {
@@ -141,9 +143,8 @@ function ManifestsList({ onOpen, onCreate }: { onOpen: (id: string) => void; onC
   );
 }
 
-function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function ManifestDetail({ id, onBack, perm }: { id: string; onBack: () => void; perm: PermissionGate }) {
   const qc = useQueryClient();
-  const perm = useCan('/manifests');
 
   const { data: manifest } = useQuery({
     queryKey: ['shipping_manifest', id],
@@ -230,6 +231,21 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: (e: Error) => toast.error(`Não foi possível recalcular os totais: ${e.message}`),
   });
 
+  const handleStatusChange = (newStatus: ManifestStatus) => {
+    if (!perm.canEdit) return;
+    updateStatus.mutate(newStatus);
+  };
+
+  const handleDeleteVolume = (volumeId: string) => {
+    if (!perm.canDelete) return;
+    delVolume.mutate(volumeId);
+  };
+
+  const handleCancelManifest = () => {
+    if (!perm.canDelete || !confirm('Cancelar este romaneio?')) return;
+    updateStatus.mutate('cancelado');
+  };
+
   if (!manifest) return (
     <div className="flex items-center justify-center py-20">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -257,26 +273,23 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
             <Badge variant="outline" className={cn('capitalize', STATUS_COLOR[manifest.status])}>
               {manifest.status.replace('_', ' ')}
             </Badge>
-            {manifest.status === 'em_montagem' && (
-              <Button size="sm" className="h-9 gap-1.5" onClick={() => updateStatus.mutate('liberado')}>
+            {manifest.status === 'em_montagem' && perm.canEdit && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => handleStatusChange('liberado')}>
                 <Lock className="h-3.5 w-3.5" /> Liberar
               </Button>
             )}
-            {manifest.status === 'liberado' && (
-              <Button size="sm" className="h-9 gap-1.5" onClick={() => updateStatus.mutate('em_transito')}>
+            {manifest.status === 'liberado' && perm.canEdit && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => handleStatusChange('em_transito')}>
                 <Truck className="h-3.5 w-3.5" /> Em trânsito
               </Button>
             )}
-            {manifest.status === 'em_transito' && (
-              <Button size="sm" className="h-9 gap-1.5" onClick={() => updateStatus.mutate('entregue')}>
+            {manifest.status === 'em_transito' && perm.canEdit && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => handleStatusChange('entregue')}>
                 <Package className="h-3.5 w-3.5" /> Entregue
               </Button>
             )}
             {editable && perm.canDelete && (
-              <Button size="sm" variant="outline" className="h-9 gap-1.5 text-destructive" onClick={() => {
-                if (!confirm('Cancelar este romaneio?')) return;
-                updateStatus.mutate('cancelado');
-              }}>
+              <Button size="sm" variant="outline" className="h-9 gap-1.5 text-destructive" onClick={handleCancelManifest}>
                 <Trash2 className="h-3.5 w-3.5" /> Cancelar
               </Button>
             )}
@@ -291,7 +304,7 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <StatCard label="Destinos" value={manifest.destinations_count} />
       </StatGrid>
 
-      <VolumesTab manifestId={id} volumes={volumes} editable={editable} onVolumeChange={() => computeTotals.mutate()} onDelete={(vid) => delVolume.mutate(vid)} />
+      <VolumesTab manifestId={id} volumes={volumes} editable={editable} onVolumeChange={() => computeTotals.mutate()} onDelete={handleDeleteVolume} perm={perm} />
 
       {manifest.notes && (
         <Panel title="Observações">
@@ -303,16 +316,16 @@ function ManifestDetail({ id, onBack }: { id: string; onBack: () => void }) {
 }
 
 function VolumesTab({
-  manifestId, volumes, editable, onVolumeChange, onDelete,
+  manifestId, volumes, editable, onVolumeChange, onDelete, perm,
 }: {
   manifestId: string;
   volumes: any[];
   editable: boolean;
   onVolumeChange: () => void;
   onDelete: (id: string) => void;
+  perm: PermissionGate;
 }) {
   const [adding, setAdding] = useState(false);
-  const perm = useCan('/manifests');
 
   return (
     <div className="space-y-3">
@@ -391,19 +404,21 @@ function VolumesTab({
         open={adding}
         onClose={() => setAdding(false)}
         onSaved={onVolumeChange}
+        perm={perm}
       />
     </div>
   );
 }
 
 function AddVolumeDialog({
-  manifestId, nextNumber, open, onClose, onSaved,
+  manifestId, nextNumber, open, onClose, onSaved, perm,
 }: {
   manifestId: string;
   nextNumber: number;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  perm: PermissionGate;
 }) {
   const qc = useQueryClient();
   const [saleOrderId, setSaleOrderId] = useState('');
@@ -467,6 +482,11 @@ function AddVolumeDialog({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const handleAdd = () => {
+    if (!perm.canCreate) return;
+    add.mutate();
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -559,9 +579,11 @@ function AddVolumeDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => add.mutate()} disabled={add.isPending}>
-            {add.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Adicionar
-          </Button>
+          {perm.canCreate && (
+            <Button onClick={handleAdd} disabled={add.isPending}>
+              {add.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Adicionar
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -569,11 +591,12 @@ function AddVolumeDialog({
 }
 
 function NewManifestDialog({
-  open, onClose, onCreated,
+  open, onClose, onCreated, perm,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (id: string) => void;
+  perm: PermissionGate;
 }) {
   const [plate, setPlate] = useState('');
   const [driverName, setDriverName] = useState('');
@@ -617,6 +640,11 @@ function NewManifestDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const handleCreate = () => {
+    if (!perm.canCreate) return;
+    create.mutate();
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
@@ -656,9 +684,11 @@ function NewManifestDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => create.mutate()} disabled={create.isPending}>
-            {create.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Criar
-          </Button>
+          {perm.canCreate && (
+            <Button onClick={handleCreate} disabled={create.isPending}>
+              {create.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Criar
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
