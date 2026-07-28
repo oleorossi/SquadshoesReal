@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { escapeHtml } from '@/lib/htmlUtils';
+import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { printBoxLabels } from '@/lib/printLabels';
 import { buildThermalLabelsHtml } from '@/lib/printLabels';
@@ -196,7 +196,7 @@ export default function ReadyStockPanel() {
 
     grouped.forEach((g, idx) => {
       const imgTag = g.imageUrl
-        ? `<img src="${g.imageUrl}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;" />`
+        ? `<img src="${safeUrlAttr(g.imageUrl)}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;" />`
         : '';
 
       const gradeCells = sizeCols.map(s => {
@@ -332,7 +332,7 @@ export default function ReadyStockPanel() {
       const brandTxt = g.brand ? `MARCA: ${g.brand}` : '';
 
       const photoHtml = g.imageUrl
-        ? `<img src="${g.imageUrl}" crossorigin="anonymous" style="max-width:100%;max-height:220px;object-fit:contain;display:block;margin:0 auto;" />`
+        ? `<img src="${safeUrlAttr(g.imageUrl)}" crossorigin="anonymous" style="max-width:100%;max-height:220px;object-fit:contain;display:block;margin:0 auto;" />`
         : `<div style="width:100%;height:120px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#aaa;border:1px dashed #ccc;border-radius:4px;">Sem foto</div>`;
 
       const sizeTdStyle = 'border:1px solid #444;padding:2px 5px;text-align:center;font-size:9px;min-width:22px;';

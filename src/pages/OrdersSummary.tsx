@@ -20,6 +20,7 @@ import { printHtml } from '@/lib/printOrder';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { StatGridSkeleton, TableSkeleton } from '@/components/layout/PageSkeleton';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -215,7 +216,7 @@ export default function OrdersSummary() {
     refColorGroups.forEach(group => {
       const imgSrc = imageUrlMap.get(group.imageUrl) || '';
       const imgHtml = imgSrc
-        ? `<img src="${imgSrc}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;" crossorigin="anonymous" />`
+        ? `<img src="${safeUrlAttr(imgSrc)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;" crossorigin="anonymous" />`
         : '';
       gradeRows += `<tr>
         <td style="width:50px;text-align:center;padding:2px">${imgHtml}</td>

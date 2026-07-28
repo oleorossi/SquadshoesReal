@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { escapeHtml } from './htmlUtils';
+import { applyPrintSandbox } from '@/lib/htmlUtils';
 
 interface MissingMaterial {
   materialId: string;
@@ -111,6 +112,7 @@ export function printStockPurchaseOrder({ orderNumber, customerName, materials }
 </html>`;
 
   const iframe = document.createElement('iframe');
+  applyPrintSandbox(iframe); // T6: HTML de impressão sem <script> (ver htmlUtils)
   iframe.style.display = 'none';
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument || iframe.contentWindow?.document;

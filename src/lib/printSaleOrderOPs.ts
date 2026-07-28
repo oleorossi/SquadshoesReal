@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { printHtml } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
-import { escapeHtml } from '@/lib/htmlUtils';
+import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 const SIZES_ALL = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
@@ -241,9 +241,9 @@ async function buildSectorChecklistHtml(ops: OrderWithRef[], sectorName: string,
 
     const silkLogoUrl = await getClientLogoUrl(order);
     const imageHtml = imageUrl
-      ? `<img src="${imageUrl}" style="width:200px;height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;" />`
+      ? `<img src="${safeUrlAttr(imageUrl)}" style="width:200px;height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;" />`
       : `<div style="width:200px;height:200px;background:#f0f0f0;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999;font-size:10px;">Sem foto</div>`;
-    const silkHtml = `<img src="${silkLogoUrl}" style="width:100px;height:100px;object-fit:contain;" />`;
+    const silkHtml = `<img src="${safeUrlAttr(silkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" />`;
 
     let gradeHtml = '';
     if (grade && activeSizes.length > 0) {

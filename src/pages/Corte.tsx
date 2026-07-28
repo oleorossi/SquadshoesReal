@@ -33,6 +33,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { normalizeSector } from '@/lib/sectors';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 // Stage da OP correspondente a este setor. O stage_name no banco é
 // 'Corte Palmilha' desde o rename de 2026-05-06 — o match literal por 'Corte'
@@ -737,7 +738,7 @@ if (totalPairsAll !== palmTotal) {
                       }));
 
                       const silkLogoUrl = await getClientLogoUrl(order);
-                      const silkHtml = `<div style="text-align:center;"><p style="font-size:8px;color:#999;margin-bottom:2px;">SILK</p><img src="${silkLogoUrl}" style="width:100px;height:100px;object-fit:contain;" /></div>`;
+                      const silkHtml = `<div style="text-align:center;"><p style="font-size:8px;color:#999;margin-bottom:2px;">SILK</p><img src="${safeUrlAttr(silkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" /></div>`;
 
                       let isStrap = false;
                       if (ref) {
@@ -804,7 +805,7 @@ if (totalPairsAll !== palmTotal) {
 
                       const buildHeader = (subtitle: string) => `
                         <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:16px;">
-                          ${imageUrl ? `<img src="${imageUrl}" style="width:200px;height:200px;object-fit:cover;border:1px solid #ccc;border-radius:6px;" />` : ''}
+                          ${imageUrl ? `<img src="${safeUrlAttr(imageUrl)}" style="width:200px;height:200px;object-fit:cover;border:1px solid #ccc;border-radius:6px;" />` : ''}
                           <div style="flex:1;">
                             <h1 style="font-size:16px;margin-bottom:4px;">✂️ Ficha de Corte${subtitle ? ` — ${subtitle}` : ''}</h1>
                             <p style="font-size:12px;font-weight:600;margin-bottom:2px;">${order.order_number} — ${ref?.code || ''} ${ref?.name || ''}</p>
@@ -1131,7 +1132,7 @@ if (totalPairsAll !== palmTotal) {
               photoGalleryHtml += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;">';
               uniqueRefs.forEach(r => {
                 const imgTag = r.imageUrl
-                  ? `<img src="${r.imageUrl}" style="width:120px;height:120px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />`
+                  ? `<img src="${safeUrlAttr(r.imageUrl)}" style="width:120px;height:120px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />`
                   : `<div style="width:120px;height:120px;background:#f0f0f0;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:8px;">Sem foto</div>`;
                 photoGalleryHtml += `<div style="text-align:center;width:130px;">
                   ${imgTag}
@@ -1162,7 +1163,7 @@ if (totalPairsAll !== palmTotal) {
 
                 const imageUrl = ((ref as any).images as string[] | undefined)?.[0] || ref.image_url || '';
                 const imgTag = imageUrl
-                  ? `<img src="${imageUrl}" style="width:100px;height:100px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />`
+                  ? `<img src="${safeUrlAttr(imageUrl)}" style="width:100px;height:100px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />`
                   : `<div style="width:100px;height:100px;background:#f0f0f0;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:7px;">Sem foto</div>`;
 
                 // Compact grade inline
@@ -1264,7 +1265,7 @@ if (totalPairsAll !== palmTotal) {
                   });
 
                 const silkLogoUrl = await getClientLogoUrl(order);
-                const silkHtml = `<div style="text-align:center;"><p style="font-size:8px;color:#999;margin-bottom:2px;">SILK</p><img src="${silkLogoUrl}" style="width:100px;height:100px;object-fit:contain;" /></div>`;
+                const silkHtml = `<div style="text-align:center;"><p style="font-size:8px;color:#999;margin-bottom:2px;">SILK</p><img src="${safeUrlAttr(silkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" /></div>`;
 
                 let isStrap = !!(ref as any).has_straps;
                 if (!isStrap) {
@@ -1307,7 +1308,7 @@ if (totalPairsAll !== palmTotal) {
 
                 const buildHeader = (subtitle: string) => `
                   <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:16px;">
-                    ${imageUrl ? `<img src="${imageUrl}" style="width:200px;height:200px;object-fit:cover;border:1px solid #ccc;border-radius:6px;" />` : ''}
+                    ${imageUrl ? `<img src="${safeUrlAttr(imageUrl)}" style="width:200px;height:200px;object-fit:cover;border:1px solid #ccc;border-radius:6px;" />` : ''}
                     <div style="flex:1;">
                       <h1 style="font-size:16px;margin-bottom:4px;">✂️ Ficha de Corte${subtitle ? ` — ${subtitle}` : ''}</h1>
                       <p style="font-size:12px;font-weight:600;margin-bottom:2px;">${order.order_number} — ${ref?.code || ''} ${ref?.name || ''}</p>

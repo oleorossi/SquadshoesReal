@@ -984,7 +984,26 @@ export function LabelProductionTab() {
   const materialFromMap = (map: Map<string, string>, referenceId: string, variantId: string | null, color: string) =>
     map.get(materialLabelKey({ referenceId, materialVariantId: variantId, color })) || '';
 
+  /**
+   * Teto de etiquetas por numeração num único lote — guarda o navegador de
+   * travar montando dezenas de milhares de nós. NÃO pode cortar em silêncio
+   * (auditoria 2026-07-28 · T7): o operador levava menos etiqueta do que pediu
+   * e achava que o lote estava completo. Quem estoura é avisado e gera o resto
+   * num segundo lote.
+   */
+  const CAP_HANGTAG_POR_NUMERO = 500;
+  const CAP_TERMICA_POR_NUMERO = 2000;
+  const avisarCorte = (cortadas: number, cap: number) => {
+    if (cortadas <= 0) return;
+    toast.warning(
+      `${cortadas} etiqueta(s) NÃO entraram neste lote — o limite é ${cap} por numeração. ` +
+      'Gere o restante num segundo lote.',
+      { duration: 12000 },
+    );
+  };
+
   const handlePrintHangtags = async () => {
+    let cortadasHangtag = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     if (selectedGroups.length === 0) return;
     setIsGenerating(true);
@@ -1000,7 +1019,9 @@ export function LabelProductionTab() {
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
         for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-          const safeQty = Math.min(Number(qty) || 0, 500);
+          const pedidas = Number(qty) || 0;
+          const safeQty = Math.min(pedidas, CAP_HANGTAG_POR_NUMERO);
+          cortadasHangtag += pedidas - safeQty;
           for (let i = 0; i < safeQty; i++) {
             labels.push({
               refCode: effRefCode, refName: effRefName,
@@ -1019,11 +1040,13 @@ export function LabelProductionTab() {
       await supabase.from('print_jobs').insert({ batch_name: `Hangtags - ${new Date().toLocaleString()}`, total_labels: labels.length, status: 'completed', order_ids: orderIds } as any);
       queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
+      avisarCorte(cortadasHangtag, CAP_HANGTAG_POR_NUMERO);
       toast.success(`${labels.length} hangtags geradas.`);
     } catch (err: any) { toast.error(err.message); } finally { setIsGenerating(false); }
   };
 
   const handlePrintIndividual = async () => {
+    let cortadasTermica = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     // Filter out groups that don't allow thermal labels
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
@@ -1080,7 +1103,10 @@ export function LabelProductionTab() {
         const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-            for (let i = 0; i < Math.min(qty as number, 2000); i++) {
+            const pedidas = Number(qty) || 0;
+            const aGerar = Math.min(pedidas, CAP_TERMICA_POR_NUMERO);
+            cortadasTermica += pedidas - aGerar;
+            for (let i = 0; i < aGerar; i++) {
               labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
             }
           }
@@ -1103,11 +1129,13 @@ export function LabelProductionTab() {
       queryClient.invalidateQueries({ queryKey: ['printed_order_ids'] });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
       setPrintHtml(buildThermalLabelsHtml(labels, logoUrl, { width: currentSize.width, height: currentSize.height }, labelConfig, resolveSender().senderCnpj));
+      avisarCorte(cortadasTermica, CAP_TERMICA_POR_NUMERO);
       toast.success(`${labels.length} etiquetas térmicas geradas.`);
     } catch (err: any) { toast.error(err?.message || 'Erro ao gerar etiquetas'); } finally { setIsGenerating(false); }
   };
 
   const handleDownloadPdf = async () => {
+    let cortadasTermica = 0;
     const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
     if (thermalGroups.length === 0) {
@@ -1157,7 +1185,10 @@ export function LabelProductionTab() {
         const effRefName = getEffectiveRefName(group);
         if (thermalMode === 'quantity') {
           for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
-            for (let i = 0; i < Math.min(qty as number, 2000); i++) {
+            const pedidas = Number(qty) || 0;
+            const aGerar = Math.min(pedidas, CAP_TERMICA_POR_NUMERO);
+            cortadasTermica += pedidas - aGerar;
+            for (let i = 0; i < aGerar; i++) {
               labels.push({
                 refCode: effRefCode, refName: effRefName, mainMaterial,
                 color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`,
@@ -1196,6 +1227,7 @@ export function LabelProductionTab() {
         toast.error('Nada para gerar.');
         return;
       }
+      avisarCorte(cortadasTermica, CAP_TERMICA_POR_NUMERO);
       const blob = await buildThermalLabelsPdf(
         labels,
         { width: currentSize.width, height: currentSize.height },

@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { escapeHtml } from './htmlUtils';
+import { applyPrintSandbox } from '@/lib/htmlUtils';
 
 type POItem = {
   product?: { name: string; sku: string; category: string; color?: string | null };
@@ -285,6 +286,7 @@ export function printPurchaseOrderGrouped(order: POData, items: POItem[]) {
 </html>`;
 
   const iframe = document.createElement('iframe');
+  applyPrintSandbox(iframe); // T6: HTML de impressão sem <script> (ver htmlUtils)
   iframe.style.position = 'fixed';
   iframe.style.left = '-9999px';
   iframe.style.width = '0';
@@ -536,6 +538,7 @@ export function printSupplierPOs(
 
 function openPrintWindow(html: string): void {
   const iframe = document.createElement('iframe');
+  applyPrintSandbox(iframe); // T6: HTML de impressão sem <script> (ver htmlUtils)
   iframe.style.position = 'fixed';
   iframe.style.left = '-9999px';
   iframe.style.width = '0';

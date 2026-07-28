@@ -70,6 +70,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, splitSearchTerms } from '@/lib/searchUtils';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 // TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
 // Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
@@ -952,7 +953,7 @@ export default function SaleOrders() {
       const subtotal = Number(item.quantity) * Number(item.unit_price);
       return `<tr>
         <td style="padding:6px;border:1px solid #ccc;text-align:center">
-          ${imgUrl ? `<img src="${imgUrl}" style="width:50px;height:50px;object-fit:cover;border-radius:4px" />` : '—'}
+          ${imgUrl ? `<img src="${safeUrlAttr(imgUrl)}" style="width:50px;height:50px;object-fit:cover;border-radius:4px" />` : '—'}
         </td>
         <td style="padding:6px;border:1px solid #ccc;font-weight:bold">${ref}</td>
         <td style="padding:6px;border:1px solid #ccc">${item.color || '—'}</td>

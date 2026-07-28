@@ -3,6 +3,7 @@ import { escapeHtml } from './htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { supabase } from '@/integrations/supabase/client';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 function buildPrintHtmlContent(title: string, bodyHtml: string, options?: { landscape?: boolean }): string {
   const pageSize = options?.landscape ? 'A4 landscape' : 'A4';
@@ -488,7 +489,7 @@ export async function buildSaleOrderPrintHtml(
     const showName = g.name && g.name !== g.code;
     const head = `
       <div class="ref-head">
-        ${g.image ? `<img class="ref-photo" src="${g.image}" alt="${escapeHtml(g.code)}" />` : `<div class="ref-photo empty">sem<br>foto</div>`}
+        ${g.image ? `<img class="ref-photo" src="${safeUrlAttr(g.image)}" alt="${escapeHtml(g.code)}" />` : `<div class="ref-photo empty">sem<br>foto</div>`}
         <div class="ref-id">
           <span class="ref-code">${escapeHtml(g.code || g.name || '—')}</span>
           ${showName ? `<span class="ref-name">${escapeHtml(g.name)}</span>` : ''}
@@ -709,7 +710,7 @@ export async function buildSaleOrderPrintHtml(
 <div class="pv-doc">
   <div class="pv-top">
     <div class="pv-brand">
-      <img class="pv-logo" src="${logoSquad}" alt="${escapeHtml(coName)}" onerror="this.style.display='none'" />
+      <img class="pv-logo" src="${safeUrlAttr(logoSquad)}" alt="${escapeHtml(coName)}" onerror="this.style.display='none'" />
       <div class="pv-brand-id">
         <div class="pv-brand-name">${escapeHtml(coName)}</div>
         ${coRazao ? `<div class="pv-brand-sub">${escapeHtml(coRazao)}</div>` : ''}

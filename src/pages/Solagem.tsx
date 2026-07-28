@@ -29,6 +29,7 @@ import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 
 
@@ -401,7 +402,7 @@ export default function Solagem() {
          silkArtworksHtml += `
            <div style="border:1px solid #ddd;padding:6px;border-radius:4px;text-align:center;width:120px;">
              <p style="font-size:10px;font-weight:700;margin-bottom:4px;">${silk.silk_name}</p>
-             ${silk.silk_url ? `<img src="${silk.silk_url}" style="width:100%;height:100px;object-contain:fit;background:#fff;border:1px solid #eee;"/>` : '<div style="height:100px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;background:#f9f9f9;">Sem imagem</div>'}
+             ${silk.silk_url ? `<img src="${safeUrlAttr(silk.silk_url)}" style="width:100%;height:100px;object-contain:fit;background:#fff;border:1px solid #eee;"/>` : '<div style="height:100px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;background:#f9f9f9;">Sem imagem</div>'}
            </div>
          `;
        });
@@ -532,7 +533,7 @@ export default function Solagem() {
                    silkArtworksHtml += `
                      <div style="border:1px solid #ddd;padding:6px;border-radius:4px;text-align:center;width:120px;">
                        <p style="font-size:10px;font-weight:700;margin-bottom:4px;">${silk.silk_name}</p>
-                       ${silk.silk_url ? `<img src="${silk.silk_url}" style="width:100%;height:100px;object-fit:contain;background:#fff;border:1px solid #eee;"/>` : '<div style="height:100px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;background:#f9f9f9;">Sem imagem</div>'}
+                       ${silk.silk_url ? `<img src="${safeUrlAttr(silk.silk_url)}" style="width:100%;height:100px;object-fit:contain;background:#fff;border:1px solid #eee;"/>` : '<div style="height:100px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;background:#f9f9f9;">Sem imagem</div>'}
                      </div>
                    `;
                  });

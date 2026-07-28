@@ -1,4 +1,5 @@
 // printDanfe — imprime / salva como PDF um nó já renderizado do DanfeView.
+import { applyPrintSandbox } from '@/lib/htmlUtils';
 //
 // Usa um <iframe> oculto em vez de window.open: não é bloqueado por
 // pop-up blocker e isola o conteúdo do resto do app (o DanfeView usa só
@@ -11,6 +12,7 @@ const FONTS_HREF =
 export function printDanfeNode(node: HTMLElement | null, title = 'DANFE'): void {
   if (!node) return;
   const iframe = document.createElement('iframe');
+  applyPrintSandbox(iframe); // T6: HTML de impressão sem <script> (ver htmlUtils)
   iframe.setAttribute('aria-hidden', 'true');
   Object.assign(iframe.style, {
     position: 'fixed',

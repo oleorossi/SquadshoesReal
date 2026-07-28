@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { OrderBoxPackingResult } from '@/lib/orderBoxPacking';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 interface ExternalBoxLabelProps {
   orderNumber: string;
@@ -120,7 +121,7 @@ export function buildExternalBoxLabelHtml(
 
     const imgHtml = imageUrl
       ? `<div style="width:12mm;height:10mm;border:1px solid #000;border-radius:2px;overflow:hidden;flex-shrink:0;margin-right:3px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;">
-          <img src="${imageUrl}" style="max-width:100%;max-height:100%;object-fit:contain;" crossorigin="anonymous" onerror="this.style.display='none'" />
+          <img src="${safeUrlAttr(imageUrl)}" style="max-width:100%;max-height:100%;object-fit:contain;" crossorigin="anonymous" onerror="this.style.display='none'" />
         </div>`
       : '';
 

@@ -14,6 +14,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { SignedImage } from '@/components/ui/signed-image';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
+import { applyPrintSandbox } from '@/lib/htmlUtils';
 
  // Ordem canônica pós PR1-PR3. Setores legacy ('corte','mesa') mapeados para
  // os canônicos via alias abaixo. Todos backPath agora apontam para o hub
@@ -160,6 +161,7 @@ ${styles}
 </head><body>${clone.outerHTML}</body></html>`;
 
     const iframe = document.createElement('iframe');
+    applyPrintSandbox(iframe); // T6: HTML de impressão sem <script> (ver htmlUtils)
     iframe.setAttribute('aria-hidden', 'true');
     Object.assign(iframe.style, {
       position: 'fixed',

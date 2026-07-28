@@ -1136,6 +1136,32 @@ function zplAscii(str: string): string {
 }
 
 /**
+ * Escapa um valor pra ir DENTRO de `^FD` (auditoria 2026-07-28 · T6).
+ *
+ * `zplAscii` tira só controles — `^` e `~` passavam INTEIROS, e eles são os
+ * delimitadores de comando do ZPL: um produto chamado "SANDÁLIA ^XZ" encerrava
+ * a etiqueta ali, e qualquer `^` no nome/cor podia emendar comando arbitrário
+ * na impressora térmica. Cadastro é dado do usuário; não dá pra confiar.
+ *
+ * Estratégia: modo hexadecimal do ZPL (`^FH`), que traduz `_XX` em byte. Com
+ * ele, `^` vira `_5E`, `~` vira `_7E` e o próprio `_` precisa virar `_5F`
+ * (senão o firmware leria os dois caracteres seguintes como hex). O texto sai
+ * IDÊNTICO no papel — só deixa de ser executável.
+ *
+ * ⚠ Só use o retorno em campo emitido com o prefixo `^FH` (ver ZPL_FH).
+ */
+export function zplField(value: unknown, maxLen: number): string {
+  return zplAscii(String(value ?? ''))
+    .slice(0, maxLen)
+    .replace(/_/g, '_5F')
+    .replace(/\^/g, '_5E')
+    .replace(/~/g, '_7E');
+}
+
+/** Prefixo que liga o modo hex do `^FD` seguinte. Par obrigatório de zplField. */
+const ZPL_FH = '^FH_';
+
+/**
  * Generate a PDF of thermal labels (one label per page, sized exactly to the label).
  * Universal format — opens in any PDF viewer (Preview, Adobe, Chrome) and prints
  * directly. No driver or special software needed, unlike ZPL.
@@ -1495,11 +1521,14 @@ export function buildThermalLabelsZpl(
   const sizeCenterY = padY + Math.round((innerH - sizeFont) / 2);
 
   const blocks = labels.map(l => {
-    const refName  = zplAscii(l.refName  || l.refCode  || '').slice(0, 32);
-    const color    = zplAscii(l.color    || '').slice(0, 28);
-    const material = zplAscii(l.mainMaterial || '').slice(0, 28);
-    const sizeVal  = zplAscii(l.size     || '').slice(0, 6);
-    const barcode  = (l.barcode || l.refCode || '').replace(/[^\x20-\x7E]/g, '').slice(0, 50);
+    // zplField + ^FH: `^` e `~` do cadastro viram hex e não comandam a
+    // impressora (T6). Texto impresso é o mesmo; só perde o poder de executar.
+    const refName  = zplField(l.refName || l.refCode || '', 32);
+    const color    = zplField(l.color, 28);
+    const material = zplField(l.mainMaterial, 28);
+    const sizeVal  = zplField(l.size, 6);
+    // CODE128 não tem modo hex — aqui a defesa é a allow-list de caracteres.
+    const barcode  = (l.barcode || l.refCode || '').replace(/[^A-Za-z0-9 ._\-\/]/g, '').slice(0, 50);
 
     return [
       '^XA',
@@ -1512,16 +1541,16 @@ export function buildThermalLabelsZpl(
       `^FO${sizeBoxX},${padY}^GB${sizeBoxW},${sizeBoxH},2,B,2^FS`,
 
       // ── Size number (centered in box) ──
-      `^FO${sizeBoxX + 2},${sizeCenterY}^A0N,${sizeFont},${fw(sizeFont)}^FD${sizeVal}^FS`,
+      `^FO${sizeBoxX + 2},${sizeCenterY}^A0N,${sizeFont},${fw(sizeFont)}${ZPL_FH}^FD${sizeVal}^FS`,
 
       // ── Reference name ──
-      refName  ? `^FO${infoX},${rowY(0.04)}^A0N,${refFont},${fw(refFont)}^FD${refName}^FS`   : '',
+      refName  ? `^FO${infoX},${rowY(0.04)}^A0N,${refFont},${fw(refFont)}${ZPL_FH}^FD${refName}^FS`   : '',
 
       // ── Color ──
-      color    ? `^FO${infoX},${rowY(0.36)}^A0N,${colorFont},${fw(colorFont)}^FD${color}^FS` : '',
+      color    ? `^FO${infoX},${rowY(0.36)}^A0N,${colorFont},${fw(colorFont)}${ZPL_FH}^FD${color}^FS` : '',
 
       // ── Material ──
-      material ? `^FO${infoX},${rowY(0.62)}^A0N,${matFont},${fw(matFont)}^FD${material}^FS`  : '',
+      material ? `^FO${infoX},${rowY(0.62)}^A0N,${matFont},${fw(matFont)}${ZPL_FH}^FD${material}^FS`  : '',
 
       // ── Code128 barcode with human-readable text below ──
       barcode  ? [

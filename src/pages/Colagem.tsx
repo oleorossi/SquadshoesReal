@@ -31,6 +31,7 @@ import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -202,10 +203,10 @@ export default function Colagem() {
     const silkLogoUrl = await getClientLogoUrl(order);
 
     const imageHtml = imageUrl
-      ? `<img src="${imageUrl}" style="width:200px;height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;" />`
+      ? `<img src="${safeUrlAttr(imageUrl)}" style="width:200px;height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;" />`
       : `<div style="width:200px;height:200px;background:#f0f0f0;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999;font-size:10px;">Sem foto</div>`;
 
-    const silkHtml = `<img src="${silkLogoUrl}" style="width:100px;height:100px;object-fit:contain;" />`;
+    const silkHtml = `<img src="${safeUrlAttr(silkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" />`;
 
     const showScaledRow = totalPairs !== gradeSum;
     let gradeHtml = '';
@@ -429,7 +430,7 @@ export default function Colagem() {
                 const oSizes = SIZES.filter(s => (group.sizes[s] || 0) > 0);
 
                 const imgTag = group.imageUrl
-                  ? `<img src="${group.imageUrl}" style="width:100px;height:100px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />`
+                  ? `<img src="${safeUrlAttr(group.imageUrl)}" style="width:100px;height:100px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />`
                   : `<div style="width:100px;height:100px;background:#f0f0f0;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:7px;">—</div>`;
 
                 let gradeInline = '';
@@ -493,7 +494,7 @@ export default function Colagem() {
                 const silkLogoUrl = await getClientLogoUrl(order);
 
                 const imageHtml = imageUrl
-                  ? `<img src="${imageUrl}" style="width:200px;height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;" />`
+                  ? `<img src="${safeUrlAttr(imageUrl)}" style="width:200px;height:200px;object-fit:contain;border:1px solid #ddd;border-radius:6px;" />`
                   : `<div style="width:200px;height:200px;background:#f0f0f0;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999;font-size:10px;">Sem foto</div>`;
 
                 let gradeHtml = '';
@@ -522,7 +523,7 @@ export default function Colagem() {
                       </div>
                       <div style="text-align:center;">
                         <p style="font-size:8px;color:#999;margin-bottom:2px;">SILK</p>
-                        <img src="${silkLogoUrl}" style="width:100px;height:100px;object-fit:contain;" />
+                        <img src="${safeUrlAttr(silkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" />
                       </div>
                     </div>
                     <h2 style="font-size:13px;margin:16px 0 8px;border-bottom:1px solid #ccc;padding-bottom:3px;">
@@ -549,7 +550,7 @@ export default function Colagem() {
                   </div>
                   <div style="text-align:center;flex-shrink:0;">
                     <p style="font-size:8px;color:#999;margin-bottom:2px;">SILK</p>
-                    <img src="${reportSilkLogoUrl}" style="width:100px;height:100px;object-fit:contain;" />
+                    <img src="${safeUrlAttr(reportSilkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" />
                   </div>
                 </div>
                 <h2 style="font-size:13px;margin:8px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px;">Resumo Agrupado por Referência + Cor</h2>

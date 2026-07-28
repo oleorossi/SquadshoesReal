@@ -38,6 +38,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
 import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
 import { useCan } from '@/hooks/useAccessControl';
+import { applyPrintSandbox } from '@/lib/htmlUtils';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -1977,6 +1978,7 @@ function PendingSummaryDialog({ orderIds, orders, onClose }: { orderIds: string[
     </body></html>`;
 
     const iframe = document.createElement('iframe');
+    applyPrintSandbox(iframe); // T6: HTML de impressão sem <script> (ver htmlUtils)
     iframe.style.position = 'fixed';
     iframe.style.left = '-9999px';
     iframe.style.width = '1100px';

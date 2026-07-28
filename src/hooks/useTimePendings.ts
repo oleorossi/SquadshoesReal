@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPages } from '@/lib/supabasePaginate';
 import { toast } from 'sonner';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,12 +81,18 @@ export function useTimePendings(opts?: { onlyProblems?: boolean }) {
   return useQuery({
     queryKey: ['v_time_pendings', !!opts?.onlyProblems],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('v_time_pendings')
-        .select('*')
-        .order('days_since', { ascending: false });
-      if (error) throw error;
-      const rows = (data || []) as TimePending[];
+      // Paginada: a view passa de 1.000 linhas com facilidade e o corte padrão
+      // do PostgREST escondia pendência (auditoria T7). Ordem determinística
+      // (days_since + employee) pra a paginação não repetir/pular linha.
+      const rows = await fetchAllPages<TimePending>((from, to) =>
+        (supabase as any)
+          .from('v_time_pendings')
+          .select('*')
+          .order('days_since', { ascending: false })
+          .order('employee_id', { ascending: true })
+          .order('record_date', { ascending: true })
+          .range(from, to),
+      );
       return opts?.onlyProblems ? rows.filter(isPendingRow) : rows;
     },
     staleTime: 60_000,

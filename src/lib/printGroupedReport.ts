@@ -1,6 +1,7 @@
 import { openPrintWindow, writePrintWindow } from './printOrder';
 import { escapeHtml } from './htmlUtils';
 import { scaleGradeWithLargestRemainder } from './scaleGrade';
+import { safeUrlAttr } from '@/lib/htmlUtils';
 
 export type { OrderData as GroupedReportOrderData, ReferenceData as GroupedReportReferenceData };
 
@@ -471,7 +472,7 @@ export function buildGroupedReportHtml(
         const oSizes = allActiveSizes.filter(s => (group.sizes[s] || 0) > 0 || (group.baseGrade[s] || 0) > 0);
 
         const imgHtml = group.imageUrl
-          ? `<img src="${group.imageUrl}" />`
+          ? `<img src="${safeUrlAttr(group.imageUrl)}" />`
           : `<div class="no-img">Sem<br>foto</div>`;
 
         // Grade table

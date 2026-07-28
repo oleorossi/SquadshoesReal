@@ -19,6 +19,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { fetchAllPages } from '@/lib/supabasePaginate';
 
 interface StockRow {
   id: string;
@@ -148,13 +149,17 @@ export default function StockReservations() {
   const { data, isLoading, isFetching, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['product-stock-with-reservations'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('product_stock_with_reservations')
-        .select('id, name, sku, category, unit, color, quantity, reserved_quantity, in_production_quantity, available_quantity')
-        .order('name', { ascending: true })
-        .limit(5000);
-      if (error) throw error;
-      return (data || []) as StockRow[];
+      // `.limit(5000)` cortava em silêncio e a tela somava/alertava sobre um
+      // universo parcial como se fosse o total (auditoria T7). Paginado, com
+      // ordem determinística (name + id) pra não repetir/pular linha.
+      return await fetchAllPages<StockRow>((from, to) =>
+        (supabase as any)
+          .from('product_stock_with_reservations')
+          .select('id, name, sku, category, unit, color, quantity, reserved_quantity, in_production_quantity, available_quantity')
+          .order('name', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to),
+      );
     },
     staleTime: 60_000,
     refetchInterval: autoRefresh ? refreshSeconds * 1000 : false,
