@@ -93,6 +93,19 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   const [serverProcessed, setServerProcessed] = useState(0);
   const qtyDirty = useRef(false);
 
+  // Regras de transição (R6.3): a RPC devolve needs_confirmation SEM gravar;
+  // guardamos os params e reabrimos a mesma chamada com os códigos confirmados.
+  // ⚠ Este useState PRECISA ficar antes do `if (!stage) return null` abaixo —
+  // o dialog é montado com stage=null pelos callers (Orders/ProductionFlow) e
+  // depois recebe a etapa; declarar o hook após o return condicional muda a
+  // contagem de hooks entre renders e dispara "Rendered more hooks…" (auditoria P04).
+  type ApontarParams = Parameters<typeof apontar.mutateAsync>[0];
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    params: ApontarParams;
+    warnings: PointingWarning[];
+    onDone?: (res: ApontarResult) => void;
+  } | null>(null);
+
   // DAG ALINHADO AO BANCO (fn_guard_manual_stage_transition): preps são
   // paralelos e o fluxo parcial libera quando o pré-requisito apontou >0
   // pares. A regra antiga (sequencial estrito por stage_order) bloqueava
@@ -171,15 +184,6 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       qtyDirty.current = false;
     }
   };
-
-  // Regras de transição (R6.3): a RPC devolve needs_confirmation SEM gravar;
-  // guardamos os params e reabrimos a mesma chamada com os códigos confirmados.
-  type ApontarParams = Parameters<typeof apontar.mutateAsync>[0];
-  const [pendingConfirm, setPendingConfirm] = useState<{
-    params: ApontarParams;
-    warnings: PointingWarning[];
-    onDone?: (res: ApontarResult) => void;
-  } | null>(null);
 
   const apontarComAvisos = async (params: ApontarParams, onDone?: (res: ApontarResult) => void) => {
     const res = await apontar.mutateAsync(params);

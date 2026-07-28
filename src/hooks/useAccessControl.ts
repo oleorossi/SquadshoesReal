@@ -423,6 +423,11 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
    // Permissões do próprio usuário ainda na 1ª busca. Os gates de AÇÃO usam isto
    // pra NÃO liberar por RBAC (fail-open) antes dos grants granulares chegarem.
    const permsLoading = !!user && permsQuery.isPending && permsQuery.fetchStatus === 'fetching';
+   // Grants do próprio usuário falharam SEM nenhum dado em cache. O guard de rota
+   // usa isto pra NEGAR (em vez de cair no RBAC legado — fail-open da auditoria
+   // P12): se o usuário tem allow-list restritiva mas ela não pôde ser lida,
+   // conceder acesso pelo papel legado vazaria telas que a allow-list negaria.
+   const permsError = !!user && permsQuery.isError && granularPerms.length === 0;
 
 
   const roleKeys = useMemo(() => roles.map(r => r.role), [roles]);
@@ -494,6 +499,7 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
     canAccessModule,
     can,
     permsLoading,
+    permsError,
     canSeeFinancialValues,
   };
 }

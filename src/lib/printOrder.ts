@@ -141,6 +141,12 @@ function createPrintPreviewUi(): PrintPreviewUi {
 
   const previewFrame = document.createElement('iframe');
   previewFrame.title = 'Print Preview';
+  // Sandbox SEM allow-scripts: neutraliza <script>/onerror/javascript: injetados
+  // via dados persistidos (XSS da auditoria P01/P03/P04). allow-same-origin é
+  // necessário pro pai ler contentDocument (waitForIframeAssets) e disparar
+  // print(); allow-modals libera o diálogo de impressão. ⚠ NÃO adicionar
+  // allow-scripts — a combinação com allow-same-origin remove o próprio sandbox.
+  previewFrame.setAttribute('sandbox', 'allow-same-origin allow-modals');
   Object.assign(previewFrame.style, {
     flex: '1',
     width: '100%',
@@ -150,6 +156,8 @@ function createPrintPreviewUi(): PrintPreviewUi {
 
   const printFrame = document.createElement('iframe');
   printFrame.title = 'Print Frame';
+  // Mesmo sandbox do previewFrame (ver acima): sem allow-scripts.
+  printFrame.setAttribute('sandbox', 'allow-same-origin allow-modals');
   Object.assign(printFrame.style, {
     position: 'fixed',
     width: '210mm',

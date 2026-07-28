@@ -306,20 +306,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-   const { loading, isError, canAccessRoute } = useAccessControl();
+   const { loading, isError, canAccessRoute, permsLoading, permsError, isAdmin } = useAccessControl();
 
    const path = location.pathname;
    const canAccess = path === '/' ? true : canAccessRoute(path);
+
+   // Fecha o fail-open da auditoria (P12): pra NÃO-admin, a rota só pode ser
+   // avaliada depois que os grants granulares chegam — antes disso `canAccessRoute`
+   // cai no RBAC legado e libera telas que a allow-list negaria. Admin não depende
+   // de grants (canAccessRoute já retorna true), então não é atrasado.
+   const guardLoading = loading || (!isAdmin && permsLoading);
+   const guardError = isError || (!isAdmin && permsError);
 
   // Failsafe DEFENSIVO: se ficar carregando muito tempo (15s) mostramos o
   // skeleton com aviso suave em vez de "Sessão Instável", que assustava
   // usuários em qualquer flutuação de rede.
   const [showSlowHint, setShowSlowHint] = useState(false);
   useEffect(() => {
-    if (!loading) { setShowSlowHint(false); return; }
+    if (!guardLoading) { setShowSlowHint(false); return; }
     const t = setTimeout(() => setShowSlowHint(true), 8000);
     return () => clearTimeout(t);
-  }, [loading]);
+  }, [guardLoading]);
 
   // Audit visual #10 + #21: grace period antes de mostrar "Acesso Restrito".
   // Bug: navegação direta pra rota nova podia retornar canAccess=false
@@ -334,7 +341,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [canAccess, path]);
 
-  if (loading) {
+  if (guardLoading) {
     if (!showSlowHint) return <PageSkeleton />;
     return (
       <div className="min-h-[400px] flex items-center justify-center px-4">
@@ -351,7 +358,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isError) {
+  if (guardError) {
     return (
       <div className="min-h-[400px] flex items-center justify-center px-4">
         <div className="text-center space-y-4 max-w-md">
