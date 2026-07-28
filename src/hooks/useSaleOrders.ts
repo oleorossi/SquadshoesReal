@@ -1701,31 +1701,19 @@ export function useUpdateSaleOrderStatus() {
             // C2 (auditoria) ABORTAVA o faturamento quando uma reserva não podia ser
             // consumida (ex.: solado zerado), pra não faturar "sem lastro". Mudança
             // pedida pelo usuário (PV-67, solado INFANTIL 25 zerado): falta de ESTOQUE
-            // não trava mais o faturamento — finaliza assim mesmo, MAS avisa ALTO e
-            // anota na OP pra reconciliar quando o material chegar. Erros que NÃO são
-            // de estoque (permissão/DB) continuam abortando — não mascarar falha real.
-            const convShortfalls: string[] = [];
+            // não trava mais o faturamento — finaliza assim mesmo.
+            //
+            // Hoje `convert_reservation_to_out` NÃO erra por falta: debita o que há e
+            // deixa o saldo devendo (`partial_pending`), que a finalização preserva
+            // como `pending_reconciliation`. Então erro aqui é erro DE VERDADE
+            // (permissão/DB) e continua abortando — não mascarar falha real.
+            // O aviso do que ficou devendo sai DEPOIS de finalizar, lendo as
+            // pendências preservadas (abaixo) em vez de adivinhar pela mensagem.
             for (const op of reservadoOps) {
               const { error: convErr } = await (supabase as any).rpc('convert_reservation_to_out', { p_order_id: op.id });
               if (convErr) {
-                if (/insuficiente|insufficient/i.test(convErr.message || '')) {
-                  console.error(`Faturamento PV ${id}: reserva NÃO baixada na OP ${op.id}: ${convErr.message}`);
-                  const opLabel = (op as any).order_number || op.id.slice(0, 8);
-                  convShortfalls.push(`${opLabel}: ${convErr.message}`);
-                  // Marca a OP pra rastrear que foi faturada sem baixar 100% do estoque.
-                  await supabase.from('orders').update({
-                    notes: `${(op as any).notes ? (op as any).notes + '\n' : ''}⚠ Faturado SEM baixar estoque (falta): ${convErr.message}`,
-                  }).eq('id', op.id);
-                } else {
-                  throw new Error(`Falha ao consumir reservas da OP ${op.id} no faturamento: ${convErr.message}`);
-                }
+                throw new Error(`Falha ao consumir reservas da OP ${op.id} no faturamento: ${convErr.message}`);
               }
-            }
-            if (convShortfalls.length > 0) {
-              toast.warning(
-                `PV finalizado, MAS ${convShortfalls.length} OP(s) com ESTOQUE NÃO BAIXADO (falta material/solado) — reconcilie ao repor: ${convShortfalls.slice(0, 3).join(' | ')}${convShortfalls.length > 3 ? '…' : ''}`,
-                { duration: 15000 },
-              );
             }
           }
 
@@ -1736,6 +1724,24 @@ export function useUpdateSaleOrderStatus() {
             .update({ status: 'Finalizado' })
             .in('id', opIds);
           if (opsError) throw opsError;
+
+          // Baixa que ficou DEVENDO: a finalização preserva o saldo não debitado
+          // como `pending_reconciliation` (mig 20260925133000). Ler daí é a fonte
+          // de verdade — a mensagem de erro da RPC não serve mais pra isso, e
+          // anotar em `notes` deixava o furo invisível pra quem não abre a OP.
+          // A baixa compensatória fecha em /diagnostics → "Furos de baixa".
+          const { data: pendencias } = await supabase
+            .from('material_reservations')
+            .select('id, quantity_reserved, quantity_consumed')
+            .in('order_id', opIds)
+            .eq('status', 'pending_reconciliation');
+          if (pendencias && pendencias.length > 0) {
+            toast.warning(
+              `PV finalizado, MAS ${pendencias.length} baixa(s) ficaram devendo por falta de estoque — ` +
+              'reconcilie em Diagnósticos › Furos de baixa quando o material chegar.',
+              { duration: 15000 },
+            );
+          }
 
           // Use complete_order_stages_bulk (Grupo 21) so quantity_processed is set
           // to quantity_total — plain UPDATE misses this, breaking CapacityPlanning

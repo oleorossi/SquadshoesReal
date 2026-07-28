@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';
 import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
-import { useStockDebitHoles, summarizeStockDebitHoles } from '@/hooks/useStockDebitHoles';
+import { useStockDebitHoles, summarizeStockDebitHoles, useReconcileStockDebitHole } from '@/hooks/useStockDebitHoles';
 
 type SchemaObject = {
   name: string;
@@ -121,6 +121,7 @@ export default function SystemDiagnostics() {
     refetch: refetchHoles,
   } = useStockDebitHoles(90, holesEnabled);
   const holesSummary = summarizeStockDebitHoles(holeRows);
+  const reconcile = useReconcileStockDebitHole();
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
