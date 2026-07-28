@@ -8,6 +8,7 @@ import { autoCreateMaterialPO } from '@/lib/materialAutoPO';
 import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
+import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 
 // Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
@@ -750,6 +751,11 @@ export function useUpdateSaleOrderStatus() {
             }
           }
         }
+
+        // Gate de material: as OPs acabaram de nascer/entrar em produção, então
+        // o início do Corte tem que refletir quando o material tem como chegar
+        // (auditoria Crítico #1). Silencioso — não pode derrubar a promoção.
+        await recomputeMaterialGate([id]);
 
         await syncFinancialRecords(id);
         return;
@@ -1662,6 +1668,11 @@ export function useUpdateSaleOrderStatus() {
           // Fetch client order number for traceability
           const { data: soClientData } = await supabase.from('sale_orders').select('client_order_number').eq('id', id).single();
           await generateAutoPurchaseOrders(soNumber, soNumber, soClientData?.client_order_number || undefined, id);
+
+          // Gate de material (auditoria Crítico #1): roda DEPOIS das OCs
+          // automáticas — reservar/comprar muda a falta, e o gate tem que
+          // enxergar o estoque já comprometido, não o de antes da aprovação.
+          await recomputeMaterialGate([id]);
         }
       }
 
