@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -34,6 +35,8 @@ export interface StockDebitHole {
   diferenca: number;
   valor_estimado: number;
   detectado_em: string | null;
+  /** Só em 'reserva_parcial_pendente' — é o que a baixa compensatória fecha. */
+  reservation_id: string | null;
 }
 
 export function useStockDebitHoles(dias = 90, enabled = false) {
@@ -48,6 +51,44 @@ export function useStockDebitHoles(dias = 90, enabled = false) {
     enabled,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
+  });
+}
+
+/**
+ * Baixa compensatória: fecha o furo debitando o saldo devido agora que há
+ * estoque. Debita o que couber (parcial é resultado válido — a pendência só
+ * diminui) e é idempotente: reconciliar 2× não debita de novo.
+ */
+export function useReconcileStockDebitHole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ reservationId, qty }: { reservationId: string; qty?: number }) => {
+      const { data, error } = await (supabase as any).rpc('reconcile_stock_debit_hole', {
+        p_reservation_id: reservationId,
+        p_qty: qty ?? null,
+      });
+      if (error) throw error;
+      return data as { debitado: number; restante: number; status: string; motivo?: string; ja_reconciliada?: boolean };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['stock-debit-holes'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['material_reservations'] });
+      if (res?.ja_reconciliada) {
+        toast.info('Pendência já estava reconciliada.');
+      } else if (Number(res?.debitado ?? 0) <= 0) {
+        toast.warning(`Nada debitado — ${res?.motivo ?? 'sem estoque disponível'}.`);
+      } else if (Number(res?.restante ?? 0) > 0) {
+        toast.warning(
+          `Baixa parcial: ${Number(res.debitado).toLocaleString('pt-BR')} debitado, ` +
+          `restam ${Number(res.restante).toLocaleString('pt-BR')} — repita quando repor.`,
+        );
+      } else {
+        toast.success(`Furo fechado — ${Number(res.debitado).toLocaleString('pt-BR')} debitado do estoque.`);
+      }
+    },
+    onError: (err: any) => toast.error(`Falha na baixa compensatória: ${err.message}`),
   });
 }
 

@@ -753,7 +753,7 @@ export default function SystemDiagnostics() {
                       {Number(r.diferenca).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
                       {r.unit ? ` ${r.unit}` : ''}
                     </Badge>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{r.product_name ?? '—'}</p>
                       <p className="text-xs text-muted-foreground break-words">
                         {r.sale_order_number ?? '—'} · {r.order_number ?? '—'} · {r.reference_name ?? '—'} ·{' '}
@@ -761,6 +761,21 @@ export default function SystemDiagnostics() {
                         {r.origem === 'reserva_parcial_pendente' ? ' · baixa parcial pendente' : ' · consumo sem débito'}
                       </p>
                     </div>
+                    {/* Só o saldo de reserva preservado tem como ser fechado por
+                        RPC — o furo de consumo sem débito não tem reserva viva
+                        pra debitar e continua sendo ajuste manual. */}
+                    {r.reservation_id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 text-xs"
+                        disabled={reconcile.isPending}
+                        onClick={() => reconcile.mutate({ reservationId: r.reservation_id! })}
+                        title="Debita agora o saldo que ficou devendo e fecha a pendência"
+                      >
+                        Reconciliar
+                      </Button>
+                    )}
                   </div>
                 ))}
                 {holesSummary.linhas > 40 && (
