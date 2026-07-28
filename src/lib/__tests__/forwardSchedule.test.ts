@@ -6,6 +6,7 @@ import {
   businessDaysBetween,
   type SectorKey,
 } from '@/lib/sectorCapacity';
+import { computeSectorLeadTimeDays } from '@/lib/leadTime';
 
 /**
  * Guarda do motor de cascata (D4). O lead time + a topologia vivem em UM lugar
@@ -56,6 +57,21 @@ function minDate(...ds: Date[]): Date {
 }
 
 describe('motor de cascata — forward × backward (D4)', () => {
+  it('onda: itens no mesmo setor consomem dias sequenciais, não o pico por item', () => {
+    const sharedCorteSheet = {
+      production_sectors: ['Corte Palmilha'],
+      sewing_capacity_per_day: 100,
+    };
+    const itemLeads = Array.from({ length: 10 }, () =>
+      computeSectorLeadTimeDays('corte_palmilha', 100, sharedCorteSheet),
+    );
+
+    // Cada referência usa a mesma capacidade física de Corte Palmilha: 10 itens
+    // de 100 pares a 100 pares/dia exigem 10 dias de máquina, não 1 dia.
+    expect(Math.max(...itemLeads)).toBe(1);
+    expect(itemLeads.reduce((total, lead) => total + lead, 0)).toBe(10);
+  });
+
   it('round-trip: início mais cedo da cascata reversa, indo pra frente, volta ao deadline', () => {
     const deadline = new Date('2026-09-30T00:00:00');
     const back = computeParallelWindows(sheet, QTY, deadline);
