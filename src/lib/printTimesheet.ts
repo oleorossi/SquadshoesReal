@@ -1,6 +1,6 @@
 import { printHtml, writePrintWindow, openPrintWindow } from './printOrder';
 import { calculateHourlyPayroll, splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
-import { SALARY_DAY_DIVISOR, SALARY_HOUR_DIVISOR, atrasoCapMinutes } from './salaryPayroll';
+import { SALARY_DAY_DIVISOR, SALARY_HOUR_DIVISOR, atrasoCapMinutes, type SalaryPolicy } from './salaryPayroll';
 import { escapeHtml } from './htmlUtils';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -51,6 +51,14 @@ export interface EmployeeTimesheetData {
    * do dia quando ausente (compat. com chamadas que não preenchem).
    */
   expectedDayMin?: number;
+  /**
+   * Política CANÔNICA da folha (M26, auditoria 2026-07-28) — a MESMA SalaryPolicy
+   * do Resumo (computePeriodFolha): falta = salário ÷ dias úteis do mês, atraso =
+   * min × (valorDia ÷ jornada), HE = R$/h ABSOLUTO do funcionário com mínimo por
+   * dia. Preenchida por buildEmployeePrintData (payrollComparativo); ausente ⇒
+   * evaluationDetail usa o legado ÷30/÷220/×1,5.
+   */
+  policy?: SalaryPolicy;
 }
 
 /**
@@ -668,18 +676,54 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
  */
 export type EvalDayKind = 'ok' | 'curto' | 'falta' | 'fds' | 'pendente';
 export function evaluationDetail(emp: EmployeeTimesheetData) {
-  const vh = emp.hourlySalary || 0;                                 // valor-hora = salário ÷ 220
-  const valorDia = vh * (SALARY_HOUR_DIVISOR / SALARY_DAY_DIVISOR);  // = salário ÷ 30
-  // Multiplicador de HE da escala (default 1,5×) — antes era PREMIUM_MULTIPLIER fixo.
+  const vh = emp.hourlySalary || 0;                                 // valor-hora LEGADO = salário ÷ 220
+  const monthlySalary = emp.monthlySalary ?? vh * SALARY_HOUR_DIVISOR; // salário cheio (220h)
+  // Multiplicador de HE da escala (default 1,5×) — usado só no modo LEGADO.
   const premiumMultiplier = Number(emp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);
   const schedExpected = emp.expectedDayMin && emp.expectedDayMin > 0 ? emp.expectedDayMin : null;
+
+  // ── Política CANÔNICA (M26, auditoria 2026-07-28) ──────────────────────────
+  // Com emp.policy (Folha/Excel via buildEmployeePrintData), o Detalhe usa AS
+  // MESMAS fórmulas do Resumo pago (computePeriodFolha/SalaryPolicy): falta =
+  // salário ÷ dias úteis do mês do dia; atraso = min × (valorDia ÷ jornada); HE
+  // = R$/h ABSOLUTO do funcionário (normal × domingo/feriado) com mínimo diário.
+  // Sem policy → legado ÷30/÷220/×1,5 (callers antigos e testes de baixo nível).
+  // Paridade travada em evaluationDetail.test.ts contra calculateSalaryPayroll.
+  const policy = emp.policy;
+  const usePolicy = !!policy;
+  const legacyValorDia = vh * (SALARY_HOUR_DIVISOR / SALARY_DAY_DIVISOR);  // = salário ÷ 30
+  const journeyMin = usePolicy && Number(policy!.journeyMinutes) > 0 ? Number(policy!.journeyMinutes) : 0;
+  const bdByMonth = usePolicy ? (policy!.businessDaysByMonth || {}) : {};
+  const valorDiaFor = (date: string): number => {
+    if (usePolicy) {
+      const bd = bdByMonth[String(date || '').slice(0, 7)] ?? policy!.businessDaysDivisor;
+      return bd > 0 ? monthlySalary / bd : 0;
+    }
+    return legacyValorDia;
+  };
+  const valorHoraFor = (date: string): number =>
+    usePolicy ? (journeyMin > 0 ? valorDiaFor(date) / (journeyMin / 60) : 0) : vh;
+  const minOt = usePolicy ? (policy!.minOvertimeMin ?? 10) : 0;
+  const heNormalRate = usePolicy ? (Number(policy!.heNormalRate) || 0) : 0;
+  const heHolidayRate = usePolicy
+    ? (policy!.heSundayHolidayRate != null && Number(policy!.heSundayHolidayRate) > 0
+        ? Number(policy!.heSundayHolidayRate) : heNormalRate)
+    : 0;
+  // R$ de 1h de HE: dia útil/sábado ⇒ taxa normal; fds/feriado ⇒ domingo/feriado
+  // quando o dia é domingo ou feriado (mesma distinção do motor da folha).
+  const heRateWorkday = usePolicy ? heNormalRate : vh * premiumMultiplier;
+  const heRateOffday = (dayOfWeek: number, isHoliday: boolean): number =>
+    usePolicy ? ((isHoliday || dayOfWeek === 0) ? heHolidayRate : heNormalRate) : vh * premiumMultiplier;
+  const valorDia = valorDiaFor(emp.days[0]?.date || '');            // exibição (mês do 1º dia)
 
   // Dia a dia: monta a linha de exibição (saldo do dia) E acumula HE/atraso BRUTO por-dia
   // (excedente/déficit de CADA dia, SEM compensação entre dias) — MESMA conta do motor da
   // folha (2026-06-19). Falta entra à parte (valor-dia); fds/feriado trabalhado = tudo HE.
-  const dayRows: { date: string; dayOfWeek: number; punches: string[]; expected: number; worked: number; saldo: number; kind: EvalDayKind }[] = [];
+  // `descontoDia`/`excedenteDia` = R$ DO DIA (consumidos pelo Excel "Detalhe dia a dia").
+  const dayRows: { date: string; dayOfWeek: number; punches: string[]; expected: number; worked: number; saldo: number; kind: EvalDayKind; descontoDia: number; excedenteDia: number }[] = [];
   let faltaCount = 0, expectedPresentMin = 0, workedTotalMin = 0, pendingDays = 0;
   let heMin = 0, atrasoMin = 0;
+  let faltaDesconto = 0, atrasoDesconto = 0, heValue = 0;
 
   for (const d of emp.days) {
     const punches = Array.isArray(d.punches) ? d.punches : [];
@@ -689,25 +733,50 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     const isWorkday = (d.expectedMinutes || 0) > 0;                 // dia de escala (esperado>0)
     const expected = isWorkday ? (schedExpected ?? (d.expectedMinutes || 0)) : 0;  // escala (540)
 
-    if (sp.incomplete) { pendingDays++; dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: 0, saldo: 0, kind: 'pendente' }); continue; }
+    if (sp.incomplete) { pendingDays++; dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: 0, saldo: 0, kind: 'pendente', descontoDia: 0, excedenteDia: 0 }); continue; }
     const worked = sp.normal + sp.premium;
 
     if (isWorkday) {
-      if (worked === 0) { faltaCount++; dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: 0, saldo: 0, kind: 'falta' }); continue; }
+      if (worked === 0) {
+        faltaCount++;
+        const desc = valorDiaFor(d.date);
+        faltaDesconto += desc;
+        dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked: 0, saldo: 0, kind: 'falta', descontoDia: desc, excedenteDia: 0 });
+        continue;
+      }
       expectedPresentMin += expected; workedTotalMin += worked;
       // BRUTO por-dia: excedente do dia → HE, déficit do dia → atraso (sem compensar entre dias).
-      // Atraso capado por-dia (atrasoCapMinutes) pra o holerite bater com a folha.
       const dayBal = worked - expected;
-      if (dayBal > 0) heMin += dayBal; else if (dayBal < 0) atrasoMin += Math.min(-dayBal, atrasoCapMinutes());
-      dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked, saldo: worked - expected, kind: worked >= expected ? 'ok' : 'curto' });
+      let descontoDia = 0, excedenteDia = 0;
+      if (dayBal > 0) {
+        // Mínimo de HE (policy): excedente do dia ≤ minOt é descartado, igual à folha.
+        if (!usePolicy || dayBal > minOt) {
+          heMin += dayBal;
+          excedenteDia = (dayBal / 60) * heRateWorkday;
+          heValue += excedenteDia;
+        }
+      } else if (dayBal < 0) {
+        // Atraso capado por-dia: policy = jornada do dia (dia inteiro = 1 falta);
+        // legado = teto 220/30 (atrasoCapMinutes).
+        const late = Math.min(-dayBal, usePolicy ? expected : atrasoCapMinutes());
+        atrasoMin += late;
+        descontoDia = (late / 60) * valorHoraFor(d.date);
+        atrasoDesconto += descontoDia;
+      }
+      dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected, worked, saldo: worked - expected, kind: worked >= expected ? 'ok' : 'curto', descontoDia, excedenteDia });
     } else if (worked > 0) {
-      workedTotalMin += worked; heMin += worked;                    // fds/feriado = tudo hora extra
-      dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected: 0, worked, saldo: worked, kind: 'fds' });
+      workedTotalMin += worked;                                     // fds/feriado = tudo hora extra
+      let excedenteDia = 0;
+      if (!usePolicy || worked > minOt) {
+        heMin += worked;
+        excedenteDia = (worked / 60) * heRateOffday(d.dayOfWeek, d.isHoliday);
+        heValue += excedenteDia;
+      }
+      dayRows.push({ date: d.date, dayOfWeek: d.dayOfWeek, punches, expected: 0, worked, saldo: worked, kind: 'fds', descontoDia: 0, excedenteDia });
     }
   }
 
   const regime = emp.paymentType || 'mensalista';
-  const monthlySalary = emp.monthlySalary ?? vh * SALARY_HOUR_DIVISOR; // salário cheio (220h)
 
   // ── REMOTO / DIARISTA / PRODUÇÃO: zera ajustes de ponto (sem falta/atraso/HE).
   // Producao é pago por par na folha (fora do ponto) → base 0 aqui: o Espelho
@@ -716,7 +785,9 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     const paidDays = dayRows.filter(r => (r.punches?.length || 0) >= 1).length;
     const paidBase = regime === 'diarista' ? (emp.dailyRate || 0) * paidDays : regime === 'producao' ? 0 : monthlySalary;
     return {
-      vh, valorDia, premiumMultiplier, dayRows, pendingDays,
+      vh, valorDia, premiumMultiplier, policyApplied: usePolicy,
+      // Sem desconto/HE de ponto nesses regimes → R$ por dia zerado também.
+      dayRows: dayRows.map(r => ({ ...r, descontoDia: 0, excedenteDia: 0 })), pendingDays,
       faltaCount: 0, faltaDesconto: 0, atrasoMin: 0, atrasoDesconto: 0, heMin: 0, heValue: 0,
       totalDesconto: 0, liquido: 0, hasSalary: paidBase > 0,
       workedTotalMin, expectedPresentMin,
@@ -724,18 +795,15 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
     };
   }
 
-  const faltaDesconto = faltaCount * valorDia;
-  const atrasoDesconto = (atrasoMin / 60) * vh;
-  const heValue = (heMin / 60) * vh * premiumMultiplier;
   const totalDesconto = faltaDesconto + atrasoDesconto;
 
   return {
-    vh, valorDia, premiumMultiplier, dayRows, pendingDays,
+    vh, valorDia, premiumMultiplier, policyApplied: usePolicy, dayRows, pendingDays,
     faltaCount, faltaDesconto, atrasoMin, atrasoDesconto, heMin, heValue,
     totalDesconto, liquido: heValue - totalDesconto, hasSalary: vh > 0,
     workedTotalMin, expectedPresentMin,
     paymentType: 'mensalista' as const, paidDays: dayRows.filter(r => r.kind === 'ok' || r.kind === 'curto' || r.kind === 'fds').length,
-    dailyRate: 0, paidBase: vh * SALARY_HOUR_DIVISOR,
+    dailyRate: 0, paidBase: monthlySalary,
   };
 }
 
@@ -791,12 +859,14 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
       <tr><td class="lbl">${baseLabel}</td><td class="amt">${formatMoney(base)}</td></tr>
       ${isMensal ? `<tr><td class="lbl neg">(−) Faltas — ${e.faltaCount} dia(s) × valor-dia</td><td class="amt neg">${e.faltaDesconto > 0 ? '− ' + formatMoney(e.faltaDesconto) : '—'}</td></tr>
       <tr><td class="lbl neg">(−) Atrasos (por dia) — ${e.atrasoMin > 0 ? minutesToDisplay(e.atrasoMin) : '0:00'}</td><td class="amt neg">${e.atrasoDesconto > 0 ? '− ' + formatMoney(e.atrasoDesconto) : '—'}</td></tr>
-      <tr><td class="lbl pos">(+) Hora extra (por dia ×1,5) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>` : ''}
+      <tr><td class="lbl pos">(+) Hora extra (por dia${e.policyApplied ? ', R$/h cadastrado' : ' ×1,5'}) — ${e.heMin > 0 ? minutesToDisplay(e.heMin) : '0:00'}</td><td class="amt pos">${e.heValue > 0 ? '+ ' + formatMoney(e.heValue) : '—'}</td></tr>` : ''}
       ${advance > 0 ? `<tr><td class="lbl neg">(−) Adiantamentos (vales do mês)</td><td class="amt neg">− ${formatMoney(advance)}</td></tr>` : ''}
       <tr class="net"><td>= Líquido a pagar</td><td class="amt">${formatMoney(liquido - advance)}</td></tr>
     </table>
-    <p class="note">Valor-dia = salário ÷ 30 = ${formatMoney(e.valorDia)} · Valor-hora = salário ÷ 220 = ${formatMoney(e.vh)} · Hora extra a 1,5×.
-      Valores <b>líquidos do período</b> (mesma conta da Folha): fim de semana / após-18h abatem o déficit antes de virar HE; falta = −1 dia.</p>
+    <p class="note">${e.policyApplied
+      ? `Falta = salário ÷ dias úteis do mês = ${formatMoney(e.valorDia)} · Atraso = min × (valor-dia ÷ jornada) · HE = R$/h cadastrado do funcionário (normal × domingo/feriado), com mínimo diário da escala.`
+      : `Valor-dia = salário ÷ 30 = ${formatMoney(e.valorDia)} · Valor-hora = salário ÷ 220 = ${formatMoney(e.vh)} · Hora extra a 1,5×.`}
+      Valores <b>por dia, sem compensação entre dias</b> (mesma política do Resumo da Folha): excedente do dia vira HE; déficit vira atraso; falta desconta o dia.</p>
   ` : `<p class="note">⚠ Salário não cadastrado para este funcionário — folha não calculada (apenas a jornada abaixo).</p>`;
 
   // ── Faltas e dias fora do horário (abaixo do esperado) ──
@@ -812,10 +882,10 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
           <td>${d.kind === 'falta' ? 'Falta' : 'Saiu antes / curto'}</td>
           <td class="text-right mono">${minutesToDisplay(d.expected)}</td>
           <td class="text-right mono">${d.kind === 'falta' ? '—' : minutesToDisplay(d.worked)}</td>
-          <td class="text-right mono" style="color:#dc2626"><b>${d.kind === 'falta' ? minutesToDisplay(d.expected) + (e.hasSalary ? ' · −' + formatMoney(e.valorDia) : '') : minutesToDisplay(d.expected - d.worked)}</b></td>
+          <td class="text-right mono" style="color:#dc2626"><b>${d.kind === 'falta' ? minutesToDisplay(d.expected) + (e.hasSalary ? ' · −' + formatMoney(d.descontoDia) : '') : minutesToDisplay(d.expected - d.worked)}</b></td>
         </tr>`).join('')}</tbody>
     </table>
-    <p class="note">Cada falta desconta 1 dia (salário ÷ 30). Cada dia “curto” desconta seu atraso e cada dia “longo”/fds paga hora extra — <b>por dia, sem compensação entre dias</b> — atraso total ${e.atrasoDesconto > 0 ? '<b>−' + formatMoney(e.atrasoDesconto) + '</b>' : '<b>nenhum</b>'}, já na folha acima.</p>
+    <p class="note">Cada falta desconta 1 dia (${e.policyApplied ? 'salário ÷ dias úteis do mês' : 'salário ÷ 30'}). Cada dia “curto” desconta seu atraso e cada dia “longo”/fds paga hora extra — <b>por dia, sem compensação entre dias</b> — atraso total ${e.atrasoDesconto > 0 ? '<b>−' + formatMoney(e.atrasoDesconto) + '</b>' : '<b>nenhum</b>'}, já na folha acima.</p>
   ` : `<h2>Faltas e dias fora do horário</h2><p class="note">Nenhuma falta ou dia abaixo do esperado no período. 👍</p>`;
 
   // ── Horas extras (dias com saldo positivo) ──
@@ -834,7 +904,7 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
           <td class="text-right mono" style="color:#16a34a"><b>+${minutesToDisplay(d.saldo)}</b></td>
         </tr>`).join('')}</tbody>
     </table>
-    <p class="note">Excedente bruto por dia. A hora extra <b>paga</b> é o excedente <b>líquido</b> do período: ${e.heMin > 0 ? '<b>' + minutesToDisplay(e.heMin) + ' ×1,5 = +' + formatMoney(e.heValue) + '</b>' : '<b>zero</b> — não bateu a meta de horas do período'}, já na folha acima.</p>
+    <p class="note">Excedente por dia (sem compensação entre dias). Hora extra <b>paga</b>: ${e.heMin > 0 ? '<b>' + minutesToDisplay(e.heMin) + (e.policyApplied ? ' × R$/h cadastrado = +' : ' ×1,5 = +') + formatMoney(e.heValue) + '</b>' : '<b>zero</b>'}, já na folha acima.</p>
   ` : `<h2>Dias com hora extra / excedente</h2><p class="note">Nenhum dia com excedente no período.</p>`;
 
   // ── Jornada dia a dia completa ──

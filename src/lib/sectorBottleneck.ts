@@ -75,6 +75,12 @@ const SECTOR_TO_CAPACITY_COLUMN: Record<string, string> = {
   'Corte Forração': 'cutting_capacity_per_day',
   'Aviamento':      'mesa_daily_capacity',
   'Costura':        'costura_capacity_per_day',
+  // Split da Costura (migration 20261001120000): dois setores próprios, cada um
+  // com coluna nova (backfill copiou a legada; resolveSheetCapacity cai na
+  // legada quando a nova está vazia). Sem estas entradas, OP nas costuras
+  // novas tinha cap=0 → nunca era gargalo (reedição do bug de 2026-06-14).
+  'Costura Palmilha': 'costura_palmilha_capacity_per_day',
+  'Costura Cabedal':  'costura_cabedal_capacity_per_day',
   'Silk':           'silk_capacity_per_day',
   'Colagem':        'gluing_capacity_per_day',
   'Montagem':       'assembly_capacity_per_day',
@@ -91,6 +97,23 @@ const SECTOR_TO_CAPACITY_COLUMN: Record<string, string> = {
   Forração:  'cutting_capacity_per_day',
   Mesa:      'mesa_daily_capacity',
 };
+
+/**
+ * Resolve a capacidade/dia da ficha para um setor, com os fallbacks:
+ *   - Costura Palmilha/Cabedal → costura_capacity_per_day (coluna legada única)
+ *   - Expedição → finishing_capacity_per_day quando não tem capacidade própria
+ */
+function resolveSheetCapacity(sheet: any, stageName: string): number {
+  const capCol = SECTOR_TO_CAPACITY_COLUMN[stageName];
+  let cap = capCol ? Number(sheet[capCol] || 0) : 0;
+  if (cap === 0 && (stageName === 'Costura Palmilha' || stageName === 'Costura Cabedal')) {
+    cap = Number(sheet.costura_capacity_per_day || 0);
+  }
+  if (cap === 0 && stageName === 'Expedição') {
+    cap = Number(sheet.finishing_capacity_per_day || 0);
+  }
+  return cap;
+}
 
 export interface BottleneckInput {
   orderId: string;
@@ -162,7 +185,8 @@ export async function loadBottlenecksForOrders(
       .select(
         // costura_capacity_per_day incluído (auditoria 2026-06-14): sem ele o
         // setor Costura mapeava p/ coluna ausente → cap=0 → nunca era gargalo.
-        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, costura_capacity_per_day',
+        // costura_palmilha/cabedal_capacity_per_day idem (auditoria 2026-07-28, A8).
+        'id, cutting_capacity_per_day, sewing_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, costura_capacity_per_day, costura_palmilha_capacity_per_day, costura_cabedal_capacity_per_day',
       )
       .in('id', refIds);
     (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
@@ -235,10 +259,7 @@ export async function loadBottlenecksForOrders(
       continue;
     }
 
-    const capCol = SECTOR_TO_CAPACITY_COLUMN[current.stage_name as string];
-    let cap = capCol ? Number(sheet[capCol] || 0) : 0;
-    // Expedição: cai pra finishing_capacity_per_day quando não tem capacidade própria.
-    if (cap === 0 && current.stage_name === 'Expedição') cap = Number(sheet.finishing_capacity_per_day || 0);
+    const cap = resolveSheetCapacity(sheet, current.stage_name as string);
     const qty = Number(ord.quantity || 0);
 
     const info: BottleneckInfo =
@@ -266,9 +287,7 @@ export async function loadBottlenecksForOrders(
     const next = sortedStages.slice(currentIdx + 1).find((s: any) => s.status !== 'concluido');
 
     if (next) {
-      const nextCapCol = SECTOR_TO_CAPACITY_COLUMN[next.stage_name as string];
-      let nextCap = nextCapCol ? Number(sheet[nextCapCol] || 0) : 0;
-      if (nextCap === 0 && next.stage_name === 'Expedição') nextCap = Number(sheet.finishing_capacity_per_day || 0);
+      const nextCap = resolveSheetCapacity(sheet, next.stage_name as string);
       if (nextCap > 0) {
         const queuedPairs = sectorQueuedPairs.get(next.stage_name) || qty;
         const queueDays = Math.ceil(queuedPairs / nextCap);

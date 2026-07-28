@@ -32,6 +32,7 @@ import {
 } from '@/hooks/useTimesheet';
 import { useEmployees, useUpdateEmployee } from '@/hooks/useEmployees';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
+import { buildHolidaySet } from '@/lib/holidays';
 import { getBatchDateRange, resolveTimeControlFilters } from '@/lib/timeControlFilters';
 import { calculateWeeklyPeriod } from '@/lib/weeklyTimeCalculation';
 import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
@@ -796,14 +797,20 @@ function TimesheetRecordsTab() {
     const salary = Number(emp?.salary) || 0;
     const sch = (emp?.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
     const punchesByDate = new Map<string, string[]>(dayData.map(d => [d.date, Array.isArray(d.punches) ? d.punches : []]));
+    const folhaFrom = dayData[0]?.date || '';
+    const folhaTo = dayData[dayData.length - 1]?.date || '';
     return computePeriodFolha({
-      salary, from: dayData[0]?.date || '', to: dayData[dayData.length - 1]?.date || '',
-      schedule: sch, holidaysSet: holidayDates, swapWorkedSet, swapOffSet, punchesByDate,
+      salary, from: folhaFrom, to: folhaTo,
+      // Feriados da FOLHA: obrigatórios + recorrência expandida (M28) — antes
+      // passava só os não-recorrentes crus (holidayDates), perdendo recorrente.
+      schedule: sch, holidaysSet: buildHolidaySet(holidays as any[], folhaFrom, folhaTo), swapWorkedSet, swapOffSet, punchesByDate,
       // HE em R$/h por funcionário + regime — pra o Espelho/Ponto bater com a Folha (spec req.15).
       payRegime: (String((emp as any)?.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
       dailyRate: Number((emp as any)?.daily_rate) || 0,
       heNormalRate: Number((emp as any)?.he_normal_rate) || 0,
       heSundayHolidayRate: Number((emp as any)?.he_sunday_holiday_rate) || 0,
+      // Mínimo de HE da ESCALA (M27, auditoria 2026-07-28) — antes fixo em 10.
+      minOvertimeMin: (sch as any)?.minimum_overtime_minutes ?? 10,
     });
   };
 
@@ -836,7 +843,7 @@ function TimesheetRecordsTab() {
     if (!selectedEmployee || selectedEmployee === '__all__' || summaries.length === 0) return null;
     return folhaForEmployee(selectedEmployee, summaries);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmployee, summaries, holidayDates, swapWorkedSet, swapOffSet, schedules, employees, defaultSchedule]);
+  }, [selectedEmployee, summaries, holidays, swapWorkedSet, swapOffSet, schedules, employees, defaultSchedule]);
 
   const totalWorked = folhaInd?.worked_minutes ?? 0;
   const totalExpected = folhaInd?.expected_minutes ?? 0;

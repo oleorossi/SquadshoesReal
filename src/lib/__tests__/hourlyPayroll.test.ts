@@ -93,6 +93,45 @@ describe('splitDayMinutes', () => {
     expect(splitDayMinutes(['08:00'], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: true });
     expect(splitDayMinutes([], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: false });
   });
+
+  // ── Dedupe de batida DUPLA (<5 min) — paridade com o SQL calculate_day_summary (M25) ──
+  it('batida dupla do relógio (07:59 + 08:01 + 18:00): deduplica e CALCULA o dia (não vira pendência)', () => {
+    // dedupe → [07:59, 18:00] = span 601 − 1h almoço = 541 (o caso da migration do SQL).
+    const r = splitDayMinutes(['07:59', '08:01', '18:00'], WED, false);
+    expect(r.incomplete).toBe(false);
+    expect(r.normal).toBe(541);
+    expect(r.premium).toBe(0);
+  });
+
+  it('batida dupla no meio de 5 marcações: dedupe → 4 batidas pareadas normais', () => {
+    // dedupe → [07:59, 12:00, 13:00, 18:00] = 241 + 300 = 541 (pausa ≥1h já batida).
+    const r = splitDayMinutes(['07:59', '08:01', '12:00', '13:00', '18:00'], WED, false);
+    expect(r).toEqual({ normal: 541, premium: 0, incomplete: false });
+  });
+
+  it('SÓ a batida dupla (07:59 + 08:01): dedupe deixa 1 batida → incompleto', () => {
+    expect(splitDayMinutes(['07:59', '08:01'], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: true });
+  });
+
+  it('dedupe que tornaria PAR→ÍMPAR preserva o dia (12:04 = volta do almoço, não repique)', () => {
+    // [08:00,12:00,12:04,18:00]: 12:04 está <5min de 12:00, mas descartá-lo
+    // deixaria 3 batidas → 0h/pendente. Como o conjunto original é PAR ≥4, o
+    // dedupe é ignorado e o dia pareia normal: (08→12)+(12:04→18) − almoço = 540.
+    const r = splitDayMinutes(['08:00', '12:00', '12:04', '18:00'], WED, false);
+    expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
+  });
+
+  it('batidas fora de ordem são ordenadas antes de parear (relógio pode entregar desordenado)', () => {
+    // [18:00,08:00,13:00,12:00] → ordena → [08,12,13,18] = (08→12)+(13→18) = 540.
+    const r = splitDayMinutes(['18:00', '08:00', '13:00', '12:00'], WED, false);
+    expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
+  });
+
+  it('gap de exatamente 5 min NÃO deduplica (almoço curto continua valendo)', () => {
+    // 13:00→13:05 = 5 min ≥ 5 → mantida (mesma regra ABS ≥ 5 do SQL).
+    const r = splitDayMinutes(['08:01', '13:00', '13:05', '18:00'], WED, false);
+    expect(r.normal).toBe(539);
+  });
 });
 
 describe('calculateHourlyPayroll', () => {

@@ -500,15 +500,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       : resolveOption(sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0, upperAlts, orderColor);
     if (upperMatch) {
       const isPrincipal = !!upperVariantGroup || upperMatch.group === (sheet?.upper_material || '');
-      // Pin de SKU (variante > ficha): a cs do produto pinado dirige a conversão
-      // dm²→m quando existir — MESMA ordem do SQL/motor canônico (F2-04).
+      // Pin de SKU: a cs do produto pinado dirige a conversão dm²→m quando
+      // existir (F2-04). Precedência (mig 20260907120500): pin da VARIANTE >
+      // grupo da VARIANTE (resolve por grupo + cor do PV) > pin da FICHA >
+      // grupo da ficha — variante group-only não cai no pin da ficha (M7).
       const upperPinId: string | null =
         (variant?.upper_material_product_id && (allProducts || []).some((p: any) => p.id === variant.upper_material_product_id))
           ? variant.upper_material_product_id
-          : (isPrincipal && (sheet as any)?.upper_material_product_id
-              && (allProducts || []).some((p: any) => p.id === (sheet as any).upper_material_product_id)
-            ? (sheet as any).upper_material_product_id
-            : null);
+          : upperVariantGroup
+            ? (resolveMaterialProductCanonical(upperMatch.group, orderColor, allProducts || [], productGroups || [])?.id ?? null)
+            : (isPrincipal && (sheet as any)?.upper_material_product_id
+                && (allProducts || []).some((p: any) => p.id === (sheet as any).upper_material_product_id)
+              ? (sheet as any).upper_material_product_id
+              : null);
       const upperSheet = getConversionSheetForProduct(upperPinId, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       const overridePerSize = isPrincipal
@@ -564,16 +568,21 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
       && Object.values(insoleLiningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0)
       && !Object.values(liningSpecBySole.get(soleIdForLiningBom || '') || {}).some((v) => Number(v) > 0);
-    // Pin de SKU do forro (variante > ficha) — hoisted: dirige a ficha de
-    // conversão (F2-04) do Forro E da Forração Palmilha abaixo.
+    // Pin de SKU do forro — hoisted: dirige a ficha de conversão (F2-04) do
+    // Forro E da Forração Palmilha abaixo. Precedência (mig 20260907120500):
+    // pin da VARIANTE > grupo da VARIANTE (resolve por grupo + cor do PV) >
+    // pin da FICHA > grupo da ficha — variante group-only não cai no pin da
+    // ficha (M7).
     const isPrincipalLining = !!liningMatch && (!!liningVariantGroup || liningMatch.group === (sheet?.lining_material || ''));
     const liningPinId: string | null =
       (variant?.lining_material_product_id && (allProducts || []).some((p: any) => p.id === variant.lining_material_product_id))
         ? variant.lining_material_product_id
-        : (isPrincipalLining && (sheet as any)?.lining_material_product_id
-            && (allProducts || []).some((p: any) => p.id === (sheet as any).lining_material_product_id)
-          ? (sheet as any).lining_material_product_id
-          : null);
+        : liningVariantGroup
+          ? (resolveMaterialProductCanonical(liningVariantGroup, orderColor, allProducts || [], productGroups || [])?.id ?? null)
+          : (isPrincipalLining && (sheet as any)?.lining_material_product_id
+              && (allProducts || []).some((p: any) => p.id === (sheet as any).lining_material_product_id)
+            ? (sheet as any).lining_material_product_id
+            : null);
     if (liningMatch && !suppressCabedalForracao) {
       const liningSheet = getConversionSheetForProduct(liningPinId, liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const soleProductId = soleIdForLiningBom;

@@ -118,8 +118,8 @@ export function SolesComponentSheetTab() {
     const baseWaste = sheet?.waste_pct ?? 0;
     return {
       sheet,
-      consumption: draft?.consumption ?? Number(baseConsumption) ?? 1,
-      waste_pct: draft?.waste_pct ?? Number(baseWaste) ?? 0,
+      consumption: draft?.consumption ?? (Number.isFinite(Number(baseConsumption)) ? Number(baseConsumption) : 1),
+      waste_pct: draft?.waste_pct ?? (Number.isFinite(Number(baseWaste)) ? Number(baseWaste) : 0),
       dirty: !!draft,
     };
   };

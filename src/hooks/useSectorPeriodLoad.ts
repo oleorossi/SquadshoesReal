@@ -84,10 +84,11 @@ export function useSectorPeriodLoad(startISO: string, endISO: string) {
         realPairs: 0, realOpsCount: 0, realDelayedCount: 0, realUnstartedCount: 0, realOps: [],
       }));
 
-      const { data: ordersRaw } = await supabase
+      const { data: ordersRaw, error: ordersErr } = await supabase
         .from('orders')
         .select('id, order_number, reference_id, color, quantity, planned_delivery, status')
         .gt('quantity', 0);
+      if (ordersErr) throw ordersErr;
       const orders = (ordersRaw || []).filter((o: any) => !EXCLUDED.has(String(o.status || '').toLowerCase()));
       if (orders.length === 0) {
         return { start: startISO, end: endISO, businessDays: bizDays, sectors: emptySectors(),
@@ -97,10 +98,11 @@ export function useSectorPeriodLoad(startISO: string, endISO: string) {
       const refIds = Array.from(new Set(orders.map((o: any) => o.reference_id).filter(Boolean)));
       const sheetMap = new Map<string, any>();
       if (refIds.length > 0) {
-        const { data: sheets } = await supabase
+        const { data: sheets, error: sheetsErr } = await supabase
           .from('technical_sheets')
-          .select('id, name, code, shoe_category, production_sectors, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, requires_cutting, requires_sewing')
+          .select('id, name, code, shoe_category, production_sectors, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, costura_palmilha_capacity_per_day, costura_cabedal_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, requires_cutting, requires_sewing')
           .in('id', refIds as string[]);
+        if (sheetsErr) throw sheetsErr;
         (sheets || []).forEach((s: any) => sheetMap.set(s.id, s));
       }
       // F1-05: fallback de capacidade por categoria (default_lead_times) —
@@ -136,12 +138,13 @@ export function useSectorPeriodLoad(startISO: string, endISO: string) {
 
       // ── REAL (WIP de AGORA: etapa corrente, igual ao gargalo diário) ──
       const orderIds = orders.map((o: any) => o.id);
-      const { data: stagesRaw } = await supabase
+      const { data: stagesRaw, error: stagesErr } = await supabase
         .from('order_stages')
         .select('order_id, stage_name, status, stage_order, quantity_total, quantity_processed')
         .in('order_id', orderIds)
         .neq('status', 'concluido')
         .order('stage_order', { ascending: true });
+      if (stagesErr) throw stagesErr;
       const currentByOrder = new Map<string, any>();
       for (const st of stagesRaw || []) {
         const oid = (st as any).order_id; const ex = currentByOrder.get(oid);

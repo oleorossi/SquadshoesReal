@@ -47,6 +47,12 @@ export function getDeliveryWeekEndDate(
     weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7));
   }
   weekStart.setDate(weekStart.getDate() + (weekNum - 1) * 7);
+  // Clampa: se a segunda cair no mês anterior (S1 de mês que não começa em
+  // segunda), alinha ao dia 1 do mês — mesma semântica de monthWeekToISODate
+  // (billingWeek.ts) e de resolve_billing_week_for_order/resolve_op_due_date (SQL).
+  if (weekStart.getTime() < firstDay.getTime()) {
+    weekStart.setTime(firstDay.getTime());
+  }
 
   const friday = new Date(weekStart);
   friday.setDate(friday.getDate() + 4);

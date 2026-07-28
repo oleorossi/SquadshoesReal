@@ -17,7 +17,8 @@ import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from
 import { usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange, SALARY_DAY_DIVISOR } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange } from '@/lib/salaryPayroll';
+import { buildHolidaySet } from '@/lib/holidays';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { aggregateProducaoByMontador, FICHA_MONTADORES_PRODUCAO_COLUMNS, type FichaMontadorRow } from '@/lib/montadorProduction';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
@@ -150,12 +151,12 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const upsertRun = useUpsertPayrollRun();
   const updateStatus = useUpdatePayrollStatus();
 
-  // Feriados OBRIGATÓRIOS (optional !== true) → dia inteiro 1,5×.
+  // Feriados OBRIGATÓRIOS (optional !== true) → dia inteiro 1,5×. Helper único
+  // expande feriado `recurring` por MM-DD no(s) ano(s) do período — antes a data
+  // crua fazia a Folha descontar FALTA no ano seguinte ao cadastro (M28).
   const holidaysSet = useMemo(
-    () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[])
-      .filter(h => h.optional !== true)
-      .map(h => h.holiday_date)),
-    [holidaysList],
+    () => buildHolidaySet(holidaysList as any[], appliedFrom, appliedTo),
+    [holidaysList, appliedFrom, appliedTo],
   );
 
   // Trocas de dia (compensação): dia flex — normal quando trabalhado, neutro quando não.
@@ -467,7 +468,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         { v: `− ${fmt(tAtraso)}`, align: 'r', neg: true, strong: true },
         { v: fmt(tLiq), align: 'r', strong: true },
       ],
-      footNote: 'Faltas = dias × salário/30 · Atrasos = min × salário/220 · H.E. = min × salário/220 × 1,5.',
+      footNote: 'Faltas = dias × (salário ÷ dias úteis do mês) · Atrasos = min × (valor-dia ÷ jornada) · H.E. = min × R$/h cadastrado do funcionário (mínimo da escala).',
     });
   };
 
@@ -524,6 +525,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     }
     setCalcRunning(true);
     try {
+      // Feriados do intervalo IMEDIATO (o memo `holidaysSet` segue o range debounced
+      // — podia estar um ano atrás do que o usuário acabou de digitar).
+      const cHolidaysSet = buildHolidaySet(holidaysList as any[], cFrom, cTo);
       // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
       // como falta quem ainda não teve o ponto baixado). Folha fica "parcial" até importar.
       const maxCov = coverage?.maxCovered || null;
@@ -631,7 +635,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           salary: Number(emp.salary) || 0,
           from: cFrom, to: cTo,
           schedule: sch,
-          holidaysSet,
+          holidaysSet: cHolidaysSet,
           swapWorkedSet,
           swapOffSet,
           punchesByDate: empPunches,
@@ -653,6 +657,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
           heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
+          // Mínimo de HE da ESCALA (M27, auditoria 2026-07-28) — antes fixo em 10.
+          minOvertimeMin: (sch as any)?.minimum_overtime_minutes ?? 10,
         });
         if (result.pending_days > 0) withIncomplete++;
         if ((result as any).he_rate_missing) withMissingHeRate++;
@@ -888,8 +894,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     <div className="space-y-4 page-enter">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário × dias do período ÷ dias do mês · falta = −1 dia (salário÷30) · atraso/saída cedo = min × (salário÷220) ·
-          {' '}hora extra após 18h / fim de semana / feriado = <span className="font-semibold text-foreground">1,5×</span>
+          <span className="font-semibold text-foreground">Base proporcional aos dias − descontos</span> · base = salário × dias do período ÷ dias do mês · falta = −1 dia (salário ÷ dias úteis do mês) · atraso/saída cedo = min × (valor-dia ÷ jornada) ·
+          {' '}hora extra = excedente do dia × <span className="font-semibold text-foreground">R$/h cadastrado</span> (normal × domingo/feriado)
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1">
@@ -1260,7 +1266,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                 value: periodBase, type: 'p' as const, always: true,
               },
               { label: `Horas extras 1,5× (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
-              { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.base_salary || 0) / SALARY_DAY_DIVISOR)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
+              // Valor-dia derivado do desconto REAL (política: salário ÷ dias úteis do
+              // mês) — o rótulo antes anunciava salário÷30 e contradizia o valor pago.
+              { label: `Faltas (${r.absent_days || 0} dia(s) × ${fmt((r.absent_days || 0) > 0 ? (r.absence_discount || 0) / (r.absent_days as number) : 0)})`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
               { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
               { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
             ].filter(l => l.value > 0 || (l as any).always);

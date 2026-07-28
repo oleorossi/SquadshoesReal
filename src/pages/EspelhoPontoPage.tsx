@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useWorkSchedules, useHolidays, useSwapSets, useTimesheetCoverage, useTimeRecords, calculateDaySummary, type WorkSchedule } from '@/hooks/useTimesheet';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
+import { buildHolidaySet } from '@/lib/holidays';
 import { generateAEJ, downloadAEJ } from '@/lib/aejExporter';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -98,7 +99,10 @@ export default function EspelhoPontoPage() {
     });
   }, [records, employee]);
 
-  const holidaySet = useMemo(() => new Set(holidays.map(h => h.holiday_date)), [holidays]);
+  // Feriados OBRIGATÓRIOS com recorrência expandida no período (M28) — helper
+  // único da Folha. Antes o Espelho usava a data crua E incluía facultativo
+  // (feriado optional virava 1,5× aqui mas não na folha).
+  const holidaySet = useMemo(() => buildHolidaySet(holidays as any[], periodStart, periodEnd), [holidays, periodStart, periodEnd]);
   // Troca de dia: espelho lê o dia trocado como normal (não feriado/domingo) e a
   // folga da troca como neutra — alinhado à folha e ao banco de horas.
   const { swapWorkedSet, swapOffSet, swapModeFor } = useSwapSets();

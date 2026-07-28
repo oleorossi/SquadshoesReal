@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
 import { computePeriodFolha, SALARY_DAY_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
+import { buildHolidaySet } from '@/lib/holidays';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
@@ -185,10 +186,6 @@ export default function RelatorioFaltas() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidaysList = [] } = useHolidays();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
-  const holidaysSet = useMemo(
-    () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[]).filter(h => h.optional !== true).map(h => h.holiday_date)),
-    [holidaysList],
-  );
   const { swapWorkedSet, swapOffSet } = useSwapSets();
   // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
   // mesma contagem precisa invalidar o cache do relatório.
@@ -202,6 +199,8 @@ export default function RelatorioFaltas() {
   const [cTo, setCTo] = useState(todayISO());
   const [selected, setSelected] = useState<FaltaRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
+  // Feriados obrigatórios com recorrência expandida no período (M28) — helper único.
+  const holidaysSet = useMemo(() => buildHolidaySet(holidaysList as any[], from, to), [holidaysList, from, to]);
 
   // Cobertura do relógio: até que dia o ponto foi de fato importado. FALTA só conta
   // em dia COBERTO (relógio lido). Dias após a última importação NÃO viram falta —
@@ -270,6 +269,8 @@ export default function RelatorioFaltas() {
           coveredDates,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
+          // Mínimo de HE da ESCALA (M27, auditoria 2026-07-28) — antes fixo em 10.
+          minOvertimeMin: sch?.minimum_overtime_minutes ?? 10,
         });
         const faltas = (res.falta_dates || []).slice().sort((a, b) => a.localeCompare(b));
         if (faltas.length > 0) {

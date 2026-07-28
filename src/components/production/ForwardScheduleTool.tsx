@@ -45,7 +45,7 @@ export function ForwardScheduleTool() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, code, shoe_category, production_sectors, sewing_capacity_per_day, cutting_capacity_per_day, costura_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, assembly_capacity_per_day, soling_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_expedicao_dias, requires_cutting, requires_sewing')
+        .select('id, name, code, shoe_category, production_sectors, sewing_capacity_per_day, cutting_capacity_per_day, costura_capacity_per_day, costura_palmilha_capacity_per_day, costura_cabedal_capacity_per_day, mesa_daily_capacity, silk_capacity_per_day, gluing_capacity_per_day, assembly_capacity_per_day, soling_capacity_per_day, finishing_capacity_per_day, expedition_capacity_per_day, lead_time_expedicao_dias, requires_cutting, requires_sewing')
         .order('name');
       if (error) throw error;
       return (data ?? []) as any[];

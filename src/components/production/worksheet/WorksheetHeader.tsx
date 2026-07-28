@@ -44,7 +44,7 @@ interface Props {
  *  (Sem cor — a fábrica imprime laser P&B; vermelho viraria cinza.) */
 const FLOW_RAIL_STEPS = ['C.PLM', 'C.FOR', 'CS.PLM', 'CS.CAB', 'AVIA', 'SILK', 'COLA', 'MONT', 'SOLA', 'ACAB', 'EXP'] as const;
 
-/** Cor-assinatura por setor (MESMA ordem do fluxo 1–10) — escolha do dono
+/** Cor-assinatura por setor (MESMA ordem do fluxo 1–11) — escolha do dono
  *  2026-06-30: cada setor tem uma cor pra reconhecer a ficha de longe e não
  *  confundir. Aplicada SÓ na faixa do topo + nome do setor (decisão "barata":
  *  se imprimir em P&B a faixa vira cinza e nada de conteúdo se perde). */
@@ -112,10 +112,14 @@ export const WorksheetHeader = ({
   imageSlot, identification, qrLabel, qrValue, alerts, index, lotInfo, sizeBand,
 }: Props) => {
   const editorialIndex = index || `01 / ${sector.toUpperCase()}`;
-  // Passo do fluxo (1–10) pro trilho: lê o nº à frente do index ("03 / SILK" → 3).
-  const flowStep = parseInt(editorialIndex, 10);
+  // Passo do fluxo (1–11) pro trilho: extrai o PRIMEIRO nº do index. Os
+  // chamadores passam "OP 06 / SILK" (formatOpNumber/stageOrder — MESMA
+  // numeração do trilho de 11 posições); parseInt cru devolvia NaN por causa
+  // do prefixo "OP" e o trilho + cor do setor nunca renderizavam (bug A9).
+  const flowMatch = /\d+/.exec(editorialIndex);
+  const flowStep = flowMatch ? parseInt(flowMatch[0], 10) : NaN;
   const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 11;
-  // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo 1–10 → preto.
+  // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo 1–11 → preto.
   const sectorColor = hasFlow ? SECTOR_COLORS[flowStep - 1] : '#000';
   return (
     <div className="mb-1 text-black keep-together keep-with-next">

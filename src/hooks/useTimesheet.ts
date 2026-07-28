@@ -627,7 +627,8 @@ export function calculateDaySummary(
   // Mudança vs a versão antiga (que espelhava o SQL): turno parcial à tarde
   // (ex. 13:08→18:00) NÃO desconta mais "almoço fantasma" (a pessoa entrou depois
   // do almoço) → 292 em vez de 232; almoço só deduzido quando o dia longo cruza o
-  // meio-dia (regra splitDayMinutes); sem dedupe de 5min (a folha não dedupa).
+  // meio-dia (regra splitDayMinutes). Batida DUPLA (<5 min) é deduplicada DENTRO
+  // do splitDayMinutes desde a auditoria 2026-07-28 (M25) — mesma regra do SQL.
   // A função SQL calculate_day_summary é atualizada em LOCKSTEP (mesma regra) e o
   // histórico fica CONGELADO (folhas/saldos fechados não são recalculados).
   // Troca de dia (workday_swaps): 'worked'/'off' são DIAS FLEX — lê como dia útil
@@ -1117,10 +1118,11 @@ export function useImportTimeRecords() {
       }
       const uniqueRecords = Array.from(dedupMap.values());
 
-      // ── Step 2: paginated fetch of ALL existing keys in this date range ──
+      // ── Step 2: paginated fetch of ALL existing records in this date range ──
       // Supabase returns at most 1000 rows per query by default; we paginate
       // with .range() to ensure we see every already-imported day — no matter
-      // how many records are stored.
+      // how many records are stored. Traz as PUNCHES (não só a chave) pra
+      // decidir merge por dia (M29).
       const minDate = uniqueRecords.reduce(
         (m, r) => (r.record_date < m ? r.record_date : m), '9999-99-99'
       );
@@ -1129,7 +1131,7 @@ export function useImportTimeRecords() {
       );
       const allNames = [...new Set(uniqueRecords.map(r => r.employee_name))];
 
-      const existingKeys = new Set<string>();
+      const existingPunches = new Map<string, string[]>();
       const PAGE = 1000;
       // Split employee names into chunks of 100 to stay within URL-length limits
       for (let ni = 0; ni < allNames.length; ni += 100) {
@@ -1138,42 +1140,64 @@ export function useImportTimeRecords() {
         while (true) {
           const { data } = await supabase
             .from('time_records')
-            .select('employee_name, record_date')
+            .select('employee_name, record_date, punches')
             .in('employee_name', nameChunk)
             .gte('record_date', minDate)
             .lte('record_date', maxDate)
             .range(from, from + PAGE - 1);
           if (!data || data.length === 0) break;
           for (const row of data) {
-            existingKeys.add(`${row.employee_name}__${row.record_date}`);
+            existingPunches.set(
+              `${row.employee_name}__${row.record_date}`,
+              Array.isArray((row as any).punches) ? ((row as any).punches as string[]) : [],
+            );
           }
           if (data.length < PAGE) break; // last page
           from += PAGE;
         }
       }
 
-      // ── Step 3: keep only records that are not yet in the DB ─────────────
-      const toInsert = uniqueRecords.filter(
-        r => !existingKeys.has(`${r.employee_name}__${r.record_date}`)
-      );
-      let skipped = uniqueRecords.length - toInsert.length;
+      // ── Step 3: dia novo entra; dia EXISTENTE mescla (união de batidas) ──
+      // Antes qualquer chave (nome, data) já gravada era PULADA — dia importado
+      // parcial (só a entrada, ou punches=[] de funcionário sem batida) congelava
+      // pra sempre: reimportar o arquivo completo não trazia as batidas novas
+      // (M29, auditoria 2026-07-28). Agora, se o arquivo TRAZ batida que falta no
+      // banco, enviamos o dia com a UNIÃO (banco ∪ arquivo, ordenada) — assim o
+      // upsert do servidor nunca perde batida já gravada/lançada à mão.
+      const toInsert: typeof uniqueRecords = [];
+      let skipped = 0;
+      for (const r of uniqueRecords) {
+        const existing = existingPunches.get(`${r.employee_name}__${r.record_date}`);
+        if (existing === undefined) { toInsert.push(r); continue; }   // dia novo
+        const known = new Set(existing);
+        const filePunches: string[] = Array.isArray(r.punches) ? r.punches : [];
+        if (filePunches.some(p => !known.has(p))) {
+          const merged = Array.from(new Set([...existing, ...filePunches])).sort();
+          toInsert.push({ ...r, punches: merged });
+        } else {
+          skipped++;  // arquivo não acrescenta nada a este dia
+        }
+      }
 
-      // ── Step 4: insert new records.
-      // Prefer the atomic RPC `import_time_records_safe` (migration 20260430120000)
-      // which uses INSERT ... ON CONFLICT DO NOTHING server-side, eliminating the
-      // 23505 race entirely. Fall back to the legacy chunk-with-retry path if the
-      // RPC is missing (e.g. environment that hasn't applied the migration).
+      // ── Step 4: upsert (insert novo + MERGE em dia existente).
+      // Prefer the atomic RPC `import_time_records_safe`, que faz INSERT ... ON
+      // CONFLICT com MERGE de punches server-side (migration 20260728120029) —
+      // elimina a race de 23505 e nunca perde batida já gravada. Fall back to the
+      // legacy chunk path if the RPC is missing (environment sem a migration).
       let insertedCount = 0;
+      let updatedCount = 0;
       try {
         const { data: rpcData, error: rpcErr } = await (supabase as any).rpc(
           'import_time_records_safe',
           { records: toInsert as any },
         );
         if (rpcErr) throw rpcErr;
-        // RPC returns { inserted, skipped } shape
+        // RPC returns { inserted, updated, skipped } (updated ausente em versão antiga)
         const ins = Number((rpcData as any)?.inserted);
+        const upd = Number((rpcData as any)?.updated);
         const skp = Number((rpcData as any)?.skipped);
         if (Number.isFinite(ins)) insertedCount = ins;
+        if (Number.isFinite(upd)) updatedCount = upd;
         if (Number.isFinite(skp)) skipped += skp;
       } catch (rpcErr: any) {
         // Common error codes for missing function: 42883 (function does not exist), PGRST202.
@@ -1188,10 +1212,22 @@ export function useImportTimeRecords() {
         console.warn('[useTimesheet] import_time_records_safe RPC not available; falling back to chunked insert.');
         for (let i = 0; i < toInsert.length; i += 100) {
           const chunk = toInsert.slice(i, i + 100);
-          const { error } = await supabase.from('time_records').insert(chunk);
-          if (!error) { insertedCount += chunk.length; continue; }
+          // Dias já existentes (punches vêm MESCLADAS do Step 3) → UPDATE direto.
+          const mergeOnes = chunk.filter(r => existingPunches.has(`${r.employee_name}__${r.record_date}`));
+          const newOnes = chunk.filter(r => !existingPunches.has(`${r.employee_name}__${r.record_date}`));
+          for (const rec of mergeOnes) {
+            const { error: e } = await supabase.from('time_records')
+              .update({ punches: rec.punches, import_batch: rec.import_batch })
+              .eq('employee_name', rec.employee_name)
+              .eq('record_date', rec.record_date);
+            if (e) throw e;
+            updatedCount++;
+          }
+          if (newOnes.length === 0) continue;
+          const { error } = await supabase.from('time_records').insert(newOnes);
+          if (!error) { insertedCount += newOnes.length; continue; }
           if ((error as any).code !== '23505') throw error;
-          for (const rec of chunk) {
+          for (const rec of newOnes) {
             const { error: e } = await supabase.from('time_records').insert([rec]);
             if (!e) insertedCount++;
             else if ((e as any).code === '23505') skipped++;
@@ -1244,6 +1280,7 @@ export function useImportTimeRecords() {
                 file_size_bytes: archivedFileSize,
                 mime_type: archivedMime,
                 inserted_count: insertedCount,
+                updated_count: updatedCount,
                 skipped_count: skipped,
               } as any)
               .eq('id', (existing as any).id);
@@ -1257,10 +1294,10 @@ export function useImportTimeRecords() {
               start_date: startDate,
               end_date: endDate,
               inserted_count: insertedCount,
-              updated_count: 0,
+              updated_count: updatedCount,
               skipped_count: skipped,
               error_count: 0,
-              total_rows: insertedCount + skipped,
+              total_rows: insertedCount + updatedCount + skipped,
               status: 'success' as const,
             } as any);
           }
@@ -1269,7 +1306,7 @@ export function useImportTimeRecords() {
         }
       }
 
-      return { batchId, inserted: insertedCount, skipped, archivedFilePath, endDate };
+      return { batchId, inserted: insertedCount, updated: updatedCount, skipped, archivedFilePath, endDate };
     },
     onSuccess: (result) => {
       // Fix 22/05/2026: invalidação completa pra que TODAS as views que
@@ -1294,19 +1331,21 @@ export function useImportTimeRecords() {
       const ate = result.endDate && /^\d{4}-\d{2}-\d{2}$/.test(result.endDate)
         ? result.endDate.split('-').reverse().join('/')
         : null;
-      if (result.inserted === 0) {
+      const mesclados = result.updated > 0 ? ` ${result.updated} dia(s) já existente(s) ganharam batidas novas (mesclado).` : '';
+      if (result.inserted === 0 && result.updated === 0) {
         // Caso clássico de "importei mas não entrou": o arquivo só tem dias que
-        // JÁ estavam no sistema. Aviso alto explicando que não há nada novo e
-        // que a exportação do relógio provavelmente não incluiu os dias recentes.
+        // JÁ estavam no sistema (sem nenhuma batida nova pra mesclar). Aviso alto
+        // explicando que não há nada novo e que a exportação do relógio
+        // provavelmente não incluiu os dias recentes.
         toast.warning(
           `Nenhum registro NOVO. ${result.skipped > 0 ? `As ${result.skipped} batidas do arquivo` : 'O arquivo'}` +
           `${ate ? ` (vai até ${ate})` : ''} já estavam no sistema. Se você esperava dias mais recentes, a ` +
           `exportação do relógio não os incluiu — gere um download novo cobrindo até hoje, ou lance manualmente na aba Lançamento.`,
           { duration: 14000 },
         );
-      } else if (result.skipped > 0) {
+      } else if (result.skipped > 0 || result.updated > 0) {
         toast.success(
-          `${result.inserted} registro(s) novo(s)${ate ? ` (até ${ate})` : ''}. ${result.skipped} já existiam e foram ignorados.${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
+          `${result.inserted} registro(s) novo(s)${ate ? ` (até ${ate})` : ''}.${mesclados}${result.skipped > 0 ? ` ${result.skipped} sem novidade foram ignorados.` : ''}${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
         );
       } else {
         toast.success(`${result.inserted} registro(s) importado(s)${ate ? ` (até ${ate})` : ''}!${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`);

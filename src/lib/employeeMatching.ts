@@ -23,14 +23,27 @@ export function namesMatch(left: string, right: string): boolean {
   const nr = normalizeName(right);
   if (!nl || !nr) return false;
 
-  if (nl === nr || nl.includes(nr) || nr.includes(nl)) return true;
-
-  const cl = compactName(left);
-  const cr = compactName(right);
-  if (cl === cr || cl.includes(cr) || cr.includes(cl)) return true;
+  if (nl === nr) return true;
 
   const lp = nl.split(' ');
   const rp = nr.split(' ');
+
+  // Containment só em FRONTEIRA DE TOKEN e com ≥2 tokens dos dois lados.
+  // Antes era substring crua: "Ana" casava dentro de "mari-ana silva" (e o
+  // compacto agravava: 'ana' ⊂ 'marianasilva'), misturando ponto de
+  // funcionários DISTINTOS. Nome de 1 token só casa por igualdade exata —
+  // é ambíguo por natureza ("Ana" capturaria Ana Silva E Ana Souza).
+  // Auditoria 2026-07-28 (M30).
+  const containsTokens = (long: string, short: string) => ` ${long} `.includes(` ${short} `);
+  if (lp.length >= 2 && rp.length >= 2 && (containsTokens(nl, nr) || containsTokens(nr, nl))) {
+    return true;
+  }
+
+  // Compacto: só IGUALDADE (tolera espaçamento divergente do relógio) —
+  // containment compacto não tem fronteira de token, então saiu.
+  const cl = compactName(left);
+  const cr = compactName(right);
+  if (cl === cr) return true;
   if (
     lp.length >= 2 &&
     rp.length >= 2 &&

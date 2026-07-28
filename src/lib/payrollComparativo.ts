@@ -8,7 +8,7 @@
 // este arquivo só monta os 3 períodos por funcionário + a flag de Situação + os
 // dados de impressão (EmployeeTimesheetData).
 // ─────────────────────────────────────────────────────────────────────────────
-import { computePeriodFolha, getDaysInRange, expectedDayMinutes, type SalaryPayrollResult } from './salaryPayroll';
+import { computePeriodFolha, getDaysInRange, expectedDayMinutes, businessDaysInMonth, type SalaryPayrollResult, type SalaryPolicy } from './salaryPayroll';
 import { sumProducaoRows, type FichaMontadorRow } from './montadorProduction';
 import { calculateDaySummary, type DaySummary } from '@/hooks/useTimesheet';
 import { MONTHLY_HOURS_DIVISOR } from './hourlyPayroll';
@@ -37,11 +37,35 @@ export function buildEmployeePrintData(
   emp: any,
   sch: any,
   days: { date: string; dow: number; punches: string[]; isHoliday: boolean; swap?: 'worked' | 'off' }[],
+  /** Feriados obrigatórios (datas expandidas). Quando presente, o print/Excel
+   *  recebe a SalaryPolicy CANÔNICA — mesma do Resumo (falta ÷ dias úteis do
+   *  mês, atraso via jornada, HE em R$/h do funcionário, mínimo da escala) —
+   *  em vez do legado ÷30/×1,5 (M26, auditoria 2026-07-28). */
+  holidaysSet?: Set<string>,
 ): EmployeeTimesheetData {
   const summaries: DaySummary[] = days.map(d => {
     const s = calculateDaySummary(d.punches, d.dow, sch, d.isHoliday, d.swap);
     return { ...s, date: d.date, punches: d.punches } as DaySummary;
   });
+  // Política canônica — MESMA montagem do computePeriodFolha (dias úteis POR MÊS
+  // abrangido; jornada da escala; taxas de HE do funcionário; mínimo da escala).
+  let policy: SalaryPolicy | undefined;
+  if (holidaysSet && days.length > 0) {
+    const bdByMonth: Record<string, number> = {};
+    for (const d of days) {
+      const ym = d.date.slice(0, 7);
+      if (!(ym in bdByMonth)) bdByMonth[ym] = businessDaysInMonth(d.date, sch, holidaysSet);
+    }
+    policy = {
+      businessDaysDivisor: bdByMonth[days[0].date.slice(0, 7)] || 0,
+      businessDaysByMonth: bdByMonth,
+      journeyMinutes: expectedDayMinutes(sch),
+      heNormalRate: Number(emp?.he_normal_rate) || 0,
+      heSundayHolidayRate: Number(emp?.he_sunday_holiday_rate) > 0
+        ? Number(emp?.he_sunday_holiday_rate) : undefined,
+      minOvertimeMin: sch?.minimum_overtime_minutes ?? 10,
+    };
+  }
   return {
     name: emp?.name || '—',
     days: summaries,
@@ -56,6 +80,7 @@ export function buildEmployeePrintData(
     paymentType: (emp?.payment_type as 'mensalista' | 'remoto' | 'diarista' | 'producao') || 'mensalista',
     dailyRate: Number(emp?.daily_rate) || 0,
     monthlySalary: Number(emp?.salary) || 0,
+    policy,
   };
 }
 
@@ -190,6 +215,9 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
           // HE em R$/h por funcionário — comparativo/holerite bate com a Folha (spec req.15).
           heNormalRate: Number((emp as any).he_normal_rate) || 0,
           heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
+          // Mínimo de HE da ESCALA (editável em Ponto→Escalas) — antes ficava fixo
+          // em 10 e a folha pagava HE que o ponto descartava (M27, auditoria 2026-07-28).
+          minOvertimeMin: sch?.minimum_overtime_minutes ?? 10,
           advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
         });
       };
@@ -213,7 +241,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
         id: emp.id, ext: extKey || undefined, name: emp.name,
         result, q1, q2, matchedDays, advMes,
         sit,
-        printData: buildEmployeePrintData(emp, sch, printDays),
+        printData: buildEmployeePrintData(emp, sch, printDays, holidaysSet),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));

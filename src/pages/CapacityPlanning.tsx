@@ -108,7 +108,14 @@ function getSectorKey(stageName: string): SectorKey | null {
 
 function sheetCap(sheet: any, field: string, def: number): number {
   const v = Number(sheet?.[field] ?? 0);
-  return v > 0 ? v : def;
+  if (v > 0) return v;
+  // Costuras do split (mig 20261001120000): coluna nova vazia → cai na legada
+  // única antes do default, espelhando o fallback de leadTime.ts.
+  if (field === 'costura_palmilha_capacity_per_day' || field === 'costura_cabedal_capacity_per_day') {
+    const legacy = Number(sheet?.costura_capacity_per_day ?? 0);
+    if (legacy > 0) return legacy;
+  }
+  return def;
 }
 
 // Buckets alinhados ao critério da página /gargalos:
@@ -149,7 +156,9 @@ export default function CapacityPlanning() {
           technical_sheets:reference_id (
             id, name, code, shoe_category,
             cutting_capacity_per_day, sewing_capacity_per_day,
-            mesa_daily_capacity, costura_capacity_per_day, silk_capacity_per_day,
+            mesa_daily_capacity, costura_capacity_per_day,
+            costura_palmilha_capacity_per_day, costura_cabedal_capacity_per_day,
+            silk_capacity_per_day,
             gluing_capacity_per_day, soling_capacity_per_day,
             assembly_capacity_per_day, finishing_capacity_per_day,
             lead_time_corte_dias, lead_time_costura_dias,

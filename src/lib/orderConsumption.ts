@@ -513,7 +513,9 @@ export async function fetchConsumptionContext(refIds: string[]): Promise<Consump
       // `unit` entrou pra resolução da unidade de ESTOQUE da palmilha (fix
       // auditoria motores 2026-07-01: linha em dm² quando o estoque é em dm²).
       // `category` entrou pra classificar os itens-padrão do solado (F2-01).
-      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      // `active` entrou porque o fallback de pin da ficha checa `p.active`
+      // (sem a coluna no select, o ramo do pin era no-op silencioso).
+      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id, active')
       .eq('active', true),
     supabase
       .from('product_groups')
@@ -1024,10 +1026,16 @@ export function computeConsumptionForItems(
       const isPrincipal = upperVariantDriven || upperMatch.group === (sheet?.upper_material || '');
       // Pin de SKU calculado ANTES da ficha de conversão: a cs do produto
       // pinado dirige largura/perda quando existir (ordem do SQL — F2-04).
+      // Precedência (resolvers SQL, mig 20260907120500): pin da VARIANTE >
+      // grupo da VARIANTE (resolve por grupo + cor do PV — 'variant_group') >
+      // pin da FICHA > grupo da ficha. Variante group-only NÃO cai no pin da
+      // ficha: o SQL retorna antes de sequer olhar p_sheet_pin_product_id (M7).
       const upperPin = upperVariant.pin
-        || (isPrincipal && (sheet as any)?.upper_material_product_id
-          ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
-          : null);
+        || (upperVariantDriven
+          ? resolveMaterialProductCanonical(upperMatch.group, orderColor, allProducts || [], productGroups || [])
+          : (isPrincipal && (sheet as any)?.upper_material_product_id
+            ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id && p.active)
+            : null));
       const upperSheet = getConversionSheetForProduct(upperPin?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       // Override LEGADO da variante substitui o escalar E suprime o per-size da
@@ -1111,13 +1119,18 @@ export function computeConsumptionForItems(
     const suppressCabedalForracao = sheet?.sole_drives_consumption === true
       && Object.values(insoleLiningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0)
       && !Object.values(liningSpecBySole.get(soleForLiningId || '') || {}).some((v) => Number(v) > 0);
-    // Pin de SKU do forro (variante > ficha) — hoisted: dirige a ficha de
-    // conversão (F2-04) do Forro E da Forração Palmilha abaixo.
+    // Pin de SKU do forro — hoisted: dirige a ficha de conversão (F2-04) do
+    // Forro E da Forração Palmilha abaixo. Precedência (mig 20260907120500):
+    // pin da VARIANTE > grupo da VARIANTE (resolve por grupo + cor do PV) >
+    // pin da FICHA > grupo da ficha — variante group-only não cai no pin da
+    // ficha (M7).
     const isPrincipalLining = !!liningMatch && (liningVariantDriven || liningMatch.group === (sheet?.lining_material || ''));
     const liningPin = liningVariant.pin
-      || (isPrincipalLining && (sheet as any)?.lining_material_product_id
-        ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
-        : null);
+      || (liningVariantDriven
+        ? resolveMaterialProductCanonical(liningMatch?.group || '', orderColor, allProducts || [], productGroups || [])
+        : (isPrincipalLining && (sheet as any)?.lining_material_product_id
+          ? (allProducts || []).find((p: any) => p.id === (sheet as any).lining_material_product_id && p.active)
+          : null));
     if (liningMatch && !suppressCabedalForracao) {
       const mappedLiningColor = liningColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`) || liningDefaultMap.get(item.reference_id) || orderColor;
       const liningSheet = getConversionSheetForProduct(liningPin?.id, liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
@@ -1184,7 +1197,12 @@ export function computeConsumptionForItems(
         : (sheet?.insole_material || '');
       const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
       const palmColor = palmMapping?.color || '—';
-      const palmProductId = insoleVariant.pin?.id || palmMapping?.productId;
+      // Precedência (resolve_insole_material_for_variant, sem pin de ficha):
+      // pin da VARIANTE > grupo da VARIANTE (cai no resolveMaterialProductCanonical
+      // abaixo) > pin do mapping de cor da ficha. Variante group-only NÃO cai
+      // no pin do mapping (M7).
+      const palmProductId = insoleVariant.pin?.id
+        || (insoleVariantDriven ? undefined : palmMapping?.productId);
 
       // PLACA (base): produto específico (unidade) ou material convertido a placas.
       //

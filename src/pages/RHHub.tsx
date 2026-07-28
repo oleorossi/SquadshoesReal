@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SquaresFour as LayoutDashboard, Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2, Receipt, FileText } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { usePendingTotal } from '@/hooks/useTimePendings';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,13 @@ export default function RHHub() {
   const [activeTab, setActiveTab] = usePersistedState<Tab>('rh-active-tab', 'folha');
   const [searchParams, setSearchParams] = useSearchParams();
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
+  // Folha salarial é módulo restrito (rh_folha: admin/gerente). O RouteGuard só
+  // vê location.pathname — '/rh?tab=folha' nunca chega nele — então o gate tem
+  // que ser aqui dentro do hub. Só consideramos NEGADO após o loading, pra não
+  // sobrescrever a aba persistida de quem PODE ver enquanto as roles carregam.
+  const { canAccessModule, loading: accessLoading } = useAccessControl();
+  const canFolha = canAccessModule('rh_folha');
+  const folhaDenied = !accessLoading && !canFolha;
 
   // Sincroniza ?tab=xxx com o estado persistido.
   useEffect(() => {
@@ -95,8 +103,15 @@ export default function RHHub() {
     const mapped = (TABS as readonly string[]).includes(fromUrl)
       ? (fromUrl as Tab)
       : LEGACY_TAB_MAP[fromUrl];
+    if (mapped === 'folha' && folhaDenied) return; // sem acesso à Folha
     if (mapped && mapped !== activeTab) setActiveTab(mapped);
-  }, [searchParams, activeTab, setActiveTab]);
+  }, [searchParams, activeTab, setActiveTab, folhaDenied]);
+
+  // Estado persistido (ou o default 'folha') apontando pra Folha sem acesso →
+  // cai em Funcionários.
+  useEffect(() => {
+    if (folhaDenied && activeTab === 'folha') setActiveTab('funcionarios');
+  }, [folhaDenied, activeTab, setActiveTab]);
 
   // Estado persistido pode apontar pra uma aba removida (ex.: 'reconciliacao' de um
   // usuário que voltou): remapeia pela LEGACY_TAB_MAP antes de cair na folha, pra
@@ -128,7 +143,7 @@ export default function RHHub() {
       <Tabs value={activeTab} onValueChange={handleNavigateTab} className="w-full">
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-2">
           <TabsList indicator="none" className="inline-flex w-max h-auto gap-1 bg-muted/50 p-1 rounded-lg">
-            {tabs.map(tab => (
+            {(folhaDenied ? tabs.filter(t => t.value !== 'folha') : tabs).map(tab => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
@@ -159,7 +174,9 @@ export default function RHHub() {
           <TabsContent value="funcionarios"><Employees /></TabsContent>
           <TabsContent value="ponto"><Timesheet /></TabsContent>
           <TabsContent value="espelho"><PayrollReports reportsOnly /></TabsContent>
-          <TabsContent value="folha"><FolhaTab /></TabsContent>
+          {/* Conteúdo só monta com acesso confirmado (canFolha) — evita as
+              queries da folha dispararem durante o loading pra quem não pode. */}
+          {canFolha && <TabsContent value="folha"><FolhaTab /></TabsContent>}
         </Suspense>
       </Tabs>
     </div>

@@ -10,13 +10,18 @@ import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 
-// Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa';
-// inclui 'Costura' desde o PR 2). A numeração vem de CANONICAL_STAGE_ORDER
-// (stageOrder.ts), fonte única que espelha a SQL function canonical_stage_order.
+// Setores default de uma OP — nomes CANÔNICOS ('Aviamento', não o legado 'Mesa').
+// Fluxo de 11 etapas após o split da Costura (mig 20261001120000): 'Costura'
+// única virou 'Costura Palmilha' + 'Costura Cabedal'. Alinhado com
+// DEFAULT_SECTOR_NAMES (useOrders.ts) e o SQL — senão a aprovação de PV cria
+// order_stages com o nome legado 'Costura', que sai do motor de agenda/kanban.
+// A numeração vem de CANONICAL_STAGE_ORDER (stageOrder.ts), fonte única que
+// espelha a SQL function canonical_stage_order.
 export const DEFAULT_OP_STAGES = [
   'Corte Palmilha',
   'Corte Forração',
-  'Costura',
+  'Costura Palmilha',
+  'Costura Cabedal',
   'Aviamento',
   'Silk',
   'Colagem',
@@ -176,12 +181,20 @@ async function generateAutoPurchaseOrders(saleOrderNumber: string, systemOrderNu
   let createdCount = 0;
   let updatedCount = 0;
 
-  const { data: existingPOs } = await (supabase as any)
+  const { data: existingPOs, error: existingPOsErr } = await (supabase as any)
     .from('purchase_orders')
     .select('id, supplier_id, supplier_name, linked_sale_order_ids')
     .eq('status', 'pending')
     .eq('auto_generated', true)
     .order('created_at', { ascending: false });
+
+  // FAIL-CLOSED: sem visibilidade das OCs em pé, os guards de idempotência abaixo
+  // virariam no-op e o cesto inteiro seria recriado. Não criar OC é mais barato
+  // que duplicar — o fluxo é best-effort e o MRP re-sugere na próxima passada.
+  if (existingPOsErr) {
+    console.error('generateAutoPurchaseOrders: falha ao checar OCs existentes — geração abortada:', existingPOsErr.message);
+    return;
+  }
 
   // IDEMPOTÊNCIA per-PV: se este PV já gerou OC auto (linkada), não reprocessa —
   // bloqueia o double-fire (Faturar + criar OP) que criava 14 OCs idênticas.
@@ -517,11 +530,34 @@ export function useSaleOrderAllItems() {
       //   OutsourcingPlanningTab -> sale_order_id, reference_id, quantity
       // Se um consumidor novo precisar de `grade`, crie uma queryKey própria em vez
       // de alargar esta — ela é baixada em toda visita ao /sales.
-      const { data, error } = await supabase
+      //
+      // Paginação por .range() (padrão de useProducts): o PostgREST corta em
+      // 1000 linhas SEM erro, e sem ORDER BY o subconjunto é não-determinístico —
+      // ComissoesTab subcontaria comissão em silêncio ao passar do teto.
+      const PAGE = 1000;
+      const { count, error: countError } = await supabase
         .from('sale_order_items')
-        .select('id, sale_order_id, reference_id, color, quantity, unit_price');
-      if (error) throw error;
-      return data;
+        .select('id', { count: 'exact', head: true });
+      if (countError) throw countError;
+      const total = count ?? 0;
+      if (total === 0) return [];
+      const pages = Math.ceil(total / PAGE);
+      const all: any[] = [];
+      for (let batch = 0; batch < pages; batch += 5) {
+        const batchPages = Array.from({ length: Math.min(5, pages - batch) }, (_, i) => batch + i);
+        const results = await Promise.all(batchPages.map(i =>
+          supabase
+            .from('sale_order_items')
+            .select('id, sale_order_id, reference_id, color, quantity, unit_price')
+            .order('id', { ascending: true })
+            .range(i * PAGE, (i + 1) * PAGE - 1),
+        ));
+        for (const { data, error } of results) {
+          if (error) throw error;
+          if (data) all.push(...data);
+        }
+      }
+      return all;
     },
     staleTime: 2 * 60 * 1000,
   });

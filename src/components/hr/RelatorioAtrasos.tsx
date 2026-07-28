@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useHolidays, useSwapSets, useWorkSchedules } from '@/hooks/useTimesheet';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR, expectedDayMinutes } from '@/lib/salaryPayroll';
+import { buildHolidaySet } from '@/lib/holidays';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
@@ -197,10 +198,6 @@ export default function RelatorioAtrasos() {
   const { data: schedules = [] } = useWorkSchedules();
   const { data: holidaysList = [] } = useHolidays();
   const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
-  const holidaysSet = useMemo(
-    () => new Set((holidaysList as { holiday_date: string; optional?: boolean }[]).filter(h => h.optional !== true).map(h => h.holiday_date)),
-    [holidaysList],
-  );
   const { swapWorkedSet, swapOffSet } = useSwapSets();
   // Chave de conteúdo (datas ordenadas), não .size — trocar uma data por outra de
   // mesma contagem precisa invalidar o cache do relatório.
@@ -214,6 +211,8 @@ export default function RelatorioAtrasos() {
   const [cTo, setCTo] = useState(todayISO());
   const [selected, setSelected] = useState<AtrasoRow | null>(null);
   const { from, to } = useMemo(() => periodRange(mode, cFrom, cTo), [mode, cFrom, cTo]);
+  // Feriados obrigatórios com recorrência expandida no período (M28) — helper único.
+  const holidaysSet = useMemo(() => buildHolidaySet(holidaysList as any[], from, to), [holidaysList, from, to]);
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
     queryKey: ['relatorio-atrasos', from, to, (employees as any[]).length, (schedules as any[]).length, holidaysSet.size, swapKey],
@@ -264,6 +263,8 @@ export default function RelatorioAtrasos() {
           activeFrom: emp.admission_date || null, activeTo: emp.termination_date || null,
           payRegime: (String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista'),
           dailyRate: Number(emp.daily_rate) || 0,
+          // Mínimo de HE da ESCALA (M27, auditoria 2026-07-28) — antes fixo em 10.
+          minOvertimeMin: sch?.minimum_overtime_minutes ?? 10,
         });
         const late = (res.late_days || []).slice().sort((a, b) => a.date.localeCompare(b.date));
         if (late.length > 0) {

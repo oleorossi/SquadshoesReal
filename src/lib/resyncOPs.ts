@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 
 // Canonical post-rename sector vocabulary — must match DEFAULT_OP_STAGES in
 // src/hooks/useSaleOrders.ts and the migration 20260506120000_sector-rename-wave-stages.sql.
@@ -8,17 +9,22 @@ import { adjustStockSafe } from '@/lib/stockAdjustments';
 // Kanban column maps after the rename, hiding OPs from operators.
 // 'Aviamento' é a grafia canônica desde 2026-07-01 (migration 20260902120000) —
 // gravar 'Mesa' aqui recriava a grafia dupla que some das telas de setor.
-const DEFAULT_STAGES = [
-  { name: 'Corte Palmilha', order: 1 },
-  { name: 'Corte Forração', order: 2 },
-  { name: 'Costura', order: 3 },
-  { name: 'Aviamento', order: 4 },
-  { name: 'Silk', order: 5 },
-  { name: 'Colagem', order: 6 },
-  { name: 'Montagem', order: 7 },
-  { name: 'Solagem', order: 8 },
-  { name: 'Acabamento', order: 9 },
-  { name: 'Expedição', order: 10 },
+// Fluxo canônico de 11 etapas após o split da Costura (mig 20261001120000).
+// A ordem espelha `canonicalStageOrder`/SQL `canonical_stage_order` — não
+// hardcodar números aqui (drift). 'Costura' única foi substituída por
+// 'Costura Palmilha' + 'Costura Cabedal'.
+const DEFAULT_STAGE_NAMES = [
+  'Corte Palmilha',
+  'Corte Forração',
+  'Costura Palmilha',
+  'Costura Cabedal',
+  'Aviamento',
+  'Silk',
+  'Colagem',
+  'Montagem',
+  'Solagem',
+  'Acabamento',
+  'Expedição',
 ];
 
 /**
@@ -131,15 +137,37 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
         '20260504180000_atomic-resync-ops-and-trigger-coverage.sql to enable atomic resync.',
       );
 
-      // 1. Reverse stock movements
+      // 1. Restaura grade do solado ANTES de apagar as reservas (passo 2): a
+      // função viva (mig 20260721270000) lê material_reservations kind='sole_grade'
+      // (metadata.effective_grade) — chamada depois do delete vira no-op e o
+      // re-débito do passo 5 baixa uma stock_grade já decrementada (baldes 2×).
+      const { error: soleGradeErr } = await supabase.rpc('restore_sole_grade_for_order', { p_order_id: op.id } as any);
+      if (soleGradeErr && !/does not exist|not found/i.test(soleGradeErr.message)) {
+        throw soleGradeErr;
+      }
+      const soleGradeRestored = !soleGradeErr;
+
+      // 1b. Reverse stock movements (escalar)
       const { data: movements } = await supabase
         .from('stock_movements')
-        .select('product_id, quantity')
+        .select('product_id, quantity, description')
         .eq('order_id', op.id)
         .eq('movement_type', 'out');
 
       if (movements) {
         for (const mov of movements) {
+          // restore_sole_grade_for_order credita stock_grade E quantity do solado —
+          // estornar também o movimento de baixa do solado por grade creditaria o
+          // escalar 2×. Cobre os DOIS prefixos que o débito por grade grava:
+          // 'Debito Solado por grade%' (débito direto) e 'Conversão Solado por
+          // grade%' (baixa via convert_reservation_to_out, caminho padrão das
+          // OPs novas). (Se a função não existe no ambiente, mantém o estorno
+          // escalar legado.)
+          const desc = String((mov as any).description || '');
+          if (soleGradeRestored &&
+              (desc.startsWith('Debito Solado por grade') || desc.startsWith('Conversão Solado por grade'))) {
+            continue;
+          }
           const { data: product } = await supabase
             .from('products')
             .select('quantity')
@@ -185,13 +213,6 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
 
       // 3. Detach old stock movements
       await supabase.from('stock_movements').update({ order_id: null }).eq('order_id', op.id);
-
-      // 3b. Restaura grade do solado (passo 1 só restaurou quantity total — sem
-      // isso, o re-débito posterior cai sobre uma grade já decrementada).
-      const { error: soleGradeErr } = await supabase.rpc('restore_sole_grade_for_order', { p_order_id: op.id } as any);
-      if (soleGradeErr && !/does not exist|not found/i.test(soleGradeErr.message)) {
-        throw soleGradeErr;
-      }
 
       // 4. Re-debit stock
       const opGrade = (op.grade as Record<string, number>) || {};
@@ -260,13 +281,15 @@ export async function resyncOPsForSheet(sheetId: string): Promise<{ totalResynce
         .single();
       const sectorNames = (sheetData?.production_sectors && Array.isArray(sheetData.production_sectors) && sheetData.production_sectors.length > 0)
         ? sheetData.production_sectors.map((x: any) => String(x))
-        : DEFAULT_STAGES.map(s => s.name);
+        : DEFAULT_STAGE_NAMES;
       const rows = sectorNames.map((name: string, idx: number) => {
-        const ds = DEFAULT_STAGES.find(s => s.name === name);
+        const canonical = canonicalStageOrder(name);
         return {
           order_id: op.id,
           stage_name: name,
-          stage_order: ds?.order || idx + 1,
+          // Numeração canônica (espelha o SQL); setor fora do mapa → posição
+          // relativa no roteiro (idx+1) em vez do sentinel 99.
+          stage_order: canonical === 99 ? idx + 1 : canonical,
           status: 'pendente',
           quantity_total: op.quantity,
           quantity_processed: 0,
