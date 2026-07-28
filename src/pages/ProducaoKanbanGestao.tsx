@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ArrowLeft, ArrowsInSimple, ArrowsOutSimple, CheckSquare, Funnel, Highlighter,
-  Info, Kanban as KanbanIcon, QrCode, X,
+  Info, Kanban as KanbanIcon, Package, QrCode, X,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
@@ -17,6 +17,7 @@ import {
 import { useAllOrderStages, useApontarProducao, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
 import { useReferenceThumbs } from '@/hooks/useReferenceThumbs';
+import { useOrdersMaterialGate } from '@/hooks/useMaterialGate';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
@@ -57,6 +58,8 @@ export default function ProducaoKanbanGestao() {
   const { data: todayGrid = [] } = useProductionScheduleGrid(todayISO(), todayISO());
   // Foto da referência: a view manda reference_photo_url vazio (ver o hook)
   const { data: refThumbs } = useReferenceThumbs(queue.map(q => q.reference_id));
+  // Gate de material (auditoria Crítico #1): OP sem matéria-prima pra arrancar.
+  const { data: gateMap } = useOrdersMaterialGate(orderIds);
   const apontar = useApontarProducao();
   const canEdit = useCan('/producao/kanban').canEdit;
   // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
@@ -216,6 +219,21 @@ export default function ProducaoKanbanGestao() {
     const cOrder = flowOrder.get(constraintSector) ?? 999;
     return columns.filter(s => (flowOrder.get(s) ?? 999) > cOrder && !wipBySector.has(s)).length;
   }, [constraintSector, columns, flowOrder, wipBySector]);
+
+  // OPs travadas por material: quantas e a data mais tardia em que o material
+  // tem como chegar. É o que separa "atrasado porque a fábrica não deu conta"
+  // de "atrasado porque a matéria-prima não está aqui" — decisões diferentes.
+  const travadasMaterial = useMemo(() => {
+    if (!gateMap || gateMap.size === 0) return { n: 0, pior: null as string | null };
+    let n = 0, pior: string | null = null;
+    for (const c of allCards) {
+      const g = gateMap.get(c.q.order_id);
+      if (!g) continue;
+      n++;
+      if (!pior || g.ready_date > pior) pior = g.ready_date;
+    }
+    return { n, pior };
+  }, [gateMap, allCards]);
 
   // Busca ativa em modo filtrar: o quadro mostra SÓ o que casou.
   const filtering = viewMode === 'filtrar' && !!matchedIds;
@@ -512,7 +530,7 @@ export default function ProducaoKanbanGestao() {
       )}
 
       {/* ── Faixa de fluxo: gargalo + atraso em primeiro plano ───────────── */}
-      {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0) && (
+      {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0 || travadasMaterial.n > 0) && (
         <div className="shrink-0 border-b border-border px-3 py-1.5 flex items-center gap-2 md:gap-3 flex-wrap text-xs">
           {constraintSector && (
             <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
@@ -534,6 +552,24 @@ export default function ProducaoKanbanGestao() {
               <span>
                 <span className="font-mono font-semibold">{kpis.atrasadas}</span> de <span className="font-mono">{kpis.ops}</span> OPs atrasadas
                 <span className="text-muted-foreground"> — ordenadas primeiro em cada coluna</span>
+              </span>
+            </div>
+          )}
+          {/* Travadas por MATERIAL: atraso que não se resolve com mais gente na
+              linha — só com a matéria-prima chegando. */}
+          {travadasMaterial.n > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-2.5 py-1">
+              <Package className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span>
+                <span className="font-mono font-semibold">{travadasMaterial.n}</span> OP(s) sem material
+                {travadasMaterial.pior && (
+                  <span className="text-muted-foreground">
+                    {' — '}o último chega em{' '}
+                    <span className="font-mono">
+                      {new Date(`${travadasMaterial.pior}T12:00:00`).toLocaleDateString('pt-BR')}
+                    </span>
+                  </span>
+                )}
               </span>
             </div>
           )}
@@ -671,6 +707,8 @@ export default function ProducaoKanbanGestao() {
                         selectable={selectMode}
                         selected={selectedIds.has(card.q.order_id)}
                         landed={landedId === card.q.order_id}
+                        materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
+                        materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
                         onToggleSelect={() => toggleSelect(card.q.order_id)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}

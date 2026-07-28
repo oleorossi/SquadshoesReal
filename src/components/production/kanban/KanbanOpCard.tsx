@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Warning as AlertTriangle, CalendarBlank } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CalendarBlank, Package } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 
@@ -33,12 +33,17 @@ interface Props {
   /** Acabou de chegar neste setor por apontamento → halo de pouso (some em
    *  ~1s). Âmbar quando a entrega veio incompleta, tinta quando veio inteira. */
   landed?: boolean;
+  /** Gate de material (auditoria Crítico #1): a OP não tem matéria-prima pra
+   *  arrancar antes desta data. Sinaliza — não bloqueia o movimento. */
+  materialGateDate?: string | null;
+  materialGateReason?: string | null;
 }
 
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
   compact = false, dimmed = false, highlighted = false,
   selectable = false, selected = false, onToggleSelect, photoUrl, landed = false,
+  materialGateDate = null, materialGateReason = null,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -113,6 +118,17 @@ export function KanbanOpCard({
               {q.late_days > 0 && (
                 <Badge variant="outline" className="text-[9px] bg-red-500/10 text-red-600 border-red-500/30 gap-0.5 shrink-0">
                   <AlertTriangle className="h-2.5 w-2.5" /> +{q.late_days}d
+                </Badge>
+              )}
+              {/* Sem matéria-prima pra arrancar: quem move a OP pro Corte tem
+                  que ver ANTES de mover, não descobrir no chão de fábrica. */}
+              {materialGateDate && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/40 gap-0.5 shrink-0"
+                  title={materialGateReason || `Material disponível a partir de ${fmtDate(materialGateDate)}`}
+                >
+                  <Package className="h-2.5 w-2.5" /> {fmtDate(materialGateDate)}
                 </Badge>
               )}
             </span>

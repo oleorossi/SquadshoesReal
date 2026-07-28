@@ -78,6 +78,40 @@ export function useOrderMaterialGate(orderId: string | null | undefined, enabled
   });
 }
 
+export interface OrderGateRow {
+  ready_date: string;
+  reason: string | null;
+}
+
+/**
+ * Mapa `order_id → gate` das OPs informadas. Consulta rasa (3 colunas) em vez
+ * de engordar `v_production_queue_detail` — a view alimenta o motor de fila e
+ * não vale o risco de mexer nela só pra um badge.
+ */
+export function useOrdersMaterialGate(orderIds: string[]) {
+  const ids = Array.from(new Set(orderIds.filter(Boolean)));
+  return useQuery({
+    queryKey: ['orders-material-gate', ids.length, ids[0] ?? ''],
+    queryFn: async () => {
+      const map = new Map<string, OrderGateRow>();
+      if (ids.length === 0) return map;
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, material_ready_date, material_gate_reason')
+        .in('id', ids)
+        .not('material_ready_date', 'is', null);
+      if (error) throw error;
+      for (const row of (data ?? []) as any[]) {
+        map.set(row.id, { ready_date: row.material_ready_date, reason: row.material_gate_reason });
+      }
+      return map;
+    },
+    enabled: ids.length > 0,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+}
+
 /** Recompute manual (botão do PCP) — esse avisa o usuário do resultado. */
 export function useRecomputeMaterialGate() {
   const qc = useQueryClient();
