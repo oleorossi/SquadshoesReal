@@ -75,6 +75,9 @@ interface OperationsTabProps {
   leadTimeBufferMaterialDias?: number;
    cuttingCapacityPerDay?: number;
    sewingCapacityPerDay?: number;
+  costuraCapacityPerDay?: number;
+  costuraCabedalCapacityPerDay?: number;
+  costuraPalmilhaCapacityPerDay?: number;
    silkCapacityPerDay?: number;
   gluingCapacityPerDay?: number;
   assemblyCapacityPerDay?: number;
@@ -111,6 +114,9 @@ export function OperationsTab({
   leadTimeBufferMaterialDias = 2,
    cuttingCapacityPerDay = 0,
    sewingCapacityPerDay = 0,
+  costuraCapacityPerDay = 0,
+  costuraCabedalCapacityPerDay = 0,
+  costuraPalmilhaCapacityPerDay = 0,
    silkCapacityPerDay = 0,
   gluingCapacityPerDay = 0,
   assemblyCapacityPerDay = 0,
@@ -165,6 +171,9 @@ export function OperationsTab({
   const [ltBuffer, setLtBuffer] = useState(leadTimeBufferMaterialDias);
   const [capCorte, setCapCorte] = useState(cuttingCapacityPerDay);
   const [capCostura, setCapCostura] = useState(sewingCapacityPerDay);
+  const [capCosturaLegado, setCapCosturaLegado] = useState(costuraCapacityPerDay);
+  const [capCosturaCabedal, setCapCosturaCabedal] = useState(costuraCabedalCapacityPerDay);
+  const [capCosturaPalmilha, setCapCosturaPalmilha] = useState(costuraPalmilhaCapacityPerDay);
    const [capSilk, setCapSilk] = useState(silkCapacityPerDay);
    const [capColagem, setCapColagem] = useState(gluingCapacityPerDay);
    const [capMontagem, setCapMontagem] = useState(assemblyCapacityPerDay);
@@ -230,6 +239,9 @@ export function OperationsTab({
          lead_time_buffer_material_dias: ltBuffer,
          cutting_capacity_per_day: capCorte,
          sewing_capacity_per_day: capCostura,
+         costura_capacity_per_day: capCosturaLegado,
+         costura_cabedal_capacity_per_day: capCosturaCabedal,
+         costura_palmilha_capacity_per_day: capCosturaPalmilha,
          silk_capacity_per_day: capSilk,
          gluing_capacity_per_day: capColagem,
          assembly_capacity_per_day: capMontagem,
@@ -346,6 +358,9 @@ export function OperationsTab({
           {([
             { key: 'corte',     label: 'Corte',      cap: capCorte,      setCap: setCapCorte,      lt: ltCorte,      setLt: setLtCorte },
             { key: 'forracao',  label: 'Corte Forração', cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
+            { key: 'costura-legado', label: 'Costura (legado)', cap: capCosturaLegado, setCap: setCapCosturaLegado, lt: ltCostura, setLt: setLtCostura },
+            { key: 'costura-cabedal', label: 'Costura Cabedal', capacityLabel: 'Costura Cabedal (pares/dia)', cap: capCosturaCabedal, setCap: setCapCosturaCabedal, lt: ltCostura, setLt: setLtCostura },
+            { key: 'costura-palmilha', label: 'Costura Palmilha', capacityLabel: 'Costura Palmilha (pares/dia)', cap: capCosturaPalmilha, setCap: setCapCosturaPalmilha, lt: undefined, setLt: undefined },
             { key: 'silk',      label: 'Silk',       cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
             { key: 'colagem',   label: 'Colagem',    cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
             {
@@ -370,6 +385,9 @@ export function OperationsTab({
                   return (
                     (s.key === 'corte' && (n.includes('corte palmilha') || n === 'corte')) ||
                     (s.key === 'forracao' && (n.includes('corte forração') || n.includes('costura') || n === 'forracao')) ||
+                    (s.key === 'costura-legado' && n.includes('costura')) ||
+                    (s.key === 'costura-cabedal' && n.includes('costura cabedal')) ||
+                    (s.key === 'costura-palmilha' && n.includes('costura palmilha')) ||
                     (s.key === 'silk' && n.includes('silk')) ||
                     (s.key === 'colagem' && n.includes('colagem')) ||
                     (s.key === 'montagem' && n.includes('montagem')) ||
@@ -402,13 +420,15 @@ export function OperationsTab({
                   </span>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Capacidade (pares/dia)</Label>
+                  <Label className="text-xs text-muted-foreground">{s.capacityLabel ?? 'Capacidade (pares/dia)'}</Label>
                   <NumberInput value={s.cap} onChange={s.setCap} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Lead time fallback (dias)</Label>
-                  <NumberInput value={s.lt} onChange={s.setLt} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
-                </div>
+                {s.lt !== undefined && s.setLt && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Lead time fallback (dias)</Label>
+                    <NumberInput value={s.lt} onChange={s.setLt} className="h-8 text-sm font-mono mt-0.5" min={0} step="1" />
+                  </div>
+                )}
               </div>
             );
           })}

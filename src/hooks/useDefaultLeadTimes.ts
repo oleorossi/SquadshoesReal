@@ -6,6 +6,8 @@ export const DEFAULT_LEAD_TIME_CAPACITY_FIELDS = [
   'sewing_capacity_per_day',
   'cutting_capacity_per_day',
   'costura_capacity_per_day',
+  'costura_cabedal_capacity_per_day',
+  'costura_palmilha_capacity_per_day',
   'mesa_daily_capacity',
   'silk_capacity_per_day',
   'gluing_capacity_per_day',

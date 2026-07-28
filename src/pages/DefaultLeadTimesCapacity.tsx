@@ -23,10 +23,8 @@ const SECTORS: ReadonlyArray<{
 }> = [
   { field: 'sewing_capacity_per_day', label: 'Corte Palmilha' },
   { field: 'cutting_capacity_per_day', label: 'Corte Forração' },
-  {
-    field: 'costura_capacity_per_day',
-    label: 'Costura',
-  },
+  { field: 'costura_cabedal_capacity_per_day', label: 'Costura Cabedal' },
+  { field: 'costura_palmilha_capacity_per_day', label: 'Costura Palmilha' },
   { field: 'mesa_daily_capacity', label: 'Aviamento' },
   { field: 'silk_capacity_per_day', label: 'Silk' },
   { field: 'gluing_capacity_per_day', label: 'Colagem' },

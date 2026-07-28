@@ -1366,7 +1366,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       'silk_capacity_per_day', 'gluing_capacity_per_day',
       'assembly_capacity_per_day', 'soling_capacity_per_day',
       'expedition_capacity_per_day', 'finishing_capacity_per_day',
-      'costura_capacity_per_day',
+      'costura_capacity_per_day', 'costura_cabedal_capacity_per_day',
+      'costura_palmilha_capacity_per_day',
       // production_sectors NÃO entra no form: tem caminho de escrita próprio
       // (ProductionSectorsTab → updateSheet direto). Hidratado aqui, o saveAll
       // reenviava o valor STALE (re-sync bloqueado com dirty=true) por cima do
@@ -1405,7 +1406,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       'assembly_capacity_per_day','soling_capacity_per_day',
       'expedition_capacity_per_day','finishing_capacity_per_day',
       // production_sectors fora do form — vide comentário do init acima.
-      'costura_capacity_per_day','shoe_category_id',
+      'costura_capacity_per_day','costura_cabedal_capacity_per_day',
+      'costura_palmilha_capacity_per_day','shoe_category_id',
       'primary_sole_id','assembly_time_minutes','process_difficulty',
     ];
     for (const key of EXTRA) {
@@ -3804,6 +3806,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             leadTimeBufferMaterialDias={Number((sheet as any).lead_time_buffer_material_dias ?? 2)}
             cuttingCapacityPerDay={Number((sheet as any).cutting_capacity_per_day ?? 0)}
             sewingCapacityPerDay={Number((sheet as any).sewing_capacity_per_day ?? 0)}
+            costuraCapacityPerDay={Number((sheet as any).costura_capacity_per_day ?? 0)}
+            costuraCabedalCapacityPerDay={Number((sheet as any).costura_cabedal_capacity_per_day ?? 0)}
+            costuraPalmilhaCapacityPerDay={Number((sheet as any).costura_palmilha_capacity_per_day ?? 0)}
             silkCapacityPerDay={Number((sheet as any).silk_capacity_per_day ?? 0)}
             gluingCapacityPerDay={Number((sheet as any).gluing_capacity_per_day ?? 0)}
             assemblyCapacityPerDay={Number((sheet as any).assembly_capacity_per_day ?? 0)}
