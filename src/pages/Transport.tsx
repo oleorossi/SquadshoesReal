@@ -439,7 +439,16 @@ function CapacityTab({ perm }: { perm: PermissionGate }) {
                         {result.fits ? `${result.nL}×${result.nW}×${result.nH}` : '-'}
                       </TableCell>
                       <TableCell className="text-center font-bold">
-                        {result.total}
+                        {/* "Qtd Max" = máximo por viagem. Após a correção da cubagem,
+                            result.total virou a demanda solicitada; a capacidade por
+                            viagem mora em capacidade_por_viagem. Mostra as viagens
+                            quando a demanda não cabe num baú só. */}
+                        {result.capacidade_por_viagem ?? result.total}
+                        {!result.fits && (result.viagens_necessarias ?? 0) > 1 && (
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {result.viagens_necessarias} viagens
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {result.ocupacao_pct}%
