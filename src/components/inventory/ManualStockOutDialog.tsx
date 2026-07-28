@@ -34,8 +34,18 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
     e.preventDefault();
     if (!product || quantity <= 0) return;
 
-    if (quantity > Number(product.quantity)) {
-      toast.error('Quantidade de baixa maior que o estoque disponível');
+    // Disponível = estoque − RESERVADO (auditoria: validar contra `quantity`
+    // aceitava baixar 50 de um estoque de 100 com 90 comprometidos com OP
+    // aberta, deixando o disponível negativo pra produção). O servidor também
+    // barra (p_enforce_reserved) — aqui é só pra o aviso chegar antes do clique.
+    const disponivel = Math.max(0, Number(product.quantity) - Number(product.reserved_stock ?? 0));
+    if (quantity > disponivel) {
+      toast.error(
+        `Quantidade maior que o disponível: ${disponivel.toLocaleString('pt-BR')} ${product.unit} livre` +
+        (Number(product.reserved_stock ?? 0) > 0
+          ? ` (${Number(product.reserved_stock).toLocaleString('pt-BR')} reservado pra OP aberta).`
+          : '.'),
+      );
       return;
     }
 
@@ -62,6 +72,9 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
         p_delta: -quantity,
         p_reason: description,
         p_order_id: orderId,
+        // Baixa manual é CONSUMO — não pode comer material reservado pra OP.
+        // (Contagem de inventário continua podendo: lá o padrão é false.)
+        p_enforce_reserved: true,
       });
       if (rpcErr) throw rpcErr;
       const result = Array.isArray(data) ? data[0] : data;
@@ -69,7 +82,10 @@ export function ManualStockOutDialog({ open, onOpenChange, product }: ManualStoc
         throw new Error(
           result.error_message === 'CONCURRENCY_ERROR'
             ? 'Estoque foi alterado por outro usuário. Recarregue e tente novamente.'
-            : (result.error_message || 'Falha ao ajustar estoque'),
+            : result.error_message === 'RESERVADO_PARA_OP'
+              ? 'A baixa deixaria o estoque abaixo do que já está reservado pra OP aberta. '
+                + 'Libere a reserva ou registre por ajuste de inventário.'
+              : (result.error_message || 'Falha ao ajustar estoque'),
         );
       }
 

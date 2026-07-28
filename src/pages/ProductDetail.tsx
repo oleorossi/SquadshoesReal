@@ -820,33 +820,38 @@ export default function ProductDetail() {
  
      setLoading(true);
      try {
-       const prevStock = Number(product.quantity);
-       const newStock = type === 'in' ? prevStock + quantity : prevStock - quantity;
- 
        const finalResponsible = responsible || profile?.full_name || profile?.email || 'Sistema';
- 
-       const { error: moveError } = await supabase.from('stock_movements').insert({
-         product_id: product.id,
-         movement_type: type,
-         quantity: quantity,
-         previous_stock: prevStock,
-         new_stock: newStock,
-         description: description || (type === 'in' ? 'Entrada manual' : 'Saída manual'),
-         lot_number: lotNumber,
-         created_at: new Date(date).toISOString(),
-         responsible: finalResponsible,
-         user_email: profile?.email || null
+
+       // Movimento por DELTA no banco (auditoria T4/concorrência). Antes a tela
+       // calculava `prevStock ± qty` do snapshot React e gravava o ABSOLUTO em
+       // products.quantity — qualquer débito de OP que tivesse acontecido no
+       // meio-tempo era apagado sem erro nenhum. A RPC lê sob FOR UPDATE e
+       // ainda barra saída avulsa que comeria material reservado pra OP.
+       const { data, error: rpcErr } = await (supabase as any).rpc('move_stock_delta', {
+         p_product_id: product.id,
+         p_type: type,
+         p_qty: quantity,
+         p_description: description || null,
+         p_lot_number: lotNumber || null,
+         p_created_at: new Date(date).toISOString(),
+         p_responsible: finalResponsible,
        });
- 
-       if (moveError) throw moveError;
- 
-       const { error: prodError } = await supabase.from('products').update({ 
-         quantity: newStock,
-         lot_number: lotNumber || product.lot_number 
-       }).eq('id', product.id);
-       
-       if (prodError) throw prodError;
- 
+       if (rpcErr) throw rpcErr;
+       if (data && data.success === false) {
+         if (data.erro === 'RESERVADO_PARA_OP') {
+           throw new Error(
+             `Saída maior que o disponível: ${Number(data.disponivel).toLocaleString('pt-BR')} livre ` +
+             `(${Number(data.reservado).toLocaleString('pt-BR')} reservado pra OP aberta de um estoque de ` +
+             `${Number(data.estoque).toLocaleString('pt-BR')}). Libere a reserva ou ajuste por inventário.`,
+           );
+         }
+         throw new Error(
+           data.erro === 'ESTOQUE_INSUFICIENTE'
+             ? `Estoque insuficiente: ${Number(data.disponivel).toLocaleString('pt-BR')} disponível.`
+             : (data.erro || 'Falha ao registrar o movimento'),
+         );
+       }
+
        toast.success(type === 'in' ? 'Entrada registrada!' : 'Saída registrada!');
        setQuantity(0);
        setDescription('');

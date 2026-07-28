@@ -385,18 +385,19 @@ function ScannerBar({ sessionId, items }: { sessionId: string; items: any[] }) {
   }, []);
 
   const pickItem = useMutation({
+    // Incremento ATÔMICO no banco (auditoria T4/concorrência): o `picked_qty+1`
+    // calculado aqui perdia unidade quando dois leitores bipavam o mesmo item —
+    // os dois liam 0 e os dois gravavam 1. A RPC lê sob FOR UPDATE.
     mutationFn: async (item: any) => {
-      const newQty = Number(item.picked_qty) + 1;
-      const { error } = await (supabase as any)
-        .from('picking_items')
-        .update({
-          picked_qty: newQty,
-          ean_scanned: code,
-          picked_at: new Date().toISOString(),
-          status: newQty >= Number(item.expected_qty) ? 'separado' : 'em_andamento',
-        })
-        .eq('id', item.id);
+      const { data, error } = await (supabase as any).rpc('pick_item_increment', {
+        p_item_id: item.id,
+        p_ean: code,
+        p_delta: 1,
+      });
       if (error) throw error;
+      if (data?.ja_completo) {
+        throw new Error('Item já estava completo — a bipagem não foi contada.');
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['picking_items', sessionId] });
