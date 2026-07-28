@@ -27,6 +27,17 @@ import { DropApontarDialog } from '@/components/production/kanban/DropApontarDia
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
 import { QrScanDialog } from '@/components/production/kanban/QrScanDialog';
 
+/** Limite saudável de OPs acumuladas num setor antes de sinalizar gargalo. */
+const WIP_LIMIT = 20;
+
+/** Tom da barra de capacidade do setor: verde <80%, âmbar 80–100%, vermelho >100%. */
+function capacityTone(planned: number, cap: number): { pct: number; bar: string; text: string } {
+  const pct = cap > 0 ? Math.round((planned / cap) * 100) : 0;
+  if (pct > 100) return { pct, bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400' };
+  if (pct >= 80) return { pct, bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' };
+  return { pct, bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' };
+}
+
 /**
  * CENTRAL DE PRODUÇÃO — o Kanban em modo "programa dedicado de gestão":
  * tela cheia SEM a casca do ERP (rota fora do AppLayout), todos os setores
@@ -186,6 +197,25 @@ export default function ProducaoKanbanGestao() {
     atrasadas: allCards.filter(c => c.q.late_days > 0).length,
     parciais: allCards.filter(c => c.isPartial).length,
   }), [allCards]);
+
+  // WIP por setor + gargalo (o setor que MAIS acumulou OP acima do limite
+  // saudável). A Central fica aberta o dia todo num monitor: guiar o olho pro
+  // ponto que trava o fluxo vale mais que qualquer número solto.
+  const wipBySector = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of allCards) m.set(c.column, (m.get(c.column) || 0) + 1);
+    return m;
+  }, [allCards]);
+  const constraintSector = useMemo(() => {
+    let best: string | null = null, max = WIP_LIMIT;
+    for (const [s, n] of wipBySector) if (n > max) { max = n; best = s; }
+    return best;
+  }, [wipBySector]);
+  const idleBelowConstraint = useMemo(() => {
+    if (!constraintSector) return 0;
+    const cOrder = flowOrder.get(constraintSector) ?? 999;
+    return columns.filter(s => (flowOrder.get(s) ?? 999) > cOrder && !wipBySector.has(s)).length;
+  }, [constraintSector, columns, flowOrder, wipBySector]);
 
   // Busca ativa em modo filtrar: o quadro mostra SÓ o que casou.
   const filtering = viewMode === 'filtrar' && !!matchedIds;
@@ -481,6 +511,35 @@ export default function ProducaoKanbanGestao() {
         </p>
       )}
 
+      {/* ── Faixa de fluxo: gargalo + atraso em primeiro plano ───────────── */}
+      {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0) && (
+        <div className="shrink-0 border-b border-border px-3 py-1.5 flex items-center gap-2 md:gap-3 flex-wrap text-xs">
+          {constraintSector && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
+              <span className="text-sm leading-none" aria-hidden="true">⛏️</span>
+              <span>
+                <strong className="uppercase tracking-wide">Gargalo: {constraintSector}</strong>
+                <span className="text-muted-foreground">
+                  {' · '}<span className="font-mono">{wipBySector.get(constraintSector)}</span> OPs acumuladas
+                  {idleBelowConstraint > 0 ? <> · <span className="font-mono">{idleBelowConstraint}</span> setores ociosos abaixo</> : null}
+                </span>
+              </span>
+            </div>
+          )}
+          {kpis.atrasadas > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1">
+              <strong className="text-red-600 dark:text-red-400 font-mono text-sm leading-none">
+                {Math.round((kpis.atrasadas / Math.max(kpis.ops, 1)) * 100)}%
+              </strong>
+              <span>
+                <span className="font-mono font-semibold">{kpis.atrasadas}</span> de <span className="font-mono">{kpis.ops}</span> OPs atrasadas
+                <span className="text-muted-foreground"> — ordenadas primeiro em cada coluna</span>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Quadro: todos os setores lado a lado ─────────────────────────── */}
       {isLoading ? (
         <div className="flex-1 flex gap-2 p-3 overflow-hidden">
@@ -510,11 +569,21 @@ export default function ProducaoKanbanGestao() {
         >
           {visibleColumns.map((sector, colIdx) => {
             const colAll = allCards.filter(c => c.column === sector);
-            const colCards = filtering && matchedIds
+            // Atrasadas primeiro (a mais atrasada no topo) — o que trava o prazo
+            // salta aos olhos. Sort estável: mantém a ordem entre iguais.
+            const colCards = (filtering && matchedIds
               ? colAll.filter(c => matchedIds.has(c.q.order_id))
-              : colAll;
+              : colAll.slice()
+            ).sort((a, b) => (b.q.late_days || 0) - (a.q.late_days || 0));
             const colPares = colAll.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
             const g = gridToday.get(sector);
+            const cap = g && g.capacity_pairs > 0 ? capacityTone(g.planned_pairs, g.capacity_pairs) : null;
+            const colWip = colAll.length;
+            const overWip = colWip > WIP_LIMIT;
+            const isConstraint = sector === constraintSector;
+            // Coluna ociosa (0 OP e sem busca ativa) colapsa em faixa fina no
+            // desktop — abre no hover. No celular (swipe) mantém largura normal.
+            const isIdle = colWip === 0 && !filtering;
             return (
               /* Celular: uma coluna por swipe (85vw + snap-center); iPad/desktop:
                  colunas fluidas lado a lado como antes. */
@@ -522,7 +591,11 @@ export default function ProducaoKanbanGestao() {
                 key={sector}
                 data-kb-col={sector}
                 style={{ animationDelay: `${colIdx * 45}ms` }}
-                className="kb-col-in flex flex-col flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px] min-h-0 snap-center md:snap-align-none"
+                className={`kb-col-in flex flex-col min-h-0 snap-center md:snap-align-none transition-[min-width,max-width,opacity] duration-300 ${
+                  isIdle
+                    ? 'flex-1 basis-0 min-w-[85vw] md:flex-none md:min-w-[7.5rem] md:max-w-[7.5rem] md:opacity-60 md:hover:opacity-100'
+                    : 'flex-1 basis-0 min-w-[85vw] md:min-w-[185px] max-w-none md:max-w-[300px]'
+                }`}
                 onDragOver={e => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'move';
@@ -530,16 +603,34 @@ export default function ProducaoKanbanGestao() {
                 }}
                 onDrop={e => { e.preventDefault(); setDragOverSector(null); handleDrop(sector); }}
               >
-                <div className="shrink-0 rounded-t-md bg-muted px-2.5 py-1.5 border border-border">
+                <div className={`shrink-0 rounded-t-md px-2.5 py-1.5 border ${
+                  isConstraint ? 'bg-amber-500/10 border-amber-500/50' : 'bg-muted border-border'
+                }`}>
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider truncate">{sector}</span>
-                    <Badge variant="outline" className="text-[10px] shrink-0">{colCards.length}</Badge>
+                    {/* WIP: vermelho e com o limite quando o setor passa do saudável
+                        — vira sinal de acúmulo/gargalo, não só uma contagem. */}
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] shrink-0 font-mono ${overWip ? 'border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400' : ''}`}
+                      title={overWip ? `${colWip} OPs — acima do limite saudável de ${WIP_LIMIT}` : `${colWip} OPs`}
+                    >
+                      {colCards.length}{overWip ? `/${WIP_LIMIT}` : ''}
+                    </Badge>
                   </div>
                   {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid) */}
                   <p className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate">
                     hoje: {g ? `${g.planned_pairs}/${g.capacity_pairs}` : '0'}
                     {g && g.carryover_pairs > 0 ? ` +${g.carryover_pairs}` : ''} · Σ {colPares.toLocaleString('pt-BR')} pares
                   </p>
+                  {/* Barra de capacidade: verde/âmbar/vermelho num relance; o traço
+                      vermelho à direita marca o estouro (>100%). */}
+                  {cap && (
+                    <div className="mt-1 h-1.5 rounded-full bg-muted-foreground/15 overflow-hidden relative" title={`${cap.pct}% da capacidade de hoje`}>
+                      <div className={`h-full rounded-full ${cap.bar} transition-[width] duration-700`} style={{ width: `${Math.min(cap.pct, 100)}%` }} />
+                      {cap.pct > 100 && <span className="absolute inset-y-0 right-0 w-0.5 bg-red-600" aria-hidden="true" />}
+                    </div>
+                  )}
                 </div>
                 {/* kb-fade: as máscaras de rolagem moram no WRAPPER, não no
                     scroller — senão elas rolariam junto com as OPs. */}
