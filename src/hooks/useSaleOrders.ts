@@ -586,33 +586,23 @@ export function useCreateSaleOrder() {
         }
       }
 
-      const { data, error } = await supabase
-        .from('sale_orders')
-        .insert(insertData)
-        .select()
-        .single();
+      const itemPayload = items.map(({ selected_terceirizacao_ids: _sel, terceirizacao_quantities: _tq, ...item }) => ({
+        ...item,
+        grade: item.grade,
+      }));
+      const { data: atomicResult, error } = await supabase.rpc('create_sale_order_atomic', {
+        p_header: insertData,
+        p_items: itemPayload,
+        p_client_request_id: insertData.client_request_id,
+      });
       if (error) throw error;
 
-      let insertedItemIds: string[] = [];
-      if (items.length > 0) {
-        // Tira selected_terceirizacao_ids do INSERT base: a coluna pode ainda não
-        // existir (migration aplicada à parte do deploy do front) — não pode quebrar
-        // a criação do PV. A seleção é persistida num passo separado e GUARDADO logo
-        // abaixo. `.select('id')` devolve os IDs na ordem de inserção (= ordem de items).
-        const { data: insertedRows, error: itemsError } = await supabase
-          .from('sale_order_items')
-          .insert(items.map(({ selected_terceirizacao_ids: _sel, terceirizacao_quantities: _tq, ...i }) => ({ ...i, sale_order_id: data.id, grade: i.grade })))
-          .select('id');
-        if (itemsError) {
-          // Rollback: remove the parent order so we don't leave an empty/orphan PV
-          const { error: cleanupErr } = await supabase.rpc('delete_empty_sale_order', { p_sale_order_id: data.id } as any);
-          if (cleanupErr) {
-            console.error('[useCreateSaleOrder] Falha ao remover pedido órfão:', cleanupErr.message, 'sale_order_id:', data.id);
-          }
-          throw itemsError;
-        }
-        insertedItemIds = (insertedRows || []).map((r: any) => r.id);
-      }
+      const orderId = (atomicResult as { order_id?: string } | null)?.order_id;
+      if (!orderId) throw new Error('A criação atômica do pedido não retornou o identificador do PV.');
+      const insertedItemIds = Array.isArray((atomicResult as { item_ids?: string[] } | null)?.item_ids)
+        ? (atomicResult as { item_ids: string[] }).item_ids
+        : [];
+      const data = { id: orderId };
 
       // Auto-sync financial records
       await syncFinancialRecords(data.id);

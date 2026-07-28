@@ -28664,6 +28664,10 @@ export type Database = {
         Args: { p_header: Json; p_items: Json; p_order_id: string }
         Returns: Json
       }
+      create_sale_order_atomic: {
+        Args: { p_client_request_id?: string | null; p_header: Json; p_items: Json }
+        Returns: Json
+      }
       update_terceirizacao_os_qty: {
         Args: { p_service_order_id: string }
         Returns: Json

@@ -175,6 +175,10 @@ export default function SaleOrderForm() {
 
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
   const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
+  // A chave nasce na primeira tentativa e sobrevive a qualquer retry desta tela.
+  // Só é descartada após a RPC confirmar a criação, evitando PV duplicado em
+  // timeout/resposta perdida.
+  const clientRequestIdRef = useRef<string | null>(null);
 
   // Itens com cor não cadastrada (cabedal/forração/tira) — BLOQUEIA o save até
   // cadastrar. Reportado por cada SaleOrderItemForm via onColorIssueChange.
@@ -655,6 +659,8 @@ export default function SaleOrderForm() {
         onSuccess: () => handlePostSave(id!),
       });
     } else {
+      const clientRequestId = clientRequestIdRef.current ?? crypto.randomUUID();
+      clientRequestIdRef.current = clientRequestId;
       createOrder.mutate({
         order: orderData,
         items: validItems,
@@ -663,8 +669,12 @@ export default function SaleOrderForm() {
         commission_value,
         packaging_product_id: packagingProductId || null,
         packaging_quantity: packagingQuantity,
+        client_request_id: clientRequestId,
       } as any, {
-        onSuccess: (created: { id?: string } | undefined) => handlePostSave(created?.id),
+        onSuccess: (created: { id?: string } | undefined) => {
+          clientRequestIdRef.current = null;
+          handlePostSave(created?.id);
+        },
       });
     }
   };
