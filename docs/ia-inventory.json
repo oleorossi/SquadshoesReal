@@ -1,9 +1,9 @@
 {
   "generatedFor": "Squad Shoes — reorganização de IA (menus, abas, perfis)",
   "totals": {
-    "routesDeclared": 182,
+    "routesDeclared": 180,
     "screens": 98,
-    "redirects": 76,
+    "redirects": 74,
     "navEntries": 77,
     "menuItems": 77,
     "menuGroups": 10,
@@ -16,62 +16,62 @@
       {
         "path": "/pcp",
         "component": "PCPHub",
-        "line": 638
+        "line": 530
       },
       {
         "path": "/consumo-base",
         "component": "BaseConsumption",
-        "line": 744
+        "line": 803
       },
       {
         "path": "/alertas-estoque",
         "component": "StockAlerts",
-        "line": 748
+        "line": 807
       },
       {
         "path": "/rh/pendencias-ponto",
         "component": "TimePendingsPage",
-        "line": 851
+        "line": 848
       },
       {
         "path": "/reports",
         "component": "Reports",
-        "line": 1110
+        "line": 954
       },
       {
         "path": "/cost-policies",
         "component": "CostPolicies",
-        "line": 1120
+        "line": 964
       },
       {
         "path": "/relatorios/diario-producao",
         "component": "RelDiarioA4",
-        "line": 1180
+        "line": 1009
       },
       {
         "path": "/relatorios/op",
         "component": "RelOpA4",
-        "line": 1184
+        "line": 1013
       },
       {
         "path": "/relatorios/oee",
         "component": "RelOeeA4",
-        "line": 1188
+        "line": 1017
       },
       {
         "path": "/relatorios/qualidade",
         "component": "RelQualidadeA4",
-        "line": 1192
+        "line": 1021
       },
       {
         "path": "/relatorios/refugo",
         "component": "RelRefugoA4",
-        "line": 1196
+        "line": 1025
       },
       {
         "path": "/relatorios/semanal",
         "component": "RelSemanalA4",
-        "line": 1200
+        "line": 1029
       }
     ],
     "exemptRoutes": [
@@ -737,6 +737,906 @@
   },
   "routes": [
     {
+      "path": "/login",
+      "raw": "/login",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/auth",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 510
+    },
+    {
+      "path": "/",
+      "raw": null,
+      "parentRaw": null,
+      "component": "RootRedirect",
+      "isRedirect": true,
+      "redirectTo": null,
+      "isIndex": true,
+      "isDetail": false,
+      "isLayout": false,
+      "line": null
+    },
+    {
+      "path": "/pedidos/:id",
+      "raw": "pedidos/:id",
+      "parentRaw": null,
+      "component": "PedidosRedirect",
+      "isRedirect": true,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 514
+    },
+    {
+      "path": "/references",
+      "raw": "references",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 519
+    },
+    {
+      "path": "/imagens-cores",
+      "raw": "imagens-cores",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 520
+    },
+    {
+      "path": "/silk-registrations",
+      "raw": "silk-registrations",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/silks",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 521
+    },
+    {
+      "path": "/technical-sheets",
+      "raw": "technical-sheets",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 522
+    },
+    {
+      "path": "/products",
+      "raw": "products",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 523
+    },
+    {
+      "path": "/component-sheets",
+      "raw": "component-sheets",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 524
+    },
+    {
+      "path": "/consumo-material",
+      "raw": "consumo-material",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 525
+    },
+    {
+      "path": "/inventory",
+      "raw": "inventory",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 526
+    },
+    {
+      "path": "/estoque/historico",
+      "raw": "estoque/historico",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque?tab=history",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 527
+    },
+    {
+      "path": "/pcp",
+      "raw": "pcp",
+      "parentRaw": null,
+      "component": "PCPHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 530
+    },
+    {
+      "path": "/pcp/ondas",
+      "raw": "pcp/ondas",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 531
+    },
+    {
+      "path": "/lead-time",
+      "raw": "lead-time",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=lead-time",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 532
+    },
+    {
+      "path": "/setores",
+      "raw": "setores",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 533
+    },
+    {
+      "path": "/shop-floor",
+      "raw": "shop-floor",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 534
+    },
+    {
+      "path": "/pcp-dashboard",
+      "raw": "pcp-dashboard",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=dashboard",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 535
+    },
+    {
+      "path": "/gargalos",
+      "raw": "gargalos",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=gargalos",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 536
+    },
+    {
+      "path": "/producao/visao-agregada",
+      "raw": "producao/visao-agregada",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=lote",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 537
+    },
+    {
+      "path": "/order-flow-audit",
+      "raw": "order-flow-audit",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=auditoria",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 538
+    },
+    {
+      "path": "/producao",
+      "raw": "producao",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 539
+    },
+    {
+      "path": "/producao/live",
+      "raw": "producao/live",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/kanban",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 540
+    },
+    {
+      "path": "/producao/timeline",
+      "raw": "producao/timeline",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=timeline",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 541
+    },
+    {
+      "path": "/production-dashboard",
+      "raw": "production-dashboard",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=dashboard",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 542
+    },
+    {
+      "path": "/production",
+      "raw": "production",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=dashboard",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 543
+    },
+    {
+      "path": "/producao/fluxo",
+      "raw": "producao/fluxo",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=matriz",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 544
+    },
+    {
+      "path": "/modules/production",
+      "raw": "modules/production",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 545
+    },
+    {
+      "path": "/capacity-planning",
+      "raw": "capacity-planning",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=tempos-padrao",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 546
+    },
+    {
+      "path": "/capacity-planning/distribuir",
+      "raw": "capacity-planning/distribuir",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 547
+    },
+    {
+      "path": "/centro-controle",
+      "raw": "centro-controle",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=centro-controle",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 548
+    },
+    {
+      "path": "/quality",
+      "raw": "quality",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=qualidade",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 549
+    },
+    {
+      "path": "/cronoanalise",
+      "raw": "cronoanalise",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=cronoanalise",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 550
+    },
+    {
+      "path": "/producao/paradas",
+      "raw": "producao/paradas",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=oee",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 551
+    },
+    {
+      "path": "/producao/setup-times",
+      "raw": "producao/setup-times",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=setup",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 552
+    },
+    {
+      "path": "/corte",
+      "raw": "corte",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento?sub=corte",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 553
+    },
+    {
+      "path": "/costura",
+      "raw": "costura",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento?sub=costura",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 554
+    },
+    {
+      "path": "/aviamento",
+      "raw": "aviamento",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento?sub=aviamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 555
+    },
+    {
+      "path": "/montagem",
+      "raw": "montagem",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento?sub=montagem",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 556
+    },
+    {
+      "path": "/solagem",
+      "raw": "solagem",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento?sub=solagem",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 557
+    },
+    {
+      "path": "/acabamento",
+      "raw": "acabamento",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/apontamento?sub=acabamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 558
+    },
+    {
+      "path": "/employees",
+      "raw": "employees",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=funcionarios",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 561
+    },
+    {
+      "path": "/timesheet",
+      "raw": "timesheet",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=ponto",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 562
+    },
+    {
+      "path": "/time-control",
+      "raw": "time-control",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=ponto",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 563
+    },
+    {
+      "path": "/ponto",
+      "raw": "ponto",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=ponto",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 564
+    },
+    {
+      "path": "/rh/fechamento-semanal",
+      "raw": "rh/fechamento-semanal",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 565
+    },
+    {
+      "path": "/rh/ausencias",
+      "raw": "rh/ausencias",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=ponto&subtab=ausencias",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 566
+    },
+    {
+      "path": "/rh/banco-de-horas",
+      "raw": "rh/banco-de-horas",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 567
+    },
+    {
+      "path": "/rh/bank-hours",
+      "raw": "rh/bank-hours",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 568
+    },
+    {
+      "path": "/rh/payroll",
+      "raw": "rh/payroll",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=folha",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 569
+    },
+    {
+      "path": "/sales/consumo",
+      "raw": "sales/consumo",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/sales?view=consumo",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 572
+    },
+    {
+      "path": "/sales-report",
+      "raw": "sales-report",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/comercial",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 573
+    },
+    {
+      "path": "/pedidos-venda",
+      "raw": "pedidos-venda",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/sales",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 574
+    },
+    {
+      "path": "/finance",
+      "raw": "finance",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/financeiro",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 575
+    },
+    {
+      "path": "/mrp",
+      "raw": "mrp",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/purchase-planning?tab=mrp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 576
+    },
+    {
+      "path": "/mrp-advanced",
+      "raw": "mrp-advanced",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/purchase-planning?tab=mrp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 577
+    },
+    {
+      "path": "/weekly-purchasing-plan",
+      "raw": "weekly-purchasing-plan",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/purchase-planning?tab=weekly",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 578
+    },
+    {
+      "path": "/compras",
+      "raw": "compras",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/purchase-orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 579
+    },
+    {
+      "path": "/fornecedores",
+      "raw": "fornecedores",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/suppliers",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 580
+    },
+    {
+      "path": "/clientes",
+      "raw": "clientes",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/clients",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 581
+    },
+    {
+      "path": "/ordens-servico",
+      "raw": "ordens-servico",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 582
+    },
+    {
+      "path": "/contractors",
+      "raw": "contractors",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 583
+    },
+    {
+      "path": "/terceiros",
+      "raw": "terceiros",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 584
+    },
+    {
+      "path": "/terceiros-na-rua",
+      "raw": "terceiros-na-rua",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 585
+    },
+    {
+      "path": "/terceiros/relatorios",
+      "raw": "terceiros/relatorios",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=relatorio",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 586
+    },
+    {
+      "path": "/artisanal-recipes",
+      "raw": "artisanal-recipes",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=recipes",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 587
+    },
+    {
+      "path": "/labels",
+      "raw": "labels",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/label-system",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 590
+    },
+    {
+      "path": "/modules/quality",
+      "raw": "modules/quality",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=qualidade",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 591
+    },
+    {
+      "path": "/modules/reports",
+      "raw": "modules/reports",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/comercial",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 592
+    },
+    {
+      "path": "/stock",
+      "raw": "stock",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 593
+    },
+    {
+      "path": "/auditoria",
+      "raw": "auditoria",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/audit-logs",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 594
+    },
+    {
+      "path": "/diagnostico",
+      "raw": "diagnostico",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/system-diagnostics",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 595
+    },
+    {
+      "path": "/monitoramento",
+      "raw": "monitoramento",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/system-monitor",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 596
+    },
+    {
+      "path": "/ordens-de-producao",
+      "raw": "ordens-de-producao",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 597
+    },
+    {
+      "path": "/ordens",
+      "raw": "ordens",
+      "parentRaw": null,
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 598
+    },
+    {
       "path": "/auth",
       "raw": "/auth",
       "parentRaw": null,
@@ -746,19 +1646,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 540
-    },
-    {
-      "path": "/login",
-      "raw": "/login",
-      "parentRaw": null,
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/auth",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 545
+      "line": 639
     },
     {
       "path": "/design-preview",
@@ -770,7 +1658,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 549
+      "line": 644
     },
     {
       "path": "/producao/kanban/gestao",
@@ -782,7 +1670,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 562
+      "line": 657
     },
     {
       "path": "/m",
@@ -794,7 +1682,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 581
+      "line": 676
     },
     {
       "path": "/m/new",
@@ -806,7 +1694,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 592
+      "line": 687
     },
     {
       "path": "/m/pending",
@@ -818,7 +1706,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 593
+      "line": 688
     },
     {
       "path": "/m/profile",
@@ -830,7 +1718,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 594
+      "line": 689
     },
     {
       "path": "/m",
@@ -842,19 +1730,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": true,
-      "line": 581
-    },
-    {
-      "path": "/",
-      "raw": null,
-      "parentRaw": "/",
-      "component": "RootRedirect",
-      "isRedirect": true,
-      "redirectTo": null,
-      "isIndex": true,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 598
+      "line": 676
     },
     {
       "path": "/dashboard",
@@ -866,19 +1742,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 626
-    },
-    {
-      "path": "/pcp",
-      "raw": "pcp",
-      "parentRaw": "/",
-      "component": "PCPHub",
-      "isRedirect": false,
-      "redirectTo": null,
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 638
+      "line": 715
     },
     {
       "path": "/producao/planejamento",
@@ -890,7 +1754,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 643
+      "line": 727
     },
     {
       "path": "/producao/kanban",
@@ -902,7 +1766,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 647
+      "line": 731
     },
     {
       "path": "/producao/estouro",
@@ -914,7 +1778,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 651
+      "line": 735
     },
     {
       "path": "/producao/setores",
@@ -926,7 +1790,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 655
+      "line": 739
     },
     {
       "path": "/producao/apontamento",
@@ -938,7 +1802,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 659
+      "line": 743
     },
     {
       "path": "/producao/analises",
@@ -950,7 +1814,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 663
+      "line": 747
     },
     {
       "path": "/producao/produtividade",
@@ -962,19 +1826,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 669
-    },
-    {
-      "path": "/pcp/ondas",
-      "raw": "pcp/ondas",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/planejamento",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 674
+      "line": 753
     },
     {
       "path": "/pronta-entrega",
@@ -986,19 +1838,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 678
-    },
-    {
-      "path": "/lead-time",
-      "raw": "lead-time",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=lead-time",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 682
+      "line": 757
     },
     {
       "path": "/estoque",
@@ -1010,7 +1850,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 686
+      "line": 761
     },
     {
       "path": "/estoque/:id",
@@ -1022,19 +1862,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 689
-    },
-    {
-      "path": "/estoque/historico",
-      "raw": "historico",
-      "parentRaw": "estoque",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/estoque?tab=history",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 690
+      "line": 764
     },
     {
       "path": "/grupos",
@@ -1046,7 +1874,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 695
+      "line": 769
     },
     {
       "path": "/ajuste-estoque",
@@ -1058,31 +1886,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 699
-    },
-    {
-      "path": "/references",
-      "raw": "references",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/fichas-tecnicas",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 704
-    },
-    {
-      "path": "/imagens-cores",
-      "raw": "imagens-cores",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/fichas-tecnicas",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 709
+      "line": 773
     },
     {
       "path": "/fichas-tecnicas",
@@ -1094,7 +1898,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 713
+      "line": 777
     },
     {
       "path": "/fichas-tecnicas/padroes",
@@ -1106,7 +1910,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 719
+      "line": 783
     },
     {
       "path": "/escalonamento",
@@ -1118,7 +1922,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 725
+      "line": 789
     },
     {
       "path": "/calculadora-tiras",
@@ -1130,7 +1934,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 731
+      "line": 795
     },
     {
       "path": "/silks",
@@ -1142,19 +1946,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 735
-    },
-    {
-      "path": "/silk-registrations",
-      "raw": "silk-registrations",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/silks",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 740
+      "line": 799
     },
     {
       "path": "/consumo-base",
@@ -1166,7 +1958,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 744
+      "line": 803
     },
     {
       "path": "/alertas-estoque",
@@ -1178,7 +1970,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 748
+      "line": 807
     },
     {
       "path": "/reservas-estoque",
@@ -1190,7 +1982,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 752
+      "line": 811
     },
     {
       "path": "/solados",
@@ -1202,55 +1994,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 757
-    },
-    {
-      "path": "/technical-sheets",
-      "raw": "technical-sheets",
-      "parentRaw": "/",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/fichas-tecnicas",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 763
-    },
-    {
-      "path": "/products",
-      "raw": "products",
-      "parentRaw": "/",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/estoque",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 767
-    },
-    {
-      "path": "/component-sheets",
-      "raw": "component-sheets",
-      "parentRaw": "/",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/estoque",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 771
-    },
-    {
-      "path": "/consumo-material",
-      "raw": "consumo-material",
-      "parentRaw": "/",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/estoque",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 775
+      "line": 816
     },
     {
       "path": "/orders",
@@ -1262,7 +2006,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 779
+      "line": 820
     },
     {
       "path": "/orders/:id/edit",
@@ -1274,7 +2018,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 782
+      "line": 823
     },
     {
       "path": "/orders/summary",
@@ -1286,7 +2030,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 789
+      "line": 830
     },
     {
       "path": "/orders/grouped-summary",
@@ -1298,55 +2042,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 790
-    },
-    {
-      "path": "/pedidos/:id",
-      "raw": "pedidos/:id",
-      "parentRaw": "/",
-      "component": "PedidosRedirect",
-      "isRedirect": true,
-      "redirectTo": null,
-      "isIndex": false,
-      "isDetail": true,
-      "isLayout": false,
-      "line": 794
-    },
-    {
-      "path": "/setores",
-      "raw": "setores",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 798
-    },
-    {
-      "path": "/shop-floor",
-      "raw": "shop-floor",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 802
-    },
-    {
-      "path": "/pcp-dashboard",
-      "raw": "pcp-dashboard",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=dashboard",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 808
+      "line": 831
     },
     {
       "path": "/picking",
@@ -1358,31 +2054,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 812
-    },
-    {
-      "path": "/gargalos",
-      "raw": "gargalos",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=gargalo-semanal",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 818
-    },
-    {
-      "path": "/ordens-servico",
-      "raw": "ordens-servico",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 823
+      "line": 835
     },
     {
       "path": "/terceirizados",
@@ -1394,43 +2066,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 830
-    },
-    {
-      "path": "/terceiros",
-      "raw": "terceiros",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 837
-    },
-    {
-      "path": "/terceiros-na-rua",
-      "raw": "terceiros-na-rua",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 841
-    },
-    {
-      "path": "/terceiros/relatorios",
-      "raw": "terceiros/relatorios",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=relatorio",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 845
+      "line": 842
     },
     {
       "path": "/rh/pendencias-ponto",
@@ -1442,91 +2078,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 851
-    },
-    {
-      "path": "/rh/fechamento-semanal",
-      "raw": "rh/fechamento-semanal",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 857
-    },
-    {
-      "path": "/rh/ausencias",
-      "raw": "rh/ausencias",
-      "parentRaw": "/",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/rh?tab=ponto&subtab=ausencias",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 863
-    },
-    {
-      "path": "/producao/visao-agregada",
-      "raw": "producao/visao-agregada",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=quadro&modo=lote",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 869
-    },
-    {
-      "path": "/mrp",
-      "raw": "mrp",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/purchase-planning?tab=mrp",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 873
-    },
-    {
-      "path": "/wip-control",
-      "raw": "wip-control",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 877
-    },
-    {
-      "path": "/cycle-count",
-      "raw": "cycle-count",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 881
-    },
-    {
-      "path": "/order-flow-audit",
-      "raw": "order-flow-audit",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=auditoria",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 886
+      "line": 848
     },
     {
       "path": "/navigation-audit",
@@ -1538,7 +2090,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 890
+      "line": 852
     },
     {
       "path": "/unit-audit",
@@ -1550,19 +2102,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 894
-    },
-    {
-      "path": "/labels",
-      "raw": "labels",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/label-system",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 898
+      "line": 856
     },
     {
       "path": "/label-system",
@@ -1574,7 +2114,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 902
+      "line": 860
     },
     {
       "path": "/sales",
@@ -1586,7 +2126,7 @@
       "isIndex": true,
       "isDetail": false,
       "isLayout": false,
-      "line": 906
+      "line": 864
     },
     {
       "path": "/sales/new",
@@ -1598,7 +2138,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 909
+      "line": 867
     },
     {
       "path": "/sales/edit/:id",
@@ -1610,31 +2150,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 910
-    },
-    {
-      "path": "/sales/consumo",
-      "raw": "consumo",
-      "parentRaw": "sales",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/sales?view=consumo",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 911
-    },
-    {
-      "path": "/sales-report",
-      "raw": "sales-report",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/comercial",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 916
+      "line": 868
     },
     {
       "path": "/suppliers",
@@ -1646,7 +2162,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 920
+      "line": 872
     },
     {
       "path": "/clients",
@@ -1658,7 +2174,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 924
+      "line": 876
     },
     {
       "path": "/grupos-economicos/:id",
@@ -1670,19 +2186,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 928
-    },
-    {
-      "path": "/finance",
-      "raw": "finance",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/financeiro",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 932
+      "line": 880
     },
     {
       "path": "/custos-insumos",
@@ -1694,7 +2198,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 936
+      "line": 884
     },
     {
       "path": "/nfe",
@@ -1706,67 +2210,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 940
-    },
-    {
-      "path": "/contractors",
-      "raw": "contractors",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 947
-    },
-    {
-      "path": "/artisanal-recipes",
-      "raw": "artisanal-recipes",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/terceirizados?tab=recipes",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 953
-    },
-    {
-      "path": "/employees",
-      "raw": "employees",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh?tab=funcionarios",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 958
-    },
-    {
-      "path": "/timesheet",
-      "raw": "timesheet",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh?tab=ponto",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 963
-    },
-    {
-      "path": "/time-control",
-      "raw": "time-control",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh?tab=ponto",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 967
+      "line": 888
     },
     {
       "path": "/purchase-orders/per-pv",
@@ -1778,7 +2222,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 971
+      "line": 892
     },
     {
       "path": "/purchase-orders",
@@ -1790,7 +2234,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 975
+      "line": 896
     },
     {
       "path": "/purchase-planning",
@@ -1802,19 +2246,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 979
-    },
-    {
-      "path": "/mrp-advanced",
-      "raw": "mrp-advanced",
-      "parentRaw": "/",
-      "component": "LegacyRouteRedirect",
-      "isRedirect": true,
-      "redirectTo": "/purchase-planning?tab=mrp",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 984
+      "line": 900
     },
     {
       "path": "/pricing-calculator",
@@ -1826,19 +2258,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 988
-    },
-    {
-      "path": "/weekly-purchasing-plan",
-      "raw": "weekly-purchasing-plan",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/purchase-planning?tab=weekly",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 992
+      "line": 904
     },
     {
       "path": "/comercial",
@@ -1850,55 +2270,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 996
-    },
-    {
-      "path": "/producao",
-      "raw": "producao",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/planejamento",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1001
-    },
-    {
-      "path": "/producao/live",
-      "raw": "producao/live",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=quadro&modo=cartoes",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1006
-    },
-    {
-      "path": "/producao/timeline",
-      "raw": "producao/timeline",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=quadro&modo=timeline",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1011
-    },
-    {
-      "path": "/production-dashboard",
-      "raw": "production-dashboard",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=dashboard",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1016
+      "line": 908
     },
     {
       "path": "/financeiro",
@@ -1910,7 +2282,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1020
+      "line": 912
     },
     {
       "path": "/rh",
@@ -1922,7 +2294,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1024
+      "line": 916
     },
     {
       "path": "/rh/espelho-ponto/:employeeId",
@@ -1934,43 +2306,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 1029
-    },
-    {
-      "path": "/rh/banco-de-horas",
-      "raw": "rh/banco-de-horas",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1035
-    },
-    {
-      "path": "/rh/bank-hours",
-      "raw": "rh/bank-hours",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1039
-    },
-    {
-      "path": "/rh/payroll",
-      "raw": "rh/payroll",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/rh?tab=folha",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1044
+      "line": 921
     },
     {
       "path": "/transporte",
@@ -1982,7 +2318,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1048
+      "line": 925
     },
     {
       "path": "/embalagens",
@@ -1994,7 +2330,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1052
+      "line": 929
     },
     {
       "path": "/expedicao",
@@ -2006,7 +2342,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1056
+      "line": 933
     },
     {
       "path": "/conferencia-saida",
@@ -2018,7 +2354,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1060
+      "line": 937
     },
     {
       "path": "/settings",
@@ -2030,43 +2366,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1064
-    },
-    {
-      "path": "/capacity-planning",
-      "raw": "capacity-planning",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=tempos-padrao",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1069
-    },
-    {
-      "path": "/capacity-planning/distribuir",
-      "raw": "capacity-planning/distribuir",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/planejamento",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1075
-    },
-    {
-      "path": "/centro-controle",
-      "raw": "centro-controle",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=centro-controle",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1080
+      "line": 941
     },
     {
       "path": "/imprimir-fichas",
@@ -2078,7 +2378,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1084
+      "line": 945
     },
     {
       "path": "/fichas-montadores",
@@ -2090,43 +2390,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1089
-    },
-    {
-      "path": "/inventory",
-      "raw": "inventory",
-      "parentRaw": "/",
-      "component": "LegacyInventoryRedirect",
-      "isRedirect": true,
-      "redirectTo": null,
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1096
-    },
-    {
-      "path": "/production",
-      "raw": "production",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=dashboard",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1101
-    },
-    {
-      "path": "/quality",
-      "raw": "quality",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=qualidade",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1106
+      "line": 950
     },
     {
       "path": "/reports",
@@ -2138,7 +2402,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1110
+      "line": 954
     },
     {
       "path": "/relatorios",
@@ -2150,7 +2414,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1115
+      "line": 959
     },
     {
       "path": "/cost-policies",
@@ -2162,43 +2426,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1120
-    },
-    {
-      "path": "/cronoanalise",
-      "raw": "cronoanalise",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=cronoanalise",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1125
-    },
-    {
-      "path": "/producao/paradas",
-      "raw": "producao/paradas",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=oee",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1130
-    },
-    {
-      "path": "/producao/setup-times",
-      "raw": "producao/setup-times",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=setup",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1135
+      "line": 964
     },
     {
       "path": "/patrimonio",
@@ -2210,7 +2438,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1140
+      "line": 969
     },
     {
       "path": "/sped/bloco-k",
@@ -2222,7 +2450,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1145
+      "line": 974
     },
     {
       "path": "/perfis-tributarios",
@@ -2234,7 +2462,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1150
+      "line": 979
     },
     {
       "path": "/apuracao-impostos",
@@ -2246,7 +2474,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1155
+      "line": 984
     },
     {
       "path": "/estoque/qualidade",
@@ -2258,7 +2486,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1160
+      "line": 989
     },
     {
       "path": "/compras/alcadas",
@@ -2270,7 +2498,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1165
+      "line": 994
     },
     {
       "path": "/compras/inspecao",
@@ -2282,7 +2510,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1170
+      "line": 999
     },
     {
       "path": "/estoque/inventario",
@@ -2294,7 +2522,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1175
+      "line": 1004
     },
     {
       "path": "/relatorios/diario-producao",
@@ -2306,7 +2534,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1180
+      "line": 1009
     },
     {
       "path": "/relatorios/op",
@@ -2318,7 +2546,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1184
+      "line": 1013
     },
     {
       "path": "/relatorios/oee",
@@ -2330,7 +2558,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1188
+      "line": 1017
     },
     {
       "path": "/relatorios/qualidade",
@@ -2342,7 +2570,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1192
+      "line": 1021
     },
     {
       "path": "/relatorios/refugo",
@@ -2354,7 +2582,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1196
+      "line": 1025
     },
     {
       "path": "/relatorios/semanal",
@@ -2366,19 +2594,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1200
-    },
-    {
-      "path": "/producao/fluxo",
-      "raw": "producao/fluxo",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=quadro&modo=matriz",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1205
+      "line": 1029
     },
     {
       "path": "/automations",
@@ -2390,7 +2606,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1209
+      "line": 1033
     },
     {
       "path": "/system-monitor",
@@ -2402,7 +2618,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1213
+      "line": 1037
     },
     {
       "path": "/system-diagnostics",
@@ -2414,7 +2630,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1217
+      "line": 1041
     },
     {
       "path": "/audit-logs",
@@ -2426,7 +2642,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1221
+      "line": 1045
     },
     {
       "path": "/price-lists",
@@ -2438,7 +2654,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1225
+      "line": 1049
     },
     {
       "path": "/crm",
@@ -2450,7 +2666,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1226
+      "line": 1050
     },
     {
       "path": "/notas",
@@ -2462,7 +2678,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1227
+      "line": 1051
     },
     {
       "path": "/tarefas",
@@ -2474,7 +2690,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1228
+      "line": 1052
     },
     {
       "path": "/sac",
@@ -2486,7 +2702,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1229
+      "line": 1053
     },
     {
       "path": "/forecast",
@@ -2498,7 +2714,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1230
+      "line": 1054
     },
     {
       "path": "/quotations",
@@ -2510,7 +2726,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1231
+      "line": 1055
     },
     {
       "path": "/cte",
@@ -2522,7 +2738,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1232
+      "line": 1056
     },
     {
       "path": "/mdfe",
@@ -2534,7 +2750,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1233
+      "line": 1057
     },
     {
       "path": "/cnab",
@@ -2546,7 +2762,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1234
+      "line": 1058
     },
     {
       "path": "/bank-reconciliation",
@@ -2558,7 +2774,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1235
+      "line": 1059
     },
     {
       "path": "/sped",
@@ -2570,7 +2786,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1236
+      "line": 1060
     },
     {
       "path": "/picking-sessions",
@@ -2582,7 +2798,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1237
+      "line": 1061
     },
     {
       "path": "/manifests",
@@ -2594,7 +2810,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1238
+      "line": 1062
     },
     {
       "path": "/transporters",
@@ -2606,7 +2822,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1239
+      "line": 1063
     },
     {
       "path": "/delivery-tracking",
@@ -2618,7 +2834,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1240
+      "line": 1064
     },
     {
       "path": "/entregas",
@@ -2630,7 +2846,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1241
+      "line": 1065
     },
     {
       "path": "/lgpd",
@@ -2642,7 +2858,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1242
+      "line": 1066
     },
     {
       "path": "/security",
@@ -2654,247 +2870,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
-      "line": 1243
-    },
-    {
-      "path": "/modules/production",
-      "raw": "production",
-      "parentRaw": "modules",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1249
-    },
-    {
-      "path": "/modules/quality",
-      "raw": "quality",
-      "parentRaw": "modules",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/producao/analises?view=qualidade",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1250
-    },
-    {
-      "path": "/modules/reports",
-      "raw": "reports",
-      "parentRaw": "modules",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/comercial",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1251
-    },
-    {
-      "path": "/stock",
-      "raw": "stock",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/estoque",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1258
-    },
-    {
-      "path": "/auditoria",
-      "raw": "auditoria",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/audit-logs",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1259
-    },
-    {
-      "path": "/diagnostico",
-      "raw": "diagnostico",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/system-diagnostics",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1260
-    },
-    {
-      "path": "/monitoramento",
-      "raw": "monitoramento",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/system-monitor",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1261
-    },
-    {
-      "path": "/pedidos-venda",
-      "raw": "pedidos-venda",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/sales",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1266
-    },
-    {
-      "path": "/ordens-de-producao",
-      "raw": "ordens-de-producao",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1267
-    },
-    {
-      "path": "/ordens",
-      "raw": "ordens",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1268
-    },
-    {
-      "path": "/corte",
-      "raw": "corte",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores&sub=corte",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1269
-    },
-    {
-      "path": "/costura",
-      "raw": "costura",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores&sub=costura",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1270
-    },
-    {
-      "path": "/aviamento",
-      "raw": "aviamento",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores&sub=aviamento",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1271
-    },
-    {
-      "path": "/montagem",
-      "raw": "montagem",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores&sub=montagem",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1272
-    },
-    {
-      "path": "/solagem",
-      "raw": "solagem",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores&sub=solagem",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1273
-    },
-    {
-      "path": "/acabamento",
-      "raw": "acabamento",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/pcp?tab=setores&sub=acabamento",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1274
-    },
-    {
-      "path": "/compras",
-      "raw": "compras",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/purchase-orders",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1275
-    },
-    {
-      "path": "/fornecedores",
-      "raw": "fornecedores",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/suppliers",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1276
-    },
-    {
-      "path": "/clientes",
-      "raw": "clientes",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/clients",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1277
-    },
-    {
-      "path": "/ponto",
-      "raw": "ponto",
-      "parentRaw": "/",
-      "component": "Navigate",
-      "isRedirect": true,
-      "redirectTo": "/timesheet",
-      "isIndex": false,
-      "isDetail": false,
-      "isLayout": false,
-      "line": 1278
+      "line": 1067
     },
     {
       "path": "/*",
@@ -2906,7 +2882,7 @@
       "isIndex": false,
       "isDetail": true,
       "isLayout": false,
-      "line": 1284
+      "line": 1071
     },
     {
       "path": "/",
@@ -2918,7 +2894,7 @@
       "isIndex": false,
       "isDetail": false,
       "isLayout": true,
-      "line": 598
+      "line": 693
     }
   ],
   "tabs": [
