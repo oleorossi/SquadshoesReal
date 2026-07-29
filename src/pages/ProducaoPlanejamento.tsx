@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { format } from 'date-fns';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,11 @@ function mondayOf(d: Date): Date {
   r.setHours(0, 0, 0, 0);
   return r;
 }
-const toISO = (d: Date) => d.toISOString().slice(0, 10);
+// Formata no fuso LOCAL. Hoje todas as datas daqui nascem de `mondayOf` (meia-noite
+// local), onde o slice do toISOString ainda acertava — mas passar um `new Date()`
+// qualquer devolvia o dia seguinte depois das ~21h BRT. `format` fecha a armadilha
+// sem mudar o resultado atual. Ver `@/lib/date`.
+const toISO = (d: Date) => format(d, 'yyyy-MM-dd');
 
 /**
  * Tela PLANEJAMENTO (R3) — leitura única do motor dinâmico:

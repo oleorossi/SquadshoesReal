@@ -107,3 +107,70 @@ export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
   { key: 'solagem',          label: SECTOR_LABELS.solagem },
   { key: 'acabamento',       label: SECTOR_LABELS.acabamento },
 ];
+
+/**
+ * Nome de EXIBIÇÃO canônico de cada setor — é a grafia gravada em
+ * `order_stages.stage_name`, `sector_settings.sector` e `production_schedule.sector`.
+ * Use isto em vez de reescrever a lista de strings em cada hook/tela: listas locais
+ * já divergiram (várias ficaram com a `Costura` única, que NÃO existe mais no banco
+ * desde a migration 20261001120000 — hoje são `Costura Palmilha` e `Costura Cabedal`).
+ */
+export const SECTOR_FLOW: string[] = [
+  'Corte Palmilha', 'Corte Forração',
+  'Costura Palmilha', 'Costura Cabedal', 'Aviamento',
+  'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
+];
+
+/**
+ * TOPOLOGIA — quem roda em paralelo com quem.
+ *
+ * Espelha `sector_settings.parallel_group` no banco (verificado em produção
+ * 2026-07-29). Setor sem grupo é sequencial: só arranca quando o nível anterior
+ * entrega.
+ *
+ *   Corte Palmilha ‖ Corte Forração                    → grupo 'corte'
+ *   Costura Palmilha ‖ Costura Cabedal ‖ Aviamento     → grupo 'costura_aviamento'
+ *   Silk → Colagem → Montagem → Solagem → Acabamento → Expedição   (sequenciais)
+ *
+ * ⚠ Este mapa é o FALLBACK estático. Quando houver `sector_settings` em mão
+ * (`useSectorSettings()`), prefira `parallelGroupsFromSettings()` — o dono pode
+ * reagrupar setores pela tela /producao/setores e o banco é quem manda.
+ */
+export const SECTOR_PARALLEL_GROUP: Record<string, string | null> = {
+  'Corte Palmilha':   'corte',
+  'Corte Forração':   'corte',
+  'Costura Palmilha': 'costura_aviamento',
+  'Costura Cabedal':  'costura_aviamento',
+  'Aviamento':        'costura_aviamento',
+  'Silk':             null,
+  'Colagem':          null,
+  'Montagem':         null,
+  'Solagem':          null,
+  'Acabamento':       null,
+  'Expedição':        null,
+};
+
+/** Setores que rodam junto com `sector` (inclui ele mesmo). Sequencial → só ele. */
+export function parallelPeers(
+  sector: string,
+  groups: Record<string, string | null> = SECTOR_PARALLEL_GROUP,
+): string[] {
+  const g = groups[sector] ?? null;
+  if (!g) return [sector];
+  return Object.keys(groups).filter((s) => groups[s] === g);
+}
+
+/**
+ * Constrói o mapa de grupos a partir das linhas de `sector_settings` — a fonte
+ * de verdade viva. Passe o resultado pra `parallelPeers` quando a tela já tiver
+ * carregado os settings.
+ */
+export function parallelGroupsFromSettings(
+  settings: ReadonlyArray<{ sector: string; parallel_group: string | null }>,
+): Record<string, string | null> {
+  if (!settings.length) return SECTOR_PARALLEL_GROUP;
+  return settings.reduce<Record<string, string | null>>((acc, s) => {
+    acc[s.sector] = s.parallel_group;
+    return acc;
+  }, {});
+}

@@ -66,6 +66,14 @@ export function DropApontarDialog({
     && qty > 0
     && pointedStage.quantity_processed + qty < pointedStage.quantity_total;
 
+  // Acima do saldo: o servidor aceita (com confirmação) mas os dois lados
+  // DIVERGEM — o estágio é clampado no total da OP e o ledger grava o valor
+  // digitado. Sem dizer isso aqui, o operador confirma um aviso genérico e
+  // fica com 300/300 na tela e 350 no histórico de produção.
+  const excess = !isBackward && !!pointedStage
+    ? Math.max(0, pointedStage.quantity_processed + qty - pointedStage.quantity_total)
+    : 0;
+
   const handleMoveChange = (v: string) => {
     const t = v === MOVE_ATUAL ? '' : v;
     setMoveTarget(t);
@@ -224,6 +232,15 @@ export function DropApontarDialog({
                     : `saldo do setor: ${remaining} de ${pointedStage.quantity_total}`}
                 </span>
               </div>
+              {excess > 0 && (
+                <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-700 dark:text-amber-300">
+                  <strong>{excess} {excess === 1 ? 'par acima' : 'pares acima'} do total da OP.</strong>{' '}
+                  O setor vai fechar em {pointedStage.quantity_total}/{pointedStage.quantity_total},
+                  mas o histórico de produção registra os {pointedStage.quantity_processed + qty} digitados —
+                  os dois números deixam de bater. Se produziu a mais de verdade, ajuste a quantidade da OP;
+                  se foi engano, corrija aqui.
+                </p>
+              )}
             </div>
 
             {/* Prévia da consequência: mostra COMO o card vai ficar antes do

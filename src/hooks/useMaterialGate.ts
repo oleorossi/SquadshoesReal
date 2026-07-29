@@ -89,9 +89,14 @@ export interface OrderGateRow {
  * não vale o risco de mexer nela só pra um badge.
  */
 export function useOrdersMaterialGate(orderIds: string[]) {
-  const ids = Array.from(new Set(orderIds.filter(Boolean)));
+  // Ordena a CÓPIA: a chave tem que ser estável mesmo quando a fila devolve as
+  // mesmas OPs em ordem diferente, e o array do caller não pode ser mutado.
+  const ids = Array.from(new Set(orderIds.filter(Boolean))).sort();
   return useQuery({
-    queryKey: ['orders-material-gate', ids.length, ids[0] ?? ''],
+    // ⚠ Chave pelo conjunto INTEIRO. Antes era `[ids.length, ids[0]]`: dois
+    // conjuntos distintos de mesmo tamanho e mesmo primeiro id compartilhavam
+    // cache, então uma tela mostrava o gate de material de OUTRA lista de OPs.
+    queryKey: ['orders-material-gate', ids.join(',')],
     queryFn: async () => {
       const map = new Map<string, OrderGateRow>();
       if (ids.length === 0) return map;

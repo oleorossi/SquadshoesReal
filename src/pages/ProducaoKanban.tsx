@@ -136,10 +136,24 @@ export default function ProducaoKanban() {
                     <span className="text-xs font-bold uppercase tracking-wider">{sector}</span>
                     <Badge variant="outline" className="text-[10px]">{colCards.length}</Badge>
                   </div>
-                  {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid) */}
-                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                    hoje: {g ? `${g.planned_pairs}/${g.capacity_pairs}` : '0'} pares
-                    {g && g.carryover_pairs > 0 ? ` · +${g.carryover_pairs} atraso` : ''}
+                  {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid).
+                      Denominador = capacidade EFETIVA do mix do dia (não a global do
+                      setor): quando a ficha técnica manda no ritmo, comparar com o
+                      global mostrava folga onde não havia. */}
+                  <p
+                    className="text-[10px] text-muted-foreground font-mono mt-0.5"
+                    title={
+                      g
+                        ? `${g.planned_pairs} pares agendados hoje · capacidade ${g.effective_capacity_pairs || g.capacity_pairs}/dia${
+                            g.ops_ficha_override > 0 ? ` (ficha técnica; global ${g.capacity_pairs})` : ' (global do setor)'
+                          }`
+                        : 'Sem agenda pra hoje neste setor'
+                    }
+                  >
+                    hoje: {g ? `${g.planned_pairs}/${g.effective_capacity_pairs || g.capacity_pairs}${g.ops_ficha_override > 0 ? '*' : ''}` : '0'} pares
+                    {/* "atraso" era enganoso: carryover é o saldo ROLADO de dias
+                        anteriores que já está na frente da fila, não dias de atraso. */}
+                    {g && g.carryover_pairs > 0 ? ` · +${g.carryover_pairs} rolados` : ''}
                   </p>
                 </div>
                 <div className="min-h-[300px] space-y-2 rounded-b-md border border-t-0 border-border bg-muted/20 p-2">

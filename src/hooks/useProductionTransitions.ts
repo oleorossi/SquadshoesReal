@@ -44,6 +44,11 @@ export function invalidateProductionCaches(queryClient: ReturnType<typeof useQue
     ['finishing-packages'],
     // Pedidos de venda (refletem progresso da OP)
     ['sale_orders'],
+    // Gate de material (badge "sem matéria-prima até dd/MM" no card do Kanban).
+    // Faltava aqui: com staleTime de 2min, reservar/receber material não
+    // refletia no quadro — o operador seguia vendo "travada" já resolvida.
+    ['orders-material-gate'],
+    ['order-material-gate'],
     // Motor dinâmico de produção (Planejamento/Kanban/Estouro — o apontamento
     // dispara recompute no servidor; aqui só refetch das views)
     ['sector_settings'],
@@ -59,31 +64,94 @@ export function invalidateProductionCaches(queryClient: ReturnType<typeof useQue
 export function useProductionTransitions() {
   const queryClient = useQueryClient();
 
-  // Lança em caso de erro — callers usam Promise.allSettled e exibem
-  // um único toast agregado. Não emitir toast aqui evita N+1 toasts.
-  //
-  // Sem quantidade explícita a RPC assume a OP inteira quando ninguém apontou
-  // (comportamento canônico do bulk "Finalizar OPs selecionadas").
+  /**
+   * Finaliza um setor de UMA OP — porta usada pelas telas de chão de fábrica
+   * (`/producao/apontamento`: Corte, Silk, Colagem, Montagem, Solagem,
+   * Acabamento, Costura) no botão "Finalizar OPs selecionadas".
+   *
+   * ⚠ PASSA PELA RPC CANÔNICA `apontar_producao_setor`, não mais direto em
+   * `finalize_production_sector`.
+   *
+   * Motivo (auditoria 2026-07-29, medido em produção): `finalize_production_sector`
+   * só faz UPDATE em `order_stages`/`orders` e NUNCA insere em
+   * `production_pointings`. Como estas 7 telas eram a porta principal do chão de
+   * fábrica, o ledger tinha 46 lançamentos em 6 OPs enquanto 180 OPs já tinham
+   * produção apontada — ~3% da realidade. Sem ledger não há quem/quando/quanto,
+   * o `tg_pointings_recompute` não dispara e qualquer métrica de throughput,
+   * ciclo real ou rastreabilidade nasce errada.
+   *
+   * A RPC canônica grava o ledger COM autoria e, com `p_finalize`, chama
+   * `finalize_production_sector` internamente — mesma finalização de antes, só
+   * que registrada.
+   *
+   * Lança em caso de erro — callers usam Promise.all e exibem um toast agregado.
+   */
   const finalizeSectorTask = async (
     orderId: string,
     currentSector: string,
     opts?: { quantityProcessed?: number; operatorEmployeeId?: string | null }
   ) => {
-    const { data, error } = await supabase.rpc('finalize_production_sector', {
-      p_order_id: orderId,
-      p_current_sector: currentSector,
-      ...(opts?.quantityProcessed !== undefined ? { p_quantity_processed: opts.quantityProcessed } : {}),
-      ...(opts?.operatorEmployeeId ? { p_operator_employee_id: opts.operatorEmployeeId } : {}),
-    });
+    // Saldo do setor: `p_quantity` da RPC é INCREMENTO, enquanto o
+    // `quantityProcessed` desta API sempre foi o ACUMULADO alvo. Converter aqui
+    // evita que o caller apontasse o total de novo em cima do que já existia.
+    const { data: stage, error: stageErr } = await supabase
+      .from('order_stages')
+      .select('stage_name, quantity_processed, quantity_total, status')
+      .eq('order_id', orderId)
+      .or(`stage_name.eq.${currentSector}${currentSector === 'Aviamento' ? ',stage_name.eq.Mesa' : ''}`)
+      .maybeSingle();
+    if (stageErr) {
+      console.error(`Erro lendo etapa ${currentSector} da OP ${orderId}:`, stageErr);
+      throw stageErr;
+    }
+    if (!stage) throw new Error(`OP não passa pelo setor ${currentSector}.`);
 
+    const alvo = opts?.quantityProcessed ?? stage.quantity_total ?? 0;
+    const incremento = Math.max(0, alvo - (stage.quantity_processed ?? 0));
+
+    const call = (confirmed?: string[]) =>
+      supabase.rpc('apontar_producao_setor', {
+        p_order_id: orderId,
+        p_stage_name: stage.stage_name,
+        p_quantity: incremento,
+        p_finalize: true,
+        p_note: 'Finalizado na tela do setor',
+        ...(opts?.operatorEmployeeId ? { p_operator_employee_id: opts.operatorEmployeeId } : {}),
+        ...(confirmed?.length ? { p_confirmed_warnings: confirmed } : {}),
+      });
+
+    let { data, error } = await call();
     if (error) {
       console.error(`Erro na transição de setor para a OP ${orderId}:`, error);
       throw error;
     }
 
+    // A RPC não grava nada quando levanta aviso sem confirmação. Estas telas
+    // NUNCA tiveram gate de aviso (o caminho antigo não avaliava nenhum), então
+    // confirmamos pra preservar o comportamento — mas os códigos voltam no
+    // retorno pra tela poder mostrar o que foi aceito, em vez de sumir.
+    const res = data as { needs_confirmation?: boolean; warnings?: { code: string }[] } | null;
+    if (res?.needs_confirmation) {
+      const codes = (res.warnings || []).map(w => w.code);
+      ({ data, error } = await call(codes));
+      if (error) {
+        console.error(`Erro confirmando avisos da OP ${orderId}:`, error);
+        throw error;
+      }
+    }
+
     invalidateProductionCaches(queryClient);
 
-    return data;
+    // Achata pro shape que os callers já checam (`r.success`), preservando o
+    // resultado da finalização e expondo os avisos aceitos.
+    const out = data as Record<string, unknown> | null;
+    return {
+      ...(out?.finalize_result as Record<string, unknown> | null ?? {}),
+      success: out?.success ?? false,
+      stage_name: out?.stage_name,
+      quantity_processed: out?.quantity_processed,
+      confirmed_warnings: out?.confirmed_warnings ?? null,
+    };
   };
 
   return { finalizeSectorTask, invalidateProductionCaches: () => invalidateProductionCaches(queryClient) };

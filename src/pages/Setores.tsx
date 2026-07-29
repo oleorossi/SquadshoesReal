@@ -31,6 +31,13 @@ const TabLoader = () => (
  * cada uma com sua lista de OPs e o diálogo de apontar quantidade. Kanban e
  * estas telas gravam no MESMO ledger/RPC (apontar_producao_setor), com os
  * mesmos avisos confirmáveis e autoria.
+ *
+ * ⚠ Isto passou a ser VERDADE só em 2026-07-29. Antes o comentário afirmava
+ * isso mas o "Finalizar OPs selecionadas" de cada aba chamava
+ * `finalize_production_sector` direto — RPC que não escreve em
+ * `production_pointings`. Resultado medido em produção: 180 OPs com produção
+ * apontada e apenas 6 no ledger. A correção está em `finalizeSectorTask`
+ * (`useProductionTransitions.ts`); não voltar a chamar o finalizador direto.
  */
 export default function Setores() {
    // Garante a virada do dia do motor ao abrir a tela de chão de fábrica

@@ -222,14 +222,22 @@ export default function ProductionControlCenter() {
   }, [qc]);
 
   // ── OSes terceirizadas ativas
+  //
+  // ⚠ Este painel vinha SEMPRE VAZIO por DOIS filtros errados (auditoria
+  // 2026-07-29 direto no banco de produção, 385 OS):
+  //   1. `related_order_id` — ZERO linhas preenchidas. O vínculo OP↔OS é
+  //      `order_id`. As duas colunas têm FK pra `orders`; aceitamos as duas.
+  //   2. `sector` — só 1 linha preenchida. O setor da OS mora em
+  //      `target_sector` (30 linhas).
+  // Sem OP vinculada a OS ainda é comum (só 3 das 385 têm `order_id`), então o
+  // painel não exige o vínculo: mostra a terceirização que existe de fato.
   const { data: activeOutsourceOses = [] } = useQuery({
     queryKey: ['active_outsource_oses'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('service_orders')
-        .select('*, contractors(name), orders:related_order_id(order_number, quantity, reference_id, technical_sheets:reference_id(name))')
-        .not('related_order_id', 'is', null)
-        .not('sector', 'is', null)
+        .select('*, contractors(name), orders!service_orders_order_id_fkey(order_number, quantity, reference_id, technical_sheets:reference_id(name))')
+        .or('target_sector.not.is.null,sector.not.is.null')
         .in('status', ['Pendente', 'pendente', 'em_andamento', 'aguardando_aceite'])
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -655,11 +663,13 @@ function OutsourceHistorySection() {
   const { data: history = [], isLoading } = useQuery({
     queryKey: ['outsource_history'],
     queryFn: async () => {
+      // Mesmo motivo do painel de OS ativas: `related_order_id` está vazio em
+      // 100% das linhas e o setor mora em `target_sector`, não em `sector`.
+      // Com os filtros antigos o histórico de terceirização era sempre zero.
       const { data, error } = await (supabase as any)
         .from('service_orders')
         .select('*, contractors(id, name)')
-        .not('related_order_id', 'is', null)
-        .not('sector', 'is', null)
+        .or('target_sector.not.is.null,sector.not.is.null')
         .order('created_at', { ascending: false })
         .limit(1000);
       if (error) throw error;

@@ -37,6 +37,21 @@ export interface SectorDistributionRow {
   notes: string | null;
 }
 
+/**
+ * ⚠ DEFASADA de propósito — NÃO trocar por `SECTOR_FLOW` (`@/lib/sectors`) sem
+ * migration junto.
+ *
+ * A divisão da Costura (migration 20261001120000) NÃO chegou neste motor legado:
+ * a view `v_sector_load_by_reference` ainda expõe só `cap_costura` (sem
+ * `cap_costura_palmilha`/`cap_costura_cabedal`) e a tabela
+ * `sector_distribution_plan` tem CHECK constraint com a `'Costura'` única.
+ * Trocar a lista aqui sozinha quebra `SECTOR_CAP_FIELD` e o INSERT no plano.
+ *
+ * Consequência viva: um plano de distribuição feito pra "Costura" não casa com
+ * os dois setores que o Kanban e o motor diário operam de fato. É o 3º motor de
+ * PCP isolado — a saída é aposentá-lo (não remendá-lo), junto de
+ * `SectorDistributionPlanner`/`CapacityDistribution`.
+ */
 export const SECTORS = [
   'Corte Palmilha', 'Corte Forração', 'Costura', 'Aviamento', 'Silk',
   'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',

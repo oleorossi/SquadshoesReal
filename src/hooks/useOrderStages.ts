@@ -68,7 +68,11 @@ export function useOrderStages(orderId?: string) {
 
 export function useAllOrderStages(orderIds?: string[]) {
   return useQuery({
-    queryKey: ['order_stages', orderIds ? orderIds.sort().join(',') : 'all'],
+    // ⚠ CÓPIA antes do sort. `orderIds.sort()` ordena IN PLACE o array do caller —
+    // no Kanban ele vem de `useMemo(() => queue.map(q => q.order_id))` e é o MESMO
+    // array passado pra `useOrdersMaterialGate`, que chaveia o cache por `ids[0]`.
+    // Reordenar aqui trocava o primeiro id do gate e invalidava o cache dele à toa.
+    queryKey: ['order_stages', orderIds ? [...orderIds].sort().join(',') : 'all'],
     queryFn: async () => {
       // If specific order IDs provided, fetch only those
       if (orderIds && orderIds.length > 0) {

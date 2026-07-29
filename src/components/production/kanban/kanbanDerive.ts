@@ -4,7 +4,17 @@ import type { OrderStage } from '@/hooks/useOrderStages';
 export const norm = (s: string) => (s === 'Mesa' ? 'Aviamento' : s);
 export const fmtDate = (iso: string | null) =>
   iso ? new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * Data de HOJE no fuso LOCAL — reexporta o helper canônico de `@/lib/date`.
+ *
+ * ⚠ Não voltar pra `new Date().toISOString().slice(0,10)`: aquilo é UTC, e em
+ * São Paulo (UTC-3) já retorna o dia SEGUINTE a partir das ~21h. O cabeçalho de
+ * capacidade das colunas ("hoje: 600/600 pares") passava a noite inteira
+ * mostrando a grade de AMANHÃ rotulada como hoje — quem programa o turno da
+ * noite decidia em cima do dia errado.
+ */
+export { todayISO } from '@/lib/date';
 
 export interface KanbanCardData {
   q: QueueDetailRow;

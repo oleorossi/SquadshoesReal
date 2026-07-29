@@ -31,9 +31,20 @@ import { QrScanDialog } from '@/components/production/kanban/QrScanDialog';
 /** Limite saudável de OPs acumuladas num setor antes de sinalizar gargalo. */
 const WIP_LIMIT = 20;
 
-/** Tom da barra de capacidade do setor: verde <80%, âmbar 80–100%, vermelho >100%. */
-function capacityTone(planned: number, cap: number): { pct: number; bar: string; text: string } {
-  const pct = cap > 0 ? Math.round((planned / cap) * 100) : 0;
+/**
+ * Tom da barra de capacidade do setor: verde <80%, âmbar 80–100%, vermelho >100%.
+ *
+ * ⚠ O percentual vem de `utilization` — a fração do dia que o MOTOR de fato
+ * consumiu (1.0 = dia cheio) —, não de `planned_pairs / daily_capacity_pairs`.
+ * O tipo `ScheduleGridCell` avisa isso explicitamente ("comparar por AQUI").
+ * Motivo: quando a ficha técnica define a capacidade da OP (`ficha_override`),
+ * o ritmo real do dia não é o global do setor. Um setor com 300 pares agendados
+ * contra um global de 600 parecia 50% (verde) enquanto rodava a 100% do dia
+ * porque as fichas daquele mix produzem 300/dia — e o gestor movia gente pro
+ * gargalo errado.
+ */
+function capacityTone(utilization: number): { pct: number; bar: string; text: string } {
+  const pct = Math.round((utilization || 0) * 100);
   if (pct > 100) return { pct, bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400' };
   if (pct >= 80) return { pct, bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' };
   return { pct, bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' };
@@ -613,7 +624,11 @@ export default function ProducaoKanbanGestao() {
             ).sort((a, b) => (b.q.late_days || 0) - (a.q.late_days || 0));
             const colPares = colAll.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
             const g = gridToday.get(sector);
-            const cap = g && g.capacity_pairs > 0 ? capacityTone(g.planned_pairs, g.capacity_pairs) : null;
+            const cap = g && g.utilization > 0 ? capacityTone(g.utilization) : null;
+            // Denominador honesto: capacidade do MIX real do dia. Igual à global
+            // quando nenhuma OP do dia tem override de ficha.
+            const capDenom = g ? (g.effective_capacity_pairs || g.capacity_pairs) : 0;
+            const capFromFicha = !!g && g.ops_ficha_override > 0;
             const colWip = colAll.length;
             const overWip = colWip > WIP_LIMIT;
             const isConstraint = sector === constraintSector;
@@ -654,15 +669,26 @@ export default function ProducaoKanbanGestao() {
                       {colCards.length}{overWip ? `/${WIP_LIMIT}` : ''}
                     </Badge>
                   </div>
-                  {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid) */}
-                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate">
-                    hoje: {g ? `${g.planned_pairs}/${g.capacity_pairs}` : '0'}
+                  {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid).
+                      Denominador = capacidade EFETIVA do mix do dia; o asterisco
+                      marca quando ela veio da ficha técnica e não do global. */}
+                  <p
+                    className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate"
+                    title={
+                      g
+                        ? `${g.planned_pairs} pares agendados hoje · capacidade ${capDenom}/dia${
+                            capFromFicha ? ` (ficha técnica, ${g.ops_ficha_override} OP(s); global ${g.capacity_pairs})` : ' (global do setor)'
+                          }${g.carryover_pairs > 0 ? ` · ${g.carryover_pairs} pares rolados de dias anteriores` : ''}`
+                        : 'Sem agenda pra hoje neste setor'
+                    }
+                  >
+                    hoje: {g ? `${g.planned_pairs}/${capDenom}${capFromFicha ? '*' : ''}` : '0'}
                     {g && g.carryover_pairs > 0 ? ` +${g.carryover_pairs}` : ''} · Σ {colPares.toLocaleString('pt-BR')} pares
                   </p>
                   {/* Barra de capacidade: verde/âmbar/vermelho num relance; o traço
                       vermelho à direita marca o estouro (>100%). */}
                   {cap && (
-                    <div className="mt-1 h-1.5 rounded-full bg-muted-foreground/15 overflow-hidden relative" title={`${cap.pct}% da capacidade de hoje`}>
+                    <div className="mt-1 h-1.5 rounded-full bg-muted-foreground/15 overflow-hidden relative" title={`${cap.pct}% do dia consumido neste setor`}>
                       <div className={`h-full rounded-full ${cap.bar} transition-[width] duration-700`} style={{ width: `${Math.min(cap.pct, 100)}%` }} />
                       {cap.pct > 100 && <span className="absolute inset-y-0 right-0 w-0.5 bg-red-600" aria-hidden="true" />}
                     </div>

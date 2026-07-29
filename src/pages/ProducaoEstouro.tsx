@@ -20,11 +20,13 @@ import {
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import { useCan } from '@/hooks/useAccessControl';
 import { useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { todayISO, todayPlusDaysISO } from '@/lib/date';
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const plusDaysISO = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+// Data LOCAL (não UTC): ver o aviso em `@/lib/date` — o slice do toISOString
+// virava o dia a partir das ~21h BRT e a janela de 30 dias saía deslocada.
+const plusDaysISO = todayPlusDaysISO;
 
 /**
  * Tela ESTOURO DE PRODUÇÃO (R4) — a "dívida de produção" num lugar só:

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { SECTOR_FLOW } from '@/lib/sectors';
 
 // ════════════════════════════════════════════════════════════════════════
 // Paradas de produção + OEE (paridade Tutor32)
@@ -45,11 +46,15 @@ export interface SectorOee {
   performance_pct: number;
 }
 
-/** Setores de produção — stage_name canônico de order_stages (ordem do fluxo). */
-export const PRODUCTION_SECTORS = [
-  'Corte Palmilha', 'Corte Forração', 'Costura', 'Silk', 'Aviamento',
-  'Montagem', 'Colagem', 'Solagem', 'Acabamento', 'Expedição',
-] as const;
+/**
+ * Setores de produção — stage_name canônico de order_stages (ordem do fluxo).
+ *
+ * ⚠ Reexporta `SECTOR_FLOW` (`@/lib/sectors`) em vez de manter lista própria: a
+ * cópia local ficou com a `Costura` única e sem Costura Palmilha/Cabedal depois
+ * da migration 20261001120000, então parada/OEE apontada numa das costuras não
+ * tinha setor pra escolher no seletor.
+ */
+export const PRODUCTION_SECTORS = SECTOR_FLOW;
 
 /** Rótulos PT-BR das categorias de motivo de parada (production_stop_reasons.category). */
 export const STOP_CATEGORY_LABELS: Record<string, string> = {
