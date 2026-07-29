@@ -54,7 +54,14 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+      {/* `[&>*]:min-w-0` + `overflow-x-hidden` (29/07/2026): DialogContent é grid
+          com overflow-y:auto — o CSS promove o eixo X junto (overflow-x:auto) e a
+          única coluna `auto` nunca fica menor que o filho mais largo. Com 4 botões
+          no rodapé (perfil admin) a fileira ultrapassa a caixa útil (716px em
+          max-w-3xl): cards, alerta e último botão saíam da moldura, com scroll
+          horizontal dentro do modal. min-w-0 remove o mínimo
+          automático; a quebra de linha vem do `sm:flex-wrap` do DialogFooter. */}
+      <DialogContent className="w-[95vw] max-w-3xl md:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden [&>*]:min-w-0">
         <DialogHeader>
           <SubmitFlowStepper current="capacity" />
           <DialogTitle className="flex items-center gap-2">
@@ -72,17 +79,18 @@ export function SectorOverloadDialog({ open, onOpenChange, result, onKeepDateAnd
             const Icon = SECTOR_ICONS[o.sector];
             return (
               <div key={i} className="rounded-lg border bg-card p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-primary" />
-                    <span className="font-semibold text-sm">{SECTOR_LABELS[o.sector]}</span>
-                    <Badge variant="outline" className="text-xs">{o.reference_label}</Badge>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon className="h-4 w-4 text-primary shrink-0" />
+                    <span className="font-semibold text-sm whitespace-nowrap">{SECTOR_LABELS[o.sector]}</span>
+                    {/* referência pode ser longa — ela cede espaço, o badge de falta nunca */}
+                    <Badge variant="outline" className="text-xs min-w-0 truncate">{o.reference_label}</Badge>
                   </div>
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge variant="destructive" className="text-xs shrink-0">
                     Falta: {o.shortfall_pairs} pares
                   </Badge>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground">Capacidade/dia</div>
                     <div className="font-mono font-semibold">{o.capacity_per_day}</div>

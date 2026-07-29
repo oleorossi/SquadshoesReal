@@ -98,8 +98,13 @@ const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 );
 DialogHeader.displayName = "DialogHeader";
 
+// `sm:flex-wrap` (29/07/2026): sem ele a fileira de botões é indivisível e vira
+// a largura MÍNIMA do DialogContent — que é grid, então a coluna estica até o
+// rodapé e arrasta junto todos os irmãos (cards, alerts), cortando o que passa
+// da moldura. Sintoma no SectorOverloadDialog (4 botões p/ admin): scroll
+// horizontal dentro do modal e conteúdo invisível à direita.
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />
+  <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end", className)} {...props} />
 );
 DialogFooter.displayName = "DialogFooter";
 
