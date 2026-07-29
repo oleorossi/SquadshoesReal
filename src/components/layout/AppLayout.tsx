@@ -692,6 +692,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     <NavLink
                       key={item.to}
                       to={item.to}
+                      onMouseEnter={() => prefetch(item.to)}
+                      onMouseLeave={cancelPrefetch}
+                      onFocus={() => prefetch(item.to)}
                       className={({ isActive }) => navItemClass(isActive)}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">

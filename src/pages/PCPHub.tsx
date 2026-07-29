@@ -5,8 +5,8 @@ import { Navigate, useSearchParams } from 'react-router-dom';
  *
  * O hub PCP de 14 abas foi substituído por itens diretos no menu Produção:
  * Planejamento, Kanban, Estouro de Produção, Setores, Apontamento, Imprimir
- * Fichas e Análises. Este componente só traduz as URLs antigas (/pcp?tab=…)
- * pras telas novas — nenhum link antigo pode dar 404.
+ * Fichas e Análises. Este componente só traduz bookmarks /pcp?tab=… até
+ * 12/01/2027; deve sair quando a rota completar 90 dias sem acesso.
  */
 const LEGACY_SECTOR_TABS = new Set([
   'corte', 'forracao', 'costura', 'aviamento', 'silk',
@@ -57,5 +57,15 @@ export default function PCPHub() {
     }
   }
 
-  return <Navigate to={to} replace />;
+  const [pathname, targetQuery = ''] = to.split('?');
+  const targetParams = new URLSearchParams(targetQuery);
+
+  // O bookmark pode carregar seleção/filtro além da aba antiga. Mantemos o que
+  // não foi fixado pelo destino para não trocar o setor que o operador abriu.
+  searchParams.forEach((value, key) => {
+    if (!targetParams.has(key)) targetParams.append(key, value);
+  });
+
+  const search = targetParams.toString();
+  return <Navigate to={`${pathname}${search ? `?${search}` : ''}`} replace />;
 }

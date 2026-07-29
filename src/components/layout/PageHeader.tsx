@@ -1,157 +1,90 @@
-import { useLocation, Link } from 'react-router-dom';
-import { CaretRight as ChevronRight, House as Home } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { Fragment } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { House as Home } from '@phosphor-icons/react';
+import { grantableDestinations, topItem } from '@/data/navigation';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 
-const routeLabels: Record<string, string> = {
-  'dashboard': 'Painel',
-  'pcp': 'PCP',
-  'estoque': 'Estoque',
-  'fichas-tecnicas': 'Fichas Técnicas',
-  'comercial': 'Comercial',
-  'sales': 'Pedidos de Venda',
-  'pronta-entrega': 'Pronta Entrega',
-  'clients': 'Clientes',
-  'price-lists': 'Tabelas de Preço',
-  'crm': 'CRM',
-  'sac': 'SAC',
-  'forecast': 'Forecast',
-  'sales-report': 'Relatórios',
-  'finance': 'Financeiro',
-  'financeiro': 'Painel Financeiro',
-  'purchase-orders': 'Ordens de Compra',
-  'purchase-planning': 'Planejamento Compras',
-  'pricing-calculator': 'Markup',
-  'quotations': 'Cotações (RFQ)',
-  'custos-insumos': 'Custos de Insumos',
-  'suppliers': 'Fornecedores',
-  'employees': 'Funcionários',
-  'timesheet': 'Controle de Ponto',
-  'contractors': 'Terceirizados',
-  'rh': 'RH',
-  'transporte': 'Transporte',
-  'transporters': 'Transportadoras',
-  'embalagens': 'Embalagens',
-  'labels': 'Etiquetas',
-  'label-system': 'Etiquetas',
-  'orders': 'Ordens de Produção',
-  'setores': 'Setores',
-  'settings': 'Configurações',
-  'automations': 'Automações',
-  'reports': 'Relatórios',
-  'relatorios': 'Relatórios',
-  'system-monitor': 'Monitoramento',
-  'system-diagnostics': 'Diagnóstico',
-  'audit-logs': 'Auditoria',
-  'lgpd': 'LGPD',
-  'security': 'Segurança',
-  'design-system': 'Design System',
-  'pcp-dashboard': 'Painel PCP',
-  'producao': 'Produção',
-  'fluxo': 'Fluxo',
-  'live': 'Ao Vivo',
-  'timeline': 'Timeline',
-  'visao-agregada': 'Visão Agregada',
-  'gargalos': 'Gargalos',
-  'centro-controle': 'Centro de Controle',
-  'imprimir-fichas': 'Imprimir Fichas',
-  'quality': 'Qualidade',
-  'production-dashboard': 'Painel Produção',
-  'picking': 'Picking',
-  'picking-sessions': 'Sessões Picking',
-  'mrp': 'MRP',
-  'ajuste-estoque': 'Ajuste de Estoque',
-  'historico': 'Histórico',
-  'order-flow-audit': 'Auditoria de Fluxo',
-  'weekly-purchasing-plan': 'Plano Semanal',
-  'optimized-production': 'Produção Otimizada',
-  'capacity-planning': 'Capacidade',
-  'expedicao': 'Expedição',
-  'conferencia-saida': 'Conferência de Saída',
-  'manifests': 'Romaneios',
-  'entregas': 'Entregas',
-  'delivery-tracking': 'Rastreamento',
-  'cnab': 'CNAB / Boletos',
-  'bank-reconciliation': 'Conciliação',
-  'sped': 'SPED',
-  'nfe': 'NF-e',
-  'cte': 'CT-e',
-  'mdfe': 'MDF-e',
-  'solados': 'Solados',
-  'silks': 'Silks',
-  'artisanal-recipes': 'Receitas',
-  'new': 'Novo',
-  'edit': 'Editar',
-  'summary': 'Resumo',
-  'consumo': 'Consumo',
+type BreadcrumbCrumb = { label: string; to?: string };
+
+const navigationDestinations = [
+  { path: topItem.path, label: topItem.name, group: 'Início' },
+  ...grantableDestinations,
+];
+
+const destinationByPath = new Map(
+  navigationDestinations.map((destination) => [destination.path, destination]),
+);
+
+const firstDestinationByGroup = new Map<string, typeof navigationDestinations[number]>();
+for (const destination of navigationDestinations) {
+  if (!firstDestinationByGroup.has(destination.group)) {
+    firstDestinationByGroup.set(destination.group, destination);
+  }
+}
+
+const segmentLabels: Record<string, string> = {
+  new: 'Novo',
+  edit: 'Editar',
+  summary: 'Resumo',
+  consumo: 'Consumo',
   'grouped-summary': 'Resumo Agrupado',
 };
 
-// Converte slug desconhecido em algo legível em pt-BR (capitalize + troca - por espaço)
-function slugToLabel(seg: string): string {
-  const decoded = decodeURIComponent(seg).replace(/-/g, ' ');
+// `view` é estado interno de /producao/analises, não um destino navegável; por
+// isso seus rótulos ficam aqui, em vez de criar entradas artificiais no catálogo.
+const analysisViewLabels: Record<string, string> = {
+  dashboard: 'Dashboard',
+  gargalos: 'Gargalos',
+  'lead-time': 'Lead Time',
+  'tempos-padrao': 'Tempos-Padrão por Setor',
+  rccp: 'RCCP',
+  'pos-op': 'Pós-OP',
+  auditoria: 'Auditoria',
+  qualidade: 'Qualidade',
+  oee: 'Paradas & OEE',
+  cronoanalise: 'Cronoanálise',
+  setup: 'Tempos de Setup',
+  matriz: 'Matriz (legado)',
+  timeline: 'Timeline (legado)',
+  lote: 'Visão Lote (legado)',
+  'lot-split': 'Split de Lotes',
+  'centro-controle': 'Centro de Controle',
+};
+
+function slugToLabel(segment: string): string {
+  const decoded = decodeURIComponent(segment).replace(/-/g, ' ');
   return decoded.charAt(0).toUpperCase() + decoded.slice(1);
 }
 
-const parentGroups: Record<string, { label: string; to: string }> = {
-  'pcp': { label: 'PCP', to: '/pcp' },
-  'setores': { label: 'PCP', to: '/pcp' },
-  'orders': { label: 'PCP', to: '/pcp' },
-  'producao': { label: 'Produção', to: '/pcp' },
-  'gargalos': { label: 'Produção', to: '/pcp' },
-  'capacity-planning': { label: 'Produção', to: '/pcp' },
-  'centro-controle': { label: 'Produção', to: '/pcp' },
-  'quality': { label: 'Produção', to: '/pcp' },
-  'estoque': { label: 'Estoque & Gestão', to: '/estoque' },
-  'fichas-tecnicas': { label: 'Estoque & Gestão', to: '/estoque' },
-  'ajuste-estoque': { label: 'Estoque & Gestão', to: '/estoque' },
-  'mrp': { label: 'Estoque & Gestão', to: '/estoque' },
-  'sales': { label: 'Comercial', to: '/comercial' },
-  'pronta-entrega': { label: 'Comercial', to: '/comercial' },
-  'clients': { label: 'Comercial', to: '/comercial' },
-  'price-lists': { label: 'Comercial', to: '/comercial' },
-  'crm': { label: 'Comercial', to: '/comercial' },
-  'sac': { label: 'Comercial', to: '/comercial' },
-  'forecast': { label: 'Comercial', to: '/comercial' },
-  'sales-report': { label: 'Comercial', to: '/comercial' },
-  'finance': { label: 'Financeiro', to: '/financeiro' },
-  'pricing-calculator': { label: 'Financeiro', to: '/financeiro' },
-  'cnab': { label: 'Financeiro', to: '/financeiro' },
-  'bank-reconciliation': { label: 'Financeiro', to: '/financeiro' },
-  'sped': { label: 'Financeiro', to: '/financeiro' },
-  'nfe': { label: 'Financeiro', to: '/financeiro' },
-  'cte': { label: 'Financeiro', to: '/financeiro' },
-  'mdfe': { label: 'Financeiro', to: '/financeiro' },
-  'purchase-orders': { label: 'Compras', to: '/purchase-orders' },
-  'purchase-planning': { label: 'Compras', to: '/purchase-orders' },
-  'quotations': { label: 'Compras', to: '/purchase-orders' },
-  'suppliers': { label: 'Compras', to: '/purchase-orders' },
-  'custos-insumos': { label: 'Compras', to: '/purchase-orders' },
-  'employees': { label: 'RH', to: '/rh' },
-  'timesheet': { label: 'RH', to: '/rh' },
-  'contractors': { label: 'RH', to: '/rh' },
-  'transporte': { label: 'Logística', to: '/expedicao' },
-  'embalagens': { label: 'Logística', to: '/expedicao' },
-  'labels': { label: 'Logística', to: '/expedicao' },
-  'label-system': { label: 'Logística', to: '/expedicao' },
-  'expedicao': { label: 'Logística', to: '/expedicao' },
-  'conferencia-saida': { label: 'Logística', to: '/expedicao' },
-  'picking': { label: 'Logística', to: '/expedicao' },
-  'manifests': { label: 'Logística', to: '/expedicao' },
-  'transporters': { label: 'Logística', to: '/expedicao' },
-  'entregas': { label: 'Logística', to: '/expedicao' },
-  'delivery-tracking': { label: 'Logística', to: '/expedicao' },
-  'picking-sessions': { label: 'Logística', to: '/expedicao' },
-  'settings': { label: 'Sistema', to: '/settings' },
-  'automations': { label: 'Sistema', to: '/settings' },
-  'audit-logs': { label: 'Sistema', to: '/settings' },
-  'system-monitor': { label: 'Sistema', to: '/settings' },
-  'system-diagnostics': { label: 'Sistema', to: '/settings' },
-  'lgpd': { label: 'Sistema', to: '/settings' },
-  'security': { label: 'Sistema', to: '/settings' },
-  'relatorios': { label: 'Sistema', to: '/settings' },
-};
+function labelsMatch(left: string, right: string) {
+  const normalize = (label: string) => label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR');
 
-export default function PageHeader({ title, subtitle, compact }: { title?: string; subtitle?: string; compact?: boolean }) {
+  return normalize(left) === normalize(right);
+}
+
+function findDestination(pathname: string) {
+  return navigationDestinations
+    .filter((destination) => pathname === destination.path || pathname.startsWith(`${destination.path}/`))
+    .sort((left, right) => right.path.length - left.path.length)[0];
+}
+
+function labelForPath(pathname: string, segment: string) {
+  return destinationByPath.get(pathname)?.label
+    ?? segmentLabels[segment]
+    ?? slugToLabel(segment);
+}
+
+export default function PageHeader({ title, compact }: { title?: string; subtitle?: string; compact?: boolean }) {
   const location = useLocation();
   const segments = location.pathname.split('/').filter(Boolean);
 
@@ -159,62 +92,70 @@ export default function PageHeader({ title, subtitle, compact }: { title?: strin
     return null;
   }
 
-  const firstSegment = segments[0];
-  const parent = parentGroups[firstSegment];
+  const destination = findDestination(location.pathname);
+  const firstSegmentDestination = destinationByPath.get(`/${segments[0]}`);
+  const group = destination?.group;
+  const groupDestination = group ? firstDestinationByGroup.get(group) : undefined;
+  const showGroup = Boolean(
+    group
+    && group !== 'Início'
+    && (!firstSegmentDestination || !labelsMatch(firstSegmentDestination.label, group)),
+  );
+  const skipFirstSegment = showGroup && Boolean(group && labelsMatch(slugToLabel(segments[0]), group));
 
-  const crumbs: { label: string; to?: string }[] = [];
+  const crumbs: BreadcrumbCrumb[] = [];
 
-  if (parent) {
-    crumbs.push({ label: parent.label, to: parent.to });
+  if (showGroup && group && groupDestination) {
+    crumbs.push({ label: group, to: groupDestination.path });
   }
 
   let pathAccum = '';
-  segments.forEach((seg, i) => {
-    pathAccum += `/${seg}`;
-    const label = routeLabels[seg] || slugToLabel(seg);
-    const isLast = i === segments.length - 1;
-    crumbs.push({ label, to: isLast ? undefined : pathAccum });
+  segments.forEach((segment, index) => {
+    pathAccum += `/${segment}`;
+    if (index === 0 && skipFirstSegment) return;
+
+    const isLast = index === segments.length - 1;
+    crumbs.push({
+      label: labelForPath(pathAccum, segment),
+      // Prefixos que não estão no catálogo podem ser aliases; nunca os tornamos links.
+      to: isLast || !destinationByPath.has(pathAccum) ? undefined : pathAccum,
+    });
   });
 
-  const breadcrumbContent = (
-    <>
-      <li>
-        <Link to="/dashboard" className="flex items-center gap-1 hover:text-foreground transition-colors">
-          <Home className="h-3.5 w-3.5" />
-        </Link>
-      </li>
-      {crumbs.map((crumb, i) => (
-        <li key={i} className="flex items-center gap-1.5">
-          <ChevronRight className="h-3 w-3 opacity-40" />
-          {crumb.to ? (
-            <Link to={crumb.to} className="hover:text-foreground transition-colors">
-              {crumb.label}
-            </Link>
-          ) : (
-            <span className={cn("font-medium", !crumb.to && "text-foreground")}>
-              {title || crumb.label}
-            </span>
-          )}
-        </li>
-      ))}
-    </>
-  );
-
-  if (compact) {
-    return (
-      <nav aria-label="breadcrumb">
-        <ol className="flex items-center gap-1.5 ed-eyebrow text-muted-foreground">
-          {breadcrumbContent}
-        </ol>
-      </nav>
-    );
+  const viewLabel = location.pathname === '/producao/analises'
+    ? analysisViewLabels[new URLSearchParams(location.search).get('view') || '']
+    : undefined;
+  if (viewLabel && crumbs.length > 0) {
+    // A página de análises continua sendo um destino real; só a visão é estado da URL.
+    crumbs[crumbs.length - 1].to = location.pathname;
+    crumbs.push({ label: viewLabel });
   }
 
   return (
-    <nav aria-label="breadcrumb" className="mb-4 animate-in fade-in slide-in-from-left-2 duration-300">
-      <ol className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {breadcrumbContent}
-      </ol>
-    </nav>
+    <Breadcrumb className={compact ? undefined : 'mb-4 animate-in fade-in slide-in-from-left-2 duration-300'}>
+      <BreadcrumbList className={compact ? 'gap-1.5 ed-eyebrow text-muted-foreground' : 'gap-1.5 text-xs sm:gap-1.5'}>
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link to="/dashboard" aria-label="Painel" className="flex items-center gap-1">
+              <Home className="h-3.5 w-3.5" />
+            </Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        {crumbs.map((crumb, index) => (
+          <Fragment key={`${crumb.label}-${index}`}>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              {crumb.to ? (
+                <BreadcrumbLink asChild>
+                  <Link to={crumb.to}>{crumb.label}</Link>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{title || crumb.label}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+          </Fragment>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }

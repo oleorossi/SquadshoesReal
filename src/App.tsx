@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError, type RouteObject } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProfile } from "@/hooks/useUserManagement";
 import { resolveModuleForPath, useAccessControl } from "@/hooks/useAccessControl";
@@ -68,12 +68,8 @@ const Contractors = lazy(() => import("./pages/Contractors"));
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const PurchaseOrdersPerPv = lazy(() => import("./pages/PurchaseOrdersPerPv"));
 const ComercialDashboard = lazy(() => import("./pages/ComercialDashboard"));
-// ProductionLive/ProductionTimeline saíram das rotas standalone (2026-07-01):
-// live/timeline viraram modos do Quadro de Produção dentro do hub
-// (/pcp?tab=quadro&modo=...) — os componentes continuam vivos, o PCPHub os
-// importa como modos. ProducaoDashboard.tsx foi DELETADO (2026-07-02): era
-// duplicata do PCPDashboard (aba dashboard do hub) com fórmulas divergentes;
-// /producao redireciona pra /pcp?tab=dashboard.
+// ProductionLive/ProductionTimeline não têm rota própria: views legadas chegam
+// em /producao/analises, que mantém esses componentes sob o motor canônico.
 const EspelhoPontoPage = lazy(() => import("./pages/EspelhoPontoPage"));
 // FinanceiroDashboard removido — /financeiro agora renderiza o Finance.tsx unificado (mai/2026).
 const RHHub = lazy(() => import("./pages/RHHub"));
@@ -82,12 +78,12 @@ const Transport = lazy(() => import("./pages/Transport"));
 const PackagingManagement = lazy(() => import("./pages/PackagingManagement"));
 const ExpedicaoHub = lazy(() => import("./pages/ExpedicaoHub"));
 const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
-// Setores agora vive como aba dentro do PCP Hub (rota /setores redireciona)
+// /setores permanece somente como alias para o Apontamento canônico.
 
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
-// OrderFlowAudit: rota standalone /order-flow-audit virou redirect pro hub
-// (/pcp?tab=auditoria) em 2026-07-01 — o PCPHub importa o componente como aba.
+// OrderFlowAudit é uma view de /producao/analises; a URL standalone sobrevive
+// só como alias para não quebrar bookmarks antigos.
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
 const UnitAudit = lazy(() => import("./pages/UnitAudit"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -98,8 +94,7 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 // redireciona pro Planejamento novo) — não ressuscitar o 3º motor de PCP.
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
-// SectorAggregatedView: rota standalone /producao/visao-agregada virou redirect
-// pro hub (/pcp?tab=quadro&modo=lote) em 2026-07-01 — PCPHub importa como modo.
+// SectorAggregatedView é a visão legada "lote" de /producao/analises.
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
@@ -116,8 +111,8 @@ const ProducaoApontamento = lazy(() => import("./pages/Setores"));
 const ProducaoAnalises = lazy(() => import("./pages/ProducaoAnalises"));
 const ProdutividadeModelos = lazy(() => import("./pages/ProdutividadeModelos"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
-// ProductionWavesPage: rota standalone /pcp/ondas virou redirect pro hub
-// (/pcp?tab=ondas) em 2026-07-01 — o PCPHub importa o componente como aba.
+// /pcp/ondas é compatibilidade para a rota de Planejamento; ondas foram
+// substituídas pelo motor diário canônico.
 const BaseConsumption = lazy(() => import("./pages/BaseConsumption"));
 const StockAlerts = lazy(() => import("./pages/StockAlerts"));
 const StockReservations = lazy(() => import("./pages/StockReservations"));
@@ -458,6 +453,7 @@ function AuthRoute() {
  */
 function RootRedirect() {
   const { user, loading } = useAuth();
+  const location = useLocation();
   // ⚠ PERF (2026-07-26): antes isto era um fetch de `profiles` num useEffect, FORA do
   // React Query, que segurava a tela num <PageLoader /> — um round-trip bloqueante no
   // caminho de boot, duplicando o profile que o layout já busca logo em seguida.
@@ -470,14 +466,8 @@ function RootRedirect() {
   if (user && isPending && !isError) return <PageLoader />;
   // `is_sales_rep` não está na interface Profile (types gerados) — mesmo cast que o
   // código anterior fazia. Erro ao ler o profile cai no desktop, igual ao catch antigo.
-  return <Navigate to={(profile as any)?.is_sales_rep ? '/m' : '/dashboard'} replace />;
-}
-
-function LegacyInventoryRedirect() {
-  const location = useLocation();
-  // A rota canônica precisa manter filtros/abas de bookmarks legados; <Navigate>
-  // direto descartaria `?tab=history` em silêncio.
-  return <Navigate to={`/estoque${location.search}`} replace />;
+  const destination = (profile as any)?.is_sales_rep ? '/m' : '/dashboard';
+  return <Navigate to={`${destination}${location.search}${location.hash}`} replace />;
 }
 
 function LegacyRouteRedirect({ to }: { to: string }) {
@@ -493,13 +483,121 @@ function LegacyRouteRedirect({ to }: { to: string }) {
   });
 
   const search = targetParams.toString();
-  return <Navigate to={`${pathname}${search ? `?${search}` : ''}`} replace />;
+  return <Navigate to={`${pathname}${search ? `?${search}` : ''}${location.hash}`} replace />;
 }
 
 function PedidosRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={id ? `/sales/edit/${id}` : '/sales'} replace />;
+  const location = useLocation();
+  const destination = id ? `/sales/edit/${id}` : '/sales';
+  return <Navigate to={`${destination}${location.search}${location.hash}`} replace />;
 }
+
+/**
+ * Compatibilidade de URLs legadas.
+ *
+ * Só /, /login e /pedidos/:id são permanentes. Todos os demais aliases expiram
+ * em 12/01/2027 e devem ser removidos antes disso assim que ficarem 90 dias sem
+ * acesso. Este é apenas o contrato de manutenção: não adicionamos telemetria ao
+ * roteador para não acoplar observabilidade ao caminho crítico de navegação.
+ */
+const LEGACY_ALIAS_ROUTES: {
+  permanent: { public: RouteObject[]; protected: RouteObject[] };
+  expiresOn2027_01_12: RouteObject[];
+} = {
+  permanent: {
+    public: [
+      { path: '/login', element: <LegacyRouteRedirect to="/auth" /> },
+    ],
+    protected: [
+      { index: true, element: <RootRedirect /> },
+      { path: 'pedidos/:id', element: <PedidosRedirect /> },
+    ],
+  },
+  expiresOn2027_01_12: [
+    // Engenharia e estoque
+    { path: 'references', element: <LegacyRouteRedirect to="/fichas-tecnicas" /> },
+    { path: 'imagens-cores', element: <LegacyRouteRedirect to="/fichas-tecnicas" /> },
+    { path: 'silk-registrations', element: <LegacyRouteRedirect to="/silks" /> },
+    { path: 'technical-sheets', element: <LegacyRouteRedirect to="/fichas-tecnicas" /> },
+    { path: 'products', element: <LegacyRouteRedirect to="/estoque" /> },
+    { path: 'component-sheets', element: <LegacyRouteRedirect to="/estoque" /> },
+    { path: 'consumo-material', element: <LegacyRouteRedirect to="/estoque" /> },
+    { path: 'inventory', element: <LegacyRouteRedirect to="/estoque" /> },
+    { path: 'estoque/historico', element: <LegacyRouteRedirect to="/estoque?tab=history" /> },
+
+    // Produção — /pcp permanece somente para bookmarks até vencer o prazo.
+    { path: 'pcp', element: <PCPHub /> },
+    { path: 'pcp/ondas', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
+    { path: 'lead-time', element: <LegacyRouteRedirect to="/producao/analises?view=lead-time" /> },
+    { path: 'setores', element: <LegacyRouteRedirect to="/producao/apontamento" /> },
+    { path: 'shop-floor', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
+    { path: 'pcp-dashboard', element: <LegacyRouteRedirect to="/producao/analises?view=dashboard" /> },
+    { path: 'gargalos', element: <LegacyRouteRedirect to="/producao/analises?view=gargalos" /> },
+    { path: 'producao/visao-agregada', element: <LegacyRouteRedirect to="/producao/analises?view=lote" /> },
+    { path: 'order-flow-audit', element: <LegacyRouteRedirect to="/producao/analises?view=auditoria" /> },
+    { path: 'producao', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
+    { path: 'producao/live', element: <LegacyRouteRedirect to="/producao/kanban" /> },
+    { path: 'producao/timeline', element: <LegacyRouteRedirect to="/producao/analises?view=timeline" /> },
+    { path: 'production-dashboard', element: <LegacyRouteRedirect to="/producao/analises?view=dashboard" /> },
+    { path: 'production', element: <LegacyRouteRedirect to="/producao/analises?view=dashboard" /> },
+    { path: 'producao/fluxo', element: <LegacyRouteRedirect to="/producao/analises?view=matriz" /> },
+    { path: 'modules/production', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
+    { path: 'capacity-planning', element: <LegacyRouteRedirect to="/producao/analises?view=tempos-padrao" /> },
+    { path: 'capacity-planning/distribuir', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
+    { path: 'centro-controle', element: <LegacyRouteRedirect to="/producao/analises?view=centro-controle" /> },
+    { path: 'quality', element: <LegacyRouteRedirect to="/producao/analises?view=qualidade" /> },
+    { path: 'cronoanalise', element: <LegacyRouteRedirect to="/producao/analises?view=cronoanalise" /> },
+    { path: 'producao/paradas', element: <LegacyRouteRedirect to="/producao/analises?view=oee" /> },
+    { path: 'producao/setup-times', element: <LegacyRouteRedirect to="/producao/analises?view=setup" /> },
+    { path: 'corte', element: <LegacyRouteRedirect to="/producao/apontamento?sub=corte" /> },
+    { path: 'costura', element: <LegacyRouteRedirect to="/producao/apontamento?sub=costura" /> },
+    { path: 'aviamento', element: <LegacyRouteRedirect to="/producao/apontamento?sub=aviamento" /> },
+    { path: 'montagem', element: <LegacyRouteRedirect to="/producao/apontamento?sub=montagem" /> },
+    { path: 'solagem', element: <LegacyRouteRedirect to="/producao/apontamento?sub=solagem" /> },
+    { path: 'acabamento', element: <LegacyRouteRedirect to="/producao/apontamento?sub=acabamento" /> },
+
+    // RH
+    { path: 'employees', element: <LegacyRouteRedirect to="/rh?tab=funcionarios" /> },
+    { path: 'timesheet', element: <LegacyRouteRedirect to="/rh?tab=ponto" /> },
+    { path: 'time-control', element: <LegacyRouteRedirect to="/rh?tab=ponto" /> },
+    { path: 'ponto', element: <LegacyRouteRedirect to="/rh?tab=ponto" /> },
+    { path: 'rh/fechamento-semanal', element: <LegacyRouteRedirect to="/rh" /> },
+    { path: 'rh/ausencias', element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=ausencias" /> },
+    { path: 'rh/banco-de-horas', element: <LegacyRouteRedirect to="/rh" /> },
+    { path: 'rh/bank-hours', element: <LegacyRouteRedirect to="/rh" /> },
+    { path: 'rh/payroll', element: <LegacyRouteRedirect to="/rh?tab=folha" /> },
+
+    // Comercial, compras e parceiros
+    { path: 'sales/consumo', element: <LegacyRouteRedirect to="/sales?view=consumo" /> },
+    { path: 'sales-report', element: <LegacyRouteRedirect to="/comercial" /> },
+    { path: 'pedidos-venda', element: <LegacyRouteRedirect to="/sales" /> },
+    { path: 'finance', element: <LegacyRouteRedirect to="/financeiro" /> },
+    { path: 'mrp', element: <LegacyRouteRedirect to="/purchase-planning?tab=mrp" /> },
+    { path: 'mrp-advanced', element: <LegacyRouteRedirect to="/purchase-planning?tab=mrp" /> },
+    { path: 'weekly-purchasing-plan', element: <LegacyRouteRedirect to="/purchase-planning?tab=weekly" /> },
+    { path: 'compras', element: <LegacyRouteRedirect to="/purchase-orders" /> },
+    { path: 'fornecedores', element: <LegacyRouteRedirect to="/suppliers" /> },
+    { path: 'clientes', element: <LegacyRouteRedirect to="/clients" /> },
+    { path: 'ordens-servico', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
+    { path: 'contractors', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
+    { path: 'terceiros', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
+    { path: 'terceiros-na-rua', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
+    { path: 'terceiros/relatorios', element: <LegacyRouteRedirect to="/terceirizados?tab=relatorio" /> },
+    { path: 'artisanal-recipes', element: <LegacyRouteRedirect to="/terceirizados?tab=recipes" /> },
+
+    // Logística e sistema
+    { path: 'labels', element: <LegacyRouteRedirect to="/label-system" /> },
+    { path: 'modules/quality', element: <LegacyRouteRedirect to="/producao/analises?view=qualidade" /> },
+    { path: 'modules/reports', element: <LegacyRouteRedirect to="/comercial" /> },
+    { path: 'stock', element: <LegacyRouteRedirect to="/estoque" /> },
+    { path: 'auditoria', element: <LegacyRouteRedirect to="/audit-logs" /> },
+    { path: 'diagnostico', element: <LegacyRouteRedirect to="/system-diagnostics" /> },
+    { path: 'monitoramento', element: <LegacyRouteRedirect to="/system-monitor" /> },
+    { path: 'ordens-de-producao', element: <LegacyRouteRedirect to="/orders" /> },
+    { path: 'ordens', element: <LegacyRouteRedirect to="/orders" /> },
+  ],
+};
 
 // Router configuration using createBrowserRouter
 const RouteErrorFallback = () => {
@@ -536,14 +634,11 @@ const RouteErrorFallback = () => {
 };
 
 const router = createBrowserRouter([
+  ...LEGACY_ALIAS_ROUTES.permanent.public,
   {
     path: "/auth",
     element: <AuthRoute />,
     errorElement: <RouteErrorFallback />,
-  },
-  {
-    path: "/login",
-    element: <Navigate to="/auth" replace />,
   },
   {
     path: "/design-preview",
@@ -616,12 +711,6 @@ const router = createBrowserRouter([
     ),
     errorElement: <RouteErrorFallback />,
     children: [
-       {
-         index: true,
-         // F3 (24/05/2026): vendedores (is_sales_rep=true) entram em /m
-         // direto, sem passar pelo dashboard desktop.
-         element: <RootRedirect />,
-       },
       {
         path: "dashboard",
         // Skeleton dedicado (8 KPIs + 2 gráficos) em vez do PageSkeleton genérico
@@ -632,11 +721,6 @@ const router = createBrowserRouter([
             <Dashboard />
           </Suspense>
         ),
-      },
-      {
-        // Legado: PCPHub agora é só o tradutor de /pcp?tab=… pras telas novas
-        path: "pcp",
-        element: <PCPHub />,
       },
       // ── Produção remodelada (2026-07-12): 7 itens diretos ──────────────────
       {
@@ -670,24 +754,14 @@ const router = createBrowserRouter([
         element: <ProdutividadeModelos />,
       },
       {
-        // Rota legada: Ondas foram substituídas pelo motor dinâmico (R9).
-        path: "pcp/ondas",
-        element: <Navigate to="/producao/planejamento" replace />,
-      },
-      {
         path: "pronta-entrega",
         element: <ProntaEntrega />,
-      },
-      {
-        path: "lead-time",
-        element: <Navigate to="/pcp?tab=lead-time" replace />,
       },
        {
          path: "estoque",
          children: [
            { index: true, element: <Index /> },
            { path: ":id", element: <ProductDetail /> },
-           { path: "historico", element: <LegacyRouteRedirect to="/estoque?tab=history" /> },
          ],
        },
       {
@@ -698,16 +772,6 @@ const router = createBrowserRouter([
       {
         path: "ajuste-estoque",
         element: <StockAdjustmentPage />,
-      },
-      {
-        // Legacy: /references → /fichas-tecnicas (página References foi removida)
-        path: "references",
-        element: <Navigate to="/fichas-tecnicas" replace />,
-      },
-      {
-        // Legacy: /imagens-cores → /fichas-tecnicas (aba Fotos & Histórico)
-        path: "imagens-cores",
-        element: <Navigate to="/fichas-tecnicas" replace />,
       },
        {
          path: "fichas-tecnicas",
@@ -735,11 +799,6 @@ const router = createBrowserRouter([
          path: "silks",
          element: <Silks />,
        },
-       {
-         // Compat: rota antiga redireciona pra /silks
-         path: "silk-registrations",
-         element: <Navigate to="/silks" replace />,
-       },
       {
         path: "consumo-base",
         element: <BaseConsumption />,
@@ -758,24 +817,6 @@ const router = createBrowserRouter([
         element: <SolesHub />,
       },
       {
-        // Este é o único alias: LegacyRouteRedirect preserva `?ref=` de links
-        // antigos; um <Navigate> simples descartaria a referência aberta.
-        path: "technical-sheets",
-        element: <LegacyRouteRedirect to="/fichas-tecnicas" />,
-      },
-      {
-        path: "products",
-        element: <LegacyRouteRedirect to="/estoque" />,
-      },
-      {
-        path: "component-sheets",
-        element: <LegacyRouteRedirect to="/estoque" />,
-      },
-      {
-        path: "consumo-material",
-        element: <LegacyRouteRedirect to="/estoque" />,
-      },
-      {
         path: "orders",
         children: [
           { index: true, element: <Orders /> },
@@ -791,37 +832,8 @@ const router = createBrowserRouter([
         ],
       },
       {
-        path: "pedidos/:id",
-        element: <PedidosRedirect />,
-      },
-      {
-        path: "setores",
-        element: <Navigate to="/pcp?tab=setores" replace />,
-      },
-      {
-        path: "shop-floor",
-        element: <Navigate to="/pcp" replace />,
-      },
-      {
-        // Rota legada: PCPDashboard agora vive como aba dentro de /pcp.
-        // Componente PCPDashboard.tsx é mantido (usado pelo PCPHub como tab).
-        path: "pcp-dashboard",
-        element: <Navigate to="/pcp?tab=dashboard" replace />,
-      },
-      {
         path: "picking",
         element: <PickingListPage />,
-      },
-      {
-        // Unificado no PCP: "Gargalos" semanal virou aba do PCP (Chão de Fábrica).
-        // Mantém /gargalos como redirect pra não quebrar links/notificações antigos.
-        path: "gargalos",
-        element: <Navigate to="/pcp?tab=gargalo-semanal" replace />,
-      },
-      {
-        // Atalho no menu Compras → lista de Ordens de Serviço (aba do hub Terceirizados).
-        path: "ordens-servico",
-        element: <Navigate to="/terceirizados?tab=orders" replace />,
       },
       {
         // Hub "Terceirizados" (rota canônica) — unifica Na Rua + OS +
@@ -831,60 +843,10 @@ const router = createBrowserRouter([
         element: <TerceirizadosHub />,
       },
       {
-        // Rotas antigas → redirecionam pro hub com a aba certa (deep-links e
-        // links internos preservados). Inclui o nome canônico anterior
-        // (/terceiros) pra não quebrar bookmarks.
-        path: "terceiros",
-        element: <Navigate to="/terceirizados?tab=orders" replace />,
-      },
-      {
-        path: "terceiros-na-rua",
-        element: <Navigate to="/terceirizados?tab=orders" replace />,
-      },
-      {
-        path: "terceiros/relatorios",
-        element: <Navigate to="/terceirizados?tab=relatorio" replace />,
-      },
-      {
         // Pendências de ponto — dias com batidas inconsistentes/irregulares
         // que precisam ser completadas pelo RH antes de fechar a semana.
         path: "rh/pendencias-ponto",
         element: <TimePendingsPage />,
-      },
-      {
-        // Fechamento semanal removido (reforma 2026-07-09): era travamento do banco
-        // de horas por semana — banco de horas foi descontinuado. Cai no hub /rh.
-        path: "rh/fechamento-semanal",
-        element: <Navigate to="/rh" replace />,
-      },
-      {
-        // A mesma visão já é renderizada na subaba Ponto; mantém query de seleção
-        // e leva bookmarks ao contexto correto do hub RH.
-        path: "rh/ausencias",
-        element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=ausencias" />,
-      },
-      {
-        // Rota legada: Visão Agregada virou o modo "Lote agregado" do Quadro
-        // de Produção dentro do hub PCP.
-        path: "producao/visao-agregada",
-        element: <Navigate to="/pcp?tab=quadro&modo=lote" replace />,
-      },
-      {
-        path: "mrp",
-        element: <Navigate to="/purchase-planning?tab=mrp" replace />,
-      },
-      {
-        path: "wip-control",
-        element: <Navigate to="/pcp" replace />,
-      },
-      {
-        path: "cycle-count",
-        element: <Navigate to="/pcp" replace />,
-      },
-      {
-        // Rota legada: Auditoria de Fluxo é aba do hub PCP.
-        path: "order-flow-audit",
-        element: <Navigate to="/pcp?tab=auditoria" replace />,
       },
       {
         path: "navigation-audit",
@@ -893,10 +855,6 @@ const router = createBrowserRouter([
       {
         path: "unit-audit",
         element: <UnitAudit />,
-      },
-      {
-        path: "labels",
-        element: <Navigate to="/label-system" replace />,
       },
       {
         path: "label-system",
@@ -908,13 +866,7 @@ const router = createBrowserRouter([
           { index: true, element: <SaleOrders /> },
           { path: "new", element: <SaleOrderForm /> },
           { path: "edit/:id", element: <SaleOrderForm /> },
-          { path: "consumo", element: <LegacyRouteRedirect to="/sales?view=consumo" /> },
         ],
-      },
-      {
-        // Rota legada: relatório de vendas unificado em /comercial (ComercialDashboard).
-        path: "sales-report",
-        element: <Navigate to="/comercial" replace />,
       },
       {
         path: "suppliers",
@@ -929,43 +881,12 @@ const router = createBrowserRouter([
         element: <EconomicGroupDetail />,
       },
       {
-        path: "finance",
-        element: <Navigate to="/financeiro" replace />,
-      },
-      {
         path: "custos-insumos",
         element: <InputCostsPage />,
       },
       {
         path: "nfe",
         element: <NfePage />,
-      },
-      {
-        // Unificado no hub /terceiros (cadastro de contratadas, OS, planejamento
-        // e receitas viraram abas). Mantido como redirect permanente pra não
-        // quebrar bookmarks/links/notificações antigas que apontam pra cá.
-        path: "contractors",
-        element: <Navigate to="/terceirizados?tab=orders" replace />,
-      },
-      {
-        // Receitas Artesanais virou aba do hub Terceirizados (2026-07-04).
-        // Rota antiga preservada como redirect pra bookmarks/atalhos.
-        path: "artisanal-recipes",
-        element: <Navigate to="/terceirizados?tab=recipes" replace />,
-      },
-      {
-        // Rota legada: agora aba dentro do hub /rh (Funcionários)
-        path: "employees",
-        element: <Navigate to="/rh?tab=funcionarios" replace />,
-      },
-      {
-        // Rota legada: agora aba dentro do hub /rh (Ponto)
-        path: "timesheet",
-        element: <Navigate to="/rh?tab=ponto" replace />,
-      },
-      {
-        path: "time-control",
-        element: <Navigate to="/rh?tab=ponto" replace />,
       },
       {
         path: "purchase-orders/per-pv",
@@ -980,41 +901,12 @@ const router = createBrowserRouter([
         element: <PurchasePlanning />,
       },
       {
-        // O motor canônico já é a aba MRP de Planejamento de Compras.
-        path: "mrp-advanced",
-        element: <LegacyRouteRedirect to="/purchase-planning?tab=mrp" />,
-      },
-      {
         path: "pricing-calculator",
         element: <PricingCalculator />,
       },
       {
-        path: "weekly-purchasing-plan",
-        element: <Navigate to="/purchase-planning?tab=weekly" replace />,
-      },
-      {
         path: "comercial",
         element: <ComercialDashboard />,
-      },
-      {
-        // Rota legada: /producao sozinho cai no Planejamento (remodelagem 2026-07-12).
-        path: "producao",
-        element: <Navigate to="/producao/planejamento" replace />,
-      },
-      {
-        // Rota legada: Live virou o modo "Cartões" do Quadro de Produção.
-        path: "producao/live",
-        element: <Navigate to="/pcp?tab=quadro&modo=cartoes" replace />,
-      },
-      {
-        // Rota legada: Timeline virou modo do Quadro de Produção.
-        path: "producao/timeline",
-        element: <Navigate to="/pcp?tab=quadro&modo=timeline" replace />,
-      },
-      {
-        // Rota legada: dashboard unificado no hub PCP (aba Dashboard).
-        path: "production-dashboard",
-        element: <Navigate to="/pcp?tab=dashboard" replace />,
       },
       {
         path: "financeiro",
@@ -1028,21 +920,6 @@ const router = createBrowserRouter([
         // Espelho de Ponto Eletrônico — Portaria MTE 671/2021 art. 84
         path: "rh/espelho-ponto/:employeeId",
         element: <EspelhoPontoPage />,
-      },
-      {
-        // Banco de Horas removido (reforma Gestão de Pessoas 2026-07-09): o modelo
-        // paga HE na folha, não acumula banco. Rotas antigas caem no hub /rh.
-        path: "rh/banco-de-horas",
-        element: <Navigate to="/rh" replace />,
-      },
-      {
-        path: "rh/bank-hours",
-        element: <Navigate to="/rh" replace />,
-      },
-      {
-        // Atalho direto: Folha de Pagamento (tab dentro de /rh)
-        path: "rh/payroll",
-        element: <Navigate to="/rh?tab=folha" replace />,
       },
       {
         path: "transporte",
@@ -1065,22 +942,6 @@ const router = createBrowserRouter([
         element: <Settings />,
       },
       {
-        // Rota legada: a configuração de capacidade agora fica em Tempos-Padrão.
-        path: "capacity-planning",
-        element: <Navigate to="/producao/analises?view=tempos-padrao" replace />,
-      },
-      {
-        // Legado: o planejador de distribuição por setor (sector_distribution_plan,
-        // o 3º motor de PCP) foi aposentado (R9.3) — o Planejamento novo o substitui.
-        path: "capacity-planning/distribuir",
-        element: <Navigate to="/producao/planejamento" replace />,
-      },
-      {
-        // Legado: Centro de Controle virou view de /producao/analises (R7.2)
-        path: "centro-controle",
-        element: <Navigate to="/producao/analises?view=centro-controle" replace />,
-      },
-      {
         path: "imprimir-fichas",
         element: <PrintWorkSheets />,
       },
@@ -1088,23 +949,6 @@ const router = createBrowserRouter([
         // Ficha de Montadores — fichas de corte/montagem por dia (tabela ficha_montadores)
         path: "fichas-montadores",
         lazy: () => import("./pages/FichaMontadoresPage").then(m => ({ Component: m.default })),
-      },
-      // Requested snippet routes with lazy property
-      {
-        // Mantenha este redirect que preserva query: trocar por <Navigate> perde
-        // filtros como `?tab=history` em URLs legadas.
-        path: "inventory",
-        element: <LegacyInventoryRedirect />,
-      },
-      {
-        // Rota legada: Production unificado no hub PCP (aba Dashboard).
-        path: "production",
-        element: <Navigate to="/pcp?tab=dashboard" replace />,
-      },
-      {
-        // Legado: Qualidade de Produção virou view de /producao/analises (R7.2)
-        path: "quality",
-        element: <Navigate to="/producao/analises?view=qualidade" replace />,
       },
       {
         path: "reports",
@@ -1119,21 +963,6 @@ const router = createBrowserRouter([
         // Editor de cost_policies (defaults fiscais + overhead + embalagem)
         path: "cost-policies",
         lazy: () => import("./pages/CostPolicies").then(m => ({ Component: m.default })),
-      },
-      {
-        // Legado: Cronoanálise virou view de /producao/analises (R7.2)
-        path: "cronoanalise",
-        element: <Navigate to="/producao/analises?view=cronoanalise" replace />,
-      },
-      {
-        // Legado: Paradas & OEE virou view de /producao/analises (R7.2)
-        path: "producao/paradas",
-        element: <Navigate to="/producao/analises?view=oee" replace />,
-      },
-      {
-        // Legado: Tempos de Setup virou view de /producao/analises (R7.2)
-        path: "producao/setup-times",
-        element: <Navigate to="/producao/analises?view=setup" replace />,
       },
       {
         // Patrimônio / Imobilizado — cadastro de bens, depreciação linear e baixa
@@ -1201,11 +1030,6 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/RelSemanalA4").then(m => ({ Component: m.default })),
       },
       {
-        // Rota legada: Fluxo (kanban) virou o modo "Matriz" do Quadro de Produção.
-        path: "producao/fluxo",
-        element: <Navigate to="/pcp?tab=quadro&modo=matriz" replace />,
-      },
-      {
         path: "automations",
         lazy: () => import("./pages/Automations").then(m => ({ Component: m.default })),
       },
@@ -1241,45 +1065,8 @@ const router = createBrowserRouter([
        { path: "entregas",            lazy: () => import("./pages/OwnDeliveriesPage").then(m => ({ Component: m.default })) },
        { path: "lgpd",                lazy: () => import("./pages/LGPD").then(m => ({ Component: m.default })) },
        { path: "security",            lazy: () => import("./pages/Security").then(m => ({ Component: m.default })) },
-      // Heavy modules (can be used elsewhere if needed)
-      {
-        path: "modules",
-        children: [
-          // Rota legada: módulo de produção unificado no hub PCP.
-          { path: "production", element: <Navigate to="/pcp" replace /> },
-          { path: "quality", element: <Navigate to="/producao/analises?view=qualidade" replace /> },
-          { path: "reports", element: <Navigate to="/comercial" replace /> },
-        ]
-      },
-      // ── Aliases / rotas legadas ───────────────────────────────────────────
-      // Redirecionam rotas em inglês ou paths antigos que ainda aparecem em
-      // tabs persistidas no localStorage, evitando 404 quando o usuário
-      // recarrega com uma aba antiga.
-      { path: "stock",             element: <Navigate to="/estoque" replace /> },
-      { path: "auditoria",         element: <Navigate to="/audit-logs" replace /> },
-      { path: "diagnostico",       element: <Navigate to="/system-diagnostics" replace /> },
-      { path: "monitoramento",     element: <Navigate to="/system-monitor" replace /> },
-      // Auditoria visual 23/05/2026: URLs em pt-br intuitivas caíam no
-      // catch-all "*" gerando log "404 Debug" no console. Adicionado
-      // redirects explícitos pras URLs internas reais. Reduz ruído nos
-      // logs + UX previsível (usuário digita /pedidos-venda e funciona).
-      { path: "pedidos-venda",      element: <Navigate to="/sales" replace /> },
-      { path: "ordens-de-producao", element: <Navigate to="/orders" replace /> },
-      { path: "ordens",             element: <Navigate to="/orders" replace /> },
-      { path: "corte",              element: <Navigate to="/pcp?tab=setores&sub=corte" replace /> },
-      { path: "costura",            element: <Navigate to="/pcp?tab=setores&sub=costura" replace /> },
-      { path: "aviamento",          element: <Navigate to="/pcp?tab=setores&sub=aviamento" replace /> },
-      { path: "montagem",           element: <Navigate to="/pcp?tab=setores&sub=montagem" replace /> },
-      { path: "solagem",            element: <Navigate to="/pcp?tab=setores&sub=solagem" replace /> },
-      { path: "acabamento",         element: <Navigate to="/pcp?tab=setores&sub=acabamento" replace /> },
-      { path: "compras",            element: <Navigate to="/purchase-orders" replace /> },
-      { path: "fornecedores",       element: <Navigate to="/suppliers" replace /> },
-      { path: "clientes",           element: <Navigate to="/clients" replace /> },
-      { path: "ponto",              element: <Navigate to="/timesheet" replace /> },
-      // NOTA: /financeiro, /rh, /expedicao, /relatorios, /pronta-entrega
-      // já são rotas reais (Finance/RHHub/ExpedicaoHub/etc) acima — não
-      // precisam de redirect. /configuracoes não existe e é ambíguo
-      // (system-monitor? user-management?) — fica no NotFound até decidir.
+      ...LEGACY_ALIAS_ROUTES.permanent.protected,
+      ...LEGACY_ALIAS_ROUTES.expiresOn2027_01_12,
       {
         path: "*",
         element: <NotFound />,

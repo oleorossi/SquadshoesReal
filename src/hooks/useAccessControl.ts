@@ -35,8 +35,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/pcp-dashboard': 'producao',
   '/picking': 'ordens',
   '/mrp': 'producao',
-  '/wip-control': 'producao',
-  '/cycle-count': 'sistema',
+  // '/wip-control' e '/cycle-count' saíram no L4 (29/07/2026): os dois aliases
+  // levavam a uma tela semanticamente diferente do que o nome prometia.
   '/ajuste-estoque': 'estoque',
   '/order-flow-audit': 'ordens',
   '/labels': 'expedicao',
