@@ -11,7 +11,7 @@
 
 ## Sumário executivo
 
-**15 defeitos confirmados** (4 críticos, 7 altos, 4 médios), **3 decisões de política já respondidas pelo dono**, **6 itens de código morto** e — igualmente importante — **6 suspeitas refutadas** que não devem consumir esforço.
+**20 defeitos confirmados** (5 críticos, 10 altos, 5 médios), **3 decisões de política já respondidas pelo dono** e **1 pendente**, **6 itens de código morto**, **3 defeitos reais mas sem exposição hoje** e — igualmente importante — **6 suspeitas refutadas** que não devem consumir esforço.
 
 O RH não tem um problema de fórmula. Tem um problema de **fronteira**: o motor que paga (`salaryPayroll` + `splitDayMinutes`) e o motor que fiscaliza (`calculate_day_summary`, no banco) discordam em quatro regras, e nada obriga o pagamento a respeitar o que a fiscalização marcou como irregular. O resultado prático é que **62 dias reais estão simultaneamente listados como pendência na tela de Ponto e pagos como jornada de 13h a 21h30 na folha**.
 
@@ -188,7 +188,44 @@ Reproduz em qualquer horário de entrada (testado 07:00→13:01 e 09:00→15:01:
 - **Prova (motor real):** `['08:00','08:00']` → `normal=0, premium=0, incomplete=false`. O dia é tratado como trabalhado-zero, ou seja, **falta**, sem sinalizar que a causa foi batida duplicada.
 - **Nota:** o motor SQL dedupa batidas com menos de 5 min de intervalo; o TS não. 70 dias no bucket de 4+ batidas e 18 no de 2 batidas sofrem dedupe no SQL e não no TS.
 
-### 🟡 D15 — Folhas históricas com hora extra incoerente
+### 🔴 D15 — "Dar baixa" nos vales quita adiantamento futuro que ainda não foi descontado
+
+- **Onde:** `src/hooks/useEmployees.ts:242-255` (`useSettleEmployeeAdvances`); `src/components/hr/AdvancesPanel.tsx:309-318,441-453`
+- **O que acontece:** a mutação recebe apenas o funcionário e marca como `paid` **todos** os vales `pending` dele — sem filtrar período nem `payroll_run_id`.
+- **Impacto:** um vale lançado para a competência seguinte é baixado hoje. Como a folha só desconta vales com `status='pending'`, o valor **nunca é recuperado**.
+- **Exemplo fechado:** funcionário com vale de R$ 300 em julho (já descontado) e vale de R$ 500 com `advance_date = 2026-08-10`, ambos `pending`. Um clique em "Dar baixa" quita os dois. Em agosto a folha não desconta os R$ 500 — **R$ 500 perdidos**.
+- **Correção:** baixar apenas IDs explícitos do período liquidado e vinculá-los ao `payroll_run_id` correspondente. *(Reconfirma achado P09 de 28/07, ainda aberto.)*
+
+### 🟠 D16 — O Excel "Detalhe dia a dia" desconta falta pelo divisor legado
+
+- **Onde:** `src/lib/printTimesheet.ts:671-672,727-729` (`evaluationDetail`); `src/lib/exportFolhaExcel.ts:62-79,94-100`
+- **O que acontece:** a folha gravada usa a política canônica (falta ÷ dias úteis), mas o detalhe exportado recalcula com `salário ÷ 30` e `salário ÷ 220`.
+- **Impacto (salário R$ 2.200, mês de 22 dias úteis):** uma falta sai como **R$ 73,33** no Excel contra **R$ 100,00** na folha — **R$ 26,67 de diferença por falta**. Uma hora de atraso sai R$ 10,00 em vez de R$ 11,11.
+- **Relevância:** é o arquivo que vai para o contador. *(Reconfirma o item B2 da auditoria de 03/07, ainda aberto.)*
+
+### 🟠 D17 — Folha e Comparativo discordam em um salário inteiro no período multi-mês
+
+- **Classificação:** POLÍTICA — precisa de decisão sua (ver "Pendente de decisão" abaixo)
+- **Onde:** `src/pages/Payroll.tsx:507-518` (o guard) contra `src/lib/payrollComparativo.ts:106-109,156,176-199` (sem guard)
+- **O que acontece:** ao calcular, a folha limita `periodDays` ao mês inicial e emite `toast.warning`. O comparativo/Excel não limita e usa todos os dias do intervalo.
+- **Impacto no período real `2026-05-15_2026-07-15` (62 dias), salário R$ 2.200:** folha grava **R$ 2.200,00**; comparativo/Excel mostra **R$ 4.400,00** (`2200 × 62 ÷ 31`).
+- **Exposição medida:** **118 das 395 folhas** têm período maior que 40 dias.
+
+### 🟠 D18 — Comparativo desconta vale já pago ou já vinculado a outra folha
+
+- **Onde:** `src/pages/Payroll.tsx:560-566` (`payroll_run_id IS NULL` **AND** `status='pending'`) contra `src/lib/payrollComparativo.ts:140-144` (`.or('payroll_run_id.is.null,status.eq.pending')`)
+- **O que acontece:** a folha exige as duas condições; o comparativo aceita qualquer uma. São conjuntos diferentes.
+- **Exemplo fechado:** vale de R$ 500 com `status='pending'` **e** `payroll_run_id` de uma folha anterior → folha: líquido R$ 2.200; comparativo/Excel: líquido **R$ 1.700**. O inverso ocorre com vale `paid` e `payroll_run_id` nulo.
+
+### 🟡 D19 — Arredondamento quebra a soma exata das quinzenas em meses de 28 e 30 dias
+
+- **Onde:** `src/lib/salaryPayroll.ts:194,272-274,411`
+- **O que acontece:** cada quinzena é arredondada a centavos separadamente; em empate de meio centavo, ambas sobem.
+- **Prova:** salário R$ 2.200,01 em mês de 30 dias → `1.100,01 + 1.100,01 = R$ 2.200,02` (esperado R$ 2.200,01). Só acontece em meses de 28 e 30 dias; 29 e 31 não têm o empate.
+- **Isto explica** as 62 folhas com `total_liquido ≠ proventos − descontos` de ±R$ 0,01 medidas nas invariantes (D20).
+- **Correção:** calcular a 2ª parcela como `salário − 1ª parcela`, ou arredondar só o consolidado.
+
+### 🟡 D20 — Folhas históricas com hora extra incoerente
 
 - **Prova (invariantes sobre as 395 `payroll_runs`):**
 
@@ -226,10 +263,43 @@ Levantadas na sondagem inicial ou pelo Codex e derrubadas na verificação. Regi
 |---|---|
 | Tabela `absences` fantasma sendo consultada | **Falso.** Não existe tabela `absences`; os dois hooks leem `employee_absences`. O problema real é a query key (D9). |
 | Batida `*` é uma saída fabricada pelo sistema e pagar por ela é fraude | **Falso.** O `*` marca batida **lançada manualmente pelo RH** (`ManualEntryTab.tsx:96,101`) — correção legítima. O problema real é o inverso: a RPC **remove** o marcador (D6). |
-| 5 funcionários sem `work_schedule_id` geram falta/HE falsas | **Sem impacto hoje.** Todas as 13 escalas ativas são idênticas à padrão herdada. As três telas (`Payroll.tsx:609`, `Timesheet.tsx:746,803`, `EspelhoPontoPage.tsx:88`) usam o mesmo fallback. Risco só existe se alguém criar escala divergente. |
+| 5 funcionários sem `work_schedule_id` geram falta/HE falsas | **Sem impacto hoje** — mas verifique. Todas as 13 escalas ativas são idênticas (08:00–18:00, almoço 12:00–13:00, 44h), então a herdada é igual à própria. As três telas (`Payroll.tsx:609`, `Timesheet.tsx:746,803`, `EspelhoPontoPage.tsx:88`) usam o mesmo fallback. ⚠ Isto só vale se a jornada **real** desses 5 for mesmo 9h — se algum deles trabalha 8h de fato, são 60 min de atraso falso por dia (R$ 244,44 em 22 dias, salário R$ 2.200). Confirme com eles. |
 | HE sai R$ 0,00 em silêncio quando falta `he_normal_rate` | **Falso.** `salaryPayroll.ts:400` sinaliza `he_rate_missing` e `Payroll.tsx:683` exibe toast explícito. |
 | Sábado sofre dupla contagem (premium do split × taxa da policy) | **Falso.** O split marca premium, mas a folha classifica a tarifa pelo dia: sábado usa `heNormalMin`. |
 | Corte das 18:00 cria HE indevida em jornada deslocada | **Falso.** Entrada 10:00 / saída 20:00 com 1h de almoço = 540 min contra 540 esperados → **0 min de HE**. O corte só separa os campos `normal`/`premium`. |
+
+---
+
+## Defeitos reais, sem exposição hoje
+
+Confirmados no código, com zero incidência nos dados atuais. Não priorizar, mas não esquecer — viram dinheiro no dia em que o cadastro mudar.
+
+| Item | Onde | Por que está dormindo |
+|---|---|---|
+| **Valor-hora de atraso usa a jornada padrão, não a do dia** — `expectedDayMinutes(inp.schedule)` é chamado sem `dow` ao montar `policy.journeyMinutes` | `src/lib/salaryPayroll.ts:581-587` | **Nenhuma das 17 escalas tem `works_saturday`.** Numa escala seg–sáb com sábado 08:00–12:00, 239 min de atraso descontariam R$ 37,45 em vez de R$ 84,26. |
+| **Saldo devedor do regime produção aparece como "Quitado"** e não pode ser cobrado | `src/lib/salaryPayroll.ts:644-663`; `src/components/hr/RegistrarPagamentoDialog.tsx:57-75,125-128` | **0 funcionários ativos com `payment_type='producao'`.** Líquido negativo (ex.: −R$ 50 de adiantamento sem produção) é lido como quitado pelo diálogo. |
+| **Regime remoto persiste métricas de ponto** — zera o financeiro mas mantém `expected_minutes` e `workdays` | `src/lib/salaryPayroll.ts:600-610` | 1 funcionário em escala "Home Office (sem ponto)". Faz o comparativo classificá-lo como "Sem ponto importado". |
+
+---
+
+## Pendente de decisão sua
+
+**Período que cruza mais de um mês — quanto deve pagar?**
+
+O sistema tem **118 folhas com período maior que 40 dias** (ex.: `2026-05-15_2026-07-15`, 62 dias). Hoje os dois caminhos discordam:
+
+| | Cálculo | Resultado (salário R$ 2.200) |
+|---|---|---|
+| **Folha gravada** | limita a 1 mês: `2200 × 31 ÷ 31` | **R$ 2.200,00** |
+| **Comparativo / Excel** | usa o intervalo cheio: `2200 × 62 ÷ 31` | **R$ 4.400,00** |
+
+Diferença: **R$ 2.200,00** — um salário inteiro. As três saídas possíveis:
+
+1. **Rejeitar** períodos multi-mês na tela (obrigar uma folha por competência);
+2. **Pagar por frações mensais** (dois meses = dois salários proporcionais) — o comparativo já faz isso;
+3. **Manter o teto de 1 salário** e corrigir o comparativo para respeitá-lo.
+
+Não escolho por você: envolve quanto a pessoa recebe. Diga qual e eu registro no laudo.
 
 ---
 
@@ -243,14 +313,33 @@ Ele tem 30 registros de ponto em junho, **todos com `punches` vazio** — não b
 
 ## Prioridade sugerida
 
-1. **D1 + P2** — ímpar ≥5 vira pendência. Fecha o buraco de 62 dias pagos a 13–21h e implementa a decisão do dono. Correção pontual em `splitDayMinutes`.
-2. **D4** — authz em `complete_punches`. É um furo de segurança aberto, não um erro de conta.
-3. **D5** — validar a faixa da hora. Duas linhas, elimina o pagamento de 21h por digitação.
-4. **D2 + P3** — desenhar o fluxo de exceção manual (turno atravessando + atestado), reaproveitando `time_exceptions` / `v_time_pendings` / `TimePendings`.
-5. **D9** — unificar a query key das ausências. Uma linha, e faz o abono chegar onde precisa.
-6. **D3** — remover a descontinuidade do minuto 361.
-7. **D8, D11, D12** — alinhar a Visão Geral à folha e tirar da tela os dois controles que não fazem nada.
-8. **M1–M6** — limpeza; revogar `EXECUTE` de `calculate_weekly_he_breakdown` antes de removê-la.
+**Correção pontual, alto retorno** (cada uma é localizada e fecha dinheiro):
+
+1. **D15** — "Dar baixa" só nos vales do período liquidado. Hoje um clique perde vale futuro inteiro. Uma cláusula `WHERE`.
+2. **D1 + P2** — ímpar ≥5 devolve `incomplete: true`. Fecha os 62 dias pagos a 13h–21h32 e implementa sua decisão. Uma condição em `splitDayMinutes`.
+3. **D5** — validar `HH ≤ 23` no `timeToMin` e no regex da RPC. Elimina o pagamento de 21h por digitação.
+4. **D9** — unificar a query key das ausências. Uma linha, e o abono passa a chegar no relatório de faltas.
+5. **D18** — trocar o `.or(...)` do comparativo pelos mesmos filtros da folha.
+
+**Segurança:**
+
+6. **D4** — exigir papel de RH dentro de `complete_punches` e bloquear competência fechada. A correção de RLS de 28/07 está incompleta enquanto isso não for feito.
+
+**Precisa de desenho, não só de patch:**
+
+7. **D2 + P3** — o fluxo único de exceção manual (turno atravessando meia-noite, ímpar ≥5, atestado). Reaproveitar `time_exceptions` / `v_time_pendings` / `TimePendings`, que já existem e estão subaproveitados.
+8. **D17** — sua decisão sobre período multi-mês (seção acima), depois alinhar folha, comparativo, PDF e Excel na mesma regra.
+
+**Consistência de relatório:**
+
+9. **D16** — fazer o Excel do contador consumir os valores da folha em vez de recalcular ÷30/÷220.
+10. **D8, D11, D12** — alinhar a Visão Geral à folha; remover da tela de Escalas os dois controles que não fazem nada.
+11. **D3, D19** — descontinuidade do minuto 361 e o arredondamento de quinzena.
+
+**Limpeza:**
+
+12. **D13** — descobrir por que `time_import_logs` nunca gravou.
+13. **M1–M6** — revogar `EXECUTE` de `calculate_weekly_he_breakdown` antes de removê-la; derrubar os órfãos do banco de horas.
 
 ---
 
