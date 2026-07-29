@@ -386,13 +386,41 @@ Reconferidos manualmente antes de entrar no plano:
 
 | Lote | Escopo | Situação |
 |---|---|---|
-| Fase 0 | `scripts/ia-inventory.mjs` — inventário mecânico | ✅ |
-| Fase 1 | Auditoria Codex, 5 fatias (rotas · shell · abas · perfis · visual/a11y) | ✅ |
-| Fase 2 | Proposta + artifact de aprovação | ⏳ |
-| L1 | Guards em modo relatório + baseline | ⏳ |
-| L2 | Bugs de acesso F1–F5 | ⏳ |
+| Fase 0 | `scripts/ia-inventory.mjs` — inventário mecânico | ✅ `e7e3c90` |
+| Fase 1 | Auditoria Codex, 5 fatias (rotas · shell · abas · perfis · visual/a11y) | ✅ `0f594af` |
+| Fase 2 | Proposta + artifact de aprovação | ✅ |
+| L1 | Guards com baseline, ligados no `build` | ✅ `1bbb647` |
+| L2 | Bugs de acesso F1–F5, F13, F14 (parcial) + D1 | ✅ `3f79486` ⚠ |
 | L3 | Órfãs e código morto (F7, F10, F11, F12) | ⏳ |
 | L4 | Aliases e desmonte do `/pcp` (+ F8, F9) | ⏳ |
 | L5 | Reestruturação de `menuGroups` | ⏳ |
 | L6 | Abas: `useUrlTabState`, F6, migração visual, ARIA | ⏳ |
 | L7 | Menu por perfil (Round-7) | ⏳ |
+
+> ⚠ **Sobre `3f79486`:** o worktree é compartilhado e o stop hook de outra
+> sessão empacotou o L2 antes que eu commitasse, com a mensagem
+> "snapshot do fluxo concorrente — NÃO é trabalho desta sessão". **É** o lote L2
+> desta frente. O conteúdo está correto e foi verificado (typecheck, build,
+> 1303 testes); só a atribuição da mensagem está errada, e `main` não se
+> reescreve. Fica registrado aqui.
+
+### O que o L2 entregou
+
+`navigation.ts` ganhou **`grantableDestinations`** — sidebar + Sistema + rotas
+secundárias + destinos de ação. Essa é a correção de raiz: `resolveMenuOwner` e a
+matriz de permissões deixam de perguntar "está na sidebar?" e passam a perguntar
+"é um destino concedível?". Fecha F3 e F4 de uma vez, e conserta um bug adjacente
+que ninguém tinha visto — `useUserManagement` **descartava em silêncio**, no
+salvamento, qualquer permissão marcada para uma rota fora da sidebar.
+
+Também: BottomNav aponta para tela real (F1); os 6 relatórios mock saíram do hub e
+ganharam aviso de homologação **dentro da área impressa**, porque o PDF circula sem
+a interface (D1); `ficha_montadores` virou capacidade própria e o RH passou de 2 para
+3 itens visíveis (F13); Cmd+K filtra páginas, favoritos e as 7 consultas de entidade
+que não tinham gate (F5).
+
+**Não feito de propósito:** a troca do fail-open `if (!mod) return true` por negação.
+As rotas `/modules/*` seguem sem classificação até o L3 — travar acesso por engano é
+pior que manter a assimetria mais um lote. Está comentado no código.
+
+Baseline do guard: **42 → 29** pendências.
