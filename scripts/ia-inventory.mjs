@@ -324,6 +324,12 @@ function walk(dir, acc = []) {
   return acc;
 }
 
+/**
+ * ⚠ Conta `<TabsTrigger>` por ARQUIVO, não por tela. Um arquivo que tem abas de
+ * página E abas dentro de um `Dialog` soma as duas (Clients, ComponentSheets,
+ * Contractors e SheetsAuditPanel caem nisso). Serve pra ranquear onde olhar —
+ * o veredito de "abas demais" exige abrir o arquivo.
+ */
 function scanTabs(file) {
   const src = read(file);
   const triggers = [...src.matchAll(/<TabsTrigger\b[^>]*value\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,160}?)<\/TabsTrigger>/g)];

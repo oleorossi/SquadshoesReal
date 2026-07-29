@@ -2160,7 +2160,7 @@
       "parentRaw": "/",
       "component": "Navigate",
       "isRedirect": true,
-      "redirectTo": "/pcp?tab=capacidade",
+      "redirectTo": "/producao/analises?view=tempos-padrao",
       "isIndex": false,
       "isDetail": false,
       "isLayout": false,
