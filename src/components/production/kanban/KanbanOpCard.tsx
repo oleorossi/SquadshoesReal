@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Warning as AlertTriangle, CalendarBlank, Package } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CalendarBlank, Package, Timer } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 
@@ -39,6 +39,26 @@ interface Props {
   materialGateReason?: string | null;
 }
 
+/**
+ * Há quantos dias a OP está PARADA neste setor.
+ *
+ * `started_at` é carimbado no 1º apontamento do estágio (RPC
+ * `apontar_producao_setor`), então mede "em processo". Sem ele, a etapa ainda
+ * não arrancou e o que vale é desde quando ela existe (`created_at`) — é a
+ * espera na fila. Os dois casos interessam ao gestor por motivos diferentes,
+ * por isso o rótulo distingue.
+ */
+function stageAge(stage: { started_at: string | null; created_at: string } | null): {
+  dias: number; emProcesso: boolean;
+} | null {
+  if (!stage) return null;
+  const ref = stage.started_at || stage.created_at;
+  if (!ref) return null;
+  const dias = Math.floor((Date.now() - new Date(ref).getTime()) / 86400000);
+  if (dias < 1) return null; // menos de um dia não é sinal de nada
+  return { dias, emProcesso: !!stage.started_at };
+}
+
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
   compact = false, dimmed = false, highlighted = false,
@@ -47,6 +67,7 @@ export function KanbanOpCard({
 }: Props) {
   const { q, front, delivered, isPartial, columnStage } = card;
   const total = columnStage?.quantity_total || q.quantity;
+  const idade = stageAge(columnStage);
   const thumbSize = compact ? 32 : 40;
   const thumb = thumbUrl(photoUrl || q.reference_photo_url, thumbSize);
   return (
@@ -169,8 +190,27 @@ export function KanbanOpCard({
               <span className={isPartial ? 'text-amber-600 dark:text-amber-400' : ''}>{front ? delivered : 0}</span>
               <span className="font-normal opacity-60">/{total}</span>
             </span>
-            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-              <CalendarBlank className="h-2.5 w-2.5" /> {fmtDate(q.due_date)}
+            <span className="flex items-center gap-1.5">
+              {/* IDADE NO SETOR: uma OP parada há 5 dias exige ação diferente de
+                  uma que chegou hoje com o mesmo saldo. Sem isto o card não
+                  distinguia as duas. Âmbar a partir de 3 dias. */}
+              {idade && (
+                <span
+                  className={`text-[10px] font-mono flex items-center gap-0.5 ${
+                    idade.dias >= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                  }`}
+                  title={
+                    idade.emProcesso
+                      ? `Em processo neste setor há ${idade.dias} dia(s)`
+                      : `Na fila deste setor há ${idade.dias} dia(s) — ainda não teve apontamento`
+                  }
+                >
+                  <Timer className="h-2.5 w-2.5" />{idade.dias}d
+                </span>
+              )}
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                <CalendarBlank className="h-2.5 w-2.5" /> {fmtDate(q.due_date)}
+              </span>
             </span>
           </div>
           {!compact && (

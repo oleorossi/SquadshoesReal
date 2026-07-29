@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Info, UserCircle } from '@phosphor-icons/react';
+import { Info, UserCircle, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
+import { useOrderPointings } from '@/hooks/useOrderPointings';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import { toast } from 'sonner';
@@ -40,6 +41,7 @@ export function DropApontarDialog({
 }) {
   const { q, stages, column } = card;
   const { data: profile } = useCurrentProfile();
+  const { data: pointings = [], isLoading: pointingsLoading } = useOrderPointings(q.order_id);
   const referencePhoto = thumbUrl(photoUrl || q.reference_photo_url, 112);
 
   // Modo detalhe (target=null): o usuário pode escolher um destino no select —
@@ -305,24 +307,74 @@ export function DropApontarDialog({
               <strong className="text-foreground">{profile?.full_name || profile?.email || 'usuário logado'}</strong>
             </p>
 
-            {/* Progresso por setor (transparência do card único) */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 px-2">
-                  <Info className="h-3 w-3" /> Progresso por setor
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 text-xs space-y-1">
-                {stages.map(s => (
-                  <div key={s.id} className="flex justify-between font-mono">
-                    <span className={s.status === 'concluido' ? 'text-muted-foreground line-through' : ''}>
-                      {norm(s.stage_name)}
-                    </span>
-                    <span>{s.quantity_processed}/{s.quantity_total}</span>
-                  </div>
-                ))}
-              </PopoverContent>
-            </Popover>
+            {/* Progresso por setor (transparência do card único) + trilha real */}
+            <div className="flex flex-wrap items-center gap-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 px-2">
+                    <Info className="h-3 w-3" /> Progresso por setor
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 text-xs space-y-1">
+                  {stages.map(s => (
+                    <div key={s.id} className="flex justify-between font-mono">
+                      <span className={s.status === 'concluido' ? 'text-muted-foreground line-through' : ''}>
+                        {norm(s.stage_name)}
+                      </span>
+                      <span>{s.quantity_processed}/{s.quantity_total}</span>
+                    </div>
+                  ))}
+                </PopoverContent>
+              </Popover>
+
+              {/* RASTREABILIDADE: quem lançou, quando e quanto. Primeira leitura
+                  de `production_pointings` no sistema — antes o ledger era só
+                  escrito e o histórico da OP era invisível. */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 px-2">
+                    <ClockCounterClockwise className="h-3 w-3" /> Histórico
+                    {pointings.length > 0 && (
+                      <span className="font-mono opacity-60">({pointings.length})</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 max-h-72 overflow-y-auto text-xs">
+                  {pointingsLoading ? (
+                    <p className="text-muted-foreground">Carregando…</p>
+                  ) : pointings.length === 0 ? (
+                    <p className="leading-snug text-muted-foreground">
+                      Sem lançamentos registrados nesta OP.
+                      {' '}Produção fechada pelas telas de setor <strong>antes de 29/07/2026</strong> não
+                      entrou no histórico — o caminho antigo não gravava autoria.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {pointings.map(p => (
+                        <li key={p.id} className="border-b border-border/60 pb-1.5 last:border-0 last:pb-0">
+                          <div className="flex items-baseline justify-between gap-2 font-mono">
+                            <span className="font-semibold">{norm(p.stage_name)}</span>
+                            <span className={p.quantity < 0 ? 'text-amber-600 dark:text-amber-400' : ''}>
+                              {p.quantity > 0 ? '+' : ''}{p.quantity} pares
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {new Date(p.created_at).toLocaleString('pt-BR')}
+                            {p.author_name ? ` · ${p.author_name}` : ''}
+                          </div>
+                          {p.note && <p className="text-[10px] italic text-muted-foreground">{p.note}</p>}
+                          {p.confirmed_warnings?.length ? (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                              avisos aceitos: {p.confirmed_warnings.join(', ')}
+                            </p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
               <Button variant="outline" className="h-11 md:h-10" onClick={onClose}>Cancelar</Button>
