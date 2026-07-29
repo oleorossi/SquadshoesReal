@@ -11,7 +11,7 @@
 
 ## Sumário executivo
 
-**24 defeitos confirmados** (8 críticos, 11 altos, 5 médios), **3 decisões de política respondidas pelo dono** e **1 pendente**, **6 itens de código morto**, **4 defeitos reais sem exposição hoje** e — igualmente importante — **6 suspeitas refutadas** que não devem consumir esforço.
+**29 defeitos confirmados** (11 críticos, 13 altos, 5 médios), **3 decisões de política respondidas pelo dono** e **2 pendentes**, **6 itens de código morto**, **4 defeitos reais sem exposição hoje** e — igualmente importante — **7 suspeitas refutadas** que não devem consumir esforço.
 
 **O achado com maior efeito prático não é de código: a tabela de ausências está vazia.** Nunca foi registrado um atestado, uma licença ou uma falta justificada — e existem **1.044 dias úteis sem batida** no histórico. Como o motor só abona um dia se houver linha de ausência cobrindo a data, **todos eles viraram falta com desconto**. O mecanismo de abono funciona; ninguém o alimenta. Ver **D21**.
 
@@ -22,7 +22,8 @@ Nos defeitos de código, o RH não tem problema de fórmula — tem problema de 
 | **T1 — Dois motores, uma folha** | 🔴 | O SQL zera o dia irregular; o TS paga o intervalo inteiro. 62 dias, até 21h32 pagas num único dia. |
 | **T2 — Nada limita o resultado** | 🔴 | Não há teto de plausibilidade. Hora inválida (`29:59`) é aceita e paga como ~21h. 93 dias com span > 14h. |
 | **T3 — Ordenação destrói a cronologia** | 🔴 | O `sort` antes do pareamento torna inalcançável o tratamento de meia-noite. Turno noturno de 8h paga **15h**. |
-| **T4 — RPC contorna a RLS** | 🔴 | `complete_punches` é `SECURITY DEFINER` sem checagem de papel — passa por cima da policy criada em 28/07. |
+| **T4 — RPC contorna a RLS** | 🔴 | `complete_punches` é `SECURITY DEFINER` sem checagem de papel e com `EXECUTE` para `authenticated` — passa por cima da policy criada em 28/07. |
+| **T7 — O dinheiro sai sem trava** | 🔴 | Nada limita o pagamento ao líquido (aceita R$ 3.000 numa folha de R$ 2.000); períodos sobrepostos permitem pagar a mesma competência 2×; o pagamento pode apontar para outro funcionário. |
 | **T5 — Controles mortos na tela de Escalas** | 🟡 | "Multiplicador HE" e "Mín. HE para contar" não alteram a folha. O usuário edita e nada muda. |
 | **T6 — O abono não existe na prática** | 🔴 | 0 ausências cadastradas, 1.044 dias úteis sem batida. Todo atestado foi descontado. E quando começarem a cadastrar, `justified` é ignorado — vai abonar até o que não deve. |
 
@@ -111,6 +112,8 @@ Reproduz em qualquer horário de entrada (testado 07:00→13:01 e 09:00→15:01:
 
 - **Onde:** função `complete_punches(uuid, text[], text)` em produção; `src/hooks/useTimePendings.ts:139,176`
 - **O que acontece:** a policy `time_records_write` restringe escrita a `user_has_any_role(['admin','gerente','rh'])`. Mas `complete_punches` é `SECURITY DEFINER` **sem nenhuma checagem de papel, de dono do registro ou de período**. Como `SECURITY DEFINER` roda com os privilégios do criador, ela **passa por cima da policy**.
+- **Verificado no banco:** `has_function_privilege('authenticated', …, 'EXECUTE')` = **true** (`anon` = false). Ou seja, qualquer usuário logado — aprovado ou não, de qualquer papel — pode chamá-la.
+- **Efeito em dinheiro:** trocar a pendência `['08:00']` por `['08:00','18:00']` transforma o dia em 540 min trabalhados e 60 min de HE. Com jornada 08:00–17:00 e HE a R$ 20/h, são **R$ 20,00** a mais na folha recalculada — por chamada, sem rastro de papel.
 - **Efeito:** qualquer usuário autenticado pode reescrever a batida de qualquer funcionário, em qualquer data, inclusive de competência com folha já aprovada. A correção de RLS do batch 4-RH (`05ca849`) está **incompleta**.
 - **Correção:** exigir papel de RH dentro da própria função e validar que a data não pertence a competência com `payroll_runs` não-rascunho.
 
@@ -253,6 +256,41 @@ Este é o achado de maior efeito prático imediato, e é exatamente o que você 
 - **O que acontece:** a folha exige as duas condições; o comparativo aceita qualquer uma. São conjuntos diferentes.
 - **Exemplo fechado:** vale de R$ 500 com `status='pending'` **e** `payroll_run_id` de uma folha anterior → folha: líquido R$ 2.200; comparativo/Excel: líquido **R$ 1.700**. O inverso ocorre com vale `paid` e `payroll_run_id` nulo.
 
+### 🔴 D25 — Nada limita o pagamento ao líquido da folha
+
+- **Onde:** `src/components/hr/RegistrarPagamentoDialog.tsx:57,75,81`; `src/hooks/usePayrollPayments.ts:181`; trigger `tg_payroll_payment_guard` e `recompute_payroll_paid`
+- **Verificado no banco:** `recompute_payroll_paid` compara a soma paga com `total_liquido` usando **`>=`** — marca a run como `pago` quando atinge o líquido, mas **não rejeita o excedente**. A UI só exige valor positivo.
+- **Impacto:** folha aprovada de líquido R$ 2.000 aceita um pagamento de **R$ 3.000**. Total pago R$ 3.000, status `pago`, **R$ 1.000 a mais** sem nenhum alerta.
+- **Correção:** registrar pagamento por RPC transacional com lock na run, calculando saldo e rejeitando `amount > saldo` (tolerância de centavos).
+
+### 🔴 D26 — Períodos sobrepostos permitem pagar a mesma competência mais de uma vez
+
+- **Onde:** constraint `payroll_runs_employee_id_period_key`; `src/pages/Payroll.tsx:65` (`rangeToPeriod`)
+- **Verificado no banco:** a unicidade é `UNIQUE (employee_id, period)` — sobre o **texto** do período. Aceita simultaneamente `2026-06`, `2026-06-01_2026-06-15` e `2026-06-16_2026-06-30` para o mesmo funcionário. `recompute_payroll_paid` soma pagamentos de **uma** run, sem enxergar cobertura das outras.
+- **Impacto:** salário R$ 3.000 sem descontos → as três runs podem ser aprovadas e quitadas: **R$ 6.000 pagos** para uma competência de R$ 3.000.
+- **Exposição real:** já existem sobreposições gravadas — Erick Cesar tem `2026-06` (aprovada) coexistindo com cinco rascunhos que cobrem o mesmo intervalo. Nenhuma foi paga ainda.
+- **Correção:** persistir início/fim como datas e criar restrição de exclusão (`EXCLUDE USING gist`) por funcionário para runs ativas.
+
+### 🟠 D27 — Pagamento pode apontar para outro funcionário e forjar o autor
+
+- **Onde:** `src/hooks/usePayrollPayments.ts:210`; trigger `tg_payroll_payment_guard`
+- **Verificado no banco:** o corpo do `tg_payroll_payment_guard` (707 caracteres) **não menciona `employee_id`** — só confere o status da run. `payroll_run_id` e `employee_id` têm FKs independentes, e `created_by` vem do cliente (só cai para `auth.uid()` quando nulo).
+- **Impacto:** via PostgREST, um pagamento pode quitar a run da Ana registrando o valor no histórico do Beto, com autoria da Carla.
+- **Correção:** no trigger, comparar `NEW.employee_id` com `payroll_runs.employee_id` e sempre forçar `NEW.created_by := auth.uid()`.
+
+### 🟠 D28 — Recálculo concorrente da mesma competência: o último escritor vence em silêncio
+
+- **Onde:** `src/hooks/useRH.ts:231,246,250`
+- **O que acontece:** a chave única evita linha duplicada, mas o `upsert` faz `ON CONFLICT DO UPDATE` sem checar versão nem status. Dois operadores que leem "não existe run" gravam a mesma linha e o segundo sobrescreve o primeiro sem aviso.
+- **Impacto:** salário R$ 3.000, junho com 22 dias úteis. Operador A calcula R$ 3.000; Operador B calcula com uma falta, R$ 2.863,64. O valor final depende de quem gravou por último.
+- **Correção:** RPC transacional com `updated_at` esperado, devolvendo conflito explícito ao segundo escritor.
+
+### 🟡 D29 — Não há trava no banco contra editar insumo de folha já aprovada
+
+- **Onde:** `src/hooks/useRH.ts:49` (`assertNoClosedPayroll`, **só no cliente**); `src/components/timesheet/ManualEntryTab.tsx:199`
+- **O que acontece:** `tg_payroll_lock_finalized` protege a **própria** `payroll_runs` finalizada. Mas os **insumos** dela — batidas em `time_records` e linhas de `employee_absences` — não têm trava equivalente no banco. A validação é client-side e a tela de ponto nem a chama.
+- **Efeito:** pelo PostgREST direto (ou por `complete_punches`, ver D4), dá para alterar o ponto de uma competência já aprovada e paga. A folha gravada não muda sozinha, mas qualquer recálculo ou relatório passa a divergir do que foi pago.
+
 ### 🟡 D19 — Arredondamento quebra a soma exata das quinzenas em meses de 28 e 30 dias
 
 - **Onde:** `src/lib/salaryPayroll.ts:194,272-274,411`
@@ -303,6 +341,7 @@ Levantadas na sondagem inicial ou pelo Codex e derrubadas na verificação. Regi
 | HE sai R$ 0,00 em silêncio quando falta `he_normal_rate` | **Falso.** `salaryPayroll.ts:400` sinaliza `he_rate_missing` e `Payroll.tsx:683` exibe toast explícito. |
 | Sábado sofre dupla contagem (premium do split × taxa da policy) | **Falso.** O split marca premium, mas a folha classifica a tarifa pelo dia: sábado usa `heNormalMin`. |
 | Corte das 18:00 cria HE indevida em jornada deslocada | **Falso.** Entrada 10:00 / saída 20:00 com 1h de almoço = 540 min contra 540 esperados → **0 min de HE**. O corte só separa os campos `normal`/`premium`. |
+| O status `cancelado` não existe na constraint, então o estorno da folha é inalcançável | **Parcialmente falso.** A constraint viva **aceita** `cancelado`: `CHECK (status = ANY (ARRAY['rascunho','aprovado','pago','cancelado']))`. O que bloqueia o estorno é `tg_payroll_lock_finalized` e a máquina de estados da UI, não o schema. A correção é menor do que o relatado. |
 
 ---
 
@@ -363,25 +402,31 @@ Ele tem 30 registros de ponto em junho, **todos com `punches` vazio** — não b
 4. **D9** — unificar a query key das ausências. Uma linha, e o abono passa a chegar no relatório de faltas.
 5. **D18** — trocar o `.or(...)` do comparativo pelos mesmos filtros da folha.
 
-**Segurança:**
+**Segurança e trava de dinheiro** (nada aqui é erro de conta — é ausência de guarda):
 
-6. **D4** — exigir papel de RH dentro de `complete_punches` e bloquear competência fechada. A correção de RLS de 28/07 está incompleta enquanto isso não for feito.
+6. **D25** — teto no pagamento. Uma folha de R$ 2.000 aceita pagamento de R$ 3.000 hoje.
+7. **D26** — restrição de sobreposição de período. Já existem runs sobrepostas gravadas; falta só alguém aprovar as duas.
+8. **D27** — o trigger de pagamento passar a conferir `employee_id` contra a run e forçar `created_by := auth.uid()`.
+9. **D4** — exigir papel de RH dentro de `complete_punches` e bloquear competência fechada. A correção de RLS de 28/07 está incompleta enquanto isso não for feito.
+10. **D29** — trava no banco contra editar batida/ausência de competência já aprovada.
 
 **Precisa de desenho, não só de patch:**
 
-7. **D2 + P3** — o fluxo único de exceção manual (turno atravessando meia-noite, ímpar ≥5, atestado). Reaproveitar `time_exceptions` / `v_time_pendings` / `TimePendings`, que já existem e estão subaproveitados.
-8. **D17** — sua decisão sobre período multi-mês (seção acima), depois alinhar folha, comparativo, PDF e Excel na mesma regra.
+11. **D2 + P3** — o fluxo único de exceção manual (turno atravessando meia-noite, ímpar ≥5, atestado). Reaproveitar `time_exceptions` / `v_time_pendings` / `TimePendings`, que já existem e estão subaproveitados.
+12. **D17** — sua decisão sobre período multi-mês (seção acima), depois alinhar folha, comparativo, PDF e Excel na mesma regra.
+13. **D28** — persistência da folha por RPC transacional, resolvendo de uma vez a concorrência e a idempotência.
 
 **Consistência de relatório:**
 
-9. **D16** — fazer o Excel do contador consumir os valores da folha em vez de recalcular ÷30/÷220.
-10. **D8, D11, D12** — alinhar a Visão Geral à folha; remover da tela de Escalas os dois controles que não fazem nada.
-11. **D3, D19** — descontinuidade do minuto 361 e o arredondamento de quinzena.
+14. **D16** — fazer o Excel do contador consumir os valores da folha em vez de recalcular ÷30/÷220.
+15. **D24** — Espelho de Ponto recortar por admissão/demissão (é o documento legal).
+16. **D8, D11, D12** — alinhar a Visão Geral à folha; remover da tela de Escalas os dois controles que não fazem nada.
+17. **D3, D19** — descontinuidade do minuto 361 e o arredondamento de quinzena.
 
 **Limpeza:**
 
-12. **D13** — descobrir por que `time_import_logs` nunca gravou.
-13. **M1–M6** — revogar `EXECUTE` de `calculate_weekly_he_breakdown` antes de removê-la; derrubar os órfãos do banco de horas.
+18. **D13** — descobrir por que `time_import_logs` nunca gravou.
+19. **M1–M6** — revogar `EXECUTE` de `calculate_weekly_he_breakdown` antes de removê-la; derrubar os órfãos do banco de horas.
 
 ---
 
