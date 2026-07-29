@@ -54,6 +54,7 @@ export function KanbanOpCard({
       className={`relative overflow-hidden ${compact ? 'p-2' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
         transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out
         hover:-translate-y-0.5 hover:shadow-md active:translate-y-0
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background
         before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:origin-left
         before:transition-transform before:duration-150 before:ease-out
         ${
@@ -75,8 +76,29 @@ export function KanbanOpCard({
       onDragStart={e => { onDragStart(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/op-id', q.order_id); }}
       onDragEnd={onDragEnd}
       onClick={selectable ? onToggleSelect : onOpen}
-      role={selectable ? 'checkbox' : undefined}
+      // Teclado: o card era operável só por mouse/toque — quem usa teclado ou
+      // leitor de tela não conseguia nem abrir o apontamento. Enter/Espaço faz
+      // o mesmo que o clique, e o diálogo já tem o select "Mover OP para" como
+      // alternativa ao arraste (que não existe no teclado).
+      tabIndex={0}
+      onKeyDown={e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        // Espaço rolaria a coluna; Enter dispararia o link da OP quando focado
+        // nele — aqui o alvo é o card.
+        if (e.target !== e.currentTarget) return;
+        e.preventDefault();
+        (selectable ? onToggleSelect : onOpen)?.();
+      }}
+      role={selectable ? 'checkbox' : 'button'}
       aria-checked={selectable ? selected : undefined}
+      aria-label={
+        selectable
+          ? undefined
+          : `${q.order_number}, ${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}, ` +
+            `${front ? delivered : 0} de ${total} pares` +
+            `${isPartial ? ', entrega parcial' : ''}${q.late_days > 0 ? `, ${q.late_days} dias de atraso` : ''}. ` +
+            'Abrir apontamento.'
+      }
     >
       <div className="flex items-start gap-2">
         {selectable && (

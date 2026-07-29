@@ -23,6 +23,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { toast } from 'sonner';
 import { deriveCard, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
+import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
 import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
@@ -51,21 +52,40 @@ function capacityTone(utilization: number): { pct: number; bar: string; text: st
 }
 
 /**
- * CENTRAL DE PRODUÇÃO — o Kanban em modo "programa dedicado de gestão":
- * tela cheia SEM a casca do ERP (rota fora do AppLayout), todos os setores
- * visíveis de uma vez, busca que FILTRA o quadro (padrão; 'destacar' é opção),
- * leitura do QR das fichas de operador (câmera ou leitor físico) e seleção
- * múltipla pra mover várias OPs de setor de uma vez. Mesmo motor do Kanban:
- * mesmos hooks, mesma RPC de apontamento, mesmo realtime — só muda a moldura.
- * Pensada pro analista deixar aberta num monitor o dia inteiro.
+ * CENTRAL DE PRODUÇÃO — o quadro de OPs por setor. Uma implementação só, duas
+ * molduras:
+ *
+ *  • `embedded={false}` (rota `/producao/kanban/gestao`): tela cheia SEM a casca
+ *    do ERP, relógio, KPIs, botão de fullscreen. Pro analista deixar num monitor
+ *    o dia inteiro.
+ *  • `embedded` (rota `/producao/kanban`, dentro do AppLayout): mesmo quadro,
+ *    sem a moldura de sala de controle.
+ *
+ * ⚠ Antes existiam DOIS componentes. O do menu (`ProducaoKanban.tsx`, 187
+ * linhas) era uma versão pobre do mesmo quadro: sem rolagem por coluna (69 OPs
+ * em Corte Palmilha esticavam a página sem fim), sem WIP, sem gate de material,
+ * sem ordenação "atrasadas primeiro", sem realce de drop, sem lote nem QR.
+ * Quem operava via menu tomava decisão com menos informação que quem abria o
+ * "Modo Gestão" — mesmo motor, mesma RPC, telas diferentes. Não recriar o
+ * segundo componente: adicionar feature aqui e, se precisar, esconder por
+ * `embedded`.
  */
-export default function ProducaoKanbanGestao() {
+export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: boolean } = {}) {
   useEnsureFreshSchedule();
   useRealtimeOrderStages();
   const { data: sectors = [] } = useSectorSettings();
-  const { data: queue = [], isLoading: queueLoading } = useProductionQueueDetail();
+  // ⚠ `isError` NÃO é decorativo aqui. Sem ele, falha de rede/RLS caía no
+  // default `[]` e o quadro dizia "Nenhuma OP em produção" — indistinguível de
+  // fábrica vazia. No chão de fábrica isso vira "não tem o que fazer hoje".
+  const {
+    data: queue = [], isLoading: queueLoading, isError: queueError,
+    error: queueErrObj, refetch: refetchQueue,
+  } = useProductionQueueDetail();
   const orderIds = useMemo(() => queue.map(q => q.order_id), [queue]);
-  const { data: allStages = [], isLoading: stagesLoading } = useAllOrderStages(orderIds);
+  const {
+    data: allStages = [], isLoading: stagesLoading, isError: stagesError,
+    error: stagesErrObj, refetch: refetchStages,
+  } = useAllOrderStages(orderIds);
   const { data: todayGrid = [] } = useProductionScheduleGrid(todayISO(), todayISO());
   // Foto da referência: a view manda reference_photo_url vazio (ver o hook)
   const { data: refThumbs } = useReferenceThumbs(queue.map(q => q.reference_id));
@@ -104,10 +124,11 @@ export default function ProducaoKanbanGestao() {
   const [landedId, setLandedId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (embedded) return; // dentro do ERP o título é da rota, não desta tela
     const prev = document.title;
     document.title = 'Central de Produção · Squad Shoes';
     return () => { document.title = prev; };
-  }, []);
+  }, [embedded]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -280,11 +301,32 @@ export default function ProducaoKanbanGestao() {
     setBulkTarget('');
   };
 
+  /**
+   * A OP pode ir pra este setor? Reusa a MESMA regra do apontamento
+   * (`buildPointingPlan`) que o diálogo aplica ao soltar — assim o realce da
+   * coluna nunca promete um destino que o diálogo vai recusar.
+   */
+  const dropEligibility = (card: KanbanCardData, target: string): {
+    ok: boolean; kind: 'frente' | 'pulo' | 'estorno'; reason?: string;
+  } => {
+    const plan = buildPointingPlan(card, target, flowOrder);
+    if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
+    if (plan.isBackward) return { ok: true, kind: 'estorno' };
+    return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
+  };
+
   const handleDrop = (target: string) => {
     if (!dragCard) return;
     const card = dragCard;
     setDragCard(null);
     if (target === card.column) return;
+    // Destino impossível: avisa NA HORA em vez de abrir um diálogo só pra dizer
+    // que não dá.
+    const elig = dropEligibility(card, target);
+    if (!elig.ok) {
+      toast.error(elig.reason || `${card.q.order_number} não pode ir pra ${target}.`);
+      return;
+    }
     setDropTarget({ card, target });
   };
 
@@ -297,6 +339,11 @@ export default function ProducaoKanbanGestao() {
   };
 
   const isLoading = queueLoading || stagesLoading;
+  const loadError = queueError || stagesError;
+  const loadErrorMsg = (queueErrObj as Error | null)?.message
+    || (stagesErrObj as Error | null)?.message
+    || 'Falha ao consultar o servidor.';
+  const retryLoad = () => { void refetchQueue(); void refetchStages(); };
   const clock = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   /** Máscaras de topo/pé da coluna: aparecem só quando há mais OP naquele
@@ -354,19 +401,26 @@ export default function ProducaoKanbanGestao() {
 
   return (
     // h-dvh (não h-screen/100vh): no Safari iOS o vh inclui a área da barra de
-    // endereço e cortava o rodapé das colunas.
-    <div className="h-dvh flex flex-col overflow-hidden bg-background text-foreground">
+    // endereço e cortava o rodapé das colunas. Embutido no ERP a altura é
+    // limitada pelo AppLayout — usar h-dvh aqui empurraria o rodapé pra fora.
+    <div className={`flex flex-col overflow-hidden bg-background text-foreground ${
+      embedded ? 'h-[calc(100dvh-11rem)] min-h-[32rem]' : 'h-dvh'
+    }`}>
       {/* ── Barra de comando ─────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 flex items-center gap-2 md:gap-3 flex-wrap">
-        <Button asChild variant="ghost" size="sm" className="h-11 md:h-8 gap-1.5 px-2 shrink-0" title="Voltar pro Kanban no ERP">
-          <Link to="/producao/kanban" aria-label="Voltar pro Kanban">
-            <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Kanban</span>
-          </Link>
-        </Button>
-        <div className="shrink-0 leading-none">
-          <span className="ed-eyebrow block">PRODUÇÃO · GESTÃO</span>
-          <span className="ed-display text-base md:text-lg leading-none">CENTRAL DE PRODUÇÃO</span>
-        </div>
+        {!embedded && (
+          <>
+            <Button asChild variant="ghost" size="sm" className="h-11 md:h-8 gap-1.5 px-2 shrink-0" title="Voltar pro Kanban no ERP">
+              <Link to="/producao/kanban" aria-label="Voltar pro Kanban">
+                <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Kanban</span>
+              </Link>
+            </Button>
+            <div className="shrink-0 leading-none">
+              <span className="ed-eyebrow block">PRODUÇÃO · GESTÃO</span>
+              <span className="ed-display text-base md:text-lg leading-none">CENTRAL DE PRODUÇÃO</span>
+            </div>
+          </>
+        )}
 
         <SearchInput
           value={search}
@@ -418,7 +472,15 @@ export default function ProducaoKanbanGestao() {
               <CheckSquare className="h-4 w-4" /> Selecionar
             </Button>
           )}
-          {canFullscreen && (
+          {/* Dentro do ERP o atalho é abrir a Central (tela cheia dedicada);
+              fullscreen do navegador só faz sentido na rota própria. */}
+          {embedded ? (
+            <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Abrir a Central de Produção em tela cheia, sem a casca do ERP">
+              <Link to="/producao/kanban/gestao">
+                <ArrowsOutSimple className="h-4 w-4" /> <span className="hidden sm:inline">Modo Gestão</span>
+              </Link>
+            </Button>
+          ) : canFullscreen && (
             <Button variant="outline" size="sm" className="h-11 w-11 md:h-9 md:w-9 p-0" onClick={toggleFullscreen} title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}>
               {isFullscreen ? <ArrowsInSimple className="h-4 w-4" /> : <ArrowsOutSimple className="h-4 w-4" />}
             </Button>
@@ -592,6 +654,22 @@ export default function ProducaoKanbanGestao() {
         <div className="flex-1 flex gap-2 p-3 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="flex-1 min-w-[185px]" />)}
         </div>
+      ) : loadError ? (
+        /* Falha ≠ fábrica vazia. Dizer isso explicitamente, com o erro técnico
+           à mão e um botão de tentar de novo — não engolir num quadro vazio. */
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md rounded-lg border border-red-500/40 bg-red-500/5 p-4 text-center">
+            <p className="font-semibold text-red-600 dark:text-red-400">
+              Não foi possível carregar o quadro
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              O quadro está <strong>sem dados</strong> por falha de consulta — isto NÃO quer dizer
+              que não há OP em produção. Não aponte produção até recarregar.
+            </p>
+            <p className="mt-2 font-mono text-[11px] text-muted-foreground break-words">{loadErrorMsg}</p>
+            <Button className="mt-3 h-10" onClick={retryLoad}>Tentar de novo</Button>
+          </div>
+        </div>
       ) : allCards.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
@@ -702,10 +780,33 @@ export default function ProducaoKanbanGestao() {
                   onScroll={e => syncColumnFade(e.currentTarget)}
                   className={`h-full overflow-y-auto overscroll-contain [scrollbar-gutter:stable] space-y-1.5 rounded-b-md border border-t-0 border-border bg-muted/20 p-1.5 transition-colors ${
                     dragOverSector === sector && dragCard && dragCard.column !== sector
-                      ? 'kb-drop-target border-primary bg-primary/5'
+                      // Feedback HONESTO: verde/tinta só quando a OP realmente
+                      // pode ir pra cá. Antes qualquer coluna diferente da atual
+                      // acendia como destino válido e o operador só descobria a
+                      // recusa depois de soltar ("Esta OP não passa por X").
+                      ? (dropEligibility(dragCard, sector).ok
+                          ? (dropEligibility(dragCard, sector).kind === 'pulo'
+                              ? 'kb-drop-target border-amber-500 bg-amber-500/10'
+                              : 'kb-drop-target border-primary bg-primary/5')
+                          : 'border-dashed border-muted-foreground/40 bg-muted/40 opacity-60 cursor-no-drop')
                       : ''
                   }`}
+                  aria-dropeffect={
+                    dragOverSector === sector && dragCard && dragCard.column !== sector
+                      ? (dropEligibility(dragCard, sector).ok ? 'move' : 'none')
+                      : undefined
+                  }
                 >
+                  {/* Coluna vazia não pode parecer bug nem "acabou o trabalho":
+                      diz o motivo e, quando dá, o que destrava. */}
+                  {colCards.length === 0 && (
+                    <p className="px-2 py-6 text-center text-[11px] leading-snug text-muted-foreground">
+                      {filtering
+                        ? 'Nenhuma OP desta busca aqui.'
+                        : <>Sem OP aguardando <strong>{sector}</strong>.
+                            {canEdit ? <><br />Arraste um card de outro setor pra cá.</> : null}</>}
+                    </p>
+                  )}
                   {colCards.map((card, cardIdx) => (
                     <div
                       key={card.q.order_id}

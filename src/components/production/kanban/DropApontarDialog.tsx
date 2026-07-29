@@ -105,10 +105,37 @@ export function DropApontarDialog({
         return;
       }
       if (res.status === 'ok') {
+        const gravado = res.quantity;
         toast.success(
           isBackward
-            ? `Estornado ${Math.abs(res.quantity)} pares de ${pointedStage.stage_name}.`
-            : `${pointedStage.stage_name}: +${res.quantity} pares (${Math.min(pointedStage.quantity_processed + res.quantity, pointedStage.quantity_total)}/${pointedStage.quantity_total}).`,
+            ? `Estornado ${Math.abs(gravado)} pares de ${pointedStage.stage_name}.`
+            : `${pointedStage.stage_name}: +${gravado} pares (${Math.min(pointedStage.quantity_processed + gravado, pointedStage.quantity_total)}/${pointedStage.quantity_total}).`,
+          {
+            // DESFAZER: apontamento errado no chão de fábrica era caro de
+            // corrigir — tinha que reencontrar a OP, entender o estorno e
+            // redigitar. O lançamento inverso já existe (quantidade negativa na
+            // mesma RPC); aqui é só reusá-lo com o valor certo.
+            duration: 10_000,
+            action: {
+              label: 'Desfazer',
+              onClick: async () => {
+                try {
+                  await apontar.mutateAsync({
+                    orderId: q.order_id,
+                    stageName: pointedStage.stage_name,
+                    quantity: -gravado,
+                    note: `Desfeito pelo operador (lançamento de ${gravado > 0 ? '+' : ''}${gravado} pares)`,
+                    // O inverso de um apontamento recém-feito não deve reabrir
+                    // o interrogatório de avisos: o servidor já os aceitou agora.
+                    confirmedWarnings: ['limite_setor_anterior', 'material_nao_reservado', 'acima_do_total'],
+                  });
+                  toast.success(`Desfeito: ${pointedStage.stage_name} voltou ${Math.abs(gravado)} pares.`);
+                } catch {
+                  /* toast de erro já sai pela mutation */
+                }
+              },
+            },
+          },
         );
         onApontado?.(q.order_id);
       }
