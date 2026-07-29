@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
   computeParallelWindows,
@@ -190,5 +191,19 @@ describe('motor de cascata — forward × backward (D4)', () => {
     const fwd = computeForwardSchedule(sheet, QTY, start);
     expect(fwd.totalBusinessDays).toBe(businessDaysBetween(start, new Date(fwd.finishISO + 'T00:00:00')));
     expect(fwd.totalBusinessDays).toBeGreaterThan(0);
+  });
+// Paridade com o SQL: veio da sessão concorrente que escreveu a migration.
+  // Preservado na resolução do conflito porque independe do helper local.
+  it('migration: os nove setores agregam carga fracionária e preservam o buffer', () => {
+    const sql = readFileSync('supabase/migrations/20261010120000_wave-timeline-aggregate-sector-load.sql', 'utf8');
+
+    const sectorAggregates = sql.slice(
+      sql.indexOf('  SELECT\n    COALESCE(GREATEST('),
+      sql.indexOf('    COALESCE(MAX(COALESCE(NULLIF(ts.lead_time_buffer_material_dias,0)'),
+    );
+    expect(sectorAggregates.match(/COALESCE\(GREATEST\(/g)).toHaveLength(9);
+    expect(sectorAggregates.match(/CEIL\(SUM\(CASE WHEN/g)).toHaveLength(9);
+    expect(sectorAggregates.match(/MAX\(CASE WHEN/g)).toHaveLength(9);
+    expect(sql).toContain('COALESCE(MAX(COALESCE(NULLIF(ts.lead_time_buffer_material_dias,0), dlt.lead_time_buffer_material_dias, 2)), 2)');
   });
 });
