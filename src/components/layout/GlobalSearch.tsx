@@ -7,7 +7,7 @@ import {
   X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock, Star,
   Receipt, ShoppingBag, Truck, FolderOpen, UserCircle, Lightning, Plus,
 } from '@phosphor-icons/react';
-import { menuGroups, secondaryRoutes } from '@/data/navigation';
+import { menuGroups, navigationCatalog } from '@/data/navigation';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -502,20 +502,15 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   const stockGroups = searchEnabled ? (stockGroupsQuery.data ?? []) : [];
   const groupResult = groupEnabled ? (groupQuery.data ?? null) : null;
 
-  // Páginas (atalhos) — busca local, instantânea.
-  // Indexa items do sidebar + secondaryRoutes (removidos do sidebar mas
-  // ainda buscáveis aqui — sem isso usuário ficaria órfão dessas rotas).
+  // Páginas (atalhos) — busca local, instantânea. A superfície `command` do
+  // catálogo já inclui sidebar, Sistema e rotas secundárias sem remontar listas.
   const filteredNavItems = useMemo(() => {
     if (!q || q.length < 1 || isGroupSearch) return [];
-    const fromSidebar = menuGroups.flatMap(group =>
-      group.items
-        .filter(item => normalizeForSearch(item.name).includes(q) || normalizeForSearch(group.label).includes(q))
-        .map(item => ({ name: item.name, icon: item.icon, path: item.path, groupLabel: group.label }))
-    );
-    const fromSecondary = secondaryRoutes
-      .filter(r => normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.group).includes(q))
-      .map(r => ({ name: r.name, icon: r.icon, path: r.path, groupLabel: r.group }));
-    return [...fromSidebar, ...fromSecondary].filter(item => canAccessRoute(item.path));
+    return navigationCatalog
+      .filter((item) => item.surfaces.includes('command'))
+      .filter((item) => normalizeForSearch(item.label).includes(q) || normalizeForSearch(item.group).includes(q))
+      .filter((item) => canAccessRoute(item.path))
+      .map((item) => ({ name: item.label, icon: item.icon, path: item.path, groupLabel: item.group }));
   }, [q, isGroupSearch, canAccessRoute]);
 
   const goTo = useCallback((path: string, persistTerm?: string, recentItem?: RecentItem) => {
@@ -710,9 +705,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                         {allowedItems.map((item) => (
                           <CommandItem key={item.path} onSelect={() => goTo(item.path)}>
                             <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-                            {item.name}
+                            {item.label}
                             <span className="ml-auto shrink-0">
-                              <FavStar name={item.name} path={item.path} />
+                              <FavStar name={item.label} path={item.path} />
                             </span>
                           </CommandItem>
                         ))}

@@ -1,21 +1,25 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Stack as Layers, Footprints, ListNumbers, Info } from '@phosphor-icons/react';
+import { Stack as Layers, Footprints, ListNumbers, Info, Image as ImageIcon, Cube as Box } from '@phosphor-icons/react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { SoleTechnicalDetails } from '@/components/technical-sheets/SoleTechnicalDetails';
 import { SoleStandardItemsPanel } from '@/components/technical-sheets/SoleStandardItemsPanel';
 import { SoleStandardMaterialsEditor } from '@/components/inventory/SoleStandardMaterialsEditor';
+import { SoleSilkPanel } from '@/components/technical-sheets/SoleSilkPanel';
+import { PackagingTab } from '@/components/technical-sheets/PackagingTab';
 import type { SoleProduct } from './types';
 
 interface Props {
   sole: SoleProduct;
+  soleLabel?: string;
 }
 
-export default function SolesConsumosTab({ sole }: Props) {
+export default function SolesConsumosTab({ sole, soleLabel }: Props) {
   const [tab, setTab] = usePersistedState<string>('soles-consumos-sub', 'padrao');
-  // Compat com valores persistidos antigos: 'silk' removido, 'standard' renomeado.
-  const safeTab = tab === 'silk' ? 'padrao' : tab === 'standard' ? 'numeracao' : tab;
+  // Compat com o nome persistido anterior; Silk voltou a ser uma aba real ao
+  // absorver /consumo-base, então não a remapeamos para Itens Padrão.
+  const safeTab = tab === 'standard' ? 'numeracao' : tab;
 
   return (
     <div className="space-y-3">
@@ -37,6 +41,8 @@ export default function SolesConsumosTab({ sole }: Props) {
           { value: 'padrao',    label: 'Itens Padrão',        icon: Footprints },
           { value: 'forracao',  label: 'Forração / Palmilha', icon: Layers },
           { value: 'numeracao', label: 'Por Numeração',       icon: ListNumbers },
+          { value: 'silk',      label: 'Silk / Arte',         icon: ImageIcon },
+          { value: 'embalagem', label: 'Embalagem',            icon: Box },
         ]} />
 
         {/* Consumos padrão POR PAR (cola, linha, forração…) — baixados no BOM
@@ -60,6 +66,16 @@ export default function SolesConsumosTab({ sole }: Props) {
             tamanho. Convive com o por-par: o auto-fill deduplica por produto. */}
         <TabsContent value="numeracao" className="mt-4">
           <SoleStandardItemsPanel soleProductId={sole.id} />
+        </TabsContent>
+
+        {/* Estes painéis vinham da rota /consumo-base. Reutilizá-los aqui mantém
+            o mesmo cadastro por solado ao consolidar a jornada em /solados. */}
+        <TabsContent value="silk" className="mt-4">
+          <SoleSilkPanel soleProductId={sole.id} soleName={soleLabel ?? sole.name} />
+        </TabsContent>
+
+        <TabsContent value="embalagem" className="mt-4">
+          <PackagingTab soleGroupId={sole.group_id} />
         </TabsContent>
       </Tabs>
     </div>

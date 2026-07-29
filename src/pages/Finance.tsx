@@ -1002,7 +1002,7 @@ export default function Finance() {
                 className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 hover:bg-muted/50 hover:text-foreground transition-colors"
               >
                 <r.icon className="h-3 w-3" />
-                <span>{r.name}</span>
+                <span>{r.label}</span>
               </Link>
             ))}
           </div>

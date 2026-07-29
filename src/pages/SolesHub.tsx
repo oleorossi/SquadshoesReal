@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -68,7 +69,12 @@ function useSoleProducts() {
 export default function SolesHub() {
   const qc = useQueryClient();
   const { data: soles = [], isLoading } = useSoleProducts();
-  const [tab, setTab] = usePersistedState<string>('soles-hub-tab', 'cadastro');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const [tab, setTab] = usePersistedState<string>(
+    'soles-hub-tab',
+    requestedTab === 'consumos' ? 'consumos' : 'cadastro',
+  );
   const [selectedId, setSelectedId] = usePersistedState<string | null>('soles-hub-selected', null);
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -135,6 +141,33 @@ export default function SolesHub() {
     selectedId ? soles.find(p => p.id === selectedId) || null : null,
     [selectedId, soles]
   );
+
+  const consumptionSole = useMemo(() => {
+    if (!selected) return null;
+    const selectedBase = cleanBase(selected.name, selected.color).toLocaleLowerCase('pt-BR');
+    const variants = soles.filter((sole) =>
+      selected.group_id
+        ? sole.group_id === selected.group_id
+        : cleanBase(sole.name, sole.color).toLocaleLowerCase('pt-BR') === selectedBase,
+    );
+    return [...variants].sort((a, b) => String(a.id).localeCompare(String(b.id)))[0] ?? selected;
+  }, [selected, soles]);
+
+  // O redirect de /consumo-base precisa abrir a aba que recebeu o conteúdo;
+  // sem sincronizar a URL o usuário cairia no Cadastro e pareceria que perdeu a tela.
+  useEffect(() => {
+    if (requestedTab === 'consumos' && tab !== 'consumos') setTab('consumos');
+  }, [requestedTab, setTab, tab]);
+
+  const handleTabChange = (nextTab: string) => {
+    setTab(nextTab);
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (nextTab === 'consumos') next.set('tab', nextTab);
+      else next.delete('tab');
+      return next;
+    }, { replace: true });
+  };
 
   // Stats agregados pra header
   const stats = useMemo(() => {
@@ -344,7 +377,7 @@ export default function SolesHub() {
                   )
                 }
               >
-                  <Tabs value={tab} onValueChange={setTab} className="w-full">
+                  <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
                     <HubTabsList tabs={[
                       { value: 'cadastro',  label: 'Cadastro',   icon: Settings2 },
                       { value: 'estoque',   label: 'Estoque',    icon: Boxes },
@@ -362,7 +395,13 @@ export default function SolesHub() {
                       <SolesEstoqueTab key={selected.id} sole={selected} />
                     </TabsContent>
                     <TabsContent value="consumos" className="mt-4">
-                      <SolesConsumosTab key={selected.id} sole={selected} />
+                      {consumptionSole && (
+                        <SolesConsumosTab
+                          key={consumptionSole.id}
+                          sole={consumptionSole}
+                          soleLabel={cleanBase(consumptionSole.name, consumptionSole.color)}
+                        />
+                      )}
                     </TabsContent>
                     <TabsContent value="historico" className="mt-4">
                       <SolesHistoricoTab key={selected.id} sole={selected} />

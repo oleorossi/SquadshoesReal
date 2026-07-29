@@ -39,27 +39,27 @@ export function auditNavigation(): NavigationIssue[] {
     for (const item of group.items) {
       const mod = resolveModuleForPath(item.path);
       if (mod === null) {
-        issues.push({ kind: 'missing-mapping', path: item.path, label: item.name, group: group.label });
+        issues.push({ kind: 'missing-mapping', path: item.path, label: item.label, group: group.label });
         continue;
       }
       if (ADMIN_ONLY_MODULES.has(mod)) {
-        issues.push({ kind: 'admin-only-in-menu', path: item.path, label: item.name, group: group.label, module: mod });
+        issues.push({ kind: 'admin-only-in-menu', path: item.path, label: item.label, group: group.label, module: mod });
       }
     }
   }
 
   // 3: systemItems devem ser admin-only (ou ausentes do mapa)
   for (const item of systemItems) {
-    const mod = resolveModuleForPath(item.to);
+    const mod = resolveModuleForPath(item.path);
     if (mod !== null && !ADMIN_ONLY_MODULES.has(mod)) {
-      issues.push({ kind: 'system-item-not-admin', path: item.to, label: item.label, module: mod });
+      issues.push({ kind: 'system-item-not-admin', path: item.path, label: item.label, module: mod });
     }
   }
 
   // 4: duplicidade entre seções
   const menuPaths = new Set(menuGroups.flatMap((g) => g.items.map((i) => i.path)));
   for (const s of systemItems) {
-    if (menuPaths.has(s.to)) issues.push({ kind: 'duplicate-cross-section', path: s.to });
+    if (menuPaths.has(s.path)) issues.push({ kind: 'duplicate-cross-section', path: s.path });
   }
 
   // 5: duplicidade dentro de menuGroups

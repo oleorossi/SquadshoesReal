@@ -221,12 +221,32 @@ function sliceExport(src, name) {
 function parseNavigation(navSrc) {
   const lineOf = (idx) => navSrc.slice(0, idx).split('\n').length;
 
-  const topBlock = sliceExport(navSrc, 'topItem');
-  const topItem = {
-    label: (topBlock.match(/name\s*:\s*["']([^"']+)["']/) || [])[1] || null,
-    path: (topBlock.match(/path\s*:\s*["']([^"']+)["']/) || [])[1] || null,
-    surface: 'topItem',
+  // L5: recursos não são mais reescritos em quatro formatos. Primeiro lemos
+  // o catálogo único; as superfícies abaixo só referenciam seus paths.
+  const catalogBlock = sliceExport(navSrc, 'navigationCatalog');
+  const catalogAbs = navSrc.indexOf(catalogBlock);
+  const resources = [];
+  const resourceRe = /\{\s*path:\s*["']([^"']+)["']\s*,\s*label:\s*["']([^"']+)["']\s*,\s*group:\s*["']([^"']+)["']\s*,\s*icon:\s*[^,]+,\s*surfaces:\s*\[([^\]]*)\]/g;
+  let resourceMatch;
+  while ((resourceMatch = resourceRe.exec(catalogBlock)) !== null) {
+    resources.push({
+      path: resourceMatch[1],
+      label: resourceMatch[2],
+      group: resourceMatch[3],
+      surfaces: [...resourceMatch[4].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]),
+      line: lineOf(catalogAbs + resourceMatch.index),
+    });
+  }
+  const resourceByPath = new Map(resources.map((item) => [item.path, item]));
+  const pathsFromRefs = (block) => [...block.matchAll(/resource\(\s*["']([^"']+)["']\s*\)/g)]
+    .map((m) => m[1]);
+  const resolveResource = (path, surface) => {
+    const item = resourceByPath.get(path);
+    return item ? { ...item, surface } : { path, label: null, group: null, surface, line: null };
   };
+
+  const topMatch = navSrc.match(/export const topItem\s*=\s*resource\(\s*["']([^"']+)["']\s*\)/);
+  const topItem = resolveResource(topMatch?.[1] || '', 'topItem');
 
   const groupsBlock = sliceExport(navSrc, 'menuGroups');
   const groupsAbs = navSrc.indexOf(groupsBlock);
@@ -242,30 +262,18 @@ function parseNavigation(navSrc) {
       else if (groupsBlock[e] === ']') { depth--; if (depth === 0) break; }
     }
     const body = groupsBlock.slice(groupRe.lastIndex, e);
-    const items = [];
-    const itemRe = /\{\s*name\s*:\s*["']([^"']+)["'][^}]*?path\s*:\s*["']([^"']+)["']/g;
-    let it;
-    while ((it = itemRe.exec(body)) !== null) {
-      items.push({
-        label: it[1],
-        path: it[2],
-        line: lineOf(groupsAbs + groupRe.lastIndex + it.index),
-      });
-    }
+    const items = pathsFromRefs(body).map((path) => resolveResource(path, 'menuGroups'));
     groups.push({ label: g[1], items, count: items.length, line: lineOf(groupsAbs + g.index) });
     groupRe.lastIndex = e;
   }
 
   const sysBlock = sliceExport(navSrc, 'systemItems');
-  const systemItems = [...sysBlock.matchAll(/to\s*:\s*["']([^"']+)["'][^}]*?label\s*:\s*["']([^"']+)["']/g)]
-    .map((m) => ({ path: m[1], label: m[2], surface: 'systemItems' }));
+  const systemItems = pathsFromRefs(sysBlock).map((path) => resolveResource(path, 'systemItems'));
 
   const secBlock = sliceExport(navSrc, 'secondaryRoutes');
-  const secondaryRoutes = [...secBlock.matchAll(
-    /name\s*:\s*["']([^"']+)["'][^}]*?path\s*:\s*["']([^"']+)["'][^}]*?group\s*:\s*["']([^"']+)["']/g,
-  )].map((m) => ({ label: m[1], path: m[2], group: m[3], surface: 'secondaryRoutes' }));
+  const secondaryRoutes = pathsFromRefs(secBlock).map((path) => resolveResource(path, 'secondaryRoutes'));
 
-  return { topItem, groups, systemItems, secondaryRoutes };
+  return { topItem, groups, systemItems, secondaryRoutes, resources };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -408,6 +416,18 @@ const EXEMPT_FROM_MENU = [
     // setor abrem com `?sector=…&ids=…`. Vira `?view=` dentro de /orders no L6.
     reason: 'Preview de impressão — depende de OPs selecionadas',
   },
+  {
+    re: /^\/pcp$/,
+    // O L4 deixou este tradutor só para bookmarks com query; ele não deve
+    // reaparecer no menu enquanto observamos os acessos restantes.
+    reason: 'Tradutor temporário de bookmarks do PCP — revisar/remover até 27/10/2026',
+  },
+  {
+    re: /^\/relatorios\/(diario-producao|op|oee|qualidade|refugo|semanal)$/,
+    // Decisão D1: os A4 ainda usam dados de exemplo e não podem ser promovidos
+    // por menu até receberem fonte real e validação do documento impresso.
+    reason: 'Relatório A4 bloqueado por D1 até dados reais e validação — revisar até 12/01/2027',
+  },
 ];
 const exemptReason = (path) => (EXEMPT_FROM_MENU.find((e) => e.re.test(path)) || {}).reason || null;
 
@@ -455,14 +475,7 @@ const menuPathsRaw = nav.groups.flatMap((g) => g.items.map((i) => i.path));
  * botão nascia sem dono e era negado em modo granular. Espelhamos a mesma
  * composição aqui pra o guard não reportar como problema o que já foi resolvido.
  */
-const grantablePaths = [
-  ...menuPathsRaw,
-  ...nav.systemItems.map((i) => i.path),
-  ...nav.secondaryRoutes.map((i) => i.path),
-  // actionDestinations — destinos abertos por ação, fora da sidebar de propósito
-  ...[...(navSrc.match(/actionDestinations[\s\S]*?\[([\s\S]*?)\]/) || [, ''])[1]
-    .matchAll(/path\s*:\s*['"]([^'"]+)['"]/g)].map((x) => x[1]),
-];
+const grantablePaths = nav.resources.map((item) => item.path);
 
 /**
  * BottomNav tem itens PRIMÁRIOS escritos à mão, fora de `navigation.ts`. Se um
@@ -577,7 +590,10 @@ const inventory = {
     screens: screens.length,
     redirects: redirects.length,
     navEntries: navEntries.length,
-    menuItems: menuPaths.length,
+    // `getAllMenuItems()` continua semântica de sidebar; destinos concedíveis
+    // incluem Cmd+K e ações e não podem inflar essa métrica visual.
+    menuItems: menuPathsRaw.length,
+    grantableDestinations: grantablePaths.length,
     menuGroups: nav.groups.length,
     pagesWithTabs: tabFiles.length,
     tabsWithoutUrl: tabFiles.filter((t) => t.urlSync === 'none').length,

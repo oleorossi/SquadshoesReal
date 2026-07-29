@@ -113,8 +113,6 @@ const ProdutividadeModelos = lazy(() => import("./pages/ProdutividadeModelos"));
 const ProntaEntrega = lazy(() => import("./pages/ProntaEntrega"));
 // /pcp/ondas é compatibilidade para a rota de Planejamento; ondas foram
 // substituídas pelo motor diário canônico.
-const BaseConsumption = lazy(() => import("./pages/BaseConsumption"));
-const StockAlerts = lazy(() => import("./pages/StockAlerts"));
 const StockReservations = lazy(() => import("./pages/StockReservations"));
 const NfePage = lazy(() => import("./pages/NfePage"));
 const SolesHub = lazy(() => import("./pages/SolesHub"));
@@ -800,12 +798,16 @@ const router = createBrowserRouter([
          element: <Silks />,
        },
       {
+        // L5: Consumos, silk e o aviso de embalagem agora usam os mesmos painéis
+        // dentro de Solados. A query abre a aba certa para não ocultar o conteúdo.
         path: "consumo-base",
-        element: <BaseConsumption />,
+        element: <LegacyRouteRedirect to="/solados?tab=consumos" />,
       },
       {
+        // L5: a aba Alertas passou a renderizar também déficits de solado por
+        // numeração a partir de useLowStockAlerts, mesma fonte da tela antiga.
         path: "alertas-estoque",
-        element: <StockAlerts />,
+        element: <LegacyRouteRedirect to="/estoque?tab=alerts" />,
       },
       {
         path: "reservas-estoque",

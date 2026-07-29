@@ -140,7 +140,7 @@ export function BottomNav() {
                         )}
                       >
                         <item.icon className="h-4 w-4" />
-                        <span className="leading-none text-center">{item.name}</span>
+                        <span className="leading-none text-center">{item.label}</span>
                       </button>
                     );
                   })}

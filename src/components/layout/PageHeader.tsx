@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { House as Home } from '@phosphor-icons/react';
-import { grantableDestinations, topItem } from '@/data/navigation';
+import { grantableDestinations } from '@/data/navigation';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -13,10 +13,7 @@ import {
 
 type BreadcrumbCrumb = { label: string; to?: string };
 
-const navigationDestinations = [
-  { path: topItem.path, label: topItem.name, group: 'Início' },
-  ...grantableDestinations,
-];
+const navigationDestinations = grantableDestinations;
 
 const destinationByPath = new Map(
   navigationDestinations.map((destination) => [destination.path, destination]),

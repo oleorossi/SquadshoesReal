@@ -1,299 +1,264 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ClockCounterClockwise as History, ListChecks, Stack as Boxes, Clock, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, ChartLine as GanttChartSquare, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Timer, Buildings, Gavel, Gauge, FolderOpen, Wrench, Scissors } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock } from '@phosphor-icons/react';
 
-// ════════════════════════════════════════════════════════════════════════
-// SQUAD SHOES — Sidebar
-// Reorganização 2026-05-08 (round-6): 53 → 32 itens visíveis (-40%)
-//
-// Princípios (referência: SAP Fiori "Spaces & Pages"):
-//   1. Sidebar = pontos de entrada por contexto de trabalho, NÃO catálogo
-//      de features. Máx 5 itens por grupo.
-//   2. Sub-features de cada área viram TABS dentro da página hub
-//      (HubTabs.tsx). Ex: Fluxo/Live/Timeline/Visão Agregada/Centro
-//      Controle ficam dentro de PCP, não na sidebar.
-//   3. Rotas continuam todas válidas — só não enchem o menu lateral.
-//      Acesso direto: URL, GlobalSearch (Cmd+K), favoritos, atalhos.
-//   4. Round-7 (futuro): role-based filtering mais agressivo — vendedor
-//      vê só Comercial+RH, operador vê só Produção, etc.
-// ════════════════════════════════════════════════════════════════════════
+/** Superfícies onde um recurso pode ser descoberto sem duplicar seu metadado. */
+export type NavigationSurface = 'sidebar' | 'command' | 'quick-action' | 'hub-shortcut';
 
-export const topItem = {
-  name: "Painel",
-  icon: LayoutDashboard,
-  path: "/dashboard",
-};
-
-export const menuGroups = [
-  {
-    label: "Etiquetas",
-    icon: Tag,
-    items: [
-      { name: "Sistema de Etiquetas", icon: Tag, path: "/label-system" },
-    ],
-  },
-  {
-    label: "Comercial",
-    icon: ShoppingCart,
-    items: [
-      { name: "Visão Geral",      icon: BarChart3,        path: "/comercial" },
-      { name: "Pedidos de Venda", icon: FileText,         path: "/sales" },
-      { name: "Pronta-Entrega",   icon: Box,              path: "/pronta-entrega" },
-      { name: "Clientes",         icon: Users,            path: "/clients" },
-      { name: "CRM",              icon: HeartHandshake,   path: "/crm" },
-      { name: "Tarefas",          icon: ListChecks,       path: "/tarefas" },
-      { name: "Tabelas de Preço", icon: DollarSign,       path: "/price-lists" },
-      { name: "Anotações",        icon: FileText,         path: "/notas" },
-    ],
-  },
-  {
-    label: "Produção",
-    icon: Factory,
-    items: [
-      // Remodelagem 2026-07-12 (specs/remodelagem-producao.md): fim do hub PCP
-      // de 14 abas — 7 itens DIRETOS, cada clique abre UMA tela clara. O motor
-      // dinâmico diário substituiu as Ondas; todas as telas leem dele.
-      { name: "Planejamento",         icon: ClipboardCheck,   path: "/producao/planejamento" },
-      { name: "Kanban",               icon: Kanban,            path: "/producao/kanban" },
-      { name: "Estouro de Produção",  icon: AlertTriangle,     path: "/producao/estouro" },
-      { name: "Setores",              icon: Factory,           path: "/producao/setores" },
-      { name: "Apontamento",          icon: ListChecks,        path: "/producao/apontamento" },
-      { name: "Imprimir Fichas",      icon: Printer,           path: "/imprimir-fichas" },
-      { name: "Análises",             icon: BarChart3,         path: "/producao/analises" },
-      // "Ordens (OPs)" saiu do menu (decisão do dono, spec R7.1: exatamente 7
-      // itens) — /orders segue vivo via links dos cards/fila e busca global.
-    ],
-  },
-  {
-    label: "Estoque",
-    icon: Package,
-    items: [
-      { name: "Estoque",            icon: Package,      path: "/estoque" },
-      { name: "Grupos",             icon: FolderOpen,   path: "/grupos" },
-      // Saíram do Estoque (2026-06-28): "MRP" (/mrp) era redirect pro Planejamento de
-      // Compras (?tab=mrp) — duplicava aquela aba e MRP é suprimentos, não estoque;
-      // "Histórico" (/estoque/historico) já é aba dentro de /estoque.
-      { name: "Ajustes",            icon: Boxes,        path: "/ajuste-estoque" },
-      { name: "Qualidade de Estoque", icon: ShieldCheck, path: "/estoque/qualidade" },
-      { name: "Inventário ABC",     icon: BarChart3,    path: "/estoque/inventario" },
-    ],
-  },
-  {
-    label: "Engenharia",
-    icon: Ruler,
-    items: [
-      { name: "Fichas Técnicas",  icon: Ruler,        path: "/fichas-tecnicas" },
-      { name: "Escalonamento",    icon: Calculator,   path: "/escalonamento" },
-      { name: "Calculadora de Tiras", icon: Scissors, path: "/calculadora-tiras" },
-      { name: "Solados",          icon: Footprints,   path: "/solados" },
-      { name: "Silks",            icon: Sparkles,     path: "/silks" },
-      // "Receitas" (/artisanal-recipes) movida pro hub Terceirizados como aba
-      // (2026-07-04, pedido do dono): a receita alimenta a produção artesanal
-      // via terceirizados. A rota antiga redireciona pra /terceirizados?tab=recipes.
-    ],
-  },
-  {
-    label: "Compras",
-    icon: ShoppingBag,
-    items: [
-      { name: "Planejamento",     icon: Calendar,        path: "/purchase-planning" },
-      // "MRP (Necessidades)" (/mrp-advanced) unificado na aba MRP do Planejamento
-      // (2026-06-28): é o MESMO motor canônico (v_mrp_needs), agora no topo da aba.
-      // A rota /mrp-advanced segue viva pra bookmarks antigos.
-      { name: "Cotações (RFQ)",   icon: FileSpreadsheet, path: "/quotations" },
-      { name: "Ordens de Compra", icon: ShoppingBag,     path: "/purchase-orders" },
-      // "Ordens de Serviço" removido da sidebar (auditoria 2026-06-28): era porta
-      // DUPLICADA pro hub /terceirizados (a rota /ordens-servico continua como
-      // redirect de bookmark em App.tsx → /terceirizados?tab=orders). A gestão de
-      // OS de terceirização vive em RH → Terceirizados.
-      { name: "Compras por Pedido", icon: ShoppingCart,  path: "/purchase-orders/per-pv" },
-      { name: "Inspeção Receb.",  icon: ClipboardCheck,  path: "/compras/inspecao" },
-      { name: "Fornecedores",     icon: Briefcase,       path: "/suppliers" },
-      { name: "Custos de Insumos", icon: DollarSign,     path: "/custos-insumos" },
-      { name: "Alçadas",          icon: Gavel,           path: "/compras/alcadas" },
-    ],
-  },
-  {
-    label: "Logística",
-    icon: Truck,
-    items: [
-      { name: "Expedição",        icon: Package,        path: "/expedicao" },
-      // Embalagens (/embalagens) exposto no menu (2026-07-04): módulo próprio de
-      // cadastro/estoque de caixas (box_types) + vínculos + débito. Era órfão
-      // (só via URL/Cmd+K). Continua sendo uma aba do hub Expedição também.
-      { name: "Embalagens",       icon: Box,            path: "/embalagens" },
-      // "Transporte" (/transporte) exposto (2026-06-28): hub de baús/embalagens/
-      // tarifas/simulador/rotas — era órfão (só alcançável por cards da Expedição).
-      { name: "Transporte",       icon: Truck,          path: "/transporte" },
-      // Picking/Conferência com nomes distintos pra deixar o FLUXO claro (são 3
-      // etapas, não duplicatas): Separação de Materiais (com seletor Semanal ×
-      // Por Pedido no próprio filtro) → Bipagem EAN (em atalhos) → Conferência.
-      { name: "Separação · Materiais", icon: ClipboardCheck, path: "/picking" },
-      { name: "Conferência · Saída", icon: ClipboardCheck, path: "/conferencia-saida" },
-      { name: "Romaneios",        icon: FileText,       path: "/manifests" },
-      { name: "Entregas",         icon: RouteIcon,      path: "/entregas" },
-      { name: "Transportadoras",  icon: Truck,          path: "/transporters" },
-    ],
-  },
-  {
-    label: "Financeiro",
-    icon: Wallet,
-    items: [
-      { name: "Financeiro",       icon: Wallet,          path: "/financeiro" },
-      // "Contas (AR/AP)" removido (2026-06-28): era só deep-link da aba "Contas" do
-      // próprio /financeiro — a aba continua lá dentro do hub.
-      { name: "Conciliação Bancária", icon: Scale,       path: "/bank-reconciliation" },
-      { name: "CNAB / Boletos",   icon: FileSpreadsheet, path: "/cnab" },
-      { name: "Markup",           icon: Calculator,      path: "/pricing-calculator" },
-    ],
-  },
-  {
-    label: "Fiscal",
-    icon: Receipt,
-    items: [
-      { name: "NF-e",     icon: Receipt,    path: "/nfe" },
-      { name: "CT-e",     icon: Truck,      path: "/cte" },
-      { name: "MDF-e",    icon: FileText,   path: "/mdfe" },
-      { name: "SPED",     icon: FileText,   path: "/sped" },
-      { name: "Impostos", icon: Calculator, path: "/apuracao-impostos" },
-    ],
-  },
-  {
-    label: "RH",
-    icon: Users,
-    items: [
-      // "Pessoas" = hub INTERNO (Funcionários/Ponto/Reconciliação/Folha em /rh).
-      // Renomeado de "Ponto & Folha" (2026-06-28, pedido do dono): o nome antigo
-      // escondia que ali mora o cadastro de Funcionários. Dois hubs distintos no
-      // setor RH — "Pessoas" (interno) e "Terceirizados" (externo) — de propósito.
-      { name: "Pessoas",            icon: Users,          path: "/rh" },
-      // "Ficha Montadores" trazida de Produção (2026-06-28): produtividade das
-      // pessoas que montam → fica no setor de gente.
-      { name: "Ficha Montadores",   icon: ClipboardCheck, path: "/fichas-montadores" },
-      // "Terceirizados" (/terceirizados) movido do grupo Produção pro RH
-      // (pedido do dono 2026-06-20) — gestão de contratadas/terceirizados é
-      // função de RH. Mantido SEPARADO de "Pessoas" (externo ≠ interno).
-      { name: "Terceirizados",      icon: Truck,          path: "/terceirizados" },
-    ],
-  },
-];
-
-// Sistema (admin) — consolidado: 8 → 4 itens. Restantes acessíveis via
-// /settings (hub) ou GlobalSearch (Cmd+K).
-export const systemItems = [
-  { to: '/settings',           icon: Settings,    label: 'Configurações' },
-  { to: '/automations',        icon: Zap,         label: 'Automações' },
-  { to: '/relatorios',         icon: BarChart3,   label: 'Relatórios' },
-  { to: '/security',           icon: ShieldCheck, label: 'Segurança & Logs' },
-];
-
-// ════════════════════════════════════════════════════════════════════════
-// SECONDARY ROUTES — não aparecem na sidebar pra não poluir, mas:
-//   - são indexadas no GlobalSearch (Cmd+K) pra busca por nome
-//   - são listadas pelas páginas hub como "Atalhos" / "Outras visualizações"
-//   - a rota continua válida e acessível por URL direta / favoritos
-// Source of truth única — evita rota-fantasma quando alguém adiciona página
-// nova mas esquece de cadastrar em algum lugar.
-// ════════════════════════════════════════════════════════════════════════
-export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; path: string; group: string }> = [
-  // Comercial
-  { name: "SAC",                  icon: MessageSquare,    path: "/sac",                    group: "Comercial" },
-  { name: "Forecast",             icon: TrendingUp,       path: "/forecast",               group: "Comercial" },
-  // Produção: os 9 itens avulsos saíram da sidebar na remodelagem 2026-07-12
-  // (R7.2) — Fluxo/Live/Timeline/Visão Agregada/Centro de Controle/Qualidade/
-  // Cronoanálise/Paradas & OEE/Tempos de Setup viraram views dentro de
-  // /producao/analises (redirects em App.tsx mantêm as URLs antigas vivas).
-  { name: "Produtividade por Modelo", icon: Gauge,   path: "/producao/produtividade", group: "Produção" },
-  { name: "Kanban · Modo Gestão", icon: Kanban,      path: "/producao/kanban/gestao", group: "Produção" },
-  // "Ordens (OPs)" continua fora da sidebar por decisão do dono, mas precisa ser
-  // encontrável e concedível para os atalhos que abrem a fila de produção.
-  { name: "Ordens de Produção", icon: ClipboardCheck, path: "/orders", group: "Produção" },
-  // Estoque
-  { name: "Reservas e Em Produção", icon: Package, path: "/reservas-estoque", group: "Estoque" },
-  // Engenharia
-  { name: "Padrões por Cor", icon: Sparkles, path: "/fichas-tecnicas/padroes", group: "Engenharia" },
-  // Logística
-  { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
-  { name: "Separação · Bipagem (EAN)", icon: ClipboardCheck, path: "/picking-sessions",   group: "Logística" },
-  { name: "Rastreamento",         icon: Activity,         path: "/delivery-tracking",      group: "Logística" },
-  // "Etiquetas" (/label-system) tem grupo próprio "Etiquetas" no topo do menu.
-  // Financeiro (visíveis na barra: Financeiro/Contas/Conciliação/CNAB/Pricing)
-  { name: "Patrimônio",           icon: Buildings,        path: "/patrimonio",             group: "Financeiro" },
-  // Fiscal (visíveis na barra: NF-e/CT-e/MDF-e/SPED/Impostos; estas ficam em Cmd+K)
-  { name: "Perfis Tributários",   icon: Receipt,          path: "/perfis-tributarios",     group: "Fiscal" },
-  { name: "SPED Bloco K",         icon: Factory,          path: "/sped/bloco-k",           group: "Fiscal" },
-  // Sistema (admin)
-  { name: "Auditoria (Logs)",     icon: FileText,         path: "/audit-logs",             group: "Sistema" },
-  { name: "LGPD",                 icon: Lock,             path: "/lgpd",                   group: "Sistema" },
-  { name: "Monitoramento",        icon: Monitor,          path: "/system-monitor",         group: "Sistema" },
-  { name: "Diagnóstico",          icon: Cpu,              path: "/system-diagnostics",     group: "Sistema" },
-  { name: "Auditoria de Unidades", icon: Scale,            path: "/unit-audit",             group: "Sistema" },
-];
-
-/** Filtra secondaryRoutes do grupo informado — usado pelas páginas hub. */
-export function getSecondaryRoutesForGroup(group: string) {
-  return secondaryRoutes.filter((r) => r.group === group);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Catálogo PLANO dos itens de menu (1 entrada por janela da sidebar). Ele segue
-// servindo só à apresentação da sidebar; permissão usa grantableDestinations
-// abaixo, porque uma tela pode ser concedível sem ocupar esse espaço visual.
-// ════════════════════════════════════════════════════════════════════════
-export interface FlatMenuItem {
+/**
+ * Recurso navegável canônico.
+ *
+ * O loader mora aqui porque path não revela com segurança qual chunk Vite deve
+ * pré-carregar; manter os dois juntos impede que hover e navegação divirjam.
+ */
+export interface NavigationResource {
   path: string;
   label: string;
   group: string;
+  icon: typeof Box;
+  surfaces: NavigationSurface[];
+  preload?: () => Promise<unknown>;
 }
 
-/** Todos os itens visíveis da sidebar (menuGroups), achatados. */
-export function getAllMenuItems(): FlatMenuItem[] {
-  return menuGroups.flatMap((g) =>
-    g.items.map((it) => ({ path: it.path, label: it.name, group: g.label })),
-  );
+export interface NavigationGroup {
+  label: string;
+  icon: typeof Box;
+  items: NavigationResource[];
 }
 
-// Rotas abertas por ações não voltam ao menu: /orders foi removida da sidebar
-// por decisão do dono, mas FAB, cards e busca ainda precisam poder concedê-la.
-export const actionDestinations: ReadonlyArray<FlatMenuItem> = [
-  { path: '/orders', label: 'Ordens de Produção', group: 'Produção' },
+// ════════════════════════════════════════════════════════════════════════
+// CATÁLOGO DE NAVEGAÇÃO
+//
+// Um recurso é descrito uma única vez. As listas abaixo só escolhem em qual
+// superfície ele aparece e, no caso da sidebar, preservam grupo e ordem.
+// ════════════════════════════════════════════════════════════════════════
+export const navigationCatalog: NavigationResource[] = [
+  // Início
+  { path: '/dashboard', label: 'Painel', group: 'Início', icon: LayoutDashboard, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Dashboard') },
+
+  // Comercial
+  { path: '/comercial', label: 'Visão Geral', group: 'Comercial', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ComercialDashboard') },
+  { path: '/sales', label: 'Pedidos de Venda', group: 'Comercial', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SaleOrders') },
+  { path: '/pronta-entrega', label: 'Pronta-Entrega', group: 'Comercial', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProntaEntrega') },
+  { path: '/clients', label: 'Clientes', group: 'Comercial', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Clients') },
+  { path: '/crm', label: 'CRM', group: 'Comercial', icon: HeartHandshake, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/CRM') },
+  { path: '/tarefas', label: 'Tarefas', group: 'Comercial', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Tarefas') },
+  { path: '/price-lists', label: 'Tabelas de Preço', group: 'Comercial', icon: DollarSign, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PriceLists') },
+  { path: '/notas', label: 'Anotações', group: 'Comercial', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Notes') },
+  { path: '/sac', label: 'SAC', group: 'Comercial', icon: MessageSquare, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/SAC') },
+  { path: '/forecast', label: 'Forecast', group: 'Comercial', icon: TrendingUp, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Forecast') },
+
+  // Engenharia
+  { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TechnicalSheets') },
+  { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },
+  { path: '/calculadora-tiras', label: 'Calculadora de Tiras', group: 'Engenharia', icon: Scissors, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/StrapCalculator') },
+  { path: '/solados', label: 'Solados', group: 'Engenharia', icon: Footprints, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SolesHub') },
+  { path: '/silks', label: 'Silks', group: 'Engenharia', icon: Sparkles, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Silks') },
+  { path: '/fichas-tecnicas/padroes', label: 'Padrões por Cor', group: 'Engenharia', icon: Sparkles, surfaces: ['command'], preload: () => import('@/pages/ColorStandards') },
+
+  // Produção
+  { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
+  { path: '/producao/kanban', label: 'Kanban', group: 'Produção', icon: Kanban, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoKanban') },
+  { path: '/producao/estouro', label: 'Estouro de Produção', group: 'Produção', icon: AlertTriangle, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
+  { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoSetoresConfig') },
+  { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Setores') },
+  { path: '/imprimir-fichas', label: 'Imprimir Fichas', group: 'Produção', icon: Printer, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
+  { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
+  { path: '/producao/produtividade', label: 'Produtividade por Modelo', group: 'Produção', icon: Gauge, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/ProdutividadeModelos') },
+  { path: '/producao/kanban/gestao', label: 'Kanban · Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['command'], preload: () => import('@/pages/ProducaoKanbanGestao') },
+  // Ordens não ocupa a sidebar por decisão do dono, mas é aberta pela FAB e
+  // por cards; o mesmo recurso governa ação rápida, busca e permissão granular.
+  { path: '/orders', label: 'Ordens de Produção', group: 'Produção', icon: ClipboardCheck, surfaces: ['command', 'quick-action'], preload: () => import('@/pages/Orders') },
+
+  // Materiais
+  { path: '/estoque', label: 'Estoque', group: 'Estoque', icon: Package, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Index') },
+  { path: '/grupos', label: 'Grupos', group: 'Estoque', icon: FolderOpen, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Groups') },
+  { path: '/ajuste-estoque', label: 'Ajustes', group: 'Estoque', icon: Boxes, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/StockAdjustmentPage') },
+  { path: '/estoque/qualidade', label: 'Qualidade de Estoque', group: 'Estoque', icon: ShieldCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/EstoqueQualidade') },
+  { path: '/estoque/inventario', label: 'Inventário ABC', group: 'Estoque', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/InventarioABC') },
+  { path: '/reservas-estoque', label: 'Reservas e Em Produção', group: 'Estoque', icon: Package, surfaces: ['command'], preload: () => import('@/pages/StockReservations') },
+
+  // Compras
+  { path: '/purchase-planning', label: 'Planejamento', group: 'Compras', icon: Calendar, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PurchasePlanning') },
+  { path: '/quotations', label: 'Cotações (RFQ)', group: 'Compras', icon: FileSpreadsheet, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Quotations') },
+  { path: '/purchase-orders', label: 'Ordens de Compra', group: 'Compras', icon: ShoppingBag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PurchaseOrders') },
+  { path: '/purchase-orders/per-pv', label: 'Compras por Pedido', group: 'Compras', icon: ShoppingCart, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PurchaseOrdersPerPv') },
+  { path: '/compras/inspecao', label: 'Inspeção Receb.', group: 'Compras', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/InspecaoRecebimento') },
+  { path: '/suppliers', label: 'Fornecedores', group: 'Compras', icon: Briefcase, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Suppliers') },
+  { path: '/custos-insumos', label: 'Custos de Insumos', group: 'Compras', icon: DollarSign, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/InputCostsPage') },
+  { path: '/compras/alcadas', label: 'Alçadas', group: 'Compras', icon: Gavel, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/AlcadasCompras') },
+
+  // Logística
+  { path: '/expedicao', label: 'Expedição', group: 'Logística', icon: Package, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ExpedicaoHub') },
+  // Etiquetas pertence à expedição no controle de acesso; agrupá-la aqui evita
+  // um grupo de um item que quebra a leitura do fluxo da fábrica.
+  { path: '/label-system', label: 'Sistema de Etiquetas', group: 'Logística', icon: Tag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/LabelSystem') },
+  { path: '/embalagens', label: 'Embalagens', group: 'Logística', icon: Box, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PackagingManagement') },
+  { path: '/transporte', label: 'Transporte', group: 'Logística', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Transport') },
+  { path: '/picking', label: 'Separação · Materiais', group: 'Logística', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PickingListPage') },
+  { path: '/conferencia-saida', label: 'Conferência · Saída', group: 'Logística', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/OrderPickingPage') },
+  { path: '/manifests', label: 'Romaneios', group: 'Logística', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Manifests') },
+  { path: '/entregas', label: 'Entregas', group: 'Logística', icon: RouteIcon, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/OwnDeliveriesPage') },
+  { path: '/transporters', label: 'Transportadoras', group: 'Logística', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Transporters') },
+  { path: '/picking-sessions', label: 'Separação · Bipagem (EAN)', group: 'Logística', icon: ClipboardCheck, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Picking') },
+  { path: '/delivery-tracking', label: 'Rastreamento', group: 'Logística', icon: Activity, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/DeliveryTracking') },
+
+  // Financeiro e obrigações
+  { path: '/financeiro', label: 'Financeiro', group: 'Financeiro', icon: Wallet, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Finance') },
+  { path: '/bank-reconciliation', label: 'Conciliação Bancária', group: 'Financeiro', icon: Scale, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/BankReconciliation') },
+  { path: '/cnab', label: 'CNAB / Boletos', group: 'Financeiro', icon: FileSpreadsheet, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/CNAB') },
+  { path: '/pricing-calculator', label: 'Markup', group: 'Financeiro', icon: Calculator, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PricingCalculator') },
+  { path: '/patrimonio', label: 'Patrimônio', group: 'Financeiro', icon: Buildings, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Patrimonio') },
+  { path: '/nfe', label: 'NF-e', group: 'Fiscal', icon: Receipt, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/NfePage') },
+  { path: '/cte', label: 'CT-e', group: 'Fiscal', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/CTe') },
+  { path: '/mdfe', label: 'MDF-e', group: 'Fiscal', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/MDFe') },
+  { path: '/sped', label: 'SPED', group: 'Fiscal', icon: FileText, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/SPED') },
+  { path: '/apuracao-impostos', label: 'Impostos', group: 'Fiscal', icon: Calculator, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/ApuracaoImpostos') },
+  { path: '/perfis-tributarios', label: 'Perfis Tributários', group: 'Fiscal', icon: Receipt, surfaces: ['command'], preload: () => import('@/pages/PerfisTributarios') },
+  { path: '/sped/bloco-k', label: 'SPED Bloco K', group: 'Fiscal', icon: Factory, surfaces: ['command'], preload: () => import('@/pages/BlocoK') },
+
+  // Pessoas
+  { path: '/rh', label: 'Pessoas', group: 'RH', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RHHub') },
+  { path: '/fichas-montadores', label: 'Ficha Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
+  { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
+  // Esta fila tem filtros, sugestões por padrão e aplicação em lote; não é a
+  // mesma revisão manual embutida no Ponto do RH, então permanece no Cmd+K.
+  { path: '/rh/pendencias-ponto', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['command'], preload: () => import('@/pages/TimePendings') },
+
+  // Sistema (admin)
+  { path: '/settings', label: 'Configurações', group: 'Sistema', icon: Settings, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Settings') },
+  { path: '/automations', label: 'Automações', group: 'Sistema', icon: Zap, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Automations') },
+  { path: '/relatorios', label: 'Relatórios', group: 'Sistema', icon: BarChart3, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RelatoriosHub') },
+  { path: '/security', label: 'Segurança & Logs', group: 'Sistema', icon: ShieldCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Security') },
+  // Analytics tem filtros, gráficos e exportação próprios. Não o fundimos ao
+  // hub A4 em homologação para não publicar aqueles documentos por associação.
+  { path: '/reports', label: 'Analytics & Relatórios', group: 'Sistema', icon: BarChart3, surfaces: ['command'], preload: () => import('@/pages/Reports') },
+  { path: '/cost-policies', label: 'Políticas de Custo', group: 'Sistema', icon: Settings, surfaces: ['command'], preload: () => import('@/pages/CostPolicies') },
+  { path: '/audit-logs', label: 'Auditoria (Logs)', group: 'Sistema', icon: FileText, surfaces: ['command'], preload: () => import('@/pages/AuditLogs') },
+  { path: '/lgpd', label: 'LGPD', group: 'Sistema', icon: Lock, surfaces: ['command'], preload: () => import('@/pages/LGPD') },
+  { path: '/system-monitor', label: 'Monitoramento', group: 'Sistema', icon: Monitor, surfaces: ['command'], preload: () => import('@/pages/SystemMonitor') },
+  { path: '/system-diagnostics', label: 'Diagnóstico', group: 'Sistema', icon: Cpu, surfaces: ['command'], preload: () => import('@/pages/SystemDiagnostics') },
+  { path: '/unit-audit', label: 'Auditoria de Unidades', group: 'Sistema', icon: Scale, surfaces: ['command'], preload: () => import('@/pages/UnitAudit') },
 ];
 
-// Fonte única dos destinos concedíveis. Inclui as superfícies de navegação sem
-// transformar rotas secundárias em itens da sidebar; isso evita que Cmd+K ou
-// uma ação ofereçam uma tela que a allow-list granular não consegue autorizar.
-const grantableDestinationSources: FlatMenuItem[] = [
-  ...getAllMenuItems(),
-  ...systemItems.map((item) => ({ path: item.to, label: item.label, group: 'Sistema' })),
-  ...secondaryRoutes.map((item) => ({ path: item.path, label: item.name, group: item.group })),
-  ...actionDestinations,
+const resourcesByPath = new Map(navigationCatalog.map((resource) => [resource.path, resource]));
+
+function resource(path: string): NavigationResource {
+  const item = resourcesByPath.get(path);
+  if (!item) throw new Error(`Recurso de navegação ausente: ${path}`);
+  return item;
+}
+
+/** Obtém o loader e metadados de um destino sem deduzir arquivo pelo path. */
+export function getNavigationResource(path: string): NavigationResource | undefined {
+  return resourcesByPath.get(path);
+}
+
+/** Atalho fixo no topo da sidebar. É o mesmo formato dos outros recursos. */
+export const topItem = resource('/dashboard');
+
+/**
+ * Fonte de desenho da sidebar: preserva agrupamento e ordem deliberada do
+ * fluxo fábrica (vender → projetar → produzir → materiais → comprar → expedir
+ * → dinheiro → obrigações → pessoas), sem transformar a navegação numa lista.
+ */
+export const menuGroups: NavigationGroup[] = [
+  {
+    label: 'Comercial', icon: ShoppingCart,
+    items: [resource('/comercial'), resource('/sales'), resource('/pronta-entrega'), resource('/clients'), resource('/crm'), resource('/tarefas'), resource('/price-lists'), resource('/notas')],
+  },
+  {
+    label: 'Engenharia', icon: Ruler,
+    items: [resource('/fichas-tecnicas'), resource('/escalonamento'), resource('/calculadora-tiras'), resource('/solados'), resource('/silks')],
+  },
+  {
+    label: 'Produção', icon: Factory,
+    items: [resource('/producao/planejamento'), resource('/producao/kanban'), resource('/producao/estouro'), resource('/producao/setores'), resource('/producao/apontamento'), resource('/imprimir-fichas'), resource('/producao/analises')],
+  },
+  {
+    label: 'Estoque', icon: Package,
+    items: [resource('/estoque'), resource('/grupos'), resource('/ajuste-estoque'), resource('/estoque/qualidade'), resource('/estoque/inventario')],
+  },
+  {
+    label: 'Compras', icon: ShoppingBag,
+    items: [resource('/purchase-planning'), resource('/quotations'), resource('/purchase-orders'), resource('/purchase-orders/per-pv'), resource('/compras/inspecao'), resource('/suppliers'), resource('/custos-insumos'), resource('/compras/alcadas')],
+  },
+  {
+    label: 'Logística', icon: Truck,
+    items: [resource('/expedicao'), resource('/label-system'), resource('/embalagens'), resource('/transporte'), resource('/picking'), resource('/conferencia-saida'), resource('/manifests'), resource('/entregas'), resource('/transporters')],
+  },
+  {
+    label: 'Financeiro', icon: Wallet,
+    items: [resource('/financeiro'), resource('/bank-reconciliation'), resource('/cnab'), resource('/pricing-calculator')],
+  },
+  {
+    label: 'Fiscal', icon: Receipt,
+    items: [resource('/nfe'), resource('/cte'), resource('/mdfe'), resource('/sped'), resource('/apuracao-impostos')],
+  },
+  {
+    label: 'RH', icon: Users,
+    items: [resource('/rh'), resource('/fichas-montadores'), resource('/terceirizados')],
+  },
 ];
 
-export const grantableDestinations: ReadonlyArray<FlatMenuItem> = Array.from(
-  new Map(grantableDestinationSources.map((item) => [item.path, item])).values(),
+/** Itens da seção admin da sidebar; continuam recursos idênticos aos demais. */
+export const systemItems: NavigationResource[] = [
+  resource('/settings'),
+  resource('/automations'),
+  resource('/relatorios'),
+  resource('/security'),
+];
+
+/** Destinos de Cmd+K e atalhos dos hubs que não ocupam a sidebar. */
+export const secondaryRoutes: NavigationResource[] = [
+  resource('/sac'),
+  resource('/forecast'),
+  resource('/producao/produtividade'),
+  resource('/producao/kanban/gestao'),
+  resource('/orders'),
+  resource('/reservas-estoque'),
+  resource('/fichas-tecnicas/padroes'),
+  resource('/picking-sessions'),
+  resource('/delivery-tracking'),
+  resource('/patrimonio'),
+  resource('/perfis-tributarios'),
+  resource('/sped/bloco-k'),
+  resource('/rh/pendencias-ponto'),
+  resource('/reports'),
+  resource('/cost-policies'),
+  resource('/audit-logs'),
+  resource('/lgpd'),
+  resource('/system-monitor'),
+  resource('/system-diagnostics'),
+  resource('/unit-audit'),
+];
+
+/** Filtra os atalhos de um hub sem promover a rota para a sidebar. */
+export function getSecondaryRoutesForGroup(group: string): NavigationResource[] {
+  return secondaryRoutes.filter((route) => route.group === group);
+}
+
+/** Todos os itens visíveis nos grupos da sidebar, achatados para favoritos. */
+export function getAllMenuItems(): NavigationResource[] {
+  return menuGroups.flatMap((group) => group.items);
+}
+
+/** Compatibilidade para consumidores que distinguem ação rápida da busca. */
+export const actionDestinations: NavigationResource[] = navigationCatalog.filter((item) =>
+  item.surfaces.includes('quick-action'),
+);
+
+/**
+ * Fonte única dos destinos concedíveis. O catálogo já é único por path, então
+ * não há mais uma montagem manual que possa divergir das superfícies visuais.
+ */
+export const grantableDestinations: NavigationResource[] = navigationCatalog.filter((item) =>
+  item.surfaces.length > 0,
 );
 
 /** Destinos concedíveis agrupados para a matriz de permissões. */
-export function getMenuItemsGrouped(): Record<string, FlatMenuItem[]> {
-  const out: Record<string, FlatMenuItem[]> = {};
+export function getMenuItemsGrouped(): Record<string, NavigationResource[]> {
+  const out: Record<string, NavigationResource[]> = {};
   for (const item of grantableDestinations) {
     (out[item.group] ??= []).push(item);
   }
   return out;
 }
-
-// ════════════════════════════════════════════════════════════════════════
-// Sub-features movidas para TABS internas (rotas continuam ativas):
-//   Comercial: /sac /forecast → tabs em /sales ou hub Comercial
-//   Produção:  /producao/fluxo /producao/live /producao/timeline
-//              /producao/visao-agregada /centro-controle
-//              /imprimir-fichas /picking → tabs dentro de /pcp
-//   Logística: /embalagens /picking-sessions /delivery-tracking
-//              → tabs dentro de /expedicao
-//              (/label-system tem grupo próprio "Etiquetas" no topo)
-//   Financeiro: /pricing-calculator /cte /mdfe /cnab → tabs dentro
-//               de /financeiro
-//   Sistema:    /audit-logs /lgpd /system-monitor /system-diagnostics
-//               → tabs dentro de /security (e/ou /settings)
-//
-// Round-5 já tinha removido: /comercial /producao /alertas-estoque
-//   /reservas-estoque /consumo-base /transporte
-// ════════════════════════════════════════════════════════════════════════

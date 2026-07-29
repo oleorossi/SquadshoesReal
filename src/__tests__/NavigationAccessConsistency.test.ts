@@ -21,7 +21,7 @@
  *    etc. (verificado indiretamente pela regra 2.)
  */
 import { describe, it, expect } from 'vitest';
-import { getAllMenuItems, grantableDestinations, menuGroups, secondaryRoutes, systemItems, topItem } from '@/data/navigation';
+import { getAllMenuItems, grantableDestinations, menuGroups, navigationCatalog, secondaryRoutes, systemItems, topItem } from '@/data/navigation';
 import { ROUTE_MODULE_MAP } from '@/hooks/useAccessControl';
 
 const ADMIN_ONLY_MODULES = new Set(['sistema', 'financeiro_admin']);
@@ -40,6 +40,18 @@ function resolveModuleForPath(path: string): string | null {
 }
 
 describe('Navigation ↔ Access Control consistency', () => {
+  it('mantém um catálogo único com loader para cada destino concedível', () => {
+    expect(new Set(navigationCatalog.map((item) => item.path)).size).toBe(navigationCatalog.length);
+    expect(grantableDestinations).toEqual(navigationCatalog);
+
+    for (const item of navigationCatalog) {
+      expect(item.label).not.toHaveLength(0);
+      expect(item.group).not.toHaveLength(0);
+      expect(item.surfaces.length).toBeGreaterThan(0);
+      expect(typeof item.preload).toBe('function');
+    }
+  });
+
   it('topItem deve ter rota mapeada (ou ser dashboard, que é livre)', () => {
     const mod = resolveModuleForPath(topItem.path);
     // Dashboard pode ficar fora do mapa (acesso livre a usuários autenticados).
@@ -50,21 +62,21 @@ describe('Navigation ↔ Access Control consistency', () => {
     for (const group of menuGroups) {
       describe(`Grupo: ${group.label}`, () => {
         for (const item of group.items) {
-          it(`"${item.name}" (${item.path}) deve ter mapeamento de módulo`, () => {
+          it(`"${item.label}" (${item.path}) deve ter mapeamento de módulo`, () => {
             const mod = resolveModuleForPath(item.path);
             expect(
               mod,
-              `Rota "${item.path}" do item "${item.name}" não está em ROUTE_MODULE_MAP. ` +
+              `Rota "${item.path}" do item "${item.label}" não está em ROUTE_MODULE_MAP. ` +
                 `Adicione uma entrada em useAccessControl.ts para que perfis não-admin possam acessá-la.`,
             ).not.toBeNull();
           });
 
-          it(`"${item.name}" (${item.path}) NÃO pode estar em módulo admin-only`, () => {
+          it(`"${item.label}" (${item.path}) NÃO pode estar em módulo admin-only`, () => {
             const mod = resolveModuleForPath(item.path);
             if (mod === null) return; // já validado acima
             expect(
               ADMIN_ONLY_MODULES.has(mod),
-              `Rota "${item.path}" do item "${item.name}" está mapeada para o módulo "${mod}", ` +
+              `Rota "${item.path}" do item "${item.label}" está mapeada para o módulo "${mod}", ` +
                 `que é admin-only. Itens em menuGroups devem usar módulos acessíveis a outros perfis. ` +
                 `Mova o item para systemItems ou reclassifique a rota em ROUTE_MODULE_MAP.`,
             ).toBe(false);
@@ -76,14 +88,14 @@ describe('Navigation ↔ Access Control consistency', () => {
 
   describe('systemItems (seção Sistema — admin-only)', () => {
     for (const item of systemItems) {
-      it(`"${item.label}" (${item.to}) deve ser admin-only ou livre`, () => {
-        const mod = resolveModuleForPath(item.to);
+      it(`"${item.label}" (${item.path}) deve ser admin-only ou livre`, () => {
+        const mod = resolveModuleForPath(item.path);
         // Aceita: módulo admin-only OU ausente do mapa (allow-all = admin é
         // o único que vê na sidebar, então fica coerente).
         if (mod === null) return;
         expect(
           ADMIN_ONLY_MODULES.has(mod),
-          `Rota "${item.to}" do item de Sistema "${item.label}" está mapeada para "${mod}", ` +
+          `Rota "${item.path}" do item de Sistema "${item.label}" está mapeada para "${mod}", ` +
             `que NÃO é admin-only. Como systemItems só é renderizado para admins, isso esconde ` +
             `funcionalidade de outros perfis que poderiam usá-la. Mova o item para menuGroups ` +
             `ou ajuste o módulo em ROUTE_MODULE_MAP.`,
@@ -94,10 +106,10 @@ describe('Navigation ↔ Access Control consistency', () => {
 
   it('Não pode haver duplicidade de rota entre menuGroups e systemItems', () => {
     const menuPaths = new Set(menuGroups.flatMap((g) => g.items.map((i) => i.path)));
-    const duplicates = systemItems.filter((s) => menuPaths.has(s.to));
+    const duplicates = systemItems.filter((s) => menuPaths.has(s.path));
     expect(
       duplicates.length,
-      `Rotas duplicadas entre menuGroups e systemItems: ${duplicates.map((d) => d.to).join(', ')}. ` +
+      `Rotas duplicadas entre menuGroups e systemItems: ${duplicates.map((d) => d.path).join(', ')}. ` +
         `Cada rota deve aparecer em apenas um lugar para evitar confusão visual.`,
     ).toBe(0);
   });
@@ -122,6 +134,7 @@ describe('Navigation ↔ Access Control consistency', () => {
     const sac = secondaryRoutes.find((route) => route.path === '/sac');
     expect(sac).toBeDefined();
     expect(sidebarPaths.has(sac!.path), '/sac não deve virar item da sidebar').toBe(false);
+    expect(secondaryRoutes.some((route) => route.path === '/embalagens')).toBe(false);
   });
 
   it('expõe todo destino concedível com rótulo, grupo e módulo', () => {

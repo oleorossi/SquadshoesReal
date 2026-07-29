@@ -44,24 +44,23 @@ const Context = createContext<TabsCtx | null>(null);
 const STORAGE_KEY = 'in-app-tabs-v1';
 const MAX_TABS = 6;
 
-// Mapa path → label, construído da navegação canônica.
-// menuGroups usa { path, name }; systemItems usa { to, label } — normalizamos.
+// Mapa path → label, construído do único formato de recurso canônico.
 function buildPathTitleMap(): Map<string, string> {
   const map = new Map<string, string>();
-  map.set(topItem.path, topItem.name);
+  map.set(topItem.path, topItem.label);
   for (const g of menuGroups) {
     for (const it of g.items) {
-      map.set(it.path, it.name);
+      map.set(it.path, it.label);
     }
   }
   for (const it of systemItems) {
-    map.set(it.to, it.label);
+    map.set(it.path, it.label);
   }
   // Rotas secundárias (não estão na sidebar, mas têm título canônico em
   // navigation.ts). Sem isto, abrir /centro-controle, /cronoanalise, etc. caía
   // no fallback feio derivado do path ("Centro controle", minúscula sem "de").
   for (const r of secondaryRoutes) {
-    if (!map.has(r.path)) map.set(r.path, r.name);
+    if (!map.has(r.path)) map.set(r.path, r.label);
   }
   // Aliases para rotas extras que aparecem no app mas não no menu principal —
   // evita que o fallback gere títulos em inglês como "Stock" ou

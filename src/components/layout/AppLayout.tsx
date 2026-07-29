@@ -422,7 +422,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   </NavLink>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
-                  {topItem.name}
+                  {topItem.label}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -434,7 +434,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <topItem.icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{topItem.name}</span>
+                  <span className="truncate">{topItem.label}</span>
                 </div>
               </NavLink>
             </div>
@@ -540,14 +540,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   {groupItems.map((item) => {
                     const isFavorite = favorites.some(f => f.path === item.path);
                     return (
-                      <Tooltip key={item.name} delayDuration={0}>
+                      <Tooltip key={item.path} delayDuration={0}>
                         <TooltipTrigger asChild>
                           <NavLink to={item.path} className={({ isActive }) => collapsedItemClass(isActive)}>
                             <item.icon className="h-4 w-4 shrink-0" />
                           </NavLink>
                         </TooltipTrigger>
                         <TooltipContent side="right" sideOffset={8} className="text-xs font-medium flex items-center gap-2">
-                          <span>{item.name}</span>
+                          <span>{item.label}</span>
                           {isFavorite && <Star className="h-3 w-3 fill-primary text-primary" />}
                         </TooltipContent>
                       </Tooltip>
@@ -560,9 +560,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
               {filteredSystemItems.length > 0 && (
                 <div className="pt-2 border-t border-sidebar-border/40">
                   {filteredSystemItems.map((item) => (
-                    <Tooltip key={item.to} delayDuration={0}>
+                    <Tooltip key={item.path} delayDuration={0}>
                       <TooltipTrigger asChild>
-                        <NavLink to={item.to} className={({ isActive }) => collapsedItemClass(isActive)}>
+                        <NavLink to={item.path} className={({ isActive }) => collapsedItemClass(isActive)}>
                           <item.icon className="h-4 w-4 shrink-0" />
                         </NavLink>
                       </TooltipTrigger>
@@ -621,7 +621,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                           const isSubItem = !!(item as any).parent;
                           return (
                             <NavLink
-                              key={item.name}
+                              key={item.path}
                               to={item.path}
                               draggable={!mobile}
                               onDragStart={!mobile ? handleItemDragStart(group.label, item.path) : undefined}
@@ -637,10 +637,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <item.icon className={cn("shrink-0", isSubItem ? "h-3.5 w-3.5" : "h-4 w-4")} />
-                                <span className={cn("truncate", isSubItem && "text-sm")}>{item.name}</span>
+                                <span className={cn("truncate", isSubItem && "text-sm")}>{item.label}</span>
                               </div>
                               <button
-                                onClick={(e) => toggleFavorite(e, item.name, item.path)}
+                                onClick={(e) => toggleFavorite(e, item.label, item.path)}
                                 className={cn(
                                   // Estrela de adicionar/remover favorito. Não-favorito
                                   // ficava em opacity-40 (quase invisível, "fácil de não
@@ -651,7 +651,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                                     ? "opacity-100 text-primary"
                                     : "opacity-70 hover:opacity-100 text-sidebar-muted hover:text-primary"
                                 )}
-                                aria-label={isFavorite ? `Remover ${item.name} dos favoritos` : `Adicionar ${item.name} aos favoritos`}
+                                aria-label={isFavorite ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`}
                               >
                                 <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
                               </button>
@@ -690,11 +690,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <p className="px-3 py-1 ed-eyebrow text-sidebar-muted">Sistema</p>
                   {filteredSystemItems.map((item) => (
                     <NavLink
-                      key={item.to}
-                      to={item.to}
-                      onMouseEnter={() => prefetch(item.to)}
+                      key={item.path}
+                      to={item.path}
+                      onMouseEnter={() => prefetch(item.path)}
                       onMouseLeave={cancelPrefetch}
-                      onFocus={() => prefetch(item.to)}
+                      onFocus={() => prefetch(item.path)}
                       className={({ isActive }) => navItemClass(isActive)}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -788,7 +788,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         {filteredSystemItems.map((item) => (
-          <DropdownMenuItem key={item.to} onClick={() => navigate(item.to)} className="gap-2 cursor-pointer">
+          <DropdownMenuItem key={item.path} onClick={() => navigate(item.path)} className="gap-2 cursor-pointer">
             <item.icon className="h-4 w-4" />
             <span>{item.label}</span>
           </DropdownMenuItem>

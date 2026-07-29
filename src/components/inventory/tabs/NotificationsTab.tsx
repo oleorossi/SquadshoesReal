@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { apiService } from '@/lib/apiService';
 import { useProducts } from '@/hooks/useProducts';
+import { SoleSizeStockAlertsPanel } from './SoleSizeStockAlertsPanel';
 
 export function NotificationsTab() {
   const { data: products = [] } = useProducts();
@@ -111,6 +112,8 @@ export function NotificationsTab() {
           </CardContent>
         </Card>
       )}
+
+      <SoleSizeStockAlertsPanel />
     </div>
   );
 }

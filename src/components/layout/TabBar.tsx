@@ -25,7 +25,7 @@ const PATH_ICON_MAP: Map<string, IconType> = (() => {
   const m = new Map<string, IconType>();
   m.set(topItem.path, topItem.icon as IconType);
   for (const g of menuGroups) for (const it of g.items) m.set(it.path, it.icon as IconType);
-  for (const it of systemItems) m.set(it.to, it.icon as IconType);
+  for (const it of systemItems) m.set(it.path, it.icon as IconType);
   for (const r of secondaryRoutes) m.set(r.path, r.icon as IconType);
   return m;
 })();

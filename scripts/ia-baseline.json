@@ -2,26 +2,11 @@
   "_comentario": "Dívida de arquitetura de informação congelada. O build falha só em violação NOVA. Cada lote de correção deve DIMINUIR estas listas — regrave com --update-baseline. Quando tudo zerar, apague este arquivo: o guard vira falha dura sozinho.",
   "_atualizadoEm": "2026-07-29",
   "checks": {
-    "orphan-route": [
-      "/alertas-estoque",
-      "/consumo-base",
-      "/cost-policies",
-      "/pcp",
-      "/relatorios/diario-producao",
-      "/relatorios/oee",
-      "/relatorios/op",
-      "/relatorios/qualidade",
-      "/relatorios/refugo",
-      "/relatorios/semanal",
-      "/reports",
-      "/rh/pendencias-ponto"
-    ],
+    "orphan-route": [],
     "ghost-nav-entry": [],
     "nav-points-at-redirect": [],
     "bottomnav-without-owner": [],
-    "duplicate-nav-path": [
-      "/embalagens"
-    ],
+    "duplicate-nav-path": [],
     "duplicate-route-def": [],
     "module-granted-to-nobody": [
       "reports"
@@ -33,6 +18,6 @@
     "Comercial": 8,
     "Produção": 7,
     "Compras": 8,
-    "Logística": 8
+    "Logística": 9
   }
 }
