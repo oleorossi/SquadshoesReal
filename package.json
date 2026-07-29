@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/check-vercelignore.mjs && vite build && node scripts/verify-no-branding.mjs && node scripts/check-navigation-access.mjs",
+    "build": "node scripts/check-vercelignore.mjs && vite build && node scripts/verify-no-branding.mjs && node scripts/check-navigation-access.mjs && bash scripts/check-design-tokens.sh",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "check:tokens": "bash scripts/check-design-tokens.sh",

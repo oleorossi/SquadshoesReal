@@ -1,0 +1,68 @@
+{
+  "_comentario": "Dívida de arquitetura de informação congelada. O build falha só em violação NOVA. Cada lote de correção deve DIMINUIR estas listas — regrave com --update-baseline. Quando tudo zerar, apague este arquivo: o guard vira falha dura sozinho.",
+  "_atualizadoEm": "2026-07-29",
+  "checks": {
+    "orphan-route": [
+      "/alertas-estoque",
+      "/consumo-base",
+      "/cost-policies",
+      "/estoque/historico",
+      "/fichas-tecnicas/padroes",
+      "/modules/quality",
+      "/modules/reports",
+      "/mrp-advanced",
+      "/orders",
+      "/orders/grouped-summary",
+      "/orders/summary",
+      "/pcp",
+      "/producao/kanban/gestao",
+      "/relatorios/diario-producao",
+      "/relatorios/oee",
+      "/relatorios/op",
+      "/relatorios/qualidade",
+      "/relatorios/refugo",
+      "/relatorios/semanal",
+      "/reports",
+      "/reservas-estoque",
+      "/rh/ausencias",
+      "/rh/pendencias-ponto",
+      "/sales/consumo",
+      "/unit-audit"
+    ],
+    "ghost-nav-entry": [],
+    "nav-points-at-redirect": [],
+    "bottomnav-without-owner": [
+      "/pcp"
+    ],
+    "duplicate-nav-path": [
+      "/embalagens"
+    ],
+    "duplicate-route-def": [
+      "/inventory",
+      "/technical-sheets"
+    ],
+    "module-granted-to-nobody": [
+      "reports"
+    ],
+    "nav-without-menu-owner": [
+      "/audit-logs",
+      "/dashboard",
+      "/delivery-tracking",
+      "/forecast",
+      "/lgpd",
+      "/patrimonio",
+      "/perfis-tributarios",
+      "/picking-sessions",
+      "/producao/produtividade",
+      "/sac",
+      "/system-diagnostics",
+      "/system-monitor"
+    ]
+  },
+  "groupOverflow": {
+    "Comercial": 8,
+    "Produção": 7,
+    "Compras": 8,
+    "Logística": 8
+  }
+}

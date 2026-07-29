@@ -558,6 +558,15 @@ const inventory = {
   tabs: tabFiles,
 };
 
+/** Exportado pra `check-navigation-access.mjs` cobrar os mesmos achados no CI. */
+export default inventory;
+export { inventory };
+
+// Daqui pra baixo só roda quando invocado direto — importar não deve escrever
+// arquivo nem imprimir nada.
+const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isCli) {
+
 const outArg = process.argv.indexOf('--out');
 const outFile = outArg > -1 ? process.argv[outArg + 1] : p('docs/ia-inventory.json');
 writeFileSync(outFile, JSON.stringify(inventory, null, 2));
@@ -587,3 +596,5 @@ if (process.argv.includes('--json')) {
   console.log(`    sem dono de menu (granular) . ${f.navWithoutMenuOwner.length}`);
   console.log(`\n  → ${relative(ROOT, outFile)}\n`);
 }
+
+} // fim do bloco CLI
