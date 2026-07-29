@@ -58,6 +58,8 @@ o que ele deixou de fora e como está agrupado.
 | **T4** | **Mapas paralelos que derivam.** `PageHeader.routeLabels`/`parentGroups`, `usePrefetchRoute`, `BottomNav.PRIMARY_ITEMS` e `ROUTE_MODULE_MAP` são listas mantidas à mão em paralelo a `navigation.ts`. Todas já divergiram. | 🟠 Alto | S2 |
 | **T5** | **Aliases sem política.** 72 redirects acumulados, 22 deles passando por um hub morto (`/pcp`) e sofrendo salto duplo. Sem prazo, sem registro de qual é bookmark real. | 🟡 Médio | S1 |
 | **T6** | **Padrão que existe e não foi adotado.** `HubTabsList` foi criado explicitamente para padronizar as abas e é usado por 2 arquivos; 7 páginas reimplementaram o mesmo visual à mão. E o próprio `HubTabsList` está com bug (ver F6). | 🟡 Médio | S3 |
+| **T7** | **Componente de navegação feito à mão perde a semântica.** Toda barra montada com `<button>` cru fica sem `role="tab"`, `aria-selected` e setas — inclusive a maior do sistema (16 itens). Somam-se dois modais artesanais sem prisão de foco e um `<button>` dentro de `<a>` na sidebar. Onde o projeto usou Radix (`TabBar`, `NavLink`, skip-link), está correto. | 🟠 Alto | S5 |
+| **T8** | **Os guards de qualidade não guardam.** `check:tokens` termina em `exit 0` por decisão explícita e não detecta as três formas que as violações reais assumem; `check-navigation-access.mjs` valida uma única invariante; `navigationAudit.ts` reporta zero. Nenhum dos 18 achados deste laudo seria pego por eles. | 🟠 Alto | S5, Fase 0 |
 
 ---
 
@@ -125,10 +127,10 @@ todo dia.
 | # | Achado | Severidade | Onde |
 |---|---|---|---|
 | **F1** | **A aba "PCP" some do celular.** `BottomNav.PRIMARY_ITEMS` aponta para `/pcp`, que não é item de menu → `resolveMenuOwner` não acha dono → `canAccessRoute` nega em modo granular. Além disso `/pcp` é redirect, então mesmo funcionando abre outra tela e deixa a barra sem item ativo. | 🔴 Crítico | `BottomNav.tsx:9-14` · `useAccessControl.ts:240-262` |
-| **F2** | **Os 6 relatórios A4 são admin-only sem ninguém saber.** O módulo `reports` está em `ROUTE_MODULE_MAP` mas **nenhum perfil o lista** em `ROLE_MODULES`. Há comentário no código afirmando que gerente tem acesso — é falso. | 🔴 Crítico | `useAccessControl.ts:78-92` × `:177-214` |
+| **F2** | **Os 6 relatórios A4 são admin-only sem ninguém saber — com trava dupla.** O módulo `reports` está em `ROUTE_MODULE_MAP` mas **nenhum perfil o lista** em `ROLE_MODULES` (gerente/comercial/consulta têm `relatorios`, chave diferente). Há comentário no código afirmando que gerente tem acesso — é falso. Some-se a isso: o hub `/relatorios` é classificado como módulo **`sistema`**, e `systemItems` só renderiza para admin. Ou seja, a porta e as salas estão trancadas separadamente. | 🔴 Crítico | `useAccessControl.ts:78-92, 84` × `:177-214` · `AppLayout.tsx:169` |
 | **F3** | **O botão "Ordem de Produção" leva a uma parede.** `/orders` saiu da sidebar mas continua sendo destino do FAB (`AppLayout.tsx:51`) e dos cards do Dashboard (`Dashboard.tsx:187`). Sem item de menu, não há dono. | 🔴 Crítico | `App.tsx:766` |
 | **F4** | **As 12 rotas de Cmd+K não abrem em modo granular.** `secondaryRoutes` não entra em `getAllMenuItems()`, então nenhuma tem dono. SAC, Forecast, Produtividade, Bipagem EAN, Rastreamento, Patrimônio, Perfis Tributários e as 4 de Sistema aparecem na busca e negam no clique. | 🟠 Alto | `navigation.ts:196-220` · `useAccessControl.ts:242` |
-| **F5** | **A busca global mostra telas que o usuário não pode abrir.** As consultas de entidade e as ações rápidas passam por `canAccessRoute`; os resultados de "Páginas" e a lista do estado vazio, não. | 🟠 Alto | `GlobalSearch.tsx:508-519, 705-717, 848-861` |
+| **F5** | **A busca global vaza mais do que parecia.** Os resultados de "Páginas" e a lista do estado vazio não passam por `canAccessRoute` — um almoxarife descobre pelo nome que existem Alçadas, Financeiro, Auditoria, LGPD e Diagnóstico. **E a premissa de que "as entidades são filtradas" é falsa:** só OC, OS, NF-e, Pessoas e Grupos têm gate; **OPs, Clientes, Materiais, PVs, Referências, Fornecedores e Grupo Econômico consultam sem gate nenhum** (6 chamadas de `canAccessRoute` no arquivo inteiro). Só as ações rápidas estão corretas. | 🟠 Alto (vazamento de telas) · 🔴 **Suspeita** (vazamento de dados, se a RLS devolver linhas) | `GlobalSearch.tsx:221, 348, 505, 533, 689-717` |
 
 **Correção comum a F1–F4:** o vocabulário de permissão não pode ser "os itens da sidebar".
 Precisa ser **uma lista de destinos concedíveis** que inclua `secondaryRoutes` e os
@@ -149,6 +151,109 @@ apareceram.
 | **F10** | **Duplicatas de rota com comportamento divergente.** `/inventory` e `/technical-sheets` estão declaradas 2×. A primeira de cada preserva `location.search`; a segunda descarta. Hoje o React Router usa a primeira — trocar a ordem quebraria `/inventory?tab=history` e `/technical-sheets?ref=…` em silêncio. Remover apenas as segundas (linhas 1240 e 1244). | 🟡 Médio · `App.tsx:1077/1240, 750/1244` |
 | **F11** | **Código morto no shell.** `PageShell.tsx` (65 linhas) e `src/components/ui/sidebar.tsx` (637 linhas, primitive shadcn nunca adotada) têm **zero importadores**. A sidebar real é a closure `sidebarContent()` dentro do `AppLayout` (~420 linhas). Veredito da auditoria: **deletar os dois**; adotar o primitive exigiria migrar drawer, foco, persistência, favoritos, permissões e drag-and-drop sem resolver nenhuma regra de negócio. | ⚪ Baixo |
 | **F12** | **`QualityModule` e `ReportsModule` são redirects para redirects.** Arquivos de 5 linhas que só apontam para outro alias. Deletar. | ⚪ Baixo · `src/modules/*` |
+| **F13** | **RH não enxerga "Ficha Montadores" — o item está no grupo RH dele.** A rota é mapeada para o módulo `producao`, e o perfil `rh` só tem `['dashboard','rh','terceirizados']`. Como a sidebar filtra por `canAccessRoute`, o item **nem aparece**. É por isso que RH vê 2 itens e não 3. Correção: capacidade própria `ficha_montadores`, concedida a RH **e** Produção — não conceder `producao` inteiro ao RH para consertar uma tela. | 🟠 Alto · `navigation.ts:170` × `useAccessControl.ts:148, 211` |
+| **F14** | **Rota não classificada: liberada no legado, negada no granular.** `if (!mod) return true` libera qualquer rota sem módulo no RBAC legado; com um único grant granular, a mesma rota é negada. Cai nessa assimetria: `/grupos-economicos/:id`, `/navigation-audit`, `/modules/*` — e o catch-all `*`, que dá **"Acesso Restrito" em vez de "Página não encontrada"** para usuário granular que erra a URL. O correto é negar nos dois modos: primeiro classificar as rotas de negócio, depois trocar o fail-open. | 🟠 Alto · `useAccessControl.ts:322` · `App.tsx:1267` |
+| **F15** | **`check:tokens` nunca falha.** O script termina em `exit 0` com o comentário `# Exit 0 (informational — does not block commits)`. Ou seja, o guard de design tokens que o `CLAUDE.md` manda rodar após edits visuais **é decorativo**. E o padrão que ele procura não cobre `text-*-700`, bordas `/30`–`/40` nem cor em `style={{}}` — as três formas que as violações reais assumem hoje. | 🟠 Alto · `scripts/check-design-tokens.sh:120` |
+| **F16** | **`<button>` dentro de `<NavLink>` na sidebar.** A estrela de favorito é um `<button>` aninhado dentro do `<a>` do item de menu (4 ocorrências). É HTML inválido e cria parada de teclado ambígua — ativar a estrela pode navegar junto. Correção: irmãos numa linha flex. | 🟠 Alto · `AppLayout.tsx:456, 475, 609, 628` |
+| **F17** | **A folha "Mais" do mobile e o drawer da sidebar são modais feitos à mão.** Focam o botão de fechar mas **não prendem Tab/Shift+Tab e não devolvem o foco ao gatilho**; ao fechar com Escape o foco vai para o documento. Correção: reusar o `Sheet` do projeto — o Radix já trata trap, Escape e restauração. | 🟠 Alto · `BottomNav.tsx:45, 72` · `AppLayout.tsx:86, 804` |
+| **F18** | **Botão de fechar dentro de `role="tab"` na `TabBar`.** Descendentes de `tab` são tratados como presentacionais por leitores de tela — "Fechar" pode sumir da árvore acessível. E o botão de fechar de aba inativa fica `opacity-0` mas **continua no tab order**: o foco cai num controle invisível. | 🟡 Médio · `TabBar.tsx:107, 133, 139` |
+
+### O que está correto (registrado para não ser "consertado" à toa)
+
+- `TabBar.tsx:80` implementa setas, `Home`/`End`, `aria-selected` e roving tabindex **corretamente**.
+- A sidebar usa `NavLink`, que já dá `aria-current="page"`; a ordem de tabulação acompanha a visual (exceto por F16).
+- O skip-link (`AppLayout.tsx:789`) aponta para um `<main>` focável — correto.
+- `prefers-reduced-motion` no `index.css:819` usa `!important` e **já neutraliza** a transição de 220ms do indicador de abas e o `page-enter`.
+- A divergência entre ordem customizada da sidebar e a BottomNav fixa é **desenho, não bug**: quatro destinos estáveis no mobile preservam memória muscular. Precisa só estar documentado.
+
+---
+
+## Regra de altura para abas (S5)
+
+A convenção de altura do `CLAUDE.md` cobre toolbars e botões, não abas. Fica assim:
+
+| Contexto | Altura |
+|---|---|
+| Aba de página ou hub | `h-9` (36px) |
+| Aba interna de painel, diálogo ou subação | `h-8` (32px) |
+| Trigger denso | `h-7` (28px) |
+| **Proibido em navegação por abas** | `h-auto`, `h-11`, `h-12` |
+
+O default do `ui/tabs.tsx` hoje é `h-11` — altura de *hero CTA*, aplicada a ~25 páginas.
+`OrderFlowAudit` usa `h-12`. `HubTabsList` usa `h-auto`, então o componente compartilhado
+varia conforme padding e fonte. São 16 arquivos a ajustar, todos listados na fatia S5.
+
+**Comportamento responsivo canônico:** uma única linha com rolagem horizontal
+(`inline-flex w-max h-9 flex-nowrap overflow-x-auto`, itens `shrink-0`). Nunca `flex-wrap`
+— a segunda linha empurra o conteúdo e muda a geometria da página — e **nunca `grid` com
+`repeat(n, 1fr)`**, que espreme 8 setores em células de ~65px no celular
+(`SectorAggregatedView`, `GroupEditDialog`).
+
+---
+
+## Round-7: o menu moldado por perfil (S4)
+
+A recomendação **não** é colocar `roles` em cada item de `navigation.ts`, nem criar um
+segundo arquivo listando "perfil X vê item Y". Os dois duplicariam `ROLE_MODULES` e
+**recriariam exatamente os bugs F1–F4** — que existem justamente porque a regra de
+visibilidade mora em mais de um lugar.
+
+A fonte deve ser **um catálogo único de recursos** em `navigation.ts`, normalizando os 4
+formatos de item que existem hoje:
+
+```ts
+{
+  id: 'ordens',
+  path: '/orders',
+  accessKey: 'ordens',
+  group: 'Produção',
+  surfaces: ['sidebar', 'command', 'quick-action'],
+  ownedRoutes: ['/orders', '/orders/:id/edit'],
+}
+```
+
+Com isso a regra fica distribuída sem duplicação:
+
+- **o catálogo** define rota, dono, superfície e grupo;
+- **`ROLE_MODULES`** (a renomear para `ROLE_ACCESS_KEYS`) é a **única** lista de quais
+  capacidades cada perfil tem;
+- um `ROLE_MENU_PRESENTATION` pequeno define **só tela inicial e ordem dos grupos** — não
+  lista itens nem papéis por item;
+- `user_permissions` passa a gravar `accessKey`, não path cru (com tradução na migração).
+
+Sidebar, `RouteGuard`, matriz de permissões, favoritos, FAB e Cmd+K passam a chamar **a
+mesma resolução**. Acaba a falsa equivalência "estar na sidebar = ser concedível", que é a
+raiz de F1–F4.
+
+### Matriz proposta
+
+| Perfil | Tela inicial | Grupos visíveis |
+|---|---|---|
+| `admin` | `/dashboard` | Produção · Comercial · Estoque · Compras · Logística · Engenharia · Financeiro · Fiscal · RH · Etiquetas · Relatórios · Sistema |
+| `gerente` | `/dashboard` | Igual ao admin **sem** Sistema |
+| `consulta` | `/dashboard` | Igual ao gerente, ações somente-leitura |
+| `producao` | **`/producao/apontamento`** | Produção · Estoque · Logística · Pessoas & Parceiros · Etiquetas |
+| `comercial` | **`/comercial`** | Comercial · Catálogo & Preço |
+| `nfe_operator` | **`/nfe`** | Fiscal · Comercial (Pedidos, Clientes) |
+| `almoxarifado` | **`/estoque`** | Estoque |
+| `rh` | **`/rh`** | RH (Pessoas · Ficha Montadores · Terceirizados) |
+
+Cada grupo fica com **até 5 entradas por perfil** — é assim que o limite declarado passa a
+ser cumprível sem esconder ferramenta: o que sai da sidebar continua **autorizável** e
+alcançável por `HubTabsList` e Cmd+K filtrado.
+
+Hoje o redirect manda todo desktop para `/dashboard` (`App.tsx:461`). No Round-7 ele deve
+resolver a primeira rota permitida do perfil. Com múltiplos papéis, usar preferência
+explícita do usuário ou prioridade estável — **nunca a ordem incidental das linhas no
+banco**.
+
+**Estado vazio:** se um perfil ficar só com "Início", a sidebar e o "Mais" do mobile devem
+usar o `EmptyState` existente com "Nenhuma área liberada para sua conta" e orientação para
+procurar o administrador — em vez de sumir em silêncio, que é o comportamento atual.
+
+**Preferências:** `useNavOrder` já aplica a ordem depois do filtro de acesso e tolera
+itens ausentes — continua igual. Favoritos de recursos sem acesso devem permanecer
+gravados mas ocultos em todas as superfícies, voltando sozinhos se a permissão retornar.
 
 ---
 
@@ -268,8 +373,12 @@ Reconferidos manualmente antes de entrar no plano:
 | F7 — aba "Consolidada" fantasma | `grep 'TabsContent value="consolidated"'` | ✅ não existe; `CONTRACTOR_TABS` não a inclui |
 | F8 — breadcrumb duplicado | leitura de `PageHeader.tsx:160-177` | ✅ empurra o pai e depois todos os segmentos → "Produção › Produção › Kanban" |
 | F11 — código morto | `grep -rl` por importador | ✅ zero para `PageShell` e `ui/sidebar.tsx` |
-| F2 — módulo `reports` órfão | `scripts/ia-inventory.mjs` | ✅ `modulesGrantedToNobody: ['reports']` (6 rotas) |
+| F2 — módulo `reports` órfão | `scripts/ia-inventory.mjs` + `grep '/relatorios'` | ✅ `modulesGrantedToNobody: ['reports']` (6 rotas); e `'/relatorios': 'sistema'` → trava dupla |
 | F1 — BottomNav quebrado | `scripts/ia-inventory.mjs` | ✅ `bottomNavFindings: ['PCP → /pcp']` |
+| F13 — RH sem Ficha Montadores | `grep` em `useAccessControl.ts` | ✅ `'/fichas-montadores': 'producao'` e `rh: ['dashboard','rh','terceirizados']` |
+| F15 — `check:tokens` decorativo | leitura do fim do script | ✅ `exit 0` com comentário `# informational — does not block commits` |
+| F16 — botão dentro de `<a>` | leitura de `AppLayout.tsx:453-482` | ✅ `<button>` de favorito aninhado dentro do `<NavLink>` |
+| F5 — entidades sem gate no Cmd+K | `grep -c 'canAccessRoute('` | ✅ 6 chamadas no arquivo inteiro — a maioria das consultas não passa por gate |
 
 ---
 
@@ -278,8 +387,7 @@ Reconferidos manualmente antes de entrar no plano:
 | Lote | Escopo | Situação |
 |---|---|---|
 | Fase 0 | `scripts/ia-inventory.mjs` — inventário mecânico | ✅ |
-| Fase 1 | Auditoria Codex, fatias S1–S3 (rotas · shell · abas) | ✅ |
-| Fase 1 | Fatias S4 (perfis) e S5 (visual/a11y) | 🔄 em execução |
+| Fase 1 | Auditoria Codex, 5 fatias (rotas · shell · abas · perfis · visual/a11y) | ✅ |
 | Fase 2 | Proposta + artifact de aprovação | ⏳ |
 | L1 | Guards em modo relatório + baseline | ⏳ |
 | L2 | Bugs de acesso F1–F5 | ⏳ |
