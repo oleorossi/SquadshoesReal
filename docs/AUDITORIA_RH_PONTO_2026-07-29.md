@@ -11,9 +11,11 @@
 
 ## Sumário executivo
 
-**20 defeitos confirmados** (5 críticos, 10 altos, 5 médios), **3 decisões de política já respondidas pelo dono** e **1 pendente**, **6 itens de código morto**, **3 defeitos reais mas sem exposição hoje** e — igualmente importante — **6 suspeitas refutadas** que não devem consumir esforço.
+**24 defeitos confirmados** (8 críticos, 11 altos, 5 médios), **3 decisões de política respondidas pelo dono** e **1 pendente**, **6 itens de código morto**, **4 defeitos reais sem exposição hoje** e — igualmente importante — **6 suspeitas refutadas** que não devem consumir esforço.
 
-O RH não tem um problema de fórmula. Tem um problema de **fronteira**: o motor que paga (`salaryPayroll` + `splitDayMinutes`) e o motor que fiscaliza (`calculate_day_summary`, no banco) discordam em quatro regras, e nada obriga o pagamento a respeitar o que a fiscalização marcou como irregular. O resultado prático é que **62 dias reais estão simultaneamente listados como pendência na tela de Ponto e pagos como jornada de 13h a 21h30 na folha**.
+**O achado com maior efeito prático não é de código: a tabela de ausências está vazia.** Nunca foi registrado um atestado, uma licença ou uma falta justificada — e existem **1.044 dias úteis sem batida** no histórico. Como o motor só abona um dia se houver linha de ausência cobrindo a data, **todos eles viraram falta com desconto**. O mecanismo de abono funciona; ninguém o alimenta. Ver **D21**.
+
+Nos defeitos de código, o RH não tem problema de fórmula — tem problema de **fronteira**. O motor que paga (`salaryPayroll` + `splitDayMinutes`) e o motor que fiscaliza (`calculate_day_summary`, no banco) discordam em quatro regras, e nada obriga o pagamento a respeitar o que a fiscalização marcou como irregular. O resultado prático é que **62 dias reais estão simultaneamente listados como pendência na tela de Ponto e pagos como jornada de 13h a 21h30 na folha**.
 
 | Tema | Gravidade | Efeito |
 |---|---|---|
@@ -22,6 +24,7 @@ O RH não tem um problema de fórmula. Tem um problema de **fronteira**: o motor
 | **T3 — Ordenação destrói a cronologia** | 🔴 | O `sort` antes do pareamento torna inalcançável o tratamento de meia-noite. Turno noturno de 8h paga **15h**. |
 | **T4 — RPC contorna a RLS** | 🔴 | `complete_punches` é `SECURITY DEFINER` sem checagem de papel — passa por cima da policy criada em 28/07. |
 | **T5 — Controles mortos na tela de Escalas** | 🟡 | "Multiplicador HE" e "Mín. HE para contar" não alteram a folha. O usuário edita e nada muda. |
+| **T6 — O abono não existe na prática** | 🔴 | 0 ausências cadastradas, 1.044 dias úteis sem batida. Todo atestado foi descontado. E quando começarem a cadastrar, `justified` é ignorado — vai abonar até o que não deve. |
 
 ---
 
@@ -196,6 +199,39 @@ Reproduz em qualquer horário de entrada (testado 07:00→13:01 e 09:00→15:01:
 - **Exemplo fechado:** funcionário com vale de R$ 300 em julho (já descontado) e vale de R$ 500 com `advance_date = 2026-08-10`, ambos `pending`. Um clique em "Dar baixa" quita os dois. Em agosto a folha não desconta os R$ 500 — **R$ 500 perdidos**.
 - **Correção:** baixar apenas IDs explícitos do período liquidado e vinculá-los ao `payroll_run_id` correspondente. *(Reconfirma achado P09 de 28/07, ainda aberto.)*
 
+### 🔴 D21 — O abono nunca foi usado: todo atestado está sendo descontado
+
+Este é o achado de maior efeito prático imediato, e é exatamente o que você levantou em P3.
+
+- **Prova (banco):** a tabela `employee_absences` tem **0 linhas**. Nunca foi registrada uma ausência. Ao mesmo tempo há **1.044 dias úteis sem nenhuma batida** (dia de semana, fora de feriado), distribuídos por 33 grafias de funcionário.
+- **Efeito:** o motor só abona um dia quando existe linha de ausência cobrindo a data (`excused`). Sem nenhuma linha, **todo dia útil sem batida virou falta com desconto** — inclusive atestado, licença e falta justificada verbalmente.
+- **Ordem de grandeza:** a R$ 100/dia (salário R$ 2.200, 22 dias úteis), os 1.044 dias equivalem a **R$ 104.400 em descontos** de falta. ⚠ Este é um **teto bruto**, não uma perda apurada: parte desses dias cai fora do vínculo do funcionário, parte em datas sem cobertura de importação (que o motor neutraliza), e nem todos têm salário de R$ 2.200. O número serve para dimensionar o risco, não para lançar contabilmente.
+- **Correção:** antes de qualquer coisa no código — cadastrar as ausências reais. O mecanismo funciona; simplesmente não está sendo alimentado. Depois, ver D22, que quebra o abono na direção oposta.
+
+### 🔴 D22 — Falta injustificada é abonada como se fosse justificada
+
+- **Onde:** `src/lib/ponto/periodDates.ts:70-85` (`expandAbsenceDatesByEmployee`), `src/pages/Payroll.tsx:575-581`, `src/hooks/useEmployeeAbsences.ts:46-82`
+- **O que acontece:** dois erros que se somam. (a) A folha busca apenas as **datas** da ausência; `expandAbsenceDatesByEmployee` **não olha o campo `justified` nem o tipo** — qualquer linha vira `excused = true`. (b) A tela de lançamento (`useCreateAbsence`) grava **sempre `justified: true`**, inclusive para `suspensao` e `outro`.
+- **Impacto (salário R$ 2.200, 22 dias úteis):** uma linha `{ absence_type: 'falta_injustificada', justified: false }` deveria descontar **R$ 100,00**; a folha devolve dia abonado e **R$ 0,00**.
+- **Por que importa agora:** hoje é inofensivo porque a tabela está vazia (D21). No instante em que você começar a cadastrar ausências — que é o que precisa acontecer — este defeito passa a abonar tudo, inclusive o que deveria descontar.
+- **Correção:** propagar `justified` na consulta e expandir só ausências justificadas; parar de forçar `true` no lançamento.
+
+### 🔴 D23 — Cobertura é global: a batida de um funcionário faz o dia "contar" para todos
+
+- **Onde:** `src/hooks/useTimesheet.ts:929-972` (`useTimesheetCoverage`), `src/lib/salaryPayroll.ts:304-312`, `src/pages/Timesheet.tsx:800-815`
+- **O que acontece:** `coveredDates` é um `Set` **global de datas**. Basta um funcionário ter batido para a data ser "coberta" — e então quem não aparece no arquivo naquele dia vira **falta**, em vez de ficar neutro por ausência de dado.
+- **Impacto:** em 08/06 o arquivo traz batidas da Ana mas nenhuma linha do Bruno → Bruno leva falta falsa de **R$ 100,00**, quando o correto seria neutro até haver cobertura dele.
+- **Agravante:** a tela de Ponto chama a folha **sem** `coveredDates` nem `maxCoveredDate` (`Timesheet.tsx:800-815`), então nem a proteção parcial existente vale ali. Importação declarada até 05/06 mas com batidas só até 03/06 exibe **duas faltas falsas** na tela.
+- **Ligação com D21:** este é o mecanismo que transformou parte dos 1.044 dias vazios em falta.
+- **Correção:** cobertura por funcionário (ou confirmação explícita de arquivo completo), e passar `coveredDates`/`maxCoveredDate` também na tela de Ponto.
+
+### 🟠 D24 — Espelho de Ponto marca falta antes da admissão e depois da demissão
+
+- **Onde:** `src/pages/EspelhoPontoPage.tsx:125-185`
+- **O que acontece:** o Espelho percorre o mês inteiro sem recortar por `admission_date`/`termination_date`. A folha recorta (`salaryPayroll.ts:541-546`); o Espelho não.
+- **Impacto:** admitido em 11/06 aparece com três faltas em 08–10/06. O Espelho é o **documento legal** (Portaria MTE 671/2021) — mostrar falta antes do vínculo é problema numa fiscalização, mesmo sem efeito na folha.
+- **Correção:** limitar o laço ao intervalo contratual.
+
 ### 🟠 D16 — O Excel "Detalhe dia a dia" desconta falta pelo divisor legado
 
 - **Onde:** `src/lib/printTimesheet.ts:671-672,727-729` (`evaluationDetail`); `src/lib/exportFolhaExcel.ts:62-79,94-100`
@@ -279,6 +315,7 @@ Confirmados no código, com zero incidência nos dados atuais. Não priorizar, m
 | **Valor-hora de atraso usa a jornada padrão, não a do dia** — `expectedDayMinutes(inp.schedule)` é chamado sem `dow` ao montar `policy.journeyMinutes` | `src/lib/salaryPayroll.ts:581-587` | **Nenhuma das 17 escalas tem `works_saturday`.** Numa escala seg–sáb com sábado 08:00–12:00, 239 min de atraso descontariam R$ 37,45 em vez de R$ 84,26. |
 | **Saldo devedor do regime produção aparece como "Quitado"** e não pode ser cobrado | `src/lib/salaryPayroll.ts:644-663`; `src/components/hr/RegistrarPagamentoDialog.tsx:57-75,125-128` | **0 funcionários ativos com `payment_type='producao'`.** Líquido negativo (ex.: −R$ 50 de adiantamento sem produção) é lido como quitado pelo diálogo. |
 | **Regime remoto persiste métricas de ponto** — zera o financeiro mas mantém `expected_minutes` e `workdays` | `src/lib/salaryPayroll.ts:600-610` | 1 funcionário em escala "Home Office (sem ponto)". Faz o comparativo classificá-lo como "Sem ponto importado". |
+| **Feriado móvel cadastrado como recorrente cai no dia errado nos anos seguintes** — `resolveHolidaysInRange` repete pelo mesmo `MM-DD` | `src/lib/ponto/periodDates.ts:16-45` | **Verificado: nenhum dos 8 feriados recorrentes é móvel** (sem Carnaval/Corpus Christi/Sexta-Feira Santa entre eles). Os 84 restantes são datas fixas. A UI comenta que móveis não devem ser recorrentes, mas não impede o cadastro. |
 
 ---
 
@@ -313,9 +350,14 @@ Ele tem 30 registros de ponto em junho, **todos com `punches` vazio** — não b
 
 ## Prioridade sugerida
 
+**Antes de mexer em código:**
+
+0. **D21** — começar a cadastrar as ausências reais (atestado, licença, falta justificada). Nenhuma linha da fórmula precisa mudar para isso; sem esse passo, todo dia parado continua virando desconto. Corrigir **D22** junto, senão o cadastro passa a abonar também o que deveria descontar.
+
 **Correção pontual, alto retorno** (cada uma é localizada e fecha dinheiro):
 
 1. **D15** — "Dar baixa" só nos vales do período liquidado. Hoje um clique perde vale futuro inteiro. Uma cláusula `WHERE`.
+1b. **D23** — cobertura por funcionário, e passar `coveredDates` também na tela de Ponto. É o mecanismo que converte dia sem dado em falta.
 2. **D1 + P2** — ímpar ≥5 devolve `incomplete: true`. Fecha os 62 dias pagos a 13h–21h32 e implementa sua decisão. Uma condição em `splitDayMinutes`.
 3. **D5** — validar `HH ≤ 23` no `timeToMin` e no regex da RPC. Elimina o pagamento de 21h por digitação.
 4. **D9** — unificar a query key das ausências. Uma linha, e o abono passa a chegar no relatório de faltas.
