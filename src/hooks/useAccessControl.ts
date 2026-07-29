@@ -26,6 +26,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/estoque': 'estoque',
   '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',
+  '/fichas-tecnicas/padroes': 'produtos', // ferramenta de padrões da Engenharia
   '/escalonamento': 'produtos',
   '/calculadora-tiras': 'produtos',
   '/orders': 'ordens',
@@ -71,6 +72,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // governadas pelo módulo 'producao', igual às demais /producao/*.
   '/producao/planejamento': 'producao',
   '/producao/kanban': 'producao',
+  '/producao/kanban/gestao': 'producao', // modo eventual do mesmo Kanban
   '/producao/estouro': 'producao',
   '/producao/setores': 'producao',
   '/producao/apontamento': 'producao',
@@ -171,6 +173,37 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/system-diagnostics': 'sistema',
   '/unit-audit': 'sistema',
   '/navigation-audit': 'sistema',
+
+  // ── Aliases legados ───────────────────────────────────────────────────
+  // Não renderizam tela: só redirecionam. Mesmo assim precisam de módulo,
+  // porque `isRouteAllowed` passou a NEGAR rota não classificada (fail-closed,
+  // 29/07/2026). Cada um recebe o módulo do seu DESTINO — assim o alias nunca
+  // é mais permissivo nem mais restritivo que a tela pra onde ele leva.
+  // Ao aposentar um alias, apague a linha daqui junto.
+  '/technical-sheets': 'produtos',
+  '/products': 'estoque',
+  '/consumo-material': 'estoque',
+  '/stock': 'estoque',
+  '/pedidos': 'vendas',
+  '/pedidos-venda': 'vendas',
+  '/ordens-de-producao': 'ordens',
+  '/ordens': 'ordens',
+  '/lead-time': 'producao',
+  '/modules': 'producao',
+  '/modules/reports': 'vendas',   // leva a /comercial, não à produção
+  '/corte': 'producao',
+  '/costura': 'producao',
+  '/aviamento': 'producao',
+  '/montagem': 'producao',
+  '/solagem': 'producao',
+  '/acabamento': 'producao',
+  '/compras': 'financeiro',
+  '/fornecedores': 'fornecedores',
+  '/clientes': 'clientes',
+  '/ponto': 'rh',
+  '/auditoria': 'sistema',
+  '/diagnostico': 'sistema',
+  '/monitoramento': 'sistema',
 };
 
 /**
@@ -322,10 +355,18 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
   }
 
   // Sem granular → RBAC por role (legado).
-  // Ainda não negamos por padrão: /modules/production, /modules/quality e
-  // /modules/reports seguem sob RouteGuard mas serão removidas no L3. O
-  // catch-all é tratado no RouteGuard para renderizar NotFound, não este acesso.
-  if (!mod) return true;
+  //
+  // FAIL-CLOSED desde 29/07/2026. Antes era `return true`: rota não classificada
+  // era LIBERADA no modo legado e NEGADA assim que o usuário ganhasse qualquer
+  // permissão granular — os dois modos discordavam sobre a mesma tela. Agora
+  // rota sem módulo é negada nos dois, e classificar virou obrigação:
+  // `check-navigation-access.mjs` falha o build em rota sob RouteGuard sem
+  // entrada em ROUTE_MODULE_MAP, e os 25 aliases legados foram classificados
+  // pelo módulo do destino.
+  //
+  // A URL inexistente NÃO passa por aqui: o RouteGuard deixa o catch-all
+  // renderizar o NotFound, senão errar o endereço viraria "Acesso Restrito".
+  if (!mod) return false;
   const roleMods = getAllowedModules(roles);
   if (roleMods.has('*')) return true;
   return roleMods.has(mod);

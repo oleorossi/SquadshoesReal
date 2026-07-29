@@ -54,9 +54,7 @@ const Orders = lazy(() => import("./pages/Orders"));
 const OrderEdit = lazy(() => import("./pages/OrderEdit"));
 const SaleOrders = lazy(() => import("./pages/SaleOrders"));
 const SaleOrderForm = lazy(() => import("./pages/SaleOrderForm"));
-const SaleOrdersConsumption = lazy(() => import("./pages/SaleOrdersConsumption"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
- const StockHistoryPage = lazy(() => import("./pages/StockHistory"));
 const Groups = lazy(() => import("./pages/Groups"));
 // SalesReport removido — funcionalidade unificada em /comercial (ComercialDashboard).
 const Settings = lazy(() => import("./pages/Settings"));
@@ -86,9 +84,7 @@ const ExpedicaoHub = lazy(() => import("./pages/ExpedicaoHub"));
 const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
 // Setores agora vive como aba dentro do PCP Hub (rota /setores redireciona)
 
-const PCPDashboard = lazy(() => import("./pages/PCPDashboard"));
 const PickingListPage = lazy(() => import("./pages/PickingListPage"));
-const MrpAdvancedPage = lazy(() => import("./pages/MrpAdvancedPage"));
 const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
 // OrderFlowAudit: rota standalone /order-flow-audit virou redirect pro hub
 // (/pcp?tab=auditoria) em 2026-07-01 — o PCPHub importa o componente como aba.
@@ -100,13 +96,10 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 // CapacityPlanning: rota standalone /capacity-planning aposentada em favor dos
 // tempos-padrão. A filha /capacity-planning/distribuir segue aposentada (R9.3,
 // redireciona pro Planejamento novo) — não ressuscitar o 3º motor de PCP.
-const CapacityDistribution = lazy(() => import("./pages/CapacityDistribution"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
-const EmployeeAbsencesPage = lazy(() => import("./pages/EmployeeAbsences"));
 // SectorAggregatedView: rota standalone /producao/visao-agregada virou redirect
 // pro hub (/pcp?tab=quadro&modo=lote) em 2026-07-01 — PCPHub importa como modo.
-const ProductionControlCenter = lazy(() => import("./pages/ProductionControlCenter"));
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
@@ -131,11 +124,6 @@ const StockReservations = lazy(() => import("./pages/StockReservations"));
 const NfePage = lazy(() => import("./pages/NfePage"));
 const SolesHub = lazy(() => import("./pages/SolesHub"));
 
-
-// Lazy loading de componentes pesados (requested snippet)
-// ProductionModule removido das rotas: /modules/production → redirect /pcp (2026-07-01).
-const QualityModule = lazy(() => import('./modules/QualityModule'));
-const ReportsModule = lazy(() => import('./modules/ReportsModule'));
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -309,11 +297,12 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
    const { loading, isError, canAccessRoute, permsLoading, permsError, isAdmin } = useAccessControl();
 
    const path = location.pathname;
-   // As três rotas /modules/* ainda existem até o L3, embora não tenham módulo.
-   // Depois das classificações deste lote, elas são a única exceção de negócio;
-   // uma URL sem dono no mapa é o catch-all e deve virar NotFound.
-   const isLegacyModuleRoute = ['/modules/production', '/modules/quality', '/modules/reports'].includes(path);
-   const isKnownRoute = path === '/' || isLegacyModuleRoute || resolveModuleForPath(path) !== null;
+   // URL que não resolve módulo nenhum é URL que não existe: cai no catch-all e
+   // tem que renderizar o NotFound. Sem isso, errar o endereço devolveria
+   // "Acesso Restrito" — mensagem de permissão pra um problema de digitação.
+   // Toda rota REAL tem módulo: `check-navigation-access.mjs` falha o build se
+   // alguém adicionar uma sem classificar (inclusive os aliases legados).
+   const isKnownRoute = path === '/' || resolveModuleForPath(path) !== null;
    const canAccess = !isKnownRoute || canAccessRoute(path);
 
    // Fecha o fail-open da auditoria (P12): pra NÃO-admin, a rota só pode ser
@@ -486,12 +475,25 @@ function RootRedirect() {
 
 function LegacyInventoryRedirect() {
   const location = useLocation();
+  // A rota canônica precisa manter filtros/abas de bookmarks legados; <Navigate>
+  // direto descartaria `?tab=history` em silêncio.
   return <Navigate to={`/estoque${location.search}`} replace />;
 }
 
 function LegacyRouteRedirect({ to }: { to: string }) {
   const location = useLocation();
-  return <Navigate to={`${to}${location.search}`} replace />;
+  const [pathname, targetQuery = ''] = to.split('?');
+  const targetParams = new URLSearchParams(targetQuery);
+  const sourceParams = new URLSearchParams(location.search);
+
+  // A query do destino fixa a visão canônica; os demais parâmetros (IDs, filtros)
+  // precisam viajar do link legado para não quebrar fluxos com seleção.
+  sourceParams.forEach((value, key) => {
+    if (!targetParams.has(key)) targetParams.append(key, value);
+  });
+
+  const search = targetParams.toString();
+  return <Navigate to={`${pathname}${search ? `?${search}` : ''}`} replace />;
 }
 
 function PedidosRedirect() {
@@ -685,7 +687,7 @@ const router = createBrowserRouter([
          children: [
            { index: true, element: <Index /> },
            { path: ":id", element: <ProductDetail /> },
-           { path: "historico", element: <StockHistoryPage /> },
+           { path: "historico", element: <LegacyRouteRedirect to="/estoque?tab=history" /> },
          ],
        },
       {
@@ -756,6 +758,8 @@ const router = createBrowserRouter([
         element: <SolesHub />,
       },
       {
+        // Este é o único alias: LegacyRouteRedirect preserva `?ref=` de links
+        // antigos; um <Navigate> simples descartaria a referência aberta.
         path: "technical-sheets",
         element: <LegacyRouteRedirect to="/fichas-tecnicas" />,
       },
@@ -776,6 +780,12 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Orders /> },
           { path: ":id/edit", element: <OrderEdit /> },
+          // Continuam como rota própria até `/orders` saber ler `?view=`.
+          // Redirecionar antes disso deixaria as duas telas INALCANÇÁVEIS: 7
+          // telas de setor (Silk, Costura, Aviamento, Colagem, Montagem,
+          // Solagem, Acabamento) navegam pra `grouped-summary?sector=…&ids=…`
+          // e cairiam na lista simples, sem o preview de impressão. A migração
+          // pra `?view=` é do lote L6, junto com o contrato de deep-link.
           { path: "summary", element: <OrdersSummary /> },
           { path: "grouped-summary", element: <GroupedReportSummary /> },
         ],
@@ -848,10 +858,10 @@ const router = createBrowserRouter([
         element: <Navigate to="/rh" replace />,
       },
       {
-        // Ausências justificadas (férias/atestado/licença/folga). Dias cadastrados
-        // aqui ficam isentos do cálculo de falta/atraso da folha.
+        // A mesma visão já é renderizada na subaba Ponto; mantém query de seleção
+        // e leva bookmarks ao contexto correto do hub RH.
         path: "rh/ausencias",
-        element: <EmployeeAbsencesPage />,
+        element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=ausencias" />,
       },
       {
         // Rota legada: Visão Agregada virou o modo "Lote agregado" do Quadro
@@ -898,7 +908,7 @@ const router = createBrowserRouter([
           { index: true, element: <SaleOrders /> },
           { path: "new", element: <SaleOrderForm /> },
           { path: "edit/:id", element: <SaleOrderForm /> },
-          { path: "consumo", element: <SaleOrdersConsumption /> },
+          { path: "consumo", element: <LegacyRouteRedirect to="/sales?view=consumo" /> },
         ],
       },
       {
@@ -970,11 +980,9 @@ const router = createBrowserRouter([
         element: <PurchasePlanning />,
       },
       {
-        // Motor de MRP net-correto (v_mrp_needs): demanda projetada − estoque
-        // disponível − reservas − OCs em aberto, com CEIL e "Gerar OC". Antes a
-        // página existia mas não tinha rota (motor morto). Auditoria 2026-06-14, #6.
+        // O motor canônico já é a aba MRP de Planejamento de Compras.
         path: "mrp-advanced",
-        element: <MrpAdvancedPage />,
+        element: <LegacyRouteRedirect to="/purchase-planning?tab=mrp" />,
       },
       {
         path: "pricing-calculator",
@@ -1083,6 +1091,8 @@ const router = createBrowserRouter([
       },
       // Requested snippet routes with lazy property
       {
+        // Mantenha este redirect que preserva query: trocar por <Navigate> perde
+        // filtros como `?tab=history` em URLs legadas.
         path: "inventory",
         element: <LegacyInventoryRedirect />,
       },
@@ -1237,8 +1247,8 @@ const router = createBrowserRouter([
         children: [
           // Rota legada: módulo de produção unificado no hub PCP.
           { path: "production", element: <Navigate to="/pcp" replace /> },
-          { path: "quality", element: <QualityModule /> },
-          { path: "reports", element: <ReportsModule /> },
+          { path: "quality", element: <Navigate to="/producao/analises?view=qualidade" replace /> },
+          { path: "reports", element: <Navigate to="/comercial" replace /> },
         ]
       },
       // ── Aliases / rotas legadas ───────────────────────────────────────────
@@ -1246,11 +1256,9 @@ const router = createBrowserRouter([
       // tabs persistidas no localStorage, evitando 404 quando o usuário
       // recarrega com uma aba antiga.
       { path: "stock",             element: <Navigate to="/estoque" replace /> },
-      { path: "inventory",         element: <Navigate to="/estoque" replace /> },
       { path: "auditoria",         element: <Navigate to="/audit-logs" replace /> },
       { path: "diagnostico",       element: <Navigate to="/system-diagnostics" replace /> },
       { path: "monitoramento",     element: <Navigate to="/system-monitor" replace /> },
-      { path: "technical-sheets",  element: <Navigate to="/fichas-tecnicas" replace /> },
       // Auditoria visual 23/05/2026: URLs em pt-br intuitivas caíam no
       // catch-all "*" gerando log "404 Debug" no console. Adicionado
       // redirects explícitos pras URLs internas reais. Reduz ruído nos

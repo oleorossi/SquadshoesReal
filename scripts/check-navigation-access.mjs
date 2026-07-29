@@ -165,6 +165,12 @@ const CHECKS = [
     itens: f.modulesGrantedToNobody.map((m) => ({ key: m.module, txt: `"${m.module}" governa ${m.routes.length} rota(s): ${m.routes.slice(0, 3).join(', ')}${m.routes.length > 3 ? '…' : ''}` })),
   },
   {
+    id: 'route-without-module',
+    titulo: 'Rota sob o RouteGuard sem módulo em ROUTE_MODULE_MAP',
+    dica: 'Desde 29/07/2026 `isRouteAllowed` é fail-closed: rota não classificada é NEGADA. Esquecer de classificar tranca o usuário pra fora em silêncio. Alias legado também conta — passa pelo guard antes de redirecionar; dê a ele o módulo do DESTINO.',
+    itens: f.routesWithoutModule.map((r) => ({ key: r.path, txt: `${r.path} → ${r.isRedirect ? `redirect ${r.redirectTo || ''}` : r.component} (App.tsx:${r.line})` })),
+  },
+  {
     id: 'nav-without-menu-owner',
     titulo: 'Rota de navegação sem dono de menu (inacessível em modo granular)',
     dica: 'secondaryRoutes não entra em getAllMenuItems(), então não tem dono. Aparece na busca e nega no clique.',

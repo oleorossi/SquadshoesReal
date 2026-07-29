@@ -401,6 +401,13 @@ const EXEMPT_FROM_MENU = [
   { re: /^\/design-preview$/, reason: 'Showcase interno do design system' },
   { re: /^\/navigation-audit$/, reason: 'Ferramenta de DEV, alcançada pelo banner de auditoria' },
   { re: /^\/(sales|orders)\/(new|edit)/, reason: 'Formulário — alcançado por ação, não por menu' },
+  {
+    re: /^\/orders\/(summary|grouped-summary)$/,
+    // Sem seleção mostram estado vazio, então item de menu seria uma porta pra
+    // lugar nenhum. `grouped-summary` é o preview de impressão que as 7 telas de
+    // setor abrem com `?sector=…&ids=…`. Vira `?view=` dentro de /orders no L6.
+    reason: 'Preview de impressão — depende de OPs selecionadas',
+  },
 ];
 const exemptReason = (path) => (EXEMPT_FROM_MENU.find((e) => e.re.test(path)) || {}).reason || null;
 
@@ -507,6 +514,30 @@ const menuPaths = grantablePaths;
 const resolveOwner = (path) =>
   menuPaths.sort((a, b) => b.length - a.length).find((m) => path === m || path.startsWith(m + '/') || path.startsWith(m + '?')) || null;
 
+/**
+ * Rota sob o `RouteGuard` sem módulo em `ROUTE_MODULE_MAP`.
+ *
+ * Virou falha desde que `isRouteAllowed` passou a ser fail-closed (29/07/2026):
+ * rota não classificada é NEGADA, então esquecer de classificar tranca o usuário
+ * pra fora em silêncio. Alias legado conta — ele não renderiza tela, mas passa
+ * pelo guard antes de redirecionar.
+ *
+ * Fora do RouteGuard (login, PWA do representante, showcase) não entra na conta.
+ */
+const OUTSIDE_ROUTE_GUARD = /^\/(auth|login|m(\/|$)|design-preview|producao\/kanban\/gestao)/;
+const routesWithoutModule = [...new Map(
+  routes
+    .filter((r) => r.path !== '/' && r.path !== '/*' && !OUTSIDE_ROUTE_GUARD.test(r.path))
+    .filter((r) => !resolveModule(r.path, access.routeModule))
+    .map((r) => [r.path, r]),
+).values()].map((r) => ({
+  path: r.path,
+  component: r.component,
+  isRedirect: r.isRedirect,
+  redirectTo: r.redirectTo,
+  line: r.line,
+}));
+
 const navWithoutMenuOwner = navEntries
   .filter((e) => e.surface === 'secondaryRoutes' || e.surface === 'topItem')
   // `/dashboard` tem liberação explícita em isRouteAllowed e não precisa de dono.
@@ -563,6 +594,8 @@ const inventory = {
     groupOverflow,
     modulesGrantedToNobody,
     navWithoutMenuOwner,
+    routesWithoutModule,
+    routesWithoutModule,
   },
   navigation: {
     topItem: nav.topItem,
@@ -611,6 +644,7 @@ if (process.argv.includes('--json')) {
   console.log(`    grupos acima de ${GROUP_LIMIT} itens .... ${f.groupOverflow.length}`);
   console.log(`    módulo sem perfil ........... ${f.modulesGrantedToNobody.length}`);
   console.log(`    sem dono de menu (granular) . ${f.navWithoutMenuOwner.length}`);
+  console.log(`    rota sem módulo (fail-closed) ${f.routesWithoutModule.length}`);
   console.log(`\n  → ${relative(ROOT, outFile)}\n`);
 }
 

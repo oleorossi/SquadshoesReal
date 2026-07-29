@@ -7,7 +7,7 @@ import {
 import { useDebounce } from 'use-debounce';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import { resolveMaterialLabel } from '@/lib/labelUtils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, CurrencyDollar as DollarSign, Clock, CaretDown as ChevronDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
@@ -229,6 +229,7 @@ export default function SaleOrders() {
   const commitPicking = useCommitPickingForSaleOrder();
   // bulkSyncFinancial removido em 2026-05 — sync acontece automaticamente no faturamento
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Sugestões para SmartSearch (PV): Cliente, Representante, Referência
   const searchSuggestions = useMemo(() => {
@@ -603,6 +604,22 @@ export default function SaleOrders() {
       sel.clear();
       value.forEach((id) => sel.toggle(id));
     }
+  };
+  // Bookmarks da rota legada carregam a mesma ferramenta no host; os IDs ficam
+  // na URL para não perder a seleção ao atravessar o redirect.
+  const consumptionViewIds = useMemo(() => {
+    if (searchParams.get('view') !== 'consumo') return [];
+    return (searchParams.get('ids') || '').split(',').map((id) => id.trim()).filter(Boolean);
+  }, [searchParams]);
+  const isConsumptionView = searchParams.get('view') === 'consumo';
+  const consumptionViewOrders = useMemo(
+    () => orders.filter((order) => consumptionViewIds.includes(order.id)),
+    [orders, consumptionViewIds],
+  );
+  const closeConsumptionView = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('view');
+    setSearchParams(next, { replace: true });
   };
   const toggleSelect = (id: string) => sel.toggle(id);
   const toggleSelectAll = () => {
@@ -1644,7 +1661,7 @@ export default function SaleOrders() {
               onClick={() => {
                 if (selectedIds.size === 0) { toast.info('Selecione pelo menos um pedido.'); return; }
                 const ids = Array.from(selectedIds).join(',');
-                navigate(`/sales/consumo?ids=${ids}`);
+                navigate(`/sales?view=consumo&ids=${ids}`);
               }}
               className="gap-2"
             >
@@ -3156,25 +3173,42 @@ export default function SaleOrders() {
       </AlertDialog>
 
       {/* Summary Dialog */}
-      <Dialog open={summaryDialogOpen} onOpenChange={setSummaryDialogOpen}>
+      <Dialog
+        open={summaryDialogOpen || isConsumptionView}
+        onOpenChange={(open) => {
+          if (!open && isConsumptionView) {
+            closeConsumptionView();
+            return;
+          }
+          setSummaryDialogOpen(open);
+        }}
+      >
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             {/* Nomeia os PVs do escopo: "N pedido(s)" era quase idêntico ao título
                 do modal por-PV e escondia de QUAIS pedidos era o consumo somado. */}
             <DialogTitle>
               Consumo de Materiais — {(() => {
-                const nums = summaryData.orders.map((o: any) => o.order_number).filter(Boolean);
-                if (nums.length === 0) return `${summaryData.orders.length} pedido(s)`;
+                const scopedOrders = isConsumptionView ? consumptionViewOrders : summaryData.orders;
+                const nums = scopedOrders.map((o: any) => o.order_number).filter(Boolean);
+                if (nums.length === 0) return `${isConsumptionView ? consumptionViewIds.length : scopedOrders.length} pedido(s)`;
                 return nums.length <= 4 ? nums.join(', ') : `${nums.slice(0, 4).join(', ')} +${nums.length - 4}`;
               })()}
             </DialogTitle>
           </DialogHeader>
-          {loadingSummary ? (
+          {isConsumptionView && consumptionViewIds.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              title="Nenhum pedido selecionado"
+              description="Volte à lista e selecione pedidos para ver o consumo consolidado."
+              action={<Button variant="outline" size="sm" onClick={closeConsumptionView}>Selecionar pedidos</Button>}
+            />
+          ) : loadingSummary && !isConsumptionView ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <SummaryConsumptionPanel saleOrderIds={summaryData.orders.map((o: any) => o.id)} />
+            <SummaryConsumptionPanel saleOrderIds={isConsumptionView ? consumptionViewIds : summaryData.orders.map((o: any) => o.id)} />
           )}
         </DialogContent>
       </Dialog>

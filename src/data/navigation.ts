@@ -202,6 +202,14 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   // Cronoanálise/Paradas & OEE/Tempos de Setup viraram views dentro de
   // /producao/analises (redirects em App.tsx mantêm as URLs antigas vivas).
   { name: "Produtividade por Modelo", icon: Gauge,   path: "/producao/produtividade", group: "Produção" },
+  { name: "Kanban · Modo Gestão", icon: Kanban,      path: "/producao/kanban/gestao", group: "Produção" },
+  // "Ordens (OPs)" continua fora da sidebar por decisão do dono, mas precisa ser
+  // encontrável e concedível para os atalhos que abrem a fila de produção.
+  { name: "Ordens de Produção", icon: ClipboardCheck, path: "/orders", group: "Produção" },
+  // Estoque
+  { name: "Reservas e Em Produção", icon: Package, path: "/reservas-estoque", group: "Estoque" },
+  // Engenharia
+  { name: "Padrões por Cor", icon: Sparkles, path: "/fichas-tecnicas/padroes", group: "Engenharia" },
   // Logística
   { name: "Embalagens",           icon: Box,              path: "/embalagens",             group: "Logística" },
   { name: "Separação · Bipagem (EAN)", icon: ClipboardCheck, path: "/picking-sessions",   group: "Logística" },
@@ -217,6 +225,7 @@ export const secondaryRoutes: ReadonlyArray<{ name: string; icon: typeof Box; pa
   { name: "LGPD",                 icon: Lock,             path: "/lgpd",                   group: "Sistema" },
   { name: "Monitoramento",        icon: Monitor,          path: "/system-monitor",         group: "Sistema" },
   { name: "Diagnóstico",          icon: Cpu,              path: "/system-diagnostics",     group: "Sistema" },
+  { name: "Auditoria de Unidades", icon: Scale,            path: "/unit-audit",             group: "Sistema" },
 ];
 
 /** Filtra secondaryRoutes do grupo informado — usado pelas páginas hub. */
