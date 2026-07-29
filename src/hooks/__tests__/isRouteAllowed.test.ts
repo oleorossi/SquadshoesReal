@@ -12,7 +12,9 @@ const perm = (module: string, can_view = true) => ({ module, can_view });
 
 describe('resolveModuleForPath', () => {
   it('casa pelo maior prefixo', () => {
-    expect(resolveModuleForPath('/fichas-montadores')).toBe('producao');
+    // Capacidade própria desde 29/07/2026: a ficha mora no grupo RH da sidebar,
+    // então não pode depender do módulo 'producao' — senão o RH não a enxerga.
+    expect(resolveModuleForPath('/fichas-montadores')).toBe('ficha_montadores');
     expect(resolveModuleForPath('/label-system')).toBe('expedicao');
     expect(resolveModuleForPath('/estoque/historico')).toBe('estoque');
     expect(resolveModuleForPath('/sales/123')).toBe('vendas');
@@ -47,9 +49,11 @@ describe('isRouteAllowed — RBAC por role (sem granular)', () => {
     expect(isRouteAllowed('/dashboard', rh)).toBe(true);
     expect(isRouteAllowed('/rh', rh)).toBe(true);
     expect(isRouteAllowed('/contractors', rh)).toBe(true);
+    // A Ficha Montadores está no grupo RH da sidebar: se o RH não puder abrir,
+    // o item some do menu dele — foi o bug F13 da auditoria de 29/07/2026.
+    expect(isRouteAllowed('/fichas-montadores', rh)).toBe(true);
   });
   it('rh NÃO vê produção/expedição', () => {
-    expect(isRouteAllowed('/fichas-montadores', rh)).toBe(false);
     expect(isRouteAllowed('/imprimir-fichas', rh)).toBe(false);
     expect(isRouteAllowed('/label-system', rh)).toBe(false);
     expect(isRouteAllowed('/pcp', rh)).toBe(false);
@@ -105,9 +109,11 @@ describe('isRouteAllowed — granular POR ITEM (allow-list de paths)', () => {
   });
 
   it('can_view=false é ignorado', () => {
-    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/fichas-montadores', false)], allMenuPaths: MENU };
+    // A tela precisa ser uma que o RBAC do 'rh' NÃO libera, senão o teste passa
+    // pelo motivo errado. '/imprimir-fichas' é do módulo 'producao'.
+    const o = { isAdmin: false, roles: ['rh'], perms: [perm('/imprimir-fichas', false)], allMenuPaths: MENU };
     // só essa row (can_view=false) → não conta como granular → cai no RBAC rh
-    expect(isRouteAllowed('/fichas-montadores', o)).toBe(false);
+    expect(isRouteAllowed('/imprimir-fichas', o)).toBe(false);
   });
 });
 

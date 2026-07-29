@@ -54,7 +54,14 @@ export default function RelOpA4() {
   return (
     <>
       <PrintBar title="OP-2847 · Relatório de fechamento" />
+      <div className="mx-auto mb-4 max-w-4xl rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground print:hidden">
+        <strong>Modelo em homologação.</strong> Este relatório contém dados de exemplo e não deve ser usado como documento da fábrica.
+      </div>
       <PaperShell>
+        {/* O aviso precisa estar na folha: o PDF circula sem a interface. */}
+        <div style={{ marginBottom: 12, padding: '8px 10px', background: '#FFF3CD', border: '1px solid #8A5A00', color: '#3D2700', fontSize: 10, fontWeight: 700, lineHeight: 1.35 }}>
+          MODELO EM HOMOLOGAÇÃO — contém dados de exemplo. Não usar como documento oficial, para decisão, assinatura ou circulação.
+        </div>
         <A4Head title="Relatório de OP" num="OP-2847 · Mocassim Verona" sub="Produção · OP fechada" emittedAt={`Emitido ${today}`} />
 
         {/* Identificação + Indicadores */}

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation, useParams, useRouteError } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProfile } from "@/hooks/useUserManagement";
-import { useAccessControl } from "@/hooks/useAccessControl";
+import { resolveModuleForPath, useAccessControl } from "@/hooks/useAccessControl";
 import { CircleNotch as Loader2, ShieldWarning as ShieldAlert, ArrowsClockwise as RefreshCw, SignIn as LogIn } from '@phosphor-icons/react';
 import { Button } from "@/components/ui/button";
  import { lazy, Suspense, useState, useEffect } from "react";
@@ -309,7 +309,12 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
    const { loading, isError, canAccessRoute, permsLoading, permsError, isAdmin } = useAccessControl();
 
    const path = location.pathname;
-   const canAccess = path === '/' ? true : canAccessRoute(path);
+   // As três rotas /modules/* ainda existem até o L3, embora não tenham módulo.
+   // Depois das classificações deste lote, elas são a única exceção de negócio;
+   // uma URL sem dono no mapa é o catch-all e deve virar NotFound.
+   const isLegacyModuleRoute = ['/modules/production', '/modules/quality', '/modules/reports'].includes(path);
+   const isKnownRoute = path === '/' || isLegacyModuleRoute || resolveModuleForPath(path) !== null;
+   const canAccess = !isKnownRoute || canAccessRoute(path);
 
    // Fecha o fail-open da auditoria (P12): pra NÃO-admin, a rota só pode ser
    // avaliada depois que os grants granulares chegam — antes disso `canAccessRoute`
@@ -340,6 +345,10 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     const t = setTimeout(() => setShowDeniedConfirmed(true), 1500);
     return () => clearTimeout(t);
   }, [canAccess, path]);
+
+  // Endereço inexistente não é uma negação de permissão: deixa o catch-all
+  // renderizar NotFound em vez de converter um erro de digitação em acesso restrito.
+  if (!isKnownRoute) return <>{children}</>;
 
   if (guardLoading) {
     if (!showSlowHint) return <PageSkeleton />;

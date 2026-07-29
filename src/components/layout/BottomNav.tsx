@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { House as Home, Kanban, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
+import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { menuGroups } from '@/data/navigation';
@@ -9,7 +9,9 @@ import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
   { icon: ShoppingCart, label: 'Vendas',   path: '/sales' },
-  { icon: Kanban,       label: 'PCP',      path: '/pcp' },
+  // O alvo precisa ser item de menu real: a allow-list granular resolve o
+  // dono por esse catálogo, e /pcp é só um redirect legado sem dono próprio.
+  { icon: Factory,      label: 'Produção', path: '/producao/planejamento' },
   { icon: Package,      label: 'Estoque',  path: '/estoque' },
 ];
 

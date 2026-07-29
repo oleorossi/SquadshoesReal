@@ -439,8 +439,23 @@ const duplicateRouteDefs = (() => {
   return dupes;
 })();
 
-/** Paths dos itens da sidebar — vocabulário de permissão (resolveMenuOwner). */
+/** Paths dos itens da sidebar — usado só pra medir estouro de grupo. */
 const menuPathsRaw = nav.groups.flatMap((g) => g.items.map((i) => i.path));
+
+/**
+ * Vocabulário de permissão = `grantableDestinations` (navigation.ts, lote L2).
+ * Antes era só a sidebar, e por isso todo destino alcançado por busca, card ou
+ * botão nascia sem dono e era negado em modo granular. Espelhamos a mesma
+ * composição aqui pra o guard não reportar como problema o que já foi resolvido.
+ */
+const grantablePaths = [
+  ...menuPathsRaw,
+  ...nav.systemItems.map((i) => i.path),
+  ...nav.secondaryRoutes.map((i) => i.path),
+  // actionDestinations — destinos abertos por ação, fora da sidebar de propósito
+  ...[...(navSrc.match(/actionDestinations[\s\S]*?\[([\s\S]*?)\]/) || [, ''])[1]
+    .matchAll(/path\s*:\s*['"]([^'"]+)['"]/g)].map((x) => x[1]),
+];
 
 /**
  * BottomNav tem itens PRIMÁRIOS escritos à mão, fora de `navigation.ts`. Se um
@@ -452,7 +467,7 @@ const bottomNavFindings = (() => {
   try { src = read(p('src/components/layout/BottomNav.tsx')); } catch { return []; }
   const items = [...src.matchAll(/label\s*:\s*['"]([^'"]+)['"]\s*,\s*path\s*:\s*['"]([^'"]+)['"]/g)]
     .map((m) => ({ label: m[1], path: m[2] }));
-  const menuSet = new Set(menuPathsRaw);
+  const menuSet = new Set(grantablePaths);
   // `/dashboard` é liberado por regra explícita em isRouteAllowed (não precisa
   // de dono de menu), então não é achado.
   const ALWAYS_ALLOWED = new Set(['/dashboard']);
@@ -488,12 +503,14 @@ const modulesGrantedToNobody = [...new Set(Object.values(access.routeModule))]
   }));
 
 // Rota de navegação sem "dono" de menu → inacessível em modo granular
-const menuPaths = menuPathsRaw;
+const menuPaths = grantablePaths;
 const resolveOwner = (path) =>
   menuPaths.sort((a, b) => b.length - a.length).find((m) => path === m || path.startsWith(m + '/') || path.startsWith(m + '?')) || null;
 
 const navWithoutMenuOwner = navEntries
   .filter((e) => e.surface === 'secondaryRoutes' || e.surface === 'topItem')
+  // `/dashboard` tem liberação explícita em isRouteAllowed e não precisa de dono.
+  .filter((e) => e.path !== '/dashboard')
   .filter((e) => !resolveOwner(e.path))
   .map((e) => ({ path: e.path, label: e.label, surface: e.surface, module: resolveModule(e.path, access.routeModule) }));
 
@@ -512,7 +529,7 @@ const roleVisibility = Object.fromEntries(
     const emptyGroups = nav.groups
       .filter((g) => !g.items.some((i) => visible.includes(i.path)))
       .map((g) => g.label);
-    return [role, { visibleCount: visible.length, totalMenuItems: menuPaths.length, emptyGroups }];
+    return [role, { visibleCount: visible.length, totalMenuItems: menuPathsRaw.length, emptyGroups }];
   }),
 );
 

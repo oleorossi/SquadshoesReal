@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useCurrentUserRoles, useCurrentUserPermissions } from './useUserManagement';
 import { useAuth } from './useAuth';
-import { getAllMenuItems } from '@/data/navigation';
+import { grantableDestinations } from '@/data/navigation';
 
 /**
  * Route-to-module mapping.
@@ -46,6 +46,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/sales-report': 'relatorios',
   '/suppliers': 'fornecedores',
   '/clients': 'clientes',
+  '/grupos-economicos': 'clientes',
   '/finance': 'financeiro',
   '/companies': 'empresas_fiscal',
   '/nfe': 'nfe',
@@ -145,7 +146,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/forecast': 'vendas',
   '/centro-controle': 'producao',
   '/imprimir-fichas': 'producao',
-  '/fichas-montadores': 'producao',
+  '/fichas-montadores': 'ficha_montadores',
   '/quotations': 'financeiro',
   '/manifests': 'expedicao',
   '/transporters': 'expedicao',
@@ -169,6 +170,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/audit-logs': 'sistema',
   '/system-diagnostics': 'sistema',
   '/unit-audit': 'sistema',
+  '/navigation-audit': 'sistema',
 };
 
 /**
@@ -180,10 +182,10 @@ export const ROLE_MODULES: Record<string, string[]> = {
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
     'relatorios', 'financeiro', 'nfe', 'empresas_fiscal',
     'fornecedores', 'terceirizados', 'rh', 'rh_folha',
-    'producao', 'expedicao',
+    'producao', 'expedicao', 'ficha_montadores',
   ],
   producao: [
-    'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao',
+    'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao', 'ficha_montadores',
     // 'terceirizados': o hub /terceiros (Na Rua + cadastro de contratadas) é função
     // operacional de produção. Antes a produção via /terceiros pelo módulo 'producao';
     // como o hub passou a ser governado por 'terceirizados', concedemos aqui pra não
@@ -199,7 +201,7 @@ export const ROLE_MODULES: Record<string, string[]> = {
   consulta: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
     'relatorios', 'financeiro', 'nfe', 'empresas_fiscal', 'fornecedores',
-    'terceirizados', 'rh', 'producao', 'expedicao',
+    'terceirizados', 'rh', 'producao', 'expedicao', 'ficha_montadores',
   ],
   // Operador NF-e: emite/cancela NF + vê PVs com valores + cadastra clientes/empresas.
   // Não tem acesso a AR/AP/DRE/bancos/folha.
@@ -209,7 +211,7 @@ export const ROLE_MODULES: Record<string, string[]> = {
   // RH: cadastros, ponto, banco de horas, escalas, faltas. SEM folha de pagamento
   // (gera financial_entries, restrito a admin).
   rh: [
-    'dashboard', 'rh', 'terceirizados',
+    'dashboard', 'rh', 'terceirizados', 'ficha_montadores',
   ],
 };
 
@@ -237,9 +239,9 @@ function getAllowedModules(roles: string[]): Set<string> {
 // Módulos que só admin acessa — nunca liberáveis por role/granular a outros.
 const ADMIN_ONLY_MODULES = new Set(['sistema', 'financeiro_admin']);
 
-// Caminhos de TODOS os itens de menu (sidebar) — usado pra resolver o "dono"
-// de uma rota navegada no modo granular por item. Calculado uma vez.
-const ALL_MENU_PATHS: string[] = getAllMenuItems().map((i) => i.path);
+// Caminhos de TODOS os destinos concedíveis — usado pra resolver o "dono" de
+// uma rota navegada no modo granular por item. Calculado uma vez.
+const ALL_MENU_PATHS: string[] = grantableDestinations.map((i) => i.path);
 
 /** Módulo associado a uma rota (maior prefixo do ROUTE_MODULE_MAP que casa). */
 export function resolveModuleForPath(path: string): string | null {
@@ -249,7 +251,7 @@ export function resolveModuleForPath(path: string): string | null {
   return matchedKey ? ROUTE_MODULE_MAP[matchedKey] : null;
 }
 
-/** Item de menu "dono" de uma rota = maior path de menu que é prefixo dela.
+/** Destino concedível "dono" de uma rota = maior path concedível que é prefixo dela.
  *  Garante que liberar "/estoque" NÃO libere o item irmão "/estoque/historico"
  *  (que tem item próprio), mas cubra sub-rotas sem item próprio (/estoque/x). */
 export function resolveMenuOwner(path: string, allMenuPaths: string[] = ALL_MENU_PATHS): string | null {
@@ -320,7 +322,10 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
   }
 
   // Sem granular → RBAC por role (legado).
-  if (!mod) return true; // rotas fora do mapa = livres (ex.: detalhes)
+  // Ainda não negamos por padrão: /modules/production, /modules/quality e
+  // /modules/reports seguem sob RouteGuard mas serão removidas no L3. O
+  // catch-all é tratado no RouteGuard para renderizar NotFound, não este acesso.
+  if (!mod) return true;
   const roleMods = getAllowedModules(roles);
   if (roleMods.has('*')) return true;
   return roleMods.has(mod);

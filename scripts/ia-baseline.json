@@ -31,9 +31,7 @@
     ],
     "ghost-nav-entry": [],
     "nav-points-at-redirect": [],
-    "bottomnav-without-owner": [
-      "/pcp"
-    ],
+    "bottomnav-without-owner": [],
     "duplicate-nav-path": [
       "/embalagens"
     ],
@@ -44,20 +42,7 @@
     "module-granted-to-nobody": [
       "reports"
     ],
-    "nav-without-menu-owner": [
-      "/audit-logs",
-      "/dashboard",
-      "/delivery-tracking",
-      "/forecast",
-      "/lgpd",
-      "/patrimonio",
-      "/perfis-tributarios",
-      "/picking-sessions",
-      "/producao/produtividade",
-      "/sac",
-      "/system-diagnostics",
-      "/system-monitor"
-    ]
+    "nav-without-menu-owner": []
   },
   "groupOverflow": {
     "Comercial": 8,

@@ -222,7 +222,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     queries: [
       {
         queryKey: ['global-search-orders', searchTerm],
-        enabled: searchEnabled && inScope('orders'),
+        enabled: searchEnabled && inScope('orders') && canAccessRoute('/orders'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -240,7 +240,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       },
       {
         queryKey: ['global-search-clients', searchTerm, cnpjDigits],
-        enabled: searchEnabled && inScope('clients'),
+        enabled: searchEnabled && inScope('clients') && canAccessRoute('/clients'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -260,7 +260,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       },
       {
         queryKey: ['global-search-products', searchTerm],
-        enabled: searchEnabled && inScope('products'),
+        enabled: searchEnabled && inScope('products') && canAccessRoute('/estoque'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -278,7 +278,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       },
       {
         queryKey: ['global-search-sale-orders', searchTerm, cnpjDigits],
-        enabled: searchEnabled && inScope('sales'),
+        enabled: searchEnabled && inScope('sales') && canAccessRoute('/sales'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -303,7 +303,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         // Nomes de modelo vivem em technical_sheets.name (product_references
         // costuma ficar vazia neste DB). Buscamos as duas fontes e unimos.
         queryKey: ['global-search-references', searchTerm],
-        enabled: searchEnabled && inScope('references'),
+        enabled: searchEnabled && inScope('references') && canAccessRoute('/fichas-tecnicas'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -325,7 +325,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
       },
       {
         queryKey: ['global-search-suppliers', searchTerm],
-        enabled: searchEnabled && inScope('suppliers'),
+        enabled: searchEnabled && inScope('suppliers') && canAccessRoute('/suppliers'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -442,7 +442,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
         // economic_groups → clients (economic_group_id) → sale_orders (client_id)
         // → orders (sale_order_id). Mostra o grupo + um preview dos PVs e OPs.
         queryKey: ['global-search-group', groupTerm],
-        enabled: groupEnabled,
+        enabled: groupEnabled && canAccessRoute('/clients'),
         staleTime: 60_000,
         placeholderData: keepPreviousData,
         queryFn: async () => {
@@ -515,8 +515,8 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
     const fromSecondary = secondaryRoutes
       .filter(r => normalizeForSearch(r.name).includes(q) || normalizeForSearch(r.group).includes(q))
       .map(r => ({ name: r.name, icon: r.icon, path: r.path, groupLabel: r.group }));
-    return [...fromSidebar, ...fromSecondary];
-  }, [q, isGroupSearch]);
+    return [...fromSidebar, ...fromSecondary].filter(item => canAccessRoute(item.path));
+  }, [q, isGroupSearch, canAccessRoute]);
 
   const goTo = useCallback((path: string, persistTerm?: string, recentItem?: RecentItem) => {
     if (persistTerm) pushRecent(persistTerm);
@@ -691,7 +691,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                       <Home className="mr-2 h-3.5 w-3.5 text-primary" />
                       Início (Dashboard)
                     </CommandItem>
-                    {favorites.map((fav) => (
+                    {favorites.filter(fav => canAccessRoute(fav.path)).map((fav) => (
                       <CommandItem key={fav.path} onSelect={() => goTo(fav.path)}>
                         <Star className="mr-2 h-3.5 w-3.5 text-primary" weight="fill" />
                         <span className="text-sm">{fav.name}</span>
@@ -702,19 +702,23 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                       </CommandItem>
                     ))}
                   </CommandGroup>
-                  {menuGroups.map((group) => (
-                    <CommandGroup key={group.label} heading={group.label}>
-                      {group.items.map((item) => (
-                        <CommandItem key={item.path} onSelect={() => goTo(item.path)}>
-                          <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-                          {item.name}
-                          <span className="ml-auto shrink-0">
-                            <FavStar name={item.name} path={item.path} />
-                          </span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  ))}
+                  {menuGroups.map((group) => {
+                    const allowedItems = group.items.filter(item => canAccessRoute(item.path));
+                    if (allowedItems.length === 0) return null;
+                    return (
+                      <CommandGroup key={group.label} heading={group.label}>
+                        {allowedItems.map((item) => (
+                          <CommandItem key={item.path} onSelect={() => goTo(item.path)}>
+                            <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                            {item.name}
+                            <span className="ml-auto shrink-0">
+                              <FavStar name={item.name} path={item.path} />
+                            </span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    );
+                  })}
                 </div>
               )}
 

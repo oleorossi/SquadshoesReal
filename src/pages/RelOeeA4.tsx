@@ -56,7 +56,14 @@ export default function RelOeeA4() {
   return (
     <>
       <PrintBar title={`${docNum} · OEE Semanal`} />
+      <div className="mx-auto mb-4 max-w-4xl rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground print:hidden">
+        <strong>Modelo em homologação.</strong> Este relatório contém dados de exemplo e não deve ser usado como documento da fábrica.
+      </div>
       <PaperShell landscape>
+        {/* O aviso precisa estar na folha: o PDF circula sem a interface. */}
+        <div style={{ marginBottom: 12, padding: '8px 10px', background: '#FFF3CD', border: '1px solid #8A5A00', color: '#3D2700', fontSize: 10, fontWeight: 700, lineHeight: 1.35 }}>
+          MODELO EM HOMOLOGAÇÃO — contém dados de exemplo. Não usar como documento oficial, para decisão, assinatura ou circulação.
+        </div>
         <A4Head
           title="Eficiência (OEE)"
           num={`${docNum} · Semana ${weekNum}`}

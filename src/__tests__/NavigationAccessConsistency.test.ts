@@ -21,7 +21,7 @@
  *    etc. (verificado indiretamente pela regra 2.)
  */
 import { describe, it, expect } from 'vitest';
-import { menuGroups, systemItems, topItem } from '@/data/navigation';
+import { getAllMenuItems, grantableDestinations, menuGroups, secondaryRoutes, systemItems, topItem } from '@/data/navigation';
 import { ROUTE_MODULE_MAP } from '@/hooks/useAccessControl';
 
 const ADMIN_ONLY_MODULES = new Set(['sistema', 'financeiro_admin']);
@@ -115,5 +115,25 @@ describe('Navigation ↔ Access Control consistency', () => {
       }
     }
     expect(dups.length, `Rotas duplicadas em menuGroups: ${dups.join('; ')}`).toBe(0);
+  });
+
+  it('mantém rotas secundárias não promovidas fora do catálogo que desenha a sidebar', () => {
+    const sidebarPaths = new Set(getAllMenuItems().map((item) => item.path));
+    const sac = secondaryRoutes.find((route) => route.path === '/sac');
+    expect(sac).toBeDefined();
+    expect(sidebarPaths.has(sac!.path), '/sac não deve virar item da sidebar').toBe(false);
+  });
+
+  it('expõe todo destino concedível com rótulo, grupo e módulo', () => {
+    expect(grantableDestinations.find((item) => item.path === '/orders')).toMatchObject({
+      label: 'Ordens de Produção',
+      group: 'Produção',
+    });
+
+    for (const item of grantableDestinations) {
+      expect(item.label).not.toHaveLength(0);
+      expect(item.group).not.toHaveLength(0);
+      expect(resolveModuleForPath(item.path), `${item.path} precisa de módulo para ser concedível`).not.toBeNull();
+    }
   });
 });

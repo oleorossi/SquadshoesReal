@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
-import { getAllMenuItems } from '@/data/navigation';
+import { grantableDestinations } from '@/data/navigation';
 
 export type Profile = {
   id: string;
@@ -277,10 +277,15 @@ export function useReplaceUserPermissions() {
         .delete()
         .eq('user_id', userId);
       if (delErr) throw delErr;
-      // Só grava paths que são itens REAIS da sidebar — evita poluir a tabela
-      // com path digitado errado (que deixaria o usuário em allow-list sem
-      // acesso a nada). Dedup por path (última ocorrência vence).
-      const valid = new Set(getAllMenuItems().map((i) => i.path));
+      // Só grava paths que são destinos CONCEDÍVEIS de verdade — evita poluir a
+      // tabela com path digitado errado (que deixaria o usuário em allow-list
+      // sem acesso a nada). Dedup por path (última ocorrência vence).
+      //
+      // Era `getAllMenuItems()` (só a sidebar) até 29/07/2026: quem marcasse SAC,
+      // Rastreamento ou Ordens de Produção na matriz via a marcação ser DESCARTADA
+      // no save, em silêncio, e continuava sem acesso. É a mesma raiz dos bugs
+      // F3/F4 da auditoria — estar na sidebar não é o que torna algo concedível.
+      const valid = new Set(grantableDestinations.map((i) => i.path));
       const byPath = new Map<string, PermissionGrant>();
       for (const g of grants) {
         if (typeof g?.path === 'string' && valid.has(g.path)) byPath.set(g.path, g);

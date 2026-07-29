@@ -26,6 +26,14 @@ import { DiagnosticsFab } from '@/components/DiagnosticsFab';
 
 const QuickActionsFAB = () => {
   const navigate = useNavigate();
+  const { canAccessRoute } = useAccessControl();
+  const canCreateSales = canAccessRoute('/sales');
+  const canManageOrders = canAccessRoute('/orders');
+  const canManageStock = canAccessRoute('/estoque');
+
+  // O FAB não pode oferecer um atalho que o RouteGuard bloquearia ao clicar.
+  if (!canCreateSales && !canManageOrders && !canManageStock) return null;
+
   return (
     <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-5 md:bottom-7 md:right-7 z-50">
       <DropdownMenu>
@@ -39,33 +47,39 @@ const QuickActionsFAB = () => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="w-56 mb-3 shadow-elevated rounded-xl border-border/60">
-          <DropdownMenuItem onClick={() => navigate('/sales/new')} className="gap-3 cursor-pointer py-3 text-base">
-            <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <ShoppingCart className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <p className="font-medium">Pedido de Venda</p>
-              <p className="text-xs text-muted-foreground">Criar novo PV</p>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/orders')} className="gap-3 cursor-pointer py-3 text-base">
-            <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Plus className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <p className="font-medium">Ordem de Produção</p>
-              <p className="text-xs text-muted-foreground">Ver e criar OPs</p>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-base">
-            <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Package className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <p className="font-medium">Entrada de Estoque</p>
-              <p className="text-xs text-muted-foreground">Abrir estoque</p>
-            </div>
-          </DropdownMenuItem>
+          {canCreateSales && (
+            <DropdownMenuItem onClick={() => navigate('/sales/new')} className="gap-3 cursor-pointer py-3 text-base">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <ShoppingCart className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <p className="font-medium">Pedido de Venda</p>
+                <p className="text-xs text-muted-foreground">Criar novo PV</p>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {canManageOrders && (
+            <DropdownMenuItem onClick={() => navigate('/orders')} className="gap-3 cursor-pointer py-3 text-base">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Plus className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <p className="font-medium">Ordem de Produção</p>
+                <p className="text-xs text-muted-foreground">Ver e criar OPs</p>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {canManageStock && (
+            <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-base">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Package className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <p className="font-medium">Entrada de Estoque</p>
+                <p className="text-xs text-muted-foreground">Abrir estoque</p>
+              </div>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

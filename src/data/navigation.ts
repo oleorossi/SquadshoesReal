@@ -225,12 +225,9 @@ export function getSecondaryRoutesForGroup(group: string) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Catálogo PLANO dos itens de menu (1 entrada por janela da sidebar). Fonte
-// única pra: (1) checkboxes de permissão POR ITEM no cadastro/edição de
-// usuário; (2) resolução de "dono" de uma rota no controle de acesso granular
-// (useAccessControl.isRouteAllowed). Derivado de menuGroups — item novo na
-// sidebar aparece automaticamente como permissão selecionável, sem lista
-// paralela pra manter em sincronia. (Permissão por menu, user 2026-06-17.)
+// Catálogo PLANO dos itens de menu (1 entrada por janela da sidebar). Ele segue
+// servindo só à apresentação da sidebar; permissão usa grantableDestinations
+// abaixo, porque uma tela pode ser concedível sem ocupar esse espaço visual.
 // ════════════════════════════════════════════════════════════════════════
 export interface FlatMenuItem {
   path: string;
@@ -245,11 +242,31 @@ export function getAllMenuItems(): FlatMenuItem[] {
   );
 }
 
-/** Itens de menu agrupados pelo rótulo do grupo (pra render dos checkboxes). */
+// Rotas abertas por ações não voltam ao menu: /orders foi removida da sidebar
+// por decisão do dono, mas FAB, cards e busca ainda precisam poder concedê-la.
+export const actionDestinations: ReadonlyArray<FlatMenuItem> = [
+  { path: '/orders', label: 'Ordens de Produção', group: 'Produção' },
+];
+
+// Fonte única dos destinos concedíveis. Inclui as superfícies de navegação sem
+// transformar rotas secundárias em itens da sidebar; isso evita que Cmd+K ou
+// uma ação ofereçam uma tela que a allow-list granular não consegue autorizar.
+const grantableDestinationSources: FlatMenuItem[] = [
+  ...getAllMenuItems(),
+  ...systemItems.map((item) => ({ path: item.to, label: item.label, group: 'Sistema' })),
+  ...secondaryRoutes.map((item) => ({ path: item.path, label: item.name, group: item.group })),
+  ...actionDestinations,
+];
+
+export const grantableDestinations: ReadonlyArray<FlatMenuItem> = Array.from(
+  new Map(grantableDestinationSources.map((item) => [item.path, item])).values(),
+);
+
+/** Destinos concedíveis agrupados para a matriz de permissões. */
 export function getMenuItemsGrouped(): Record<string, FlatMenuItem[]> {
   const out: Record<string, FlatMenuItem[]> = {};
-  for (const g of menuGroups) {
-    out[g.label] = g.items.map((it) => ({ path: it.path, label: it.name, group: g.label }));
+  for (const item of grantableDestinations) {
+    (out[item.group] ??= []).push(item);
   }
   return out;
 }
