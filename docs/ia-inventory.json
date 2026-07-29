@@ -1,0 +1,3995 @@
+{
+  "generatedFor": "Squad Shoes — reorganização de IA (menus, abas, perfis)",
+  "totals": {
+    "routesDeclared": 184,
+    "screens": 104,
+    "redirects": 72,
+    "navEntries": 72,
+    "menuItems": 54,
+    "menuGroups": 10,
+    "pagesWithTabs": 63,
+    "tabsWithoutUrl": 56,
+    "tabsOverloaded": 13
+  },
+  "findings": {
+    "orphanRoutes": [
+      {
+        "path": "/producao/kanban/gestao",
+        "component": "ProducaoKanbanGestao",
+        "line": 551
+      },
+      {
+        "path": "/pcp",
+        "component": "PCPHub",
+        "line": 627
+      },
+      {
+        "path": "/estoque/historico",
+        "component": "StockHistoryPage",
+        "line": 679
+      },
+      {
+        "path": "/fichas-tecnicas/padroes",
+        "component": "ColorStandards",
+        "line": 708
+      },
+      {
+        "path": "/consumo-base",
+        "component": "BaseConsumption",
+        "line": 733
+      },
+      {
+        "path": "/alertas-estoque",
+        "component": "StockAlerts",
+        "line": 737
+      },
+      {
+        "path": "/reservas-estoque",
+        "component": "StockReservations",
+        "line": 741
+      },
+      {
+        "path": "/orders",
+        "component": "Orders",
+        "line": 766
+      },
+      {
+        "path": "/orders/summary",
+        "component": "OrdersSummary",
+        "line": 770
+      },
+      {
+        "path": "/orders/grouped-summary",
+        "component": "GroupedReportSummary",
+        "line": 771
+      },
+      {
+        "path": "/rh/pendencias-ponto",
+        "component": "TimePendingsPage",
+        "line": 832
+      },
+      {
+        "path": "/rh/ausencias",
+        "component": "EmployeeAbsencesPage",
+        "line": 844
+      },
+      {
+        "path": "/unit-audit",
+        "component": "UnitAudit",
+        "line": 875
+      },
+      {
+        "path": "/sales/consumo",
+        "component": "SaleOrdersConsumption",
+        "line": 892
+      },
+      {
+        "path": "/mrp-advanced",
+        "component": "MrpAdvancedPage",
+        "line": 967
+      },
+      {
+        "path": "/reports",
+        "component": "Reports",
+        "line": 1091
+      },
+      {
+        "path": "/cost-policies",
+        "component": "CostPolicies",
+        "line": 1101
+      },
+      {
+        "path": "/relatorios/diario-producao",
+        "component": "RelDiarioA4",
+        "line": 1161
+      },
+      {
+        "path": "/relatorios/op",
+        "component": "RelOpA4",
+        "line": 1165
+      },
+      {
+        "path": "/relatorios/oee",
+        "component": "RelOeeA4",
+        "line": 1169
+      },
+      {
+        "path": "/relatorios/qualidade",
+        "component": "RelQualidadeA4",
+        "line": 1173
+      },
+      {
+        "path": "/relatorios/refugo",
+        "component": "RelRefugoA4",
+        "line": 1177
+      },
+      {
+        "path": "/relatorios/semanal",
+        "component": "RelSemanalA4",
+        "line": 1181
+      },
+      {
+        "path": "/modules/quality",
+        "component": "QualityModule",
+        "line": 1231
+      },
+      {
+        "path": "/modules/reports",
+        "component": "ReportsModule",
+        "line": 1232
+      }
+    ],
+    "exemptRoutes": [
+      {
+        "path": "/auth",
+        "component": "AuthRoute",
+        "reason": "Fora do shell autenticado"
+      },
+      {
+        "path": "/design-preview",
+        "component": "DesignPreview",
+        "reason": "Showcase interno do design system"
+      },
+      {
+        "path": "/m",
+        "component": "MobileHome",
+        "reason": "PWA do representante — shell próprio com tab bar"
+      },
+      {
+        "path": "/m/new",
+        "component": "MobileNewOrder",
+        "reason": "PWA do representante — shell próprio com tab bar"
+      },
+      {
+        "path": "/m/pending",
+        "component": "MobilePending",
+        "reason": "PWA do representante — shell próprio com tab bar"
+      },
+      {
+        "path": "/m/profile",
+        "component": "MobileProfile",
+        "reason": "PWA do representante — shell próprio com tab bar"
+      },
+      {
+        "path": "/navigation-audit",
+        "component": "NavigationAudit",
+        "reason": "Ferramenta de DEV, alcançada pelo banner de auditoria"
+      },
+      {
+        "path": "/sales/new",
+        "component": "SaleOrderForm",
+        "reason": "Formulário — alcançado por ação, não por menu"
+      }
+    ],
+    "ghostNavEntries": [],
+    "navPointingAtRedirect": [],
+    "bottomNavFindings": [
+      {
+        "label": "PCP",
+        "path": "/pcp",
+        "isMenuItem": false,
+        "isRedirectOnly": false,
+        "consequence": "Sem dono de menu → canAccessRoute() nega em modo granular; a aba some no mobile"
+      }
+    ],
+    "duplicateNavPaths": [
+      {
+        "path": "/embalagens",
+        "surfaces": [
+          "menuGroups",
+          "secondaryRoutes"
+        ]
+      }
+    ],
+    "duplicateRouteDefs": [
+      {
+        "path": "/inventory",
+        "lines": [
+          1077,
+          1240
+        ],
+        "note": "React Router usa a primeira; a segunda é inalcançável"
+      },
+      {
+        "path": "/technical-sheets",
+        "lines": [
+          750,
+          1244
+        ],
+        "note": "React Router usa a primeira; a segunda é inalcançável"
+      }
+    ],
+    "groupOverflow": [
+      {
+        "group": "Comercial",
+        "count": 8,
+        "limit": 5,
+        "excess": 3
+      },
+      {
+        "group": "Produção",
+        "count": 7,
+        "limit": 5,
+        "excess": 2
+      },
+      {
+        "group": "Compras",
+        "count": 8,
+        "limit": 5,
+        "excess": 3
+      },
+      {
+        "group": "Logística",
+        "count": 8,
+        "limit": 5,
+        "excess": 3
+      }
+    ],
+    "modulesGrantedToNobody": [
+      {
+        "module": "reports",
+        "routes": [
+          "/relatorios/diario-producao",
+          "/relatorios/op",
+          "/relatorios/oee",
+          "/relatorios/qualidade",
+          "/relatorios/refugo",
+          "/relatorios/semanal"
+        ]
+      }
+    ],
+    "navWithoutMenuOwner": [
+      {
+        "path": "/dashboard",
+        "label": "Painel",
+        "surface": "topItem",
+        "module": "dashboard"
+      },
+      {
+        "path": "/sac",
+        "label": "SAC",
+        "surface": "secondaryRoutes",
+        "module": "vendas"
+      },
+      {
+        "path": "/forecast",
+        "label": "Forecast",
+        "surface": "secondaryRoutes",
+        "module": "vendas"
+      },
+      {
+        "path": "/producao/produtividade",
+        "label": "Produtividade por Modelo",
+        "surface": "secondaryRoutes",
+        "module": "producao"
+      },
+      {
+        "path": "/picking-sessions",
+        "label": "Separação · Bipagem (EAN)",
+        "surface": "secondaryRoutes",
+        "module": "expedicao"
+      },
+      {
+        "path": "/delivery-tracking",
+        "label": "Rastreamento",
+        "surface": "secondaryRoutes",
+        "module": "expedicao"
+      },
+      {
+        "path": "/patrimonio",
+        "label": "Patrimônio",
+        "surface": "secondaryRoutes",
+        "module": "financeiro"
+      },
+      {
+        "path": "/perfis-tributarios",
+        "label": "Perfis Tributários",
+        "surface": "secondaryRoutes",
+        "module": "financeiro"
+      },
+      {
+        "path": "/audit-logs",
+        "label": "Auditoria (Logs)",
+        "surface": "secondaryRoutes",
+        "module": "sistema"
+      },
+      {
+        "path": "/lgpd",
+        "label": "LGPD",
+        "surface": "secondaryRoutes",
+        "module": "sistema"
+      },
+      {
+        "path": "/system-monitor",
+        "label": "Monitoramento",
+        "surface": "secondaryRoutes",
+        "module": "sistema"
+      },
+      {
+        "path": "/system-diagnostics",
+        "label": "Diagnóstico",
+        "surface": "secondaryRoutes",
+        "module": "sistema"
+      }
+    ]
+  },
+  "navigation": {
+    "topItem": {
+      "label": "Painel",
+      "path": "/dashboard",
+      "surface": "topItem"
+    },
+    "groups": [
+      {
+        "label": "Etiquetas",
+        "count": 1,
+        "items": [
+          {
+            "label": "Sistema de Etiquetas",
+            "path": "/label-system",
+            "line": 30
+          }
+        ]
+      },
+      {
+        "label": "Comercial",
+        "count": 8,
+        "items": [
+          {
+            "label": "Visão Geral",
+            "path": "/comercial",
+            "line": 37
+          },
+          {
+            "label": "Pedidos de Venda",
+            "path": "/sales",
+            "line": 38
+          },
+          {
+            "label": "Pronta-Entrega",
+            "path": "/pronta-entrega",
+            "line": 39
+          },
+          {
+            "label": "Clientes",
+            "path": "/clients",
+            "line": 40
+          },
+          {
+            "label": "CRM",
+            "path": "/crm",
+            "line": 41
+          },
+          {
+            "label": "Tarefas",
+            "path": "/tarefas",
+            "line": 42
+          },
+          {
+            "label": "Tabelas de Preço",
+            "path": "/price-lists",
+            "line": 43
+          },
+          {
+            "label": "Anotações",
+            "path": "/notas",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "label": "Produção",
+        "count": 7,
+        "items": [
+          {
+            "label": "Planejamento",
+            "path": "/producao/planejamento",
+            "line": 54
+          },
+          {
+            "label": "Kanban",
+            "path": "/producao/kanban",
+            "line": 55
+          },
+          {
+            "label": "Estouro de Produção",
+            "path": "/producao/estouro",
+            "line": 56
+          },
+          {
+            "label": "Setores",
+            "path": "/producao/setores",
+            "line": 57
+          },
+          {
+            "label": "Apontamento",
+            "path": "/producao/apontamento",
+            "line": 58
+          },
+          {
+            "label": "Imprimir Fichas",
+            "path": "/imprimir-fichas",
+            "line": 59
+          },
+          {
+            "label": "Análises",
+            "path": "/producao/analises",
+            "line": 60
+          }
+        ]
+      },
+      {
+        "label": "Estoque",
+        "count": 5,
+        "items": [
+          {
+            "label": "Estoque",
+            "path": "/estoque",
+            "line": 69
+          },
+          {
+            "label": "Grupos",
+            "path": "/grupos",
+            "line": 70
+          },
+          {
+            "label": "Ajustes",
+            "path": "/ajuste-estoque",
+            "line": 74
+          },
+          {
+            "label": "Qualidade de Estoque",
+            "path": "/estoque/qualidade",
+            "line": 75
+          },
+          {
+            "label": "Inventário ABC",
+            "path": "/estoque/inventario",
+            "line": 76
+          }
+        ]
+      },
+      {
+        "label": "Engenharia",
+        "count": 5,
+        "items": [
+          {
+            "label": "Fichas Técnicas",
+            "path": "/fichas-tecnicas",
+            "line": 83
+          },
+          {
+            "label": "Escalonamento",
+            "path": "/escalonamento",
+            "line": 84
+          },
+          {
+            "label": "Calculadora de Tiras",
+            "path": "/calculadora-tiras",
+            "line": 85
+          },
+          {
+            "label": "Solados",
+            "path": "/solados",
+            "line": 86
+          },
+          {
+            "label": "Silks",
+            "path": "/silks",
+            "line": 87
+          }
+        ]
+      },
+      {
+        "label": "Compras",
+        "count": 8,
+        "items": [
+          {
+            "label": "Planejamento",
+            "path": "/purchase-planning",
+            "line": 97
+          },
+          {
+            "label": "Cotações (RFQ)",
+            "path": "/quotations",
+            "line": 101
+          },
+          {
+            "label": "Ordens de Compra",
+            "path": "/purchase-orders",
+            "line": 102
+          },
+          {
+            "label": "Compras por Pedido",
+            "path": "/purchase-orders/per-pv",
+            "line": 107
+          },
+          {
+            "label": "Inspeção Receb.",
+            "path": "/compras/inspecao",
+            "line": 108
+          },
+          {
+            "label": "Fornecedores",
+            "path": "/suppliers",
+            "line": 109
+          },
+          {
+            "label": "Custos de Insumos",
+            "path": "/custos-insumos",
+            "line": 110
+          },
+          {
+            "label": "Alçadas",
+            "path": "/compras/alcadas",
+            "line": 111
+          }
+        ]
+      },
+      {
+        "label": "Logística",
+        "count": 8,
+        "items": [
+          {
+            "label": "Expedição",
+            "path": "/expedicao",
+            "line": 118
+          },
+          {
+            "label": "Embalagens",
+            "path": "/embalagens",
+            "line": 122
+          },
+          {
+            "label": "Transporte",
+            "path": "/transporte",
+            "line": 125
+          },
+          {
+            "label": "Separação · Materiais",
+            "path": "/picking",
+            "line": 129
+          },
+          {
+            "label": "Conferência · Saída",
+            "path": "/conferencia-saida",
+            "line": 130
+          },
+          {
+            "label": "Romaneios",
+            "path": "/manifests",
+            "line": 131
+          },
+          {
+            "label": "Entregas",
+            "path": "/entregas",
+            "line": 132
+          },
+          {
+            "label": "Transportadoras",
+            "path": "/transporters",
+            "line": 133
+          }
+        ]
+      },
+      {
+        "label": "Financeiro",
+        "count": 4,
+        "items": [
+          {
+            "label": "Financeiro",
+            "path": "/financeiro",
+            "line": 140
+          },
+          {
+            "label": "Conciliação Bancária",
+            "path": "/bank-reconciliation",
+            "line": 143
+          },
+          {
+            "label": "CNAB / Boletos",
+            "path": "/cnab",
+            "line": 144
+          },
+          {
+            "label": "Markup",
+            "path": "/pricing-calculator",
+            "line": 145
+          }
+        ]
+      },
+      {
+        "label": "Fiscal",
+        "count": 5,
+        "items": [
+          {
+            "label": "NF-e",
+            "path": "/nfe",
+            "line": 152
+          },
+          {
+            "label": "CT-e",
+            "path": "/cte",
+            "line": 153
+          },
+          {
+            "label": "MDF-e",
+            "path": "/mdfe",
+            "line": 154
+          },
+          {
+            "label": "SPED",
+            "path": "/sped",
+            "line": 155
+          },
+          {
+            "label": "Impostos",
+            "path": "/apuracao-impostos",
+            "line": 156
+          }
+        ]
+      },
+      {
+        "label": "RH",
+        "count": 3,
+        "items": [
+          {
+            "label": "Pessoas",
+            "path": "/rh",
+            "line": 167
+          },
+          {
+            "label": "Ficha Montadores",
+            "path": "/fichas-montadores",
+            "line": 170
+          },
+          {
+            "label": "Terceirizados",
+            "path": "/terceirizados",
+            "line": 174
+          }
+        ]
+      }
+    ],
+    "systemItems": [
+      {
+        "path": "/settings",
+        "label": "Configurações",
+        "surface": "systemItems"
+      },
+      {
+        "path": "/automations",
+        "label": "Automações",
+        "surface": "systemItems"
+      },
+      {
+        "path": "/relatorios",
+        "label": "Relatórios",
+        "surface": "systemItems"
+      },
+      {
+        "path": "/security",
+        "label": "Segurança & Logs",
+        "surface": "systemItems"
+      }
+    ],
+    "secondaryRoutes": [
+      {
+        "label": "SAC",
+        "path": "/sac",
+        "group": "Comercial",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Forecast",
+        "path": "/forecast",
+        "group": "Comercial",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Produtividade por Modelo",
+        "path": "/producao/produtividade",
+        "group": "Produção",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Embalagens",
+        "path": "/embalagens",
+        "group": "Logística",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Separação · Bipagem (EAN)",
+        "path": "/picking-sessions",
+        "group": "Logística",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Rastreamento",
+        "path": "/delivery-tracking",
+        "group": "Logística",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Patrimônio",
+        "path": "/patrimonio",
+        "group": "Financeiro",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Perfis Tributários",
+        "path": "/perfis-tributarios",
+        "group": "Fiscal",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "SPED Bloco K",
+        "path": "/sped/bloco-k",
+        "group": "Fiscal",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Auditoria (Logs)",
+        "path": "/audit-logs",
+        "group": "Sistema",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "LGPD",
+        "path": "/lgpd",
+        "group": "Sistema",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Monitoramento",
+        "path": "/system-monitor",
+        "group": "Sistema",
+        "surface": "secondaryRoutes"
+      },
+      {
+        "label": "Diagnóstico",
+        "path": "/system-diagnostics",
+        "group": "Sistema",
+        "surface": "secondaryRoutes"
+      }
+    ]
+  },
+  "roleVisibility": {
+    "admin": {
+      "visibleCount": 54,
+      "totalMenuItems": 54,
+      "emptyGroups": []
+    },
+    "gerente": {
+      "visibleCount": 54,
+      "totalMenuItems": 54,
+      "emptyGroups": []
+    },
+    "producao": {
+      "visibleCount": 36,
+      "totalMenuItems": 54,
+      "emptyGroups": [
+        "Financeiro",
+        "Fiscal"
+      ]
+    },
+    "almoxarifado": {
+      "visibleCount": 6,
+      "totalMenuItems": 54,
+      "emptyGroups": [
+        "Etiquetas",
+        "Comercial",
+        "Produção",
+        "Engenharia",
+        "Logística",
+        "Financeiro",
+        "Fiscal",
+        "RH"
+      ]
+    },
+    "comercial": {
+      "visibleCount": 8,
+      "totalMenuItems": 54,
+      "emptyGroups": [
+        "Etiquetas",
+        "Produção",
+        "Estoque",
+        "Engenharia",
+        "Compras",
+        "Logística",
+        "Financeiro",
+        "Fiscal",
+        "RH"
+      ]
+    },
+    "consulta": {
+      "visibleCount": 54,
+      "totalMenuItems": 54,
+      "emptyGroups": []
+    },
+    "nfe_operator": {
+      "visibleCount": 9,
+      "totalMenuItems": 54,
+      "emptyGroups": [
+        "Etiquetas",
+        "Produção",
+        "Estoque",
+        "Engenharia",
+        "Compras",
+        "Logística",
+        "Financeiro",
+        "RH"
+      ]
+    },
+    "rh": {
+      "visibleCount": 2,
+      "totalMenuItems": 54,
+      "emptyGroups": [
+        "Etiquetas",
+        "Comercial",
+        "Produção",
+        "Estoque",
+        "Engenharia",
+        "Compras",
+        "Logística",
+        "Financeiro",
+        "Fiscal"
+      ]
+    }
+  },
+  "routes": [
+    {
+      "path": "/auth",
+      "raw": "/auth",
+      "parentRaw": null,
+      "component": "AuthRoute",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 529
+    },
+    {
+      "path": "/login",
+      "raw": "/login",
+      "parentRaw": null,
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/auth",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 534
+    },
+    {
+      "path": "/design-preview",
+      "raw": "/design-preview",
+      "parentRaw": null,
+      "component": "DesignPreview",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 538
+    },
+    {
+      "path": "/producao/kanban/gestao",
+      "raw": "/producao/kanban/gestao",
+      "parentRaw": null,
+      "component": "ProducaoKanbanGestao",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 551
+    },
+    {
+      "path": "/m",
+      "raw": null,
+      "parentRaw": "/m",
+      "component": "MobileHome",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": true,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 570
+    },
+    {
+      "path": "/m/new",
+      "raw": "new",
+      "parentRaw": "/m",
+      "component": "MobileNewOrder",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 581
+    },
+    {
+      "path": "/m/pending",
+      "raw": "pending",
+      "parentRaw": "/m",
+      "component": "MobilePending",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 582
+    },
+    {
+      "path": "/m/profile",
+      "raw": "profile",
+      "parentRaw": "/m",
+      "component": "MobileProfile",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 583
+    },
+    {
+      "path": "/m",
+      "raw": "/m",
+      "parentRaw": null,
+      "component": "MobileLayout",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": true,
+      "line": 570
+    },
+    {
+      "path": "/",
+      "raw": null,
+      "parentRaw": "/",
+      "component": "RootRedirect",
+      "isRedirect": true,
+      "redirectTo": null,
+      "isIndex": true,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 587
+    },
+    {
+      "path": "/dashboard",
+      "raw": "dashboard",
+      "parentRaw": "/",
+      "component": "Dashboard",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 615
+    },
+    {
+      "path": "/pcp",
+      "raw": "pcp",
+      "parentRaw": "/",
+      "component": "PCPHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 627
+    },
+    {
+      "path": "/producao/planejamento",
+      "raw": "producao/planejamento",
+      "parentRaw": "/",
+      "component": "ProducaoPlanejamento",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 632
+    },
+    {
+      "path": "/producao/kanban",
+      "raw": "producao/kanban",
+      "parentRaw": "/",
+      "component": "ProducaoKanban",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 636
+    },
+    {
+      "path": "/producao/estouro",
+      "raw": "producao/estouro",
+      "parentRaw": "/",
+      "component": "ProducaoEstouro",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 640
+    },
+    {
+      "path": "/producao/setores",
+      "raw": "producao/setores",
+      "parentRaw": "/",
+      "component": "ProducaoSetoresConfig",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 644
+    },
+    {
+      "path": "/producao/apontamento",
+      "raw": "producao/apontamento",
+      "parentRaw": "/",
+      "component": "ProducaoApontamento",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 648
+    },
+    {
+      "path": "/producao/analises",
+      "raw": "producao/analises",
+      "parentRaw": "/",
+      "component": "ProducaoAnalises",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 652
+    },
+    {
+      "path": "/producao/produtividade",
+      "raw": "producao/produtividade",
+      "parentRaw": "/",
+      "component": "ProdutividadeModelos",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 658
+    },
+    {
+      "path": "/pcp/ondas",
+      "raw": "pcp/ondas",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 663
+    },
+    {
+      "path": "/pronta-entrega",
+      "raw": "pronta-entrega",
+      "parentRaw": "/",
+      "component": "ProntaEntrega",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 667
+    },
+    {
+      "path": "/lead-time",
+      "raw": "lead-time",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=lead-time",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 671
+    },
+    {
+      "path": "/estoque",
+      "raw": null,
+      "parentRaw": "estoque",
+      "component": "Index",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": true,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 675
+    },
+    {
+      "path": "/estoque/:id",
+      "raw": ":id",
+      "parentRaw": "estoque",
+      "component": "ProductDetail",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 678
+    },
+    {
+      "path": "/estoque/historico",
+      "raw": "historico",
+      "parentRaw": "estoque",
+      "component": "StockHistoryPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 679
+    },
+    {
+      "path": "/grupos",
+      "raw": "grupos",
+      "parentRaw": "/",
+      "component": "Groups",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 684
+    },
+    {
+      "path": "/ajuste-estoque",
+      "raw": "ajuste-estoque",
+      "parentRaw": "/",
+      "component": "StockAdjustmentPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 688
+    },
+    {
+      "path": "/references",
+      "raw": "references",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 693
+    },
+    {
+      "path": "/imagens-cores",
+      "raw": "imagens-cores",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 698
+    },
+    {
+      "path": "/fichas-tecnicas",
+      "raw": "fichas-tecnicas",
+      "parentRaw": "/",
+      "component": "TechnicalSheets",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 702
+    },
+    {
+      "path": "/fichas-tecnicas/padroes",
+      "raw": "fichas-tecnicas/padroes",
+      "parentRaw": "/",
+      "component": "ColorStandards",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 708
+    },
+    {
+      "path": "/escalonamento",
+      "raw": "escalonamento",
+      "parentRaw": "/",
+      "component": "EscalonamentoCadPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 714
+    },
+    {
+      "path": "/calculadora-tiras",
+      "raw": "calculadora-tiras",
+      "parentRaw": "/",
+      "component": "StrapCalculator",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 720
+    },
+    {
+      "path": "/silks",
+      "raw": "silks",
+      "parentRaw": "/",
+      "component": "Silks",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 724
+    },
+    {
+      "path": "/silk-registrations",
+      "raw": "silk-registrations",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/silks",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 729
+    },
+    {
+      "path": "/consumo-base",
+      "raw": "consumo-base",
+      "parentRaw": "/",
+      "component": "BaseConsumption",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 733
+    },
+    {
+      "path": "/alertas-estoque",
+      "raw": "alertas-estoque",
+      "parentRaw": "/",
+      "component": "StockAlerts",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 737
+    },
+    {
+      "path": "/reservas-estoque",
+      "raw": "reservas-estoque",
+      "parentRaw": "/",
+      "component": "StockReservations",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 741
+    },
+    {
+      "path": "/solados",
+      "raw": "solados",
+      "parentRaw": "/",
+      "component": "SolesHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 746
+    },
+    {
+      "path": "/technical-sheets",
+      "raw": "technical-sheets",
+      "parentRaw": "/",
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 750
+    },
+    {
+      "path": "/products",
+      "raw": "products",
+      "parentRaw": "/",
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 754
+    },
+    {
+      "path": "/component-sheets",
+      "raw": "component-sheets",
+      "parentRaw": "/",
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 758
+    },
+    {
+      "path": "/consumo-material",
+      "raw": "consumo-material",
+      "parentRaw": "/",
+      "component": "LegacyRouteRedirect",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 762
+    },
+    {
+      "path": "/orders",
+      "raw": null,
+      "parentRaw": "orders",
+      "component": "Orders",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": true,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 766
+    },
+    {
+      "path": "/orders/:id/edit",
+      "raw": ":id/edit",
+      "parentRaw": "orders",
+      "component": "OrderEdit",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 769
+    },
+    {
+      "path": "/orders/summary",
+      "raw": "summary",
+      "parentRaw": "orders",
+      "component": "OrdersSummary",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 770
+    },
+    {
+      "path": "/orders/grouped-summary",
+      "raw": "grouped-summary",
+      "parentRaw": "orders",
+      "component": "GroupedReportSummary",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 771
+    },
+    {
+      "path": "/pedidos/:id",
+      "raw": "pedidos/:id",
+      "parentRaw": "/",
+      "component": "PedidosRedirect",
+      "isRedirect": true,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 775
+    },
+    {
+      "path": "/setores",
+      "raw": "setores",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 779
+    },
+    {
+      "path": "/shop-floor",
+      "raw": "shop-floor",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 783
+    },
+    {
+      "path": "/pcp-dashboard",
+      "raw": "pcp-dashboard",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=dashboard",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 789
+    },
+    {
+      "path": "/picking",
+      "raw": "picking",
+      "parentRaw": "/",
+      "component": "PickingListPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 793
+    },
+    {
+      "path": "/gargalos",
+      "raw": "gargalos",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=gargalo-semanal",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 799
+    },
+    {
+      "path": "/ordens-servico",
+      "raw": "ordens-servico",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 804
+    },
+    {
+      "path": "/terceirizados",
+      "raw": "terceirizados",
+      "parentRaw": "/",
+      "component": "TerceirizadosHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 811
+    },
+    {
+      "path": "/terceiros",
+      "raw": "terceiros",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 818
+    },
+    {
+      "path": "/terceiros-na-rua",
+      "raw": "terceiros-na-rua",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 822
+    },
+    {
+      "path": "/terceiros/relatorios",
+      "raw": "terceiros/relatorios",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=relatorio",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 826
+    },
+    {
+      "path": "/rh/pendencias-ponto",
+      "raw": "rh/pendencias-ponto",
+      "parentRaw": "/",
+      "component": "TimePendingsPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 832
+    },
+    {
+      "path": "/rh/fechamento-semanal",
+      "raw": "rh/fechamento-semanal",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 838
+    },
+    {
+      "path": "/rh/ausencias",
+      "raw": "rh/ausencias",
+      "parentRaw": "/",
+      "component": "EmployeeAbsencesPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 844
+    },
+    {
+      "path": "/producao/visao-agregada",
+      "raw": "producao/visao-agregada",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=quadro&modo=lote",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 850
+    },
+    {
+      "path": "/mrp",
+      "raw": "mrp",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/purchase-planning?tab=mrp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 854
+    },
+    {
+      "path": "/wip-control",
+      "raw": "wip-control",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 858
+    },
+    {
+      "path": "/cycle-count",
+      "raw": "cycle-count",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 862
+    },
+    {
+      "path": "/order-flow-audit",
+      "raw": "order-flow-audit",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=auditoria",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 867
+    },
+    {
+      "path": "/navigation-audit",
+      "raw": "navigation-audit",
+      "parentRaw": "/",
+      "component": "NavigationAudit",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 871
+    },
+    {
+      "path": "/unit-audit",
+      "raw": "unit-audit",
+      "parentRaw": "/",
+      "component": "UnitAudit",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 875
+    },
+    {
+      "path": "/labels",
+      "raw": "labels",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/label-system",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 879
+    },
+    {
+      "path": "/label-system",
+      "raw": "label-system",
+      "parentRaw": "/",
+      "component": "LabelSystem",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 883
+    },
+    {
+      "path": "/sales",
+      "raw": null,
+      "parentRaw": "sales",
+      "component": "SaleOrders",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": true,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 887
+    },
+    {
+      "path": "/sales/new",
+      "raw": "new",
+      "parentRaw": "sales",
+      "component": "SaleOrderForm",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 890
+    },
+    {
+      "path": "/sales/edit/:id",
+      "raw": "edit/:id",
+      "parentRaw": "sales",
+      "component": "SaleOrderForm",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 891
+    },
+    {
+      "path": "/sales/consumo",
+      "raw": "consumo",
+      "parentRaw": "sales",
+      "component": "SaleOrdersConsumption",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 892
+    },
+    {
+      "path": "/sales-report",
+      "raw": "sales-report",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/comercial",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 897
+    },
+    {
+      "path": "/suppliers",
+      "raw": "suppliers",
+      "parentRaw": "/",
+      "component": "Suppliers",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 901
+    },
+    {
+      "path": "/clients",
+      "raw": "clients",
+      "parentRaw": "/",
+      "component": "Clients",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 905
+    },
+    {
+      "path": "/grupos-economicos/:id",
+      "raw": "grupos-economicos/:id",
+      "parentRaw": "/",
+      "component": "EconomicGroupDetail",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 909
+    },
+    {
+      "path": "/finance",
+      "raw": "finance",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/financeiro",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 913
+    },
+    {
+      "path": "/custos-insumos",
+      "raw": "custos-insumos",
+      "parentRaw": "/",
+      "component": "InputCostsPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 917
+    },
+    {
+      "path": "/nfe",
+      "raw": "nfe",
+      "parentRaw": "/",
+      "component": "NfePage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 921
+    },
+    {
+      "path": "/contractors",
+      "raw": "contractors",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 928
+    },
+    {
+      "path": "/artisanal-recipes",
+      "raw": "artisanal-recipes",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/terceirizados?tab=recipes",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 934
+    },
+    {
+      "path": "/employees",
+      "raw": "employees",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=funcionarios",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 939
+    },
+    {
+      "path": "/timesheet",
+      "raw": "timesheet",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=ponto",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 944
+    },
+    {
+      "path": "/time-control",
+      "raw": "time-control",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=ponto",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 948
+    },
+    {
+      "path": "/purchase-orders/per-pv",
+      "raw": "purchase-orders/per-pv",
+      "parentRaw": "/",
+      "component": "PurchaseOrdersPerPv",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 952
+    },
+    {
+      "path": "/purchase-orders",
+      "raw": "purchase-orders",
+      "parentRaw": "/",
+      "component": "PurchaseOrders",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 956
+    },
+    {
+      "path": "/purchase-planning",
+      "raw": "purchase-planning",
+      "parentRaw": "/",
+      "component": "PurchasePlanning",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 960
+    },
+    {
+      "path": "/mrp-advanced",
+      "raw": "mrp-advanced",
+      "parentRaw": "/",
+      "component": "MrpAdvancedPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 967
+    },
+    {
+      "path": "/pricing-calculator",
+      "raw": "pricing-calculator",
+      "parentRaw": "/",
+      "component": "PricingCalculator",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 971
+    },
+    {
+      "path": "/weekly-purchasing-plan",
+      "raw": "weekly-purchasing-plan",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/purchase-planning?tab=weekly",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 975
+    },
+    {
+      "path": "/comercial",
+      "raw": "comercial",
+      "parentRaw": "/",
+      "component": "ComercialDashboard",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 979
+    },
+    {
+      "path": "/producao",
+      "raw": "producao",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 984
+    },
+    {
+      "path": "/producao/live",
+      "raw": "producao/live",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=quadro&modo=cartoes",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 989
+    },
+    {
+      "path": "/producao/timeline",
+      "raw": "producao/timeline",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=quadro&modo=timeline",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 994
+    },
+    {
+      "path": "/production-dashboard",
+      "raw": "production-dashboard",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=dashboard",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 999
+    },
+    {
+      "path": "/financeiro",
+      "raw": "financeiro",
+      "parentRaw": "/",
+      "component": "Finance",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1003
+    },
+    {
+      "path": "/rh",
+      "raw": "rh",
+      "parentRaw": "/",
+      "component": "RHHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1007
+    },
+    {
+      "path": "/rh/espelho-ponto/:employeeId",
+      "raw": "rh/espelho-ponto/:employeeId",
+      "parentRaw": "/",
+      "component": "EspelhoPontoPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 1012
+    },
+    {
+      "path": "/rh/banco-de-horas",
+      "raw": "rh/banco-de-horas",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1018
+    },
+    {
+      "path": "/rh/bank-hours",
+      "raw": "rh/bank-hours",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1022
+    },
+    {
+      "path": "/rh/payroll",
+      "raw": "rh/payroll",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/rh?tab=folha",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1027
+    },
+    {
+      "path": "/transporte",
+      "raw": "transporte",
+      "parentRaw": "/",
+      "component": "Transport",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1031
+    },
+    {
+      "path": "/embalagens",
+      "raw": "embalagens",
+      "parentRaw": "/",
+      "component": "PackagingManagement",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1035
+    },
+    {
+      "path": "/expedicao",
+      "raw": "expedicao",
+      "parentRaw": "/",
+      "component": "ExpedicaoHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1039
+    },
+    {
+      "path": "/conferencia-saida",
+      "raw": "conferencia-saida",
+      "parentRaw": "/",
+      "component": "OrderPickingPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1043
+    },
+    {
+      "path": "/settings",
+      "raw": "settings",
+      "parentRaw": "/",
+      "component": "Settings",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1047
+    },
+    {
+      "path": "/capacity-planning",
+      "raw": "capacity-planning",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=capacidade",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1052
+    },
+    {
+      "path": "/capacity-planning/distribuir",
+      "raw": "capacity-planning/distribuir",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/planejamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1058
+    },
+    {
+      "path": "/centro-controle",
+      "raw": "centro-controle",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=centro-controle",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1063
+    },
+    {
+      "path": "/imprimir-fichas",
+      "raw": "imprimir-fichas",
+      "parentRaw": "/",
+      "component": "PrintWorkSheets",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1067
+    },
+    {
+      "path": "/fichas-montadores",
+      "raw": "fichas-montadores",
+      "parentRaw": "/",
+      "component": "FichaMontadoresPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1072
+    },
+    {
+      "path": "/inventory",
+      "raw": "inventory",
+      "parentRaw": "/",
+      "component": "LegacyInventoryRedirect",
+      "isRedirect": true,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1077
+    },
+    {
+      "path": "/production",
+      "raw": "production",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=dashboard",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1082
+    },
+    {
+      "path": "/quality",
+      "raw": "quality",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=qualidade",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1087
+    },
+    {
+      "path": "/reports",
+      "raw": "reports",
+      "parentRaw": "/",
+      "component": "Reports",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1091
+    },
+    {
+      "path": "/relatorios",
+      "raw": "relatorios",
+      "parentRaw": "/",
+      "component": "RelatoriosHub",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1096
+    },
+    {
+      "path": "/cost-policies",
+      "raw": "cost-policies",
+      "parentRaw": "/",
+      "component": "CostPolicies",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1101
+    },
+    {
+      "path": "/cronoanalise",
+      "raw": "cronoanalise",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=cronoanalise",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1106
+    },
+    {
+      "path": "/producao/paradas",
+      "raw": "producao/paradas",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=oee",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1111
+    },
+    {
+      "path": "/producao/setup-times",
+      "raw": "producao/setup-times",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/producao/analises?view=setup",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1116
+    },
+    {
+      "path": "/patrimonio",
+      "raw": "patrimonio",
+      "parentRaw": "/",
+      "component": "Patrimonio",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1121
+    },
+    {
+      "path": "/sped/bloco-k",
+      "raw": "sped/bloco-k",
+      "parentRaw": "/",
+      "component": "BlocoK",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1126
+    },
+    {
+      "path": "/perfis-tributarios",
+      "raw": "perfis-tributarios",
+      "parentRaw": "/",
+      "component": "PerfisTributarios",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1131
+    },
+    {
+      "path": "/apuracao-impostos",
+      "raw": "apuracao-impostos",
+      "parentRaw": "/",
+      "component": "ApuracaoImpostos",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1136
+    },
+    {
+      "path": "/estoque/qualidade",
+      "raw": "estoque/qualidade",
+      "parentRaw": "/",
+      "component": "EstoqueQualidade",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1141
+    },
+    {
+      "path": "/compras/alcadas",
+      "raw": "compras/alcadas",
+      "parentRaw": "/",
+      "component": "AlcadasCompras",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1146
+    },
+    {
+      "path": "/compras/inspecao",
+      "raw": "compras/inspecao",
+      "parentRaw": "/",
+      "component": "InspecaoRecebimento",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1151
+    },
+    {
+      "path": "/estoque/inventario",
+      "raw": "estoque/inventario",
+      "parentRaw": "/",
+      "component": "InventarioABC",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1156
+    },
+    {
+      "path": "/relatorios/diario-producao",
+      "raw": "relatorios/diario-producao",
+      "parentRaw": "/",
+      "component": "RelDiarioA4",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1161
+    },
+    {
+      "path": "/relatorios/op",
+      "raw": "relatorios/op",
+      "parentRaw": "/",
+      "component": "RelOpA4",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1165
+    },
+    {
+      "path": "/relatorios/oee",
+      "raw": "relatorios/oee",
+      "parentRaw": "/",
+      "component": "RelOeeA4",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1169
+    },
+    {
+      "path": "/relatorios/qualidade",
+      "raw": "relatorios/qualidade",
+      "parentRaw": "/",
+      "component": "RelQualidadeA4",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1173
+    },
+    {
+      "path": "/relatorios/refugo",
+      "raw": "relatorios/refugo",
+      "parentRaw": "/",
+      "component": "RelRefugoA4",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1177
+    },
+    {
+      "path": "/relatorios/semanal",
+      "raw": "relatorios/semanal",
+      "parentRaw": "/",
+      "component": "RelSemanalA4",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1181
+    },
+    {
+      "path": "/producao/fluxo",
+      "raw": "producao/fluxo",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=quadro&modo=matriz",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1186
+    },
+    {
+      "path": "/automations",
+      "raw": "automations",
+      "parentRaw": "/",
+      "component": "Automations",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1190
+    },
+    {
+      "path": "/system-monitor",
+      "raw": "system-monitor",
+      "parentRaw": "/",
+      "component": "SystemMonitor",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1194
+    },
+    {
+      "path": "/system-diagnostics",
+      "raw": "system-diagnostics",
+      "parentRaw": "/",
+      "component": "SystemDiagnostics",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1198
+    },
+    {
+      "path": "/audit-logs",
+      "raw": "audit-logs",
+      "parentRaw": "/",
+      "component": "AuditLogs",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1202
+    },
+    {
+      "path": "/price-lists",
+      "raw": "price-lists",
+      "parentRaw": "/",
+      "component": "PriceLists",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1206
+    },
+    {
+      "path": "/crm",
+      "raw": "crm",
+      "parentRaw": "/",
+      "component": "CRM",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1207
+    },
+    {
+      "path": "/notas",
+      "raw": "notas",
+      "parentRaw": "/",
+      "component": "Notes",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1208
+    },
+    {
+      "path": "/tarefas",
+      "raw": "tarefas",
+      "parentRaw": "/",
+      "component": "Tarefas",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1209
+    },
+    {
+      "path": "/sac",
+      "raw": "sac",
+      "parentRaw": "/",
+      "component": "SAC",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1210
+    },
+    {
+      "path": "/forecast",
+      "raw": "forecast",
+      "parentRaw": "/",
+      "component": "Forecast",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1211
+    },
+    {
+      "path": "/quotations",
+      "raw": "quotations",
+      "parentRaw": "/",
+      "component": "Quotations",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1212
+    },
+    {
+      "path": "/cte",
+      "raw": "cte",
+      "parentRaw": "/",
+      "component": "CTe",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1213
+    },
+    {
+      "path": "/mdfe",
+      "raw": "mdfe",
+      "parentRaw": "/",
+      "component": "MDFe",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1214
+    },
+    {
+      "path": "/cnab",
+      "raw": "cnab",
+      "parentRaw": "/",
+      "component": "CNAB",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1215
+    },
+    {
+      "path": "/bank-reconciliation",
+      "raw": "bank-reconciliation",
+      "parentRaw": "/",
+      "component": "BankReconciliation",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1216
+    },
+    {
+      "path": "/sped",
+      "raw": "sped",
+      "parentRaw": "/",
+      "component": "SPED",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1217
+    },
+    {
+      "path": "/picking-sessions",
+      "raw": "picking-sessions",
+      "parentRaw": "/",
+      "component": "Picking",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1218
+    },
+    {
+      "path": "/manifests",
+      "raw": "manifests",
+      "parentRaw": "/",
+      "component": "Manifests",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1219
+    },
+    {
+      "path": "/transporters",
+      "raw": "transporters",
+      "parentRaw": "/",
+      "component": "Transporters",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1220
+    },
+    {
+      "path": "/delivery-tracking",
+      "raw": "delivery-tracking",
+      "parentRaw": "/",
+      "component": "DeliveryTracking",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1221
+    },
+    {
+      "path": "/entregas",
+      "raw": "entregas",
+      "parentRaw": "/",
+      "component": "OwnDeliveriesPage",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1222
+    },
+    {
+      "path": "/lgpd",
+      "raw": "lgpd",
+      "parentRaw": "/",
+      "component": "LGPD",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1223
+    },
+    {
+      "path": "/security",
+      "raw": "security",
+      "parentRaw": "/",
+      "component": "Security",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1224
+    },
+    {
+      "path": "/modules/production",
+      "raw": "production",
+      "parentRaw": "modules",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1230
+    },
+    {
+      "path": "/modules/quality",
+      "raw": "quality",
+      "parentRaw": "modules",
+      "component": "QualityModule",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1231
+    },
+    {
+      "path": "/modules/reports",
+      "raw": "reports",
+      "parentRaw": "modules",
+      "component": "ReportsModule",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1232
+    },
+    {
+      "path": "/stock",
+      "raw": "stock",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1239
+    },
+    {
+      "path": "/inventory",
+      "raw": "inventory",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/estoque",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1240
+    },
+    {
+      "path": "/auditoria",
+      "raw": "auditoria",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/audit-logs",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1241
+    },
+    {
+      "path": "/diagnostico",
+      "raw": "diagnostico",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/system-diagnostics",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1242
+    },
+    {
+      "path": "/monitoramento",
+      "raw": "monitoramento",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/system-monitor",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1243
+    },
+    {
+      "path": "/technical-sheets",
+      "raw": "technical-sheets",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/fichas-tecnicas",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1244
+    },
+    {
+      "path": "/pedidos-venda",
+      "raw": "pedidos-venda",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/sales",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1249
+    },
+    {
+      "path": "/ordens-de-producao",
+      "raw": "ordens-de-producao",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1250
+    },
+    {
+      "path": "/ordens",
+      "raw": "ordens",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1251
+    },
+    {
+      "path": "/corte",
+      "raw": "corte",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores&sub=corte",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1252
+    },
+    {
+      "path": "/costura",
+      "raw": "costura",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores&sub=costura",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1253
+    },
+    {
+      "path": "/aviamento",
+      "raw": "aviamento",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores&sub=aviamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1254
+    },
+    {
+      "path": "/montagem",
+      "raw": "montagem",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores&sub=montagem",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1255
+    },
+    {
+      "path": "/solagem",
+      "raw": "solagem",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores&sub=solagem",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1256
+    },
+    {
+      "path": "/acabamento",
+      "raw": "acabamento",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/pcp?tab=setores&sub=acabamento",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1257
+    },
+    {
+      "path": "/compras",
+      "raw": "compras",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/purchase-orders",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1258
+    },
+    {
+      "path": "/fornecedores",
+      "raw": "fornecedores",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/suppliers",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1259
+    },
+    {
+      "path": "/clientes",
+      "raw": "clientes",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/clients",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1260
+    },
+    {
+      "path": "/ponto",
+      "raw": "ponto",
+      "parentRaw": "/",
+      "component": "Navigate",
+      "isRedirect": true,
+      "redirectTo": "/timesheet",
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": false,
+      "line": 1261
+    },
+    {
+      "path": "/*",
+      "raw": "*",
+      "parentRaw": "/",
+      "component": "NotFound",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": true,
+      "isLayout": false,
+      "line": 1267
+    },
+    {
+      "path": "/",
+      "raw": "/",
+      "parentRaw": null,
+      "component": "ScrollRestorationComponent",
+      "isRedirect": false,
+      "redirectTo": null,
+      "isIndex": false,
+      "isDetail": false,
+      "isLayout": true,
+      "line": 587
+    }
+  ],
+  "tabs": [
+    {
+      "file": "src/pages/Setores.tsx",
+      "triggerCount": 11,
+      "labels": [
+        "Corte Palmilha",
+        "Corte Forração",
+        "Costura Palmilha",
+        "Costura Cabedal",
+        "Aviamento",
+        "Silk",
+        "Colagem",
+        "Montagem",
+        "Solagem",
+        "Acabamento",
+        "Expedição"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/TechnicalSheets.tsx",
+      "triggerCount": 9,
+      "labels": [
+        "Range Aviamento",
+        "Variantes",
+        "Fotos & Histórico",
+        "Ficha Imprimível",
+        "Terceirizados"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/EconomicGroupDetail.tsx",
+      "triggerCount": 8,
+      "labels": [
+        "Resumo",
+        "Comercial",
+        "Clientes",
+        "Pedidos",
+        "Financeiro",
+        "Contatos",
+        "Notas",
+        "Histórico"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/ComponentSheets.tsx",
+      "triggerCount": 8,
+      "labels": [
+        "Geral",
+        "Solados",
+        "Especificações",
+        "Consumo/Par (dm²)",
+        "Consumo",
+        "Observações",
+        "Specs Técnicas",
+        "Cores / Itens"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/Index.tsx",
+      "triggerCount": 7,
+      "labels": [
+        "Materiais",
+        "Visão Geral",
+        "Alertas",
+        "Conversões",
+        "Histórico",
+        "Auditoria",
+        "Corte Tiras"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "read-only",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/LabelSystem.tsx",
+      "triggerCount": 7,
+      "labels": [
+        "Geração & Impressão",
+        "Manual",
+        "Templates",
+        "Fila",
+        "Impressoras",
+        "Otimização",
+        "Analytics"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/Contractors.tsx",
+      "triggerCount": 7,
+      "labels": [
+        "Ordens de Serviço",
+        "Consolidada",
+        "Planejamento",
+        "Prestadores",
+        "Receitas Artesanais",
+        "Dados",
+        "Foto Assinada"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/CRM.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Interações",
+        "Inativos",
+        "Aniversariantes",
+        "Recompra Prevista",
+        "NPS"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/NfePage.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "NF-es Emitidas",
+        "NF Avulsa",
+        "Empresas / CNPJs",
+        "Tributação",
+        "Cartas de Correção",
+        "Diagnóstico"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/TerceirizadosHub.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Ordens de Serviço",
+        "Planejamento",
+        "Relatório",
+        "Prestadores",
+        "Tarifas por Referência",
+        "Receitas Artesanais"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/Transport.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Capacidade do Baú",
+        "Embalagens",
+        "Transportadoras",
+        "Simulador de Pedido",
+        "Rota de Entrega",
+        "Roteirização"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/Clients.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Clientes",
+        "Grupos Econômicos",
+        "Dados",
+        "Logos & SILK",
+        "Lojas",
+        "Representante"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/components/technical-sheets/SheetsAuditPanel.tsx",
+      "triggerCount": 6,
+      "labels": [
+        "Incompletas",
+        "Críticas",
+        "100% OK",
+        "Todas"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": true
+    },
+    {
+      "file": "src/pages/BaseConsumption.tsx",
+      "triggerCount": 5,
+      "labels": [
+        "Consumo Base",
+        "Grade & Consumos",
+        "Silk / Arte",
+        "Técnico",
+        "Embalagem"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-9"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/label-system/LabelProductionTab.tsx",
+      "triggerCount": 5,
+      "labels": [
+        "Em Produção ( )",
+        "Finalizados",
+        "Lista de Referências",
+        "Histórico de Lotes"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/groups/GroupEditDialog.tsx",
+      "triggerCount": 5,
+      "labels": [
+        "Geral",
+        "Hierarquia",
+        "Dimensões",
+        "Embalagem",
+        "Itens ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/finance/FinanceReportsTab.tsx",
+      "triggerCount": 5,
+      "labels": [
+        "DRE",
+        "Fluxo de Caixa",
+        "Inadimplência",
+        "Categorias",
+        "Ranking"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Settings.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "Representantes",
+        "Financeiro",
+        "Empresa"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/SystemDiagnostics.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "Diagnóstico",
+        "Schema",
+        "Migrations",
+        "Consumo"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/transport/OrderTransportCalculator.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "Embalagens",
+        "Veículos",
+        "Métricas",
+        "Transportadoras"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/financial/CostAnalyticsPanel.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "1 mês",
+        "3 meses",
+        "6 meses",
+        "1 ano"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/sale-orders/SaleOrdersOverviewDialog.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "Por Status",
+        "Por Semana",
+        "Por Cliente",
+        "Pedidos"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/inventory/MasterVariantDialog.tsx",
+      "triggerCount": 4,
+      "labels": [
+        "Variantes",
+        "Dados do Grupo",
+        "Adicionar"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/MaintenancePage.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Equipamentos",
+        "Planos",
+        "Histórico"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/PricingCalculator.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Manual",
+        "Por Ficha Técnica",
+        "Mão de Obra"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "read-only",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/SystemMonitor.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Performance",
+        "Auditoria",
+        "Cache"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Quotations.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Itens ( )",
+        "Respostas ( )",
+        "Comparativo"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Finance.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Comissões",
+        "Factoring",
+        "Conciliação"
+      ],
+      "system": "HubTabsList",
+      "urlSync": "read-only",
+      "persistsLocalStorage": true,
+      "heights": [
+        "h-8"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/ProductionControlCenter.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Visão geral",
+        "Histórico terceirização"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/OwnDeliveriesPage.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Pedidos prontos",
+        "Rotas",
+        "Frota"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/settings/FinanceConfigPanel.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Bancos",
+        "Plano de Contas",
+        "Centros de Custo"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/financial/MrpUnifiedContent.tsx",
+      "triggerCount": 3,
+      "labels": [
+        "Projeções",
+        "Alertas de Estoque ( )",
+        "Sugestões MRP ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Reports.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Painel",
+        "Relatórios"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/InventarioABC.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Curva ABC",
+        "Contagens"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/OrderEdit.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Produção",
+        "Transporte"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/LGPD.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Solicitações",
+        "Consentimentos"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/ArtisanalRecipes.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Receitas",
+        "Otimização de Corte de Rolo"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/StockAlerts.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Produtos ( )",
+        "Solados por numeração ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Automations.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Workflows"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Quality.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Ocorrências de Produção",
+        "Testes de Lote"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/ProducaoPlanejamento.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Grade setor × dia",
+        "Fila ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/ProductDetail.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Informações e Dados",
+        "Histórico e Ações"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/OrderPickingPage.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Todas ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/PurchaseOrders.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Geral",
+        "Solados"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": true,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/OrderFlowAudit.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Fluxo de Pedidos",
+        "Auditoria de Produção"
+      ],
+      "system": "shadcn+pill-manual",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-12"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/Products.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Fichas Técnicas",
+        "Fichas de Componentes"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/EstoqueQualidade.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Quarentena & Bloqueio",
+        "Recall de Lote"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/clients/ExcelImportDialog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Excel",
+        "Word"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/clients/ClientFormDialog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Dados",
+        "Representante"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/settings/CreateUserDialog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Perfil rápido (Role)",
+        "Permissões específicas (Menu a menu)"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/sales/OrderMatrixForm.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Infantil ( )",
+        "Adulto ( )"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/financial/WeeklyPurchasingContent.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Relatório por Semana",
+        "Matriz Consolidada"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/sale-orders/StrapShortageDialog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Artesanal (OS)",
+        "Comprar pronto (OC)"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-8"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/inventory/ProductFormDialog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Dados do Item",
+        "Mover de Família"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/inventory/UnifiedAuditLog.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Lançamentos Manuais",
+        "Tiras"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/own-delivery/FleetTab.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Veículos",
+        "Motoristas"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/finance/UnifiedFinanceTab.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "A Pagar",
+        "A Receber"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/finance/UnifiedInvoicesTab.tsx",
+      "triggerCount": 2,
+      "labels": [
+        "Entradas",
+        "Saídas"
+      ],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/RHHub.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "shadcn+pill-manual",
+      "urlSync": "full",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/pages/SectorAggregatedView.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/layout/HubTabs.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "HubTabsList",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/mrp/MrpProjectionsTab.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [],
+      "overloaded": false
+    },
+    {
+      "file": "src/components/inventory/SoladoGradeDialog.tsx",
+      "triggerCount": 1,
+      "labels": [],
+      "system": "shadcn-default",
+      "urlSync": "none",
+      "persistsLocalStorage": false,
+      "heights": [
+        "h-auto"
+      ],
+      "overloaded": false
+    }
+  ]
+}
