@@ -136,7 +136,13 @@ new_violations=()
 improved=0
 while IFS=$'\t' read -r count file; do
   [[ -z "$file" ]] && continue
-  base=$(grep -E "\t${file}$" "$BASELINE" 2>/dev/null | cut -f1 | head -1)
+  # Comparação EXATA por campo, via awk — não use `grep -E "\t..."` aqui:
+  #   • `\t` em ERE não é portável. O grep do macOS (BSD) casa tab; o do Ubuntu
+  #     (GNU) lê como `t` literal e NUNCA casa ⇒ todo arquivo do baseline vira
+  #     "ARQUIVO NOVO" e o build cai só no CI (aconteceu em 30/07/2026: 66 de 66).
+  #   • o caminho ia interpolado dentro da regex, então o `.` de `.tsx` era
+  #     curinga e podia casar arquivo errado.
+  base=$(awk -F'\t' -v f="$file" '$2 == f { print $1; exit }' "$BASELINE" 2>/dev/null)
   if [[ -z "$base" ]]; then
     new_violations+=("  ❌ ARQUIVO NOVO com $count ocorrência(s): $file")
   elif (( count > base )); then
