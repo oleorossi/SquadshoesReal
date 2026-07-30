@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { usePersistedState } from '@/hooks/usePersistedState';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useCan } from '@/hooks/useAccessControl';
 import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -698,6 +698,35 @@ function BudgetTab() {
 }
 
 // ─── Main Page ───
+/**
+ * Abas do Financeiro. As 19 chaves antigas continuam aceitas como ENTRADA —
+ * SmartDashboard, alertas e atalhos externos apontam pra elas — e são
+ * normalizadas pro canônico assim que a tela abre.
+ */
+const FINANCE_TABS = ['dashboard', 'accounts', 'invoices', 'comissoes-factoring', 'reports'] as const;
+type FinanceTab = typeof FINANCE_TABS[number];
+
+const FINANCE_TAB_ALIASES: Record<string, FinanceTab> = {
+  visao: 'dashboard',
+  contas: 'accounts',
+  payable: 'accounts',
+  receivable: 'accounts',
+  notas: 'invoices',
+  operational: 'comissoes-factoring',   // nome anterior da aba
+  comissoes: 'comissoes-factoring',
+  factoring: 'comissoes-factoring',
+  relatorios: 'reports',
+  dre: 'reports',
+  cashflow: 'reports',
+  aging: 'reports',
+};
+
+/** Aliases que também determinam a SUBABA de Contas. */
+const FINANCE_LEGACY_SUBTAB: Record<string, 'payable' | 'receivable'> = {
+  payable: 'payable',
+  receivable: 'receivable',
+};
+
 export default function Finance() {
   const { data: payables = [], isLoading: loadingP } = useAccountsPayable();
   const { data: receivables = [], isLoading: loadingR } = useAccountsReceivable();
@@ -722,48 +751,32 @@ export default function Finance() {
   const [receivableDialog, setReceivableDialog] = useState(false);
   const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
   const [editingReceivable, setEditingReceivable] = useState<AccountReceivable | null>(null);
-  const [financeTab, setFinanceTab] = usePersistedState('financeTab', 'accounts');
+  // A aba mora na URL desde 29/07/2026. Antes vivia em `usePersistedState`
+  // ('financeTab'), que GANHAVA do deep-link: quem abrisse /financeiro?tab=reports
+  // caía na aba salva da última visita. E trocar de aba não escrevia nada, então
+  // F5 e o botão Voltar perdiam o lugar. `migrateFrom` lê o valor salvo uma única
+  // vez e o converte em URL canônica; depois disso o storage é ignorado.
+  const { value: financeTab, setValue: setFinanceTab } = useUrlTabState<FinanceTab>({
+    values: FINANCE_TABS,
+    defaultValue: 'accounts',
+    aliases: FINANCE_TAB_ALIASES,
+    clearOnChange: ['subtab'],
+    migrateFrom: 'financeTab',
+  });
   const [accountsSubTab, setAccountsSubTab] = useState<'payable' | 'receivable'>('payable');
   const [searchParams] = useSearchParams();
 
-  // Migra valor legado em localStorage ('operational' → 'comissoes-factoring').
-  // Sem isso, usuários com a tab antiga em cache veem a página em branco até clicarem.
+  // Alguns aliases legados carregam a SUBABA junto (?tab=payable quer dizer
+  // "Contas → A Pagar"). O helper normaliza a aba-pai; a filha é sedimentada
+  // aqui, uma vez, a partir do parâmetro cru — antes que a normalização o apague.
+  const rawTabParam = searchParams.get('tab');
+  const semeouSubtab = useRef(false);
   useEffect(() => {
-    const VALID_TABS = ['dashboard', 'accounts', 'invoices', 'comissoes-factoring', 'reports'];
-    if (!VALID_TABS.includes(financeTab)) {
-      setFinanceTab(financeTab === 'operational' ? 'comissoes-factoring' : 'accounts');
-    }
-  }, [financeTab, setFinanceTab]);
-
-  // Deep-link via ?tab=… — usado por SmartDashboard e atalhos externos.
-  const requestedTab = searchParams.get('tab');
-  useEffect(() => {
-    if (!requestedTab) return;
-    const map: Record<string, { tab: string; sub?: 'payable' | 'receivable' }> = {
-      dashboard: { tab: 'dashboard' },
-      visao:     { tab: 'dashboard' },
-      accounts:  { tab: 'accounts' },
-      contas:    { tab: 'accounts' },
-      payable:   { tab: 'accounts', sub: 'payable' },
-      receivable:{ tab: 'accounts', sub: 'receivable' },
-      invoices:  { tab: 'invoices' },
-      notas:     { tab: 'invoices' },
-      operational:{ tab: 'comissoes-factoring' },
-      'comissoes-factoring': { tab: 'comissoes-factoring' },
-      comissoes: { tab: 'comissoes-factoring' },
-      factoring: { tab: 'comissoes-factoring' },
-      reports:   { tab: 'reports' },
-      relatorios:{ tab: 'reports' },
-      dre:       { tab: 'reports' },
-      cashflow:  { tab: 'reports' },
-      aging:     { tab: 'reports' },
-    };
-    const target = map[requestedTab];
-    if (target) {
-      setFinanceTab(target.tab);
-      if (target.sub) setAccountsSubTab(target.sub);
-    }
-  }, [requestedTab, setFinanceTab]);
+    if (semeouSubtab.current || !rawTabParam) return;
+    semeouSubtab.current = true;
+    const sub = FINANCE_LEGACY_SUBTAB[rawTabParam];
+    if (sub) setAccountsSubTab(sub);
+  }, [rawTabParam]);
   const [selectedReceivables, setSelectedReceivables] = useState<Set<string>>(new Set());
   const [selectedPayables, setSelectedPayables] = useState<Set<string>>(new Set());
   const [payableSearch, setPayableSearch] = useState('');
@@ -986,7 +999,9 @@ export default function Finance() {
             financeTab === 'dashboard' ? 'Visão Geral'
               : financeTab === 'accounts' ? 'Contas a Pagar / Receber'
               : financeTab === 'invoices' ? 'Notas Fiscais'
-              : financeTab === 'operational' ? 'Operacional'
+              // 'operational' saiu: virou alias de 'comissoes-factoring'. O
+              // typecheck só acusou agora que a aba deixou de ser `string`.
+              : financeTab === 'comissoes-factoring' ? 'Comissões & Factoring'
               : financeTab === 'reports' ? 'Relatórios analíticos'
               : 'Visão Geral'
           }
@@ -1046,7 +1061,9 @@ export default function Finance() {
                   setAccountsSubTab(tab);
                   setFinanceTab('accounts');
                 }
-                else setFinanceTab(tab);
+                // O SmartDashboard emite chaves legadas; traduz pelo mesmo mapa
+                // de aliases da URL em vez de manter uma segunda tradução.
+                else setFinanceTab(FINANCE_TAB_ALIASES[tab] ?? (tab as FinanceTab));
               }} />
               <div className="mt-5">
                 <NetMarginChart />
