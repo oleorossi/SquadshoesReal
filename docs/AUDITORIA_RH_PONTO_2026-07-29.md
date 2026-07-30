@@ -345,6 +345,60 @@ Levantadas na sondagem inicial ou pelo Codex e derrubadas na verificação. Regi
 
 ---
 
+## Adendo 30/07/2026 — a identidade do ponto é pior do que D10 registrou
+
+Levantado ao verificar contra produção os efeitos de `bf441d7`. Substitui e amplia o achado **D10**.
+
+### O elo relógio ↔ cadastro está construído, desligado e com uma armadilha armada
+
+A migration `20260627120000_punch-reconciliation.sql` entregou uma **Fase 1 completa**: coluna `time_records.employee_id` (uuid, FK), trigger `resolve_time_record_employee`, tabela `punch_device_map`, RPCs `get_punch_reconciliation()` e `punch_map_resolve()`, hook `usePunchReconciliation.ts` e a página `PunchReconciliationPage.tsx`.
+
+**Nada disso foi ligado.** A página não tem rota em `App.tsx` nem entrada em `navigation.ts` — o RH nunca teve como abrir a tela. Sintomas de trabalho parado no meio: o hook usa `(supabase as any).rpc(...)` porque `types.ts` nunca foi regenerado.
+
+**Estado medido em produção (30/07/2026):**
+
+| Métrica | Valor |
+|---|---|
+| `time_records` com `employee_id` resolvido | **956 de 4.076** |
+| Linhas **sem vínculo** de identidade | **3.120 (76%)** |
+| Linhas em `punch_device_map` | **7** |
+| Matrículas distintas no relógio | 44 |
+| Matrículas que **não existem** em `employees` | **25** |
+| Matrículas com mais de uma grafia de nome | 23 |
+| Pares (matrícula, data) **duplicados** | **68** |
+
+### 🔴 Armadilha: usar a tela como ela está hoje corrompe o histórico
+
+`punch_map_resolve` **faz backfill de `time_records` e NÃO filtra por data** (verificado por `pg_get_functiondef`). A matrícula é reciclada entre pessoas — e o `UNIQUE(device_id)` da tabela força um dono só, para sempre.
+
+Reciclagem real medida:
+
+| Matrícula | Pessoa A | Pessoa B | Corte |
+|---|---|---|---|
+| **6** | `camila` — 98 linhas, 03/10/25 → 13/07/26 | `admilson` — 2 linhas, 14/07/26 → 15/07/26 | limpo |
+| **3** | `junior` — 63 linhas, 01/10/25 → 18/06/26 | `camila` — 15 linhas, 23/06/26 → 15/07/26 | limpo |
+| **43** | `taispinheiro` — 51 linhas, 02/02 → 15/07/26 | `daianepinheiro` — 13 linhas, 27/02 → 31/05/26 | **sobreposto** |
+| **8** | `carla` — 110 linhas, 03/10/25 → 13/07/26 | `edsoncoelhochevet` — 4 linhas, 20/11/25 → 06/05/26 | **sobreposto** |
+
+No cadastro, a matrícula **6 é do Admilson** (admitido em 01/07/2026). Se alguém abrir a tela de reconciliação e vincular a matrícula 6 ao Admilson, **as 98 batidas da Camila passam a ser dele**. O mesmo vale para as outras três.
+
+> **Ação imediata, antes de qualquer código:** não vincular pelas RPCs atuais as matrículas **3, 6, 8 e 43**. As demais são seguras.
+
+### Por que isso é a raiz, e não um detalhe
+
+Nem o nome nem a matrícula são identidade estável: o nome varia em grafia (23 matrículas com mais de uma), e a matrícula é reaproveitada quando alguém sai. O dedupe da importação usa `employee_name + record_date` — por isso os 68 duplicados de matrícula escapam (a mesma pessoa entra duas vezes no mesmo dia sob duas grafias, com batidas idênticas). Pior caso: matrícula 15 tem **188 linhas para 143 datas** — 45 excedentes; matrícula 7 tem 20 excedentes.
+
+A identidade canônica tem que ser `time_records.employee_id`, e o elo precisa de **vigência** (`device_id` + intervalo de datas → `employee_id`), porque um mapa simples matrícula→funcionário está comprovadamente errado para o histórico. Os casos 8 e 43, sobrepostos, não se resolvem por data — exigem reatribuição linha a linha.
+
+### Correção das duas afirmações do laudo original
+
+A verificação contra produção corrigiu duas coisas que eu havia afirmado forte demais:
+
+1. **D1/P2 — os 62 dias nunca foram pagos de verdade.** Eu escrevi que estavam "pagos como jornada de 13h a 21h30 na folha". Eles eram assim **calculados**, mas **zero deles caiu em folha com status diferente de rascunho** — a única folha não-rascunho do sistema é a de R$ 0,00 do Erick Cesar. Nenhum dinheiro saiu. A correção de `bf441d7` é **preventiva**, não reparadora, e não há o que restituir. O que ela cria é carga operacional: 62 dias, 20 grafias de funcionário, **~682 horas** que agora aparecem como pendência a resolver — Gisele Bastos (10 dias, 115,7h) e Thais Batista (8 dias, 99,3h) na frente.
+2. **D5 — exposição zero no histórico.** Nenhuma batida em produção tem hora > 23 ou minuto > 59 (máximos: 23 e 59). A validação fecha a porta antes que o regex permissivo da RPC `complete_punches` deixe uma entrar; não corrige nada retroativo.
+
+---
+
 ## Defeitos reais, sem exposição hoje
 
 Confirmados no código, com zero incidência nos dados atuais. Não priorizar, mas não esquecer — viram dinheiro no dia em que o cadastro mudar.
