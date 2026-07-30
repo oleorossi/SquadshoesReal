@@ -9,7 +9,7 @@
     "grantableDestinations": 79,
     "menuGroups": 9,
     "pagesWithTabs": 62,
-    "tabsWithoutUrl": 44,
+    "tabsWithoutUrl": 19,
     "tabsOverloaded": 13
   },
   "findings": {
@@ -106,15 +106,7 @@
     "bottomNavFindings": [],
     "duplicateNavPaths": [],
     "duplicateRouteDefs": [],
-    "groupOverflow": [
-      {
-        "group": "Produção",
-        "count": 6,
-        "limit": 5,
-        "excess": 1,
-        "role": "producao"
-      }
-    ],
+    "groupOverflow": [],
     "modulesGrantedToNobody": [
       {
         "module": "reports",
@@ -3259,7 +3251,7 @@
         "Histórico"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": true
@@ -3485,7 +3477,7 @@
         "Itens ( )"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3532,7 +3524,7 @@
         "Consumo"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3547,7 +3539,7 @@
         "Transportadoras"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3577,7 +3569,7 @@
         "Pedidos"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3591,7 +3583,7 @@
         "Adicionar"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [
         "h-auto"
@@ -3607,7 +3599,7 @@
         "Histórico"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3637,7 +3629,7 @@
         "Cache"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3680,7 +3672,7 @@
         "Histórico terceirização"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3708,7 +3700,7 @@
         "Centros de Custo"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3722,7 +3714,7 @@
         "Sugestões MRP ( )"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3735,7 +3727,7 @@
         "Relatórios"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3761,7 +3753,7 @@
         "Transporte"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3787,7 +3779,7 @@
         "Otimização de Corte de Rolo"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3800,7 +3792,7 @@
         "Solados por numeração ( )"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3812,7 +3804,7 @@
         "Workflows"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3825,7 +3817,7 @@
         "Testes de Lote"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3851,7 +3843,7 @@
         "Histórico e Ações"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3919,7 +3911,7 @@
         "Word"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3932,7 +3924,7 @@
         "Representante"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3945,7 +3937,7 @@
         "Permissões específicas (Menu a menu)"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -3984,7 +3976,7 @@
         "Comprar pronto (OC)"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [
         "h-8"
@@ -3999,7 +3991,7 @@
         "Mover de Família"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -4025,7 +4017,7 @@
         "Motoristas"
       ],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [],
       "overloaded": false
@@ -4105,7 +4097,7 @@
       "triggerCount": 1,
       "labels": [],
       "system": "shadcn-default",
-      "urlSync": "none",
+      "urlSync": "n/a",
       "persistsLocalStorage": false,
       "heights": [
         "h-auto"

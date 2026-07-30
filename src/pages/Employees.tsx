@@ -34,6 +34,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
 import AdvancesPanel from '@/components/hr/AdvancesPanel';
+import { useProductionSectors } from '@/hooks/useSectorRoster';
 
 // Folha por hora: o que importa do cadastro é nome, matrícula, salário-referência
 // (220h/mês) e contato/PIX. HE/escala/mensalista-diarista foram aposentados (as
@@ -78,6 +79,25 @@ export default function Employees() {
         .filter(d => d.length > 0)
     )
   ).sort() as string[];
+
+  // Setores que pagam POR PAR (sector_settings.pays_by_pair) — hoje Montagem e
+  // Solagem. Marcar o setor evita o passo que todo mundo esquecia: escolher
+  // "Montagem" e sair sem trocar o regime, salvando um montador mensalista com
+  // campos de hora extra e nenhum R$/par. Foi assim que os 3 montadores ficaram
+  // com R$/par 0,00 em 33 lançamentos.
+  const { data: prodSectors = [] } = useProductionSectors();
+  const setorPagaPorPar = (label: string) =>
+    prodSectors.some(s => s.label === label && s.paysByPair);
+
+  /** Trocar pra um setor por par já coloca o funcionário no regime certo — o que
+   *  troca hora extra por R$/par no formulário. O select de regime continua
+   *  visível e editável: quem for exceção (um mensalista dentro da Montagem)
+   *  desmarca na mão e os campos voltam ao normal. */
+  const onSectorChange = (v: string) => setForm(f => {
+    const next: typeof f & { payment_type?: string } = { ...f, department: v };
+    if (setorPagaPorPar(v) && next.payment_type !== 'producao') next.payment_type = 'producao';
+    return next;
+  });
 
   const filteredEmployees = employees.filter(e => {
     const matchSearch = searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id, e.phone, e.whatsapp);
@@ -397,7 +417,7 @@ export default function Employees() {
               {form.external_id && <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ Vinculado ao relógio de ponto</p>}
             </div>
             <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
-            <div><SectorSelectField value={form.department} onChange={v => setForm(f => ({ ...f, department: v }))} /></div>
+            <div><SectorSelectField value={form.department} onChange={onSectorChange} /></div>
             <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
             <div>
               <Label>Demissão</Label>
@@ -469,6 +489,9 @@ export default function Employees() {
                   </p>
                 )}
                 <p className="col-span-2 text-xs text-muted-foreground">
+                  {setorPagaPorPar(form.department)
+                    ? `${form.department} é setor pago por par, então o regime já veio marcado. `
+                    : ''}
                   Cada apontamento na Ficha de Montadores guarda o valor da época (congelado). Reajustar aqui não altera folhas passadas.
                 </p>
               </>

@@ -25,6 +25,8 @@ export interface ProductionSector {
   flowOrder: number;
   /** Override manual de equipe em sector_settings (null = deriva do RH). */
   headcount: number | null;
+  /** Setor pago por PAR produzido em vez de salário + hora extra. */
+  paysByPair: boolean;
 }
 
 export interface EmployeeSector {
@@ -52,6 +54,7 @@ interface RawProductionSector {
   sector_label: string;
   flow_order: number | string;
   headcount: number | string | null;
+  pays_by_pair: boolean | null;
 }
 
 /** As views novas não estão nos tipos gerados; `from` é destipado só no acesso. */
@@ -83,7 +86,7 @@ export function useProductionSectors() {
     queryKey: ['production-sectors', 'detail'],
     queryFn: async (): Promise<ProductionSector[]> => {
       const { data, error } = await fromView('v_production_sectors')
-        .select('sector_key, sector_label, flow_order, headcount')
+        .select('sector_key, sector_label, flow_order, headcount, pays_by_pair')
         .order('flow_order');
       if (error) throw error;
       return ((data ?? []) as RawProductionSector[]).map((r) => ({
@@ -91,6 +94,7 @@ export function useProductionSectors() {
         label: r.sector_label,
         flowOrder: Number(r.flow_order) || 0,
         headcount: r.headcount == null ? null : Number(r.headcount),
+        paysByPair: r.pays_by_pair === true,
       }));
     },
     staleTime: 5 * 60_000,
