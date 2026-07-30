@@ -129,7 +129,11 @@ BEGIN
   END IF;
 
   -- ── APROVAÇÃO: reivindica o que está livre ──────────────────────────────
-  IF NEW.status IN ('aprovado', 'pago') AND coalesce(OLD.status, 'rascunho') = 'rascunho' THEN
+  -- Vindo de QUALQUER estado não-finalizado, não só de 'rascunho'. O trigger de
+  -- adiantamentos testa `OLD.status='rascunho'` e, com isso, uma folha cancelada
+  -- e reaprovada não reivindicaria nada — sairia valendo zero em silêncio.
+  IF NEW.status IN ('aprovado', 'pago')
+     AND coalesce(OLD.status, 'rascunho') NOT IN ('aprovado', 'pago') THEN
 
     -- Dias da janela que JÁ pertencem a outra folha (o que teria sido pago 2×).
     SELECT count(*), string_agg(to_char(f.dia, 'DD/MM'), ', ' ORDER BY f.dia)
@@ -166,9 +170,9 @@ BEGIN
      WHERE f.payroll_run_id = NEW.id;
 
     v_antes := coalesce(NEW.total_proventos, 0);
+    -- Só colunas que existem em payroll_runs: `gross_value`/`period_base` são
+    -- campos do objeto TS de salaryPayroll, não da tabela.
     NEW.total_proventos := v_bruto;
-    NEW.gross_value     := v_bruto;
-    NEW.period_base     := v_bruto;
     -- O líquido é refinado logo em seguida por trg_payroll_link_advances_and_overtime,
     -- que roda DEPOIS deste (tg_ < trg_) e desconta os adiantamentos.
     NEW.total_liquido   := v_bruto - coalesce(NEW.total_descontos, 0);
@@ -189,6 +193,10 @@ BEGIN
     END IF;
 
   -- ── VOLTA PRA RASCUNHO **OU CANCELAMENTO**: devolve pro pool ────────────
+  -- Na prática o caminho real é o CANCELAMENTO: tg_payroll_lock_finalized barra
+  -- aprovado→rascunho no banco. É por isso que copiar os adiantamentos deixaria
+  -- a produção presa pra sempre — o branch de liberação deles exige justamente a
+  -- transição que o lock impede.
   ELSIF NEW.status IN ('rascunho', 'cancelado') AND coalesce(OLD.status, '') IN ('aprovado', 'pago') THEN
     UPDATE ficha_montadores
        SET payroll_run_id = NULL, pago_em = NULL
