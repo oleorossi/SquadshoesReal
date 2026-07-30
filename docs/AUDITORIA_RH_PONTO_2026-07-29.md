@@ -11,7 +11,7 @@
 
 ## Sumário executivo
 
-**29 defeitos confirmados** (11 críticos, 13 altos, 5 médios), **3 decisões de política respondidas pelo dono** e **2 pendentes**, **6 itens de código morto**, **4 defeitos reais sem exposição hoje** e — igualmente importante — **7 suspeitas refutadas** que não devem consumir esforço.
+**29 defeitos confirmados** (11 críticos, 13 altos, 5 médios), **5 decisões de política respondidas pelo dono** (P1–P5, nenhuma pendente), **6 itens de código morto**, **4 defeitos reais sem exposição hoje** e — igualmente importante — **7 suspeitas refutadas** que não devem consumir esforço.
 
 **O achado com maior efeito prático não é de código: a tabela de ausências está vazia.** Nunca foi registrado um atestado, uma licença ou uma falta justificada — e existem **1.044 dias úteis sem batida** no histórico. Como o motor só abona um dia se houver linha de ausência cobrindo a data, **todos eles viraram falta com desconto**. O mecanismo de abono funciona; ninguém o alimenta. Ver **D21**.
 
@@ -244,7 +244,7 @@ Este é o achado de maior efeito prático imediato, e é exatamente o que você 
 
 ### 🟠 D17 — Folha e Comparativo discordam em um salário inteiro no período multi-mês
 
-- **Classificação:** POLÍTICA — precisa de decisão sua (ver "Pendente de decisão" abaixo)
+- **Classificação:** POLÍTICA — **decidida** em P4: rejeitar intervalo multi-mês
 - **Onde:** `src/pages/Payroll.tsx:507-518` (o guard) contra `src/lib/payrollComparativo.ts:106-109,156,176-199` (sem guard)
 - **O que acontece:** ao calcular, a folha limita `periodDays` ao mês inicial e emite `toast.warning`. O comparativo/Excel não limita e usa todos os dias do intervalo.
 - **Impacto no período real `2026-05-15_2026-07-15` (62 dias), salário R$ 2.200:** folha grava **R$ 2.200,00**; comparativo/Excel mostra **R$ 4.400,00** (`2200 × 62 ÷ 31`).
@@ -358,24 +358,35 @@ Confirmados no código, com zero incidência nos dados atuais. Não priorizar, m
 
 ---
 
-## Pendente de decisão sua
+## Decisões de política — parte 2 (respondidas em 30/07/2026)
 
-**Período que cruza mais de um mês — quanto deve pagar?**
+### P4 — Período que cruza mais de um mês: **rejeitar, uma folha por competência** ✅
 
-O sistema tem **118 folhas com período maior que 40 dias** (ex.: `2026-05-15_2026-07-15`, 62 dias). Hoje os dois caminhos discordam:
+O sistema tem **118 folhas com período maior que 40 dias** (ex.: `2026-05-15_2026-07-15`, 62 dias). Os dois caminhos discordavam em um salário inteiro:
 
 | | Cálculo | Resultado (salário R$ 2.200) |
 |---|---|---|
-| **Folha gravada** | limita a 1 mês: `2200 × 31 ÷ 31` | **R$ 2.200,00** |
-| **Comparativo / Excel** | usa o intervalo cheio: `2200 × 62 ÷ 31` | **R$ 4.400,00** |
+| Folha gravada | limita a 1 mês: `2200 × 31 ÷ 31` | R$ 2.200,00 |
+| Comparativo / Excel | usa o intervalo cheio: `2200 × 62 ÷ 31` | R$ 4.400,00 |
 
-Diferença: **R$ 2.200,00** — um salário inteiro. As três saídas possíveis:
+> **Decisão:** **rejeitar** intervalos que cruzam mês. A tela passa a exigir uma folha por competência (mês cheio ou quinzena dentro do mês). Elimina a ambiguidade na raiz em vez de escolher entre os dois números.
 
-1. **Rejeitar** períodos multi-mês na tela (obrigar uma folha por competência);
-2. **Pagar por frações mensais** (dois meses = dois salários proporcionais) — o comparativo já faz isso;
-3. **Manter o teto de 1 salário** e corrigir o comparativo para respeitá-lo.
+**Implicações para quem for implementar:**
+- Validar em `Payroll.tsx` antes de calcular, substituindo o `toast.warning` do guard (`:507-518`) por bloqueio.
+- Aplicar a mesma restrição em `payrollComparativo.ts` — hoje ele não tem guard nenhum.
+- As **118 folhas multi-mês já gravadas** são todas `rascunho`; decidir se ficam como histórico inerte ou são apagadas. Não recalcular: foram feitas sob outra regra.
+- Ligação com **D26**: se o período passar a ser sempre uma competência fechada, a restrição de sobreposição fica muito mais simples de expressar.
 
-Não escolho por você: envolve quanto a pessoa recebe. Diga qual e eu registro no laudo.
+### P5 — Folhas aprovadas antes do sincronizador financeiro: **fazer backfill** ✅
+
+`tg_payroll_sync_financial_entry` é forward-only por decisão registrada na própria migration (`20260831120000`): folha aprovada antes dela nunca virou despesa em `financial_entries`.
+
+> **Decisão:** executar **backfill** para completar o histórico do DRE.
+
+**Implicações:**
+- O backfill precisa ser **idempotente** — há índice único parcial em `(reference_id, reference_type)` filtrando `reference_type='payroll_run'`, então reexecutar não duplica; ainda assim, escrever com `ON CONFLICT DO NOTHING`.
+- **Impacto real hoje é mínimo:** existe **1** folha não-rascunho no sistema, e ela é de **R$ 0,00** (a anomalia do Erick Cesar, abaixo). O backfill é preventivo — vale fazer antes de o volume de folhas aprovadas crescer, não depois.
+- Mexe em competências já fechadas: avisar o contador antes de rodar.
 
 ---
 
@@ -413,7 +424,7 @@ Ele tem 30 registros de ponto em junho, **todos com `punches` vazio** — não b
 **Precisa de desenho, não só de patch:**
 
 11. **D2 + P3** — o fluxo único de exceção manual (turno atravessando meia-noite, ímpar ≥5, atestado). Reaproveitar `time_exceptions` / `v_time_pendings` / `TimePendings`, que já existem e estão subaproveitados.
-12. **D17** — sua decisão sobre período multi-mês (seção acima), depois alinhar folha, comparativo, PDF e Excel na mesma regra.
+12. **D17 + P4** — bloquear intervalo multi-mês na tela e no comparativo (uma folha por competência), e decidir o destino das 118 folhas multi-mês em rascunho.
 13. **D28** — persistência da folha por RPC transacional, resolvendo de uma vez a concorrência e a idempotência.
 
 **Consistência de relatório:**
@@ -425,8 +436,9 @@ Ele tem 30 registros de ponto em junho, **todos com `punches` vazio** — não b
 
 **Limpeza:**
 
-18. **D13** — descobrir por que `time_import_logs` nunca gravou.
-19. **M1–M6** — revogar `EXECUTE` de `calculate_weekly_he_breakdown` antes de removê-la; derrubar os órfãos do banco de horas.
+18. **P5** — backfill idempotente do DRE para as folhas aprovadas anteriores ao sincronizador (`ON CONFLICT DO NOTHING`; avisar o contador). Preventivo — hoje só 1 folha não-rascunho existe.
+19. **D13** — descobrir por que `time_import_logs` nunca gravou.
+20. **M1–M6** — revogar `EXECUTE` de `calculate_weekly_he_breakdown` antes de removê-la; derrubar os órfãos do banco de horas.
 
 ---
 
