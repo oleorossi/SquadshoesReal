@@ -3403,7 +3403,7 @@
         "Corte Tiras"
       ],
       "system": "shadcn+pill-manual",
-      "urlSync": "read-only",
+      "urlSync": "full",
       "persistsLocalStorage": false,
       "heights": [
         "h-auto"

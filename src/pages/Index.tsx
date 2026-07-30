@@ -1,4 +1,5 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Package, GridFour as LayoutGrid, Bell, Minus, ClockCounterClockwise as History, Medal as Ribbon, ArrowsLeftRight as ArrowRightLeft } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -32,13 +33,10 @@ const MATERIAL_CATEGORIES = [
 
 // Tabs principais
 const MAIN_TABS = ['materials', 'overview', 'alerts', 'conversion'] as const;
-type MainTab = typeof MAIN_TABS[number];
 
 // Admin-only tabs — removidas da barra principal
 const ADMIN_TABS = new Set(['audit', 'strap-stock']);
 
-// Todas as tabs válidas (para leitura de URL)
- const ALL_TABS = new Set([...MAIN_TABS, ...ADMIN_TABS, 'solados', 'history']);
 
 export default function Index() {
   const [searchParams] = useSearchParams();
@@ -55,38 +53,42 @@ export default function Index() {
     }
   }, [requestedTab, navigate]);
 
-  // Mapeia tabs legadas para o novo esquema
-  const resolveTab = (tab: string | null): MainTab => {
-    if (!tab) return 'materials';
-    // Tabs admin — só acessa se for admin
-    if (ADMIN_TABS.has(tab) && isAdmin) return tab as any;
-    // "componentes" era tab — agora vira filtro dentro de materials
-    if (tab === 'componentes') return 'materials';
-    // "consumables" foi removida — redireciona pra materials
-    if (tab === 'consumables') return 'materials';
-    // "report" / "painel" mapeados para overview
-    if (tab === 'report' || tab === 'painel') return 'overview';
-    // "notifications" → alerts
-    if (tab === 'notifications') return 'alerts';
-     if (MAIN_TABS.includes(tab as any)) return tab as any;
-     if (tab === 'history') return 'history' as any;
-    return 'materials';
-  };
+  // A aba mora na URL (contrato do lote L6a). Esta tela já LIA `?tab=` mas nunca
+  // ESCREVIA: o deep-link funcionava na ida e trocar de aba não mudava o
+  // endereço, então F5 e o botão Voltar devolviam pra "Materiais".
+  //
+  // As abas de auditoria só existem pra admin — por isso a lista de valores é
+  // condicional. Sem isso, um não-admin com `?tab=audit` no link ficaria numa
+  // aba que a barra nem desenha.
+  const valoresValidos = useMemo(
+    () => (isAdmin ? [...MAIN_TABS, ...ADMIN_TABS, 'history'] : [...MAIN_TABS, 'history']) as string[],
+    [isAdmin],
+  );
 
-   const [activeTab, setActiveTab] = useState<any>(() => resolveTab(requestedTab));
-
-  // Filtro de categoria de material (chip inline)
-  const [materialCategory, setMaterialCategory] = useState<string>(() => {
-    if (requestedTab === 'componentes') return 'Componente';
-    return 'all';
+  const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
+    values: valoresValidos,
+    defaultValue: 'materials',
+    // Nomes antigos continuam abrindo a tela certa.
+    aliases: {
+      componentes: 'materials',   // virou filtro dentro de Materiais
+      consumables: 'materials',   // aba removida
+      report: 'overview',
+      painel: 'overview',
+      notifications: 'alerts',
+    },
   });
 
+  // Filtro de categoria de material (chip inline)
+  const [materialCategory, setMaterialCategory] = useState<string>('all');
+
+  // `?tab=componentes` não é só um apelido de "materials": ele também PRÉ-SELECIONA
+  // o chip de categoria. Lido do parâmetro cru, uma vez, antes que a normalização
+  // o troque por `materials`.
+  const semeouCategoria = useRef(false);
   useEffect(() => {
-    if (requestedTab && ALL_TABS.has(requestedTab)) {
-      const resolved = resolveTab(requestedTab);
-      setActiveTab(resolved);
-      if (requestedTab === 'componentes') setMaterialCategory('Componente');
-    }
+    if (semeouCategoria.current) return;
+    semeouCategoria.current = true;
+    if (requestedTab === 'componentes') setMaterialCategory('Componente');
   }, [requestedTab]);
 
   return (
@@ -98,7 +100,7 @@ export default function Index() {
         description="Materiais, consumos, alertas e visão geral do inventário"
       />
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MainTab)}>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         {/* ── Tab bar principal ── */}
         <TabsList indicator="none" className="h-auto gap-1 bg-muted/50 p-1 rounded-lg">
           <TabsTrigger
